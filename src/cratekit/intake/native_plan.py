@@ -1,7 +1,5 @@
-"""The plan of a native landing, and the readers of INBOX, the collection and the log it shares.
-
-Every name here is reached through :mod:`cratekit.intake.native` as well.
-"""
+"""The plan of a native landing, and the readers of INBOX, the collection and
+the log it shares; every name here is reached through :mod:`cratekit.intake.native`."""
 
 from __future__ import annotations
 
@@ -143,37 +141,21 @@ def anchored_intake_root(db: Any, tree_id: str, registry: tree_registry.Registry
 
 
 def plan_rows(
-    cfg: config.Config,
-    db: Any,
-    *,
-    tree_id: str,
-    registry: tree_registry.Registry,
-    batch: str,
-    files: Sequence[tuple[Path, Path]],
-    split: Sequence[PlaylistPlan] = (),
-    unplanned_left: Sequence[tuple[str, Left]] = (),
-    pass_name: str | None = None,
-    hearts: Sequence[HeartItem] = (),
-    favorites_source: str | None = None,
+    cfg: config.Config, db: Any, *, tree_id: str, registry: tree_registry.Registry, batch: str,
+    files: Sequence[tuple[Path, Path]], split: Sequence[PlaylistPlan] = (),
+    unplanned_left: Sequence[tuple[str, Left]] = (), pass_name: str | None = None,
+    hearts: Sequence[HeartItem] = (), favorites_source: str | None = None,
     owned_hearts: Sequence[OwnedHeartItem] = (),
-    set_plan: set_playlist.SetPlaylistPlan | None = None,
-    batch_playlist_id: str = "",
-    set_job_id: str = "",
-    inbox_leftovers: Sequence[str] = (),
-    inbox_found_by_name: bool = False,
-    labels: label_filing.LabelPlan | None = None,
-    twins: Sequence[Any] = (),
+    set_plan: set_playlist.SetPlaylistPlan | None = None, batch_playlist_id: str = "",
+    set_job_id: str = "", inbox_leftovers: Sequence[str] = (), inbox_found_by_name: bool = False,
+    labels: label_filing.LabelPlan | None = None, twins: Sequence[Any] = (),
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
 
-    ``files`` pairs where each file is now with where the landing puts it: the
-    row is planned for the target, the title read off the source. The caller
-    plans the account playlists (``split``, U113), their ``unplanned_left``
-    (U128), ``set_plan`` (U121), ``labels`` (U156) and ``twins`` (U149) on
-    this handle; each is digested, less what this plan leaves in staging.
-    ``hearts`` and ``owned_hearts`` (U120, U146) are placed under
-    ``favorites_source``; a home that cannot be resolved SKIPS the placement
-    and says why, never refusing the landing.
+    ``files`` pairs each staged file with its target, for which the row is
+    planned. What the caller planned on this handle is digested, less what this
+    plan leaves in staging; a hearts home that cannot be resolved SKIPS the
+    placement and says why, never refusing the landing.
 
     A FILE THE COLLECTION HOLDS IS PRESENT, NOT ADDED TWICE, matched through
     one index resolved on this machine; two active rows on one path count as
@@ -228,19 +210,13 @@ def plan_rows(
             action, why = (ADD if held is None else PRESENT), ""
         rows.append(
             RowPlan(
-                source=source,
-                target=target,
-                action=action,
+                source=source, target=target, action=action,
                 title=str(ingest.file_meta(source, cfg=cfg)["name"]),
                 folder_path=stored_folder_path(
                     target, base_drive=base_drive, current_drive=current_drive
                 ),
-                file_name=target.name,
-                file_size=source.stat().st_size,
-                file_type=file_type or 0,
-                content_link=None,
-                content_id=held,
-                why=why,
+                file_name=target.name, file_size=source.stat().st_size,
+                file_type=file_type or 0, content_link=None, content_id=held, why=why,
             )
         )
     # ONLY WHEN A ROW IS ADDED (U126): a landing of memberships alone needs no value.
@@ -260,40 +236,21 @@ def plan_rows(
         labels = label_filing.supported_only(
             labels, {str(row.target) for row in rows if row.action != UNSUPPORTED}
         )
-    planned = NativePlan(
-        tree_id=tree_id,
-        root_id=str(root_id),
-        root_name=str(getattr(root, "Name", "") or ""),
-        playlist=batch,
-        database=Path(rb_writer.handle_path(db) or rb_writer.live_db_path(cfg)),
-        device_id=device_id,
-        master_db_id=master_db_id,
-        base_drive=base_drive,
-        current_drive=current_drive,
-        rows=tuple(rows),
-        link=link,
-        digest="",
-        playlists=kept,
-        unplanned_left=(*unplanned_left, *dropped),
-        pass_name=pass_name,
-        favorites=_favorites_plan(
-            db, hearts, rows, source=favorites_source, owned=owned_hearts
-        ),
-        set_playlist=set_plan,
-        labels=labels,
-        batch_playlist_id=batch_playlist_id,
-        set_job_id=set_job_id,
-        inbox_leftovers=tuple(inbox_leftovers),
-        inbox_found_by_name=inbox_found_by_name,
-        vox_cut=vox_cut,
-        vox_blocked=vox_blocked,
-        drift_cut=drift_cut,
-        dyn_blocked=dyn_blocked,
-        twins=tuple(one for one in twins if one.account_id in written_for),
-    )
     found = analyze_playlist(db, str(root_id))
-    if found is not None:
-        planned = replace(planned, analyze_playlist_id=str(found.ID))
+    planned = NativePlan(
+        tree_id=tree_id, root_id=str(root_id), root_name=str(getattr(root, "Name", "") or ""),
+        playlist=batch, database=Path(rb_writer.handle_path(db) or rb_writer.live_db_path(cfg)),
+        device_id=device_id, master_db_id=master_db_id, base_drive=base_drive,
+        current_drive=current_drive, rows=tuple(rows), link=link, digest="", playlists=kept,
+        unplanned_left=(*unplanned_left, *dropped), pass_name=pass_name,
+        favorites=_favorites_plan(db, hearts, rows, source=favorites_source, owned=owned_hearts),
+        set_playlist=set_plan, labels=labels, batch_playlist_id=batch_playlist_id,
+        set_job_id=set_job_id, inbox_leftovers=tuple(inbox_leftovers),
+        inbox_found_by_name=inbox_found_by_name, vox_cut=vox_cut, vox_blocked=vox_blocked,
+        drift_cut=drift_cut, dyn_blocked=dyn_blocked,
+        twins=tuple(one for one in twins if one.account_id in written_for),
+        analyze_playlist_id=str(found.ID) if found is not None else "",
+    )
     return replace(planned, digest=digest_of(native.identity(planned)))
 
 
@@ -302,12 +259,9 @@ def _vox_plan(
 ) -> tuple[list[RowPlan], float | None, str]:
     """Each row to be added with its file's score and whether it is given the vox My Tag (U127).
 
-    THE TAG OWNS THE VOCAL SUB (R-841), so it is written from the cut and the
-    comparison the vocals verb uses, :mod:`cratekit.write.metadata_cli`'s.
-    Only on a row this landing adds; a held row is the repair's (A37).
-
-    NEVER A GUESS: no calibration or no My Tag category plans no tag and says
-    why; an unreadable score is no tag, named. Answers rows, cut and reason.
+    THE TAG OWNS THE VOCAL SUB (R-841), so it takes the vocals verb's cut and
+    comparison; only on a row this landing adds. NEVER A GUESS: no calibration
+    or no My Tag category plans no tag and says why. Answers rows, cut and reason.
     """
     if not any(row.action == ADD for row in rows):
         return rows, None, ""
@@ -400,9 +354,7 @@ def _word(value: str | None) -> str:
     and a NUL joined name is a lookup row no other row will ever share.
     """
     first = (value or "").split("\x00")[0]
-    if not first.strip():
-        return ""
-    return first
+    return first if first.strip() else ""
 
 
 def year_of(date: str | None) -> int | None:
@@ -547,11 +499,7 @@ def _favorites_plan(
         if exc.cause.reason != placement.SOURCE_MISSING:
             raise
         return FavoritesPlan(
-            source_name=source,
-            source_id="",
-            folder_id="",
-            folder_name="",
-            items=(),
+            source_name=source, source_id="", folder_id="", folder_name="", items=(),
             skipped=exc.cause.message,
         )
     in_source = placement.members(db, home.source_id) if owned else frozenset()
@@ -573,16 +521,9 @@ def _favorites_plan(
         sorted_rows = colour_mod.sort_rows(db, pink, [one.content_id for one in joining])
         to_colour, held = sorted_rows.to_colour, sorted_rows.held
     return FavoritesPlan(
-        source_name=home.source_name,
-        source_id=home.source_id,
-        folder_id=home.folder_id,
-        folder_name=home.folder_name,
-        items=kept,
-        present=tuple(sorted(home.present)),
-        owned=tuple(joining),
-        pink=pink,
-        colour_skipped=colour_skipped,
-        colour=to_colour,
+        source_name=home.source_name, source_id=home.source_id, folder_id=home.folder_id,
+        folder_name=home.folder_name, items=kept, present=tuple(sorted(home.present)),
+        owned=tuple(joining), pink=pink, colour_skipped=colour_skipped, colour=to_colour,
         held=held,
     )
 
@@ -792,8 +733,7 @@ def candidate_rows(db: Any, names: Iterable[str]) -> list[trees.ContentRow]:
         for row in query.all():
             found.append(
                 trees.ContentRow(
-                    content_id=str(row.ID),
-                    recorded=str(getattr(row, "FolderPath", "") or ""),
+                    content_id=str(row.ID), recorded=str(getattr(row, "FolderPath", "") or ""),
                     deleted=trees.soft_delete_marker(row),
                 )
             )
@@ -817,12 +757,8 @@ def content_ids_for(db: Any, cfg: config.Config, paths: Sequence[Path]) -> dict[
     Two active rows on one path answer the first, which the matcher surfaces
     for the person to tidy.
     """
-    found: dict[str, str] = {}
-    for path, match in zip(paths, _matches(db, cfg, paths)):
-        held = _holding(match)
-        if held is not None:
-            found[str(path)] = held
-    return found
+    found = {str(path): _holding(match) for path, match in zip(paths, _matches(db, cfg, paths))}
+    return {path: held for path, held in found.items() if held is not None}
 
 
 def single_rows_for(db: Any, cfg: config.Config, paths: Sequence[Path]) -> dict[str, str]:
