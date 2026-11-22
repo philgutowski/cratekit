@@ -1,11 +1,8 @@
-"""What the tagging verbs that plan over the library share (U306).
+"""What ``tag rows``, ``remap``, ``suggest``, ``backlog`` and ``guess`` each copied (U306).
 
-``tag rows``, ``tag remap``, ``tag suggest``, ``tag backlog`` and ``tag guess``
-each held a copy of these. Every helper answers byte for byte what the copies
-did, and each verb keeps its own messages, gate lookup and origin.
-
-Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
-command-line layer, for the reason ``adopt.apply_cli`` gives.
+Each verb keeps its own messages, gate lookup and origin. Layer: modules. It
+names :mod:`cratekit.cli.output` and nothing else from the command-line layer,
+for the reason ``adopt.apply_cli`` gives.
 """
 
 from __future__ import annotations
@@ -43,14 +40,9 @@ def counted(counts: Mapping[str, int], names: Sequence[str]) -> str:
 
 @contextmanager
 def reading(cfg: config.Config, blocked: str) -> Iterator[Any]:
-    """A handle opened to read, closed on the way out, over a library it can read.
-
-    ``require_closed`` is left False, as the collection reader leaves it, so a
-    plan can be read with rekordbox open. A LIBRARY MOST OF WHOSE ROWS ARE UNDER
-    NO PREFIX RULE REFUSES BEFORE ANY FILE IS OPENED (R-372), through the vocal
-    tag verb's own path survey, so the rule, counts, slug, steps and detail are
-    the ones it and doctor's ``library.paths_resolved`` give.
-    """
+    """A handle opened to read, ``require_closed`` off so rekordbox may be open,
+    closed on the way out. A library mostly under no prefix rule refuses first
+    (R-372), through the vocal tag verb's own path survey."""
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
@@ -66,11 +58,8 @@ def reading(cfg: config.Config, blocked: str) -> Iterator[Any]:
 
 
 def kept(cfg: config.Config, declared) -> suggest.KeptCatalogue:
-    """The catalogue lookup ``tag suggest --catalogue`` asks, its answers kept.
-
-    WHAT THIS RUN CANNOT ASK is named (U244), so a row kept for the day as
-    passed over is asked again once a Discogs token has been recorded.
-    """
+    """The catalogue lookup ``tag suggest --catalogue`` asks, answers kept, naming
+    what this run cannot ask (U244)."""
     return suggest.KeptCatalogue(
         cfg,
         suggest.catalogue_lookup(
@@ -100,12 +89,8 @@ def applied(
     apply: Callable[[], Any],
     said: Callable[[Any], dict[str, str]],
 ) -> Envelope:
-    """What a gate answered ``apply`` ends in.
-
-    A plan that writes nothing is a no op saying so. Otherwise ``apply`` writes
-    and refuses over what did not take, and the envelope carries the counts it
-    wrote and read back and what it did, ahead of the advisories.
-    """
+    """What a gate answered ``apply`` ends in: a no op over a plan that writes
+    nothing, else the write, its counts and what it did ahead of the advisories."""
     if not plan.writes:
         return ctx.envelope(
             data=data, outcome=Outcome.NO_OP, warnings=[nothing(plan), *advisories(plan)]

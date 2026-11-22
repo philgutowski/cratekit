@@ -45,9 +45,8 @@ OFF_TAXONOMY = "off-taxonomy"
 
 CAUSES: tuple[str, ...] = (FILE_UNREAD, ROW_LAGS_FILE, NO_GENRE, TOO_COARSE, OFF_TAXONOMY)
 
-#: What the plan does about a row. ``served`` and ``proposed`` are written by
-#: the verb named; ``settled`` by the one answer its word has; ``asked`` waits
-#: on its word's question; ``left`` is the remainder, by hand, with a reason.
+#: What the plan does about a row: written by the verb named, by its word's one
+#: answer, waiting on its word's question, or left by hand with a reason.
 SERVED = "served"
 PROPOSED = "proposed"
 SETTLED = "settled"
@@ -85,11 +84,8 @@ _ORIGIN = ("tagging", "backlog")
 
 @dataclass(frozen=True, slots=True)
 class Proposal:
-    """A genre ``tag suggest`` would write on a row with none, and its evidence.
-
-    ``source`` is the catalogue whose match voted, or :data:`NEIGHBOURS`;
-    ``share`` the genre's weight over every vote, rounded to two places.
-    """
+    """A genre ``tag suggest`` would write on a row with none, and its evidence:
+    the catalogue that voted, or :data:`NEIGHBOURS`, and the genre's share."""
 
     genre: str
     band: str
@@ -115,11 +111,7 @@ NEIGHBOURS = "neighbours"
 
 @dataclass(frozen=True, slots=True)
 class Row:
-    """One ``needs-genre`` row, its cause, and what the campaign does about it.
-
-    ``word`` is the one the cause is about, empty for ``no-genre`` and
-    ``file-unread``; ``asked`` what the catalogue said, when the run asked it.
-    """
+    """One ``needs-genre`` row, its cause, and what the campaign does about it."""
 
     content_id: str
     path: str
@@ -183,18 +175,9 @@ class Option:
 
 @dataclass(frozen=True, slots=True)
 class Word:
-    """One off taxonomy word, folded on case, and what answers it.
-
-    ``files_carry`` rows have a file whose one genre is the word, which an alias
-    retags; ``several`` hold it beside another genre; ``elsewhere`` carry it on
-    the row only; ``on_row`` would carry the commonest spelling on the row once
-    ``tag rows`` ran, which a folder files.
-
-    Exactly one of three holds: ``options``, the question, recommendation first;
-    ``settled``, the one answer, a command changing nothing in the copy, with
-    ``settled_genre`` and the rows ``reached``; or ``unanswerable``, the verbs'
-    refusal as kind, sentence and next step.
-    """
+    """One off taxonomy word, folded on case, and what answers it: exactly one
+    of ``options`` (the question, recommendation first), ``settled`` (the one
+    answer, with the rows it ``reached``) or ``unanswerable`` (the verbs' refusal)."""
 
     word: str
     rows: int
@@ -252,11 +235,8 @@ class Word:
 
 @dataclass(frozen=True, slots=True)
 class Backlog:
-    """Every ``needs-genre`` row in one cause, the words, and the campaign.
-
-    ``unread`` counts by why the live rows excluded for their file; ``joining``
-    names rows ``tag rows`` would move INTO needs genre.
-    """
+    """Every ``needs-genre`` row in one cause, the words, and the campaign;
+    ``unread`` counts excluded rows by why, ``joining`` names rows moved INTO it."""
 
     rows: tuple[Row, ...]
     words: tuple[Word, ...]
@@ -419,11 +399,8 @@ def settle(cause: str, reason: str) -> str:
 
 
 def cause_of(declared: taxonomy.Taxonomy, row_word: str, file_word: str) -> tuple[str, str]:
-    """The cause of one ``needs-genre`` row whose file was read, and its word. Pure.
-
-    A FILE WORD THAT ROUTES IS THE ROW LAGGING ITS FILE, tested first. Otherwise
-    a specific word on either side is never hidden behind a catch all.
-    """
+    """The cause of one ``needs-genre`` row whose file was read, and its word:
+    a routing file word first, and a specific word never hidden by a catch all. Pure."""
     row_word, file_word = row_word.strip(), file_word.strip()
     if file_word:
         disposition, _bucket, _match = adopt_scan.classify_genre(declared, file_word)
@@ -473,11 +450,8 @@ def neighbour_votes(
     live: Mapping[str, _Live],
     declared: taxonomy.Taxonomy,
 ) -> dict[str, int]:
-    """What the artist and folder neighbours of a word's rows say, once each. Pure.
-
-    ``tag suggest``'s weights; a neighbour votes once for the whole word at its
-    higher weight, and only for a genre adoption files by.
-    """
+    """What the artist and folder neighbours of a word's rows say, once each,
+    at ``tag suggest``'s weights and only for a genre adoption files by. Pure."""
     ids = set(members)
     by_artist: dict[str, list[str]] = {}
     by_folder: dict[str, list[str]] = {}
@@ -549,14 +523,9 @@ def word_of(
 ) -> Word:
     """One word's counts and what answers it, the recommendation first. Pure.
 
-    ``text`` is the active copy, None when there is none; ``rows_write`` the file
-    word ``tag rows`` would write onto each row, and ``known`` whether the
-    library has a genre entry for a genre.
-
-    THE RECOMMENDATION: a folder filing
-    :data:`cratekit.adopt.genres.FOLDER_WORTH` rows or more, else the alias the
-    neighbours agree on at medium or better, else leaving it by hand, since a
-    wrong alias retags every file carrying the word.
+    RECOMMENDED: a folder filing :data:`cratekit.adopt.genres.FOLDER_WORTH` rows,
+    else the alias the neighbours agree on at medium or better, else leaving it by
+    hand, since a wrong alias retags every file carrying the word.
     """
     writes = rows_write or {}
     spellings = Counter(row.word for row in members)
@@ -690,12 +659,8 @@ def needing(
     *,
     probe: Callable[[Path], adopt_scan.Readability] = adopt_scan.probe_readability,
 ) -> frozenset[str]:
-    """The rows :func:`plan_backlog` would count as the backlog, reading no tag.
-
-    ``tag campaign`` reads it after each step (U294), so needs genre after a
-    step is measured, not projected (R-1737). The census already skips a
-    tombstone and an unread file, so the disposition is the whole filter.
-    """
+    """The rows :func:`plan_backlog` would count, reading no tag, which ``tag
+    campaign`` measures after each step (U294, R-1737)."""
     mapped = {str(row.ID): row for row in db.get_content()}
     census = rows.scanned(cfg, mapped, declared, probe)
     return frozenset(
@@ -715,12 +680,8 @@ def plan_backlog(
     progress: Callable[[str], None] | None = None,
     probe: Callable[[Path], adopt_scan.Readability] = adopt_scan.probe_readability,
 ) -> Backlog:
-    """Sort every ``needs-genre`` row into one cause and read each verb's plan.
-
-    THE POPULATION IS ADOPTION'S census, so the count is ``adopt scan``'s.
-    ``text`` is the active copy the words' answers are planned on. Nothing is
-    pending on the handle when this returns.
-    """
+    """Sort every ``needs-genre`` row into one cause and read each verb's plan,
+    over adoption's census; ``text`` is the active copy answers are planned on."""
     mapped = {str(row.ID): row for row in db.get_content()}
     live: dict[str, _Live] = {}
     for content_id, row in mapped.items():

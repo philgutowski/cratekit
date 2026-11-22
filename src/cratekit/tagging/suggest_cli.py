@@ -80,12 +80,8 @@ def build(parser, entry) -> None:
 
 
 def picks(values: list[str], declared: taxonomy.Taxonomy) -> dict[str, str]:
-    """Each ``--set`` as a content identifier and a genre, or a refusal.
-
-    REFUSED BEFORE ANY ROW IS READ when one is not of the form, names a genre
-    this module may not suggest, a person's pick included, or names one row
-    twice with two genres.
-    """
+    """Each ``--set`` as a content identifier and a genre, refused before any row is
+    read when malformed, not suggestable, or naming one row twice."""
     found: dict[str, str] = {}
     for value in values:
         content_id, sep, genre = value.partition("=")
@@ -146,36 +142,29 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     left = sum(plan.counts[name] for name in suggest.LEFT)
     if left:
-        found.append(
-            warning(
-                ROWS_LEFT,
-                f"{left} row(s) with no genre were offered and are left as they "
-                f"are ({counted(plan.counts, suggest.LEFT)}), each listed with its "
-                f"votes; --band widens what is written, --set picks a genre for "
-                f"one row, a split's included, and every one is offered again "
-                f"next run",
-            )
-        )
+        found.append(warning(
+            ROWS_LEFT,
+            f"{left} row(s) with no genre were offered and are left as they "
+            f"are ({counted(plan.counts, suggest.LEFT)}), each listed with its "
+            f"votes; --band widens what is written, --set picks a genre for "
+            f"one row, a split's included, and every one is offered again "
+            f"next run",
+        ))
     if plan.counts[suggest.FILE_HAS_GENRE]:
-        found.append(
-            warning(
-                FILE_AHEAD,
-                f"{plan.counts[suggest.FILE_HAS_GENRE]} row(s) carry no genre "
-                f"and their file carries one, which tag rows writes onto the row",
-            )
-        )
+        found.append(warning(
+            FILE_AHEAD,
+            f"{plan.counts[suggest.FILE_HAS_GENRE]} row(s) carry no genre "
+            f"and their file carries one, which tag rows writes onto the row",
+        ))
     if plan.unread:
-        found.append(
-            warning(
-                FILES_NOT_READ,
-                f"{plan.unread} row(s) were not offered because their file's "
-                f"genre could not be read ({counted(plan.counts, rows.UNREAD)}); a "
-                f"volume that is not mounted reads as {rows.FILE_MISSING}",
-            )
-        )
-    # A ROW UNREAD ONLY BY A CATALOGUE NOBODY ASKED is said as that, with how to
-    # have it asked, never as catalogues that could not be read (U244). A ROW
-    # ANOTHER CATALOGUE ANSWERED is said apart, naming the one unread (U322).
+        found.append(warning(
+            FILES_NOT_READ,
+            f"{plan.unread} row(s) were not offered because their file's "
+            f"genre could not be read ({counted(plan.counts, rows.UNREAD)}); a "
+            f"volume that is not mounted reads as {rows.FILE_MISSING}",
+        ))
+    # A row unread only by a catalogue nobody asked (U244), and one another
+    # catalogue answered (U322), are each said apart.
     unread = suggest.sort_unread(
         (item.content_id, item.catalogue) for item in plan.items if item.catalogue is not None
     )
@@ -210,14 +199,12 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
     if parts:
         found.append(warning(CATALOGUE_UNREAD, "; ".join(parts)))
     if plan.unmatched:
-        found.append(
-            warning(
-                UNMATCHED,
-                f"--leave or --set named {named(list(plan.unmatched))}, and no "
-                f"row with no genre on the row or the file has that content "
-                f"identifier, so nothing was held or picked for it",
-            )
-        )
+        found.append(warning(
+            UNMATCHED,
+            f"--leave or --set named {named(list(plan.unmatched))}, and no "
+            f"row with no genre on the row or the file has that content "
+            f"identifier, so nothing was held or picked for it",
+        ))
     return found
 
 
@@ -262,14 +249,9 @@ def read_plan(
 
 
 def _write(cfg: config.Config, plan: suggest.SuggestPlan):
-    """Check the rows, then inside one session write the files and their rows.
-
-    ONE HANDLE, OPENED TO WRITE BEFORE ANY FILE IS TOUCHED, so a running
-    rekordbox refuses with every file as it was. The row engine checks every row
-    against the plan, then the files are written in its ``narrow`` step, behind
-    the library lock, the volume check and the capture, and only the rows whose
-    file read back are handed on.
-    """
+    """Check the rows, then inside one session write the files and their rows:
+    one handle opened to write before any file, so a running rekordbox refuses
+    first, and the files written in the engine's ``narrow`` step."""
     held: dict[str, suggest.FilesWritten] = {}
 
     def files_first(_whole: rows.RowsPlan) -> rows.RowsPlan:
@@ -328,12 +310,8 @@ def _files_refusal(files: suggest.FilesWritten, written: rows.Written):
 
 
 def _read_back(files: suggest.FilesWritten, written: rows.Written) -> None:
-    """The row engine's read back, naming the files that did not take theirs too.
-
-    THE READ BACK OUTRANKS THE FILES and keeps its own reason, since a row that
-    reads back wrong is this product's defect and a file that would not take a
-    genre is the file's; its sentence gains the files' clause.
-    """
+    """The row engine's read back, which outranks the files and keeps its reason,
+    its sentence naming the files that did not take theirs too."""
     try:
         rows.assert_read_back(written)
     except CratekitError as exc:

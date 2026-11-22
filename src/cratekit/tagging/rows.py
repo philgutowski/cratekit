@@ -126,8 +126,7 @@ class Item:
 
 
 class Tallied:
-    """What a plan of items and zero filled outcome counts answers, here and in
-    :class:`cratekit.tagging.suggest.SuggestPlan`."""
+    """What a plan of items and zero filled outcome counts answers, ``tag suggest``'s too."""
 
     __slots__ = ()
 
@@ -252,12 +251,10 @@ def plan_rows(
 ) -> RowsPlan:
     """Walk the collection once and sort every live row into one outcome.
 
-    THE WALK IS ADOPTION'S CENSUS, :func:`scanned`, whose probe reads no bytes:
-    an unenterable directory is counted, an evicted file is ``file-online-only``,
-    an unmounted volume ``file-missing``, a tombstone skipped. ``leave`` names
-    rows held out; one naming no differing row is carried and digested. Items
-    are sorted by content identifier, and only values are returned, so the
-    handle may be a read one closed before the gate.
+    THE WALK IS ADOPTION'S CENSUS, :func:`scanned`, which reads no bytes to probe.
+    ``leave`` names rows held out, one naming no differing row carried. Items are
+    sorted by content identifier, and only values are returned, so the handle may
+    be a read one closed before the gate.
     """
     held_out = frozenset(str(content_id) for content_id in leave)
     counts = dict.fromkeys(OUTCOMES, 0)
@@ -426,14 +423,11 @@ def apply_rows(
 ) -> Written:
     """Write the plan's genres, commit behind the guard, and read them back.
 
-    THE SESSION SPINE IS CALLED, NOT REBUILT. Rows are checked against the plan
-    and an out of band restore looked for before it is entered. NOTHING IS READ
-    BETWEEN THE FIRST SET AND THE COMMIT, which would flush unjudged work. The
-    caller judges the read back, :func:`assert_read_back`, once the session
-    closed, so a refusal leaves the capture as the undo. ``analysis_roots`` has
-    no default: a watch over nothing reports clean. ``narrow`` is called inside
-    the session before the first set and answers the part to write; ``tag
-    suggest`` writes its files there.
+    THE SESSION SPINE IS CALLED, NOT REBUILT, the rows checked and an out of band
+    restore looked for first. Nothing is read between the first set and the commit.
+    The caller judges the read back once the session closed, so a refusal leaves
+    the capture as the undo. ``narrow`` runs inside the session before the first
+    set and answers the part to write; ``tag suggest`` writes its files there.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -447,8 +441,7 @@ def apply_rows(
     mapped = row_defaults.read_mapped(db, content_ids)
     assert_rows_as_planned(plan, mapped)
     # THE EVIDENCE IS READ BEFORE IT IS REPLACED: a fingerprint recorded over a
-    # restored database would leave the trees it emptied unmarked. It marks and
-    # never refuses.
+    # restored database would leave the trees it emptied unmarked.
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     with (
         session.assert_gates(

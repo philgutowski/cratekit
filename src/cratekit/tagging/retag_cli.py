@@ -48,12 +48,9 @@ LIBRARY_ROW_STALE = "library-row-not-updated"
 
 
 def library_row_warning(folder: str) -> dict[str, str]:
-    """What the person still has to do, because the row is not this verb's.
-
-    THE ACT IS NAMED, ``tag rows``, and THE FOLDER, since a resume is read later.
-    The tense is the verb's, so one text serves queueing, a resume and a failure.
-    Not a pending human action, which no verify verb could prove (R-567).
-    """
+    """What the person still has to do, because the row is not this verb's: the
+    act, ``tag rows``, and the folder, in a tense true at queueing, a resume and a
+    failure. Not a pending human action, which nothing could verify (R-567)."""
     return {
         "code": LIBRARY_ROW_STALE,
         "message": (
@@ -70,11 +67,9 @@ def library_row_warning(folder: str) -> dict[str, str]:
 
 
 def with_reload_step(error: CratekitError, folder: str) -> CratekitError:
-    """The same refusal, carrying the reload among the things left to do, for a
-    half corrected sweep that leaves through its cause (R-225, R-185). Only the
-    step is added: every other field and the type, which the dispatcher reads as
-    the blocked outcome (R-290), are carried by construction.
-    """
+    """The same refusal, carrying the reload among the steps, for a half
+    corrected sweep leaving through its cause (R-225, R-185); every other field and
+    the type the dispatcher reads (R-290) are carried by construction."""
     cause = error.cause
     reload_step = library_row_warning(folder)["message"]
     return rebuilt(
@@ -293,12 +288,10 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
 def handle(job, item, cfg) -> jobs.Produced:
     """Correct ONE file's genre. The per item worker behind ``tag.retag``.
 
-    THE GENRE IS RE-READ AT DRIVE TIME: a gone file refuses ``source-missing``,
-    a blank one is ``tag folder``'s (checked first, as the taxonomy calls blank
-    too coarse), and one now specific is kept. The searcher is looked up on the
-    module at call time so a test can hand in a fake (KTD11, R23); the
-    configuration is the frozen one (KTD9). The report keeps the previous value,
-    the only record of which rows went stale (R-185).
+    THE GENRE IS RE-READ AT DRIVE TIME: a gone file refuses, a blank one is ``tag
+    folder``'s and one now specific is kept. The searcher is looked up on the
+    module at call time (KTD11, R23), the configuration is the frozen one (KTD9),
+    and the report keeps the previous value, the record of stale rows (R-185).
     """
     path = Path(item.item_id)
     if not path.is_file():

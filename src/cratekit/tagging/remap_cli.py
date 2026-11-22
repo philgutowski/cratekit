@@ -70,17 +70,15 @@ def _left(plan: remap.RemapPlan) -> list[dict[str, str]]:
     count = sum(plan.counts[name] for name in remap.LEFT)
     if not count:
         return []
-    return [
-        warning(
-            FILES_LEFT,
-            f"{count} file(s) do not carry the genre the taxonomy now gives "
-            f"their word and were left alone ({counted(plan.counts, remap.LEFT)}), "
-            f"each listed with its reason: {remap.CHANGED_SINCE} is a genre no "
-            f"tagging job recorded writing, {remap.WORD_DECLINED} a word the "
-            f"taxonomy has no folder for, and {remap.AMBIGUOUS_RECORD} a genre "
-            f"two records explain differently",
-        )
-    ]
+    return [warning(
+        FILES_LEFT,
+        f"{count} file(s) do not carry the genre the taxonomy now gives "
+        f"their word and were left alone ({counted(plan.counts, remap.LEFT)}), "
+        f"each listed with its reason: {remap.CHANGED_SINCE} is a genre no "
+        f"tagging job recorded writing, {remap.WORD_DECLINED} a word the "
+        f"taxonomy has no folder for, and {remap.AMBIGUOUS_RECORD} a genre "
+        f"two records explain differently",
+    )]
 
 
 def _not_read(plan: remap.RemapPlan) -> list[dict[str, str]]:
@@ -88,16 +86,14 @@ def _not_read(plan: remap.RemapPlan) -> list[dict[str, str]]:
     count = sum(plan.counts[name] for name in remap.UNREAD)
     if not count:
         return []
-    return [
-        warning(
-            FILES_NOT_READ,
-            f"{count} of {plan.files} file(s) a tagging job wrote a genre from "
-            f"{remap.SOURCE} onto could not be read ({counted(plan.counts, remap.UNREAD)}), "
-            f"each listed; a file that has moved since, and a volume that is "
-            f"not mounted, both read as {remap.FILE_MISSING}, and nothing here "
-            f"says those files are correct",
-        )
-    ]
+    return [warning(
+        FILES_NOT_READ,
+        f"{count} of {plan.files} file(s) a tagging job wrote a genre from "
+        f"{remap.SOURCE} onto could not be read ({counted(plan.counts, remap.UNREAD)}), "
+        f"each listed; a file that has moved since, and a volume that is "
+        f"not mounted, both read as {remap.FILE_MISSING}, and nothing here "
+        f"says those files are correct",
+    )]
 
 
 def _outside(plan: remap.RemapPlan) -> list[dict[str, str]]:
@@ -105,48 +101,42 @@ def _outside(plan: remap.RemapPlan) -> list[dict[str, str]]:
     count = plan.counts[remap.OUTSIDE_LIBRARY]
     if not count:
         return []
-    return [
-        warning(
-            FILES_OUTSIDE,
-            f"{count} of {plan.files} file(s) a tagging job wrote a genre from "
-            f"{remap.SOURCE} onto are not under this library's root and were "
-            f"not opened: a folder tagged before it was landed, or another "
-            f"library's; a file is followed only where it was tagged, so one "
-            f"landed since is not among the files this plan looked at",
-        )
-    ]
+    return [warning(
+        FILES_OUTSIDE,
+        f"{count} of {plan.files} file(s) a tagging job wrote a genre from "
+        f"{remap.SOURCE} onto are not under this library's root and were "
+        f"not opened: a folder tagged before it was landed, or another "
+        f"library's; a file is followed only where it was tagged, so one "
+        f"landed since is not among the files this plan looked at",
+    )]
 
 
 def _no_vocabulary(plan: remap.RemapPlan) -> list[dict[str, str]]:
     """The warning a run carries over a taxonomy with no table for the source."""
     if plan.declared:
         return []
-    return [
-        warning(
-            NO_VOCABULARY,
-            f"the active taxonomy declares no vocabulary for {remap.SOURCE}, so "
-            f"its words are still resolved by the buckets' aliases and this "
-            f"plan compares each file with that; give the library's copy the "
-            f"[vocabulary.{remap.SOURCE}] table the shipped template carries, "
-            f"together with every routing alias and sub_by_source map row that "
-            f"template declares for the table's tags, since a tag that names "
-            f"no folder is refused and the copy would not load, then run this "
-            f"again",
-        )
-    ]
+    return [warning(
+        NO_VOCABULARY,
+        f"the active taxonomy declares no vocabulary for {remap.SOURCE}, so "
+        f"its words are still resolved by the buckets' aliases and this "
+        f"plan compares each file with that; give the library's copy the "
+        f"[vocabulary.{remap.SOURCE}] table the shipped template carries, "
+        f"together with every routing alias and sub_by_source map row that "
+        f"template declares for the table's tags, since a tag that names "
+        f"no folder is refused and the copy would not load, then run this "
+        f"again",
+    )]
 
 
 def _records_unread(plan: remap.RemapPlan) -> list[dict[str, str]]:
     if not plan.records_unread:
         return []
-    return [
-        warning(
-            RECORDS_UNREAD,
-            f"{plan.records_unread} committed tagging record(s) could not be "
-            f"parsed and were not read, so a file one of them names was not "
-            f"looked at",
-        )
-    ]
+    return [warning(
+        RECORDS_UNREAD,
+        f"{plan.records_unread} committed tagging record(s) could not be "
+        f"parsed and were not read, so a file one of them names was not "
+        f"looked at",
+    )]
 
 
 def _advisories(plan: remap.RemapPlan) -> list[dict[str, str]]:
@@ -192,12 +182,8 @@ def _written(plan: remap.RemapPlan, written: remap.Written) -> dict[str, str]:
 
 
 def assert_written(written: remap.Written) -> None:
-    """Refuse when a file did not take the genre the plan gave it, after the
-    others were written, saying how many. A second run plans what is left.
-
-    THE ROW VERB IS NAMED HERE TOO WHEN ANY FILE WAS REWRITTEN: this run never
-    reaches the envelope that names it, and the next plans none of those files.
-    """
+    """Refuse when a file did not take its genre, after the others were written,
+    naming the row verb too when any was, since the next run plans none of them."""
     if written.clean:
         return
     parts = []

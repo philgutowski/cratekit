@@ -80,25 +80,18 @@ def _not_read(plan: rows.RowsPlan) -> list[dict[str, str]]:
     """The warning a run carries when a file's genre could not be learned."""
     if not plan.unread:
         return []
-    return [
-        warning(
-            FILES_NOT_READ,
-            f"{plan.unread} of {plan.rows} row(s) were left alone because "
-            f"their file's genre could not be read ({counted(plan.counts, rows.UNREAD)}); "
-            f"a volume that is not mounted reads as {rows.FILE_MISSING}, and "
-            f"nothing here says those rows agree with their files",
-        )
-    ]
+    return [warning(
+        FILES_NOT_READ,
+        f"{plan.unread} of {plan.rows} row(s) were left alone because "
+        f"their file's genre could not be read ({counted(plan.counts, rows.UNREAD)}); "
+        f"a volume that is not mounted reads as {rows.FILE_MISSING}, and "
+        f"nothing here says those rows agree with their files",
+    )]
 
 
 def _left(plan: rows.RowsPlan) -> list[dict[str, str]]:
-    """The warning a run carries when a differing row was left, with the act.
-
-    ON EVERY PATH THAT ANSWERS, the run that wrote included, or a person is told
-    the rows were written and not that some still disagree. A word with no
-    lookup row names its act: this verb never makes a genre row, and rekordbox
-    makes one when a track is given that genre there.
-    """
+    """The warning, on every path, of differing rows left, naming the act for a
+    word with no lookup row, which only rekordbox makes."""
     count = sum(plan.counts[name] for name in rows.LEFT)
     if not count:
         return []
@@ -121,14 +114,12 @@ def _unmatched(plan: rows.RowsPlan) -> list[dict[str, str]]:
     """The warning a run carries when ``--leave`` named a row that does not differ."""
     if not plan.leave_unmatched:
         return []
-    return [
-        warning(
-            LEAVE_UNMATCHED,
-            f"--leave named {', '.join(plan.leave_unmatched)}, and no row "
-            f"with that content identifier differs from its file, so nothing "
-            f"was held for it; a mistyped identifier is a row this plan writes",
-        )
-    ]
+    return [warning(
+        LEAVE_UNMATCHED,
+        f"--leave named {', '.join(plan.leave_unmatched)}, and no row "
+        f"with that content identifier differs from its file, so nothing "
+        f"was held for it; a mistyped identifier is a row this plan writes",
+    )]
 
 
 def _advisories(plan: rows.RowsPlan) -> list[dict[str, str]]:

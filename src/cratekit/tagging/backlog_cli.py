@@ -51,12 +51,8 @@ def build(parser, entry) -> None:
 
 
 def read_plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Backlog:
-    """The backlog over the library as it stands, through a handle opened to read.
-
-    THE ONE PLAN, this report's and ``tag campaign``'s (U294). The copy's text is
-    read the way ``taxonomy alias`` reads it, so each word's answers are planned
-    on the copy those verbs would edit.
-    """
+    """The backlog over the library as it stands, through a handle opened to read:
+    the one plan, this report's and ``tag campaign``'s (U294)."""
     _path, text = active_taxonomy.read_text(cfg)
     with plan_verbs.reading(cfg, _BLOCKED) as db:
         if not catalogue:
@@ -71,26 +67,22 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     asked = [word for word in plan.words if word.options]
     if asked:
-        found.append(
-            warning(
-                WORDS_ASKED,
-                f"{len(asked)} genre word(s) no folder takes are carried by "
-                f"{sum(word.rows for word in asked)} row(s): "
-                f"{named([f'{word.spelling} ({word.rows})' for word in asked])}; "
-                f"each has one question, an alias, its own folder or left by "
-                f"hand, with the recommendation first",
-            )
-        )
+        found.append(warning(
+            WORDS_ASKED,
+            f"{len(asked)} genre word(s) no folder takes are carried by "
+            f"{sum(word.rows for word in asked)} row(s): "
+            f"{named([f'{word.spelling} ({word.rows})' for word in asked])}; "
+            f"each has one question, an alias, its own folder or left by "
+            f"hand, with the recommendation first",
+        ))
     no_genre = plan.counts[backlog.NO_GENRE]
     if no_genre and not plan.catalogue:
-        found.append(
-            warning(
-                LIBRARY_ALONE,
-                f"the {no_genre} row(s) with no genre were weighed from their "
-                f"artist and folder alone; --catalogue asks Discogs, then "
-                f"Beatport when Discogs gives no genre, then Deezer by ISRC",
-            )
-        )
+        found.append(warning(
+            LIBRARY_ALONE,
+            f"the {no_genre} row(s) with no genre were weighed from their "
+            f"artist and folder alone; --catalogue asks Discogs, then "
+            f"Beatport when Discogs gives no genre, then Deezer by ISRC",
+        ))
     # Said apart as ``tag suggest`` says them (U244, U322).
     unread = suggest.sort_unread(
         (row.content_id, row.asked) for row in plan.rows if row.asked is not None
@@ -125,34 +117,28 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
         found.append(warning(CATALOGUE_UNREAD, "; ".join(parts)))
     excluded = sum(plan.unread.values())
     if excluded:
-        found.append(
-            warning(
-                FILES_UNREAD,
-                f"{excluded} row(s) are in no cause, because their file is not "
-                f"here or could not be read ({_counts(plan.unread)}), so adoption "
-                f"excludes them and whether they need a genre is unknown; a volume "
-                f"that is not mounted reads as {rows.FILE_MISSING}",
-            )
-        )
+        found.append(warning(
+            FILES_UNREAD,
+            f"{excluded} row(s) are in no cause, because their file is not "
+            f"here or could not be read ({_counts(plan.unread)}), so adoption "
+            f"excludes them and whether they need a genre is unknown; a volume "
+            f"that is not mounted reads as {rows.FILE_MISSING}",
+        ))
     if plan.joining:
-        found.append(
-            warning(
-                ROWS_JOINING,
-                f"{backlog.ROWS_VERB} would also write a genre no folder takes onto "
-                f"{len(plan.joining)} row(s) adoption files today, "
-                f"{named(list(plan.joining))}, moving them into needs genre; the "
-                f"projection counts them, and --leave holds a row out",
-            )
-        )
+        found.append(warning(
+            ROWS_JOINING,
+            f"{backlog.ROWS_VERB} would also write a genre no folder takes onto "
+            f"{len(plan.joining)} row(s) adoption files today, "
+            f"{named(list(plan.joining))}, moving them into needs genre; the "
+            f"projection counts them, and --leave holds a row out",
+        ))
     left = plan.statuses[backlog.LEFT]
     if left:
-        found.append(
-            warning(
-                REMAINDER,
-                f"{left} row(s) are left by hand, each counted with its reason "
-                f"and what would settle it in the remainder",
-            )
-        )
+        found.append(warning(
+            REMAINDER,
+            f"{left} row(s) are left by hand, each counted with its reason "
+            f"and what would settle it in the remainder",
+        ))
     return found
 
 

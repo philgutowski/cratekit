@@ -82,9 +82,8 @@ def _playlists(
 
     paths = [one.path for one in staged if one.readable]
     try:
-        # A PASS NO JOB CARRIES IS NOT A PASS WHOSE PLAYLISTS KNEW NOTHING: a
-        # mistyped name would report every file as one nothing voted for. Only a
-        # sync pass is named; a label go or a Bandcamp batch is handed no pass.
+        # A PASS NO JOB CARRIES IS NOT ONE WHOSE PLAYLISTS KNEW NOTHING: a
+        # mistyped name would report every file as one nothing voted for.
         if not batch_name.pass_jobs(cfg, pass_name):
             return (), (
                 f"no intake job of pass {pass_name} succeeded on this library, so "
@@ -166,63 +165,51 @@ def _advisories(found: guess.GuessPlan, declared: taxonomy.Taxonomy | None = Non
         for name in guess.OUTCOMES
     }
     if by[guess.NO_VOTES]:
-        warnings.append(
-            warning(
-                NO_VOTES_LEFT,
-                f"{len(by[guess.NO_VOTES])} file(s) carry no genre and nothing "
-                f"voted for one, no track by the artist and no playlist it came "
-                f"from carrying a genre the taxonomy declares: "
-                f"{named(by[guess.NO_VOTES])}; they need a genre by hand",
-            )
-        )
+        warnings.append(warning(
+            NO_VOTES_LEFT,
+            f"{len(by[guess.NO_VOTES])} file(s) carry no genre and nothing "
+            f"voted for one, no track by the artist and no playlist it came "
+            f"from carrying a genre the taxonomy declares: "
+            f"{named(by[guess.NO_VOTES])}; they need a genre by hand",
+        ))
     split = [item for item in found.guesses if item.band == suggest.SPLIT]
     if split:
-        warnings.append(
-            warning(
-                SPLIT_WRITTEN,
-                f"{len(split)} guess(es) were a tie at the top, "
-                f"{'would be' if found.report else 'each'} written as the "
-                f"genre the artist's tracks weigh most and then the first by "
-                f"name: "
-                + named([f"{item.relative} as {item.genre}" for item in split]),
-            )
-        )
+        warnings.append(warning(
+            SPLIT_WRITTEN,
+            f"{len(split)} guess(es) were a tie at the top, "
+            f"{'would be' if found.report else 'each'} written as the "
+            f"genre the artist's tracks weigh most and then the first by "
+            f"name: "
+            + named([f"{item.relative} as {item.genre}" for item in split]),
+        ))
     unwritten = [item for item in found.items if item.outcome == guess.UNWRITTEN]
     if unwritten:
-        warnings.append(
-            warning(
-                FILES_UNWRITTEN,
-                f"{len(unwritten)} file(s) did not take their guessed genre and "
-                f"carry none: "
-                + named([f"{item.relative} ({item.note})" for item in unwritten])
-                + "; check each can be written, then run tag guess again",
-            )
-        )
+        warnings.append(warning(
+            FILES_UNWRITTEN,
+            f"{len(unwritten)} file(s) did not take their guessed genre and "
+            f"carry none: "
+            + named([f"{item.relative} ({item.note})" for item in unwritten])
+            + "; check each can be written, then run tag guess again",
+        ))
     if by[guess.FILE_UNREADABLE]:
-        warnings.append(
-            warning(
-                FILES_NOT_READ,
-                f"{len(by[guess.FILE_UNREADABLE])} file(s) could not be read, so "
-                f"whether they carry a genre is unknown and none was guessed: "
-                f"{named(by[guess.FILE_UNREADABLE])}",
-            )
-        )
+        warnings.append(warning(
+            FILES_NOT_READ,
+            f"{len(by[guess.FILE_UNREADABLE])} file(s) could not be read, so "
+            f"whether they carry a genre is unknown and none was guessed: "
+            f"{named(by[guess.FILE_UNREADABLE])}",
+        ))
     if found.signals.library_unread:
-        warnings.append(
-            warning(
-                LIBRARY_UNREAD,
-                f"the library could not be read, so no track of the artist's in "
-                f"it voted: {found.signals.library_unread}",
-            )
-        )
+        warnings.append(warning(
+            LIBRARY_UNREAD,
+            f"the library could not be read, so no track of the artist's in "
+            f"it voted: {found.signals.library_unread}",
+        ))
     if found.signals.playlists_unread:
-        warnings.append(
-            warning(
-                PASS_UNREAD,
-                f"the playlists of pass {found.signals.pass_name} could not be "
-                f"read, so no playlist voted: {found.signals.playlists_unread}",
-            )
-        )
+        warnings.append(warning(
+            PASS_UNREAD,
+            f"the playlists of pass {found.signals.pass_name} could not be "
+            f"read, so no playlist voted: {found.signals.playlists_unread}",
+        ))
     if found.off_taxonomy:
         words = [f"{word!r} on {named(list(paths))}" for word, paths in found.off_taxonomy.items()]
         warnings.append(

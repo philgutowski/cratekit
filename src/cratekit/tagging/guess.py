@@ -251,12 +251,8 @@ def _broken(tied: Iterable[str], artist: Mapping[str, int]) -> str:
 
 
 def band_of(weight: Fraction, total: Fraction) -> str:
-    """``tag suggest``'s band for a share, compared exactly. Pure.
-
-    :func:`cratekit.tagging.suggest.band_of`'s two conditions, read exactly: a
-    playlist's share makes the votes Fractions, and a float compare puts an exact
-    eighty percent one band low, so the bound is read as the decimal it is.
-    """
+    """``tag suggest``'s band for a share, compared exactly, since a playlist's
+    share makes the votes Fractions and a float compare is a band low. Pure."""
     if total <= 0 or weight <= 0:
         return suggest.NONE
     share = Fraction(weight) / Fraction(total)

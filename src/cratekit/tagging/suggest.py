@@ -125,12 +125,9 @@ Lookup = Callable[[str, str, str], "Asked"]
 class Asked:
     """What the catalogue said about one row.
 
-    ``said`` is :data:`MATCHED`, :data:`DECLINED` or :data:`UNREAD`; ``genre`` the
-    taxonomy's tag for a match; ``off_taxonomy`` a catalogue word passed
-    through, never a vote. ``passed_over`` names catalogues not asked at all,
-    Discogs with no token (U244): such a row is UNREAD but never counts toward
-    :data:`STOP_AFTER_UNREAD`. ``answers`` is each catalogue's word in walk order
-    (U322), empty for a row the walk stopped before.
+    ``passed_over`` names catalogues not asked at all, Discogs with no token
+    (U244): UNREAD, but never counted toward :data:`STOP_AFTER_UNREAD`.
+    ``answers`` is each catalogue's word in walk order (U322).
     """
 
     said: str
@@ -189,12 +186,8 @@ class Asked:
 
 @dataclass(frozen=True, slots=True)
 class Item:
-    """One candidate row, what the evidence suggests, and what the plan does.
-
-    ``options`` is every tied genre on a split, else the suggestion alone;
-    ``votes`` every word's weight, largest first; ``chosen`` says the genre is a
-    person's ``--set`` pick.
-    """
+    """One candidate row, what the evidence suggests, and what the plan does;
+    ``chosen`` says the genre is a person's ``--set`` pick."""
 
     content_id: str
     path: str
@@ -245,9 +238,8 @@ class SuggestPlan(rows.Tallied):
     changes: metadata.Plan
     band: str
     catalogue: bool
-    #: Identifiers given to ``--leave`` or ``--set`` that name no candidate.
-    #: Shown and digested, because a mistyped identifier is a row the person
-    #: meant to hold or to pick and the plan does otherwise.
+    #: ``--leave`` or ``--set`` identifiers naming no candidate, shown and digested,
+    #: since a mistyped one is a row the person meant to hold or pick.
     unmatched: tuple[str, ...] = ()
 
     @property
@@ -391,12 +383,8 @@ def _asked_from(hit: SearchHit | None) -> Asked:
 
 
 def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None) -> Lookup:
-    """The catalogue lookup ``tag folder`` makes, asked again once on a plain miss.
-
-    The record shops, then ``published``, the general catalogue's seam, in
-    :func:`cratekit.tagging.tag.tag_one`'s order. A refusal is not raised: it is
-    the row's answer, :data:`UNREAD`, and the walk goes on.
-    """
+    """The catalogue lookup ``tag folder`` makes, record shops then ``published``,
+    asked again once on a plain miss. A refusal is the row's :data:`UNREAD` answer."""
 
     def once(artist: str, title: str, isrc: str) -> Asked:
         try:
@@ -555,12 +543,7 @@ class KeptCatalogue:
 
 @dataclass(frozen=True, slots=True)
 class Unread:
-    """The rows a walk could not read whole, by why, as the two verbs warn (U322).
-
-    ``refused`` no catalogue read; ``partly`` read beside the ones ``partly_by``
-    names; ``no_token`` and ``token_unusable`` Discogs passed over. Content
-    identifiers, in walk order.
-    """
+    """The rows a walk could not read whole, by why, as the two verbs warn (U322)."""
 
     refused: tuple[str, ...] = ()
     partly: tuple[str, ...] = ()
@@ -599,13 +582,8 @@ def sort_unread(answers: Iterable[tuple[str, Asked]]) -> Unread:
 
 
 def catalogue_counts(answers: Iterable[Asked]) -> dict[str, Any]:
-    """What each catalogue said across a walk's rows, as the backlog reports it (U322). Pure.
-
-    Each catalogue in any row's words is counted on every row: ``asked``, of
-    them ``matched``, ``missed`` and ``unread``; ``not_asked``, of them
-    ``not_sent`` once it had refused this client. ``stopped`` counts rows the
-    walk did not ask once it stopped.
-    """
+    """What each catalogue said across a walk's rows, as the backlog reports it
+    (U322): asked, matched, missed, unread, not asked and not sent. Pure."""
     listed = list(answers)
     sources: list[str] = []
     for asked in listed:
@@ -713,13 +691,10 @@ def plan_suggestions(
     progress: Callable[[str], None] | None = None,
     probe: Callable[[Path], adopt_scan.Readability] = adopt_scan.probe_readability,
 ) -> SuggestPlan:
-    """Walk the collection once and sort every live row into one outcome.
-
-    THE WALK IS ADOPTION'S CENSUS, as :func:`cratekit.tagging.rows.plan_rows`
-    walks it. A CANDIDATE IS WRITTEN WHEN its suggestion is at or above
-    ``band``, it is not held by ``leave``, and its genre has a lookup row;
-    ``chosen`` genres, checked :func:`suggestable` by the caller, are written
-    whatever the band. Nothing is pending on the handle when this returns.
+    """Walk the collection once and sort every live row into one outcome, as
+    :func:`cratekit.tagging.rows.plan_rows` walks it. A candidate is written at or
+    above ``band``, unless held or without a lookup row; a ``chosen`` genre
+    whatever the band.
     """
     held_out = frozenset(str(content_id) for content_id in leave)
     picks = {str(key): value for key, value in (chosen or {}).items()}
@@ -870,12 +845,8 @@ def write_files(plan: SuggestPlan) -> FilesWritten:
 
 
 def narrowed(plan: SuggestPlan, keep: Mapping[str, str]) -> SuggestPlan:
-    """The plan with every write held out but those ``keep`` names with the same genre.
-
-    For ``tag campaign`` (U294), which replans after earlier steps wrote: only a
-    write shown with exactly this genre is kept, so nothing unseen is written.
-    A held write becomes the item ``--leave`` makes. Pure.
-    """
+    """The plan with every write held out but those ``keep`` names with the same
+    genre, so ``tag campaign`` writes nothing unseen (U294). Pure."""
     held = {
         item.content_id
         for item in plan.writes

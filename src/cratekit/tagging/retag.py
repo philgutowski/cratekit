@@ -214,10 +214,7 @@ def _ask(
         )
         item_id = item.item_id
     return RetagResult(
-        path=candidate.path,
-        current=candidate.current,
-        reason=reason,
-        proposed=proposed,
+        path=candidate.path, current=candidate.current, reason=reason, proposed=proposed,
         item_id=item_id,
     )
 
@@ -231,23 +228,16 @@ def retag_one(
     store: review.ReviewStore | None = None,
     handler_key: str = HANDLER_KEY,
 ) -> RetagResult:
-    """Correct ONE candidate's genre, or record why it was not corrected.
-
-    The per candidate work, shared by :func:`retag_folder` and the job worker so
-    they hold one policy. A VERDICT ALREADY RECORDED IS READ BEFORE THE SEARCHER
-    IS ASKED, so an answered question is not looked up again; a REJECTED one
-    leaves the file alone and offers nothing. ``decided`` is read once by the
-    caller.
-    """
+    """Correct ONE candidate's genre, or record why not, the policy
+    :func:`retag_folder` and the job worker share. A recorded verdict is read
+    before the searcher is asked; a rejected one leaves the file alone."""
     item_id = review.item_id_for(Queue.GENRE, KIND, identity_for(candidate.path))
     item = decided.get(item_id)
     answer = ""
     if item is not None and item.resolved:
         if item.suppressed:
             return RetagResult(
-                path=candidate.path,
-                current=candidate.current,
-                reason=DECLINED_IN_REVIEW,
+                path=candidate.path, current=candidate.current, reason=DECLINED_IN_REVIEW,
                 item_id=item_id,
             )
         answer = accepted_genre(item)
@@ -260,20 +250,12 @@ def retag_one(
         answer = (hit.genre or "").strip() if hit is not None and hit.genre else ""
     if not answer:
         return _ask(
-            store,
-            candidate,
-            reason=NO_ANSWER,
-            proposed="",
-            declared=declared,
+            store, candidate, reason=NO_ANSWER, proposed="", declared=declared,
             handler_key=handler_key,
         )
     if declared.is_too_coarse_as_source(answer):
         return _ask(
-            store,
-            candidate,
-            reason=ANSWER_TOO_COARSE,
-            proposed=answer,
-            declared=declared,
+            store, candidate, reason=ANSWER_TOO_COARSE, proposed=answer, declared=declared,
             handler_key=handler_key,
         )
     if not tags.write_genre(candidate.path, answer):
@@ -291,10 +273,7 @@ def retag_one(
             item_id=item_id,
         )
     return RetagResult(
-        path=candidate.path,
-        current=candidate.current,
-        written=answer,
-        item_id=item_id,
+        path=candidate.path, current=candidate.current, written=answer, item_id=item_id
     )
 
 
@@ -312,11 +291,7 @@ def retag_folder(
     decided = decided_index(store)
     results = [
         retag_one(
-            candidate,
-            searcher=searcher,
-            declared=declared,
-            decided=decided,
-            store=store,
+            candidate, searcher=searcher, declared=declared, decided=decided, store=store,
             handler_key=handler_key,
         )
         for candidate in selection.candidates
@@ -350,14 +325,9 @@ def plan_library(
     db: Any,
     prefix_map: Sequence[locations.PrefixRule] = (),
 ) -> LibraryPlan:
-    """Plan the ``GenreID`` write for every file this pass actually retagged.
-
-    THE WRITTEN RESULTS, NOT THE SELECTION, so no row is planned for a refused
-    write. Rows are matched through :func:`cratekit.write.trees.match_active_rows`,
-    which drops tombstones. A file resolving to no row, to several, or to nothing
-    visible is SURFACED, and TWO FILES RESOLVING TO ONE ROW are both surfaced and
-    neither written, rather than letting the last decide.
-    """
+    """Plan the ``GenreID`` write for every file this pass actually retagged, the
+    rows matched by :func:`cratekit.write.trees.match_active_rows`. A file reaching
+    no row, several, or one another file reached too is SURFACED, never written."""
     written = outcome.written
     matches = trees.match_active_rows(
         [result.path for result in written], rows, root=root, prefix_map=prefix_map
@@ -403,11 +373,8 @@ def plan_library(
 
 
 def apply_library(library_plan: LibraryPlan, mapped: Mapping[str, Any]) -> metadata.Report:
-    """Register the operation, refuse a plan outside its policy, then apply it.
-
-    An unregistered operation answers ``SKIP_UNOWNED``, writing nothing and
-    reporting clean. DOES NOT COMMIT: one session is judged once, by the caller.
-    """
+    """Register the operation, refuse a plan outside its policy, then apply it,
+    since an unregistered one skips every change. DOES NOT COMMIT."""
     metadata.enable((metadata.RETAG_GENRE,))
     metadata.assert_within_policy(library_plan.plan)
     return metadata.write_plan(library_plan.plan, mapped)

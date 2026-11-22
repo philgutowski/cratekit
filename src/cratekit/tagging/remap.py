@@ -77,12 +77,7 @@ class Recorded:
 
 @dataclass(frozen=True, slots=True)
 class Item:
-    """One file under the library that does not agree, or could not be read.
-
-    ``word`` is the catalogue's word a record carries and ``recorded`` the genre
-    it says was written; ``current`` what the file carries now and ``wanted``
-    what the taxonomy gives the word, each empty when there is none.
-    """
+    """One file under the library that does not agree, or could not be read."""
 
     path: str
     word: str
@@ -157,13 +152,8 @@ class RemapPlan:
 
 @dataclass(frozen=True, slots=True)
 class Written:
-    """What an apply did. The four tuples are paths, and empty on a clean run.
-
-    ``moved`` no longer carried what the plan read and was not written,
-    ``failed`` could not be written, ``wrong`` does not read back, and
-    ``unrecorded`` read back with no record committed. ``rewritten`` is every
-    item that read back, the undo of a run that refuses.
-    """
+    """What an apply did, the tuples paths and empty on a clean run;
+    ``rewritten`` is every item that read back, the undo of a run that refuses."""
 
     written: int
     read_back: int
@@ -179,13 +169,8 @@ class Written:
 
 
 def recorded(reports: Iterable[tuple[str, Mapping[str, Any]]]) -> tuple[Recorded, ...]:
-    """The records that say a genre was written, by any source.
-
-    EVERY SOURCE IS KEPT: a record shop's record on the same path is what makes
-    a file ambiguous. A record with no path or genre written, the coarse
-    correction's included, is passed over by shape; this module's own are read
-    like any other.
-    """
+    """The records that say a genre was written, by ANY source, since a shop's
+    record is what makes a file ambiguous; a record with no path or genre is not."""
     found: list[Recorded] = []
     for job_id, report in reports:
         path, written = report.get("path"), report.get("genre_written")
@@ -254,12 +239,8 @@ def _identity(resolved: Path) -> tuple[str, int, int] | tuple[str, str]:
 def _settle(
     path: str, records: Sequence[Recorded], declared: taxonomy.Taxonomy
 ) -> tuple[str, Item | None]:
-    """One file's outcome, and its item unless it agrees.
-
-    ``records`` is every record of a genre written onto it, one at least the
-    source's. Records carry no time, so only the source's of the highest
-    generation are in force; a left item shows whichever sorts last.
-    """
+    """One file's outcome, and its item unless it agrees. Only the source's
+    records of the highest generation are in force."""
     newest = max(record.generation for record in records if record.source == SOURCE)
     mine = [
         record
@@ -392,13 +373,8 @@ def _record(cfg: config.Config, name: str, ordinal: int, item: Item) -> bool:
 
 
 def apply(cfg: config.Config, remap_plan: RemapPlan) -> Written:
-    """Write each planned genre onto its file, read it back and record it.
-
-    EACH FILE IS READ AGAIN FIRST, and one carrying something else is left and
-    named. The writer's own answer is kept, so an unwritten file is told apart
-    from one that does not read back. THE RECORD FOLLOWS EACH FILE'S READ BACK.
-    Nothing raises for one file; the caller refuses over what is named.
-    """
+    """Write each planned genre onto its file, read it back and record it. Each
+    file is read again first, and nothing raises for one file."""
     written = read_back = 0
     wrong: list[str] = []
     moved: list[str] = []
