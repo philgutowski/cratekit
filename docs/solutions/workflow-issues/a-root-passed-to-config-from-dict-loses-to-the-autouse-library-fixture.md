@@ -28,10 +28,10 @@ tags:
 
 ## Context
 
-`_block_real_library_paths` in `tests/conftest.py:191` is autouse. It sets
-`CRATEKIT_LIBRARY_ROOT` to its own `tmp_path_factory.mktemp("library")` for
-every test, so no test can accidentally resolve a real audio file or the real
-rekordbox database.
+`_block_real_library_paths` in `tests/conftest.py` is autouse. It sets
+`CRATEKIT_LIBRARY_ROOT` to a fresh directory of its own for every test (a
+`tempfile.mkdtemp` inside the base temp since U326), so no test can
+accidentally resolve a real audio file or the real rekordbox database.
 
 `config.from_dict` (`src/cratekit/core/config.py:2888`) applies environment
 overrides before validating. `_apply_env_overrides` (around `config.py:2538`)
