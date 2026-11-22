@@ -383,7 +383,7 @@ def test_a_scratch_directory_that_cannot_be_made_is_a_copy_failure(
     def no_directory(*_args, **_kwargs):
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr(W.tempfile, "mkdtemp", no_directory)
+    monkeypatch.setattr(tempfile, "mkdtemp", no_directory)
 
     with pytest.raises(W.IntegrityCheckCopyFailed):
         W.integrity_ok(copied, raise_copy_failure=True)

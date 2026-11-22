@@ -410,7 +410,7 @@ def test_no_caller_in_src_answers_the_key_question_for_itself():
     for source in sorted(root.rglob("*.py")):
         tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
         scanned += 1
-        forwarded = _forwarded_lines(tree) if source.name == "rb_writer.py" else set()
+        forwarded = _forwarded_lines(tree) if source.name == "rb_copies.py" else set()
         for line, name in _unlock_arguments(tree):
             if line in forwarded:
                 forwards += 1
