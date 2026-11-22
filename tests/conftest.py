@@ -63,6 +63,7 @@ teardown would run last and leave the process pointing at a deleted temp tree.
 
 from __future__ import annotations
 
+import gc
 import importlib
 import importlib.util
 import traceback
@@ -501,12 +502,44 @@ def _favourites_without_pink(request):
 REAL_PROCESS_TABLE = "real_process_table"
 
 
+#: The cyclic collector's thresholds while the suite runs (U326), against the
+#: interpreter's ``(700, 10, 10)``.
+#:
+#: The collector was the largest single cost the suite paid that no test asked
+#: for. A worker's heap grows from about 250,000 tracked objects after
+#: collection to about 760,000 an eighth of the way through, as product modules,
+#: the binding's table models and the guards' parsed trees accumulate, and at
+#: the default thresholds every allocation burst ends in a full pass over all of
+#: it. Measured on a four core Linux container on 2026-11-22, one process over
+#: an eighth of the suite (2,919 tests): 50 of 270 seconds in the collector, 39
+#: of them in 99 full passes at about 0.4 s each. At these thresholds the
+#: collector took 18 to 20 seconds and the run 231; 20,000 and 100,000 for the
+#: first threshold read the same within a second, and freezing the collected
+#: objects instead did not help, since it only made full passes more frequent.
+#:
+#: Nothing in the suite or the product reads the collector or waits on it, and
+#: reference counting, which frees everything that is not a cycle, is untouched,
+#: so only how often cycles are looked for changes. ``pytest_unconfigure`` puts the
+#: interpreter's own thresholds back, for a run made in process by a test.
+COLLECTOR_THRESHOLDS = (50_000, 20, 20)
+
+#: The thresholds this process had before ``pytest_configure`` set the ones above.
+_thresholds_before: list[tuple[int, int, int]] = []
+
+
 def pytest_configure(config):
+    _thresholds_before.append(gc.get_threshold())
+    gc.set_threshold(*COLLECTOR_THRESHOLDS)
     config.addinivalue_line(
         "markers",
         f"{REAL_PROCESS_TABLE}: keep the host's real process table, which every "
         "other test reads as a machine with no rekordbox (U232)",
     )
+
+
+def pytest_unconfigure(config):
+    if _thresholds_before:
+        gc.set_threshold(*_thresholds_before.pop())
 
 
 class _NoProcesses:

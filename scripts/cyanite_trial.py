@@ -1,27 +1,22 @@
 #!/usr/bin/env python3
 """Put what Cyanite hears in a track beside the folder it is filed in (U245).
 
-A trial, not a feature: it sends a small set of MP3s you already filed by
-hand to Cyanite, a paid service that analyses the audio, and writes a table of
-Cyanite's genre, sub genre, mood and energy beside each file's folder today,
-then the agreement per folder. It writes that table and its summary and
-nothing else: no tag, no record, no library. Nothing tempo shaped is asked
-for or written.
+A trial: it sends MP3s you filed by hand to Cyanite, a paid service, and writes
+a table of its genre, sub genre, mood and energy beside each file's folder, and
+the agreement per folder (``trial-agreement.tsv``), and nothing else. Nothing
+tempo shaped is asked for or written.
 
-Without --send-to-cyanite it is a plan: it lists the files, says how many it
-would upload and, with --price-per-track, what that would cost, and sends
-nothing. With it, --cap and --price-per-track are both needed, a count over
-the cap refuses, and the key is read from the keychain:
+Without --send-to-cyanite it is a plan and sends nothing. With it, --cap and
+--price-per-track are both needed, a count over the cap refuses, and the key is
+read from the keychain:
 
     crate login cyanite-key --from-file PATH
     .venv/bin/python scripts/cyanite_trial.py FOLDER --output trial.tsv
     .venv/bin/python scripts/cyanite_trial.py FOLDER --output trial.tsv \\
         --send-to-cyanite --cap 40 --price-per-track 0.10
 
-The summary lands beside the table, ``trial-agreement.tsv``. A run cut short
-keeps its rows; run it again with --resume and the same --output to send only
-what has no answer. The folders are read through the library's active
-taxonomy, or through --taxonomy PATH.
+A run cut short keeps its rows; --resume with the same --output sends only what
+has no answer. Folders are read through the active taxonomy, or --taxonomy PATH.
 
 Exit codes: 0 done, or the plan; 1 stopped partway, rows kept; 2 refused
 with no audio uploaded (a refusal of the key or the query comes after one
@@ -52,18 +47,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--cap", type=int, default=None, help="the most files this run may upload")
     parser.add_argument(
-        "--price-per-track",
-        type=float,
-        default=None,
+        "--price-per-track", type=float, default=None,
         help="your Cyanite plan's price for one track, for the estimate",
     )
     parser.add_argument(
         "--resume", action="store_true", help="carry on the table --output already holds"
     )
     parser.add_argument(
-        "--taxonomy",
-        type=Path,
-        default=None,
+        "--taxonomy", type=Path, default=None,
         help="a taxonomy template to read folders through, instead of the library's",
     )
     return parser
@@ -75,8 +66,7 @@ def _taxonomy(path: Path | None):
 
     if path is not None:
         return taxonomy.load_taxonomy(path.read_text(encoding="utf-8"))
-    # WRITE BACK OFF: a configuration that wants migrating is read as it is,
-    # since this trial writes nothing but its own table.
+    # WRITE BACK OFF: this trial writes nothing but its own table.
     return active_taxonomy.load(config.load_from_path(config.config_path(), write_back=False))
 
 
@@ -106,13 +96,9 @@ def main(argv: list[str] | None = None) -> int:
             declared,
         )
     except (
-        cyanite.TrialRefused,
-        cyanite.TrialStopped,
-        secrets.CredentialError,
-        CratekitError,
+        cyanite.TrialRefused, cyanite.TrialStopped, secrets.CredentialError, CratekitError
     ) as exc:
-        # Every one of these is raised before the first upload: a stop after it
-        # is returned on the run, never raised.
+        # Each is raised before the first upload; a later stop is returned on the run.
         print(f"refused, no audio was uploaded: {exc}", file=sys.stderr)
         return 2
     except OSError as exc:

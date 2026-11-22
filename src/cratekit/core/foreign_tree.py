@@ -1,37 +1,19 @@
 """Another app's folder at the top of rekordbox's tree, left exactly as it is (U185).
 
-DEADCA7 is a catalog manager that can push into rekordbox's database: its
-playlists go into ONE FOLDER NAMED ``DEADCA7`` AT THE TOP OF THE PLAYLIST TREE,
-its hot cues per track, and its grids and waveforms as analysis files. Phillip
-uses it beside Cratekit on one library, decided on 2026-10-31, and the rule
-that makes that safe is that neither tool undoes the other's work. This module
-is the one place that rule is spelled.
+DEADCA7 pushes its playlists into one folder named ``DEADCA7`` at the top of
+the playlist tree. Neither tool undoes the other's work, and this module is
+the one place that rule is spelled.
 
-THE PREDICATE IS NARROW ON PURPOSE. A foreign root is a FOLDER, directly under
-the playlist root, whose name is exactly one of :data:`FOREIGN_ROOT_NAMES`.
-Everything under it, at any depth and whether rekordbox removed it or not, is
-foreign. A folder or playlist that merely carries the name further down the
-tree is somebody's own namesake and is not foreign, and neither is a plain
-playlist of that name at the root, which is not the shape the push writes.
+A foreign root is a folder directly under the playlist root whose name is
+exactly one of :data:`FOREIGN_ROOT_NAMES`; everything under it is foreign. A
+namesake further down, or a plain playlist of the name at the root, is not.
 
-WHAT IS GUARDED, AND WHERE. The rows a push writes into the playlist tree are
-the folder, its playlists and their memberships. :func:`read` takes them from
-SQL, whole, when :func:`rb_writer.open_db` opens a handle, and
+:func:`read` takes the folder, its playlists and their memberships from SQL
+when :func:`rb_writer.open_db` opens a handle, and
 :func:`rb_writer.commit_guarded` refuses any commit that would change them,
-asked two ways because neither alone sees everything: :func:`pending_touches`
-reads the objects the session and the binding's update buffer will write, and
-:func:`differences` reads the subtree again from SQL and compares it with the
-reading at open, which is what sees a flushed write and raw SQL. Every write in
-this product commits through that one function, so no verb can move, rename,
-empty or fill the folder silently. The cues and analysis columns a push writes
-are outside the additive whitelist already: nothing here writes a cue row, and
-every analysis column is refused on every write.
-
-NOT EVEN ITS POSITION MOVES. rekordbox's binding renumbers the siblings at or
-past a new node's position only when a caller names one, and moves renumber
-only the parents they leave and join; nothing here names a position at the
-root or moves a node there, measured over ``src`` on 2026-10-31, so the root
-row is held whole like every other.
+asked two ways: :func:`pending_touches` reads the pending objects and
+:func:`differences` rereads SQL, which sees a flushed write and raw SQL. The
+root row is held whole, its position included.
 
 Layer: infrastructure.
 """
@@ -44,9 +26,7 @@ from typing import Any
 
 from cratekit.core import taxonomy
 
-#: The names of the top level folders another app owns. Exactly as the app
-#: writes them: the match is on the whole name and its case. Declared in the
-#: taxonomy, the layer below this one, which refuses a tree of the name.
+#: The top level folder names another app owns, matched whole and by case.
 FOREIGN_ROOT_NAMES: frozenset[str] = taxonomy.FOREIGN_ROOT_NAMES
 
 #: The app each foreign root belongs to, for the one line a report gives it.
@@ -55,8 +35,7 @@ OWNER = "DEADCA7"
 #: What a report says of a foreign root, beside its name.
 LEFT_AS_IT_IS = "another app's folder, left exactly as it is and not counted as yours"
 
-#: The playlist and membership tables, named here rather than imported, since
-#: this module is read by the writer it guards.
+#: Table names, not imported, since the writer this guards reads this module.
 _PLAYLISTS = "djmdPlaylist"
 _MEMBERSHIPS = "djmdSongPlaylist"
 
@@ -81,12 +60,10 @@ def is_foreign_root(name: Any, parent_id: Any, attribute: Any) -> bool:
 
 
 def ids_of(nodes: Iterable[tuple[Any, Any, Any, Any]]) -> tuple[frozenset[str], frozenset[str]]:
-    """The foreign roots and every foreign node, from ``(ID, Name, ParentID, Attribute)``.
+    """``(roots, every foreign node)`` from ``(ID, Name, ParentID, Attribute)`` rows.
 
-    Answers ``(roots, every node)``. PURE, so every branch is reachable with
-    literal rows. A walk down by parent, so a node is foreign only through a
-    chain of parents that ends at a foreign root; a cycle, which no real tree
-    holds, ends the walk rather than looping.
+    Pure. A node is foreign through a chain of parents ending at a foreign
+    root; a cycle ends the walk rather than looping.
     """
     rows = [tuple(node) for node in nodes]
     roots = frozenset(str(row[0]) for row in rows if is_foreign_root(row[1], row[2], row[3]))
@@ -105,12 +82,7 @@ def ids_of(nodes: Iterable[tuple[Any, Any, Any, Any]]) -> tuple[frozenset[str], 
 
 
 def _fields(row: Any) -> tuple[Any, Any, Any, Any]:
-    return (
-        getattr(row, "ID", None),
-        getattr(row, "Name", None),
-        getattr(row, "ParentID", None),
-        getattr(row, "Attribute", None),
-    )
+    return tuple(getattr(row, name, None) for name in ("ID", "Name", "ParentID", "Attribute"))
 
 
 def node_ids(rows: Iterable[Any]) -> frozenset[str]:
@@ -119,11 +91,7 @@ def node_ids(rows: Iterable[Any]) -> frozenset[str]:
 
 
 def outside(rows: Iterable[Any], every_row: Iterable[Any]) -> list[Any]:
-    """``rows`` with every foreign node left out, judged against the whole tree.
-
-    ``every_row`` is the whole playlist table, since whether a row is foreign
-    is a question about its ancestors and not about the row alone.
-    """
+    """``rows`` without foreign nodes, judged against ``every_row``, the whole table."""
     foreign = node_ids(every_row)
     return [row for row in rows if str(getattr(row, "ID", "")) not in foreign]
 
@@ -135,12 +103,7 @@ def roots_in(rows: Iterable[Any]) -> list[Any]:
 
 @dataclass(frozen=True)
 class Reading:
-    """The foreign subtree as SQL holds it: whole rows, by identifier.
-
-    ``roots`` names the foreign roots, ``playlists`` every foreign node's row,
-    ``memberships`` every membership row of a foreign playlist. The column
-    tuples say what each position of a row is.
-    """
+    """The foreign subtree as SQL holds it: whole rows by identifier, with their columns."""
 
     roots: frozenset[str]
     playlists: Mapping[str, tuple]
@@ -161,10 +124,7 @@ def read(session: Any) -> Reading:
     p_cols = tuple(result.keys())
     at = {name: p_cols.index(name) for name in ("ID", "Name", "ParentID", "Attribute")}
     rows = [tuple(row) for row in result]
-    roots, ids = ids_of(
-        (row[at["ID"]], row[at["Name"]], row[at["ParentID"]], row[at["Attribute"]])
-        for row in rows
-    )
+    roots, ids = ids_of(tuple(row[at[name]] for name in at) for row in rows)
     playlists = {str(row[at["ID"]]): row for row in rows if str(row[at["ID"]]) in ids}
     memberships: dict[str, tuple] = {}
     m_cols: tuple[str, ...] = ()
@@ -180,13 +140,7 @@ def read(session: Any) -> Reading:
         owner = m_cols.index("ID")
         for row in found:
             memberships[str(row[owner])] = tuple(row)
-    return Reading(
-        roots=roots,
-        playlists=playlists,
-        memberships=memberships,
-        playlist_columns=p_cols,
-        membership_columns=m_cols,
-    )
+    return Reading(roots, playlists, memberships, p_cols, m_cols)
 
 
 def _changed(columns: tuple[str, ...], old: tuple, new: tuple) -> set[str]:
@@ -194,23 +148,18 @@ def _changed(columns: tuple[str, ...], old: tuple, new: tuple) -> set[str]:
 
 
 def differences(before: Reading, after: Reading) -> list[str]:
-    """Every way the foreign subtree read now differs from the reading at open.
+    """Every way the subtree read now differs from the reading at open; empty when none.
 
-    Empty means the subtree is as it was, every column of every row.
-    A NEW foreign root is a difference too: a write that made a second folder
-    of the name would give the app two homes and this product a namesake.
+    A new foreign root is a difference too.
     """
     found: list[str] = []
     for key in sorted(set(before.playlists) | set(after.playlists)):
         old, new = before.playlists.get(key), after.playlists.get(key)
         if old is None:
             found.append(f"the {_PLAYLISTS} row {key!r} appeared under {OWNER}'s folder")
-            continue
-        if new is None:
+        elif new is None:
             found.append(f"the {_PLAYLISTS} row {key!r} of {OWNER}'s folder is not there")
-            continue
-        changed = _changed(before.playlist_columns, old, new)
-        if changed:
+        elif changed := _changed(before.playlist_columns, old, new):
             found.append(
                 f"the {_PLAYLISTS} row {key!r} of {OWNER}'s folder changed {sorted(changed)}"
             )
@@ -226,11 +175,7 @@ def differences(before: Reading, after: Reading) -> list[str]:
 def pending_touches(
     pending: Iterable[tuple[Any, str, frozenset[str]]], reading: Reading
 ) -> list[str]:
-    """Every pending object that would write the foreign subtree.
-
-    ``pending`` is ``(object, op, columns)``, ``op`` one of ``create``,
-    ``modify`` and ``delete``, as :func:`rb_writer.pending_objects` gives it.
-    """
+    """Every pending ``(object, op, columns)`` that would write the foreign subtree."""
     ids = reading.ids
     found: list[str] = []
     for obj, op, columns in pending:
@@ -256,9 +201,7 @@ def pending_touches(
                 found.append(f"moves the {_PLAYLISTS} row {key!r} into {OWNER}'s folder")
         elif table == _MEMBERSHIPS:
             owner = str(getattr(obj, "PlaylistID", ""))
-            # A pushed membership is asked by its own identifier too, so one
-            # whose owner is rewritten to another playlist is not read by its
-            # new owner alone.
+            # Asked by its own identifier too, so a rewritten owner cannot hide it.
             if owner in ids or str(getattr(obj, "ID", "")) in reading.memberships:
                 found.append(
                     f"{'adds' if op == 'create' else 'changes'} a membership of the "
@@ -275,12 +218,10 @@ UNREAD = "unread"
 
 
 def remember(db: Any) -> None:
-    """Read the subtree as a handle opens and keep the reading on the handle.
+    """Keep the subtree's reading on a handle as it opens.
 
-    A read that fails keeps :data:`UNREAD` rather than an empty reading, so a
-    later commit cannot mistake "could not look" for "nothing there" and is
-    refused instead. The open itself goes on, since a read only caller has no
-    write for the reading to protect.
+    A failed read keeps :data:`UNREAD`, never an empty reading, so a later
+    commit is refused rather than trusting "nothing there". The open goes on.
     """
     try:
         reading: Reading | str = read(db.session)
@@ -299,20 +240,7 @@ def reading_at_open(db: Any) -> Reading | None:
 
 
 __all__ = [
-    "ATTRIBUTE",
-    "FOREIGN_ROOT_NAMES",
-    "LEFT_AS_IT_IS",
-    "OWNER",
-    "Reading",
-    "UNREAD",
-    "differences",
-    "ids_of",
-    "is_foreign_root",
-    "node_ids",
-    "outside",
-    "pending_touches",
-    "read",
-    "reading_at_open",
-    "remember",
-    "roots_in",
+    "ATTRIBUTE", "FOREIGN_ROOT_NAMES", "LEFT_AS_IT_IS", "OWNER", "Reading", "UNREAD",
+    "differences", "ids_of", "is_foreign_root", "node_ids", "outside", "pending_touches",
+    "read", "reading_at_open", "remember", "roots_in",
 ]

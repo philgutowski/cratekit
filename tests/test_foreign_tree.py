@@ -28,7 +28,6 @@ from tests.test_rb_writer_db import (  # noqa: F401 - fixtures
 def _rekordbox_closed(monkeypatch):
     """No rekordbox on a disposable database, patched where the guards read it."""
     from pyrekordbox.db6 import database as binding
-
     monkeypatch.setattr(W, "rekordbox_running", lambda: False)
     monkeypatch.setattr(W, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
@@ -59,9 +58,15 @@ def _refused(db) -> str:
     return str(excinfo.value)
 
 
-# ---------------------------------------------------------------------------
+def _rewrite_owner(db, pushed):
+    """Read by its new owner alone, the row would leave the push's playlist unseen."""
+    mine = db.create_playlist("mine at the top")
+    W.commit_guarded(db)
+    member = db.get_playlist_songs(PlaylistID=pushed.playlist_ids[0]).first()
+    member.PlaylistID = mine.ID
+
+
 # The predicate
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("parent", W.ROOT_PARENT_SENTINELS + (None,))
@@ -133,44 +138,38 @@ def test_the_reading_at_open_names_the_push_and_not_a_namesake_below_the_top(
     }
 
 
-# ---------------------------------------------------------------------------
 # The commit guard
-# ---------------------------------------------------------------------------
 
 
-def test_renaming_the_folder_is_refused_and_rolled_back(handle):
+@pytest.mark.parametrize(
+    ("edit", "said"),
+    [
+        (lambda db, p: setattr(db.get_playlist(ID=p.folder_id), "Name", "renamed"), "DEADCA7's folder"),
+        (lambda db, p: db.add_to_playlist(db.get_playlist(ID=p.playlist_ids[0]), "1"), "membership"),
+        (_rewrite_owner, "membership"),
+        (
+            lambda db, p: W.ensure_playlist(db, "a new one", db.get_playlist(ID=p.folder_id)),
+            "inside DEADCA7's folder",
+        ),
+        # The one write that renumbers root siblings, which nothing in the product makes.
+        (lambda db, p: db.create_playlist("first at the top", seq=1), "Seq"),
+        # Nothing in the product writes a cue row, and the whitelist holds it so.
+        (lambda db, p: setattr(db.get_cue(ContentID=p.pushed_track).first(), "InMsec", 5), "djmdCue"),
+    ],
+    ids=[
+        "folder-renamed",
+        "membership-added",
+        "membership-rewritten-to-another-owner",
+        "playlist-made-inside",
+        "position-named-at-the-top",
+        "cue-on-a-pushed-track",
+    ],
+)
+def test_a_write_to_the_push_is_refused_and_rolled_back(handle, edit, said):
     db, path, pushed = handle
     before = dc7.written(path, pushed)
-    db.get_playlist(ID=pushed.folder_id).Name = "renamed"
-    assert "DEADCA7's folder" in _refused(db)
-    assert dc7.written(path, pushed) == before
-
-
-def test_a_membership_added_to_a_pushed_playlist_is_refused(handle):
-    db, path, pushed = handle
-    before = dc7.written(path, pushed)
-    db.add_to_playlist(db.get_playlist(ID=pushed.playlist_ids[0]), "1")
-    assert "membership" in _refused(db)
-    assert dc7.written(path, pushed) == before
-
-
-def test_a_pushed_membership_rewritten_to_another_owner_is_refused(handle):
-    """Read by its new owner alone, the row would leave the push's playlist unseen."""
-    db, path, pushed = handle
-    before = dc7.written(path, pushed)
-    mine = db.create_playlist("mine at the top")
-    W.commit_guarded(db)
-    member = db.get_playlist_songs(PlaylistID=pushed.playlist_ids[0]).first()
-    member.PlaylistID = mine.ID
-    assert "membership" in _refused(db)
-    assert dc7.written(path, pushed) == before
-
-
-def test_a_playlist_made_inside_the_folder_is_refused(handle):
-    db, path, pushed = handle
-    before = dc7.written(path, pushed)
-    W.ensure_playlist(db, "a new one", db.get_playlist(ID=pushed.folder_id))
-    assert "inside DEADCA7's folder" in _refused(db)
+    edit(db, pushed)
+    assert said in _refused(db)
     assert dc7.written(path, pushed) == before
 
 
@@ -212,7 +211,6 @@ def test_a_soft_delete_of_a_pushed_playlist_is_refused_even_where_the_commit_adm
 def test_raw_sql_into_the_folder_is_seen_by_the_reading_again_from_sql(handle):
     """No pending object carries this one: only the second reading can see it."""
     from sqlalchemy import text
-
     db, path, pushed = handle
     membership = f"{pushed.playlist_ids[0]}01"
     db.session.execute(
@@ -229,26 +227,13 @@ def test_a_second_folder_of_the_name_at_the_top_is_refused(handle):
 
 
 def test_a_write_beside_the_folder_commits_and_leaves_every_row_the_push_wrote(handle):
-    """A root playlist and folder of one's own, and a playlist in that folder.
-
-    Appended at the top, as every writer here makes them, so no sibling is
-    renumbered and the push's rows are byte for byte what they were.
-    """
+    """Appended at the top, as every writer makes them, so the push's rows are unchanged."""
     db, path, pushed = handle
     before = dc7.written(path, pushed)
     db.create_playlist("mine at the top")
     W.ensure_playlist(db, "in mine", W.ensure_folder(db, "Mine"))
     W.commit_guarded(db)
     assert {str(row.Name) for row in db.get_playlist()} >= {"mine at the top", "Mine", "in mine"}
-    assert dc7.written(path, pushed) == before
-
-
-def test_a_position_named_at_the_top_moves_the_folder_and_is_refused(handle):
-    """The one write that renumbers root siblings, which nothing in the product makes."""
-    db, path, pushed = handle
-    before = dc7.written(path, pushed)
-    db.create_playlist("first at the top", seq=1)
-    assert "Seq" in _refused(db)
     assert dc7.written(path, pushed) == before
 
 
@@ -266,6 +251,7 @@ def test_a_reading_that_failed_at_open_is_kept_as_unread_and_refuses(handle):
         def execute(self, *_args, **_kwargs):
             raise RuntimeError("the table could not be read")
 
+
     class _Handle:
         session = _Broken()
 
@@ -278,20 +264,7 @@ def test_a_reading_that_failed_at_open_is_kept_as_unread_and_refuses(handle):
     assert "was not read when this database handle opened" in _refused(db)
 
 
-def test_a_cue_write_on_a_pushed_track_is_refused_by_the_whitelist(handle):
-    """Nothing in the product writes a cue row, and the whitelist holds it so."""
-    db, path, pushed = handle
-    before = dc7.written(path, pushed)
-    cue = db.get_cue(ContentID=pushed.pushed_track).first()
-    cue.InMsec = 5
-    message = _refused(db)
-    assert "djmdCue" in message
-    assert dc7.written(path, pushed) == before
-
-
-# ---------------------------------------------------------------------------
 # The taxonomy
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -310,13 +283,8 @@ def test_a_tree_declared_with_the_folders_name_is_refused_so_none_adopts_it(sect
 def test_a_push_that_lands_while_a_handle_is_open_refuses_that_handles_commit(
     library, cloud_sync_off  # noqa: F811 - the imported fixtures
 ):
-    """Two writers on one library, serialised by refusal rather than interleaved.
-
-    The push happens after this handle read the subtree, so its next commit
-    finds rows that were not there at open, and is refused rather than landing
-    over a library it no longer describes. A handle opened after the push
-    commits the same write.
-    """
+    """Two writers serialised by refusal: rows that were not there at open refuse
+    the commit; a handle opened after the push commits the same write."""
     path = library / "db" / "master.db"
     _build_disposable_database(path)
     db = W.open_db(path, unlock=False)
