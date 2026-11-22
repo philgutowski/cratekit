@@ -328,7 +328,7 @@ class Item:
 
 
 @dataclass(frozen=True, slots=True)
-class SuggestPlan:
+class SuggestPlan(rows.Tallied):
     """Every candidate, the count of every outcome, and the row write itself."""
 
     items: tuple[Item, ...]
@@ -340,20 +340,6 @@ class SuggestPlan:
     #: Shown and digested, because a mistyped identifier is a row the person
     #: meant to hold or to pick and the plan does otherwise.
     unmatched: tuple[str, ...] = ()
-
-    @property
-    def writes(self) -> tuple[Item, ...]:
-        return tuple(item for item in self.items if item.action == WRITE)
-
-    @property
-    def rows(self) -> int:
-        """Every live row the walk counted."""
-        return sum(self.counts.values())
-
-    @property
-    def unread(self) -> int:
-        """Rows whose file's genre was never learned."""
-        return sum(self.counts[name] for name in rows.UNREAD)
 
     @property
     def digest(self) -> str:

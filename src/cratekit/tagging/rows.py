@@ -183,20 +183,14 @@ class Item:
         return {**self.digested(), "path": self.path}
 
 
-@dataclass(frozen=True, slots=True)
-class RowsPlan:
-    """Every differing row, the count of every outcome, and the write itself."""
+class Tallied:
+    """What a plan of items and zero filled outcome counts answers, here and in
+    :class:`cratekit.tagging.suggest.SuggestPlan`."""
 
-    items: tuple[Item, ...]
-    counts: Mapping[str, int]
-    changes: metadata.Plan
-    #: Identifiers a person asked to leave that name no row differing from its
-    #: file. Shown at the gate and covered by the digest, because a mistyped
-    #: identifier is a row the person meant to hold and the plan writes.
-    leave_unmatched: tuple[str, ...] = ()
+    __slots__ = ()
 
     @property
-    def writes(self) -> tuple[Item, ...]:
+    def writes(self) -> tuple[Any, ...]:
         return tuple(item for item in self.items if item.action == WRITE)
 
     @property
@@ -208,6 +202,19 @@ class RowsPlan:
     def unread(self) -> int:
         """Rows whose file's genre was never learned."""
         return sum(self.counts[name] for name in UNREAD)
+
+
+@dataclass(frozen=True, slots=True)
+class RowsPlan(Tallied):
+    """Every differing row, the count of every outcome, and the write itself."""
+
+    items: tuple[Item, ...]
+    counts: Mapping[str, int]
+    changes: metadata.Plan
+    #: Identifiers a person asked to leave that name no row differing from its
+    #: file. Shown at the gate and covered by the digest, because a mistyped
+    #: identifier is a row the person meant to hold and the plan writes.
+    leave_unmatched: tuple[str, ...] = ()
 
     def unknown_words(self) -> list[tuple[str, int]]:
         """The file words with no lookup row, each with its rows, largest first."""
@@ -717,6 +724,7 @@ __all__ = [
     "WRITE",
     "Item",
     "RowsPlan",
+    "Tallied",
     "Written",
     "apply_rows",
     "assert_read_back",

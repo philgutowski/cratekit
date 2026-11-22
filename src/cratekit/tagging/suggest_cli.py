@@ -1,32 +1,25 @@
 """``crate tag suggest``: offer a genre for a row with none, behind one gate (U114).
 
-THE ORDER IS ``tag rows``'S, and for its reasons:
+THE ORDER IS ``tag rows``'S, for its reasons: the backup acknowledgment before
+the plan and the gate (R-733); the plan on a read handle closed before the
+gate, refusing a library mostly under no prefix rule first (R-372); the gate
+over the digested plan, AN EMPTY PLAN STILL ASKS; and only ``apply`` over a
+plan that writes opens the database to write, so a running rekordbox refuses
+BEFORE ANY FILE IS WRITTEN.
 
-* the backup acknowledgment is read before the plan is built and before the
-  gate (R-733);
-* the plan is made on a handle opened to read and closed before the gate, and a
-  library most of whose rows are under no prefix rule refuses before it (R-372);
-* the gate is asked over the digested plan, AND AN EMPTY PLAN STILL ASKS;
-* only ``apply`` over a plan that writes opens the database with write intent,
-  so a running rekordbox refuses there, BEFORE ANY FILE IS WRITTEN.
+THE FILE IS WRITTEN FIRST AND THE ROW SECOND: each row checked as the plan read
+it, each file written and read back, then the rows whose file read back written
+through :func:`cratekit.tagging.rows.apply_rows`, the guarded writer ``tag
+rows`` uses. A row write that fails after its file leaves what ``tag rows``
+repairs.
 
-THE FILE IS WRITTEN FIRST AND THE ROW SECOND. Each row is checked to be as the
-plan read it, then each file is written and read back, then the rows whose file
-read back are written through :func:`cratekit.tagging.rows.apply_rows`, the
-guarded writer ``tag rows`` uses, so file and row agree. A row write that fails
-after its file was written leaves exactly what ``tag rows`` repairs.
-
-WHAT IS WRITTEN IS CHOSEN ON THE COMMAND LINE AND COVERED BY THE DIGEST.
-``--band`` is the weakest band written, ``high`` unless a person says
-otherwise; ``--leave`` holds a row out; ``--set`` picks a genre for a row,
-which is how a split is written. The run that applies is given the same flags,
-rebuilds the plan, and refuses as stale if it differs. A row left out is not
-recorded anywhere and is offered again next run.
-
-``--catalogue`` ASKS THE CATALOGUES, paced, once per candidate, and keeps their
-answers for a week so the run that applies reads the same ones.
-
-THE GATE TAKES NO INLINE ANSWER, for the reason ``tag rows`` gives (R34).
+WHAT IS WRITTEN IS CHOSEN ON THE COMMAND LINE AND COVERED BY THE DIGEST:
+``--band`` the weakest band written, ``--leave`` a row held out, ``--set`` a
+genre picked, which is how a split is written. The applying run takes the same
+flags and refuses as stale if the plan differs. A row left out is offered again
+next run. ``--catalogue`` asks the catalogues, paced, once per candidate, and
+keeps their answers a week so the applying run reads the same ones. The gate
+takes no inline answer (R34).
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -39,8 +32,8 @@ from typing import Any
 from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session, taxonomy
 from cratekit.core.cause import CratekitError, Outcome, refuse
-from cratekit.tagging import published, rows, searchers, suggest
-from cratekit.write import metadata_cli
+from cratekit.tagging import plan_verbs, rows, searchers, suggest
+from cratekit.tagging.plan_verbs import counted, named
 
 #: The explicit gate a write is asked behind.
 CONFIRM_GATE = "tag.suggest.confirm"
@@ -68,9 +61,6 @@ UNMATCHED = "suggest-unmatched"
 
 #: What the majority refusal says cannot be done until a prefix rule exists.
 _BLOCKED = "no row's genre can be suggested"
-
-#: How many identifiers a sentence names. The detail carries all.
-_NAMED = 5
 
 _ORIGIN = ("tagging", "suggest_cli")
 
@@ -115,9 +105,8 @@ def picks(values: list[str], declared: taxonomy.Taxonomy) -> dict[str, str]:
     """Each ``--set`` as a content identifier and a genre, or a refusal.
 
     REFUSED BEFORE ANY ROW IS READ when one is not of the form, names a genre
-    this module may not suggest, or names one row twice with two genres. A
-    genre the taxonomy does not declare is never written by this verb, a
-    person's pick included.
+    this module may not suggest, a person's pick included, or names one row
+    twice with two genres.
     """
     found: dict[str, str] = {}
     for value in values:
@@ -152,22 +141,14 @@ def picks(values: list[str], declared: taxonomy.Taxonomy) -> dict[str, str]:
 
 
 def _payload(plan: suggest.SuggestPlan) -> dict[str, Any]:
-    """The plan as the gate digests it and the envelope carries it."""
-    return {
-        "digest": plan.digest,
-        "items": [item.to_json() for item in plan.items],
-        "totals": {
-            "count": len(plan.items),
-            "rows": plan.rows,
-            "band": plan.band,
-            "catalogue": plan.catalogue,
-            "outcomes": dict(plan.counts),
-            "groups": plan.groups(),
-            "written": 0,
-            "read_back": 0,
-        },
-        "chunk": None,
-    }
+    return plan_verbs.payload(
+        plan,
+        rows=plan.rows,
+        band=plan.band,
+        catalogue=plan.catalogue,
+        outcomes=dict(plan.counts),
+        groups=plan.groups(),
+    )
 
 
 def _facts(plan: suggest.SuggestPlan) -> dict[str, Any]:
@@ -183,16 +164,6 @@ def _facts(plan: suggest.SuggestPlan) -> dict[str, Any]:
     return facts
 
 
-def _counted(plan: suggest.SuggestPlan, names: tuple[str, ...]) -> str:
-    return ", ".join(f"{plan.counts[name]} {name}" for name in names if plan.counts[name])
-
-
-def _named(values: tuple[str, ...] | list[str]) -> str:
-    shown = ", ".join(values[:_NAMED])
-    more = len(values) - _NAMED
-    return shown + (f" and {more} more" if more > 0 else "")
-
-
 def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     left = sum(plan.counts[name] for name in suggest.LEFT)
@@ -202,7 +173,7 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
                 "code": ROWS_LEFT,
                 "message": (
                     f"{left} row(s) with no genre were offered and are left as they "
-                    f"are ({_counted(plan, suggest.LEFT)}), each listed with its "
+                    f"are ({counted(plan.counts, suggest.LEFT)}), each listed with its "
                     f"votes; --band widens what is written, --set picks a genre for "
                     f"one row, a split's included, and every one is offered again "
                     f"next run"
@@ -225,16 +196,14 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
                 "code": FILES_NOT_READ,
                 "message": (
                     f"{plan.unread} row(s) were not offered because their file's "
-                    f"genre could not be read ({_counted(plan, rows.UNREAD)}); a "
+                    f"genre could not be read ({counted(plan.counts, rows.UNREAD)}); a "
                     f"volume that is not mounted reads as {rows.FILE_MISSING}"
                 ),
             }
         )
-    # A ROW LEFT UNREAD ONLY BY A CATALOGUE NOBODY ASKED is said as that, with
-    # how to have it asked, and never as catalogues that could not be read
-    # (U244's review, round two): every catalogue asked about it answered.
-    # A ROW ANOTHER CATALOGUE ANSWERED is said apart, naming the one that could
-    # not be read, whatever was then suggested for it (U322).
+    # A ROW UNREAD ONLY BY A CATALOGUE NOBODY ASKED is said as that, with how to
+    # have it asked, never as catalogues that could not be read (U244). A ROW
+    # ANOTHER CATALOGUE ANSWERED is said apart, naming the one unread (U322).
     unread = suggest.sort_unread(
         (item.content_id, item.catalogue) for item in plan.items if item.catalogue is not None
     )
@@ -242,27 +211,27 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
     if unread.refused:
         parts.append(
             f"the catalogues could not be read for {len(unread.refused)} row(s), "
-            f"{_named(list(unread.refused))}, so those were suggested from the library "
+            f"{named(list(unread.refused))}, so those were suggested from the library "
             f"alone; a lookup nobody could read is kept for the day and asked "
             f"again on a later one"
         )
     if unread.partly:
         parts.append(
             f"{unread.partly_by} could not be read for {len(unread.partly)} row(s) "
-            f"another catalogue answered, {_named(list(unread.partly))}, so those "
+            f"another catalogue answered, {named(list(unread.partly))}, so those "
             f"were suggested without it"
         )
     if unread.no_token:
         parts.append(
             f"Discogs was not asked about {len(unread.no_token)} row(s), "
-            f"{_named(list(unread.no_token))}, because no Discogs token is recorded, so "
+            f"{named(list(unread.no_token))}, because no Discogs token is recorded, so "
             f"those were suggested from the library alone; once one is, the next run "
             f"asks it. To record it: {searchers.DISCOGS_LOGIN_STEPS}"
         )
     if unread.token_unusable:
         parts.append(
             f"Discogs was not read for {len(unread.token_unusable)} row(s), "
-            f"{_named(list(unread.token_unusable))}, because the recorded Discogs token "
+            f"{named(list(unread.token_unusable))}, because the recorded Discogs token "
             f"could not be used, so those were suggested without it; to record a new "
             f"one: {searchers.DISCOGS_LOGIN_STEPS}"
         )
@@ -273,7 +242,7 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
             {
                 "code": UNMATCHED,
                 "message": (
-                    f"--leave or --set named {_named(list(plan.unmatched))}, and no "
+                    f"--leave or --set named {named(list(plan.unmatched))}, and no "
                     f"row with no genre on the row or the file has that content "
                     f"identifier, so nothing was held or picked for it"
                 ),
@@ -317,51 +286,23 @@ def read_plan(
     progress,
 ) -> suggest.SuggestPlan:
     """The plan over the library as it stands, through a handle opened to read.
-
-    THE ONE PLAN, the verb's and ``tag campaign``'s (U294), so the campaign's
-    suggestions are weighed, asked and kept exactly as this verb's are.
-    """
-    db = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
-    )
-    try:
-        totals = metadata_cli.resolution_totals(cfg, db)
-        if totals.majority_unmapped:
-            raise CratekitError(
-                metadata_cli.majority_unmapped_cause(cfg, totals, blocked=_BLOCKED)
-            )
-        options = {
-            "band": band,
-            "leave": list(leave),
-            "chosen": chosen,
-            "progress": progress,
-        }
+    The one plan, the verb's and ``tag campaign``'s (U294)."""
+    with plan_verbs.reading(cfg, _BLOCKED) as db:
+        options = {"band": band, "leave": list(leave), "chosen": chosen, "progress": progress}
         if not catalogue:
             return suggest.plan_suggestions(cfg, db, declared, **options)
-        lookup = suggest.catalogue_lookup(
-            searchers.for_taxonomy(declared), published.for_suggestions(declared)
-        )
-        # WHAT THIS RUN CANNOT ASK, so a row kept for the day as passed over is
-        # asked again once a Discogs token has been recorded (U244).
-        unasked = frozenset(
-            {searchers.DISCOGS} if searchers.for_discogs().token is None else ()
-        )
-        with suggest.KeptCatalogue(cfg, lookup, unasked=unasked) as kept:
+        with plan_verbs.kept(cfg, declared) as kept:
             return suggest.plan_suggestions(cfg, db, declared, catalogue=kept, **options)
-    finally:
-        rb_writer.close_db(db)
 
 
 def _write(cfg: config.Config, plan: suggest.SuggestPlan):
     """Check the rows, then inside one session write the files and their rows.
 
     ONE HANDLE, OPENED TO WRITE BEFORE ANY FILE IS TOUCHED, so a running
-    rekordbox refuses with every file as it was. The row engine then checks
-    every row against the plan, so a row that gained a genre since refuses with
-    nothing written, and enters the session spine: the library lock, the volume
-    check and the capture all come before the first file is written, because
-    the files are written in the engine's ``narrow`` step, and only the rows
-    whose file read back are handed on.
+    rekordbox refuses with every file as it was. The row engine checks every row
+    against the plan, then the files are written in its ``narrow`` step, behind
+    the library lock, the volume check and the capture, and only the rows whose
+    file read back are handed on.
     """
     held: dict[str, suggest.FilesWritten] = {}
 
@@ -388,11 +329,11 @@ def _unwritten(files: suggest.FilesWritten) -> str:
     """The files that did not take their genre, as one clause, or empty."""
     parts = []
     if files.moved:
-        parts.append(f"{len(files.moved)} carried a genre by then: {_named(list(files.moved))}")
+        parts.append(f"{len(files.moved)} carried a genre by then: {named(list(files.moved))}")
     if files.failed:
-        parts.append(f"{len(files.failed)} could not be written: {_named(list(files.failed))}")
+        parts.append(f"{len(files.failed)} could not be written: {named(list(files.failed))}")
     if files.wrong:
-        parts.append(f"{len(files.wrong)} do not read back: {_named(list(files.wrong))}")
+        parts.append(f"{len(files.wrong)} do not read back: {named(list(files.wrong))}")
     if not parts:
         return ""
     return (
@@ -425,8 +366,7 @@ def _read_back(files: suggest.FilesWritten, written: rows.Written) -> None:
 
     THE READ BACK OUTRANKS THE FILES and keeps its own reason, since a row that
     reads back wrong is this product's defect and a file that would not take a
-    genre is the file's. Its sentence gains the files' clause, so neither is
-    reported at the cost of the other.
+    genre is the file's; its sentence gains the files' clause.
     """
     try:
         rows.assert_read_back(written)
@@ -446,12 +386,9 @@ def _read_back(files: suggest.FilesWritten, written: rows.Written) -> None:
 
 
 def apply_plan(cfg: config.Config, plan: suggest.SuggestPlan) -> rows.Written:
-    """Write the files and then their rows, and refuse over what did not take.
-
-    THE ONE APPLY PATH, the verb's and ``tag campaign``'s (U294): the row
-    engine's read back first, naming the files that did not take theirs too,
-    then the files' own refusal once the rest have landed.
-    """
+    """Write the files and then their rows, and refuse over what did not take:
+    the read back first, then the files' own refusal. The one apply path, the
+    verb's and ``tag campaign``'s (U294)."""
     files, written = _write(cfg, plan)
     _read_back(files, written)
     if not files.clean:
@@ -481,18 +418,15 @@ def tag_suggest(ctx) -> Envelope:
     data = _payload(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))
-    if not plan.writes:
-        return ctx.envelope(
-            data=data, outcome=Outcome.NO_OP, warnings=[_nothing(plan), *_advisories(plan)]
-        )
-
-    written = apply_plan(cfg, plan)
-    data["totals"] = {
-        **data["totals"],
-        "written": written.written,
-        "read_back": written.read_back,
-    }
-    return ctx.envelope(data=data, warnings=[_written(written), *_advisories(plan)])
+    return plan_verbs.applied(
+        ctx,
+        plan,
+        data,
+        _advisories,
+        nothing=_nothing,
+        apply=lambda: apply_plan(cfg, plan),
+        said=_written,
+    )
 
 
 __all__ = [

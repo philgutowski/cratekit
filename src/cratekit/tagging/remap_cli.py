@@ -1,35 +1,26 @@
 """``crate tag remap``: rewrite the genres an older mapping wrote.
 
-WHY THIS IS A VERB OF ITS OWN (R-799) and not a mode of ``tag retag``. That
-verb selects a genre the taxonomy calls too coarse and asks a catalogue what
-it should be, which is long running work behind a job. This one selects by
-what a tagging job RECORDED, asks nobody, and resolves the recorded word again
-under the taxonomy as it stands. A gate is declared per verb and every declared
-gate has to fire, so a gate asked in one mode only is a gate the registry
+A VERB OF ITS OWN (R-799), not a mode of ``tag retag``: that verb selects a
+genre too coarse and asks a catalogue behind a job; this one selects by what a
+tagging job RECORDED, asks nobody, and resolves the recorded word again under
+the taxonomy as it stands. A gate asked in one mode only is one the registry
 cannot state.
 
-THE ORDER IS ``tag rows``'S: the plan is built by reading, the explicit gate is
-asked over its digest, AND AN EMPTY PLAN STILL ASKS, for the reason ``tag
-retag`` gives. Only ``apply`` over a plan that writes touches a file.
+THE ORDER IS ``tag rows``'S: the plan by reading, the gate over its digest, AN
+EMPTY PLAN STILL ASKS, and only ``apply`` over a plan that writes touches a
+file. The second invocation rebuilds the plan, so a file that changed in
+between refuses ``decision-stale`` with nothing written.
 
-THE SECOND INVOCATION REBUILDS THE PLAN from the records and the files, and the
-gate compares its digest with the one the answer was recorded against. A file
-whose genre changed in between moves the digest and the run refuses
-``decision-stale`` with nothing written.
+IT WRITES FILES AND OPENS NO DATABASE. A corrected file's row keeps the old
+genre until ``tag rows`` writes it, and a run that wrote names that verb, not a
+reload in rekordbox, which takes every tag field from the file.
 
-IT WRITES FILES AND OPENS NO DATABASE. A corrected file's row goes on carrying
-the old genre until ``tag rows`` writes it from the file, and a run that wrote
-says so and names that verb. Not a reload in rekordbox, which takes every tag
-field from the file. For a genre the library has never held, that verb names
-the one act it needs first.
-
-WHAT A PERSON READS. The gate carries the outcome counts and the word pairs in
-front of the items. A run that left a file alone says how many and why on
-every path, and a run over a taxonomy that declares no table for the general
-catalogue says that, since on such a copy nothing can have changed and a clean
-answer would read as a library already corrected. A run in which a file did
-not take its genre refuses, and the refusal still names the row verb for the
-files that did, since the next run plans none of them and would not say it.
+WHAT A PERSON READS. The gate carries the counts and word pairs. Every path
+says how many files were left and why, and a taxonomy with no table for the
+general catalogue is said, since a clean answer there would read as a library
+already corrected. A file that did not take its genre refuses, and the refusal
+still names the row verb for the files that did, since the next run plans none
+of them.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -42,7 +33,8 @@ from typing import Any
 from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy
 from cratekit.core.cause import Outcome, refuse
-from cratekit.tagging import remap
+from cratekit.tagging import plan_verbs, remap
+from cratekit.tagging.plan_verbs import counted, named
 
 #: The explicit gate a rewrite is asked behind.
 CONFIRM_GATE = "tag.remap.confirm"
@@ -68,9 +60,6 @@ NO_VOCABULARY = "remap-no-vocabulary"
 #: Committed tagging records that could not be parsed.
 RECORDS_UNREAD = "remap-records-unread"
 
-#: How many offending files a refusal's sentence names. The detail carries all.
-_NAMED_FILES = 5
-
 _ORIGIN = ("tagging", "remap_cli")
 
 
@@ -81,21 +70,13 @@ def build(parser, entry) -> None:
 
 
 def _payload(plan: remap.RemapPlan) -> dict[str, Any]:
-    """The plan as the gate digests it and the envelope carries it."""
-    return {
-        "digest": plan.digest,
-        "items": [item.to_json() for item in plan.items],
-        "totals": {
-            "count": len(plan.items),
-            "files": plan.files,
-            "outcomes": dict(plan.counts),
-            "pairs": plan.pairs(),
-            "records_unread": plan.records_unread,
-            "written": 0,
-            "read_back": 0,
-        },
-        "chunk": None,
-    }
+    return plan_verbs.payload(
+        plan,
+        files=plan.files,
+        outcomes=dict(plan.counts),
+        pairs=plan.pairs(),
+        records_unread=plan.records_unread,
+    )
 
 
 def _facts(plan: remap.RemapPlan) -> dict[str, Any]:
@@ -108,10 +89,6 @@ def _facts(plan: remap.RemapPlan) -> dict[str, Any]:
     }
 
 
-def _counted(plan: remap.RemapPlan, names: tuple[str, ...]) -> str:
-    return ", ".join(f"{plan.counts[name]} {name}" for name in names if plan.counts[name])
-
-
 def _left(plan: remap.RemapPlan) -> list[dict[str, str]]:
     """The warning a run carries when a file was read and left, on every path."""
     count = sum(plan.counts[name] for name in remap.LEFT)
@@ -122,7 +99,7 @@ def _left(plan: remap.RemapPlan) -> list[dict[str, str]]:
             "code": FILES_LEFT,
             "message": (
                 f"{count} file(s) do not carry the genre the taxonomy now gives "
-                f"their word and were left alone ({_counted(plan, remap.LEFT)}), "
+                f"their word and were left alone ({counted(plan.counts, remap.LEFT)}), "
                 f"each listed with its reason: {remap.CHANGED_SINCE} is a genre no "
                 f"tagging job recorded writing, {remap.WORD_DECLINED} a word the "
                 f"taxonomy has no folder for, and {remap.AMBIGUOUS_RECORD} a genre "
@@ -142,7 +119,7 @@ def _not_read(plan: remap.RemapPlan) -> list[dict[str, str]]:
             "code": FILES_NOT_READ,
             "message": (
                 f"{count} of {plan.files} file(s) a tagging job wrote a genre from "
-                f"{remap.SOURCE} onto could not be read ({_counted(plan, remap.UNREAD)}), "
+                f"{remap.SOURCE} onto could not be read ({counted(plan.counts, remap.UNREAD)}), "
                 f"each listed; a file that has moved since, and a volume that is "
                 f"not mounted, both read as {remap.FILE_MISSING}, and nothing here "
                 f"says those files are correct"
@@ -227,8 +204,8 @@ def _nothing(plan: remap.RemapPlan) -> dict[str, str]:
     }
 
 
-#: What a run that rewrote a file owes its rows. One text, on the envelope of a
-#: clean run and among the steps of a refusal that wrote some.
+#: What a run that rewrote a file owes its rows, on a clean run's envelope and
+#: among the steps of a refusal that wrote some.
 ROWS_FOLLOW = (
     "the library rows of the rewritten files go on carrying the old genre, so "
     "run `crate tag rows`, which writes each row's genre from its file and no "
@@ -252,21 +229,12 @@ def _written(plan: remap.RemapPlan, written: remap.Written) -> dict[str, str]:
     }
 
 
-def _named(paths: tuple[str, ...]) -> str:
-    shown = ", ".join(paths[:_NAMED_FILES])
-    return shown if len(paths) <= _NAMED_FILES else f"{shown} and {len(paths) - _NAMED_FILES} more"
-
-
 def assert_written(written: remap.Written) -> None:
-    """Refuse when a file did not take the genre the plan gave it.
+    """Refuse when a file did not take the genre the plan gave it, after the
+    others were written, saying how many. A second run plans what is left.
 
-    AFTER THE OTHER FILES WERE WRITTEN, and the message says how many, so a
-    person is not told nothing happened. A second run plans what is left.
-
-    THE ROW VERB IS NAMED HERE TOO WHEN ANY FILE WAS REWRITTEN. This run ends
-    in the refusal and never reaches the envelope that names it, and the next
-    run finds those files agreeing and plans none of them, so neither would
-    say their rows are stale.
+    THE ROW VERB IS NAMED HERE TOO WHEN ANY FILE WAS REWRITTEN: this run never
+    reaches the envelope that names it, and the next plans none of those files.
     """
     if written.clean:
         return
@@ -274,23 +242,23 @@ def assert_written(written: remap.Written) -> None:
     if written.moved:
         parts.append(
             f"{len(written.moved)} carried something else by the time the write "
-            f"reached them and were not written: {_named(written.moved)}"
+            f"reached them and were not written: {named(written.moved)}"
         )
     if written.failed:
         parts.append(
             f"{len(written.failed)} could not be written and are untouched: "
-            f"{_named(written.failed)}"
+            f"{named(written.failed)}"
         )
     if written.wrong:
         parts.append(
             f"{len(written.wrong)} were written and do not read back as the genre "
-            f"wanted: {_named(written.wrong)}"
+            f"wanted: {named(written.wrong)}"
         )
     if written.unrecorded:
         parts.append(
             f"{len(written.unrecorded)} were rewritten and read back and no record "
             f"of the rewrite could be committed, so a later run reads their genre "
-            f"as set by hand: {_named(written.unrecorded)}"
+            f"as set by hand: {named(written.unrecorded)}"
         )
     steps = [
         "check each named file can be written and is not open elsewhere",
@@ -311,8 +279,7 @@ def assert_written(written: remap.Written) -> None:
             "unrecorded": list(written.unrecorded),
             "written": written.written,
             "read_back": written.read_back,
-            # THE UNDO, which the envelope of a clean run carries as its items
-            # and this run never reaches. The next run lists none of these.
+            # THE UNDO, which a clean run's envelope carries as its items.
             "rewritten": [
                 {"path": item.path, "from": item.current, "to": item.wanted}
                 for item in written.rewritten
@@ -331,21 +298,21 @@ def tag_remap(ctx) -> Envelope:
     data = _payload(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))
-    if not plan.writes:
-        return ctx.envelope(
-            data=data,
-            outcome=Outcome.NO_OP,
-            warnings=[_nothing(plan), *_advisories(plan)],
-        )
 
-    written = remap.apply(cfg, plan)
-    assert_written(written)
-    data["totals"] = {
-        **data["totals"],
-        "written": written.written,
-        "read_back": written.read_back,
-    }
-    return ctx.envelope(data=data, warnings=[_written(plan, written), *_advisories(plan)])
+    def apply() -> remap.Written:
+        written = remap.apply(cfg, plan)
+        assert_written(written)
+        return written
+
+    return plan_verbs.applied(
+        ctx,
+        plan,
+        data,
+        _advisories,
+        nothing=_nothing,
+        apply=apply,
+        said=lambda written: _written(plan, written),
+    )
 
 
 __all__ = [
