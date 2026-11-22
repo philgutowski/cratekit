@@ -1,46 +1,20 @@
 """The four ``route.*`` verbs: inbox, unplaced, resort, pending (U20).
 
-WHY THIS MODULE LIVES UNDER WRITE. The registry names
-``cratekit.write.routing_cli``, and the countdown in ``tests/_pending.py``
-keys on that string. A second path would leave the register armed over a
-module that exists, which is a green countdown.
+The registry names ``cratekit.write.routing_cli`` and ``tests/_pending.py``
+keys on that string, so the module stays here; the export path lives in
+:mod:`cratekit.write.routing_export`. It imports :mod:`cratekit.cli.output`
+alone, never ``cratekit.cli.registry``, which would be an upward import.
 
-WHAT IT MUST NOT IMPORT. ``cratekit.cli.registry`` is the CLI layer. Naming
-that type here is an upward import. The legal shape is the one
-``cratekit.adopt.scan_cli`` uses: :mod:`cratekit.cli.output` alone, which is
-foundation-ranked, and unannotated builder parameters.
+EVERY CLOSE GOES THROUGH :func:`cratekit.write.routing_pass.close_run`;
+``session.close_session`` bypasses the gates that refuse a run still holding a
+track nowhere, and a call of that name here is what the armed guard waits for.
 
-EVERY CLOSE GOES THROUGH :func:`cratekit.write.routing_pass.close_run`.
-``session.close_session`` is exported and bypasses the two gates that refuse
-a run still holding a track nowhere or an export nobody has imported. A
-call of that name in this file is the defect the armed guard is waiting for.
-
-A RE-RUN AFTER A DESTINATION RENAME CONVERGES. The engine reads the node
-map U36 recorded, through :func:`cratekit.write.rebuild.resolve_destinations`.
-This surface does not build a second map.
-
-THREE OF THE FOUR VERBS REPORTED WORK THEY HAD NOT DONE, until U53. ``inbox``
-built a plan, asked its apply gate and returned the same plan whichever way
-the person answered, so somebody who confirmed saw a plan and believed it had
-happened. ``unplaced`` was the constant empty plan, which reads as "your
-library is fully filed" on a library nobody had looked at. ``resort`` queued a
-job with no items, which the driver walks in one empty pass and transitions
-straight to succeeded. All three are the same failure wearing three faces: a
-green report over an act nobody performed.
-
-WHAT THE APPLY WRITES IS NOT A SECOND ROUTER. The intake files are read for
-their tags, the placements come from
-:func:`cratekit.write.rebuild.declared_membership` through the derivation the
-REGISTRY records for the tree, the destinations resolve through
-:func:`cratekit.write.rebuild.plan_destinations`, and the write goes through
-:func:`cratekit.write.trees.write_tree_membership`, which owns the session
-gates. Nothing about where a track goes is decided in this file.
-
-THE DATABASE PATH PLANS BEFORE ITS GATE, since R-691. :func:`plan_inbox`
-takes the readings and the placements first, the gate shows each file's
-destination, the digest binds those destinations, and :func:`apply_inbox`
-writes the plan it was handed rather than deriving a second one after the
-answer.
+Nothing about where a track goes is decided here: the placements come from
+:func:`cratekit.write.rebuild.declared_membership`, the destinations from
+``plan_destinations`` through the node map U36 recorded, so a re-run after a
+rename converges, and the write from
+:func:`cratekit.write.trees.write_tree_membership`. Every verb does the work it
+reports (U53), and the database path plans before its gate (R-691).
 
 Layer: write.
 """
@@ -79,17 +53,14 @@ from cratekit.write.routing_export import (
     unplaced_items,
 )
 
-#: The session log's name for a write this verb performed, one per verb, so a
-#: person reading the log can tell which act touched their library. Not shared
-#: with the rebuild's own workflow: two verbs writing under one name is a log
-#: that cannot answer the only question anybody asks it.
+#: The session log's name for a write this verb performed, one per verb and
+#: none shared with the rebuild, so the log can say which act touched a library.
 INBOX_WORKFLOW = "route-inbox"
 RESORT_WORKFLOW = "route-resort"
 
 #: Where a resort's job freezes the adds its gate showed and a person approved
 #: (U219), and the database file that answer was pinned to (U161). Spelled
-#: once, because the enqueue writes them and the resume and the worker read
-#: them, and a key one side spells differently is a plan nobody can match.
+#: once, since the enqueue writes them and the resume and the worker read them.
 RESORT_ADDS_KEY = "adds"
 RESORT_DATABASE_KEY = "database"
 RESORT_FACTS_KEY = "facts"
@@ -104,9 +75,7 @@ TREE_NOT_DERIVED = "tree-not-derived"
 #: Where each resorted tree's report is committed, under the queue root beside
 #: the job's lock and log (R-312). ONE REPORT PER ITEM, MADE DURABLE BY THE
 #: DRIVER before the item flips to done, so what the engine measured survives a
-#: killed process and reaches a resume that ends in a refusal. The first version
-#: of this kept it in a dict in memory, and the built in review named the two
-#: runs that loses: the one a partial failure ends, and the one that died.
+#: killed process and reaches a resume that ends in a refusal.
 RESORT_ARTIFACTS = jobs.Artifacts(final="resort-artifacts", staging="resort-staging")
 
 
@@ -116,10 +85,8 @@ def _routed_trees(
 ) -> tuple[str, ...]:
     """Every native tree the taxonomy derivation describes, in a stable order (U219).
 
-    THE ITEMS OF A RESORT AND THE TREES AN INBOX FILES INTO. A native tree the
-    declaration names as something else, the intake flow above all, is left
-    out: its membership is what the verbs that write it put there, and the
-    derivation refuses it by name (:func:`cratekit.write.rebuild.assert_derivable`).
+    The items of a resort and the trees an inbox files into. A native tree the
+    declaration names as something else, the intake flow above all, is left out.
     """
     return tuple(t for t in _native_trees(entries) if rebuild.derivable(declared, t))
 
@@ -129,8 +96,7 @@ def _passed_over(
 ) -> list[dict[str, str]]:
     """The warning naming each native tree a sweep left alone, and why (U219).
 
-    Said rather than silent, so a person whose intake tree has cut over reads
-    that the resort did not touch it on purpose, and not that it forgot.
+    Said rather than silent, so a person reads that the resort skipped it on purpose.
     """
     others = rebuild.other_declared_trees(declared)
     skipped = [t for t in _native_trees(entries) if t in others]
@@ -162,16 +128,11 @@ def _inbox_files(folder: Path) -> list[Path]:
 class InboxPlan:
     """Where the database path puts each intake file, decided BEFORE the gate (R-691).
 
-    ``items`` is what the digest is taken over and what the person is shown:
-    each file's path and name, the folder and sub it files into, and the vocal
-    sub it also files into, as display names. ``placements`` is the same
-    decision in the engine's own terms, one tuple per tree that has cut over,
-    every native tree present even when the folder is empty, and it is what
-    the write consumes, so the write cannot decide differently from what the
-    screen said. ``declared`` and ``entries`` are the declaration and the
-    registry the decision was made against, carried so the write reads neither
-    a second time. ``warnings`` are what the planner knew before the question
-    was asked.
+    ``items`` is what the digest covers and the person is shown, as display
+    names. ``placements`` is the same decision in the engine's terms, one tuple
+    per native tree, and is what the write consumes, so it cannot decide
+    differently from the screen. ``declared`` and ``entries`` are carried so the
+    write reads neither again; ``warnings`` are the planner's.
     """
 
     folder: Path
@@ -187,47 +148,18 @@ class InboxPlan:
 def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
     """Decide where every intake file goes, without opening the database.
 
-    THE PLAN USED TO BE THE FILE LIST, and the routing was decided inside the
-    apply after the gate, so a person answered a placement they could not read
-    (R-691). Now the readings, the derivation and the display names are all
-    taken here, by the calls the write makes: the readings come from
-    :func:`cratekit.write.rebuild.read_truth`, the placements from
-    ``declared_membership`` through the derivation the REGISTRY records for
-    each tree that has cut over, and the display names from
-    :func:`cratekit.write.routing_pass.destination`, which is what the export
-    path's :func:`_decide` names its destinations with. So the two media, and
-    the screen and the write, cannot disagree about where a track goes.
-
-    THE CALIBRATED CUT IS READ HERE, before the database is opened, so a
-    corrupt calibration refuses before anything is written (U89). None on a
-    library never calibrated, and the derivation then names the dimension it
-    left out in ``gaps``. It is read only when something will be derived, so
-    a library with nothing native still gets the export remedy, the answer
-    that applies to it, and not a calibration refusal over a cut it cannot
-    use.
-
-    A LIBRARY WITH NOTHING NATIVE DERIVES NOTHING, AND READS NO FILE. There is
-    no registry source to derive by and no tree the write would take, so
-    every file is listed with no destination and the export remedy rides as a
-    warning, on the screen before the answer rather than in the envelope after
-    it. The apply still answers ``no-native-tree`` for it, as it always did.
-
-    AN EMPTY FOLDER DERIVES NOTHING EITHER. The derivation refuses an empty
-    result as evidence of nothing, and an empty folder is not that: it is the
-    ``inbox-empty`` answer the verb gives after the gate, with nothing opened.
-
-    ONE DERIVATION PER SOURCE. Two trees that cut over on the same registry
-    source derive the same placements from the same readings, so the rules
-    run once per source and each tree is mapped to its source's tuple.
+    The readings, the derivation and the display names are taken here by the
+    calls the write makes, so the screen and the write, and the two media, cannot
+    disagree (R-691). The calibrated cut is read here so a corrupt one refuses
+    before any write (U89), and only when something will be derived. A library
+    with nothing native reads no file and carries the export remedy; an empty
+    folder derives nothing either. One derivation per registry source.
     """
     folder = Path(cfg.library.root) / declared.intake.display
     files = _inbox_files(folder)
     entries = tree_registry.read(cfg)
-    # THE ROUTED TREES, NOT EVERY NATIVE ONE (U219). The intake tree is native
-    # on a library whose landings write it, and filing the intake folder into
-    # it put the routing tree's genre folders under INBOX, the shape sitting
-    # 61 found through the resort. The derivation refuses that tree by name;
-    # this is where the verb stops asking it to.
+    # THE ROUTED TREES, NOT EVERY NATIVE ONE (U219): filing into the native
+    # intake tree put the routing tree's genre folders under INBOX.
     native = _routed_trees(entries, declared)
     placements: dict[str, tuple[rebuild.DeclaredPlacement, ...]] = {
         tree_id: () for tree_id in native
@@ -291,14 +223,9 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
 def _inbox_facts(plan: InboxPlan) -> dict[str, Any]:
     """The database gate's totals, counted off the items it lists (R-691).
 
-    The same shape as :func:`_export_facts`, for the same reason: a total
-    counted from the list cannot disagree with the list printed under it. The
-    trees the write goes into are named, since on this medium the destination
-    is a playlist in the database and not a file. ``not derived`` and the
-    warnings ride for the reason the export's do: an empty vocal column on an
-    uncalibrated library means the dimension was not read, and a file with no
-    destination on a library with nothing native has its reason on the same
-    screen as the question.
+    The same shape as the export gate's, naming the trees written, the dimensions
+    not derived and the planner's warnings, so a total cannot disagree with the
+    list under it.
     """
     return {
         "intake": str(plan.folder),
@@ -314,19 +241,10 @@ def _inbox_facts(plan: InboxPlan) -> dict[str, Any]:
 def _apply_gate(ctx, plan: dict, facts: dict[str, Any]) -> str:
     """Ask the apply gate over ``plan``, showing it whole (R-686).
 
-    The gate layer shows the facts, then the digest, the count and EVERY ITEM
-    the digest was taken over, so the screen is the plan a person approves and
-    a JSON reader can compare it with the declined run's items, which this
-    verb returns as its no-op's data. The export
-    gate hands in its plan through :func:`_named`, so each of its items also
-    leads with the track's artist and title, which a reader drops to compare
-    (R-692). Without this the gate carried the question and the options and
-    not one item, and a person answered a routing plan they could not read.
-    There is no bound: the digest covers every item, and a list cut short
-    would ask for approval of items nobody was shown. The body that renders
-    it is :func:`cratekit.cli.gates.shown_plan`, shared with every other
-    digest bound gate since R-693, and reached through the run's gate
-    resolver because this layer may not import the CLI's.
+    The gate shows the facts, the digest, the count and EVERY item the digest
+    covers, unbounded, rendered by :func:`cratekit.cli.gates.shown_plan` through
+    the run's resolver (R-693). The export gate's items also lead with artist and
+    title (R-692). The export route asks this through the module, which tests patch.
     """
     spec = ctx.entry.gates[0]
     return ctx.gate.require(spec, plan=plan, context=facts)
@@ -335,16 +253,13 @@ def _apply_gate(ctx, plan: dict, facts: dict[str, Any]) -> str:
 def _close_run(record, cfg: config.Config):
     """The one close this surface may perform.
 
-    Named so the AST walk that forbids ``close_session`` finds this call and
-    not a bypass.
+    Named so the AST walk that forbids ``close_session`` finds this call.
     """
     return routing_pass.close_run(record, cfg)
 
 
-#: What is recorded as the evidence when the routing pass is what proved an
-#: import. No verb is named, because the record outlives any one verb's name.
-#: It says what was seen and no more: a track a person acknowledged as gone
-#: reached no row, and the sentence does not claim it did.
+#: The evidence recorded when the routing pass proved an import. It names no
+#: verb, since the record outlives one, and claims no row for an acknowledged track.
 PLACED_EVIDENCE = (
     "the routing pass reached a row for every track this run landed that nobody "
     "acknowledged as gone"
@@ -358,12 +273,10 @@ def _close_if_settled(cfg: config.Config, session_id: str) -> None:
         if record.state is session.SessionState.AWAITING_IMPORT and _all_settled(
             cfg, session_id
         ):
-            # AN INTAKE RUN NOW ENDS ``awaiting-import`` (R-501), and the gated
-            # close refuses that state. Here the pass has reached a row for
-            # every track the run recorded, which is stronger proof of the
-            # import than any export, so the proof is recorded and the close
-            # goes ahead. A run with no ROUTED track proves nothing, and is
-            # left for the close to refuse.
+            # AN INTAKE RUN ENDS ``awaiting-import`` (R-501), which the gated
+            # close refuses. A row reached for every recorded track is stronger
+            # proof than any export, so it is recorded; a run with no ROUTED
+            # track proves nothing and is left for the close to refuse.
             session.mark_import_verified(record, cfg, evidence=PLACED_EVIDENCE)
         _close_run(record, cfg)
         return
@@ -372,10 +285,8 @@ def _close_if_settled(cfg: config.Config, session_id: str) -> None:
 def _all_settled(cfg: config.Config, session_id: str) -> bool:
     """True when nothing is outstanding for this run AND the pass reached a row for it.
 
-    SETTLED IS NOT IMPORTED. A track settles by being routed, which takes a
-    row, or by a person acknowledging it is gone, which takes none. A run whose
-    every track was acknowledged settled without any import, so at least one
-    routed track is required before the pass counts as proof of one.
+    SETTLED IS NOT IMPORTED: an acknowledged track settles with no row, so at
+    least one routed track is required before the pass proves an import.
     """
     ledger = routing_pass.read(cfg)
     routed = [
@@ -431,31 +342,25 @@ def build_pending(parser, entry) -> None:
 def resort_argv(job) -> list[str]:
     """The command line that continues one queued resort.
 
-    IT CARRIES ``--run`` (U219). The resort's gate is explicit, so the child
-    the job engine spawns has to name the run the answer was recorded against,
-    or it meets the gate with nothing recorded and stalls for ever, which is
-    the shape ``tests/test_queued_resume_contract.py`` guards. The flag goes
-    before the verb path because ``--run`` belongs to the root parser. A job
-    an older build queued carries no gate run and resumes without it.
+    It carries ``--run`` (U219): the resort's gate is explicit, so the spawned
+    child must name the run the answer was recorded against or it stalls, as
+    ``tests/test_queued_resume_contract.py`` guards. The flag goes before the verb
+    path, since it belongs to the root parser.
     """
     gate_run = (job.payload or {}).get(jobs.GATE_RUN_KEY)
     resume = ["--run", str(gate_run)] if gate_run else []
     return [*resume, "route", "resort", "--job", job.job_id]
 
 
-#: The warning a confirmed apply carries for the files it could not file. The
-#: code every other routing write already uses for "a write the tree could not
-#: take", so a consumer filtering on it sees this one too.
+#: The warning a confirmed apply carries for the files it could not file: the
+#: code every routing write uses for "a write the tree could not take".
 SKIPPED_WARNING = "route-write-skipped"
 
-#: How many file names one skip warning spells out. The count is always the
-#: whole set, and the payload's ``skipped_files`` lists every one.
+#: How many file names one skip warning spells out; the count is always whole.
 SKIPPED_NAMED = 10
 
-#: Why a file was not filed and what a person does about it, one per placement a
-#: skip can carry. The vocabulary is the deferred pass's own (R-318), so the two
-#: surfaces say one thing about one state. Each sentence follows "was not filed
-#: because".
+#: Why a file was not filed and what a person does about it, in the deferred
+#: pass's vocabulary (R-318). Each sentence follows "was not filed because".
 SKIP_NEXT_ACT: dict[routing_pass.Placement, str] = {
     routing_pass.Placement.NOT_IMPORTED: (
         "rekordbox holds no row for it yet. Import it into rekordbox, then run "
@@ -483,15 +388,11 @@ def _skipped_files(
 ) -> list[dict[str, Any]]:
     """One record per file the write skipped, with the reason and the rows named.
 
-    THE WRITER'S MATCHER SEES LIVE ROWS ONLY, so its ``absent`` is two different
-    states: a file never imported and a file imported then removed. The rows are
-    indexed again here, both halves, with the root and the prefix map the writer
-    used, and the placement comes from :func:`routing_pass.row_placement`, the
-    rule the deferred pass reports with.
-
-    ONE RECORD PER FILE, NOT PER TREE. Every tree matches against the same rows,
-    so a file's reason cannot differ between trees; ``trees`` says which ones it
-    was declared into.
+    The writer's matcher sees live rows only, so its ``absent`` is two states:
+    never imported and imported then removed. The rows are indexed again here,
+    both halves, and the placement comes from :func:`routing_pass.row_placement`,
+    the deferred pass's rule. One record per file, since every tree matches the
+    same rows; ``trees`` says which ones it was declared into.
     """
     if not skipped:
         return []
@@ -515,8 +416,7 @@ def _skipped_files(
             {
                 "path": path,
                 "reason": str(placement),
-                # A SET, because an additive sub-class declares one file into
-                # two playlists of one tree and the writer skips it twice.
+                # A SET: an additive sub-class files one file twice in one tree.
                 "trees": sorted(set(tree_ids)),
                 "content_ids": list(ids),
             }
@@ -527,11 +427,8 @@ def _skipped_files(
 def skipped_warnings(records: list[dict[str, Any]]) -> list[dict[str, str]]:
     """The envelope warnings over ``skipped_files``, one per reason.
 
-    THE WARNINGS ARE THE HUMAN SURFACE. The default renderer prints warnings and
-    no totals, so a reason carried only in the payload reaches a script and never
-    the person who confirmed the apply. Files are named by their file name, which
-    is what a person looks for in the intake folder, and the full path is in the
-    payload. Sorted, so two runs over one state say one thing.
+    The warnings are the human surface, since the default renderer prints no
+    totals. Files are named by file name, sorted.
     """
     by_reason: dict[str, list[str]] = {}
     for record in records:
@@ -558,26 +455,12 @@ def skipped_warnings(records: list[dict[str, Any]]) -> list[dict[str, str]]:
 def apply_inbox(cfg: config.Config, planned: InboxPlan) -> dict[str, Any]:
     """File the intake folder into every tree that has cut over.
 
-    THE ONE THING THIS FUNCTION EXISTS FOR is that it is the call the confirmed
-    branch was missing. Everything it does is a call into an engine that already
-    owns the rule: the placements are the ones :func:`plan_inbox` derived and
-    the gate showed, the destinations come from ``plan_destinations``, and the
-    write from ``write_tree_membership``, which takes the acknowledgment, the
-    volume identity, the session lock, the verified capture and the analysis
-    watch.
-
-    THE PLAN IS CONSUMED, NOT REMADE (R-691). The readings, the declaration,
-    the cut and the placements are the plan's, so what is written is what the
-    digest bound and the person read. Deriving again here would be a second
-    decision that agrees with the first until the folder or the declaration
-    moves between the two, at which point the screen and the write would part.
-
-    A LIBRARY WITH NOTHING NATIVE WRITES NOTHING AND SAYS SO. Every tree is on
-    the XML bridge until its cutover, and membership written into the database
-    for one of those is membership the next import overwrites. Reported as its
-    own answer rather than as an empty success, because "nothing needed doing"
-    and "there is nowhere to put this yet" are different sentences with different
-    remedies.
+    The placements are the ones :func:`plan_inbox` derived and the gate showed,
+    consumed rather than remade (R-691); the destinations come from
+    ``plan_destinations`` and the write from ``write_tree_membership``, which owns
+    the session gates. A library with nothing native writes nothing and answers
+    ``no-native-tree``: membership written for a tree on the XML bridge is
+    overwritten by the next import.
     """
     entries = planned.entries
     native = planned.native
@@ -592,9 +475,7 @@ def apply_inbox(cfg: config.Config, planned: InboxPlan) -> dict[str, Any]:
     declared = planned.declared
     added = 0
     skipped = 0
-    # WHICH FILES, AND WHY, kept rather than counted (R-318). A confirmed apply
-    # over an intake folder nobody had imported answered ``skipped: 20`` and named
-    # no file, which reads as a failed verb rather than as a step not yet taken.
+    # WHICH FILES, AND WHY, kept rather than counted (R-318).
     missed: dict[str, tuple[trees.RowMatch, list[str]]] = {}
     handle = rb_writer.open_db(cfg=cfg)
     try:
@@ -606,9 +487,7 @@ def apply_inbox(cfg: config.Config, planned: InboxPlan) -> dict[str, Any]:
                 tree_id, entries, root_exists=lambda root: root in known
             )
             standing = rebuild.read_tree(handle, root_id)
-            # THE NODE MAP U36 RECORDED, read rather than rebuilt, which is what
-            # makes a re-run after a destination rename converge on the same
-            # playlist instead of creating a second one.
+            # THE NODE MAP U36 RECORDED, so a re-run after a rename converges.
             record = convergence.read(cfg).tree(tree_id)
             _destinations, plan = rebuild.plan_destinations(
                 declared, placements, standing, record, tree_id=tree_id
@@ -621,13 +500,8 @@ def apply_inbox(cfg: config.Config, planned: InboxPlan) -> dict[str, Any]:
                 plan=plan,
                 rows=rows,
                 root_exists=lambda root: root in known,
-                # THE LIBRARY ROOT, which is what ``route_pending`` twelve
-                # functions below already names and for the same reason: the
-                # watch walks for ANLZ files by name and those do not sit beside
-                # the audio, so naming a narrower directory arms a watch over
-                # nothing and reports a clean session whatever happened to the
-                # grids. The empty-list refusal cannot catch that, because a
-                # barren list is not an empty one.
+                # THE LIBRARY ROOT, as ``route_pending`` names it: ANLZ files
+                # do not sit beside the audio, so a narrower root watches nothing.
                 analysis_roots=analysis_store.watch_roots(cfg),
                 workflow=INBOX_WORKFLOW,
             )
@@ -644,16 +518,12 @@ def apply_inbox(cfg: config.Config, planned: InboxPlan) -> dict[str, Any]:
         "skipped": skipped,
         "skipped_files": _skipped_files(cfg, rows, missed),
         "trees": len(native),
-        # WHAT THE ENGINE SAID IT DID NOT COMPARE, kept rather than dropped
-        # (R-316). Dropping it is how a confirmed apply over a taxonomy that
-        # declares a vocal sub-playlist reported an ordinary write while filing
-        # nothing into it. The plan's, since the plan made the derivation.
+        # WHAT THE ENGINE DID NOT COMPARE, kept rather than dropped (R-316).
         "not_compared": planned.gaps,
     }
 
 
-#: The same, for the deferred placements. They wait for a cutover, and what a
-#: person can settle before one is the import itself.
+#: The no native tree warning for the deferred placements, which wait for a cutover.
 PENDING_REMEDY = (
     "no tree has cut over, so no deferred placement can be made and none was "
     "read: these tracks are placed once a tree is database native. An import is "
@@ -663,27 +533,19 @@ PENDING_REMEDY = (
 def route_inbox(ctx) -> Envelope:
     """Offer a plan for the intake folder, then apply it if the person says so.
 
-    THE BRANCH IS WRITTEN AS "not apply" RATHER THAN AS "is abort", which is the
-    same direction the readiness answers in :mod:`cratekit.write.routing_pass`
-    are derived in and for the same reason: only the one answer that means yes
-    may write, so an option added to this gate later cannot acquire the writing
-    behaviour by nobody having classified it.
-
-    WITH ``--export`` THE INTAKE IS THE EXPORT'S, not the disk folder, and the
-    write is a new file rather than the database. See :func:`route_inbox_export`.
+    Written as "not apply" rather than "is abort", so only the one answer that
+    means yes may write. With ``--export`` the intake is the export's and the
+    write is a new file: see :func:`route_inbox_export`.
     """
     cfg = load_config(("routing_cli",))
     if ctx.args.export:
         return route_inbox_export(ctx, cfg, Path(ctx.args.export))
-    # ONE READ PER VERB (R-685): the declaration the plan is derived from is
-    # the one the write files by, carried on the plan rather than read again.
+    # ONE READ PER VERB (R-685): the write files by the plan's declaration.
     planned = plan_inbox(cfg, active_taxonomy.load(cfg))
     items = planned.items
     plan = _plan(items, kind="inbox")
     option = _apply_gate(ctx, plan, _inbox_facts(planned))
-    # THE PLANNER'S WARNINGS RIDE ON EVERY ANSWER, as the export path's do,
-    # so a reader of the declined envelope learns why every destination is
-    # empty without the screen.
+    # THE PLANNER'S WARNINGS RIDE ON EVERY ANSWER, declined included.
     if option != "apply":
         return ctx.envelope(
             data=_plan(items, kind="inbox", applied=False),
@@ -691,18 +553,14 @@ def route_inbox(ctx) -> Envelope:
             warnings=planned.warnings,
         )
     if not items:
-        # AN EMPTY FOLDER IS NOT A WRITE. Nothing is opened, no session is taken
-        # and the declaration is never derived, which is what makes this true on
-        # the disk rather than approximately true.
+        # AN EMPTY FOLDER IS NOT A WRITE.
         return ctx.envelope(
             data=_plan(items, kind="inbox", applied=False, reason="inbox-empty"),
             outcome=Outcome.NO_OP,
             warnings=planned.warnings,
         )
     result = apply_inbox(cfg, planned)
-    # THE GAPS RIDE AS A WARNING, NOT IN THE TOTALS. They are what this run did
-    # not compare rather than a count of what it did, and the warning is the one
-    # place every surface over this engine says so in the same words.
+    # THE GAPS RIDE AS A WARNING, NOT IN THE TOTALS, in the engine's words.
     not_compared = result.pop("not_compared", ())
     return ctx.envelope(
         data=_plan(items, kind="inbox", **result),
@@ -721,14 +579,9 @@ def route_inbox(ctx) -> Envelope:
 def route_unplaced(ctx) -> Envelope:
     """Report tracks no governed tree places, or write a review of where they go.
 
-    WITHOUT ``--export`` IT IS READ ONLY (R-313). The open carries no write
-    intent and no session is entered, so the report is safe with rekordbox
-    open. On a library with nothing native it compares nothing and says what
-    the export medium delivers, :data:`UNPLACED_EXPORT_REMEDY`.
-
-    WITH ``--export`` IT WRITES A REVIEW (U91, R-694), on the medium that needs
-    no database write. Its placements are nested membership in a new file, which
-    no import lands. See :func:`route_unplaced_export`.
+    Without ``--export`` it is read only (R-313): no write intent and no session,
+    so it is safe with rekordbox open. With ``--export`` it writes a review (U91,
+    R-694): see :func:`route_unplaced_export`.
     """
     cfg = load_config(("routing_cli",))
     if ctx.args.export:
@@ -748,25 +601,11 @@ def route_unplaced(ctx) -> Envelope:
 def _resume(ctx, store, job_id: str) -> Envelope:
     """Reconcile, refuse a foreign or itemless job, drive it, and report how it ended.
 
-    RECONCILE FIRST, because a resume arrives after something stopped and a claim
-    a dead driver left behind is state the queue cannot see for itself.
-
-    THE JOB HAS TO BE A RESORT. ``handlers.run_job`` resolves the worker from the
-    JOB ROW rather than from this verb, and this verb takes no other required
-    input, so without this line any queued job of any verb could be driven
-    through it, under this envelope and without that verb's own resume checks.
-
-    THE ZERO ITEM RULE ON THE RESUME SIDE. A resort queued by any build before
-    U53 carries no items, and ``jobs.drive`` walks an itemless job in one empty
-    pass and records it SUCCEEDED, which is the defect this unit closed arriving
-    through the one door that predates the fix.
-
-    A JOB THAT ENDED BADLY IS NOT AN OK EXIT, which is R-225. ``drive`` raises
-    only when EVERY attempted item failed, and this verb queues one item per
-    governed tree, so a partial failure is the ordinary shape here rather than
-    the edge one: without this an exit of 0 covers a sweep that finished half a
-    library. It sits outside the ``is_open`` branch so a job already failed on
-    entry is caught too.
+    Reconcile first, since a dead driver may have left a claim. The job has to be
+    a resort, since ``handlers.run_job`` resolves the worker from the job row. A
+    resort queued before U53 carries no items and would be walked to SUCCEEDED, so
+    it refuses. A job that ended badly is not an ok exit (R-225), caught outside
+    the ``is_open`` branch so a job failed on entry is caught too.
     """
     job = jobs.reconcile(store, job_id)
     if job.handler_key != ctx.entry.handler_key:
@@ -780,10 +619,8 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             origin=("routing_cli",),
             detail={"job_id": job.job_id, "handler": job.handler_key},
         )
-    # THE GATE IS ANSWERED FROM THE FROZEN PLAN (U219), the rows the answer was
-    # recorded against and the file it was pinned to, never from a fresh read:
-    # by now the first tree may already hold its adds, so a fresh plan would
-    # digest differently from the one approved and stall every respawn.
+    # THE GATE IS ANSWERED FROM THE FROZEN PLAN (U219), never a fresh read: the
+    # first tree may already hold its adds, and a fresh digest would stall.
     payload = job.payload or {}
     if job.is_open() and RESORT_ADDS_KEY not in payload:
         raise refuse(
@@ -825,25 +662,20 @@ def _resume(ctx, store, job_id: str) -> Envelope:
                     origin=("routing_cli",),
                     detail={"job_id": job.job_id},
                 )
-            # THE CUT THE WORKER WILL READ, read the same way first (U89): the one
-            # loader, at the path the frozen configuration names. The file itself
-            # is read as it stands, not frozen with the job. A corrupt calibration
-            # refuses here before any item is claimed.
+            # THE CUT THE WORKER WILL READ, read first (U89), so a corrupt
+            # calibration refuses before any item is claimed.
             threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
             declared = active_taxonomy.load(jobs.frozen_config(job))
             # FROM HERE THIS RUN DROVE, so from here a refusal owes the leftovers.
             frozen = jobs.frozen_config(job)
-            # THE TREES THIS RUN DRIVES, read before the drive: an item already
-            # done was driven by an earlier run and is not this run's to report.
+            # THE TREES THIS RUN DRIVES, read before the drive.
             driven = [
                 i.item_id for i in jobs.items(store, job.job_id) if i.state != jobs.ItemState.DONE
             ]
             _, warnings = ctx.run_job(store, job)
             job = jobs.get(store, job.job_id)
-            # THE SAME ENGINE AS THE REBUILD, SO THE SAME GAP (R-316). Only on the
-            # branch that drove, because a job finished on entry was compared by
-            # an earlier run and this one compared nothing at all. The leftovers
-            # sit on the same branch for the same reason (R-312).
+            # THE SAME ENGINE AS THE REBUILD, SO THE SAME GAP (R-316), and the
+            # leftovers (R-312), only on the branch that drove.
             records, listed_in = _left_behind(frozen, job.job_id)
             warnings = (
                 *warnings,
@@ -857,8 +689,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             )
         jobs.raise_for_state(job)
     except CratekitError as failed:
-        # BOTH EXITS, which is the rule a queued verb's advisory owes. Only when
-        # this run drove: a refusal raised before the drive wrote nothing.
+        # BOTH EXITS carry the leftovers, once this run drove.
         if frozen is None:
             raise
         raise _with_left_behind(failed, frozen, job.job_id) from failed
@@ -868,9 +699,8 @@ def _resume(ctx, store, job_id: str) -> Envelope:
 def _resort_gate(ctx):
     """The resort's declared gate over its plan, found by digest source (U219).
 
-    Refuses rather than defaulting when there is none: a resort whose entry
-    lost its gate would queue writes nobody was shown, and the conformance
-    suite reads the registry, so it would call the verb clean.
+    Refuses rather than defaulting: a resort whose entry lost its gate would queue
+    writes nobody was shown.
     """
     for spec in ctx.entry.gates:
         if spec.digest_source == RESORT_PLAN:
@@ -894,9 +724,8 @@ def _resort_pin(payload: dict[str, Any]) -> dict[str, str] | None:
 def _resort_facts(adds: list[dict[str, str]], facts: dict[str, Any]) -> dict[str, Any]:
     """What the gate shows in front of the adds, counted off them (R-691's rule).
 
-    The trees the adds go into, how many, and the memberships the resort will
-    leave where they are, since it is additive and a person approving it
-    should know what it will not take away.
+    The trees, the count, and the memberships the additive resort leaves where
+    they are.
     """
     return {
         "trees": sorted({row["tree"] for row in adds}) or list(facts.get("trees") or ()),
@@ -910,24 +739,12 @@ def _resort_facts(adds: list[dict[str, str]], facts: dict[str, Any]) -> dict[str
 def route_resort(ctx) -> Envelope:
     """Show every add, ask, then queue the resort. Long work is a job, never an inline sweep.
 
-    THE GATE FIRST (U219). Sitting 61 rehearsed a resort on a disposable copy
-    and it ran as a job with nothing to compare, so the rehearsal rule had no
-    digest to hold the live run to. Now the verb reads the library without
-    writing, runs the same derivation and check the rebuild runs before its
-    write, and shows every add, by tree, folder, playlist and file, with the
-    count it will leave where it is. The answer is pinned to the database file
-    the plan read (U161), the adds are frozen in the job, and the worker
-    refuses before writing if what it would add has moved.
-
-    ONLY THE ROUTED TREES. A native tree the declaration names as something
-    else, the intake flow above all, is left alone and named in a warning:
-    its rebuild derived the routing tree's placements and wrote
-    ``INBOX / Minimal / Deep Tech`` at sitting 61 (R-789).
-
-    AN EMPTY PLAN STILL ASKS, then queues nothing, which is the rule
-    ``tag retag`` argues: every declared gate fires, and a job with no work
-    would be walked to SUCCEEDED over a library nothing changed. A library
-    with no routed native tree reads nothing and asks over nothing.
+    THE GATE FIRST (U219): the verb reads without writing, runs the rebuild's
+    derivation and check, and shows every add by tree, folder, playlist and file,
+    with the count it leaves behind. The answer is pinned to the database file
+    read (U161), the adds are frozen in the job, and the worker refuses if they
+    moved. Only the routed trees; another native tree is named in a warning
+    (R-789). An empty plan still asks, then queues nothing.
     """
     cfg = load_config(("routing_cli",))
     if ctx.args.job:
@@ -964,8 +781,7 @@ def route_resort(ctx) -> Envelope:
     if not routed:
         native = _native_trees(entries)
         return ctx.envelope(
-            # A NATIVE TREE THE TAXONOMY DOES NOT DERIVE IS STILL NATIVE, so the
-            # count is read and the state says which zero.
+            # A NATIVE TREE THE TAXONOMY DOES NOT DERIVE IS STILL NATIVE.
             data=no_job("no-derivable-tree" if native else "no-native-tree", native=len(native)),
             outcome=Outcome.NO_OP,
             warnings=warnings,
@@ -982,11 +798,9 @@ def route_resort(ctx) -> Envelope:
             handler_key=ctx.entry.handler_key,
             payload={
                 **payload,
-                # THE APPROVED ADDS, FROZEN, which the resume answers its gate
-                # from and the worker holds its write to.
+                # THE APPROVED ADDS, FROZEN, for the resume's gate and the worker.
                 RESORT_ADDS_KEY: adds,
-                # And what the screen said in front of them, so the resume
-                # shows the same facts over the same rows.
+                # And the facts the screen showed in front of them.
                 RESORT_FACTS_KEY: facts,
                 # THE GATE RUN, so the respawned child names it. See resort_argv.
                 jobs.GATE_RUN_KEY: ctx.run.run_id,
@@ -1001,25 +815,11 @@ def route_resort(ctx) -> Envelope:
 def handle_resort(job, item, cfg) -> None:
     """Re-place one governed tree from the declaration. The ``route.resort`` worker.
 
-    IT IS THE REBUILD ENGINE, and calling it anything else would be this file
-    claiming a second router. A genre or an energy change moves where the
-    declaration puts a track, and re-deriving the declaration and writing back
-    what the database lacks is exactly what that costs on the additive side.
-
-    WHAT IT DOES NOT DO IS TAKE THE TRACK OUT OF WHERE IT WAS. The membership
-    writer is additive by construction, so after a genre change the track is in
-    its new sub AND still in its old one until somebody removes it. This build
-    has no database removal path to offer, so the verb's summary says additive
-    and the resume NAMES what was left, which is R-312.
-
-    THE ENGINE'S OWN MEASUREMENT IS WHAT GETS NAMED. ``after`` is the check the
-    engine ran on the handle it had just written through, so keeping it costs
-    no second walk of the library and cannot refuse after a job that succeeded.
-    It is returned as this item's report, the durable channel the driver already
-    owns, so the resume reads it back whichever way the job ended.
-
-    ``cfg`` is the configuration this job was FROZEN against (KTD9). Nothing here
-    loads one.
+    It is the rebuild engine, additive by construction: a track moved by a genre
+    or energy change stays in its old sub too, and the resume names what was left
+    (R-312). The engine's own ``after`` check is kept as this item's report, the
+    durable channel the driver owns. ``cfg`` is the job's frozen configuration
+    (KTD9).
     """
     tree_id = str(item.item_id)
     report = rebuild.rebuild_governed_tree(
@@ -1029,8 +829,7 @@ def handle_resort(job, item, cfg) -> None:
         # THE CALIBRATED CUT, through the one loader, at the path the frozen
         # configuration names. None on a library never calibrated (U89, D7).
         vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
-        # THIS TREE'S APPROVED ADDS (U219). The engine refuses before writing
-        # if its own before check would add anything else.
+        # THIS TREE'S APPROVED ADDS (U219), beyond which the engine refuses.
         approved=[
             dict(row)
             for row in (job.payload or {}).get(RESORT_ADDS_KEY) or ()
@@ -1045,9 +844,7 @@ def handle_resort(job, item, cfg) -> None:
         {
             "tree_id": str(item.item_id),
             "left_behind": [rebuild.left_behind_record(entry) for entry in left],
-            # WHAT CAME DUE ONLY FROM THIS RESORT'S OWN WRITES (U219, round
-            # two): a favourite whose track it filed into a new folder, which
-            # no plan before the write could show and so it did not write.
+            # WHAT CAME DUE ONLY FROM THIS RESORT'S OWN WRITES (U219).
             "due_again": len(report.after.missing),
         },
     )
@@ -1056,8 +853,8 @@ def handle_resort(job, item, cfg) -> None:
 def _left_behind(cfg: config.Config, job_id: str) -> tuple[list[dict[str, Any]], str]:
     """Every leftover this job's committed reports name, and where they are kept.
 
-    READ BACK RATHER THAN ACCUMULATED, so a job continued by a second process
-    names what the first one's trees left as well as its own.
+    Read back rather than accumulated, so a job continued by a second process
+    names what the first one's trees left.
     """
     records = [
         entry
@@ -1075,11 +872,9 @@ DUE_AGAIN = "resort-again"
 def _due_again_warnings(cfg: config.Config, job_id: str) -> list[dict[str, str]]:
     """Say that a second resort has more to show, and what stands until it runs.
 
-    A RESORT WRITES ONLY WHAT ITS GATE SHOWED, so a favourite whose track this
-    run filed into a new folder is left for the next resort's plan. Said here
-    rather than only logged, because the tree still differs after a run that
-    succeeded: on a tree a restore marked, its flag stays set and its writes
-    keep refusing until the next resort files the rest.
+    A resort writes only what its gate showed, so a favourite whose track it filed
+    into a new folder waits for the next plan, and a tree a restore marked stays
+    unconverged until then.
     """
     due: dict[str, int] = {}
     for report in RESORT_ARTIFACTS.committed(cfg, job_id):
@@ -1107,11 +902,9 @@ def _due_again_warnings(cfg: config.Config, job_id: str) -> list[dict[str, str]]
 def _with_left_behind(error: CratekitError, cfg: config.Config, job_id: str) -> CratekitError:
     """The same refusal, carrying what the trees that DID finish left behind.
 
-    A RESORT QUEUES ONE ITEM PER TREE, so a partial failure is its ordinary bad
-    ending, and that ending leaves through the job's cause with no warnings at
-    all. The trees that finished were written to all the same. The step is
-    appended and the cause is otherwise untouched, through ``rebuilt`` so a
-    blocked or cancelled job keeps the type the dispatcher reads.
+    A partial failure is a resort's ordinary bad ending and leaves with no
+    warnings, so the step is appended, through ``rebuilt`` so the cause keeps its
+    type.
     """
     records, listed_in = _left_behind(cfg, job_id)
     message = rebuild.left_behind_message(records, listed_in=listed_in)
@@ -1154,10 +947,7 @@ def route_pending(ctx) -> Envelope:
         tree_id for tree_id in entries.tree_ids() if entries.is_database_native(tree_id)
     ]
     if not native:
-        # NOTHING WAS READ, SO NOTHING IS CLAIMED (R-436, R-501). This answered
-        # OK over runs it had not opened, and a landing named it as the proof
-        # of an import. With no native tree there is nowhere to place a track,
-        # so it is a no-op that says why and names what does work today.
+        # NOTHING WAS READ, SO NOTHING IS CLAIMED (R-436, R-501).
         return ctx.envelope(
             data=_plan(items, kind="pending"),
             outcome=Outcome.NO_OP,
