@@ -1,107 +1,25 @@
 """``crate sync land``: one sync pass taken to its landing gate in one verb (U152).
 
-Until this verb a pass was ten commands, each typed with an identifier copied
-from the one before (sitting 47, ``docs/plans/2026-10-27-one-command-sync.md``):
-``sync all`` queued intake jobs nothing drove, ``intake missing``, ``acquire
-download`` and its job, the tail of ``tag folder``, ``analyze run``, ``analyze
-restamp`` and ``name apply``, and ``intake land``. Skipping the tail was
-possible and silent, and the sitting that skipped it planned 116 rows named by
-provider id with no vox score.
+A chain of the verbs a person would type, each run through the real
+dispatcher under its own run with its own gates and refusals, so nothing is
+decided twice; that is why it is a CLI module. Preflight, the pass, its intake
+jobs, the missing list and the download are this verb's; the tail and the
+landing are :mod:`cratekit.cli.tail`'s, shared with ``label sync --go`` (U190).
+Every job is driven to settled, and a tail step that fails ends the pass.
 
-A CHAIN OF THE VERBS A PERSON WOULD TYPE, NOT A SECOND IMPLEMENTATION OF THEM.
-Each step is the existing verb run through the real dispatcher in this process,
-under its own run, with its own gates and its own refusals, so nothing a step
-decides is decided again here. That is why this module is ranked CLI and not
-beside the sync source it starts from: the dispatcher is the CLI layer's, and
-only a module of that layer may reach it.
-
-THE TAIL AND THE LANDING ARE :mod:`cratekit.cli.tail`'s, SINCE U190. Preflight,
-the pass, its intake jobs, the missing list and the download are this verb's;
-the tail in its order over the absolute staging path, the stale tail job
-replaced, ``name apply``'s confirm and the landing stopped at its gate are the
-chain ``label sync --go`` runs too, lifted out of this module whole so the two
-verbs cannot disagree. Every job either meets is driven to settled in the
-foreground and read off the queue, and a tail step that does not succeed ends
-the pass there, so a landing is never planned over files the tail did not run on.
-
-NO PASS LANDS ROWS WITH NO VOCAL SCORE UNLESS TOLD TO (U181). Before the pass
-queues anything, on a profile with the vocals module on, it asks the vocals
-module whether the model can score here, and when it cannot it stops at its
-named gate ``sync.land.without-vocals``, whose screen names the command that
-mends it; ``go`` takes the pass on without vocal scores. Sitting 51
-landed nineteen rows with no voxlevel from a copy installed without the
-vocals extra, and found out from one clause of the landing plan.
-
-A TRACK AN UNLANDED PASS STAGED IS NOT DOWNLOADED AGAIN (U212). The listing
-counts a missing track a staged file already carries as staged, and the pass
-says how many on its missing step. Sitting 55 downloaded two such tracks
-again, and the copies stopped the name step on names already taken. Since
-R-1499 the pass does not land them either: they are another download's, so
-it refuses beside them, below, and names that download's own landing.
-
-A PASS LANDS ONLY ITS OWN (R-1499). Every download stages into the one folder
-and the landing lands the whole of it, so a label go's download waiting at
-its landing's gate, a plain download or an earlier pass's would land under
-this pass. The folder is read as ``label sync --go`` reads it since R-1467,
-:func:`cratekit.intake.beside.beside`, before the download and again before
-the tail: the pass's own is a track of a download over its own list at its
-download name, or a file its own tail left there, kept by name, size and
-modification time whichever way the tail stopped (:func:`_keep`), while its
-pass has no landing proof. Anything else refuses, naming each download and
-how it lands, a label go's by ``crate --run RUN label sync --go`` and an
-earlier pass's by its ``--pass-run``; a folder or a library root that cannot
-be read refuses too. What arrives while the tail runs, a download another
-process finished or a file a person put there, is renamed by ``name apply``
-with the pass's own, so the folder is compared once more after the tail with
-what it held as the tail started (:func:`cratekit.intake.beside.arrived`), and
-anything new refuses before the landing is planned, with no record kept.
-
-ONE PASS STAGES AT A TIME (U293). The pass holds
-:mod:`cratekit.core.staging_lock` for its whole length, as ``label sync --go``
-and the night pass, ``crate sync night``, do, so a second refuses
-``staging-held`` naming the holder before it asks anything; the reading above
-is what keeps a landing right whatever else put files in the folder.
-
-A DOWNLOAD REFUSAL IS RECORDED AND SKIPPED. An item the worker refused for good,
-a lossy only track above all, leaves the job failed with every other item
-durable. The pass names each refused track and goes on with the ones that
-landed. A refusal that waiting mends, a parked provider, or a job still open
-ends the pass instead, because the tracks it holds are still coming.
-
-IT STOPS WHERE A PERSON MUST ACT, AND SAYS WHAT THEY DO. The landing is planned
-by ``intake land`` itself, which reads the backup acknowledgment (this verb
-never mints one) and stops at its explicit gate on its own run. The envelope is
-then PENDING, naming that run, the two commands that answer and apply it as the
-session, and the rekordbox visit that follows. This verb never starts a backup,
-never opens rekordbox and never writes a beat grid; it refuses before any write
-while rekordbox or a backup is running.
-
-A DOWNLOAD ``crate organize`` QUEUED FOR AN ACCOUNT EDIT IS THE PASS'S TOO
-(U227). The rekordbox step ``mirror-downloads`` queues a track a person put
-on a mirrored playlist on the account, which the library lacks, under no run,
-and a pass reads its jobs by the run they carry, so sitting 85 left such a job
-open beside the pass and landed its track only because another playlist
-listed it too. A pass ``sync all`` has just started, or the run it named when
-it queued nothing and no earlier pass is open, takes every such job still
-queued, through :func:`cratekit.core.jobs.join_run`, and drives, lists,
-downloads and lands it with its own; a track two of the pass's jobs list is
-listed once, so it lands once. A continued pass takes none, since it may have
-listed already, and the job stays on the left open row until a new pass
-takes it. ``sync mark`` reads only the playlist sweep's own jobs, so the
-mirror's playlist is never marked.
-
-EITHER RUN ID CONTINUES THE PASS, SINCE U183. A pass has two: the land run this
-verb prints as its own, and the ``sync all`` run its intake jobs carry, which is
-the one every step reads. The land run's record names its pass the moment that
-pass is known, so ``--pass-run`` takes either, an id that is neither is refused
-before any step runs, and every way on the verb prints ends with the one
-command that continues the pass.
-
-THE OUTBOUND HEARTS ARE NOT THIS VERB'S. ``sync all`` is run with no export, so
-the favourites write half refuses its own precondition and stays behind its own
-gate, while the hearts are listed inbound like any playlist. A provider that
-withholds hearts is reported once, on the pass's own failing check, and never
-retried here.
+Rules that shape it. With the vocals module on and no model able to score,
+the pass stops at ``sync.land.without-vocals`` (U181). A pass lands only its
+own staged files: anything else in the staging folder, read through
+:func:`cratekit.intake.beside.beside` before the download, before the tail and
+after it, refuses naming how it lands (U212, R-1499). One pass stages at a
+time under :mod:`cratekit.core.staging_lock` (U293). A permanent download
+refusal is recorded and skipped; one that waiting mends ends the pass. It
+stops at ``intake land``'s gate, PENDING with the commands that answer it,
+and never mints an acknowledgment, starts a backup, opens rekordbox or writes
+a beat grid. Downloads ``crate organize`` queued under no run are joined to a
+new pass (U227). Either the land run or the ``sync all`` run continues a pass
+(U183). The outbound hearts write is not this verb's: ``sync all`` runs with
+no export.
 """
 
 from __future__ import annotations

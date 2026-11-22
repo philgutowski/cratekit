@@ -933,8 +933,7 @@ def siblings(
     found: list[Sibling] = []
     unreadable: list[str] = []
     for path in records:
-        # BY THE FILE NAME, which ``run_path`` makes the run's identifier, so the
-        # asking run is never read at all, and never named unreadable either.
+        # By file name, so the asking run is never read or named unreadable.
         if path.stem == exclude:
             continue
         try:
@@ -995,15 +994,11 @@ def writes_the_database(verb: str) -> bool:
 #: Codes this module raises, listed so the dispatcher's mapping is checkable.
 GATE_CODES: tuple[ExitCode, ...] = (ExitCode.DECISION_REQUIRED, ExitCode.DECISION_STALE)
 
-#: Refusals outside the gates that keep their run (U211): the dispatcher saves
-#: the run with every answer it holds, answers ``resumable`` and ``blocked``,
-#: and names the command that continues it. Only a refusal whose cause clears
-#: on its own and that is raised before the step it guards belongs here. A
-#: process the scan could not read is that: the step that needed rekordbox
-#: closed was not run, and Sitting 54 spent a whole fresh run, three plans and
-#: about 15 minutes, recovering from one. Every gate is digest bound, so a
-#: continued run whose plan moved is asked again rather than applied to a
-#: different plan.
+#: Refusals outside the gates that keep their run (U211): saved with its
+#: answers, ``resumable`` and ``blocked``, with the command that continues it.
+#: Only a cause that clears on its own, raised before the step it guards,
+#: belongs here. A moved plan is still asked again, every gate being digest
+#: bound.
 KEPT_RUN_REASONS: tuple[str, ...] = (processes.UNCONFIRMED,)
 
 

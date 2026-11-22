@@ -1038,33 +1038,12 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(24,), source_scripts=("dj-favorites",), module_id="favorites",
         argv_builder="sync_favorites_argv", long_running=True, emits=frozenset({"job_state"}),
         output_schema="job_state/1",
-        # THE REMOTE ACCOUNT IS THE ONLY SURFACE THIS VERB REACHES (R-424).
-        # It declared four more. The handler reads a collection export and
-        # calls ``hearts.heart_back`` with ``colors=None``, so no library row
-        # is coloured, no Favorite tag is written and no playlist gains a
-        # member: the three acts ``db_tree`` and ``db_metadata`` stood for.
-        # There is no document written beside the export either, so no ``xml``.
-        # The outbound write ledger is the one file a pass does touch and it is
-        # not ``files``: ``export.playlist`` writes that same ledger through the
-        # same shell and has always declared ``remote`` alone, so counting it
-        # here would make one file two different surfaces. Narrowing it drops
-        # the cloud-sync decision with it, since that gate belongs to
-        # ``DB_WRITE_SURFACES`` and a verb declaring a question its work cannot
-        # raise is the over-claim wearing a prompt. ``destructive`` STAYS: the
-        # verb writes an account a person cannot roll back, and whether an
-        # add-only remote write is destruction under KTD24 is a person's call.
-        # It is recorded in `docs/residual-findings.md` as its own finding,
-        # under a heading naming this verb and this flag, rather than decided
-        # here: narrowing a claim in the cautious direction is a different act
-        # from removing one that was false, and only the second was this
-        # closure's to take.
+        # The account only (R-424): it reads an export and colours no row; the
+        # outbound ledger is not ``files``, as for ``export.playlist``. Kept
+        # destructive, an account write nobody can roll back, pending a ruling.
         writes=frozenset({"remote"}), adjudicates=True, destructive=True,
-        # NEITHER REKORDBOX CHECK SURVIVES THE NARROWING. The verb never opens
-        # the database: it reads an export through this project's own reader,
-        # so nothing binds it to a pyrekordbox version and nothing breaks if
-        # rekordbox is running. ``library.mounted`` stays because the outbound
-        # write ledger is library scoped, and losing it is how a second pass
-        # hearts what the first one already hearted.
+        # No rekordbox check: the database is never opened. ``library.mounted``
+        # stays because the outbound ledger is library scoped.
         doctor_checks=("library.mounted", "credential.provider"),
         gates=(
             GateSpec(
@@ -1073,8 +1052,7 @@ ENTRIES: tuple[Entry, ...] = (
                 explicit=True, digest_source="plan",
             ),
         ),
-        # Landed by U33. The marker said U22; R-130 remounts this verb onto
-        # the unit that creates cratekit.favorites.cli. U33 is that unit.
+        # Landed (U33, R-130).
     ),
     Entry(
         name="label.registry",
@@ -1096,17 +1074,11 @@ ENTRIES: tuple[Entry, ...] = (
         summary="write the list acquire download reads from the label releases " "accepted in review",
         module="cratekit.label.approved_cli", builder="build_approved",
         handler_key="label.approved", feature_rows=(22,), module_id="labels",
-        # ``diagnostic/1`` for the reason ``intake.missing`` gives: the default
-        # human renderer shows checks and nothing else, and what a person needs
-        # from this verb is the list's path and the command that downloads it
-        # (R-402).
+        # ``diagnostic/1``, for ``intake.missing``'s reason (R-402).
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # A track the library holds in another version is OFFERED into the match
-        # queue under this verb's own key, the way an intake offers it.
+        # Another version the library holds is offered for review.
         adjudicates=True,
-        # NO WRITE SURFACE, and therefore not destructive, on ``intake.missing``'s
-        # precedent: two new files, and ``listdoc.write`` refuses rather than
-        # replaces a file holding anything else.
+        # No write surface, as for ``intake.missing``.
         doctor_checks=("library.mounted", "credential.provider"),
     ),
     Entry(
@@ -1114,16 +1086,11 @@ ENTRIES: tuple[Entry, ...] = (
         summary="list the releases the label genre gate is holding back, or return " "one to review",
         module="cratekit.label.held_cli", builder="build_held", handler_key="label.held",
         feature_rows=(21,), module_id="labels",
-        # ``diagnostic/1``, for the reason ``label.approved`` gives: what a
-        # person needs is each held release, its reason, and the command that
-        # returns it, and the default renderer shows checks (R-798).
+        # ``diagnostic/1``, since the renderer shows checks (R-798).
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # ``return`` FILES a held release into the label-release queue, under
-        # the sweep's own key, so the item is the one the sweep would have filed.
+        # ``return`` files a held release under the sweep's own key.
         adjudicates=True,
-        # NO WRITE SURFACE, and not destructive: the review database is this
-        # product's own record, and a return adds one open item and changes one
-        # hold's state. Nothing is downloaded and no tombstone is written.
+        # No write surface: the review database is this product's own record.
         doctor_checks=("library.mounted",),
     ),
     Entry(

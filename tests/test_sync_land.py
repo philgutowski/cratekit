@@ -1,21 +1,13 @@
-"""U152: ``crate sync land`` takes a sync pass to its landing gate in one verb.
+"""``crate sync land`` takes a sync pass to its landing gate in one verb (U152).
 
-WHAT THIS FILE GUARDS. Sitting 47 ran ten commands by hand, each with an
-identifier copied from the last, and planned a landing over files the tail had
-never run on. The properties here are the ones that make the one verb real: it
-runs the existing verbs in their one order, it drives every job it meets to a
-settled state, it reads each job's answer off the queue, it skips a download
-refused for good and stops on anything else, and it ends at the landing's own
-gate naming what the session does next.
-
-WHAT IS REAL AND WHAT STANDS IN. The pass, its intake jobs, the missing list and
-the download run through the real dispatcher and the real workers, with the
-catalogue and the acquisition adapter in front of their seams exactly as their
-own suites put them. The tail and the landing need audio analysis, a rekordbox
-collection and an adopted intake tree, none of which a fixture here can hold, so
-those steps stand in through the verb's one seam, ``cratekit.cli.tail.dispatch``: each
-stand in queues and drives a real job in the real queue, so the driver's every
-read of a job is a read of the queue.
+It runs the existing verbs in their one order, drives every job it meets to a
+settled state, reads each job's answer off the queue, skips a download refused
+for good and stops on anything else, and ends at the landing's gate naming what
+the session does next. The pass, its intake jobs, the missing list and the
+download run through the real dispatcher and workers. The tail and the landing
+need analysis, a rekordbox collection and an adopted intake tree, so they stand
+in through ``cratekit.cli.tail.dispatch``; each stand in queues and drives a
+real job, so every read of a job is a read of the queue.
 """
 
 from __future__ import annotations
@@ -81,8 +73,8 @@ def _machine(tmp_path, monkeypatch, profile: str) -> tuple[config.Config, Script
 def vocal_model(monkeypatch):
     """A vocal model able to score, so the pass's preflight goes on (U181).
 
-    Bound as a stand in loader, the vocals module's own rule for "able", since
-    this machine has no torch. A test of the refusal unbinds it.
+    Bound as a stand in loader, since this machine has no torch; a test of the
+    refusal unbinds it.
     """
     from cratekit.analysis import vocals
 
@@ -232,9 +224,9 @@ def _staged(cfg: config.Config) -> Path:
 
 
 def test_the_verb_queues_nothing_of_its_own_and_declares_one_gate_of_its_own():
-    """Every job it drives is queued by its own verb; every gate a step stops at
-    is the step's own. The one gate the pass declares is U181's, asked before
-    anything runs, and answered inline since it writes nothing a pass would not."""
+    """Every job it drives is queued by its own verb, and every gate a step stops
+    at is the step's own. The one gate the pass declares is asked before anything
+    runs (U181) and answered inline, since it writes nothing a pass would not."""
     assert ENTRY.landed and not ENTRY.long_running and ENTRY.argv_builder is None
     (gate,) = ENTRY.gates
     assert gate.name == sync_land.WITHOUT_VOCALS
@@ -245,7 +237,7 @@ def test_the_verb_queues_nothing_of_its_own_and_declares_one_gate_of_its_own():
 
 
 def test_the_tail_is_the_four_verbs_in_their_order():
-    """Sitting 47's order, pinned: tag, analyse, restamp, then name."""
+    """The order is pinned: tag, analyse, restamp, then name."""
     assert [verb for _step, verb, _words in sync_land.TAIL] == [
         "tag.folder",
         "analyze.run",
@@ -310,7 +302,7 @@ def test_one_lossy_refusal_among_eight_downloads_lands_seven_and_reports_one(
     assert "107" in warning["message"] and "lossy-refused" in warning["message"]
     staged = sorted(p.name for p in _staged(cfg).iterdir() if p.is_file())
     assert staged == sorted(f"{track_id}.wav" for track_id in ids[:7])
-    # THE REFUSAL DID NOT END THE PASS: the tail ran and the landing was planned.
+    # The refusal did not end the pass: the tail ran and the landing was planned.
     assert ("intake", "land") in tail.verbs()
     assert summary["stopped_at"] == sync_land.LAND_GATE
 
@@ -320,9 +312,9 @@ def test_a_stale_queued_analyze_job_is_replaced_not_resumed(machine, monkeypatch
     _account(monkeypatch, script, "101", "102")
     staging = _staged(cfg)
     staging.mkdir(parents=True, exist_ok=True)
-    # NO FILE OF ITS OWN IN THE FOLDER (R-1499): a file no download names
-    # would refuse the pass before its download, and this scenario is the
-    # stale job, which names its item whether or not the file is there.
+    # No file of its own in the folder (R-1499): a file no download names would
+    # refuse the pass before its download, and the stale job names its item
+    # whether or not the file is there.
     with jobs.open_store() as store:
         stale = jobs.enqueue(
             store,
@@ -456,8 +448,8 @@ def test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_stag
 def test_each_tail_step_queues_only_and_drives_its_job_through_one_job_command(
     machine, monkeypatch, tail
 ):
-    """U192. Run by hand the tail verbs drive what they queue, so the pass, which
-    drives each job itself, must ask for the queue alone, and then drive once."""
+    """Run by hand the tail verbs drive what they queue, so the pass asks for the
+    queue alone and then drives once (U192)."""
     from cratekit.modules import foreground
 
     cfg, script = machine
@@ -780,14 +772,14 @@ def test_a_job_another_driver_holds_ends_the_pass_with_that_drivers_refusal(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 6. The review's first round
+# 6. Passes queued by hand, transient failures and foreign jobs
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_pass_queued_by_hand_and_never_driven_is_the_one_this_verb_takes(
     machine, monkeypatch, tail
 ):
-    """Sitting 47's starting state: sync all typed by hand, its jobs queued and idle.
+    """A sync all typed by hand, its jobs queued and idle, is the pass this verb takes.
 
     The second sync all leaves the playlist out as in flight and queues nothing,
     and that is not a pass with nothing to do.
@@ -941,8 +933,8 @@ def test_a_cancelled_download_over_the_same_list_is_not_reused(machine, monkeypa
     real = tail.real
 
     def undriven(argv):
-        # THE DOWNLOAD'S COMMAND ANSWERS WITHOUT DRIVING IT, so the job stays
-        # queued and the first pass stops there, the shape a person cancels.
+        # The download's command answers without driving it, so the job stays
+        # queued and the first pass stops there.
         if argv[:2] == ["acquire", "download"] and "--job" in argv:
             return _refused(
                 refuse("job-driver-held", "held elsewhere", origin=("test",)).cause
@@ -1087,7 +1079,7 @@ def test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 7. The review's second round
+# 7. Earlier passes and repeated downloads
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -1285,7 +1277,7 @@ def _cancelled_pass(cfg: config.Config, run_id: str) -> None:
 def test_the_left_open_row_names_each_playlist_its_age_size_and_copies(
     machine, monkeypatch, tail
 ):
-    """Sitting 51: 17 jobs read as ids alone, ten of them copies of two lists."""
+    """Each playlist on the left open row carries its age, size and copies, not ids alone."""
     cfg, script = machine
     key = registry.entry("intake.playlist").handler_key
     with jobs.open_store() as store:
@@ -1317,7 +1309,7 @@ def test_the_left_open_row_names_each_playlist_its_age_size_and_copies(
     assert "Cancelling a job lets its playlist's increment queue again on the next pass" in detail
     assert "crate job cancel --stale-days DAYS --dry-run" in detail
     grouped = _summary(envelope)["left_open_playlists"]
-    # NEWEST FIRST, the order every open job is read in.
+    # Newest first, the order every open job is read in.
     assert [group["playlist"] for group in grouped] == [
         "playlist 'Warmup Two' (pl-b)",
         "playlist 'Warmup' (pl-a)",
@@ -1328,7 +1320,7 @@ def test_the_left_open_row_names_each_playlist_its_age_size_and_copies(
 
 
 def test_a_pass_after_the_stale_cancel_queues_the_freed_playlist(machine, monkeypatch, tail):
-    """The brief's last scenario: the cancel is what lets the playlist queue again."""
+    """The cancel is what lets the playlist queue again."""
     cfg, script = machine
     _account(monkeypatch, script, "101")
     code, first = drive(["sync", "all"])
@@ -1409,7 +1401,7 @@ def test_a_continued_pass_whose_every_job_was_cancelled_names_a_new_pass_not_a_r
 def test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_row(
     machine, monkeypatch, tail
 ):
-    """Round one of the review: grouped as the pass holds them, not as typed."""
+    """Grouped as the pass holds them, not as typed."""
     cfg, script = machine
     uuid = "0f6e2c3a-1b2d-4e5f-8a9b-0c1d2e3f4a5b"
     key = registry.entry("intake.playlist").handler_key
@@ -1437,11 +1429,12 @@ def test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_r
 
     assert "for 1 playlist(s)" in _check(envelope, "left-open")["detail"]
     (group,) = _summary(envelope)["left_open_playlists"]
-    # HEADED BY THE ACCOUNT'S NAME, though the typed job is the newer.
+    # Headed by the account's name, though the typed job is the newer.
     assert group["playlist"] == f"playlist 'Warmup' ({uuid})"
     assert sorted(job["job_id"] for job in group["jobs"]) == ["swept", "typed"]
 
 
+# ═══════════════════════════════════════════════════════════════════════════
 # U181. A pass refuses to land rows with no vocal score, unless told to go on
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1458,7 +1451,7 @@ def full(tmp_path, monkeypatch):
 
 
 def _model_cannot_score(monkeypatch) -> None:
-    """The copy sitting 51 ran: no loader bound, and the extra missing."""
+    """No loader bound, and the extra missing."""
     from cratekit.analysis import vocals
 
     monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
@@ -1625,9 +1618,9 @@ def test_a_warning_the_landing_plan_carries_rides_the_passes_own_warnings(
 def test_the_tail_asks_the_vocal_model_before_analyze_run_binds_its_loader(
     full, monkeypatch, tail
 ):
-    """Review round one. ``analyze run``'s worker binds the shipped loader in
-    this process, and a bound loader reads as able, so a question asked after
-    it would queue a rescore over a machine with no model and report it done."""
+    """The question is asked before ``analyze run`` binds the shipped loader,
+    since a bound loader reads as able and a later question would queue a
+    rescore over a machine with no model."""
     from cratekit.analysis import vocals
 
     cfg, script = full
@@ -1670,7 +1663,7 @@ def _land_runs() -> list[str]:
 def test_a_pass_continued_by_its_land_run_id_reaches_the_same_jobs_as_by_its_pass_id(
     machine, monkeypatch, tail
 ):
-    """Sitting 51 pasted the land run's own id and was refused at the fourth step."""
+    """Continuing by the land run's own id reaches the same jobs as by the pass id."""
     cfg, script = machine
     _account(monkeypatch, script, "101", "102")
     code, first = drive(["sync", "land"])
@@ -1742,7 +1735,7 @@ def test_a_refused_id_names_the_land_run_recorded_beside_each_pass(machine, monk
 
 
 def test_a_land_run_that_recorded_no_pass_is_refused_and_says_why(machine, tail):
-    """A record an earlier build wrote, or a run that queued nothing, continues nothing."""
+    """A land run that recorded no pass, or queued nothing, continues nothing."""
     older = gates.new_run(ENTRY)
     gates.save(older)
     assert "related_runs" not in _record(older.run_id)
@@ -1755,7 +1748,7 @@ def test_a_land_run_that_recorded_no_pass_is_refused_and_says_why(machine, tail)
 
 
 def test_a_land_run_whose_pass_no_intake_job_carries_is_refused_not_continued(machine, tail):
-    """The sitting 51 shape: a resolved id that the fourth step would refuse."""
+    """A resolved id that a later step would refuse is refused up front."""
     stale = gates.new_run(ENTRY)
     stale.related_runs["pass_run"] = "2026-10-30T00:00:00Z-gone"
     gates.save(stale)
