@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 import shutil
 import tomllib
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -86,10 +87,12 @@ def _reader_calls(path: Path) -> list[tuple[str, int]]:
     """Every call in ``path`` to a name in READERS, aliased imports resolved.
 
     A file naming none of them is skipped unparsed: every call the walk finds
-    needs a READERS name written in the source, as an attribute or an import.
+    needs a READERS name written in the source, as an attribute or an import,
+    compared after the NFKC folding the parser applies to identifiers.
     """
     source = path.read_text(encoding="utf-8")
-    if not any(name in source for name in READERS):
+    folded = unicodedata.normalize("NFKC", source)
+    if not any(name in folded for name in READERS):
         return []
     tree = parsed(source)
     bound = {name: name for name in READERS}

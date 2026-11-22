@@ -1275,7 +1275,7 @@ def test_no_module_composes_its_own_path_under_a_state_root():
     assert not offenders, (
         "paths composed under a state root outside the inventory:\n"
         + "\n".join(offenders)
-        + "\nDeclare the entry in config.STATE_FILES and resolve it with state_path()."
+        + "\nDeclare the entry in STATE_FILES (core/state_files.py) and resolve it with state_path()."
     )
 
 
