@@ -323,12 +323,7 @@ def test_a_release_forgets_every_row_so_the_next_reader_reads_afresh(world):
 
 
 def test_a_released_handle_holds_no_lock_while_the_report_waits(world):
-    """The report holds its handle across provider calls, so it must hold no lock there.
-
-    IN THE ROLLBACK JOURNAL, the stricter mode, where a reader's lock keeps
-    every writer out; in WAL a reader blocks no writer at all. The fixture is
-    disposable, so its mode is switched for the probe.
-    """
+    """The report holds its handle across provider calls, so it must hold no lock there."""
     cfg = world[0]
     conn = sqlite3.connect(cfg.library.db_path)
     ((mode,),) = conn.execute("PRAGMA journal_mode=DELETE").fetchall()

@@ -292,9 +292,7 @@ def test_eighteen_tracks_fifteen_in_the_library_plan_fifteen_and_name_three(
     ]
 
 
-def test_a_near_match_is_a_question_named_as_a_miss_and_never_written(
-    machine, account, silence
-):
+def test_a_near_match_is_a_question_named_as_a_miss_and_never_written(machine, account, silence ):
     _owned(machine, silence, "Cut 15")
     _owned(machine, silence, "Cut 01")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", "Cut 16"))
@@ -336,9 +334,7 @@ def test_a_set_with_no_match_is_reported_and_no_empty_playlist_is_written(
     assert set(_playlists_under(machine, _inspiration_id(machine))) == {FEMME}
 
 
-def test_a_step_whose_every_set_has_no_match_plans_nothing_and_writes_nothing(
-    machine, account
-):
+def test_a_step_whose_every_set_has_no_match_plans_nothing_and_writes_nothing(machine, account ):
     account.add_set(f"DOWNLOADED {GOATS}", ("Cut 07",))
     step = _step(_report())
     assert step["state"] == "nothing" and step["counts"]["no match"] == 1
@@ -606,9 +602,7 @@ def test_a_profile_without_the_export_module_lists_the_step(machine, account, mo
 
     def without_export(*args, **kwargs):
         resolved = real(*args, **kwargs)
-        return dataclasses.replace(
-            resolved, modules=resolved.modules - {rekordbox.EXPORT_MODULE}
-        )
+        return dataclasses.replace(resolved, modules=resolved.modules - {rekordbox.EXPORT_MODULE} )
 
     monkeypatch.setattr(profiles, "resolve", without_export)
     step = _step(_report())
@@ -638,9 +632,7 @@ def test_a_track_with_no_title_is_named_and_the_sets_other_tracks_are_written(
     assert step["state"] == "planned"
     planned = _by_set(step)[FEMME]
     assert planned["action"] == inspiration.CREATE and planned["tracks"] == 2
-    assert planned["misses"] == [
-        _unread_line(3, "Probe", "no title", "title", f"{playlist_id}-3")
-    ]
+    assert planned["misses"] == [_unread_line(3, "Probe", "no title", "title", f"{playlist_id}-3") ]
     assert step["counts"]["tracks matched"] == 2 and step["counts"]["tracks missed"] == 1
     assert not [w for w in envelope["warnings"] if w["code"] == "organize-inspiration-unread"]
     code, done, _refused = _approved()
@@ -668,9 +660,7 @@ def test_a_track_with_no_artist_is_named_and_the_sets_other_tracks_are_written(
     assert _members(machine, under[FEMME]) == [rows["Cut 01"], rows["Cut 02"]]
 
 
-def test_an_unread_track_keeps_the_sets_positions_for_every_other_miss(
-    machine, account, silence
-):
+def test_an_unread_track_keeps_the_sets_positions_for_every_other_miss(machine, account, silence ):
     _owned(machine, silence, "Cut 01")
     playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("", "Cut 01", "Absent Harbor"))
     planned = _by_set(_step(_report()))[FEMME]
@@ -700,9 +690,7 @@ def test_a_set_whose_unread_track_carries_no_provider_id_is_still_filed_unread(
     )
 
 
-def test_a_readable_track_with_no_provider_id_is_matched_as_before(
-    machine, account, silence
-):
+def test_a_readable_track_with_no_provider_id_is_matched_as_before(machine, account, silence ):
     rows = {title: _owned(machine, silence, title) for title in ("Cut 01", "Cut 02")}
     playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", "Cut 02"))
     account.found.playlists[playlist_id]._tracks[1].id = ""
@@ -767,13 +755,7 @@ def test_a_set_no_track_of_which_reads_names_five_counts_the_rest_and_the_withhe
 def test_a_report_reads_inspiration_twice_through_one_handle_and_locks_nothing_meanwhile(
     machine, account, silence, monkeypatch
 ):
-    """U267. The step reads, asks the provider, then reads again, all on the report's one handle.
-
-    The planner's rule is that no read is held across a provider call, so at
-    each listing the provider is asked for, another connection must be able to
-    take the database whole. The fixture is switched to the rollback journal,
-    where a reader's lock would keep that connection out.
-    """
+    """U267. The step reads, asks the provider, then reads again, all on the report's one handle."""
     import sys
     conn = sqlite3.connect(machine.library.db_path)
     assert conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0] == "delete"

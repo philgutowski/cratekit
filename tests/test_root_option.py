@@ -33,11 +33,7 @@ ELSEWHERE = "elsewhere"
 
 @pytest.fixture
 def standing_elsewhere(tmp_path, monkeypatch) -> Path:
-    """The shell's directory, holding a folder of the same name as the library's.
-
-    The old reading would have walked THIS folder, so its presence is what lets
-    a test tell the two readings apart rather than only the missing case.
-    """
+    """The shell's directory, holding a folder of the same name as the library's."""
     here = tmp_path / ELSEWHERE
     (here / "Music" / "wave").mkdir(parents=True)
     monkeypatch.chdir(here)

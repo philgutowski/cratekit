@@ -251,10 +251,7 @@ def world(seams):
 
 
 def _answered(db: str = "approve", acct: str = "apply", *extra: str) -> tuple[int, dict, dict]:
-    """Both explicit gates answered by their two acts, then the run that writes.
-
-    Answers the final code and envelope, and the refusal at the first gate.
-    """
+    """Both explicit gates answered by their two acts, then the run that writes."""
     argv = [*VERB, *extra]
     collection.reset_cache()
     code, first = drive(argv)
@@ -379,13 +376,7 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
 
 
 def test_deadca7s_folder_is_named_once_as_foreign_and_a_full_apply_leaves_it_as_it_was(world):
-    """U185. Another app's folder at the top, holding the very tracks organize files.
-
-    The report names it once, as a fact, and never among the author's own with
-    a home; both gates applied leave every row the push wrote, its cues and the
-    pushed track's analysis columns byte for byte as they were, and a second
-    report reads it the same way.
-    """
+    """U185. Another app's folder at the top, holding the very tracks organize files."""
     cfg, _fake, _held, _inbox, _ids = world
     pushed = deadca7_fixtures.push(cfg.library.db_path, ("r-one", "r-two"))
     before = deadca7_fixtures.written(cfg.library.db_path, pushed)
@@ -423,12 +414,7 @@ def eastern():
 
 
 def _readings() -> dict[str, object]:
-    """What organize's report, converge and doctor answer, minus what moves per run.
-
-    Organize's rekordbox area without the foreign fact, which is the one line
-    a push adds; each converge check and each doctor check by key, status and
-    detail.
-    """
+    """What organize's report, converge and doctor answer, minus what moves per run."""
     area = dict(_report()["data"]["summary"]["areas"][rekordbox.AREA])
     area["facts"] = {
         key: value for key, value in area["facts"].items() if key != rekordbox.FOREIGN_FACT
@@ -447,15 +433,7 @@ def _readings() -> dict[str, object]:
 
 
 def test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc(eastern, world):
-    """U285, from sitting 98. DEADCA7 stamps its rows ``0001-01-01T00:00:00Z``.
-
-    West of UTC the binding read that as the year before year 1 and raised
-    ``OverflowError``, so ``organize`` and ``converge`` failed INTERNAL over a
-    real push. Over the producer's own value, every verb that reads the tree
-    answers exactly as it did before the push, organize names the folder once
-    as another app's, a full apply leaves every row the push wrote byte for
-    byte, its dates included, and a second report reads it the same way.
-    """
+    """U285, from sitting 98. DEADCA7 stamps its rows ``0001-01-01T00:00:00Z``."""
     cfg, _fake, _held, _inbox, _ids = world
     before_push = _readings()
     pushed = deadca7_fixtures.push(
@@ -1133,10 +1111,7 @@ def _mirrored_folder(cfg: config.Config) -> str:
 
 
 def _mirror_between_acts(cfg, held, monkeypatch) -> tuple[int, dict, int]:
-    """``--only mirror``'s two acts with a library write between them (R-1031).
-
-    Answers the run's code and envelope and how many matches the apply asked.
-    """
+    """``--only mirror``'s two acts with a library write between them (R-1031)."""
     monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
     only = [*VERB, "--only", account_area.MIRROR]
     collection.reset_cache()
@@ -1185,11 +1160,7 @@ def test_a_library_write_between_the_mirrors_two_acts_applies_the_approved_plan(
 
 
 def test_the_gate_freezes_every_step_of_the_full_account_area(world):
-    """U222. The steps a stale answer names are the whole area's, the mirror planned last.
-
-    A step kind planned after the mirror would be missing from the frozen plan
-    and named on every stale answer as one the gate did not show.
-    """
+    """U222. The steps a stale answer names are the whole area's, the mirror planned last."""
     from cratekit.organize import mirror_frozen
     cfg, _fake, _held, _inbox, _ids = world
     collection.reset_cache()
@@ -1220,11 +1191,7 @@ def test_without_the_frozen_plan_the_same_two_acts_are_refused_stale(world, monk
 
 
 def test_a_run_resumed_with_no_account_answer_plans_the_mirror_afresh(world, monkeypatch):
-    """R-1031. Only an answered account gate rebuilds from the frozen plan.
-
-    A run resumed before its account gate is answered asks the gate again, and
-    it is shown the library as it is now, not the plan the first act froze.
-    """
+    """R-1031. Only an answered account gate rebuilds from the frozen plan."""
     cfg, _fake, held, _inbox, _ids = world
     assert _answered()[0] == int(ExitCode.OK)
     monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
@@ -1802,11 +1769,7 @@ def test_an_unread_label_registry_refuses_the_root_step_as_it_refuses_the_filing
 
 
 def test_an_account_change_between_the_mirrors_acts_is_stale_and_says_what_moved(world, monkeypatch):
-    """U222. The refusal names the step and playlist that moved, and says the plan was rebuilt.
-
-    Sitting 66's refusal named two digests and nothing else, so the sitting
-    could not tell a rebuild from a fresh plan, nor which playlist moved.
-    """
+    """U222. The refusal names the step and playlist that moved, and says the plan was rebuilt."""
     _cfg, _fake, held, _inbox, _ids = world
     assert _answered()[0] == int(ExitCode.OK)
     monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
@@ -1850,13 +1813,7 @@ def _playlists(items: list[dict]) -> list[str]:
 def test_a_stale_mirror_refusal_shows_the_moved_plan_and_the_decide_after_it_applies_that_plan(
     world, monkeypatch
 ):
-    """R-1334. The review of U222's drive: the playlist reaches the account only once shown.
-
-    With no frozen plan, a playlist made under a mirrored folder between the
-    acts moves the digest. The refusal used to name the two digests alone, and
-    a second ``run decide`` bound the moved one, so the resume created a
-    playlist no screen had shown.
-    """
+    """R-1334. The review of U222's drive: the playlist reaches the account only once shown."""
     from cratekit.cli import gates
     from cratekit.organize import mirror_frozen
     cfg, _fake, held, _inbox, _ids = world
@@ -1945,14 +1902,7 @@ def _account_side(held) -> tuple[list, list, list]:
 
 
 def test_an_account_answer_before_its_gate_is_shown_is_refused_and_records_nothing(world):
-    """R-1349. The drive that created three folders on the account with no account gate.
-
-    The rekordbox gate open, the account answered ahead of its own gate. The
-    answer used to be recorded with no digest, so the resume applied the
-    account area unasked. Now the decide is refused, names the gate the run
-    waits at and the command that reaches the account gate, and the resume
-    after the rekordbox answer stops at the account gate with nothing written.
-    """
+    """R-1349. The drive that created three folders on the account with no account gate."""
     from cratekit.cli import gates
     _cfg, _fake, held, _inbox, _ids = world
     before = _account_side(held)
