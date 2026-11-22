@@ -84,10 +84,7 @@ class RootRow:
 
     def item(self, years: Mapping[str, filing.YearFolder]) -> dict[str, Any]:
         shown: dict[str, Any] = {
-            "id": self.target,
-            "kind": self.what,
-            "name": self.name,
-            "action": self.action,
+            "id": self.target, "kind": self.what, "name": self.name, "action": self.action,
             "root_kind": self.kind,
         }
         if self.year:
@@ -157,8 +154,7 @@ class Kept:
 
     def totals(self) -> dict[str, Any]:
         return {
-            "folders": dict(self.folders),
-            "folders_created": list(self.created),
+            "folders": dict(self.folders), "folders_created": list(self.created),
             "moved": [list(one) for one in self.moved],
             "removed": [list(one) for one in self.removed],
             "kept": [list(one) for one in self.kept],
@@ -169,10 +165,7 @@ class _LabelFolders:
     """Each label's folder and the tracks its taken playlists hold, read once."""
 
     def __init__(
-        self,
-        cfg: config.Config,
-        remote: RemoteAccount,
-        root: Mapping[str, str],
+        self, cfg: config.Config, remote: RemoteAccount, root: Mapping[str, str],
         followed: Iterable[tuple[str, str]],
     ) -> None:
         self._cfg = cfg
@@ -239,10 +232,7 @@ def _missing_named(names: Mapping[str, tuple[str, str]], missing: Sequence[str])
 
 
 def _debris(
-    remote: RemoteAccount,
-    folders: _LabelFolders,
-    placed: filing.Placement,
-    declared: int | None,
+    remote: RemoteAccount, folders: _LabelFolders, placed: filing.Placement, declared: int | None
 ) -> RootRow:
     """One debris playlist, removed only when every track it holds is in its label's folder."""
     from cratekit.modules.outbound import kinds
@@ -299,13 +289,8 @@ def _debris(
 
 
 def _legacy(
-    cfg: config.Config,
-    remote: RemoteAccount,
-    root: Mapping[str, str],
-    years: dict[str, filing.YearFolder],
-    folder_id: str,
-    name: str,
-    year: str,
+    cfg: config.Config, remote: RemoteAccount, root: Mapping[str, str],
+    years: dict[str, filing.YearFolder], folder_id: str, name: str, year: str,
 ) -> list[RootRow]:
     """One legacy year folder: its playlists filed by year, or itself removed once empty."""
     held = remote.folder_playlists(folder_id)
@@ -339,11 +324,7 @@ def _legacy(
 
 
 def plan(
-    cfg: config.Config,
-    *,
-    listed: Sequence[Any],
-    remote: RemoteAccount,
-    filed: filing.FilePlan,
+    cfg: config.Config, *, listed: Sequence[Any], remote: RemoteAccount, filed: filing.FilePlan,
     followed: Iterable[tuple[str, str]] = (),
 ) -> RootPlan:
     """Decide every removal and legacy move at the root. Reads, and writes nothing.

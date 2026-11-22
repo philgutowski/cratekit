@@ -194,10 +194,8 @@ class Filed:
 
     def totals(self) -> dict[str, Any]:
         return {
-            "folders": dict(self.folders),
-            "folders_created": list(self.created),
-            "kind_folders": dict(self.kinds),
-            "kind_folders_created": list(self.kinds_created),
+            "folders": dict(self.folders), "folders_created": list(self.created),
+            "kind_folders": dict(self.kinds), "kind_folders_created": list(self.kinds_created),
             "moved": [list(one) for one in self.moved],
         }
 
@@ -305,14 +303,8 @@ def by_name(pairs: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
 
 
 def plan(
-    cfg: config.Config,
-    *,
-    listed: Sequence[Any],
-    remote: RemoteAccount,
-    labels: Iterable[str],
-    marks: Iterable[Any],
-    working: Any,
-    taken: Iterable[Any] = (),
+    cfg: config.Config, *, listed: Sequence[Any], remote: RemoteAccount, labels: Iterable[str],
+    marks: Iterable[Any], working: Any, taken: Iterable[Any] = (),
 ) -> FilePlan:
     """Decide every playlist at the account root. Reads, and writes nothing.
 
@@ -421,23 +413,15 @@ def failed_part_way(exc: Exception, wrote: str, done: Any, again: str, origin) -
         return RuntimeError(f"{wrote}. {type(exc).__name__}: {exc}")
     cause = exc.cause
     return refuse(
-        cause.reason,
-        f"{wrote}. {cause.message}",
-        remedy=cause.remediation.remedy,
-        steps=(*cause.remediation.steps, again),
-        scope=Scope.RUN,
-        retryable=cause.retryable,
-        origin=origin,
-        detail={**dict(cause.detail), **done.totals()},
-        inner=cause,
+        cause.reason, f"{wrote}. {cause.message}",
+        remedy=cause.remediation.remedy, steps=(*cause.remediation.steps, again),
+        scope=Scope.RUN, retryable=cause.retryable, origin=origin,
+        detail={**dict(cause.detail), **done.totals()}, inner=cause,
     )
 
 
 def reserve_year(
-    cfg: config.Config,
-    remote: RemoteAccount,
-    folder: YearFolder,
-    folders: dict[str, str],
+    cfg: config.Config, remote: RemoteAccount, folder: YearFolder, folders: dict[str, str],
     created: list[str],
 ) -> str:
     """The year's folder identifier, made once on the account if the plan found none.

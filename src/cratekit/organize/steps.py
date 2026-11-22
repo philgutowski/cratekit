@@ -75,12 +75,8 @@ class Step:
     def item(self) -> dict[str, Any]:
         """The step as its area's gate shows it."""
         shown: dict[str, Any] = {
-            "step": self.key,
-            "title": self.title,
-            "state": self.state,
-            "detail": self.detail,
-            "counts": dict(self.counts),
-            "plan": list(self.items),
+            "step": self.key, "title": self.title, "state": self.state, "detail": self.detail,
+            "counts": dict(self.counts), "plan": list(self.items),
         }
         if self.digest is not None:
             shown["digest"] = self.digest
@@ -95,29 +91,16 @@ def refused(key: str, title: str, cause: Cause) -> Step:
 
 
 def planned_step(
-    key: str,
-    title: str,
-    writes: bool,
-    detail: str,
-    *,
-    digest: str | None = None,
-    counts: dict[str, Any] | None = None,
-    items: Iterable[dict[str, Any]] = (),
+    key: str, title: str, writes: bool, detail: str, *, digest: str | None = None,
+    counts: dict[str, Any] | None = None, items: Iterable[dict[str, Any]] = (),
     apply: Callable[[Step], dict[str, Any]] | None = None,
 ) -> Step:
     """A step its verb planned: ``planned`` when it writes, else ``nothing``.
 
     ``apply`` is handed the step, so a write can add the warnings it raised.
     """
-    step = Step(
-        key=key,
-        title=title,
-        state=PLANNED if writes else NOTHING,
-        detail=detail,
-        digest=digest,
-        counts=dict(counts or {}),
-        items=list(items),
-    )
+    state = PLANNED if writes else NOTHING
+    step = Step(key, title, state, detail, digest, dict(counts or {}), list(items))
     if writes and apply is not None:
         step.apply = partial(apply, step)
     return step
@@ -184,9 +167,7 @@ class Area:
         selection the key is absent and the full digest stays as it was.
         """
         identity: dict[str, Any] = {
-            "kind": "organize",
-            "area": self.name,
-            "steps": [step.identity() for step in self.steps],
+            "kind": "organize", "area": self.name, "steps": [step.identity() for step in self.steps]
         }
         if self.only is not None:
             identity["only"] = list(self.only)

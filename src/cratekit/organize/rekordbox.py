@@ -1,47 +1,30 @@
 """The database area of ``crate organize`` (U112): every step through its own verb.
 
 THE BACKUP ACKNOWLEDGMENT IS READ BEFORE THE AREA IS PLANNED (R-733), as ``inbox
-rotate`` reads it before its plan. With none, the area is refused as a whole,
-its gate is not asked since nothing it could write would run, and the account
-area is planned and asked as if this one were not there. ``--report`` writes
-nothing, so it plans the area anyway and says the acknowledgment is missing.
+rotate`` reads it. With none the area is refused whole and its gate not asked;
+``--report`` writes nothing, so it plans the area anyway and says it is missing.
 
 THE STEPS, each the owning verb's plan:
 
-* ADOPTION, ``adopt apply``'s :func:`current_plan` and its own screen. On
-  approval its job is queued under that verb's handler key, with the person
-  who answered this area's gate as its approving actor, and driven here
-  through the worker ``adopt apply`` runs, which rebuilds the plan and refuses
-  ``decision-stale`` when it moved. A plan with something to file over a
-  routing tree still on the xml bridge is refused at the plan, naming
-  ``tree cutover``, since the worker's membership write refuses that tree and
-  a screen should not promise it;
+* ADOPTION, ``adopt apply``'s plan and screen. On approval its job is queued
+  under that verb's handler key, with the person who answered this area's gate
+  as its actor, and driven through the worker ``adopt apply`` runs. A plan over
+  a routing tree still on the xml bridge is refused, naming ``tree cutover``;
 * ROTATION, ``inbox rotate``'s plan and write, read back after;
-* THE RECORD LABELS TREE is LISTED: its only writer is the landing of a label
-  batch, which writes the tree into its intake file, so no verb places a
-  landed batch afterwards and nothing is planned for it;
-* A BATCH NAMED FOR ITS RUN, ``..._inboxed``, is a rename SUGGESTED and never
-  made, since no verb renames a batch;
+* THE RECORD LABELS TREE is LISTED, since only a label batch's landing writes it;
+* A BATCH NAMED FOR ITS RUN, ``..._inboxed``, is a rename SUGGESTED, never made;
 * INSPIRATION BROUGHT LEVEL WITH THE ACCOUNT (U144),
-  :mod:`cratekit.organize.inspiration`: every downloaded (taken) set in the
-  account's ``Downloaded Sets <year>`` folders with no INSPIRATION playlist of
-  its name gets one, of the library rows its tracks match, every miss named.
-  A set already there is skipped, so a second run plans nothing. Listed and
-  not planned when the export module, which archives sets, is off.
-* AN EDIT MADE ON THE ACCOUNT TO A MIRRORED PLAYLIST TAKEN INTO THE LIBRARY,
-  a genre playlist (U201), the Favorites folder or INBOX (U204),
-  :mod:`cratekit.organize.mirror_edits`: decided from the run's one account
-  mirror reading, which the account area's mirror plans from too, so the edit
-  this step takes is the edit the mirror holds. Every membership it takes away
-  is named among the area's deletions;
-* A TRACK ADDED THERE THAT THE LIBRARY LACKS QUEUED FOR DOWNLOAD, once (U204),
+  :mod:`cratekit.organize.inspiration`, listed when the export module is off;
+* AN EDIT MADE ON THE ACCOUNT TO A MIRRORED PLAYLIST (U201, U204),
+  :mod:`cratekit.organize.mirror_edits`, decided from the run's one account
+  mirror reading, every membership it takes away named among the deletions;
+* A TRACK ADDED THERE THAT THE LIBRARY LACKS QUEUED FOR DOWNLOAD (U204),
   :mod:`cratekit.organize.mirror_downloads`, off the same reading.
 
-WHAT THE AUTHOR MADE is every top level node outside the trees the taxonomy
-declares, and every node the rotation leaves alone under INBOX. Each is listed
-with a home where :mod:`cratekit.organize.own` finds an obvious one. ANOTHER
-APP'S FOLDER AT THE TOP, :mod:`cratekit.core.foreign_tree` (U185), is not the
-author's and not a finding: it is named once as a fact and never listed.
+WHAT THE AUTHOR MADE is every top level node outside the declared trees, and
+every node the rotation leaves alone under INBOX, listed with a home where
+:mod:`cratekit.organize.own` finds one. ANOTHER APP'S FOLDER AT THE TOP (U185)
+is named once as a fact and never listed.
 
 Layer: modules.
 """
@@ -68,7 +51,7 @@ from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.intake import rotate, rotate_cli
 from cratekit.organize import account as account_area
 from cratekit.organize import inspiration, mirror_downloads, mirror_edits, own
-from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused, selection
+from cratekit.organize.steps import LISTED, Area, Step, planned_step, refused, selection
 
 AREA = "rekordbox"
 
@@ -91,12 +74,11 @@ MIRROR_EDITS = mirror_edits.KIND
 MIRROR_DOWNLOADS = mirror_downloads.KIND
 
 #: Every step kind this area plans, in its order, each one ``--only`` may name.
-#: The edits made on the account to a mirrored genre playlist (U201) run after
-#: adoption, whose worker plans again and would refuse a tree moved under it.
+#: The mirror edits (U201) run after adoption, whose worker plans again and
+#: would refuse a tree moved under it.
 STEPS = (ADOPT, ROTATE, RECORD_LABELS, INSPIRATION, MIRROR_EDITS, MIRROR_DOWNLOADS, YOURS)
 
-#: The module that archives sets, whose sets the INSPIRATION step reads, the
-#: account area's own word for it.
+#: The module that archives sets, whose sets the INSPIRATION step reads.
 EXPORT_MODULE = account_area.EXPORT_MODULE
 
 _ORIGIN = ("organize.rekordbox",)
@@ -112,25 +94,14 @@ def acknowledgment(cfg: config.Config) -> CratekitError | None:
 
 
 def _adoption(
-    cfg: config.Config,
-    declared,
-    registry,
-    ctx,
-    gate: str,
-    area: Area,
+    cfg: config.Config, declared, registry, ctx, gate: str, area: Area,
     one_read: rb_writer.SharedRead | None = None,
 ) -> Step:
     title = f"file tracks into {declared.tree.display}"
     try:
         plan = apply_cli.current_plan(cfg, declared, one_read=one_read)
-    except CratekitError as exc:
-        return refused(ADOPT, title, exc.cause)
-    try:
-        # WHAT IS STILL OUTSTANDING, by the engine's own rule: an applicable
-        # entry the applied ledger does not hold. ``applicable()`` alone counts
-        # an entry a finished apply already placed, and ``adopt apply`` itself
-        # would queue a pass that applies nothing, so a second organize would
-        # plan the adoption for ever.
+        # WHAT IS STILL OUTSTANDING, by the engine's own rule: ``applicable()``
+        # alone counts what a finished apply placed, and would plan for ever.
         pending = apply_engine.outstanding(plan, apply_engine.read(cfg))
     except CratekitError as exc:
         return refused(ADOPT, title, exc.cause)
@@ -138,23 +109,15 @@ def _adoption(
     applicable = plan.applicable()
     vocal = len(plan.vocal_additions())
     counts = {
-        "tracks read": len(plan.entries),
-        "placeable": len(applicable),
-        "to file": len(pending),
-        "vocal memberships to add": vocal,
+        "tracks read": len(plan.entries), "placeable": len(applicable),
+        "to file": len(pending), "vocal memberships to add": vocal,
     }
     if not pending and not vocal:
-        return Step(
-            key=ADOPT,
-            title=title,
-            state=NOTHING,
-            detail=(
-                f"nothing to file: {len(plan.entries)} track(s) read, "
-                f"{len(applicable)} already filed by an apply, the rest unplaceable"
-            ),
-            digest=screen["digest"],
-            counts=counts,
+        detail = (
+            f"nothing to file: {len(plan.entries)} track(s) read, "
+            f"{len(applicable)} already filed by an apply, the rest unplaceable"
         )
+        return planned_step(ADOPT, title, False, detail, digest=screen["digest"], counts=counts)
     if not registry.is_database_native(declared.tree.id):
         return refused(
             ADOPT,
@@ -173,26 +136,12 @@ def _adoption(
                 detail={"tree": declared.tree.id, "to_file": len(pending)},
             ).cause,
         )
-    step = Step(
-        key=ADOPT,
-        title=title,
-        state=PLANNED,
-        detail=(
-            f"file {len(pending)} track(s) into {declared.tree.display} and add "
-            f"{vocal} vocal membership(s); no file tag is written"
-        ),
-        digest=screen["digest"],
-        counts=counts,
-        items=list(screen["items"]),
-    )
 
-    def apply() -> dict[str, Any]:
+    def apply(step: Step) -> dict[str, Any]:
         decision = ctx.run.decisions.get(gate)
         spec = next(one for one in ctx.entry.gates if one.name == gate)
-        # A RUN ``adopt apply --job`` CAN LOAD, holding this area's answer
-        # over the adoption's own digest. A job that parks or is interrupted
-        # here resumes through that verb, whose explicit gate would otherwise
-        # meet nothing recorded on every respawn and never be driven.
+        # A RUN ``adopt apply --job`` CAN LOAD, holding this area's answer over
+        # the adoption's own digest, so a job parked here resumes through that verb.
         gate_run = ctx.gate.hand_off(
             spec, verb=ADOPT_VERB, gate=ADOPT_GATE, part=(area.identity(), step.digest)
         )
@@ -201,10 +150,8 @@ def _adoption(
                 store,
                 handler_key=ADOPT_HANDLER,
                 payload={
-                    "tree": plan.tree,
-                    "digest": plan.digest(),
-                    # WHO ANSWERED THIS AREA, off the recorded decision, as
-                    # ``adopt apply`` freezes the actor of its own gate.
+                    "tree": plan.tree, "digest": plan.digest(),
+                    # WHO ANSWERED THIS AREA, as ``adopt apply`` freezes its own actor.
                     apply_cli.ACTOR_KEY: decision.actor if decision is not None else "",
                     jobs.GATE_RUN_KEY: gate_run,
                 },
@@ -212,24 +159,24 @@ def _adoption(
                 cfg=cfg,
             )
             job, warnings = adopt_shell.advance(
-                ctx,
-                store,
-                job,
-                origin=_ORIGIN,
+                ctx, store, job, origin=_ORIGIN,
                 nothing_to_run="report an adoption over a library it never touched",
             )
         step.warnings.extend(warnings)
         return {"job_id": job.job_id, **apply_cli.applied_summary(cfg, job.job_id)}
 
-    step.apply = apply
-    return step
+    detail = (
+        f"file {len(pending)} track(s) into {declared.tree.display} and add "
+        f"{vocal} vocal membership(s); no file tag is written"
+    )
+    return planned_step(
+        ADOPT, title, True, detail,
+        digest=screen["digest"], counts=counts, items=screen["items"], apply=apply,
+    )
 
 
 def _rotation(
-    cfg: config.Config,
-    declared,
-    today: date,
-    area: Area,
+    cfg: config.Config, declared, today: date, area: Area,
     one_read: rb_writer.SharedRead | None = None,
 ) -> Step:
     title = f"rotate {declared.intake.display}"
@@ -239,61 +186,44 @@ def _rotation(
         return refused(ROTATE, title, exc.cause)
     shown = rotate_cli.plan_payload(plan)
     for node in plan.left:
-        # OLD IS THE ROTATION'S OWN FOLDER, not one of the author's (U214):
-        # the plan names it left, and the screen does not list it as yours.
+        # OLD IS THE ROTATION'S OWN FOLDER, not one of the author's (U214).
         if node.kind == rotate.LEFT_OLD:
             continue
+        place = f"{declared.intake.display}, {node.place}"
         area.yours.append(
-            {
-                "name": node.name,
-                "place": f"{declared.intake.display}, {node.place}",
-                "kind": node.kind,
-                "suggested_home": None,
-            }
+            {"name": node.name, "place": place, "kind": node.kind, "suggested_home": None}
         )
     for batch in (*plan.moves, *plan.removals, *plan.kept):
         if batch.recognised_by == rotate.BY_SUFFIX:
-            area.suggested.append(
-                {
-                    "name": batch.name,
-                    "playlist_id": batch.playlist_id,
-                    "suggestion": (
-                        f"{batch.name} is named for its run; a readable name starts "
-                        f"{batch.landed.isoformat()}, the day it landed, then its "
-                        f"source. No verb renames a batch, so nothing is written"
-                    ),
-                }
+            suggestion = (
+                f"{batch.name} is named for its run; a readable name starts "
+                f"{batch.landed.isoformat()}, the day it landed, then its "
+                f"source. No verb renames a batch, so nothing is written"
             )
+            area.suggested.append(
+                {"name": batch.name, "playlist_id": batch.playlist_id, "suggestion": suggestion}
+            )
+
+    def apply(_step: Step) -> dict[str, Any]:
+        rotated = rotate_cli.written(cfg, declared, plan)
+        rotate.assert_read_back(rotated)
+        return {
+            "moved": len(rotated.moved), "removed": len(rotated.removed),
+            "memberships removed": rotated.memberships_removed,
+            "old created": rotated.old_created, "session": rotated.session_id,
+        }
+
     totals = shown["totals"]
-    step = Step(
-        key=ROTATE,
-        title=title,
-        state=PLANNED if plan.writes else NOTHING,
-        detail=(
-            f"move {len(plan.moves)} batch(es) into {plan.old_display} and remove "
-            f"{len(plan.removals)} from it, keeping every track"
-            if plan.writes
-            else f"nothing to rotate: {len(plan.kept)} batch(es) kept"
-        ),
-        digest=plan.digest,
+    step = planned_step(
+        ROTATE, title, plan.writes,
+        f"move {len(plan.moves)} batch(es) into {plan.old_display} and remove "
+        f"{len(plan.removals)} from it, keeping every track"
+        if plan.writes
+        else f"nothing to rotate: {len(plan.kept)} batch(es) kept",
+        digest=plan.digest, items=shown["items"], apply=apply,
         counts={key: totals[key] for key in ("move", "remove", "keep", "left alone")},
-        items=list(shown["items"]),
     )
     step.warnings.extend(rotate_cli.records_warnings(plan))
-    if plan.writes:
-
-        def apply() -> dict[str, Any]:
-            rotated = rotate_cli.written(cfg, declared, plan)
-            rotate.assert_read_back(rotated)
-            return {
-                "moved": len(rotated.moved),
-                "removed": len(rotated.removed),
-                "memberships removed": rotated.memberships_removed,
-                "old created": rotated.old_created,
-                "session": rotated.session_id,
-            }
-
-        step.apply = apply
     return step
 
 
@@ -308,31 +238,23 @@ def _record_labels(declared) -> Step:
             f"its intake file on the xml bridge, and from its manifest or --label "
             f"through the database on a native intake tree, so nothing is planned here"
         )
-    return Step(key=RECORD_LABELS, title="file landed label batches", state=LISTED, detail=detail)
+    return Step(RECORD_LABELS, "file landed label batches", LISTED, detail)
 
 
 def _inspiration(
-    cfg: config.Config,
-    declared,
-    available: frozenset[str] | None,
+    cfg: config.Config, declared, available: frozenset[str] | None,
     one_read: rb_writer.SharedRead | None = None,
 ) -> Step:
     """Every downloaded set on the account given its INSPIRATION playlist (U144).
 
-    Planned through read handles, as the author's own listing is read, so it
-    plans while rekordbox runs, and no read is held across a provider call:
-    each handle is closed, or under ``--report`` the one shared handle
-    released (U267), before the account is read. The write opens its own
-    handle and needs rekordbox closed. A refusal of the intake tree, the
-    database, the account or the catalogue refuses this step alone.
+    Planned through read handles, so it plans while rekordbox runs, and no read
+    is held across a provider call (U267). The write opens its own handle and
+    needs rekordbox closed. Any refusal refuses this step alone.
     """
     title = "give every downloaded set its INSPIRATION playlist"
     if available is not None and EXPORT_MODULE not in available:
         return Step(
-            key=INSPIRATION,
-            title=title,
-            state=LISTED,
-            detail="the export module is off in this profile, so no set is read",
+            INSPIRATION, title, LISTED, "the export module is off in this profile, so no set is read"
         )
     from cratekit.intake import ingest, set_playlist
     from cratekit.label import catalogue
@@ -355,22 +277,15 @@ def _inspiration(
     try:
         set_playlist.assert_native(ingest.intake_medium(cfg), landing=False)
         planned = inspiration.plan(
-            cfg,
-            declared,
-            remote=account.resolve(cfg),
-            found=catalogue.resolve(cfg),
+            cfg, declared, remote=account.resolve(cfg), found=catalogue.resolve(cfg),
             reading=reading,
         )
     except CratekitError as exc:
         return refused(INSPIRATION, title, exc.cause)
-    step = Step(
-        key=INSPIRATION,
-        title=title,
-        state=PLANNED if planned.writes else NOTHING,
-        detail=planned.detail(),
-        digest=planned.digest(),
-        counts=planned.counts(),
-        items=planned.items(),
+    step = planned_step(
+        INSPIRATION, title, planned.writes, planned.detail(),
+        digest=planned.digest(), counts=planned.counts(), items=planned.items(),
+        apply=lambda _step: inspiration.apply(cfg, declared, planned).totals(),
     )
     # UNREAD IS NOT NONE: a set whose tracks could not be listed is named on
     # the screen and in the warnings, never folded into the sets with no match.
@@ -386,12 +301,6 @@ def _inspiration(
         for row in planned.rows
         if row.action in (inspiration.UNREAD, inspiration.FOLDER_UNREAD)
     )
-    if planned.writes:
-
-        def apply() -> dict[str, Any]:
-            return inspiration.apply(cfg, declared, planned).totals()
-
-        step.apply = apply
     return step
 
 
@@ -411,10 +320,7 @@ def _kind(row: Any) -> str:
 
 
 def _yours(
-    cfg: config.Config,
-    declared,
-    labels: tuple[str, ...],
-    area: Area,
+    cfg: config.Config, declared, labels: tuple[str, ...], area: Area,
     one_read: rb_writer.SharedRead | None = None,
 ) -> Step:
     """Every top level node outside the declared trees, read through a read handle."""
@@ -440,8 +346,7 @@ def _yours(
         rb_writer.done_reading(db, one_read)
     declared_roots = _declared_roots(declared)
     catalog = declared.catalog.display if declared.catalog is not None else None
-    # U185. ANOTHER APP'S FOLDER IS NAMED ONCE, as a fact, and is not yours:
-    # listed with a home it would read as something this verb might file.
+    # U185. ANOTHER APP'S FOLDER IS NAMED ONCE, as a fact, and is not yours.
     foreign = {str(row.ID) for row in foreign_tree.roots_in(rows)}
     if foreign:
         area.facts[FOREIGN_FACT] = (
@@ -453,48 +358,26 @@ def _yours(
         if name in declared_roots or str(row.ID) in foreign:
             continue
         found += 1
+        home = own.rekordbox_home(name, labels, catalog)
         area.yours.append(
-            {
-                "name": name,
-                "place": "top level",
-                "kind": _kind(row),
-                "suggested_home": own.rekordbox_home(name, labels, catalog),
-            }
+            {"name": name, "place": "top level", "kind": _kind(row), "suggested_home": home}
         )
-    return Step(
-        key=YOURS,
-        title=title,
-        state=LISTED,
-        detail=f"{found} top level node(s) of your own, listed and never moved",
-        counts={"top level": found},
-    )
+    detail = f"{found} top level node(s) of your own, listed and never moved"
+    return Step(YOURS, title, LISTED, detail, counts={"top level": found})
 
 
 def plan_area(
-    cfg: config.Config,
-    ctx,
-    *,
-    gate: str,
-    today: date,
-    labels: tuple[str, ...],
-    report: bool,
-    only: frozenset[str] | None = None,
-    available: frozenset[str] | None = None,
-    shared=None,
+    cfg: config.Config, ctx, *, gate: str, today: date, labels: tuple[str, ...], report: bool,
+    only: frozenset[str] | None = None, available: frozenset[str] | None = None, shared=None,
     one_read: rb_writer.SharedRead | None = None,
 ) -> Area:
     """Plan every database step, or refuse the area before any when no backup is acknowledged.
 
-    ``only`` is ``--only``'s selection (U137): the steps of no selected kind are
-    not planned, and the area's own preconditions still hold for the rest.
-    ``available`` is the profile's modules, ``None`` for every one. ``shared``
-    is the organize run's one account mirror reading (U201), which the
-    mirror edits step decides from; with none that step is listed, not planned.
-
-    ``one_read`` IS ``--report``'s ONE READ HANDLE (U267), and every step reads
-    the database through it rather than through a handle of its own. The run
-    that answers a gate passes none, so each of its plans reads as before and
-    each write opens its own handle to write.
+    ``only`` is ``--only``'s selection (U137). ``available`` is the profile's
+    modules, ``None`` for every one. ``shared`` is the run's one account mirror
+    reading (U201); with none the mirror steps are listed, not planned.
+    ``one_read`` is ``--report``'s one read handle (U267), which every step
+    reads the database through; the run that answers a gate passes none.
     """
     area = Area(name=AREA, only=selection(STEPS, only))
     unacknowledged = acknowledgment(cfg)
@@ -513,10 +396,9 @@ def plan_area(
         return area
     if area.wants(ADOPT):
         area.steps.append(_adoption(cfg, declared, registry, ctx, gate, area, one_read))
-    # THE ROTATION IS PLANNED FOR ``yours`` TOO, since what it leaves alone
-    # under INBOX is the author's and its suggestions ride the same screen. Its
-    # step is shown when selected, or when it refused, because a refusal is
-    # why that listing is short and unread is not none.
+    # THE ROTATION IS PLANNED FOR ``yours`` TOO, since what it leaves under INBOX
+    # is the author's; its step is shown when selected, or when it refused,
+    # since a refusal is why that listing is short.
     if area.wants(ROTATE) or area.wants(YOURS):
         rotation = _rotation(cfg, declared, today, area, one_read)
         if area.wants(ROTATE) or rotation.cause is not None:
@@ -527,29 +409,16 @@ def plan_area(
         area.steps.append(_inspiration(cfg, declared, available, one_read))
     if area.wants(MIRROR_EDITS):
         if shared is None:
-            area.steps.append(
-                Step(
-                    key=MIRROR_EDITS,
-                    title=mirror_edits.TITLE,
-                    state=LISTED,
-                    detail="no account mirror was read on this run, so no edit is taken",
-                )
-            )
+            said = "no account mirror was read on this run, so no edit is taken"
+            area.steps.append(Step(MIRROR_EDITS, mirror_edits.TITLE, LISTED, said))
         else:
             edited = mirror_edits.add_step(cfg, declared, registry, shared, one_read=one_read)
-            # EVERY MEMBERSHIP TAKEN AWAY IS NAMED ON THE GATE, as a removal is.
             area.deletes.extend(mirror_edits.deletes(edited.items))
             area.steps.append(edited)
     if area.wants(MIRROR_DOWNLOADS):
         if shared is None:
-            area.steps.append(
-                Step(
-                    key=MIRROR_DOWNLOADS,
-                    title=mirror_downloads.TITLE,
-                    state=LISTED,
-                    detail="no account mirror was read on this run, so nothing is queued",
-                )
-            )
+            said = "no account mirror was read on this run, so nothing is queued"
+            area.steps.append(Step(MIRROR_DOWNLOADS, mirror_downloads.TITLE, LISTED, said))
         else:
             area.steps.append(mirror_downloads.add_step(cfg, shared, one_read=one_read))
     if area.wants(YOURS):
@@ -562,20 +431,7 @@ def plan_area(
 
 
 __all__ = [
-    "ADOPT",
-    "ADOPT_GATE",
-    "ADOPT_HANDLER",
-    "ADOPT_VERB",
-    "AREA",
-    "EXPORT_MODULE",
-    "INSPIRATION",
-    "MIRROR_DOWNLOADS",
-    "MIRROR_EDITS",
-    "RECORD_LABELS",
-    "ROTATE",
-    "STEPS",
-    "YOURS",
-    "acknowledgment",
-    "plan_area",
+    "ADOPT", "ADOPT_GATE", "ADOPT_HANDLER", "ADOPT_VERB", "AREA", "EXPORT_MODULE",
+    "INSPIRATION", "MIRROR_DOWNLOADS", "MIRROR_EDITS", "RECORD_LABELS", "ROTATE", "STEPS",
+    "YOURS", "acknowledgment", "plan_area",
 ]
-

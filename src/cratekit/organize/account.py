@@ -149,15 +149,12 @@ def _label_steps(cfg, area: Area, followed, catalogue_of: _Lazy, remote_of: _Laz
         missing = sum(1 for item in payload["items"] if item["action"] == "create")
         area.steps.append(
             planned_step(
-                key,
-                title,
-                planned.writes,
+                key, title, planned.writes,
                 f"create {missing} folder or year playlist(s) and add {totals['add']} track(s)"
                 if planned.writes
                 else "the account already holds every year and track planned",
-                digest=payload["digest"],
+                digest=payload["digest"], items=payload["items"],
                 counts={"create": totals["create"], "add": totals["add"]},
-                items=payload["items"],
                 apply=partial(_label_apply, cfg, planned, remote_of),
             )
         )
@@ -223,15 +220,12 @@ def _mark_step(cfg, area: Area, name: str, plan) -> bool:
     totals = planned.payload["totals"]
     area.steps.append(
         planned_step(
-            key,
-            title,
-            planned.planned,
+            key, title, planned.planned,
             f"record {totals['mark']} playlist(s) as taken"
             if planned.planned
             else f"nothing to mark: {totals['skip']} playlist(s) left alone, each with its reason",
-            digest=planned.payload["digest"],
+            digest=planned.payload["digest"], items=planned.payload["items"],
             counts={"mark": totals["mark"], "skip": totals["skip"]},
-            items=planned.payload["items"],
             apply=partial(_mark_apply, cfg, planned),
         )
     )
@@ -333,14 +327,9 @@ def _set_steps(cfg, area: Area, one_read: Any = None) -> None:
             detail = f"already in {folder} and marked"
         area.steps.append(
             planned_step(
-                key,
-                title,
-                archived.writes,
-                detail,
-                digest=archived.payload["digest"],
-                counts={"writes": int(archived.writes)},
-                items=archived.payload["items"],
-                apply=partial(_set_apply, cfg, archived),
+                key, title, archived.writes, detail,
+                digest=archived.payload["digest"], items=archived.payload["items"],
+                counts={"writes": int(archived.writes)}, apply=partial(_set_apply, cfg, archived),
             )
         )
 
@@ -354,10 +343,7 @@ def _set_apply(cfg, archived, step: Step) -> dict[str, Any]:
 
 
 def _filing_plan(
-    cfg,
-    labels: tuple[str, ...],
-    catalogue_of: _Lazy,
-    remote_of: _Lazy,
+    cfg, labels: tuple[str, ...], catalogue_of: _Lazy, remote_of: _Lazy,
     unfollowed: CratekitError | None,
 ) -> filing.FilePlan:
     """The filing step's plan, which the root step reads its candidates from.
@@ -371,11 +357,8 @@ def _filing_plan(
     if unfollowed is not None:
         raise unfollowed
     return filing.plan(
-        cfg,
-        listed=catalogue_of.get().account_playlists(),
-        remote=remote_of.get(),
-        labels=labels,
-        marks=mark_record.MarkRecord(cfg).all(),
+        cfg, listed=catalogue_of.get().account_playlists(), remote=remote_of.get(),
+        labels=labels, marks=mark_record.MarkRecord(cfg).all(),
         working=placeholders.is_placeholder,
         taken=tuple(mark_record.MarkRecord(cfg).taken().values()),
     )
@@ -392,16 +375,13 @@ def _file_step(cfg, area: Area, filed_of: _Lazy, remote_of: _Lazy) -> frozenset[
     moves, created, rows = planned.moves, planned.creates(), len(planned.rows)
     area.steps.append(
         planned_step(
-            FILE,
-            title,
-            planned.writes,
+            FILE, title, planned.writes,
             f"move {len(moves)} playlist(s) into their year, Mine or Exports folders, creating "
             f"{len(created)} folder(s), and leave {rows - len(moves)} at the root, each with its reason"
             if planned.writes
             else f"nothing to move: {rows} playlist(s) at the root, each left with its reason",
-            digest=digest_of(planned.identity()),
+            digest=digest_of(planned.identity()), items=planned.items(),
             counts={"move": len(moves), "left": rows - len(moves), "create": len(created)},
-            items=planned.items(),
             apply=lambda _step: filing.apply(cfg, remote_of.get(), planned).totals(),
         )
     )
@@ -417,9 +397,7 @@ def _root_step(cfg, area: Area, followed, catalogue_of: _Lazy, remote_of: _Lazy,
     title = "keep the account root to working custom playlists"
     try:
         planned = root.plan(
-            cfg,
-            listed=catalogue_of.get().account_playlists(),
-            remote=remote_of.get(),
+            cfg, listed=catalogue_of.get().account_playlists(), remote=remote_of.get(),
             filed=filed_of.get(),
             followed=tuple((entry.label_id, entry.name) for entry in followed),
         )
@@ -430,16 +408,13 @@ def _root_step(cfg, area: Area, followed, catalogue_of: _Lazy, remote_of: _Lazy,
     left = len(planned.rows) - len(removals) - len(moves)
     area.steps.append(
         planned_step(
-            ROOT,
-            title,
-            planned.writes,
+            ROOT, title, planned.writes,
             f"remove {len(removals)} playlist(s) or folder(s), move {len(moves)} playlist(s) "
             f"out of a legacy year folder, and leave {left}, each with its reason"
             if planned.writes
             else f"nothing to remove or move: {left} left at the root, each with its reason",
-            digest=digest_of(planned.identity()),
+            digest=digest_of(planned.identity()), items=planned.items(),
             counts={"remove": len(removals), "move": len(moves), "left": left},
-            items=planned.items(),
             apply=partial(_root_apply, cfg, planned, remote_of),
         )
     )
@@ -466,11 +441,7 @@ def _empties(filed_of: _Lazy) -> frozenset[str]:
 
 
 def _yours(
-    cfg,
-    area: Area,
-    labels: tuple[str, ...],
-    catalogue_of: _Lazy,
-    remote_of: _Lazy,
+    cfg, area: Area, labels: tuple[str, ...], catalogue_of: _Lazy, remote_of: _Lazy,
     moving: frozenset[str] = frozenset(),
 ) -> None:
     from cratekit.favorites import placeholders
@@ -509,10 +480,8 @@ def _yours(
         found += 1
         area.yours.append(
             {
-                "name": one.name,
-                "playlist_id": one.playlist_id,
-                "place": "account root",
-                "kind": "playlist",
+                "name": one.name, "playlist_id": one.playlist_id,
+                "place": "account root", "kind": "playlist",
                 "sync": (
                     "swept and marked by a sync"
                     if playlists.is_taken(one.playlist_id, one.name, taken)
@@ -521,26 +490,15 @@ def _yours(
                 "suggested_home": own.account_home(one.name, labels),
             }
         )
-    area.steps.append(
-        Step(
-            YOURS,
-            title,
-            LISTED,
-            f"{found} playlist(s) of your own at the account root, listed and never moved",
-            counts={"account root": found, "in folders": len(in_folders)},
-        )
-    )
+    detail = f"{found} playlist(s) of your own at the account root, listed and never moved"
+    counts = {"account root": found, "in folders": len(in_folders)}
+    area.steps.append(Step(YOURS, title, LISTED, detail, counts=counts))
 
 
 def plan_area(
-    cfg: config.Config,
-    *,
-    available: frozenset[str],
-    followed,
-    unfollowed: CratekitError | None = None,
-    only: frozenset[str] | None = None,
-    run: account_mirror.Run | None = None,
-    shared: account_mirror.Shared | None = None,
+    cfg: config.Config, *, available: frozenset[str], followed,
+    unfollowed: CratekitError | None = None, only: frozenset[str] | None = None,
+    run: account_mirror.Run | None = None, shared: account_mirror.Shared | None = None,
     one_read: Any = None,
 ) -> Area:
     """Plan every account step; a step that refuses is shown and hides no other.
@@ -563,14 +521,8 @@ def plan_area(
     labels = tuple(entry.name for entry in followed)
     if area.wants(LABELS):
         if LABELS_MODULE not in available:
-            area.steps.append(
-                Step(
-                    LABELS,
-                    "label folders",
-                    LISTED,
-                    "the labels module is off in this profile, so no label folder is planned",
-                )
-            )
+            said = "the labels module is off in this profile, so no label folder is planned"
+            area.steps.append(Step(LABELS, "label folders", LISTED, said))
         elif unfollowed is not None:
             area.steps.append(refused(LABELS, "label folders", unfollowed.cause))
         else:
@@ -579,14 +531,8 @@ def plan_area(
         if EXPORT_MODULE in available:
             _set_steps(cfg, area, one_read)
         else:
-            area.steps.append(
-                Step(
-                    SETS,
-                    "archive downloaded sets",
-                    LISTED,
-                    "the export module is off in this profile, so no set is archived",
-                )
-            )
+            said = "the export module is off in this profile, so no set is archived"
+            area.steps.append(Step(SETS, "archive downloaded sets", LISTED, said))
     if area.wants(MARKS):
         _mark_steps(cfg, area)
     # ONE FILING PLAN, read by the filing step and the root step (U143). A
@@ -594,10 +540,7 @@ def plan_area(
     # module off no label step exists to leave a playlist to.
     filed_of = _Lazy(
         lambda: _filing_plan(
-            cfg,
-            labels,
-            catalogue_of,
-            remote_of,
+            cfg, labels, catalogue_of, remote_of,
             unfollowed if LABELS_MODULE in available else None,
         )
     )

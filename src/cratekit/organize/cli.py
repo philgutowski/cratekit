@@ -1,47 +1,33 @@
 """``crate organize``: plan both areas, ask each its own question, then write (U112).
 
 THE ORDER IS PLAN, ASK, WRITE, ``sync all``'s order and for its reason. Both
-areas are planned first, which is where every step's own precondition refuses.
-Then the database area's gate is asked, then the account area's. Only once both
-are answered does anything write, so a refusal at either gate has written
-nothing, and the run that answers the second gate rebuilds the first area's
-plan from a library nothing has touched yet, which is the plan its recorded
-answer was given against.
+areas are planned first, where every step's own precondition refuses; then the
+database area's gate is asked, then the account area's, and only once both are
+answered does anything write. A refusal at either gate has written nothing.
 
 ONE GATE PER AREA, EACH EXPLICIT AND BOUND TO ITS AREA'S DIGEST. Approving one
 and aborting the other writes only the approved area. An area with nothing to
-do says so and still asks. The database area is not asked when the backup
-acknowledgment is missing: it was refused before it was planned, and it is the
-account area alone that is asked and may write.
+do still asks. The database area is not asked when the backup acknowledgment
+is missing, since it was refused before it was planned.
 
-AN APPLIED STEP THAT FAILS DOES NOT STOP THE STEPS AFTER IT. Each step is its
-own verb's write and none depends on another. Once every approved step has
-run, a failure is raised with its own reason, the steps that did write named
-in its message and the whole report in its detail, so a person is never told a
-clean organize over a write that failed.
+AN APPLIED STEP THAT FAILS DOES NOT STOP THE STEPS AFTER IT, each being its
+own verb's write. Once every approved step has run, the failure is raised with
+the steps that did write named, so nobody is told of a clean organize over a
+write that failed.
 
-``--report`` plans both areas, asks nothing and writes nothing. IT OPENS THE
-DATABASE ONCE (U267): every step that reads the library reads through one
-read handle, opened at the first read with every check an open runs and
-closed on every way out of the report, rather than each opening its own and
-paying the whole open path again. The run that answers a gate does not share
-it: each of its plans reads, and each of its writes opens to write, as before.
+``--report`` plans both areas, asks nothing and writes nothing, and OPENS THE
+DATABASE ONCE (U267): one read handle for every step that reads the library,
+closed on every way out. The run that answers a gate does not share it.
 
 ``--only KIND``, repeatable, NARROWS BOTH AREAS TO THE STEP KINDS IT NAMES
-(U137). An area none of whose kinds is named is not planned, not asked and not
-written, so ``--only file`` reads no backup acknowledgment and no database. An
-area that is planned keeps its own preconditions, plans only the named kinds,
-and its gate shows and its digest covers only those, with the selection named
-in both. An unknown kind is refused by name by the parser, before anything is
-read. With no ``--only`` the verb is exactly U112's.
+(U137). An area none of whose kinds is named is not planned, asked or written;
+a planned one keeps its own preconditions, and its gate and digest name the
+selection.
 
 THE MIRROR'S PLAN IS FROZEN ON THE RUN THAT SHOWS ITS GATE (R-1031), and the
-run that answers rebuilds it from that record, so the mirror's digest is the
-one the person approved however the library moved between the two acts. The
-other account steps are planned again as before, so a write one of them reads,
-a set landing for the sets step, can still stale the account gate.
-``--rematch`` asks the provider again about every row the mirror remembers as
-unmatched, on the run that shows the gate.
+run that answers rebuilds it from that record, so its digest is the one the
+person approved. ``--rematch`` asks the provider again about every row the
+mirror remembers as unmatched.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -57,7 +43,6 @@ from cratekit.core import profiles, rb_writer
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import rotate_cli
-from cratekit.modules.outbound import shell
 from cratekit.organize import account, account_mirror, rekordbox
 from cratekit.organize.steps import FAILED, Area, area_check, check, selection
 
@@ -80,37 +65,27 @@ def build(parser, entry) -> None:
     """Declare the verb. THERE IS NO ``--yes``: each area's gate is its only answer."""
     del entry
     parser.add_argument(
-        "--report",
-        action="store_true",
-        default=False,
+        "--report", action="store_true", default=False,
         help="print both plans and write nothing; no question is asked",
     )
     parser.add_argument(
-        "--only",
-        dest="only",
-        action="append",
+        "--only", dest="only", action="append",
         choices=KINDS,
-        default=None,
-        metavar="KIND",
+        default=None, metavar="KIND",
         help=(
             "plan, ask and write only this kind of step; repeat it for more. An "
             "area with no step named is not asked. One of: " + ", ".join(KINDS)
         ),
     )
     parser.add_argument(
-        "--as-of",
-        dest="as_of",
-        default=None,
-        metavar="DATE",
+        "--as-of", dest="as_of", default=None, metavar="DATE",
         help=(
             "the ISO date INBOX batches are aged against; today by default. Give "
             "the same date on the run that applies, or the plan is a different one"
         ),
     )
     parser.add_argument(
-        "--rematch",
-        action="store_true",
-        default=False,
+        "--rematch", action="store_true", default=False,
         help=(
             "ask the provider again about every row the account mirror remembers "
             "as unmatched, rather than only the rows that changed"
@@ -128,8 +103,7 @@ def _gate(entry, name: str):
             reason="internal-error",
             message=f"{entry.name} declares no gate named {name!r}, so an area has no question",
             remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
-            origin=_ORIGIN,
-            detail={"verb": entry.name, "gate": name},
+            origin=_ORIGIN, detail={"verb": entry.name, "gate": name},
         )
     )
 
@@ -137,10 +111,8 @@ def _gate(entry, name: str):
 def _followed() -> tuple[tuple, CratekitError | None]:
     """Every followed label, or none and the registry's refusal when it cannot be read.
 
-    THE REFUSAL IS THE LABEL STEP'S AND THE FILING'S, not the verb's: the
-    database area reads the labels only for a suggested home, the filing to
-    leave a label's playlist for the label step (U137), and the other account
-    steps not at all, so an unreadable registry refuses the steps that need it.
+    THE REFUSAL IS THE LABEL STEP'S AND THE FILING'S, not the verb's (U137),
+    so an unreadable registry refuses only the steps that need it.
     """
     from cratekit.label import registry as labels
 
@@ -148,17 +120,14 @@ def _followed() -> tuple[tuple, CratekitError | None]:
         held = labels.RegistryStore().load()
     except CratekitError as exc:
         return (), exc
-    entries = sorted(held.labels.values(), key=lambda entry: (entry.name, entry.label_id))
-    return tuple(entries), None
+    return tuple(sorted(held.labels.values(), key=lambda one: (one.name, one.label_id))), None
 
 
 def _ask(ctx, area: Area, name: str) -> str | None:
     """The area's answer, or ``None`` for an area refused before it was planned.
 
-    A STALE ANSWER SAYS WHAT MOVED (U222). The gate's refusal names the two
-    digests alone; an area that can say which of its steps moved since the
-    gate showed it, and how its plan was made, adds that, so the person
-    replanning knows what changed and whether the run rebuilt a frozen plan.
+    A STALE ANSWER SAYS WHAT MOVED (U222): an area that can say which of its
+    steps moved since its gate showed them adds that to the gate's refusal.
     """
     if area.cause is not None:
         return None
@@ -189,29 +158,24 @@ def _apply(area: Area) -> None:
         except CratekitError as exc:
             step.error = exc
         except Exception as exc:  # noqa: BLE001 - recorded, never swallowed
-            # ANY OTHER FAILURE IS THIS BUILD'S OWN, and it is the step's: the
-            # steps after it are their own verbs' writes and still run, and the
-            # failure is raised once they have, naming what did land.
+            # ANY OTHER FAILURE IS THIS BUILD'S OWN and the step's; the steps
+            # after it still run, and it is raised once they have.
             step.error = refuse(
                 "internal-error",
                 f"{step.title} failed in a way this build does not expect "
                 f"({type(exc).__name__}: {exc})",
-                remedy=Remedy.REPORT_DEFECT,
-                origin=_ORIGIN,
+                remedy=Remedy.REPORT_DEFECT, origin=_ORIGIN,
                 detail={"step": step.key, "kind": type(exc).__name__},
             )
 
 
 def _report(areas: list[Area], *, report: bool, answers: dict[str, str | None]) -> dict[str, Any]:
-    checks: list[dict[str, Any]] = []
-    for area in areas:
-        checks.append(area_check(area))
-        checks.extend(check(area, step) for step in area.steps)
     return {
-        "checks": checks,
+        "checks": [
+            row for area in areas for row in (area_check(area), *(check(area, s) for s in area.steps))
+        ],
         "summary": {
-            "report": report,
-            "answers": answers,
+            "report": report, "answers": answers,
             "areas": {area.name: area.block() for area in areas},
         },
     }
@@ -222,20 +186,13 @@ def _warnings(areas: list[Area]) -> list[dict[str, str]]:
     for area in areas:
         if area.cause is not None:
             found.append(
-                {
-                    "code": "organize-area-refused",
-                    "message": f"{area.name}: {area.cause.message}",
-                }
+                {"code": "organize-area-refused", "message": f"{area.name}: {area.cause.message}"}
             )
         for step in area.steps:
             found.extend(step.warnings)
             if step.cause is not None:
-                found.append(
-                    {
-                        "code": "organize-step-refused",
-                        "message": f"{area.name}, {step.title}: {step.cause.message}",
-                    }
-                )
+                said = f"{area.name}, {step.title}: {step.cause.message}"
+                found.append({"code": "organize-step-refused", "message": said})
     return found
 
 
@@ -243,12 +200,7 @@ def _raise_failed(areas: list[Area], data: dict[str, Any]) -> None:
     failed = [(area, step) for area in areas for step in area.steps if step.failed is not None]
     if not failed:
         return
-    wrote = [
-        f"{area.name}, {step.title}"
-        for area in areas
-        for step in area.steps
-        if step.applied is not None
-    ]
+    wrote = [f"{a.name}, {s.title}" for a in areas for s in a.steps if s.applied is not None]
     area, step = failed[0]
     first = step.failed
     said = (
@@ -280,6 +232,9 @@ def _named(kinds: tuple[str, ...], only: frozenset[str] | None) -> bool:
 
 def organize(ctx) -> Envelope:
     """Plan both areas, ask each its own question, then write what was approved."""
+    from cratekit.modules.outbound import account as outbound_account
+    from cratekit.modules.outbound import shell
+
     cfg = shell.load_config("organize.cli")
     report = bool(getattr(ctx.args, "report", False))
     chosen = getattr(ctx.args, "only", None)
@@ -293,57 +248,34 @@ def organize(ctx) -> Envelope:
         else ((), None)
     )
     today = rotate_cli.as_of(ctx)
-
-    # EACH AREA IS PLANNED ONLY WHEN ONE OF ITS KINDS IS NAMED (U137), and an
-    # area that is not planned is neither asked nor written.
     areas: list[Area] = []
     gates: list[tuple[Area, str, str]] = []
     state = ctx.gate.state
     run = account_mirror.Run(
-        run_id=state.run_id,
-        record=not report,
+        run_id=state.run_id, record=not report,
         decided=not report and ACCOUNT_GATE in state.decisions,
         rematch=bool(getattr(ctx.args, "rematch", False)),
     )
-    # ONE READ HANDLE FOR THE WHOLE REPORT (U267), and only for the report:
-    # it writes nothing, so no write can be handed the handle. Closed in the
-    # ``finally``, so a step that refuses, or fails in a way nobody expected,
-    # leaves no handle open.
+    # ONE READ HANDLE FOR THE WHOLE REPORT (U267), and only for the report,
+    # which writes nothing; closed in the ``finally`` on every way out.
     one_read = rb_writer.SharedRead(cfg) if report else None
     try:
-        # ONE ACCOUNT AND ONE MIRROR READING FOR BOTH AREAS (U201): the rekordbox
-        # area's mirror edits step decides from the very listings and matches the
-        # account area's mirror plans from, so the edit taken is the edit held.
-        from cratekit.modules.outbound import account as outbound_account
-
-        shared = account_mirror.Shared(
-            cfg, lambda: outbound_account.resolve(cfg), run, one_read=one_read
-        )
+        # ONE ACCOUNT AND ONE MIRROR READING FOR BOTH AREAS (U201), so the edit
+        # the database area takes is the edit the account area's mirror holds.
+        shared = account_mirror.Shared(cfg, lambda: outbound_account.resolve(cfg), run, one_read=one_read)
+        # EACH AREA IS PLANNED ONLY WHEN ONE OF ITS KINDS IS NAMED (U137).
         if _named(rekordbox.STEPS, only):
             database = rekordbox.plan_area(
-                cfg,
-                ctx,
-                gate=REKORDBOX_GATE,
-                today=today,
-                labels=tuple(entry.name for entry in followed),
-                report=report,
-                only=only,
-                available=membership.available,
-                shared=shared,
-                one_read=one_read,
+                cfg, ctx, gate=REKORDBOX_GATE, today=today,
+                labels=tuple(entry.name for entry in followed), report=report, only=only,
+                available=membership.available, shared=shared, one_read=one_read,
             )
             areas.append(database)
             gates.append((database, REKORDBOX_GATE, APPROVE))
         if _named(account.STEPS, only):
             remote = account.plan_area(
-                cfg,
-                available=membership.available,
-                followed=followed,
-                unfollowed=unfollowed,
-                only=only,
-                run=run,
-                shared=shared,
-                one_read=one_read,
+                cfg, available=membership.available, followed=followed, unfollowed=unfollowed,
+                only=only, run=run, shared=shared, one_read=one_read,
             )
             areas.append(remote)
             gates.append((remote, ACCOUNT_GATE, APPLY))
