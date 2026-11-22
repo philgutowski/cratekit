@@ -1,34 +1,36 @@
-"""U19: deferred routing, from the decision to the mark to the run that closes.
+"""Deferred routing, from the decision to the mark to the run that closes (U19).
 
 Three joints go wrong when a placement is decided before the library holds a
 row: the decision never persisted, the mark written before the commit, and the
-run closed while a track was still nowhere. The plan's five scenarios are
-proved here (a pending track refuses the close, a crash between commit and
-mark converges, the pass before the import is read only, a deleted track is
-surfaced until acknowledged, a run with nothing to route closes), with a
-partial import, an ambiguous location, an unresolvable location and an
-unprovable read-back besides.
-
-D1: no name here is a real volume, person or track; the synthetic paths keep a
-space and an accented character, which the identity primitives exist for.
+run closed while a track was still nowhere. D1: no name here is a real volume,
+person or track; the paths keep a space and an accent for the identity primitives.
 """
 
 from __future__ import annotations
 
 import ast
+import inspect
 import json
 import os
+import sqlite3
 import stat
+import subprocess
+import sys
+import tomllib
 import unicodedata
 from dataclasses import replace
 from datetime import date
+from importlib import resources
 from pathlib import Path
 from typing import Iterator
 
 import pytest
+from pyrekordbox.db6 import tables
 
+from cratekit.cli import registry as cli_registry
 from cratekit.core import (
     config,
+    convergence,
     locations,
     preflight,
     rb_writer,
@@ -40,29 +42,23 @@ from cratekit.core import (
 from cratekit.core.cause import REASONS, CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import routing_pass, trees
+from tests import _pending
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 
-# ── synthesized names (D1) ───────────────────────────────────────────────────
-
 TREE_ID = "shelf_stack"
 TREE_DISPLAY = "Shelf & Stack"
 ADOPTED_ROOT = "root-row-7788"
 SESSION_ID = "s-0001"
 
-#: One file name in each composition form, because the pair is the whole reason
-#: the identity primitives exist and a ledger keyed on the raw string would
-#: silently hold two records for one file.
+#: One file name in each composition form; a ledger keyed on the raw string holds two records.
 COMPOSED = "Café One.flac"
 DECOMPOSED = unicodedata.normalize("NFD", COMPOSED)
 PLAIN = "Second Track.flac"
 THIRD = "Third Track.flac"
-
-
-# ── Fixtures
 
 
 @pytest.fixture
@@ -77,19 +73,10 @@ def library(tmp_path, monkeypatch):
 @pytest.fixture
 def cfg(library, monkeypatch):
     """Configuration with the application pin RECORDED, since an unset one refuses."""
-    resolved = config.from_dict(
-        valid_data(
-            library,
-            rekordbox={
-                "pinned_app_version": RECORDED_APP_VERSION,
-                "validated_on": "2026-08-01",
-            },
-        )
-    )
+    pins = {"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"}
+    resolved = config.from_dict(valid_data(library, rekordbox=pins))
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
-    monkeypatch.setattr(
-        rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION
-    )
+    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     return resolved
 
 
@@ -115,15 +102,24 @@ def _release_process_locks():
     session._HELD.clear()
 
 
+def _volume_agrees(cfg, monkeypatch):
+    monkeypatch.setattr(preflight, "default_identity_provider", lambda: (lambda _path: cfg.library.volume_id))
+    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+
+
+def _unlocked_integrity(monkeypatch):
+    """An unencrypted fixture fails the key-reaching integrity check, so it is asked unlocked.
+
+    Compensated here, never by handing the writer a verifier it could be lied to through.
+    """
+    real_integrity_ok = rb_writer.integrity_ok
+    monkeypatch.setattr(rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False))
+
+
 @pytest.fixture
 def gates_pass(cfg, monkeypatch):
     """The volume identity agrees and the acknowledgment is recorded."""
-    monkeypatch.setattr(
-        preflight,
-        "default_identity_provider",
-        lambda: (lambda _path: cfg.library.volume_id),
-    )
-    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+    _volume_agrees(cfg, monkeypatch)
     session.record_acknowledgment(cfg, terminal=lambda: True)
     return cfg
 
@@ -159,19 +155,27 @@ def _intent(cfg, declared_taxonomy, name: str, *, session_id: str = SESSION_ID):
     )
 
 
-# ── Part 1: the ledger. Persisted at the decision, derived on the way out.
+def _not_yet_there(cfg, declared_taxonomy):
+    """An intent for a file the library has no row for yet."""
+    intent = replace(_intent(cfg, declared_taxonomy, PLAIN), location=_music(cfg, "Not Yet There.flac"))
+    return replace(intent, track=routing_pass.track_id(intent.location))
+
+
+def _filed_under(db, content_id: str):
+    """The playlist and the folder above the row's membership, walked UP, never down by name."""
+    membership = db.get_playlist_songs(ContentID=content_id).first()
+    assert membership is not None, "the track reached no playlist"
+    playlist = db.session.query(tables.DjmdPlaylist).filter_by(ID=membership.PlaylistID).one()
+    return playlist, db.session.query(tables.DjmdPlaylist).filter_by(ID=playlist.ParentID).one()
 
 
 def test_an_intent_is_readable_by_the_next_process_the_moment_it_is_decided(
     cfg, declared
 ):
-    """Approach 1. A restarted process must be able to read what it believed."""
+    """A restarted process must be able to read what it believed."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
-
     reloaded = routing_pass.read(cfg)
-    assert [entry.location for entry in reloaded.for_session(SESSION_ID)] == [
-        _music(cfg, PLAIN)
-    ]
+    assert [entry.location for entry in reloaded.for_session(SESSION_ID)] == [_music(cfg, PLAIN)]
     assert reloaded.for_session(SESSION_ID)[0].state is routing_pass.TrackState.INTENDED
 
 
@@ -186,10 +190,7 @@ def test_two_spellings_of_one_filename_are_one_record(cfg, declared):
     assert len(routing_pass.read(cfg).for_session(SESSION_ID)) == 1
 
 
-def test_outstanding_is_derived_from_status_rather_than_from_a_stored_flag(
-    cfg, declared
-):
-    """Approach 3, asserted in both directions."""
+def test_outstanding_is_derived_from_status_rather_than_from_a_stored_flag(cfg, declared):
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
 
@@ -201,11 +202,7 @@ def test_outstanding_is_derived_from_status_rather_than_from_a_stored_flag(
     record = document["intents"][0]
     assert "state" in record
     flags = [key for key, value in record.items() if isinstance(value, bool)]
-    assert not flags, (
-        f"the persisted record carries the boolean field(s) {flags}; outstanding "
-        f"is derived from the state and a stored flag is a second answer to the "
-        f"same question"
-    )
+    assert not flags, f"a stored flag {flags} would be a second answer to the state"
 
 
 def test_every_status_is_either_settled_or_outstanding(declared):
@@ -252,15 +249,6 @@ def test_the_ledger_and_every_directory_above_it_are_private_under_any_umask(
         current = current.parent
 
 
-def test_an_unreadable_ledger_refuses_rather_than_reading_as_nothing_outstanding(cfg):
-    """The gate that reads its own state through a tolerant reader fails open."""
-    path = routing_pass.path_for(cfg)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{ not json")
-    with pytest.raises(routing_pass.RoutingLedgerUnreadable):
-        routing_pass.read(cfg)
-
-
 def test_an_absent_ledger_is_the_empty_one(cfg):
     """A library that has never deferred a routing decision is not a failure."""
     assert routing_pass.read(cfg) == routing_pass.EMPTY
@@ -273,9 +261,6 @@ def test_acknowledging_without_a_named_actor_is_refused(cfg, declared):
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
     with pytest.raises(ValueError):
         routing_pass.acknowledge(cfg, [track], session_id=SESSION_ID, actor="   ")
-
-
-# ── Part 2: resolution and readiness. Read-only, and no session anywhere.
 
 
 def _row(cfg, name: str, content_id: str, *, deleted: bool = False):
@@ -314,9 +299,7 @@ def test_every_sub_the_taxonomy_can_route_to_resolves_to_a_display_name(declared
         assert folder and sub
 
 
-def test_a_sub_the_taxonomy_does_not_declare_refuses_rather_than_inventing_a_name(
-    declared,
-):
+def test_a_sub_the_taxonomy_does_not_declare_refuses_rather_than_inventing_a_name(declared):
     """An unresolvable identifier is a ledger and a template that disagree."""
     with pytest.raises(KeyError):
         routing_pass.destination(declared, declared.buckets[0].id, "a-sub-nobody-declared")
@@ -327,10 +310,7 @@ def test_the_pass_matches_every_intent_against_rows_supplied_as_a_cursor(cfg, de
     intents = [_intent(cfg, declared, PLAIN), _intent(cfg, declared, THIRD)]
     rows = (row for row in (_row(cfg, PLAIN, "1"), _row(cfg, THIRD, "2")))
     placed = _placements(cfg, declared, intents, rows)
-    assert [item.placement for item in placed] == [
-        routing_pass.Placement.RESOLVED,
-        routing_pass.Placement.RESOLVED,
-    ]
+    assert [item.placement for item in placed] == [routing_pass.Placement.RESOLVED] * 2
 
 
 def test_a_track_with_no_row_at_all_is_not_imported_rather_than_withdrawn(cfg, declared):
@@ -341,7 +321,6 @@ def test_a_track_with_no_row_at_all_is_not_imported_rather_than_withdrawn(cfg, d
 
 
 def test_a_location_reaching_only_soft_deleted_rows_is_withdrawn(cfg, declared):
-    """The plan's fifth approach point, at the level the distinction is made."""
     intents = [_intent(cfg, declared, PLAIN)]
     placed = _placements(cfg, declared, intents, [_row(cfg, PLAIN, "1", deleted=True)])
     assert placed[0].placement is routing_pass.Placement.WITHDRAWN
@@ -351,12 +330,7 @@ def test_a_location_reaching_only_soft_deleted_rows_is_withdrawn(cfg, declared):
 def test_a_tombstone_beside_a_live_row_resolves_cleanly(cfg, declared):
     """The active-row rule, inherited rather than re-implemented."""
     intents = [_intent(cfg, declared, PLAIN)]
-    placed = _placements(
-        cfg,
-        declared,
-        intents,
-        [_row(cfg, PLAIN, "1", deleted=True), _row(cfg, PLAIN, "2")],
-    )
+    placed = _placements(cfg, declared, intents, [_row(cfg, PLAIN, "1", deleted=True), _row(cfg, PLAIN, "2")])
     assert placed[0].placement is routing_pass.Placement.RESOLVED
     assert placed[0].content_id == "2"
 
@@ -369,18 +343,6 @@ def test_two_active_rows_on_one_location_are_ambiguous_and_never_written(cfg, de
     assert placed[0].placement not in routing_pass.WRITABLE
 
 
-def test_a_location_that_resolves_to_no_path_is_not_reported_as_a_missing_import(
-    cfg, declared
-):
-    """A configuration failure and a missing import have opposite answers."""
-    intent = replace(
-        _intent(cfg, declared, PLAIN), location="/somewhere/nothing/maps/onto/x.flac"
-    )
-    placed = _placements(cfg, declared, [intent], [_row(cfg, PLAIN, "1")])
-    assert placed[0].placement is routing_pass.Placement.UNRESOLVED
-    assert routing_pass.readiness(placed) is routing_pass.Readiness.UNANSWERABLE
-
-
 def test_a_recorded_prefix_the_map_covers_resolves_to_its_row(cfg, declared):
     """Both sides through one resolver, with the volume prefix map applied."""
     older = "/an/older/mount"
@@ -391,9 +353,7 @@ def test_a_recorded_prefix_the_map_covers_resolves_to_its_row(cfg, declared):
     assert placed[0].content_id == "1"
 
 
-def test_a_composition_form_mismatch_between_the_ledger_and_the_row_resolves(
-    cfg, declared
-):
+def test_a_composition_form_mismatch_between_the_ledger_and_the_row_resolves(cfg, declared):
     intent = _intent(cfg, declared, DECOMPOSED)
     placed = _placements(cfg, declared, [intent], [_row(cfg, COMPOSED, "1")])
     assert placed[0].placement is routing_pass.Placement.RESOLVED
@@ -405,7 +365,7 @@ def test_readiness_over_nothing_pending_is_ready_rather_than_not_ready(cfg, decl
 
 
 def test_a_partly_imported_run_is_ready_and_places_only_what_arrived(cfg, declared):
-    """Supplementary. The real shape of a run somebody imported in two goes."""
+    """The real shape of a run somebody imported in two goes."""
     intents = [_intent(cfg, declared, PLAIN), _intent(cfg, declared, THIRD)]
     placed = _placements(cfg, declared, intents, [_row(cfg, PLAIN, "1")])
     assert routing_pass.readiness(placed) is routing_pass.Readiness.READY
@@ -413,9 +373,6 @@ def test_a_partly_imported_run_is_ready_and_places_only_what_arrived(cfg, declar
         routing_pass.Placement.RESOLVED,
         routing_pass.Placement.NOT_IMPORTED,
     ]
-
-
-# ── Part 3: the pass, against a real database and the real session spine
 
 
 def _registry(mode: tree_registry.Mode, *, root_id: str | None = ADOPTED_ROOT):
@@ -436,8 +393,6 @@ def _registry(mode: tree_registry.Mode, *, root_id: str | None = ADOPTED_ROOT):
 
 def _record_locations(db_path: Path, recorded: dict[str, str], *, removed=frozenset()):
     """Give the disposable database's collection rows the paths this run decided on."""
-    import sqlite3
-
     conn = sqlite3.connect(db_path)
     try:
         for content_id, path in recorded.items():
@@ -474,16 +429,7 @@ def db(cfg, monkeypatch):
     path = Path(cfg.library.db_path)
     _build_disposable_database(path)
     _record_locations(path, {"1": _music(cfg, COMPOSED), "2": _music(cfg, PLAIN)})
-    # The capture's integrity check reaches for the encryption key by default and
-    # an unencrypted fixture fails it, which would report every session here as
-    # having no verified recovery point. Compensated at the FIXTURE, never by
-    # giving the writer a verifier argument it could be handed a lie through.
-    real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer,
-        "integrity_ok",
-        lambda target, **kwargs: real_integrity_ok(target, unlock=False),
-    )
+    _unlocked_integrity(monkeypatch)
     handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
     try:
         yield handle
@@ -499,24 +445,14 @@ def adopted_root(db):
     return folder
 
 
-def _route(
-    cfg,
-    db,
-    adopted,
-    declared_taxonomy,
-    *,
-    rows=None,
-    registry=None,
-    session_id=SESSION_ID,
-    **kwargs,
-):
+def _route(cfg, db, adopted, declared_taxonomy, *, rows=None, registry=None, session_id=SESSION_ID, **kwargs):
+    if registry is None:
+        registry = _registry(tree_registry.Mode.DATABASE, root_id=str(adopted.ID))
     return routing_pass.route(
         cfg,
         db,
         session_id=session_id,
-        registry=registry
-        if registry is not None
-        else _registry(tree_registry.Mode.DATABASE, root_id=str(adopted.ID)),
+        registry=registry,
         declared=declared_taxonomy,
         rows=routing_pass.content_rows(db) if rows is None else rows,
         root_exists=lambda _root: True,
@@ -548,16 +484,12 @@ def test_the_track_lands_inside_the_tree_the_cutover_adopted(
     cfg, gates_pass, db, adopted_root, declared
 ):
     """Proved by walking UP from the membership row, never down by name."""
-    from pyrekordbox.db6 import tables
-
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     _route(cfg, db, adopted_root, declared)
 
     folder_display, sub_display = routing_pass.destination(declared, *_destination(declared))
-    membership = db.get_playlist_songs(ContentID="2").first()
-    playlist = db.session.query(tables.DjmdPlaylist).filter_by(ID=membership.PlaylistID).one()
+    playlist, folder = _filed_under(db, "2")
     assert playlist.Name == sub_display
-    folder = db.session.query(tables.DjmdPlaylist).filter_by(ID=playlist.ParentID).one()
     assert folder.Name == folder_display
     assert str(folder.ParentID) == str(adopted_root.ID)
 
@@ -565,29 +497,14 @@ def test_the_track_lands_inside_the_tree_the_cutover_adopted(
 def test_the_pass_run_before_the_import_is_read_only(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The plan's third scenario, asserted against the FILESYSTEM."""
-    intent = replace(
-        _intent(cfg, declared, PLAIN), location=_music(cfg, "Not Yet There.flac")
-    )
-    intent = replace(intent, track=routing_pass.track_id(intent.location))
-    routing_pass.record_intents(cfg, [intent])
-
-    # The STATE tree, which is everything a pass could write: the lock, the
-    # acknowledgment, the session log, the snapshot store and the ledger itself.
-    # The database file is deliberately outside it, because opening one in
-    # write-ahead-log mode touches its shared-memory index on a pure read and
-    # that would make this assert on the wrong thing.
-    roots = (
-        config.library_state_dir(cfg),
-        config.installation_state_dir(),
-        config.config_dir(),
-    )
+    """Asserted against the FILESYSTEM."""
+    routing_pass.record_intents(cfg, [_not_yet_there(cfg, declared)])
+    # The state tree is everything a pass could write; the database is outside it, since a
+    # pure read of a write-ahead-log file touches its shared-memory index.
+    roots = (config.library_state_dir(cfg), config.installation_state_dir(), config.config_dir())
     before = _state_fingerprint(*roots)
     report = _route(cfg, db, adopted_root, declared)
-    assert _state_fingerprint(*roots) == before, (
-        "the pass wrote to the state tree before deciding the library was ready; "
-        "a read-only path that leaves a trace has already done something"
-    )
+    assert _state_fingerprint(*roots) == before, "the pass wrote before deciding it was ready"
 
     assert report.readiness is routing_pass.Readiness.NOT_READY
     assert report.routed == ()
@@ -598,7 +515,7 @@ def test_the_pass_run_before_the_import_is_read_only(
 def test_a_crash_between_the_commit_and_the_mark_converges(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
-    """The plan's second scenario, driven by an ACTUAL crash in the window."""
+    """Driven by an ACTUAL crash in the window."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     real_mark = routing_pass.mark
 
@@ -609,14 +526,11 @@ def test_a_crash_between_the_commit_and_the_mark_converges(
     with pytest.raises(RuntimeError, match="between the commit and the mark"):
         _route(cfg, db, adopted_root, declared)
 
-    # The commit landed and the ledger did not move, which is exactly the state a
-    # kill in that window leaves behind.
+    # The commit landed and the ledger did not move: what a kill in the window leaves.
     assert _memberships(db, "2") == 1
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
 
-    # The restart. Only the mark is put back: undoing every patch would also undo
-    # the platform seams this whole file runs behind, and the run would then fail
-    # on the machine rather than on the property under test.
+    # The restart puts back only the mark, keeping the platform seams.
     monkeypatch.setattr(routing_pass, "mark", real_mark)
     report = _route(cfg, db, adopted_root, declared)
     assert report.memberships[0].added == 0
@@ -652,10 +566,12 @@ def test_a_track_whose_membership_cannot_be_proved_is_not_marked(
 def test_a_tree_still_on_the_bridge_refuses_and_marks_nothing(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """U18's inverse guard reaches the caller, and the ledger is untouched."""
+    """U18's inverse guard reaches the caller with its remedy, and the ledger is untouched."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
-    with pytest.raises(tree_registry.TreeModeRefused):
+    with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
         _route(cfg, db, adopted_root, declared, registry=_registry(tree_registry.Mode.XML))
+    assert isinstance(excinfo.value, CratekitError)
+    assert excinfo.value.cause.remediation.remedy is excinfo.value.remedy
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
     assert _memberships(db, "2") == 0
 
@@ -664,12 +580,7 @@ def test_a_missing_acknowledgment_refuses_before_the_database_is_touched(
     cfg, monkeypatch, db, adopted_root, declared
 ):
     """The session gates are the writer's, and the pass does not route around them."""
-    monkeypatch.setattr(
-        preflight,
-        "default_identity_provider",
-        lambda: (lambda _path: cfg.library.volume_id),
-    )
-    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+    _volume_agrees(cfg, monkeypatch)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     with pytest.raises(CratekitError) as excinfo:
         _route(cfg, db, adopted_root, declared)
@@ -681,15 +592,8 @@ def test_content_rows_reads_the_soft_delete_marker_off_the_row(cfg, monkeypatch,
     """The withdrawn answer is only as good as the column it comes from."""
     path = tmp_path / "removed" / "master.db"
     _build_disposable_database(path)
-    _record_locations(
-        path, {"1": _music(cfg, COMPOSED), "2": _music(cfg, PLAIN)}, removed={"2"}
-    )
-    real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer,
-        "integrity_ok",
-        lambda target, **kwargs: real_integrity_ok(target, unlock=False),
-    )
+    _record_locations(path, {"1": _music(cfg, COMPOSED), "2": _music(cfg, PLAIN)}, removed={"2"})
+    _unlocked_integrity(monkeypatch)
     handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
     try:
         rows = {row.content_id: row for row in routing_pass.content_rows(handle)}
@@ -701,17 +605,12 @@ def test_content_rows_reads_the_soft_delete_marker_off_the_row(cfg, monkeypatch,
     assert rows["2"].recorded == _music(cfg, PLAIN)
 
 
-# ── Part 4: the run that will not close while anything is still nowhere
-
-
 def _open_run(cfg):
-    return session.open_session(
-        cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id=SESSION_ID
-    )
+    return session.open_session(cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id=SESSION_ID)
 
 
 def test_a_run_with_nothing_to_route_closes(cfg, gates_pass):
-    """The plan's fifth scenario. A run that deferred nothing is not held up."""
+    """A run that deferred nothing is not held up."""
     record = _open_run(cfg)
     closed = routing_pass.close_run(record, cfg)
     assert closed.state is session.SessionState.CLOSED
@@ -719,7 +618,6 @@ def test_a_run_with_nothing_to_route_closes(cfg, gates_pass):
 
 
 def test_a_run_with_a_pending_track_refuses_to_close(cfg, gates_pass, declared):
-    """The plan's first scenario, first half."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
 
@@ -733,7 +631,7 @@ def test_a_run_with_a_pending_track_refuses_to_close(cfg, gates_pass, declared):
 def test_a_run_closes_once_the_routing_pass_has_placed_its_track(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The plan's first scenario, second half. The same run, after the pass."""
+    """The same run, after the pass."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     with pytest.raises(CratekitError):
@@ -749,12 +647,7 @@ def test_a_run_whose_track_has_not_been_imported_still_refuses_to_close(
 ):
     """The pass ran, said not-ready, and settled nothing. The run stays open."""
     record = _open_run(cfg)
-    intent = replace(
-        _intent(cfg, declared, PLAIN), location=_music(cfg, "Not Yet There.flac")
-    )
-    routing_pass.record_intents(
-        cfg, [replace(intent, track=routing_pass.track_id(intent.location))]
-    )
+    routing_pass.record_intents(cfg, [_not_yet_there(cfg, declared)])
 
     assert _route(cfg, db, adopted_root, declared).readiness is routing_pass.Readiness.NOT_READY
     with pytest.raises(CratekitError):
@@ -764,15 +657,9 @@ def test_a_run_whose_track_has_not_been_imported_still_refuses_to_close(
 def test_a_track_deleted_after_import_is_surfaced(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The plan's fourth scenario, first half. Surfaced, never auto-skipped."""
+    """Surfaced, never auto-skipped."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
-    report = _route(
-        cfg,
-        db,
-        adopted_root,
-        declared,
-        rows=[_row(cfg, PLAIN, "2", deleted=True)],
-    )
+    report = _route(cfg, db, adopted_root, declared, rows=[_row(cfg, PLAIN, "2", deleted=True)])
 
     assert report.readiness is routing_pass.Readiness.READY
     assert [item.placement for item in report.withdrawn] == [routing_pass.Placement.WITHDRAWN]
@@ -794,23 +681,17 @@ def test_the_routing_pass_never_acknowledges_a_track_by_itself(
 def test_a_surfaced_track_closes_the_run_only_after_it_is_acknowledged(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The plan's fourth scenario, second half, and the ONLY way out of it."""
+    """Acknowledgment is the ONLY way out of a surfaced track."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     removed = [_row(cfg, PLAIN, "2", deleted=True)]
-
-    _route(cfg, db, adopted_root, declared, rows=removed)
-    with pytest.raises(CratekitError):
-        routing_pass.close_run(record, cfg)
-
-    _route(cfg, db, adopted_root, declared, rows=removed)
-    with pytest.raises(CratekitError):
-        routing_pass.close_run(record, cfg)
+    for _ in range(2):
+        _route(cfg, db, adopted_root, declared, rows=removed)
+        with pytest.raises(CratekitError):
+            routing_pass.close_run(record, cfg)
 
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
-    routing_pass.acknowledge(
-        cfg, [track], session_id=SESSION_ID, actor="a-person", note="removed in rekordbox"
-    )
+    routing_pass.acknowledge(cfg, [track], session_id=SESSION_ID, actor="a-person", note="removed in rekordbox")
 
     closed = routing_pass.close_run(record, cfg)
     assert closed.state is session.SessionState.CLOSED
@@ -823,40 +704,23 @@ def test_abandoning_a_run_is_not_gated_on_routing(cfg, gates_pass, declared):
     """The escape is not gated, because a gate on the escape is a trap."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
-    abandoned = routing_pass.close_run(
-        record, cfg, state=session.SessionState.ABANDONED
-    )
+    abandoned = routing_pass.close_run(record, cfg, state=session.SessionState.ABANDONED)
     assert abandoned.state is session.SessionState.ABANDONED
 
 
-def test_one_run_of_another_session_does_not_hold_this_one_open(
-    cfg, gates_pass, declared
-):
+def test_one_run_of_another_session_does_not_hold_this_one_open(cfg, gates_pass, declared):
     """Outstanding is asked per run, so one stalled run does not freeze the rest."""
     record = _open_run(cfg)
-    routing_pass.record_intents(
-        cfg, [_intent(cfg, declared, PLAIN, session_id="another-run")]
-    )
+    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="another-run")])
     assert routing_pass.close_run(record, cfg).state is session.SessionState.CLOSED
 
 
-# ── The unit's verification: one real run, imported, routed, closed
-
-
 def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, declared, monkeypatch):
-    """Import, route, tracks appear in database-native trees, run closes."""
-    from pyrekordbox.db6 import tables
-
+    """The unit's verification: import, route, tracks appear in native trees, run closes."""
     path = Path(cfg.library.db_path)
     _build_disposable_database(path)
-    # Nothing recorded against either row yet: this library has not been imported.
-    _record_locations(path, {"1": "", "2": ""})
-    real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer,
-        "integrity_ok",
-        lambda target, **kwargs: real_integrity_ok(target, unlock=False),
-    )
+    _record_locations(path, {"1": "", "2": ""})  # nothing imported yet
+    _unlocked_integrity(monkeypatch)
 
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
@@ -875,8 +739,7 @@ def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, declared, monke
             analysis_roots=[Path(cfg.library.root) / "Music"],
         ), adopted
 
-    # 1. Before the import. Nothing resolves, nothing is marked, the run refuses
-    #    to close.
+    # Before the import nothing resolves or is marked, and the run refuses to close.
     handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
     try:
         early, _ = drive(handle)
@@ -888,11 +751,8 @@ def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, declared, monke
         routing_pass.close_run(record, cfg)
     assert excinfo.value.cause.reason == "routing-outstanding"
 
-    # 2. The person imports. The row exists now, and this process was not holding
-    #    the database while that happened.
+    # The person imports while this process holds nothing; the pass then places and marks.
     _record_locations(path, {"2": _music(cfg, PLAIN)})
-
-    # 3. The pass runs again, places the track, and marks it.
     handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
     try:
         late, adopted = drive(handle)
@@ -900,29 +760,16 @@ def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, declared, monke
         assert len(late.routed) == 1
         assert late.memberships[0].added == 1
 
-        folder_display, sub_display = routing_pass.destination(
-            declared, *_destination(declared)
-        )
-        membership = handle.get_playlist_songs(ContentID="2").first()
-        assert membership is not None, "the track reached no playlist"
-        playlist = (
-            handle.session.query(tables.DjmdPlaylist).filter_by(ID=membership.PlaylistID).one()
-        )
-        folder = (
-            handle.session.query(tables.DjmdPlaylist).filter_by(ID=playlist.ParentID).one()
-        )
+        folder_display, sub_display = routing_pass.destination(declared, *_destination(declared))
+        playlist, folder = _filed_under(handle, "2")
         assert (playlist.Name, folder.Name) == (sub_display, folder_display)
         assert str(folder.ParentID) == str(adopted.ID)
     finally:
         rb_writer.close_db(handle)
 
-    # 4. The run closes.
     closed = routing_pass.close_run(record, cfg)
     assert closed.state is session.SessionState.CLOSED
     assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
-
-
-# ── The softening paths this unit creates, closed in the commit that creates them
 
 
 def _module_string_constants(tree: ast.AST) -> frozenset[str]:
@@ -962,17 +809,18 @@ def _is_invented(node: ast.expr | None, constants: frozenset[str]) -> bool:
     return False
 
 
+def _called_name(func: ast.expr) -> str:
+    """The name a call is made by, attribute or bare, or empty."""
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    return func.id if isinstance(func, ast.Name) else ""
+
+
 def _calls(source: str) -> Iterator[tuple[str, ast.Call]]:
-    """Every call in ``source`` with the name it is called by, attribute or bare."""
+    """Every call in ``source`` with the name it is called by."""
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Call):
-            func = node.func
-            name = (
-                func.attr
-                if isinstance(func, ast.Attribute)
-                else (func.id if isinstance(func, ast.Name) else "")
-            )
-            yield name, node
+            yield _called_name(node.func), node
 
 
 def _made_up_actors(source: str) -> list[str]:
@@ -988,22 +836,11 @@ def _made_up_actors(source: str) -> list[str]:
                     found.append(ast.unparse(node))
                 continue
             if keyword.arg is None and isinstance(keyword.value, ast.Dict):
-                # ``**{"actor": ...}``: the same argument, spelled so a check on
-                # keyword names never sees it.
+                # ``**{"actor": ...}`` hides the argument from a check on keyword names.
                 for key, value in zip(keyword.value.keys, keyword.value.values):
-                    if (
-                        isinstance(key, ast.Constant)
-                        and key.value == "actor"
-                        and _is_invented(value, constants)
-                    ):
+                    if isinstance(key, ast.Constant) and key.value == "actor" and _is_invented(value, constants):
                         found.append(ast.unparse(node))
     return found
-
-
-# The fixture half of this guard, in both directions, is at the end of this file
-# under finding 11. It was four assertions in one test and is now two
-# parametrized sets, because a bypass that a reviewer found has to be a named
-# case somebody can read rather than one more line in a list.
 
 
 def test_no_caller_acknowledges_a_track_with_an_actor_it_invented():
@@ -1016,11 +853,8 @@ def test_no_caller_acknowledges_a_track_with_an_actor_it_invented():
         # A file that never spells the name holds no call of it.
         if "acknowledge" in source and (found := _made_up_actors(source)):
             offenders[path.relative_to(SRC_ROOT).as_posix()] = found
-    assert not offenders, (
-        f"acknowledgments recorded against an actor the code made up: {offenders}. "
-        f"The actor is the person who decided, and it reaches this layer from a "
-        f"decision the CLI recorded against the run, never from a literal."
-    )
+    # The actor is the person who decided, from a decision recorded against the run.
+    assert not offenders, f"acknowledgments recorded against an actor the code made up: {offenders}"
 
 
 def test_the_intake_pipeline_records_its_routing_intents_at_the_decision():
@@ -1031,20 +865,7 @@ def test_the_intake_pipeline_records_its_routing_intents_at_the_decision():
         for path in sorted(package.rglob("*.py"))
         for name, _node in _calls(path.read_text())
     )
-    assert called, (
-        "the intake pipeline never records a routing intent, so no run ever has "
-        "anything deferred and the deferred-routing mechanism has no subject"
-    )
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Part 5: the defects an adversarial review found in the shape above
-#
-# Every test below was written against the DEFECT and observed failing before
-# the fix beside it existed. They are grouped by the finding they close rather
-# than by the part of the module they touch, because what has to stay true is
-# the property, and the property is what the finding named.
-# ═══════════════════════════════════════════════════════════════════════════
+    assert called, "the intake pipeline never records a routing intent"
 
 
 def _second_destination(declared_taxonomy):
@@ -1053,6 +874,12 @@ def _second_destination(declared_taxonomy):
     sub = routing.energy_sub(declared_taxonomy, bucket.id, declared_taxonomy.energy.scale_max)
     assert sub is not None, "the shipped template's second bucket declares no sub"
     return bucket.id, sub.id
+
+
+def _elsewhere(cfg, declared_taxonomy, session_id: str):
+    """PLAIN's intent for ``session_id``, sent to the second destination."""
+    other_bucket, other_sub = _second_destination(declared_taxonomy)
+    return replace(_intent(cfg, declared_taxonomy, PLAIN, session_id=session_id), bucket=other_bucket, sub=other_sub)
 
 
 def _where(db, content_id: str) -> list[tuple[str | None, str]]:
@@ -1067,24 +894,17 @@ def _where(db, content_id: str) -> list[tuple[str | None, str]]:
     return found
 
 
-# ── Finding 1: the ledger is keyed per file, the close gate asks per run ─────
-
-
 def test_a_second_run_deferring_one_file_does_not_take_over_the_first_runs_record(
     cfg, gates_pass, declared
 ):
     """One record per RUN and file, never one record per file."""
-    first = session.open_session(
-        cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-one"
-    )
+    first = session.open_session(cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-one")
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-two")])
 
     ledger = routing_pass.read(cfg)
     owners = sorted(entry.session_id for entry in ledger.intents)
-    assert owners == ["run-one", "run-two"], (
-        f"the ledger holds {owners}; one run's decision replaced the other's"
-    )
+    assert owners == ["run-one", "run-two"], f"one run's decision replaced the other's: {owners}"
     assert len(ledger.outstanding("run-one")) == 1
     assert len(ledger.outstanding("run-two")) == 1
     with pytest.raises(CratekitError) as excinfo:
@@ -1107,29 +927,15 @@ def test_two_overlapping_runs_over_one_file_each_reach_their_own_destination(
     cfg, gates_pass, db, adopted_root, declared
 ):
     """Both runs driven to completion, and neither closes while it still owes work."""
-    first = session.open_session(
-        cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-one"
-    )
-    second = session.open_session(
-        cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-two"
-    )
-    other_bucket, other_sub = _second_destination(declared)
+    first = session.open_session(cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-one")
+    second = session.open_session(cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-two")
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
-    routing_pass.record_intents(
-        cfg,
-        [
-            replace(
-                _intent(cfg, declared, PLAIN, session_id="run-two"),
-                bucket=other_bucket,
-                sub=other_sub,
-            )
-        ],
-    )
+    routing_pass.record_intents(cfg, [_elsewhere(cfg, declared, "run-two")])
     first_destination = routing_pass.destination(declared, *_destination(declared))
-    second_destination = routing_pass.destination(declared, other_bucket, other_sub)
+    second_destination = routing_pass.destination(declared, *_second_destination(declared))
     assert first_destination != second_destination
 
-    # Run one places its track. Run two still owes its own.
+    # Run one places its track while run two still owes its own.
     _route(cfg, db, adopted_root, declared, session_id="run-one")
     assert routing_pass.close_run(first, cfg).state is session.SessionState.CLOSED
     with pytest.raises(CratekitError) as excinfo:
@@ -1140,20 +946,19 @@ def test_two_overlapping_runs_over_one_file_each_reach_their_own_destination(
     assert routing_pass.close_run(second, cfg).state is session.SessionState.CLOSED
 
     landed = sorted(_where(db, "2"))
-    assert landed == sorted([first_destination, second_destination]), (
-        f"the library holds {landed}; each run's own destination has to be written"
-    )
+    assert landed == sorted([first_destination, second_destination]), f"the library holds {landed}"
 
 
-# ── Finding 2: the soft-delete marker must never default to "active" ─────────
-
-
-def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg):
-    """U18 gave ``ContentRow.deleted`` no default. The producer must not supply one."""
+@pytest.mark.parametrize("marker", ["absent", None], ids=["column-absent", "column-empty"])
+def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg, marker):
+    """U18 gave ``ContentRow.deleted`` no default, so no producer may supply one, empty or absent."""
 
     class Row:
         ID = "9"
         FolderPath = "/somewhere/nothing.flac"
+
+    if marker is None:
+        Row.rb_local_deleted = None
 
     class Blind:
         def get_content(self):
@@ -1164,33 +969,13 @@ def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg):
     assert excinfo.value.cause.code is ExitCode.LIBRARY_UNREADABLE
 
 
-def test_a_soft_delete_marker_that_reads_as_nothing_refuses(cfg):
-    """An exposed column holding no value is the same hazard wearing a value."""
-
-    class Row:
-        ID = "9"
-        FolderPath = "/somewhere/nothing.flac"
-        rb_local_deleted = None
-
-    class Blind:
-        def get_content(self):
-            return [Row()]
-
-    with pytest.raises(CratekitError):
-        list(routing_pass.content_rows(Blind()))
-
-
-# ── Finding 3: one stale destination must not abort the whole pass ───────────
-
-
-def test_a_destination_the_taxonomy_no_longer_declares_is_its_own_placement(
-    cfg, declared
-):
-    """``Placement`` had five members and none of them meant this."""
+def test_a_destination_the_taxonomy_no_longer_declares_is_its_own_placement(cfg, declared):
+    """An undeclared destination is its own placement, never written, and not a missing import."""
     stale = replace(_intent(cfg, declared, PLAIN), sub="a-sub-this-library-dropped")
     placed = _placements(cfg, declared, [stale], [_row(cfg, PLAIN, "1")])
     assert placed[0].placement is routing_pass.Placement.UNDECLARED
     assert placed[0].placement not in routing_pass.WRITABLE
+    assert routing_pass.readiness(placed) is routing_pass.Readiness.UNANSWERABLE
 
 
 def test_one_stale_destination_does_not_stop_the_other_tracks_in_the_run(
@@ -1209,9 +994,6 @@ def test_one_stale_destination_does_not_stop_the_other_tracks_in_the_run(
     assert reasons[stale.track] is routing_pass.Placement.UNDECLARED
     outstanding = routing_pass.read(cfg).outstanding(SESSION_ID)
     assert [entry.track for entry in outstanding] == [stale.track]
-
-
-# ── Finding 4: the recovery primitive is keyed on a mutable display name ─────
 
 
 class _CrashOnce:
@@ -1237,26 +1019,21 @@ def _crash_between_the_commit_and_the_mark(cfg, db, adopted, declared_taxonomy, 
     assert len(routing_pass.read(cfg).outstanding(SESSION_ID)) == 1
 
 
+def _rename_bucket_folder(db, declared_taxonomy) -> None:
+    """A person renames the first bucket's folder in rekordbox."""
+    folder_display, _sub_display = routing_pass.destination(declared_taxonomy, *_destination(declared_taxonomy))
+    db.session.query(tables.DjmdPlaylist).filter_by(Name=folder_display).one().Name = "A Name Of Their Own"
+    db.session.commit()
+
+
 def test_a_recovery_run_after_a_rekordbox_rename_refuses_rather_than_duplicating(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
-    """R19 claims renaming a folder in rekordbox changes nothing, and re-running is the remedy
-    (D5).
-    """
-    from pyrekordbox.db6 import tables
-
+    """With no recorded node map a rename refuses, rather than duplicating (R19, D5)."""
     _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, declared, monkeypatch)
-    from cratekit.core import convergence
-
-    # THE MAP THIS PASS JUST WROTE IS THE THING THAT MAKES A RENAME CONVERGE.
-    # Wiping it is what leaves the leftover refusal standing: no recorded
-    # identifier, a missing declared folder, and a track sitting under a name
-    # the taxonomy does not know.
+    # The node map the pass wrote is what makes a rename converge; wiped, the refusal stands.
     convergence.record_nodes(cfg, TREE_ID, (), replace_all=True)
-    folder_display, _sub_display = routing_pass.destination(declared, *_destination(declared))
-    row = db.session.query(tables.DjmdPlaylist).filter_by(Name=folder_display).one()
-    row.Name = "A Name Of Their Own"
-    db.session.commit()
+    _rename_bucket_folder(db, declared)
 
     with pytest.raises(CratekitError) as excinfo:
         _route(cfg, db, adopted_root, declared)
@@ -1267,9 +1044,6 @@ def test_a_recovery_run_after_a_rekordbox_rename_refuses_rather_than_duplicating
 
 def _taxonomy_with_the_first_bucket_renamed(new_display: str):
     """The shipped template, REBUILT, with one bucket's display name changed."""
-    import tomllib
-    from importlib import resources
-
     source = resources.files("cratekit") / "templates" / taxonomy.DEFAULT_TEMPLATE
     data = tomllib.loads(source.read_text(encoding="utf-8"))
     data["bucket"][0]["display"] = new_display
@@ -1294,13 +1068,8 @@ def test_a_recovery_run_after_a_rename_converges_once_the_tree_layer_can(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
     """P5's countdown for the refusal above, so it cannot become permanent."""
-    from pyrekordbox.db6 import tables
-
     _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, declared, monkeypatch)
-    folder_display, _sub_display = routing_pass.destination(declared, *_destination(declared))
-    row = db.session.query(tables.DjmdPlaylist).filter_by(Name=folder_display).one()
-    row.Name = "A Name Of Their Own"
-    db.session.commit()
+    _rename_bucket_folder(db, declared)
 
     report = _route(cfg, db, adopted_root, declared)
     assert len(report.routed) == 1
@@ -1312,26 +1081,13 @@ def test_a_bucket_folder_that_does_not_exist_yet_is_not_mistaken_for_a_rename(
     cfg, gates_pass, db, adopted_root, declared
 ):
     """P7, the other direction. A guard that fires on correct code gets routed around."""
-    other_bucket, other_sub = _second_destination(declared)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
     _route(cfg, db, adopted_root, declared, session_id="run-one")
-    routing_pass.record_intents(
-        cfg,
-        [
-            replace(
-                _intent(cfg, declared, PLAIN, session_id="run-two"),
-                bucket=other_bucket,
-                sub=other_sub,
-            )
-        ],
-    )
+    routing_pass.record_intents(cfg, [_elsewhere(cfg, declared, "run-two")])
 
     report = _route(cfg, db, adopted_root, declared, session_id="run-two")
     assert len(report.routed) == 1
     assert _memberships(db, "2") == 2
-
-
-# ── Finding 5: the ledger's read-modify-write takes no lock ──────────────────
 
 
 _CONCURRENT_WRITER = '''
@@ -1367,9 +1123,6 @@ for index in range(count):
 
 def test_two_processes_recording_intents_lose_none_of_them(cfg, library, tmp_path):
     """REAL PROCESSES, not threads, because the hazard is a real process boundary."""
-    import subprocess
-    import sys
-
     script = tmp_path / "concurrent_writer.py"
     script.write_text(_CONCURRENT_WRITER)
     each = 60
@@ -1390,10 +1143,7 @@ def test_two_processes_recording_intents_lose_none_of_them(cfg, library, tmp_pat
         assert process.returncode == 0, errors.decode()
 
     recorded = routing_pass.read(cfg).intents
-    assert len(recorded) == 2 * each, (
-        f"{2 * each} decisions were recorded and {len(recorded)} survived; an "
-        f"unlocked read-modify-write erased the rest"
-    )
+    assert len(recorded) == 2 * each, f"{len(recorded)} of {2 * each} decisions survived"
 
 
 def test_the_lock_is_a_declared_state_entry_that_a_restore_never_replaces(cfg):
@@ -1410,9 +1160,7 @@ def test_everything_this_module_creates_is_private_under_any_umask(cfg, declared
     try:
         routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
         track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
-        routing_pass.mark(
-            cfg, [track], routing_pass.TrackState.ROUTED, session_id=SESSION_ID
-        )
+        routing_pass.mark(cfg, [track], routing_pass.TrackState.ROUTED, session_id=SESSION_ID)
     finally:
         os.umask(previous)
 
@@ -1431,11 +1179,8 @@ def test_everything_this_module_creates_is_private_under_any_umask(cfg, declared
     assert not permissive, f"created under umask 000 at a permissive mode: {permissive}"
 
 
-# ── Finding 6: a run whose export was never imported must not close ──────────
-
-
-def test_a_run_whose_export_was_never_imported_refuses_to_close(cfg, gates_pass):
-    """The other state in which somebody still owes an act."""
+def _awaiting_import(cfg) -> None:
+    """An intake run left waiting on an import of its export."""
     record = session.open_session(cfg, workflow="an-intake-workflow", session_id=SESSION_ID)
     pending = session.pending_import(
         record,
@@ -1445,6 +1190,10 @@ def test_a_run_whose_export_was_never_imported_refuses_to_close(cfg, gates_pass)
     )
     session.mark_awaiting_import(record, pending, cfg)
 
+
+def test_a_run_whose_export_was_never_imported_refuses_to_close(cfg, gates_pass):
+    """The other state in which somebody still owes an act."""
+    _awaiting_import(cfg)
     with pytest.raises(CratekitError) as excinfo:
         routing_pass.close_run(session.read_record(SESSION_ID, cfg), cfg)
     assert excinfo.value.cause.reason == "awaiting-import"
@@ -1454,29 +1203,22 @@ def test_a_run_whose_export_was_never_imported_refuses_to_close(cfg, gates_pass)
 
 def test_abandoning_a_run_whose_export_was_never_imported_is_still_allowed(cfg, gates_pass):
     """The escape stays open, for the reason the routing gate leaves it open."""
-    record = session.open_session(cfg, workflow="an-intake-workflow", session_id=SESSION_ID)
-    pending = session.pending_import(
-        record,
-        artifact=cfg.library.root / "an-export.xml",
-        summary="import this export into rekordbox",
-        verify_verb="a-verify-verb",
-    )
-    session.mark_awaiting_import(record, pending, cfg)
-
+    _awaiting_import(cfg)
     abandoned = routing_pass.close_run(
         session.read_record(SESSION_ID, cfg), cfg, state=session.SessionState.ABANDONED
     )
     assert abandoned.state is session.SessionState.ABANDONED
 
 
-# ── Finding 7: every refusal has to carry its remedy to the boundary ─────────
+def _write_ledger(cfg, text: str) -> None:
+    path = routing_pass.path_for(cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
 
 
 def test_an_unreadable_ledger_carries_its_remedy_to_the_boundary(cfg):
-    """S4. A refusal that is not a ``CratekitError`` reaches the user as a defect report."""
-    path = routing_pass.path_for(cfg)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{ not json")
+    """Read through a tolerant reader the gate fails open, and a non-structured refusal is a defect (S4)."""
+    _write_ledger(cfg, "{ not json")
 
     with pytest.raises(routing_pass.RoutingLedgerUnreadable) as excinfo:
         routing_pass.read(cfg)
@@ -1487,50 +1229,24 @@ def test_an_unreadable_ledger_carries_its_remedy_to_the_boundary(cfg):
 
 def test_a_ledger_from_a_newer_build_carries_the_upgrade_remedy(cfg):
     """The same slug, a different remedy, which is why the remedy travels on the cause."""
-    path = routing_pass.path_for(cfg)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"schema_version": routing_pass.SCHEMA_VERSION + 1, "intents": []})
-    )
+    _write_ledger(cfg, json.dumps({"schema_version": routing_pass.SCHEMA_VERSION + 1, "intents": []}))
     with pytest.raises(CratekitError) as excinfo:
         routing_pass.read(cfg)
     assert excinfo.value.cause.remediation.remedy is Remedy.UPGRADE_CRATEKIT
 
 
-def test_a_tree_still_on_the_bridge_carries_its_remedy_to_the_boundary(
-    cfg, gates_pass, db, adopted_root, declared
-):
-    """The other refusal this unit can raise, and it came from the same shape."""
-    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
-    with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
-        _route(cfg, db, adopted_root, declared, registry=_registry(tree_registry.Mode.XML))
-    assert isinstance(excinfo.value, CratekitError)
-    assert excinfo.value.cause.remediation.remedy is excinfo.value.remedy
-
-
 def test_every_refusal_this_module_raises_is_a_structured_cause():
     """P3. The set is DERIVED by walking the module rather than listed."""
-    import inspect
-
     raised: set[str] = set()
     for node in ast.walk(ast.parse(inspect.getsource(routing_pass))):
         if not isinstance(node, ast.Raise) or node.exc is None:
             continue
         thrown = node.exc
-        name = ""
-        if isinstance(thrown, ast.Call):
-            name = (
-                thrown.func.attr
-                if isinstance(thrown.func, ast.Attribute)
-                else (thrown.func.id if isinstance(thrown.func, ast.Name) else "")
-            )
-        elif isinstance(thrown, ast.Name):
-            name = thrown.id
+        name = _called_name(thrown.func if isinstance(thrown, ast.Call) else thrown)
         if name:
             raised.add(name)
 
-    # ``ValueError`` is a programming-error guard on a constructor, not a refusal
-    # a user can act on, and ``refuse`` already returns a structured cause.
+    # ``ValueError`` guards a constructor; ``refuse`` already returns a structured cause.
     exempt = {"refuse", "ValueError"}
     checked = 0
     for name in sorted(raised - exempt):
@@ -1538,18 +1254,12 @@ def test_every_refusal_this_module_raises_is_a_structured_cause():
         if not isinstance(candidate, type) or not issubclass(candidate, BaseException):
             continue
         checked += 1
-        assert issubclass(candidate, CratekitError), (
-            f"{name} is raised as a refusal and is not a CratekitError, so the "
-            f"command-line boundary will flatten it to a defect report and throw "
-            f"away the remedy it carries (S4)"
-        )
+        assert issubclass(candidate, CratekitError), f"{name} is not a CratekitError (S4)"
     assert checked, "the walk found no raised exception type, so it proves nothing"
 
 
 def test_every_refusal_the_pass_propagates_carries_its_remedy_too():
     """The same rule, over the module this pass RAISES THROUGH rather than from (P5)."""
-    import inspect
-
     checked = 0
     for _name, candidate in inspect.getmembers(tree_registry, inspect.isclass):
         if not issubclass(candidate, BaseException):
@@ -1557,41 +1267,21 @@ def test_every_refusal_the_pass_propagates_carries_its_remedy_too():
         if candidate.__module__ != tree_registry.__name__:
             continue
         signature = inspect.signature(candidate.__init__)
-        holds_a_remedy = "remedy" in signature.parameters or "Remedy" in (
-            inspect.getsource(candidate)
-        )
+        holds_a_remedy = "remedy" in signature.parameters or "Remedy" in inspect.getsource(candidate)
         if not holds_a_remedy:
             continue
         checked += 1
-        assert issubclass(candidate, CratekitError), (
-            f"{candidate.__name__} carries a remedy and is not a CratekitError, "
-            f"so the command-line boundary flattens it to a defect report and "
-            f"the remedy it holds never reaches the person who needs it (S4)"
-        )
+        assert issubclass(candidate, CratekitError), f"{candidate.__name__} is not a CratekitError (S4)"
     assert checked >= 2, "the walk found nothing carrying a remedy, so it proves nothing"
 
 
-# ── Finding 8: readiness had two answers where the module argues for three ───
-
-
-def test_a_run_whose_locations_all_resolve_to_nothing_is_not_told_to_import(
-    cfg, declared
-):
-    """``readiness`` forbids the conflation the module docstring endorsed."""
-    intent = replace(
-        _intent(cfg, declared, PLAIN), location="/somewhere/nothing/maps/onto/x.flac"
-    )
+def test_a_run_whose_locations_all_resolve_to_nothing_is_not_told_to_import(cfg, declared):
+    """A configuration failure and a missing import have opposite answers."""
+    intent = replace(_intent(cfg, declared, PLAIN), location="/somewhere/nothing/maps/onto/x.flac")
     placed = _placements(cfg, declared, [intent], [_row(cfg, PLAIN, "1")])
     assert placed[0].placement is routing_pass.Placement.UNRESOLVED
     assert routing_pass.readiness(placed) is routing_pass.Readiness.UNANSWERABLE
     assert routing_pass.readiness(placed) is not routing_pass.Readiness.NOT_READY
-
-
-def test_a_run_whose_destinations_are_all_undeclared_is_not_told_to_import(cfg, declared):
-    """The second answerless placement, and it must not read as a missing import either."""
-    stale = replace(_intent(cfg, declared, PLAIN), sub="a-sub-this-library-dropped")
-    placed = _placements(cfg, declared, [stale], [_row(cfg, PLAIN, "1")])
-    assert routing_pass.readiness(placed) is routing_pass.Readiness.UNANSWERABLE
 
 
 def test_every_readiness_answer_except_ready_writes_nothing(
@@ -1613,35 +1303,19 @@ def test_every_readiness_answer_except_ready_writes_nothing(
 def test_the_readiness_answers_are_three_rather_than_two():
     """One file cannot argue both sides of the same question."""
     assert len(routing_pass.Readiness) >= 3
-    assert routing_pass.Readiness.UNANSWERABLE not in (
-        routing_pass.Readiness.READY,
-        routing_pass.Readiness.NOT_READY,
-    )
-
-
-# ── Findings 9 and 10: the obligations a later unit owes ─────────────────────
+    assert routing_pass.Readiness.UNANSWERABLE not in (routing_pass.Readiness.READY, routing_pass.Readiness.NOT_READY)
 
 
 def test_the_routing_verbs_have_landed():
     """U20 discharged the countdown: the four verbs are no longer planned."""
-    from cratekit.cli import registry as cli_registry
-
-    named = [
-        entry
-        for entry in cli_registry.ENTRIES
-        if entry.module == "cratekit.write.routing_cli"
-    ]
+    named = [entry for entry in cli_registry.ENTRIES if entry.module == "cratekit.write.routing_cli"]
     assert named, "no entry names the routing command-line module any more"
     still_planned = [entry.name for entry in named if not entry.landed]
-    assert not still_planned, (
-        f"routing verbs still carry a planned_in marker: {still_planned}"
-    )
+    assert not still_planned, f"routing verbs still carry a planned_in marker: {still_planned}"
 
 
 def test_the_routing_command_line_module_is_no_longer_owed_in_the_register():
     """The countdown fired and was discharged, not left as a comment (P5, U59)."""
-    from tests import _pending
-
     assert "cratekit.write.routing_cli" not in _pending.PENDING
 
 
@@ -1659,11 +1333,8 @@ def test_the_routing_verbs_close_their_runs_through_the_gated_close():
             if name == "close_run":
                 gated = True
     assert gated, "the routing verbs never close a run through the gated close"
-    assert not bypassed, (
-        f"the routing verbs close through the session spine directly: {bypassed}. "
-        f"That releases the capture without asking whether the run still holds a "
-        f"track that reached no playlist."
-    )
+    # A direct close releases the capture without asking whether a track reached no playlist.
+    assert not bypassed, f"the routing verbs close through the session spine directly: {bypassed}"
 
 
 def test_the_intake_pipeline_closes_its_runs_through_the_gated_close():
@@ -1674,13 +1345,7 @@ def test_the_intake_pipeline_closes_its_runs_through_the_gated_close():
         for name, node in _calls(path.read_text()):
             if name == "close_session":
                 bypassed.append(f"{path.name}: {ast.unparse(node)}")
-    assert not bypassed, (
-        f"intake closes runs through the session spine directly: {bypassed}. A run "
-        f"that deferred a placement must close through routing_pass.close_run."
-    )
-
-
-# ── Finding 11: the made-up-actor guard was bypassable four ways ─────────────
+    assert not bypassed, f"intake closes runs through the session spine directly: {bypassed}"
 
 
 @pytest.mark.parametrize(
