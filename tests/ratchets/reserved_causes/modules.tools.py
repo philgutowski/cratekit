@@ -68,8 +68,8 @@ KEBAB_LITERALS = {
 
 NAMED_WITHOUT_OWN = {
     # 2026-11-22, U311: the rest moved with the restore side and the database
-    # plan to backup_restore.py and backup_database.py, whose Refusal names the
-    # reader resolves in the declaring module only.
+    # plan to backup_snapshot.py, whose Refusal names the reader resolves in
+    # the declaring module only.
     'modules/tools/backup.py': [
         'destination-not-configured',
         'library-root-absent',
@@ -92,8 +92,8 @@ NAMED_WITHOUT_OWN = {
 
 NAMED_WITH_OWN = {
     # 2026-11-22, U311: the rest moved with the restore side and the database
-    # plan to backup_restore.py and backup_database.py, whose Refusal names the
-    # reader resolves in the declaring module only.
+    # plan to backup_snapshot.py, whose Refusal names the reader resolves in
+    # the declaring module only.
     'modules/tools/backup.py': [
         'destination-not-configured',
         'library-root-absent',
