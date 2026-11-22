@@ -833,11 +833,19 @@ def test_an_accepted_option_that_does_not_carry_its_own_track_lists_nothing(cfg)
 
 
 def test_the_identity_is_the_folded_row_and_not_its_spelling():
+    """Keyed on the folded row, and on a title's own identity, so an accepted ``💧`` is never
+    listed for a later ``🌊`` row (review round one's fourth finding)."""
     one = match.read_text_lines("Aurora Bloom - Sun Path (Original Mix)")[0]
     two = match.read_text_lines("AURORA  BLOOM - sun path")[0]
     other = match.read_text_lines("Aurora Bloom - Sun Path (Extended Mix)")[0]
     assert candidates.item_id(one) == candidates.item_id(two)
     assert candidates.item_id(one) != candidates.item_id(other)
+    drop = match.read_text_lines("Aurora Bloom - \U0001f4a7")[0]
+    wave = match.read_text_lines("Aurora Bloom - \U0001f30a")[0]
+    assert candidates.item_id(drop) != candidates.item_id(wave)
+    assert candidates.identity(other) == {
+        "artist": "aurora bloom", "title": "sun path", "version": "extended mix"
+    }
 
 
 def test_a_store_that_cannot_be_read_is_not_read_as_nobody_was_asked(cfg, monkeypatch):
@@ -850,21 +858,17 @@ def test_a_store_that_cannot_be_read_is_not_read_as_nobody_was_asked(cfg, monkey
     assert caught.value.cause.reason == "unavailable-transient"
 
 
-def test_a_search_answered_by_another_emoji_title_is_not_exact():
-    """The same defect one module over: the exact flag compared recording tokens, and two emoji
-    titles by one artist fold to one, so a search for ``💧`` answered only by the artist's ``🔥``
-    listed it without a person and downloaded a record nobody asked for."""
-    _wanted, answer = answer_of(
-        "Aurora Bloom - \U0001f4a7", Hit("7001", "Aurora Bloom", "\U0001f525")
-    )
-    assert [one.exact for one in answer.candidates] == [False]
-    assert candidates.sole_exact(answer) is None
-
-
-def test_a_search_answered_by_the_same_emoji_title_is_exact():
-    _wanted, answer = answer_of("Aurora Bloom - ❤", Hit("7001", "Aurora Bloom", "❤️"))
-    assert [one.exact for one in answer.candidates] == [True]
-    assert candidates.sole_exact(answer) is not None
+@pytest.mark.parametrize(
+    ("line", "title", "exact"),
+    [("Aurora Bloom - \U0001f4a7", "\U0001f525", False), ("Aurora Bloom - ❤", "❤️", True)],
+    ids=["another-emoji", "the-same-emoji"],
+)
+def test_a_search_answered_by_another_emoji_title_is_not_exact(line, title, exact):
+    """Two emoji titles by one artist fold to one recording token, so the exact flag compares the
+    recording's identity: ``🔥`` answering ``💧`` is never listed without a person."""
+    _wanted, answer = answer_of(line, Hit("7001", "Aurora Bloom", title))
+    assert [one.exact for one in answer.candidates] == [exact]
+    assert (candidates.sole_exact(answer) is not None) is exact
 
 
 def test_two_emoji_rows_are_each_searched_and_listed(cfg, library, tmp_path, monkeypatch):
@@ -888,11 +892,3 @@ def test_two_emoji_rows_are_each_searched_and_listed(cfg, library, tmp_path, mon
     assert sorted(t["id"] for t in body["tracks"]) == ["7001", "7002"]
 
 
-def test_a_search_question_about_one_emoji_title_is_not_another_ones():
-    """Review round one's fourth finding: the question was keyed on the folded title, so an
-    accepted ``💧`` was listed for a later ``🌊`` row."""
-    drop = match.read_text_lines("Aurora Bloom - \U0001f4a7")[0]
-    wave = match.read_text_lines("Aurora Bloom - \U0001f30a")[0]
-    assert candidates.item_id(drop) != candidates.item_id(wave)
-    plain = match.read_text_lines("Aurora Bloom - Sun Path (Extended Mix)")[0]
-    assert candidates.identity(plain) == {"artist": "aurora bloom", "title": "sun path", "version": "extended mix"}

@@ -528,6 +528,10 @@ def withheld(envelope: dict) -> list[dict]:
 
 def test_a_short_hearts_listing_is_queued_and_says_by_how_much(cfg, library, monkeypatch):
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Withholding(hearts(), declared=7)))
+    code, text = human(["intake", "playlist", "favorites"])
+    assert code == int(ExitCode.OK), text
+    assert "warning [intake-hearts-withheld]:" in text
+    assert "7 declared, 5 listed, 2 withheld by the provider" in text
     code, envelope = drive(["intake", "playlist", "favorites"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
@@ -543,14 +547,6 @@ def test_a_short_hearts_listing_is_queued_and_says_by_how_much(cfg, library, mon
     assert code == int(ExitCode.OK), done
     listed = ok(envelope["data"]["job_id"])[0]
     assert listed["data"]["summary"]["written"] == 2
-
-
-def test_the_default_human_output_names_the_shortfall(cfg, library, monkeypatch):
-    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Withholding(hearts(), declared=7)))
-    code, text = human(["intake", "playlist", "favorites"])
-    assert code == int(ExitCode.OK), text
-    assert "warning [intake-hearts-withheld]:" in text
-    assert "7 declared, 5 listed, 2 withheld by the provider" in text
 
 
 def test_a_complete_hearts_listing_says_nothing_of_a_shortfall(cfg, library, monkeypatch):
@@ -986,6 +982,10 @@ def test_a_playlist_declaring_ten_with_two_withheld_queues_eight_and_warns(
     cfg, library, monkeypatch
 ):
     bind_playlist(monkeypatch, eight(), declared=10)
+    code, text = human(["intake", "playlist", SHORT])
+    assert code == int(ExitCode.OK), text
+    assert "warning [intake-playlist-withheld]:" in text
+    assert "10 declared, 8 listed, 2 withheld by the provider" in text
     code, envelope = drive(["intake", "playlist", SHORT])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
@@ -1018,9 +1018,3 @@ def test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op(cfg, libr
     assert len(playlist_withheld(envelope)) == 1
 
 
-def test_the_default_human_output_names_the_playlist_shortfall(cfg, library, monkeypatch):
-    bind_playlist(monkeypatch, eight(), declared=10)
-    code, text = human(["intake", "playlist", SHORT])
-    assert code == int(ExitCode.OK), text
-    assert "warning [intake-playlist-withheld]:" in text
-    assert "10 declared, 8 listed, 2 withheld by the provider" in text
