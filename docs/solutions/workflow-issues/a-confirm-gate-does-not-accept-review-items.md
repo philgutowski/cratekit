@@ -49,7 +49,7 @@ confirmed file. Confirmation is not a flag on the call. It is a review item
 whose verdict is already `Verdict.ACCEPTED`. `_verdicts` at
 `src/cratekit/deletion/run.py:332` walks the deletion queue with
 `include_resolved=True` and keeps only items where `item.resolved` is true.
-`Item.resolved` at `src/cratekit/core/review.py:474` is `self.verdict is not
+`Item.resolved` at `src/cratekit/core/review.py:513` is `self.verdict is not
 None`. An offered item with no verdict is absent from that map.
 
 The apply loop's `decide` at `src/cratekit/deletion/run.py:586` then does this, in order:
@@ -168,7 +168,7 @@ That is worse than a refusal. A refusal names a remedy. An OK that moved
 nothing names nothing. The person has no reason to look.
 
 The suite that should have caught it cannot see it, and for a structural
-reason rather than a missed assertion. `cli.py:109` says apply runs only when
+reason rather than a missed assertion. `cli.py:110` says apply runs only when
 there is something deletable. A first-run baseline writes the watermark
 inside `plan` and must not open a destructive session to move zero files.
 That early return is right. It is also a wall in front of the only function
@@ -238,6 +238,8 @@ What `apply` does with that unanswered item, on the current tree in
 ```python
 verdict = decided.get(_item_id(item))
 if verdict is None:
+    # A retirement is permanent too, so an anchor that proved nothing
+    # retires nothing.
     held = _the_anchor_proved_nothing(item, references)
     _warn_that_an_unanswered_removal_is_being_retired(
         item, recorded=recorded_now, held=held

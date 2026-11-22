@@ -995,6 +995,28 @@ def test_a_removed_row_with_no_usable_update_sequence_refuses(cfg, value):
     assert excinfo.value.cause.reason == "removal-sequence-unreadable"
 
 
+class _VersionUnreadable(FakeRow):
+    """A removed row whose version column raises, and whose sequence is unusable too."""
+
+    @property
+    def RemixerName(self):
+        raise RuntimeError("the version column could not be read")
+
+
+class _SizeUnreadable(FakeRow):
+    @property
+    def FileSize(self):
+        raise ValueError("the size column could not be read")
+
+
+def test_a_removed_row_broken_twice_reports_the_fault_the_base_order_reaches_first():
+    """Version columns before the sequence, and a size read that raises is not a missing size."""
+    with pytest.raises(RuntimeError, match="version column"):
+        library.read_collection([_VersionUnreadable(ID="9", rb_local_deleted=1, rb_local_usn=None)])
+    with pytest.raises(ValueError, match="size column"):
+        library.read_collection([_SizeUnreadable(ID="9", rb_local_deleted=1, rb_local_usn=5)])
+
+
 @pytest.mark.parametrize("identity", ["", None], ids=["empty", "absent"])
 def test_a_database_that_names_no_identity_of_its_own_refuses(cfg, identity):
     """An unbound watermark is the state where a rebuild reports nothing forever."""

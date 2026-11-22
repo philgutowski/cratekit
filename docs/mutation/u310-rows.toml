@@ -195,6 +195,34 @@ old = '''                return item.handled and not held'''
 new = '''                return item.handled'''
 
 [[rows]]
+id = "A12_only_answered_items_move"
+description = "_verdicts: keep unanswered items, so a file nobody confirmed reaches the move"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''            if item.resolved'''
+new = '''            if True'''
+
+[[rows]]
+id = "A13_fresh_playlist_read"
+description = "apply: the re-check reads no playlist, so a file a playlist took after the plan is moved"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''        referenced = library.playlist_referenced(db.get_playlist_songs())'''
+new = '''        referenced = frozenset()'''
+
+[[rows]]
+id = "A14_reference_set_complete"
+description = "plan: drop the completeness check of the reference set, so a dead prefix rule proves candidates unreferenced"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''    candidate_rules.assert_complete(references)
+'''
+new = ''''''
+
+[[rows]]
 id = "T1_trash_usable"
 description = "assert_usable: accept a Trash the probe called unusable"
 file = "src/cratekit/deletion/trash.py"
