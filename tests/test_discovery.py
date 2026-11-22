@@ -1,11 +1,7 @@
 """U93: one walker for the queued analysis verbs, and the join that checks itself.
 
-``core.discovery`` replaced two identical one level scans, one in
-``analysis/cli.py`` and one in ``vocals/cli.py``, and grew the recursive mode
-both needed. These are the walker's own guards. The verbs' behaviour over a tree
-is pinned in ``test_analysis_workers.py`` and ``test_vocals_cli.py``, because a
-walker that returns the right list and a job that queues the wrong one are two
-different failures.
+The walker's own guards; the verbs' behaviour over a tree is pinned in
+``test_analysis_workers.py`` and ``test_vocals_cli.py``.
 """
 
 from __future__ import annotations
@@ -25,29 +21,50 @@ def touch(folder: Path, relative: str) -> Path:
     return path
 
 
-# ---------------------------------------------------------------------------
-# The one level mode, which has to stay exactly what it was
-# ---------------------------------------------------------------------------
+# What a scan of a tree holds
+
+#: (files, recursive, expected items). The one level default is what every
+#: existing job and resume assumed; a recursive id is posix, since a later
+#: process reads it back.
+TREES = {
+    "one-level-default-skips-a-subfolder": (
+        ["top.flac", "genre/nested.flac"], False, ("top.flac",)
+    ),
+    "non-audio-suffix": (["cover.jpg", "notes.txt", "track.flac"], False, ("track.flac",)),
+    "suffix-case-insensitive": (["shouted.FLAC"], False, ("shouted.FLAC",)),
+    "nested-every-file-once-sorted": (
+        ["house/b.flac", "house/a.flac", "techno/deep/c.aiff", "top.mp3"],
+        True,
+        ("house/a.flac", "house/b.flac", "techno/deep/c.aiff", "top.mp3"),
+    ),
+    "appledouble-sidecar-skipped": (
+        ["house/track.flac", "house/._track.flac", "house/.DS_Store.flac"],
+        True,
+        ("house/track.flac",),
+    ),
+    "dot-directory-not-descended": (
+        ["keep.flac", ".Trashes/deleted.flac", ".Spotlight-V100/index.flac"],
+        True,
+        ("keep.flac",),
+    ),
+    "posix-separator": (["a/b/c.flac"], True, ("a/b/c.flac",)),
+}
 
 
-def test_one_level_is_the_default_and_a_subfolder_is_invisible(tmp_path):
-    """The default is what every existing job and every existing resume assumed."""
-    touch(tmp_path, "top.flac")
-    touch(tmp_path, "genre/nested.flac")
-    assert discovery.scan_audio(tmp_path).items == ("top.flac",)
+@pytest.mark.parametrize("files,recursive,expected", TREES.values(), ids=TREES.keys())
+def test_a_scan_holds_exactly_the_audio_files_it_should(tmp_path, files, recursive, expected):
+    for relative in files:
+        touch(tmp_path, relative)
+    if recursive:
+        assert discovery.scan_audio(tmp_path, recursive=True).items == expected
+    else:
+        assert discovery.scan_audio(tmp_path).items == expected
 
 
 def test_a_folder_that_is_not_there_is_an_empty_scan_rather_than_an_error(tmp_path):
     scan = discovery.scan_audio(tmp_path / "unmounted", recursive=True)
     assert scan.items == ()
     assert scan.skipped_links == ()
-
-
-def test_a_non_audio_suffix_is_not_an_item(tmp_path):
-    touch(tmp_path, "cover.jpg")
-    touch(tmp_path, "notes.txt")
-    touch(tmp_path, "track.flac")
-    assert discovery.scan_audio(tmp_path).items == ("track.flac",)
 
 
 def test_a_directory_carrying_an_audio_suffix_is_not_an_item(tmp_path):
@@ -57,39 +74,8 @@ def test_a_directory_carrying_an_audio_suffix_is_not_an_item(tmp_path):
     assert discovery.scan_audio(tmp_path).items == ("real.flac",)
 
 
-def test_the_suffix_match_is_case_insensitive(tmp_path):
-    touch(tmp_path, "shouted.FLAC")
-    assert discovery.scan_audio(tmp_path).items == ("shouted.FLAC",)
-
-
-# ---------------------------------------------------------------------------
-# The recursive mode
-# ---------------------------------------------------------------------------
-
-
-def test_a_nested_tree_queues_every_file_once_in_sorted_order(tmp_path):
-    for relative in (
-        "house/b.flac",
-        "house/a.flac",
-        "techno/deep/c.aiff",
-        "top.mp3",
-    ):
-        touch(tmp_path, relative)
-    assert discovery.scan_audio(tmp_path, recursive=True).items == (
-        "house/a.flac",
-        "house/b.flac",
-        "techno/deep/c.aiff",
-        "top.mp3",
-    )
-
-
 def test_the_same_filename_in_two_folders_is_two_items(tmp_path):
-    """``job_items`` is keyed ``(job_id, item_id)``, so bare names would collide.
-
-    This is the whole reason the id is a relative path rather than a name. Every
-    real library holds one track name in more than one genre folder, and a
-    recursive walk that kept names would fail the insert on the first one.
-    """
+    """``job_items`` is keyed ``(job_id, item_id)``, so the id is a relative path."""
     touch(tmp_path, "house/track.flac")
     touch(tmp_path, "techno/track.flac")
     items = discovery.scan_audio(tmp_path, recursive=True).items
@@ -98,12 +84,7 @@ def test_the_same_filename_in_two_folders_is_two_items(tmp_path):
 
 
 def test_a_top_level_file_has_the_same_id_in_both_modes(tmp_path):
-    """The modes agree where they overlap, so switching one on is not a renumber.
-
-    ANTI-VACUITY FIRST. Both sides of the comparison below call the code under
-    test, so two empty tuples would satisfy it while measuring nothing, which is
-    the X equals X shape this project sweeps for.
-    """
+    """The modes agree where they overlap; the first assertion keeps it from being X equals X."""
     touch(tmp_path, "top.flac")
     assert discovery.scan_audio(tmp_path).items == ("top.flac",)
     assert discovery.scan_audio(tmp_path).items == (
@@ -111,29 +92,7 @@ def test_a_top_level_file_has_the_same_id_in_both_modes(tmp_path):
     )
 
 
-def test_an_appledouble_sidecar_under_a_nested_folder_is_skipped(tmp_path):
-    touch(tmp_path, "house/track.flac")
-    touch(tmp_path, "house/._track.flac")
-    touch(tmp_path, "house/.DS_Store.flac")
-    assert discovery.scan_audio(tmp_path, recursive=True).items == ("house/track.flac",)
-
-
-def test_a_dot_directory_is_not_descended(tmp_path):
-    touch(tmp_path, "keep.flac")
-    touch(tmp_path, ".Trashes/deleted.flac")
-    touch(tmp_path, ".Spotlight-V100/index.flac")
-    assert discovery.scan_audio(tmp_path, recursive=True).items == ("keep.flac",)
-
-
-def test_the_id_separator_is_posix(tmp_path):
-    """The id is persisted and read back by a later process, so it is not a local fact."""
-    touch(tmp_path, "a/b/c.flac")
-    assert discovery.scan_audio(tmp_path, recursive=True).items == ("a/b/c.flac",)
-
-
-# ---------------------------------------------------------------------------
 # Symlinks: the loop hazard, and the skip said out loud
-# ---------------------------------------------------------------------------
 
 
 def test_a_symlinked_directory_is_not_walked_and_is_reported(tmp_path):
@@ -141,18 +100,13 @@ def test_a_symlinked_directory_is_not_walked_and_is_reported(tmp_path):
     elsewhere = tmp_path.parent / "elsewhere"
     touch(elsewhere, "other.flac")
     (tmp_path / "linked").symlink_to(elsewhere, target_is_directory=True)
-
     scan = discovery.scan_audio(tmp_path, recursive=True)
     assert scan.items == ("house/track.flac",)
     assert scan.skipped_links == ("linked",)
 
 
 def test_a_symlink_loop_terminates(tmp_path):
-    """``followlinks=False`` makes the loop impossible rather than survivable.
-
-    A visited set has to be correct to defeat this. Not entering a link cannot
-    be incorrect, and the cost of that choice is the warning above.
-    """
+    """``followlinks=False`` makes the loop impossible rather than survivable."""
     touch(tmp_path, "track.flac")
     (tmp_path / "loop").symlink_to(tmp_path, target_is_directory=True)
     assert discovery.scan_audio(tmp_path, recursive=True).items == ("track.flac",)
@@ -166,12 +120,7 @@ def test_a_one_level_scan_reports_no_links_even_when_one_is_there(tmp_path):
 
 
 def test_a_symlinked_audio_file_is_still_an_item(tmp_path):
-    """``is_file`` follows a link, which is what the one level scan always did.
-
-    Pinned deliberately rather than left implicit: only a DIRECTORY link is
-    declined, and narrowing this would change the default mode every existing
-    job was queued under. R-589 records the cost.
-    """
+    """Only a directory link is declined; ``is_file`` follows a file link (R-589)."""
     elsewhere = tmp_path.parent / "elsewhere"
     touch(elsewhere, "real.flac")
     (tmp_path / "linked.flac").symlink_to(elsewhere / "real.flac")
@@ -212,9 +161,7 @@ def _omissions(folder: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     return scan.skipped_links, scan.unreadable
 
 
-# ---------------------------------------------------------------------------
 # A folder the walk cannot read, which no symlink rule covers
-# ---------------------------------------------------------------------------
 
 
 def test_an_unreadable_folder_is_collected_rather_than_silently_dropped(tmp_path):
@@ -260,9 +207,7 @@ def test_a_path_outside_the_tree_is_reported_whole_rather_than_dropped(tmp_path)
     )
 
 
-# ---------------------------------------------------------------------------
 # What a resume reads back, because it never re-walks
-# ---------------------------------------------------------------------------
 
 
 def test_the_frozen_payload_carries_the_mode_and_both_omissions(tmp_path):
@@ -286,12 +231,7 @@ def test_a_resume_says_what_the_queue_said_from_the_payload_alone(tmp_path):
 
 
 def test_a_resume_repeats_the_unreadable_half_and_not_only_the_links():
-    """The two halves are frozen separately, so they are read back separately.
-
-    Added after the U93 mutation table: D19, dropping the unreadable half from
-    ``warnings_of``, killed zero because every resume case in the suite froze
-    links only.
-    """
+    """The two halves are frozen separately, so they are read back separately (D19)."""
     said = discovery.warnings_of({"unreadable_folders": ["locked"]})
     assert [one["code"] for one in said] == ["folder-unreadable"]
     both = discovery.warnings_of(
@@ -310,9 +250,7 @@ def test_a_payload_whose_lists_are_the_wrong_shape_says_nothing_rather_than_rais
     assert discovery.warnings_of({"skipped_links": "linked"}) == ()
 
 
-# ---------------------------------------------------------------------------
 # The join, which is a guard because an id may now carry separators
-# ---------------------------------------------------------------------------
 
 
 def test_a_relative_id_joins_under_the_folder(tmp_path):
