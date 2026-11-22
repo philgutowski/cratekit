@@ -2,9 +2,8 @@
 
 As ``sync_pair.py`` does, on the world the discovery suite builds: a playlist
 found and made on the other side, an order settling late and finished, a write
-stopped part way and continued, an adopted folder, a run continued after a
-ceiling stop, a window that lags, a playlist brought back. Then the plan as a
-person reads it.
+stopped part way and continued, an adopted folder, a window that lags, a
+playlist brought back. Then the plan as a person reads it.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ from tests import (
     test_sync_pair_adopted,
     test_sync_pair_back,
     test_sync_pair_discover,
-    test_sync_pair_resume,
     test_sync_pair_settle,
     test_sync_pair_window_lag,
 )
@@ -27,9 +25,6 @@ from tests.test_sync_pair_discover import db as db  # noqa: PLC0414
 from tests.test_sync_pair_discover import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_sync_pair_discover import library as library  # noqa: PLC0414
 from tests.test_sync_pair_discover import world as world  # noqa: PLC0414
-from tests.test_sync_pair_resume import gated as gated  # noqa: PLC0414
-from tests.test_sync_pair_resume import made_world as made_world  # noqa: PLC0414
-from tests.test_sync_pair_resume import small_hour as small_hour  # noqa: PLC0414
 from tests.test_sync_pair_settle import longer as longer  # noqa: PLC0414
 from tests.test_sync_pair_settle import owed as owed  # noqa: PLC0414
 
@@ -116,26 +111,6 @@ def test_a_downloaded_copy_the_adopted_folder_held_is_named_and_never_made(
     borrowed(stage, monkeypatch)
     test_sync_pair_adopted.test_a_downloaded_copy_the_adopted_folder_held_is_named_and_never_made(
         world, trivia
-    )
-    stage.crate(*("sync", "pair"))
-
-
-def test_a_ceiling_stop_after_three_of_five_pairs_is_finished_by_a_continue_of_the_run(
-    stage, monkeypatch, made_world, cfg
-):
-    borrowed(stage, monkeypatch)
-    test_sync_pair_resume.test_a_ceiling_stop_after_three_of_five_pairs_is_finished_by_a_continue_of_the_run(
-        made_world, cfg
-    )
-    stage.crate(*("sync", "pair"))
-
-
-def test_a_track_put_on_a_part_made_playlist_before_the_continue_refuses_stale_naming_it(
-    stage, monkeypatch, gated
-):
-    borrowed(stage, monkeypatch)
-    test_sync_pair_resume.test_a_track_put_on_a_part_made_playlist_before_the_continue_refuses_stale_naming_it(
-        gated
     )
     stage.crate(*("sync", "pair"))
 
