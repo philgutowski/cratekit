@@ -537,6 +537,28 @@ def test_a_row_whose_file_id_or_link_did_not_take_is_refused_after_the_commit(
     assert durable(value, folder_path), "the write is durable"
 
 
+def test_a_failure_after_the_commit_landed_is_recorded_and_still_refuses(
+    native_library, silence, monkeypatch
+):
+    """A step that fails once the commit is on disk: the session record names
+    the rows the commit wrote, so restore can find them, and the verb still
+    refuses rather than reading the landing as done."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    real = rb_writer.commit_guarded
+
+    def committed_then_failed(*args, **kwargs):
+        real(*args, **kwargs)
+        raise RuntimeError("a step after the commit failed")
+
+    monkeypatch.setattr(rb_writer, "commit_guarded", committed_then_failed)
+    code, acted, _ = _two_acts(_land())
+
+    assert code != int(ExitCode.OK), acted
+    (record,) = session.records(cfg)
+    assert record.detail["collection_landed"], record.detail
+
+
 def _landed(*rows: native.AddedRow, content_link: int | None = None) -> native.NativeLanded:
     return native.NativeLanded(
         tree_id=INTAKE, playlist="p", playlist_id="9", added=tuple(rows), present=(),
