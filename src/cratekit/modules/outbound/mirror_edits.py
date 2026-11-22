@@ -92,8 +92,8 @@ TREES = (GENRE, FAVORITES, INBOX)
 
 #: The three readings of a playlist, as :class:`Mirrored` names them, and as a
 #: decision shows them.
-_SIDES = ("base", "account", "rekordbox")
-_SHOWN = ("was", "account", "rekordbox")
+_SIDES = ("base", "account", REKORDBOX)
+_SHOWN = ("was", "account", REKORDBOX)
 
 
 @dataclass(frozen=True, slots=True)
