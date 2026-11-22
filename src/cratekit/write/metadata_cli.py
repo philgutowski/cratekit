@@ -3,9 +3,8 @@
 My Tags are not content columns, so U21's per-field policy does not govern
 them; the writers are :func:`cratekit.core.rb_writer.ensure_my_tag_value` and
 :func:`cratekit.core.rb_writer.add_my_tag`, add-only and idempotent. The open
-names the configured database path explicitly (R-15), which a test points at
-a disposable copy. The analysis watch names ``watch_roots``, so a side effect
-on a grid is visible rather than a clean session over a barren watch.
+names the configured database path explicitly (R-15), and the analysis watch
+names ``watch_roots``.
 
 Layer: write.
 """
@@ -38,9 +37,8 @@ PATHS_MAJORITY_UNRESOLVED = "library-paths-majority-unresolved"
 #: How many recorded prefixes the refusal names, rather than a wall of paths.
 _NAMED_PREFIXES = 3
 
-#: What this verb's write is filed under in a session record's change summary. A
-#: My Tag category is no tree, so this names the surface; it is only rendered.
-#: Stable, unlike ``CATEGORY``, a display name a person can rename (R19).
+#: What this verb's write is filed under in a session record's change summary,
+#: stable, unlike ``CATEGORY``, a display name a person can rename (R19).
 CHANGE_KEY = "my-tags.vocals"
 
 CATEGORY = "Vocals"
@@ -88,12 +86,10 @@ def load_vocal_threshold(cfg: config.Config) -> float | None:
 def load_vocal_calibration(cfg: config.Config) -> dict[str, Any] | None:
     """The library's vocal calibration record, or None when there is none.
 
-    The one reader, so a corrupt file refuses alike on every surface. The record
-    comes back whole with ``threshold`` checked and a float, since the calibrate
-    verb reports the ``method`` and ``note`` it replaces (U90). A missing file is
-    None, not the default cut, so routing leaves the vocal dimension uncompared
-    rather than answer from a cut never fitted (R-276). An unreadable file
-    refuses, as ``energy.load_calibration`` does.
+    The one reader, so a corrupt file refuses alike on every surface; the record
+    comes back whole with ``threshold`` checked and a float (U90). A missing file
+    is None, not the default cut, so routing leaves the vocal dimension
+    uncompared (R-276). An unreadable file refuses.
     """
     path = config.state_path(STATE_KEY_VOCAL_CALIBRATION, cfg)
     if not path.is_file():
@@ -135,11 +131,9 @@ def _prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:
 class ResolutionTotals:
     """How the collection's active rows resolve on this machine (R-372).
 
-    ``unresolved`` is every row with no readable file: no recorded path (a
-    streaming row), a path under no rule, or a mapped path whose file is gone.
-    ``unmapped`` is the middle one alone and is what the majority rule reads,
-    since the other two are not a prefix rule's to fix. ``prefixes`` groups the
-    unmapped rows by leading components so the refusal names the drive.
+    ``unresolved`` is every row with no readable file. ``unmapped`` is those
+    under no rule alone, the only ones a prefix rule fixes, and is what the
+    majority rule reads. ``prefixes`` groups them so the refusal names the drive.
     """
 
     active: int
@@ -232,9 +226,9 @@ def majority_unmapped_cause(
 ) -> Cause:
     """The refusal every surface raises when most rows record an unmapped path.
 
-    ``blocked`` is the clause naming what cannot be done, the one part that
-    belongs to the raising verb. ``RUN_SETUP``, not ``RUN_DOCTOR``: doctor says
-    the same thing, and setup reads rekordbox's drive names and offers the rule.
+    ``blocked`` is the clause naming what cannot be done, the raising verb's
+    own. ``RUN_SETUP``, since setup reads rekordbox's drive names and offers the
+    rule.
     """
     named = list(totals.prefixes.items())[:_NAMED_PREFIXES]
     listed = ", ".join(f"{count} under {prefix}" for prefix, count in named)
@@ -347,9 +341,8 @@ def apply_mytags(cfg: config.Config, db: Any, plan: dict[str, Any]) -> dict[str,
 def _record_mytags_commit(record: session.SessionRecord, written: int, cfg: config.Config) -> None:
     """Record this verb's commit on its session record, when it wrote anything.
 
-    A second apply writes nothing and claims no commit, since a restore reads a
-    committed source as work it would discard. Keyed on ``CHANGE_KEY``, never the
-    category's display name (R19).
+    A second apply writes nothing and claims no commit. Keyed on ``CHANGE_KEY``,
+    never the category's display name (R19).
     """
     if written <= 0:
         return

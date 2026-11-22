@@ -2,18 +2,14 @@
 lacks them, and its file's inode where the binding numbered it at random.
 
 A verb (R-923, U115) because the only other way back for such a row is to
-remove it in rekordbox and import again, dropping every membership.
-
-The order is ``tag rows``'s: the backup acknowledgment is read before the plan
-and the gate (R-733); the plan is made on a read handle closed before the
-gate; the gate is asked over the digested plan, and an empty plan still asks,
-since every declared gate fires; only ``apply`` over a plan that writes opens
-the database to write, where a running rekordbox refuses. The second
-invocation rebuilds the plan, so a row filled in between moves the digest and
-refuses ``decision-stale``. The gate takes no inline answer (R34).
-
-Layer: write. It names :mod:`cratekit.cli.output` and nothing else from the
-command-line layer.
+remove it in rekordbox and import again, dropping every membership. The
+order is ``tag rows``'s: the backup acknowledgment before the plan and the
+gate (R-733), the plan made on a read handle closed before the gate, the gate
+asked even over an empty plan, and only ``apply`` over a plan that writes
+opens the database to write. The second invocation rebuilds the plan, so a
+row filled in between refuses ``decision-stale``. The gate takes no inline
+answer (R34). Layer: write; it names :mod:`cratekit.cli.output` and nothing
+else from the command-line layer.
 """
 
 from __future__ import annotations
@@ -34,9 +30,8 @@ NOTHING_TO_WRITE = "rows-defaults-nothing-to-write"
 #: What the apply wrote and read back.
 DEFAULTS_WRITTEN = "rows-defaults-written"
 
-#: The bound decides nothing, the volume being off APFS or its inode counter
-#: past the binding's range, so no file id is judged random and none is
-#: renumbered (U115).
+#: The bound decides nothing (off APFS, or the inode counter past the binding's
+#: range), so no file id is renumbered (U115).
 BOUND_UNDECIDABLE = "rows-file-id-undecidable"
 
 #: Rows above the bound whose file could not be read, so they keep their id.

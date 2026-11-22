@@ -3,17 +3,11 @@ chosen live content rows, the experiment that asks which column keeps a binding
 row off a deck (A32, R-928).
 
 A verb because a write to the live database outside a gated verb is
-forbidden. It takes any number of ``--set ROW:COLUMN=VALUE`` triples, so one
-reading of rekordbox's context menus at an attended sitting answers them all.
-
-The order is ``repair rows``'s: the backup acknowledgment before the plan and
-the gate (R-733); the triples parsed and the plan made on a read handle closed
-before the gate, refusing a malformed triple, a column the probe may not
-write, an unknown row, an unheld value and a minority value by name; the gate
-asked over the digested plan even when nothing would be written; only
+forbidden. The order is ``repair rows``'s: the backup acknowledgment before
+the plan and the gate (R-733), the plan made on a read handle closed before
+the gate, the gate asked even when nothing would be written, and only
 ``apply`` opens the database to write. The gate takes no inline answer (R34).
-
-Layer: write. It names :mod:`cratekit.cli.output` and nothing else from the
+Layer: write; it names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer.
 """
 

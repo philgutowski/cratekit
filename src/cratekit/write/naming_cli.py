@@ -4,17 +4,12 @@ The naming engine owns mechanism; this shell owns the plan, the gate and the
 rename. Absent key and BPM fields are omitted (R20). A lossy file is marked on
 filename, title tag and library name together (R21), or the engine refuses.
 
-A file the rekordbox collection references is never renamed or retagged (U67):
-rekordbox records a path once, so a rename strands the row. Those files are
-held back and listed, and an unreadable collection refuses the verb. So does a
-dark row that could name a candidate (R-500), since it matches no candidate
-and the file it names would be planned as an ordinary rename.
-
-A provider identifier stem is given a body from its artist and title tags
-(R-669); any other stem is carried as it is (R-168). An identifier whose tags
-cannot compose a body is held back as ``unnamed``. A file held back because a
-file with the SAME ISRC holds its name is a second copy of one recording
-(U212), and its item carries the ISRC.
+A file the rekordbox collection references is never renamed or retagged (U67),
+since a rename strands the row; it is held back and listed, and an unreadable
+collection, or a dark row that could name a candidate (R-500), refuses the
+verb. A provider identifier stem is given a body from its artist and title tags
+(R-669), or held back as ``unnamed``; any other stem is carried as it is
+(R-168). A file held back by a file with the SAME ISRC is a second copy (U212).
 """
 
 from __future__ import annotations
@@ -63,9 +58,8 @@ def _is_identifier(stem: str) -> bool:
 def _artist(path: Path) -> str | None:
     """The artist tag as one credit line, every credited artist kept.
 
-    Read as values, because a Vorbis comment can hold several ``ARTIST`` fields,
-    joined with a comma as the convention writes them. Not sanitized here:
-    ``naming.compose_body`` sanitizes each part, one layer only.
+    Read as values, since a Vorbis comment can hold several ``ARTIST`` fields,
+    joined with a comma. ``naming.compose_body`` sanitizes each part.
     """
     values = tags.read_tag_values(path, "artist")
     if not values:
@@ -113,12 +107,9 @@ def _spec_for(
 
     Returns the spec and, for an identifier stem with no composable body, the
     reason. The head comes from the filename first and the title tag second, as
-    text, never from analysis (U39); the key prefers the tag. The head is derived
-    and each surface carries its own body (U41): the convention keeps the artist
-    in the name and the title alone in the tag (R-168), and no single grammar fits
-    the library's names, so none is recomposed. The one exception is a stem of
-    digits only once the head is off, a provider identifier, which is composed
-    from the tags (R-669).
+    text, never from analysis (U39); the key prefers the tag. Each surface keeps
+    its own body (U41, R-168), except a provider identifier stem, composed from
+    the tags (R-669).
     """
     tagged_title = tags.read_tag(path, "title")
     title = tagged_title or path.stem
@@ -149,9 +140,8 @@ def _recorded(cfg: config.Config) -> tuple[str, ...]:
     """Every path the collection records, tombstones included, or a refusal.
 
     A read: ``require_closed`` stays False. A tombstoned row counts, since a
-    restore brings it back pointing at its path. A database that would not open
-    is a refusal, never an empty collection, or every imported file would be
-    renamed the day the volume holding it is not mounted.
+    restore brings it back. A database that would not open is a refusal, never
+    an empty collection, or every imported file would be renamed.
     """
     try:
         target = rb_writer.live_db_path(cfg)
@@ -202,18 +192,15 @@ def _referenced(
     """The keys of every file the collection references, or a refusal.
 
     Each row adds its recorded path and its path after the volume rewrites, since
-    either can be the one on disk; a row naming another host or a streaming
-    pseudo-location adds nothing. Decode and resolve are ``trees.located``, shared
-    with the writers; the keying is this verb's own and errs toward holding back.
+    either can be the one on disk. Decode and resolve are ``trees.located``; the
+    keying errs toward holding back.
 
-    A dark row refuses the whole verb when it could name a candidate (R-500,
-    narrowed by R-675). Dark is no rule resolving it and its recorded file absent
-    here. Could name is its leaf matching a file this pass would rename that no
-    resolved row already holds (R-407), since a moved volume changes a prefix and
-    never a leaf. Tombstones count (R-524), unlike in the deletion pass. An
-    unmapped row whose recorded file exists has answered; that test fails closed.
+    A dark row (no rule resolving it, its recorded file absent) refuses the whole
+    verb when its leaf matches a file this pass would rename that no resolved row
+    holds (R-500, R-675, R-407), since a moved volume changes a prefix and never
+    a leaf. Tombstones count (R-524).
     """
-    rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
+    rules = trees.prefix_rules(cfg)
     keys: set[str] = set()
     unplaced: list[str] = []
     for value in recorded:
@@ -248,11 +235,9 @@ def _referenced(
 def _unmapped_refusal(dark: list[tuple[str, list[str]]]) -> CratekitError:
     """The refusal over dark rows, worded as the deletion pass's is.
 
-    The count leads and the first decoded location follows, the text a rule is
-    matched against. The detail groups the prefixes and pairs each row with the
-    files it could name (R-675). One step per kind of row: an old drive name takes
-    a prefix rule, a gone file a hand rename or a removal (R-523). The remedy is
-    ``fix-config-values`` because no doctor check reads the prefix map.
+    The count leads and the first decoded location follows. The detail groups
+    the prefixes and pairs each row with the files it could name (R-675), with
+    one step per kind of row (R-523).
     """
     count = len(dark)
     rows = "collection row records" if count == 1 else "collection rows record"
@@ -295,9 +280,8 @@ def _is_referenced(path: Path, referenced: frozenset[str]) -> bool:
 def referenced_keys(cfg: config.Config, *, renaming: Iterable[Path]) -> frozenset[str]:
     """The referenced set, read fresh, for ``repair paths --apply`` (U102).
 
-    One guard for both verbs, so every refusal here reaches that verb in the same
-    words. ``_recorded`` is looked up through the module so one test stub covers
-    both. ``renaming`` is the files that verb would rename.
+    One guard for both verbs, in the same words. ``_recorded`` is looked up
+    through the module so one test stub covers both.
     """
     return _referenced(_recorded(cfg), cfg=cfg, renaming=renaming)
 
@@ -341,13 +325,11 @@ def _collisions(
 ) -> dict[str, str]:
     """Each mover that must not be renamed, mapped to why, keyed by path (R-172).
 
-    Found at plan time, so an approved plan never promises a rename the filesystem
-    refuses. Held: several movers rendering to one target, since no winner is
-    decided, and a target that is a file on disk nothing here moves. A target
-    another mover holds is left promised, since sort order usually resolves the
-    chain and the apply reports it when not. Keyed through ``_key``, and run to a
-    fixpoint because a held file becomes an occupant. ``seconds`` collects the
-    ISRC of a second copy (U212).
+    Found at plan time. Held: several movers rendering to one target, and a
+    target that is a file on disk nothing here moves; a target another mover
+    holds is left promised, and the apply reports it when sort order does not
+    resolve the chain. Run to a fixpoint, since a held file becomes an occupant.
+    ``seconds`` collects the ISRC of a second copy (U212).
     """
     targets = [(path, path.with_name(filename)) for path, filename in movers]
     held: dict[str, str] = {}
@@ -396,11 +378,9 @@ def _referenced_item(path: Path) -> dict[str, str]:
 def _plan_for(root: Path, *, cfg: config.Config) -> dict:
     """The plan, with every file the collection references held back.
 
-    Checked on the planning path so the gate's digest covers it; the collection
-    is read only when something would be renamed. ``totals.count`` is the renames
-    that can be performed, and ``items`` also lists each held class, marked:
-    referenced, colliding (R-172) and unnamed (R-669). The collection wins over
-    the unnamed hold, since an imported file can never be renamed (R-407).
+    Checked on the planning path so the gate's digest covers it. ``totals.count``
+    is the renames that can be performed, and ``items`` also lists each held
+    class, marked; the collection wins over the unnamed hold (R-407).
     """
     template = _template(cfg)
     budget = NameBudget.of(cfg.naming)
@@ -505,9 +485,8 @@ ROOT_MISSING = "root-folder-missing"
 def root_path(given: str | None, cfg: config.Config, *, verb: str) -> Path:
     """The folder a ``--root`` names, relative to the library root (U169).
 
-    Never relative to the shell's directory. ``~`` is expanded, an absolute path
-    is taken as is, an omitted root is the library root, and an empty one is
-    refused because ``Path("")`` is the working directory.
+    Never relative to the shell's directory. ``~`` is expanded, an omitted root
+    is the library root, and an empty one is refused.
     """
     library = Path(cfg.library.root)
     if given is None:
@@ -573,9 +552,8 @@ def _incomplete_cause(
     """What the run answers when part of the plan did not happen (R-172).
 
     The renamed count, the outstanding count and the first file lead, with every
-    item capped in the detail; what landed is said too, since this is no refusal.
-    The first step points at the report; a collision, an unnamed file and a
-    second copy each add their own.
+    item capped in the detail; a collision, an unnamed file and a second copy
+    each add their own step.
     """
     count = len(incomplete)
     steps = [
@@ -625,9 +603,8 @@ def name_apply(ctx) -> Envelope:
     template = _template(cfg)
     budget = NameBudget.of(cfg.naming)
     renames = [item for item in plan["items"] if item["action"] == RENAME]
-    # Every rename this run owes and did not perform, by name (R-172). A held
-    # collision and an unnamed file (R-669) count, since the library still owes
-    # them and answering ok would hide them from every later sweep.
+    # Every rename this run owes and did not perform, by name (R-172), a held
+    # collision and an unnamed file (R-669) included.
     incomplete: list[dict[str, str]] = [
         {
             "from": item["from"],

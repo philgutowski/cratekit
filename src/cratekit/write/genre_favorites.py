@@ -1,33 +1,19 @@
 """The genre Favorites: one Favorites playlist in every genre folder, mirroring All Favorites (U119).
 
-Decided on 2026-10-09: every genre folder under the routing tree holds one
-playlist named Favorites whose members are exactly that folder's tracks that are
-also in All Favorites, and it MIRRORS: a track that leaves All Favorites leaves
-at the next refresh, and one added by hand and not in All Favorites is taken out.
+Every genre folder under the routing tree holds one playlist named Favorites
+whose members are exactly that folder's tracks also in All Favorites, and it
+MIRRORS: a track leaving All Favorites leaves at the next refresh, and one added
+by hand is taken out. The declaration is a sub class derived from a playlist
+beside the vocal class, so nothing here carries a display name (R19); an
+undeclared class, and a source that is absent, doubled or empty, refuse by name
+rather than empty every Favorites. A favourite files by the folder it already
+sits in, never by its tag.
 
-The declaration is a sub class derived from a playlist (``signal = "playlist"``,
-``signal_playlist = "All Favorites"``) beside the vocal class, so destinations
-and the convergence record resolve as the vocal sub does and nothing here
-carries a display name (R19). An undeclared class, and a source that is absent,
-doubled or empty, refuse by name rather than empty every Favorites.
-
-A favourite files by the folder it already sits in, never by its tag: a
-folder's members are its playlists' live memberships, Favorites excepted, and
-its Favorites holds those intersected with All Favorites, so it never disagrees
-with the tree. Favorites and "with vox" are independent memberships.
-
-The plan digests the target state, not the adds, which shrink as an apply
-proceeds, so a stopped run re-plans to the same digest (R-788). Additions and
-removals are two commits, the second admitting the membership table alone, each
-recorded and fingerprinted, so a run stopped between them has taken nothing out.
-
-Removal takes a gate of its own: the refresh verb is the one path that removes,
-and an adoption's end runs the additive half and says how many removals it left
-owed. The rebuild and the convergence check take the placements beside the
-vocal ones, so a Favorites playlist is declared membership to both.
-
-Layer: write. It reads state and the database through the handle it is given,
-calls the session spine rather than rebuilding it, and names no verb.
+The plan digests the target state, not the adds, so a stopped run re-plans to
+the same digest (R-788). Additions and removals are two commits, the second
+admitting the membership table alone, so a run stopped between them has taken
+nothing out. Only the refresh verb removes; an adoption's end runs the additive
+half. Layer: write; names no verb.
 """
 
 from __future__ import annotations
@@ -104,8 +90,8 @@ def require_class(declared: taxonomy.Taxonomy) -> taxonomy.SubClass:
 def undeclared_note(schema_version: int | None = None) -> dict[str, str]:
     """The note a verb that ran the genre Favorites step carries when the class was undeclared (U132).
 
-    The skip is named, with the refusal's own code, since a silent skip left
-    the live library with no Favorites anywhere. One wording for every surface.
+    The skip is named, with the refusal's own code, never silent. One wording
+    for every surface.
     """
     stated = f"states schema_version {schema_version} and " if schema_version is not None else ""
     return {
@@ -135,10 +121,8 @@ def undeclared_warnings(declared: taxonomy.Taxonomy) -> tuple[dict[str, str], ..
 def source_playlist(db: Any, name: str) -> Any:
     """The one live playlist named ``name`` anywhere in the library, or the refusal.
 
-    None, several and empty refuse alike, under one reason: an absent or empty
-    source would empty every genre Favorites, and of two the query's first
-    would win. Only a PLAIN playlist matches, since a smart playlist holds no
-    membership rows and would read as empty.
+    None, several and empty refuse alike, under one reason. Only a PLAIN
+    playlist matches, since a smart playlist holds no membership rows.
     """
     live = [
         row
@@ -229,9 +213,8 @@ class FolderPlan:
     def identity(self) -> dict[str, Any]:
         """What the digest covers for this folder: the target, and what leaves.
 
-        The adds shrink as an apply proceeds and are not digested (R-788). The
-        removes do not move until their commit lands, and a track dragged into
-        Favorites after the approval is a removal the gate never showed.
+        The adds shrink as an apply proceeds and are not digested (R-788); the
+        removes do not move until their commit lands.
         """
         return {
             "bucket": self.bucket,
@@ -296,10 +279,8 @@ def _recorded(
 ) -> tuple[dict[str, str], dict[str, str], set[str]]:
     """Each bucket's recorded folder and Favorites playlist, and the torn buckets.
 
-    One folder per bucket in the record, or none: "favorites" sorts before
-    every band, so a first entry taken per bucket would let a Favorites a
-    rebuild made beside a renamed folder claim the bucket. A bucket whose live
-    entries name two folders is torn, and nothing is written there.
+    One folder per bucket in the record, or none: a bucket whose live entries
+    name two folders is torn, and nothing is written there.
     """
     recorded_folder: dict[str, str] = {}
     recorded_playlist: dict[str, str] = {}
@@ -324,8 +305,7 @@ def _bound(
 ) -> tuple[dict[str, str], set[str], list[str]]:
     """Each bucket's folder, the folders claimed, and the folders left unclaimed.
 
-    Two passes, the record first: a recorded folder is its bucket's whatever it
-    is called now, and only a folder no record claims is bound by name, so one
+    The record first, then by name only for a folder no record claims, so one
     folder is never two buckets'.
     """
     bound: dict[str, str] = {
@@ -373,11 +353,9 @@ def plan_refresh(
 ) -> RefreshPlan:
     """Plan every genre folder's Favorites against the database on this handle.
 
-    A folder is bound as the rebuild binds a destination: by the node a
-    previous write recorded for the bucket, so a renamed folder is still its
-    bucket's, and by the bucket's display name only when nothing was recorded.
-    A folder no bucket claims, and a name two live folders carry, are listed as
-    unclaimed and left alone.
+    A folder is bound as the rebuild binds a destination, by its recorded node
+    first. A folder no bucket claims, and a name two live folders carry, are
+    listed as unclaimed and left alone.
     """
     sub = require_class(declared)
     tree_id = declared.tree.id
@@ -446,10 +424,8 @@ def placements(
 ) -> tuple[tuple[tree_read.DeclaredPlacement, ...], tuple[str, ...]]:
     """The genre Favorites as declared placements, for the rebuild and the check.
 
-    The location is the row's recorded path, as for every declared track. No
-    class places nothing; a source that cannot be read places nothing and names
-    :data:`FAVORITES_DIMENSION` as not compared, so a report never reads
-    "matching" over it.
+    The location is the row's recorded path. A source that cannot be read
+    places nothing and names :data:`FAVORITES_DIMENSION` as not compared.
     """
     sub = favorites_class(declared)
     if sub is None:
@@ -676,11 +652,8 @@ def apply_refresh(
     """Write the plan: the additions in one commit, the removals in a second.
 
     The plan is taken again on this handle first, and a digest that moved
-    refuses: the approved plan was read on a handle since closed. The session
-    spine is called as the membership move calls it, the second commit
-    admitting the membership table alone. ``remove`` declares which half the
-    caller was approved for: adoption's end runs the additive half, the verb
-    both.
+    refuses. The session spine is called as the membership move calls it.
+    ``remove`` declares which half the caller was approved for.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -713,8 +686,7 @@ def apply_refresh(
             removals_owed=plan.removes, session_id=record.session_id,
         )
         # Everything past the additions' commit is reported as half written when
-        # it fails, whatever its type, so no caller reports zero additions over
-        # a commit that landed, or the removals as made.
+        # it fails, whatever its type.
         try:
             if added:
                 convergence.record_fingerprint(cfg, db)
@@ -832,8 +804,7 @@ def refresh_additive(
             cause=CLASS_UNDECLARED,
         )
     # Every refusal is a skip with its reason: the adoption's own writes have
-    # landed, and reporting a refusal here as its failure would say nothing
-    # was filed when everything was.
+    # landed.
     try:
         registry = tree_registry.read(cfg)
         db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)

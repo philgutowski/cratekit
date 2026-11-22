@@ -1,23 +1,12 @@
 """The rekordbox side of a playlist pair: read one playlist in order, and write it.
 
-U130. ``sync pair`` keeps one account playlist and one rekordbox playlist the
-same list. This module reads one plain playlist with its live memberships in
-track order, the rows it holds and the rows the library holds by ISRC, and
-makes the one write: memberships added, taken out, and numbered in order.
-
-**MEMBERSHIPS ONLY. NO ROW OF THE COLLECTION IS MADE, CHANGED OR REMOVED.** A
-removal is ``rb_writer.remove_memberships``'s soft delete, and a track taken off
-the playlist stays in the collection and every other playlist.
-
-**THE ORDER IS ONE THROUGH N OVER THE LIVE MEMBERSHIPS.** A removed membership
-keeps its number, and the binding numbers a new one from the count of every
-row, so a number one past the live ones is never one a live row holds. What
-rekordbox makes of a live number a removed row also carries is unobserved.
-
-**THE SESSION SPINE IS CALLED, NOT REBUILT**, as by every database membership
-writer, the guarded commit admitting the membership table for the removals.
-The playlist is read again on the write handle first, and one whose
-memberships moved since the plan was approved refuses with nothing written.
+U130. Reads one plain playlist with its live memberships in track order, and
+makes the one write a pair needs: memberships added, taken out, and numbered
+one through N over the live memberships. **MEMBERSHIPS ONLY. NO ROW OF THE
+COLLECTION IS MADE, CHANGED OR REMOVED**: a removal is a soft delete. The
+session spine is called, not rebuilt, and the playlist is read again on the
+write handle first, so one whose memberships moved since the plan was
+approved refuses with nothing written.
 
 Layer: write.
 """
@@ -134,9 +123,8 @@ def read_playlist(db: Any, playlist_id: str) -> Playlist | None:
 def members(db: Any, playlist_id: str) -> tuple[Row, ...]:
     """The live memberships of one playlist in track order, with their rows' facts.
 
-    A membership whose content row is itself removed is left out, since
-    rekordbox shows no such track in the playlist. Ties on ``TrackNo`` fall to
-    the membership's own identifier, so one read always orders one way.
+    A membership whose content row is itself removed is left out, as rekordbox
+    shows it. Ties on ``TrackNo`` fall to the membership's own identifier.
     """
     from sqlalchemy import text
 
@@ -227,9 +215,8 @@ def content(db: Any, content_ids: Iterable[str]) -> dict[str, Row]:
 def rows_by_isrc(db: Any, fold) -> dict[str, tuple[str, ...]]:
     """Every live content row carrying an ISRC, by the folded code, ids in id order.
 
-    ``fold`` is the caller's ISRC fold, so this layer does not import the
-    matcher's. A code two rows carry maps to both, and choosing between them is
-    the caller's refusal to make.
+    ``fold`` is the caller's ISRC fold. A code two rows carry maps to both, and
+    choosing between them is the caller's refusal to make.
     """
     from sqlalchemy import text
 

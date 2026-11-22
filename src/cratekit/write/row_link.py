@@ -2,24 +2,13 @@
 through the guard, to learn which column keeps a binding made row off a deck
 (A32, R-928).
 
-A row the native landing makes will not load to a deck while a row rekordbox
-imports from the same file loads at once (R-928), even after the defaults
-(R-923) and the file id (U115) were repaired. Three binding values occur on
-no row rekordbox made: ``ContentLink``, ``ISRC`` stored NULL, and
-``AnalysisUpdated`` at 1. The first two are
-:data:`cratekit.core.rb_writer.ROW_PROBE_COLUMNS`; the third is an analysis
-column the guard refuses (R17), tested by letting rekordbox analyse again.
-
-A probe is a list of (row, column, value) triples, so each subset of the
-candidates sits on its own row and one rekordbox open answers them all. It
-writes the named columns on the named rows and nothing else, under a policy
-:func:`cratekit.core.rb_writer.row_probe_policy` builds from exactly those
-columns for this commit.
-
-Live rows only, an unknown or deleted one refused by name. A triple refuses
-unless more other live rows carry the value asked for than carry the row's
-own, NULL counted as NULL, so a probe only moves a row toward the library's
-majority. A row already holding the value plans nothing. Every written row is
+The probe columns are :data:`cratekit.core.rb_writer.ROW_PROBE_COLUMNS`. A
+probe is a list of (row, column, value) triples, so one rekordbox open answers
+several candidates; it writes the named columns on the named live rows and
+nothing else, under a policy :func:`cratekit.core.rb_writer.row_probe_policy`
+builds for this commit. A triple refuses unless more other live rows carry
+the value asked for than carry the row's own, NULL counted as NULL, so a
+probe only moves a row toward the library's majority. Every written row is
 read back from SQL after the commit, and the digest names no copy.
 
 Layer: write. It opens no database of its own and names no verb.
@@ -237,11 +226,9 @@ def library_link(db: Any) -> LibraryLink:
     """The ContentLink more than half the live rows carry, or a refusal by name (U126).
 
     What a row the native landing makes is given, read from the library on every
-    plan, since rekordbox's value (``2950670`` on 10,312 of 10,498 rows measured
-    on 2026-10-10) is one library's measurement, not a constant. More than half,
-    NULL counted as its own value, and a whole number: with no clear majority the
-    landing refuses before its gate, since a plurality is a guess and a wrong
-    guess is a row nobody can play.
+    plan, since rekordbox's value is one library's measurement, not a constant.
+    More than half, NULL counted as its own value, and a whole number: a
+    plurality is a guess, so with no clear majority the landing refuses.
     """
     from sqlalchemy import text
 

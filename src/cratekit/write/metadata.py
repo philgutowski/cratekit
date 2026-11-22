@@ -1,24 +1,14 @@
 """Per-field metadata maintenance, database-direct and convergent (U21).
 
 The structural whitelist in ``core.rb_writer`` answers whether a table may be
-touched at all. This module answers whether THIS operation may set THIS field
-on a curated row, which names feature operations and so cannot live in core.
-It is the only place operation names appear.
-
-An operation REGISTERS the fields it declares, so the writable column set is
-the union of what is enabled; enable nothing and nothing is writable (R14).
-
-**Fill-if-empty is the default and ownership is the exception**, so a value a
-person set by hand, a rating above all, survives every sweep.
-
-**Some fields refuse at registration** (:data:`UNWRITABLE_FIELDS`), rather
-than relying on absence from the policy table, which one plausible entry in a
-later unit would undo.
-
-**The key field is never authored.** ``djmdKey`` is structurally writable on
-the A4 verdict, but that is a ceiling: padded Camelot belongs in the title,
-and the key field stays blank so rekordbox's answer stays independent. There
-is no resolve-then-create helper for keys.
+touched at all; this module, the only place operation names appear, answers
+whether THIS operation may set THIS field on a curated row. An operation
+REGISTERS the fields it declares, so enable nothing and nothing is writable
+(R14). **Fill-if-empty is the default and ownership is the exception**, so a
+value a person set by hand survives every sweep. **Some fields refuse at
+registration** (:data:`UNWRITABLE_FIELDS`), not by absence from the policy
+table. **The key field is never authored**: padded Camelot belongs in the
+title, and the key field stays rekordbox's answer.
 
 LAYER: write. It writes through the guarded writer and names no verb (D2).
 """
@@ -140,11 +130,9 @@ def resolve_genre_id(db: Any, genre_name: str) -> Any | None:
     """The identifier of an existing, active genre row, or None.
 
     Never creates: the taxonomy is the user's, so a miss is skipped and surfaced.
-    There is deliberately no sibling for keys. The first ACTIVE row wins, since a
-    soft-deleted namesake can sort first. A row that cannot report its marker
-    refuses (:func:`first_active_id`) rather than defaulting to active, and is not
-    folded into None, which means "no active genre by that name" and becomes a
-    per-row skip that would blame the user's taxonomy for a binding regression.
+    The first ACTIVE row wins. A row that cannot report its marker refuses
+    (:func:`first_active_id`), never folded into None, which means "no active
+    genre by that name".
     """
     if not genre_name:
         return None
@@ -340,11 +328,10 @@ def _scale_unknown(message: str, detail: Mapping[str, Any]) -> CratekitError:
 def database_stars(value: int) -> int:
     """The star count the database stores for a taxonomy rating value (R-414).
 
-    The taxonomy's cuts are on the xml export scale (255 is five stars), and the
-    database stores 0 to 5, so a cut crosses into the database here and nowhere
-    else. A star count passes through, zero is unrated on both scales, and
-    anything else is refused rather than written into a field whose largest value
-    is 5.
+    The taxonomy's cuts are on the xml export scale (255 is five stars) and the
+    database stores 0 to 5, so a cut crosses over here and nowhere else. A star
+    count passes through, zero is unrated on both scales, and anything else is
+    refused.
     """
     if value == 0 or value in _DATABASE_STARS:
         return value
@@ -383,9 +370,8 @@ def plan_rating_backfill(
     """Fill a database star rating from an energy level, on rows with no rating.
 
     The whole curve is folded BEFORE any row is planned, so a bad value refuses
-    the plan rather than the rows in its cut. A cut of zero leaves its band
-    unrated, skipped as ``level-unrated``. Fill-if-empty is the policy's, through
-    :func:`rb_writer.metadata_decision`, not a check here (P2).
+    the plan. A cut of zero leaves its band unrated. Fill-if-empty is the
+    policy's, through :func:`rb_writer.metadata_decision` (P2).
     """
     curve = _database_curve(cuts)
     changes: list[Change] = []
@@ -421,8 +407,8 @@ def write_plan(
     """Apply every change in a plan and report what each one decided.
 
     Does not commit: the caller batches and calls
-    :func:`rb_writer.commit_guarded`, the structural backstop. A change naming a
-    row the caller did not supply is surfaced as a skip.
+    :func:`rb_writer.commit_guarded`. A change naming a row the caller did not
+    supply is surfaced as a skip.
     """
     applied: list[tuple[str, rb_writer.Decision]] = []
     skipped = list(plan.skipped)

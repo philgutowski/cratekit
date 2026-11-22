@@ -1,30 +1,22 @@
 """Fill rekordbox's own defaults on a content row that lacks them (R-923), and
 give a row the binding numbered at random its file's inode (U115).
 
-A row landed with the binding's ``add_content`` alone has twenty one columns
-NULL that rekordbox fills on every row it makes, and rekordbox will not load
-it to a deck. This repairs such rows in place, so their memberships stay.
+A row landed with the binding's ``add_content`` alone has columns NULL that
+rekordbox fills on every row it makes, and rekordbox will not load it to a
+deck; this repairs such rows in place, so their memberships stay. It writes
+:data:`cratekit.core.rb_writer.CONTENT_ROW_DEFAULTS` and nothing else, only
+into a NULL column of a live row, under
+:data:`cratekit.core.rb_writer.ROW_DEFAULTS_POLICY` for this commit only, and
+reads every written row back from SQL. The digest names no copy, path or time,
+so a rehearsal digests equal to the live plan.
 
-It writes :data:`cratekit.core.rb_writer.CONTENT_ROW_DEFAULTS` and nothing
-else, only into a NULL column, each value the column's own empty, through
-:func:`cratekit.core.rb_writer.write_metadata_field` under
-:data:`cratekit.core.rb_writer.ROW_DEFAULTS_POLICY`, registered for this
-commit only. Live rows only (``rb_local_deleted = 0`` from SQL). Every written
-row is read back from SQL after the commit: each planned column must read as
-its default and no other column beyond the bookkeeping may move. The digest
-names no copy, path or time, so a rehearsal on a copy digests equal to the
-live plan.
-
-THE FILE ID (U115, R-928). rekordbox's own value is the file's inode at
-import. APFS hands out inodes from a counter it never reuses, so a file made
-now has an inode above every inode the volume ever gave: a row whose id is
-above that bound and whose file reads another inode carries a number no file
+THE FILE ID (U115, R-928). rekordbox's own value is the file's inode. APFS
+hands out inodes from a counter it never reuses, so a row whose id is above a
+fresh file's inode and whose file reads another inode carries a number no file
 carried, and is given its file's inode through
-:data:`cratekit.core.rb_writer.FILE_ID_POLICY`. A row at or under the bound is
-left, since rekordbox tolerates a stale inode and a zero. The bound is a
-measurement, shown at the gate and kept out of the digest. Off APFS, or with
-the counter past :data:`cratekit.core.rb_writer.BINDING_ID_LIMIT`, nothing is
-renumbered and the gate says why; a file on another volume is left too.
+:data:`cratekit.core.rb_writer.FILE_ID_POLICY`. The bound is shown at the gate
+and kept out of the digest. Off APFS, or past
+:data:`cratekit.core.rb_writer.BINDING_ID_LIMIT`, nothing is renumbered.
 
 Layer: write. It opens no database of its own and names no verb.
 """
@@ -211,8 +203,7 @@ class DefaultsPlan:
         """The fingerprint an approval is bound to.
 
         Over the items, the row count and the values written, and nothing naming a
-        copy, so a rehearsal digests equal to the live plan; a changed default is a
-        different plan. The bound is left out: it differs between any two runs.
+        copy or the bound, so a rehearsal digests equal to the live plan.
         """
         return digest_of(
             {
@@ -270,12 +261,10 @@ def filesystem_of(path: Path) -> str | None:
 def inode_bound(cfg: config.Config) -> InodeBound:
     """The inode of a file created this moment in the library's state directory (U115).
 
-    On APFS this is above every inode the volume has given a file, so the
-    binding's random id is almost always above it. The file is removed at once.
-    The device and filesystem are measured with it, since another device's
-    inodes and a non APFS volume's promise nothing. Refuses when the library root
-    is absent rather than creating it, since a root made on the boot volume squats
-    the mount point.
+    On APFS this is above every inode the volume has given a file. The file is
+    removed at once; the device and filesystem are measured with it. Refuses when
+    the library root is absent rather than create a root that squats the mount
+    point.
     """
     root = Path(cfg.library.root)
     if not root.is_dir():
@@ -306,8 +295,7 @@ def file_id_state(value: Any, bound: int) -> str:
 
     ``ZERO`` for NULL, empty and 0, which rekordbox tolerates; ``ABOVE`` for a
     number above the bound; ``WITHIN`` for anything else, including text that is
-    not plain ASCII digits, which ``int`` alone would accept with a sign, an
-    underscore or another script's digits.
+    not plain ASCII digits.
     """
     if value is None:
         return ZERO
@@ -358,10 +346,8 @@ def plan_rows(
     """Every live content row with a default column NULL or a random file id, from SQL.
 
     From SQL so a NULL is what the table holds, ordered by identifier so the
-    digest is stable. Only a row above the bound has its file read; one whose file
-    reads the same inode is left, and one whose file cannot be read or is on
-    another volume is listed apart. A bound that decides nothing judges every id
-    within it, so nothing is renumbered.
+    digest is stable. Only a row above the bound has its file read; one whose
+    file cannot be read or is on another volume is listed apart.
     """
     from sqlalchemy import text
 
@@ -506,9 +492,8 @@ def judge(
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """What the read back found wrong. Answers (wrong, moved). Pure.
 
-    Compared as text: the binding declares some columns strings where the live
-    table holds integers, and SQLite stores either by affinity. ``SamplerGain`` is
-    stored real on the live table; the file id is compared the same way.
+    Compared as text, since SQLite stores either a string or an integer by
+    affinity.
     """
     wrong: list[str] = []
     moved: list[str] = []
@@ -608,13 +593,10 @@ def apply_rows(
 ) -> Written:
     """Fill the planned defaults, commit behind the guard, and read them back.
 
-    The session spine every database writer calls: the gates with a record
-    kept, a capture the commit happens behind, the commit witness, the guarded
-    commit, then the fingerprint. The rows are checked against the plan before the session is entered, so a
-    stale plan refuses with no record, no capture and nothing pending. The
-    out of band check reads the evidence before the commit replaces it, as
-    ``tag rows`` does. The file id policy is registered only when the plan
-    renumbers, so a run that fills defaults alone cannot write the column.
+    The session spine every database writer calls. The rows are checked against
+    the plan before the session is entered, so a stale plan refuses with nothing
+    pending. The file id policy is registered only when the plan renumbers, so
+    a run that fills defaults alone cannot write the column.
     """
     watched = watched_roots(analysis_roots)
     content_ids = [item.content_id for item in plan.items]
