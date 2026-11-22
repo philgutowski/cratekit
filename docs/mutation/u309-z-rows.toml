@@ -1,7 +1,7 @@
 name = "u309-z"
 pass_kind = "light"
 
-# Seven rows of docs/mutation/u309.md measured again after the tests that
+# Eleven rows of docs/mutation/u309.md measured again after the tests that
 # reach them landed: each read zero on the full suite at 111e4ac6, a guard the
 # split moved that no test reached on the base either.
 
@@ -80,3 +80,47 @@ surface = "user"
 tests = ["tests/test_outbound_workers.py", "tests/test_cli_contract.py", "tests/test_favorites_pink.py", "tests/test_shared_homes.py"]
 old = '    return output.load_config((origin,))'
 new = '    return output.load_config(())'
+
+[[rows]]
+id = "U14_backfill_abort_writes_nothing"
+description = "A backfill whose gate was aborted applies its plans anyway"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py"]
+old = '    if option != "apply" or not payload["totals"]["writes"]:'
+new = '    if not payload["totals"]["writes"]:'
+
+[[rows]]
+id = "U15_backfill_skips_planless"
+description = "A backfill applies a plan that writes nothing"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py"]
+old = '''
+            if not one.writes:
+                continue
+            _data, more, wrote = apply(cfg, one)'''
+new = '            _data, more, wrote = apply(cfg, one)'
+
+[[rows]]
+id = "U16_backfill_names_only_what_wrote"
+description = "A backfill names a set as done though its apply wrote nothing"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py"]
+old = '''
+            if wrote:
+                done.append(one.name)'''
+new = '            done.append(one.name)'
+
+[[rows]]
+id = "U17_backfill_first_failure_raised_as_is"
+description = "A backfill failing before anything landed is wrapped as a part way failure rather than raised as it was"
+file = "src/cratekit/export/set_cli.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py"]
+old = '''
+        if not done:
+            raise
+        before = f"before this failed the backfill already {said.did} {', '.join(done)}"'''
+new = "        before = f\"before this failed the backfill already {said.did} {', '.join(done)}\""
