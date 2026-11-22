@@ -55972,3 +55972,87 @@ a newer one already read stops and says why. No mixed install was driven.
 **Closes when:** every install that reads the library carries R-1037, or a
 reader of version 2 is backported. Ledger only: a refusal over an unusual
 install is the intended answer of a versioned document.
+
+---
+
+## R-1846. A Discogs release's artist is compared with no fold at all, so a file tagged with an artist's plain spelling misses every release crediting the accented one
+
+**Found:** at the build of #919, U324, 2026-11-21.
+
+**The mechanism.** `searchers._artist_matches`, which decides whether a
+Discogs release or track is credited to the file's artist, compares the
+credits after `titles.normalized` alone (NFC, lower case, trimmed), so
+neither an accent nor a letter U324's fold spells plain is read past:
+`_artist_matches("Ame", "Âme")`, `("Royksopp", "Röyksopp")` and
+`("Trentemoller", "Trentemøller")` are each False. U324 made a maker and a
+credit inside a title one name across those spellings
+(`titles._folded`), but the artist the release is credited to is a separate
+reader and is unchanged, as the card's scope (the version check) asked.
+
+**Measured cost.** Not driven on a live sweep. A file whose artist tag is
+written plain, "Royksopp", takes no Discogs release credited "Röyksopp",
+whatever its tracks, and goes on to Beatport; sitting 102's file is tagged
+with the accented spelling Discogs writes, so it is not affected.
+
+**Closes when:** the release artist check reads each credit through the
+same name fold (`titles._folded` word by word, or a public reader of it),
+held by a differential over the Discogs fixtures that no release credited
+to another artist newly matches. Ledger only: a miss, never a wrong genre.
+
+---
+
+## R-1847. A title spelled with a letter the name fold reads plain is still compared as written, so a credit now read past can cost the one match main made by misreading it
+
+**Found:** at the review of #919, U324, round one, 2026-11-21.
+
+**The mechanism.** U324 folds a maker's and a credit's name
+(`titles._folded`), never a title, which `Title.same` compares by its
+words as written: "Straße" and "Strasse", "Trentemøller Remix" and
+"Trentemoller Remix" as titles are two titles, on `main` and on the branch.
+Folding titles was left out on purpose, because a title's letters are
+words of a language, and "Bøg" and "Bog", or "Sø" and "So", are different
+words that a fold would join. Round two's reviewer counted, at `ba1231a2`,
+6 lost pairs of this shape where `main` matched the file's own title
+(round one's count, 12, was taken over a corpus one string shorter and
+before the fix rounds): artist "Trentemøller", file
+"Trentemoller - Sun Path - 02 Trentemøller Remix", row "Trentemoller
+Remix". `main` matched only because it read the plain credit
+"Trentemoller" as the title, which the row's core then met; the branch
+reads it as the credit, as `main` reads the same name spelled one way
+throughout, and the title "trentemøller remix" never meets the row's
+"trentemoller remix".
+
+**Measured cost.** 6 pairs over the differential's corpus, each a name
+that spells the credit one way and the title the other; 45 more lost pairs
+whose row is the file's title once folded are self titled shapes,
+"Trentemoller - Trentemoller Remix", which `main` already misses spelled
+one way ("Ame - Ame Remix"), so no regression. No real file of that shape was
+found. A title spelled with ø against a catalogue row spelled plain misses
+on `main` and on the branch alike.
+
+**Closes when:** a title comparison reads these letters plain where both
+sides are a name rather than a word (round two's smallest fix: fold a
+title's word only where its folded form is a word of the searched
+artist's folded names, so "Bøg" meets "Bog" only for an artist named
+Bøg), or a measured decision that it never does. Ledger only: a miss, never a wrong genre.
+
+---
+
+## R-1848. The name fold still keeps ð, ı, ħ, ŧ and ŋ as written, so an Icelandic maker written plain is another maker
+
+**Found:** at the review of #919, U324, round one, 2026-11-21.
+
+**The mechanism.** U324's table (`titles._PLAIN_SPELLINGS`) spells the
+letters the card named plain: ø, æ, œ, ß, đ, ł and þ. NFKD also leaves ð,
+ı, ħ, ŧ and ŋ whole, and the card did not list them, so `_folded("ð")` is
+"ð": "Sunrise Mood (Thordur Remix)" does not write "Sunrise Mood (Þórður
+Remix)", and `question("08A - 124 - Thordur Badie - Sun Path", "Þórður
+Badie")` keeps the credit in the question.
+
+**Measured cost.** Driven by round one's reviewer on hand built names; no
+live file of that shape is known. A Discogs version miss for such a remix,
+and a question carrying the credit.
+
+**Closes when:** each of these letters has a plain spelling chosen (ð as
+"d" or "dh" is a decision) and the table takes it, with a differential
+as U324's. Ledger only: a miss, never a wrong genre.
