@@ -1,0 +1,204 @@
+name = "u310"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_identifiable"
+description = "categorize: drop the identifiability proof, so a row no tombstone can name is offered"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''        if not identifiable(row):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P2_declined"
+description = "categorize: drop the decline proof, so a declined file is offered again"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''        if declined(row):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P3_ambiguous_version"
+description = "categorize: drop the ambiguous version proof, so a tombstone for one recording suppresses another"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''        if ambiguous(row):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P4_collides_with_active_row"
+description = "categorize: drop the active row collision proof, so a file a live row points at is offered"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''        if claimed:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P5_size_matches"
+description = "categorize: drop the size proof, so a file of another size is taken for the one the row named"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''        if row.size is None or int(stats.st_size) != int(row.size):'''
+new = '''        if row.size is None:'''
+
+[[rows]]
+id = "P6_still_referenced"
+description = "categorize: drop the playlist proof, so a file a playlist still holds is offered"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''        if row.content_id in referenced:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P7_anchor_moved_mid_walk"
+description = "categorize: drop the refusal of a walk whose anchor moved, so answers off two filesystems stand"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''    moved = anchors.changed()
+    if moved:'''
+new = '''    moved = anchors.changed()
+    if False:'''
+
+[[rows]]
+id = "G1_abort_moves_nothing"
+description = "review: drop the abort answer, so an aborted gate still trashes"
+file = "src/cratekit/deletion/cli.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''        if option == "abort":'''
+new = '''        if False:'''
+
+[[rows]]
+id = "G2_gate_digest_is_the_plan"
+description = "review: the gate digests a constant, so a confirmation of another plan is honoured"
+file = "src/cratekit/deletion/cli.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''        option = ctx.gate.require(spec, digest=_plan_digest(found), context=_shown(found))'''
+new = '''        option = ctx.gate.require(spec, digest="constant", context=_shown(found))'''
+
+[[rows]]
+id = "G3_recorded_reject_honoured"
+description = "review: the gate accepts every offered item, a recorded reject included"
+file = "src/cratekit/deletion/cli.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''                if item.verdict is None:'''
+new = '''                if True:'''
+
+[[rows]]
+id = "A1_gates_asserted"
+description = "apply: run without the session gates"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''    with session.assert_gates(cfg, workflow=DELETION_WORKFLOW, analysis_roots=watched, **seams):'''
+new = '''    with __import__("contextlib").nullcontext():'''
+
+[[rows]]
+id = "A2_volume_before_the_answer"
+description = "apply: act on an answer without asserting the volume first"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''            look(item)
+            verdict = decided.get(_item_id(item))'''
+new = '''            verdict = decided.get(_item_id(item))'''
+
+[[rows]]
+id = "A3_reject_moves_nothing"
+description = "apply: a rejected answer is not recorded as a decline and falls through to the move"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''            if verdict.verdict is review.Verdict.REJECTED:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "A4_planned_deletable"
+description = "apply: skip the plan's own refusal of a row no longer deletable"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''            if not item.deletable:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "A5_fresh_decline_snapshot"
+description = "apply: the re-check ignores a decline recorded after the plan"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''                declined=declined_now,'''
+new = '''                declined=lambda _row: False,'''
+
+[[rows]]
+id = "A6_volume_before_the_move"
+description = "apply: move without asserting the volume on the re-check's fresh stat"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''            look(fresh)
+'''
+new = ''''''
+
+[[rows]]
+id = "A7_recheck_still_deletable"
+description = "apply: move a file the re-check no longer calls deletable"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''            if not fresh.deletable or fresh.resolved is None:'''
+new = '''            if fresh.resolved is None:'''
+
+[[rows]]
+id = "A8_shown_path_is_the_moved_path"
+description = "apply: move a file whose path differs from the one the person confirmed"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''            if shown and locations.norm_for_compare(shown) != locations.norm_for_compare('''
+new = '''            if False and locations.norm_for_compare(shown) != locations.norm_for_compare('''
+
+[[rows]]
+id = "A9_volume_refusal_stops_the_run"
+description = "apply: a Trash refusal of any scope costs one file rather than stopping the run"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''                if exc.cause.scope is not Scope.ITEM:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "A10_unrecorded_move_put_back"
+description = "apply: a move whose tombstone cannot be written is left in the Trash"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''            trash.recover(target, original)'''
+new = '''            pass'''
+
+[[rows]]
+id = "A11_unproved_anchor_retires_nothing"
+description = "apply: an unanswered removal whose anchor proved nothing still retires its row"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''                return item.handled and not held'''
+new = '''                return item.handled'''
+
+[[rows]]
+id = "T1_trash_usable"
+description = "assert_usable: accept a Trash the probe called unusable"
+file = "src/cratekit/deletion/trash.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+old = '''    if not status.usable or status.layout is None:'''
+new = '''    if status.layout is None:'''
