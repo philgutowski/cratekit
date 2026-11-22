@@ -259,7 +259,6 @@ def test_the_manifest_carries_the_label_the_year_and_the_release(cfg, library, m
 def test_the_artist_comes_from_the_provider_and_never_from_the_review_payload(
     cfg, library, monkeypatch
 ):
-    """R-379: 98 live rows carry an address where the artist belongs."""
     accepted(cfg, "r-1", artist=ADDRESS)
     envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
     summary = envelope["data"]["summary"]
@@ -302,9 +301,8 @@ def test_a_vanished_release_is_named_and_the_others_still_list(cfg, library, mon
     ]
     named_failure = check(envelope, "release.r-gone")
     assert named_failure["status"] == "fail"
-    assert "release r-gone ('Withdrawn EP' on Tide Works) is gone from the provider" in (
-        named_failure["detail"]
-    )
+    said = named_failure["detail"]
+    assert "release r-gone ('Withdrawn EP' on Tide Works) is gone from the provider" in said
     assert f"crate review clear {gone_item}" in named_failure["detail"]
     assert check(envelope, "releases")["status"] == "fail"
     assert check(envelope, "releases")["detail"].startswith("1 accepted release(s) could not")
@@ -357,9 +355,8 @@ def test_nothing_missing_with_a_release_unread_is_refused_too(cfg, library, monk
     accepted(cfg, "r-1")
     accepted(cfg, "r-gone")
     cause = unusable(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
-    assert "nothing is missing from the 1 release(s) that could be read, and 1 could not" in (
-        cause["message"]
-    )
+    said = cause["message"]
+    assert "nothing is missing from the 1 release(s) that could be read, and 1 could not" in said
     assert not lists_dir(library).exists()
 
 
@@ -413,7 +410,6 @@ def test_an_accepted_harvested_label_shares_the_queue_and_is_not_a_release(
 def test_the_items_identity_names_the_release_and_a_payload_that_disagrees_does_not(
     cfg, library, monkeypatch
 ):
-    """Mutation row A8 found nothing holding the order of the two reads."""
     accepted_raw(cfg, {"release_id": "r-1"}, {"identity": "r-2", "label_name": "Tide Works"})
     glass = ([Track("401", "Mira Vale", "Glass Hour")], 2023)
     fake = StrictCatalogue(releases={"r-1": two_track_release(), "r-2": glass})
@@ -592,7 +588,6 @@ def test_a_track_with_no_provider_identifier_is_a_failing_line_and_not_dropped(
 def test_missing_tracks_none_of_which_can_be_asked_for_is_refused_and_not_a_no_op(
     cfg, library, monkeypatch
 ):
-    """Mutation row B6 found nothing holding this refusal."""
     accepted(cfg, "r-1")
     cause = unusable(
         monkeypatch, StrictCatalogue(releases={"r-1": ([Track("", "Nova Reef", "Tide")], 2024)})
@@ -850,12 +845,9 @@ def test_a_release_with_no_genre_known_is_listed_with_a_failing_line(cfg, librar
     assert listed_ids(envelope) == ["301", "302"]
     ungated = check(envelope, "ungated")
     assert ungated["status"] == "fail"
-    assert "1 release(s) the genre gate could not judge, so they are listed unjudged" in (
-        ungated["detail"]
-    )
-    assert "release r-1 ('Harbour Lights EP' on Tide Works): the catalogue reports no genre" in (
-        ungated["detail"]
-    )
+    said = ungated["detail"]
+    assert "1 release(s) the genre gate could not judge, so they are listed unjudged" in said
+    assert "release r-1 ('Harbour Lights EP' on Tide Works): the catalogue reports no genre" in said
     assert envelope["data"]["summary"]["ungated"] == ["r-1"]
 
 

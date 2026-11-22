@@ -6,7 +6,6 @@ import copy
 import json
 import tomllib
 from importlib import resources
-from pathlib import Path
 
 import pytest
 
@@ -23,6 +22,7 @@ from cratekit.sync import run
 from cratekit.tagging import published
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
+from tests.test_label_approved import listed_ids
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
 from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 from tests.test_label_workers import queued_sweep
@@ -120,8 +120,7 @@ def register(*argv: str, name: str = LABEL) -> None:
 
 
 def swept(monkeypatch, releases=None, lookup=None, *, argv=(), **kwargs) -> Provider:
-    """Register with ``argv``, bind ``releases`` and ``lookup`` (one Christian release by
-    default), and sweep once. The fake provider."""
+    """Register with ``argv``, bind ``releases`` and ``lookup`` (one Christian), sweep once."""
     register(*argv)
     fake = bind(monkeypatch, releases or {"r-christian": ("2025", isrc(2))}, **kwargs)
     bind_lookup(monkeypatch, lookup or Lookup({isrc(2): ("Christian",)}))
@@ -499,9 +498,7 @@ def test_a_catalogue_that_refuses_after_a_would_be_hold_holds_nothing():
 
 
 def test_three_releases_unread_in_a_row_end_the_asking_and_an_answer_resets_it():
-    """An unreachable catalogue is not remembered by the lookup, so without this every release
-    of every label pays a transport timeout.
-    """
+    """Unread answers are not remembered by the lookup, so three in a row end the asking."""
     table = {isrc(n): "unreachable" for n in (1, 2, 4, 5, 6)}
     table[isrc(3)] = ("Dance",)
     lookup = Lookup(table)
@@ -588,9 +585,7 @@ def test_three_failed_reads_in_a_row_end_the_asking_and_a_gone_release_resets_it
 
 
 def test_a_read_the_gate_never_saw_still_ends_a_run_of_failures():
-    """The review's case: the ownership question reads a release the gate is never asked about,
-    and its success must break the gate's run too.
-    """
+    """A read for the ownership question, which the gate never sees, still ends a run."""
     fake = Flaky({"a", "b", "d"})
     reader = ReleaseTracks(fake)
     gate = genre_gate.SweepGate(TAXONOMY, tracks=reader.release_tracks, lookup=Lookup({}))
@@ -747,9 +742,8 @@ def test_a_release_of_another_kind_is_held_and_counted_for_its_label(installed, 
     [by_run] = grouped("run")
     assert (by_run["items"], by_run["held"]) == (1, 1)
     envelope = held_ok()
-    assert "1 release(s) held by the genre gate across 1 label(s)" in (
-        check(envelope, "label.held.held")["detail"]
-    )
+    said = check(envelope, "label.held.held")["detail"]
+    assert "1 release(s) held by the genre gate across 1 label(s)" in said
     assert check(envelope, f"label.held.label.{SLUG}")["detail"] == (
         "Tide Works: 1 held, 1 the general catalogue calls Christian"
     )
@@ -796,7 +790,6 @@ def test_the_labels_kind_decides_what_is_filed(installed, monkeypatch):
 def test_a_release_the_catalogue_does_not_know_is_filed_and_marked_not_judged(
     installed, monkeypatch
 ):
-    """AE7."""
     swept(monkeypatch, {"r-unknown": ("2026", isrc(1))}, Lookup({}))
     payload = filed(installed)["r-unknown"].payload
     assert payload["genre_gate"] == "not-judged"
@@ -995,7 +988,6 @@ def active_copy_without_published_rules(cfg: config.Config) -> None:
 def test_a_library_whose_taxonomy_has_no_published_rules_files_as_before_and_asks_nothing(
     installed, monkeypatch
 ):
-    """The live copy, until it takes the new section by hand at a sitting."""
     active_copy_without_published_rules(installed)
     swept(monkeypatch, lookup=never_asked)
     payload = filed(installed)["r-christian"].payload
@@ -1333,11 +1325,6 @@ def approved_check(envelope: dict, key: str) -> dict:
     return check(envelope, f"label.approved.{key}")
 
 
-def listed_ids(envelope: dict) -> list[str]:
-    path = envelope["data"]["summary"]["list"]
-    return [t["id"] for t in json.loads(Path(path).read_text())["tracks"]] if path else []
-
-
 def provider_of(monkeypatch, releases: dict[str, str], lookup=None) -> FakeCatalogue:
     """The provider's ``{id: isrc}`` releases bound, and ``lookup`` when given."""
     fake = FakeCatalogue(releases={
@@ -1468,7 +1455,6 @@ def test_a_release_on_a_label_the_registry_no_longer_holds_is_the_default_kind(
 def test_a_release_held_at_approval_is_returned_by_name_and_listed_the_next_time(
     installed, monkeypatch
 ):
-    """The review's case."""
     register()
     item_id = accept(installed, "r-old")
     provider_of(monkeypatch, {"r-old": isrc(9)}, Lookup({isrc(9): ("Christian",)}))

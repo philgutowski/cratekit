@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import io
 import os
 import signal
 from types import SimpleNamespace
 
 import pytest
 
-from cratekit import cli
 from cratekit.cli import handlers, registry
 from cratekit.core import active_taxonomy, config, jobs, review, tombstone
 from cratekit.core.cause import refuse
@@ -22,6 +20,7 @@ from cratekit.sync import run
 from cratekit.tagging import published
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
+from tests.test_label_approved import human
 from tests.test_label_genre_gate import (
     LABEL,
     SLUG,
@@ -118,6 +117,10 @@ def judging(envelope: dict) -> dict:
 
 def counts(row: dict) -> dict:
     return {word: row[word] for word in ("judged", "held", "passed", "not-judged")}
+
+
+def tally(judged: int, held: int, passed: int, not_judged: int) -> dict:
+    return {"judged": judged, "held": held, "passed": passed, "not-judged": not_judged}
 
 
 def label_row(envelope: dict, label_id: str = SLUG) -> dict:
@@ -364,12 +367,11 @@ def test_a_refreshed_hold_that_never_named_a_run_gains_none(installed):
 
 
 def test_a_queued_release_of_another_kind_is_held_listed_and_returned(installed, monkeypatch):
-    """The brief's first scenario, end to end, and no tombstone anywhere in it."""
     lookup = Lookup({isrc(1): ("Christian",), isrc(2): ("Dance",)})
     pending(installed, monkeypatch, {"r-christian": isrc(1), "r-dance": isrc(2)}, lookup)
     job_id, envelope = judge_once()
-    assert counts(judging(envelope)) == {"judged": 2, "held": 1, "passed": 1, "not-judged": 0}
-    assert counts(label_row(envelope)) == {"judged": 2, "held": 1, "passed": 1, "not-judged": 0}
+    assert counts(judging(envelope)) == tally(2, 1, 1, 0)
+    assert counts(label_row(envelope)) == tally(2, 1, 1, 0)
     assert label_row(envelope)["label_name"] == LABEL
     # Gone from review, and held, not rejected.
     assert sorted(filed(installed)) == ["r-dance"]
@@ -409,7 +411,7 @@ def test_a_returned_release_is_not_judged_again_and_nobody_is_asked(installed, m
     assert sorted(filed(installed)) == ["r-christian"]
     assert held_ids(installed) == []
     assert judging(envelope)["returned"] == 1
-    assert counts(judging(envelope)) == {"judged": 0, "held": 0, "passed": 0, "not-judged": 0}
+    assert counts(judging(envelope)) == tally(0, 0, 0, 0)
     assert reports(installed, job_id)["r-christian"]["outcome"] == judge_cli.RETURNED
 
 
@@ -425,7 +427,7 @@ def test_a_queued_release_of_the_labels_kind_stays_and_says_the_gate_passed_it(
     assert stays.payload[genre_gate.GATE_RUN_FIELD] == job_id
     assert stays.payload[sweep.SWEEP_RUN] == FILED_BY
     assert held_ids(installed) == []
-    assert counts(judging(envelope)) == {"judged": 1, "held": 0, "passed": 1, "not-judged": 0}
+    assert counts(judging(envelope)) == tally(1, 0, 1, 0)
     assert warning_codes(envelope) == []
 
 
@@ -442,7 +444,7 @@ def test_a_release_the_catalogue_does_not_know_stays_and_is_marked_not_judged(
         "the general catalogue does not know its tracks"
     )
     assert held_ids(installed) == []
-    assert counts(judging(envelope)) == {"judged": 0, "held": 0, "passed": 0, "not-judged": 1}
+    assert counts(judging(envelope)) == tally(0, 0, 0, 1)
     assert warning_codes(envelope) == [judge_cli.NOT_JUDGED_LEFT]
     assert "1 release(s) stay in review not judged" in envelope["warnings"][0]["message"]
 
@@ -478,7 +480,7 @@ def test_an_item_decided_after_the_job_was_queued_is_untouched(installed, monkey
         assert review.get(store, item_id) == decided
     assert held_ids(installed) == []
     assert judging(envelope)["decided"] == 1
-    assert counts(judging(envelope)) == {"judged": 0, "held": 0, "passed": 0, "not-judged": 0}
+    assert counts(judging(envelope)) == tally(0, 0, 0, 0)
 
 
 def test_a_release_decided_while_it_was_being_judged_is_not_held(installed, monkeypatch):
@@ -530,7 +532,7 @@ def test_a_label_marked_any_has_nothing_held_and_nobody_is_asked(installed, monk
     assert stays.payload[genre_gate.GATE_NOTE_FIELD] == (
         "its label is followed for any kind of music"
     )
-    assert counts(judging(envelope)) == {"judged": 1, "held": 0, "passed": 1, "not-judged": 0}
+    assert counts(judging(envelope)) == tally(1, 0, 1, 0)
     assert judging(envelope)["asked"] == 0
 
 
@@ -541,9 +543,7 @@ def test_a_release_on_a_label_nobody_follows_any_more_is_judged_as_the_default_k
     provider_of(monkeypatch, {"r-christian": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
     _, envelope = judge_once()
     assert held_ids(installed) == ["r-christian"]
-    assert counts(label_row(envelope, "gone-label")) == {
-        "judged": 1, "held": 1, "passed": 0, "not-judged": 0,
-    }
+    assert counts(label_row(envelope, "gone-label")) == tally(1, 1, 0, 0)
 
 
 # ── 3. What the item records is used first ───────────────────────────────────
@@ -557,7 +557,7 @@ def test_words_the_item_recorded_pass_a_release_with_no_request_at_all(installed
     _, envelope = judge_once()
     assert provider.releases_asked_for == []
     assert held_ids(installed) == []
-    assert counts(judging(envelope)) == {"judged": 1, "held": 0, "passed": 1, "not-judged": 0}
+    assert counts(judging(envelope)) == tally(1, 0, 1, 0)
     assert judging(envelope)["asked"] == 0
     # A verdict the item already carried is not written again: the stamp stays the sweep's.
     assert genre_gate.GATE_RUN_FIELD not in item_of(installed, "r-dance").payload
@@ -599,7 +599,7 @@ def test_a_record_of_one_tracks_album_does_not_hold_a_release_its_next_track_pas
     stays = item_of(installed, "r-two").payload
     assert stays[genre_gate.GATE_FIELD] == "passed"
     assert stays[genre_gate.GENRES_FIELD] == ["Christian", "Dance"]
-    assert counts(judging(envelope)) == {"judged": 1, "held": 0, "passed": 1, "not-judged": 0}
+    assert counts(judging(envelope)) == tally(1, 0, 1, 0)
 
 
 @pytest.mark.parametrize("answer", ["matched", "miss", "no-isrc"])
@@ -793,8 +793,8 @@ class Interrupting(Lookup):
 @pytest.mark.parametrize(
     ("words", "expected"),
     [
-        (("Christian",), {"judged": 3, "held": 2, "passed": 1, "not-judged": 0}),
-        (("Dance",), {"judged": 3, "held": 1, "passed": 2, "not-judged": 0}),
+        (("Christian",), tally(3, 2, 1, 0)),
+        (("Dance",), tally(3, 1, 2, 0)),
     ],
     ids=["stopped-on-a-held-release", "stopped-on-a-passed-release"],
 )
@@ -814,13 +814,10 @@ def test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none(
     assert code != int(ExitCode.OK)
     assert stopped["outcome"] == "cancelled"
     assert stopped["cause"]["detail"]["left"] == 2
-    assert counts(stopped["cause"]["detail"]["judging"]) == {
-        "judged": 1, "held": 0, "passed": 1, "not-judged": 0,
-    }
-    assert f"crate job resume {job_id}" in stopped["cause"]["remediation"]["steps"][-1]
-    assert "2 release(s) of this job are not judged yet" in (
-        stopped["cause"]["remediation"]["steps"][-1]
-    )
+    assert counts(stopped["cause"]["detail"]["judging"]) == tally(1, 0, 1, 0)
+    said = stopped["cause"]["remediation"]["steps"][-1]
+    assert f"crate job resume {job_id}" in said
+    assert "2 release(s) of this job are not judged yet" in said
     lookup.on = ""
     with jobs.open_store() as store:
         jobs.retry(store, job_id)
@@ -857,7 +854,7 @@ def test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_l
     lookup.table = {isrc(n): ("Dance",) for n in range(1, 6)}
     envelope = resumed(job_id)
     assert lookup.asked[1:] == [isrc(2), isrc(3), isrc(4), isrc(5)]
-    assert counts(judging(envelope)) == {"judged": 4, "held": 0, "passed": 4, "not-judged": 1}
+    assert counts(judging(envelope)) == tally(4, 0, 4, 1)
 
 
 def test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left(
@@ -875,9 +872,7 @@ def test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many
         f"2 release(s) of this job are not judged yet; continue with: "
         f"crate label judge --job {job_id}"
     )
-    assert counts(cause["detail"]["judging"]) == {
-        "judged": 0, "held": 0, "passed": 0, "not-judged": 3,
-    }
+    assert counts(cause["detail"]["judging"]) == tally(0, 0, 0, 3)
     assert cause["detail"]["judging"]["unread"] == 3
     # Three asked, three answers, then nobody asked: the fourth was never read.
     assert provider.releases_asked_for == ["r-1", "r-2", "r-3"]
@@ -894,14 +889,14 @@ def test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many
     envelope = resumed(job_id)
     assert lookup.asked[3:] == [isrc(4), isrc(5)]
     assert held_ids(installed) == ["r-4", "r-5"]
-    assert counts(judging(envelope)) == {"judged": 2, "held": 2, "passed": 0, "not-judged": 3}
+    assert counts(judging(envelope)) == tally(2, 2, 0, 3)
     assert warning_codes(envelope) == [judge_cli.CATALOGUE_UNREAD, judge_cli.NOT_JUDGED_LEFT]
     assert "could not be read for 3 release(s)" in envelope["warnings"][0]["message"]
     # And another run asks about the three that went unread.
     _, again = judge_once()
     assert lookup.asked[5:] == [isrc(1), isrc(2), isrc(3)]
     assert held_ids(installed) == ["r-4", "r-5", "r-1", "r-2", "r-3"]
-    assert counts(judging(again)) == {"judged": 3, "held": 3, "passed": 0, "not-judged": 0}
+    assert counts(judging(again)) == tally(3, 3, 0, 0)
 
 
 def test_an_answer_between_two_unread_ones_keeps_the_run_going(installed, monkeypatch):
@@ -909,7 +904,7 @@ def test_an_answer_between_two_unread_ones_keeps_the_run_going(installed, monkey
     five_pending(installed, monkeypatch, lookup)
     _, envelope = judge_once()
     assert len(lookup.asked) == 5
-    assert counts(judging(envelope)) == {"judged": 1, "held": 0, "passed": 1, "not-judged": 4}
+    assert counts(judging(envelope)) == tally(1, 0, 1, 4)
     assert judging(envelope)["unread"] == 4
 
 
@@ -942,7 +937,7 @@ def test_a_refusal_from_the_provider_parks_the_run_on_that_refusal(installed, mo
     fake.refusing = False
     envelope = resumed(job_id)
     assert held_ids(installed) == ["r-2"]
-    assert counts(judging(envelope)) == {"judged": 2, "held": 1, "passed": 1, "not-judged": 0}
+    assert counts(judging(envelope)) == tally(2, 1, 1, 0)
 
 
 def test_three_provider_reads_failing_in_a_row_stop_the_run(installed, monkeypatch):
@@ -976,9 +971,8 @@ def test_three_provider_reads_failing_in_a_row_stop_the_run(installed, monkeypat
     assert parked["cause"]["detail"]["judging"]["asked"] == 3
     stamped = item_of(installed, "r-1").payload
     assert stamped[genre_gate.GATE_FIELD] == "not-judged"
-    assert "its tracks could not be read from the provider (ConnectionError" in (
-        stamped[genre_gate.GATE_NOTE_FIELD]
-    )
+    said = stamped[genre_gate.GATE_NOTE_FIELD]
+    assert "its tracks could not be read from the provider (ConnectionError" in said
     assert stamped[genre_gate.GATE_ANSWER_FIELD] == "not-asked"
     fake.down = False
     resumed(job_id)
@@ -1027,7 +1021,7 @@ def test_a_library_whose_taxonomy_has_no_published_rules_holds_nothing_and_asks_
     assert held_ids(installed) == []
     note = item_of(installed, "r-christian").payload[genre_gate.GATE_NOTE_FIELD]
     assert "declares no rule" in note
-    assert counts(judging(envelope)) == {"judged": 0, "held": 0, "passed": 0, "not-judged": 1}
+    assert counts(judging(envelope)) == tally(0, 0, 0, 1)
 
 
 def test_the_verb_drives_no_job_but_its_own(installed, monkeypatch):
@@ -1087,7 +1081,7 @@ def test_a_release_another_job_held_while_this_one_was_asking_is_counted_held(
     assert (report["outcome"], report["reason"], report["asked"]) == (
         "held", "the other job's reason", True,
     )
-    assert counts(judging(envelope)) == {"judged": 1, "held": 1, "passed": 0, "not-judged": 0}
+    assert counts(judging(envelope)) == tally(1, 1, 0, 0)
     assert judging(envelope)["gone"] == 0
     assert held_ids(installed) == ["r-1"]
 
@@ -1323,12 +1317,6 @@ def test_the_command_that_continues_a_job_names_the_job(installed):
     with jobs.open_store() as store:
         argv = judge_cli.label_judge_argv(jobs.get(store, job_id))
     assert argv == ["label", "judge", "--job", job_id]
-
-
-def human(argv: list[str]) -> tuple[int, str]:
-    out, err = io.StringIO(), io.StringIO()
-    code = cli.run(argv, stdout=out, stderr=err)
-    return code, out.getvalue() + err.getvalue()
 
 
 def test_a_person_reads_the_counts_per_label_without_asking_for_json(installed, monkeypatch):

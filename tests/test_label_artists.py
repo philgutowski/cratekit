@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-from pathlib import Path
 
 import pytest
 
@@ -18,33 +17,16 @@ from cratekit.label import artists_cli, catalogue, sweep
 from cratekit.label import gate as genre_gate
 from cratekit.sync import run
 from tests.cli_drive import drive
-from tests.label_fakes import StrictCatalogue, UnreadableCatalogue, catalogue_factory
-from tests.test_config import valid_data
+from tests.label_fakes import StrictCatalogue, UnreadableCatalogue
+from tests.test_label_approved import ADDRESS, bind
+from tests.test_label_approved import cfg as cfg  # noqa: PLC0414 - fixture
+from tests.test_label_approved import library as library  # noqa: PLC0414 - fixture
 from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 
-#: What a payload written before R-379 carries where the artist belongs.
-ADDRESS = "<provider.artist.Artist object at 0x10b77ec00>"
 QUEUE = str(Queue.LABEL_RELEASE)
 
 
-# ── Fixtures ─────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def library(tmp_path, monkeypatch) -> Path:
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    return root
-
-
-@pytest.fixture
-def cfg(library) -> config.Config:
-    built = config.from_dict(valid_data(library, profile={"name": "full"}))
-    config.save(built)
-    config.reset_cache()
-    return built
+# ── Fixtures: ``library``, ``cfg`` and ``bind`` are the approved suite's ─────
 
 
 def offered(cfg: config.Config, *release_ids: str, artist: str = ADDRESS, **stamp) -> str:
@@ -84,10 +66,6 @@ def withheld(cfg: config.Config, item_id: str) -> review.Hold | None:
             items, item_id, group="tide-works", name="Tide Works", reason="another kind",
             detail={}, run_id="judge-1",
         )
-
-
-def bind(monkeypatch, fake) -> None:
-    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
 
 
 def artists() -> tuple[int, dict]:

@@ -274,7 +274,6 @@ def test_an_import_against_an_empty_registry_refuses_the_unknown_name(installed)
 
 
 def test_the_import_queues_without_a_warning_now_an_adapter_is_bound(installed):
-    """U62 flipped the warning, and the job still queues."""
     assert catalogue.bound() is True
     register(*LABELS)
     queued = imported("Kompakt")
@@ -352,7 +351,6 @@ def test_one_worker_serves_both_label_keys():
 
 
 def test_a_sweep_runs_every_one_of_its_labels_from_pending_to_done(installed, monkeypatch):
-    """The whole point of the unit, read back from the queue rather than the exit code."""
     job_id = sweep_job(monkeypatch, readable(*SLUGS[:2]), *LABELS[:2])
     assert set(item_states(job_id).values()) == {str(jobs.ItemState.PENDING)}
     resumed = swept(job_id)
@@ -361,7 +359,6 @@ def test_a_sweep_runs_every_one_of_its_labels_from_pending_to_done(installed, mo
 
 
 def test_each_item_sweeps_its_own_label_and_not_one_named_by_the_payload(installed, monkeypatch):
-    """The first defect U46's end to end drive surfaced, pinned on the label path."""
     register(*LABELS[:2])
     catalogue_fake = bind(monkeypatch, readable(*SLUGS[:2]))
     job_id = queued_sweep()
@@ -410,7 +407,6 @@ def test_a_catalogue_that_cannot_be_listed_fails_the_item_and_the_job(installed,
 def test_a_sweep_whose_failures_are_permanent_does_not_tell_the_person_to_resume(
     installed, monkeypatch
 ):
-    """R-380 through the dispatcher: the sitting's mixed job, one item each way."""
     job_id = sweep_job(monkeypatch, readable(SLUGS[0]), *LABELS[:2])
     failed = unswept(job_id)
     assert item_causes(job_id) == {SLUGS[0]: None, SLUGS[1]: "sync-source-lookups-failed"}
@@ -464,7 +460,6 @@ def unconfirming(*label_ids: str) -> FakeCatalogue:
 def test_a_sweep_that_confirmed_none_of_what_it_read_fails_rather_than_succeeding(
     installed, monkeypatch
 ):
-    """The dishonest success this closes, driven end to end through the binding."""
     job_id = sweep_job(monkeypatch, unconfirming(SLUGS[0]), LABELS[0])
     unswept(job_id)
     assert item_causes(job_id) == {SLUGS[0]: "label-sweep-incomplete"}
@@ -501,7 +496,6 @@ def test_a_label_whose_every_release_is_tombstoned_still_succeeds(installed, mon
 def test_a_verification_call_that_raises_fails_the_item_in_the_lookup_vocabulary(
     installed, monkeypatch
 ):
-    """The fourth provider read, which had no failure boundary at all."""
     register(LABELS[0])
     bind(monkeypatch, VerificationOutage(artists=artists_of(SLUGS[0]), answers=0))
     job_id = queued_sweep()
@@ -522,7 +516,6 @@ def test_a_label_whose_crawl_listed_nothing_at_all_still_succeeds(installed, mon
 def test_a_sweep_that_confirmed_some_of_what_it_read_succeeds_and_offers_those(
     installed, monkeypatch
 ):
-    """The other arm of the refusal's conjunction, which nothing had pinned."""
     job_id = sweep_job(monkeypatch, readable(SLUGS[0], confirmed={"hf-1"}), LABELS[0])
     assert swept(job_id)["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {"hf-1": SLUGS[0]}
@@ -617,7 +610,6 @@ def test_a_job_carrying_no_items_refuses_on_resume_and_is_left_open(installed):
 
 
 def test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok(installed, monkeypatch):
-    """R-225, and the placement that decides it."""
     job_id = sweep_job(monkeypatch, UnreadableCatalogue(), LABELS[0])
     assert drive(["sync", "labels", "--job", job_id])[0] != int(ExitCode.OK)
     again = unswept(job_id)
@@ -735,7 +727,6 @@ def run_harvest_human(reference: str = PLAYLIST) -> tuple[int, str]:
 
 
 def test_harvest_of_a_readable_playlist_offers_one_item_per_verified_label(installed, monkeypatch):
-    """The success branch, which no build has ever reached before this unit."""
     bind(monkeypatch, playlist_of(anjuna()))
     envelope = harvest_ok()
     assert envelope["schema"] == "review_set/1"
@@ -893,7 +884,6 @@ def test_a_cratekit_refusal_from_below_is_not_flattened_into_an_unreadable_playl
 def test_a_provider_that_fails_mid_verification_refuses_rather_than_reporting_a_defect(
     installed, monkeypatch
 ):
-    """The boundary covered only two of the three provider calls harvest makes."""
     listing = {PLAYLIST: FakePagedPlaylist([anjuna(), mystery()])}
     bind(monkeypatch, VerificationOutage(playlists=listing, known_labels={CONFIRMED}, answers=1))
     code, refused = run_harvest()
@@ -917,7 +907,6 @@ def test_a_harvest_that_fails_mid_verification_names_what_it_already_offered(
 
 
 def test_a_refusal_the_harvest_verifier_raises_in_kind_keeps_its_own_reason(installed, monkeypatch):
-    """The harvest half of the passthrough the sweep test in section 6 pins."""
     listing = {PLAYLIST: FakePagedPlaylist([anjuna()])}
     bind(monkeypatch, SessionExpiredAtVerification(playlists=listing))
     code, refused = run_harvest()
@@ -952,7 +941,6 @@ def test_a_label_verb_will_not_drive_a_job_queued_for_another_verb(installed):
 
 
 def test_an_import_on_an_unconfigured_machine_says_so_rather_than_naming_the_label():
-    """The sibling of the sweep's fresh install test, which the round found missing."""
     refused = refused_by(["label", "import", LABELS[0]])
     assert refused["cause"]["reason"] == "config-unusable"
     assert queue_is_empty()
@@ -1012,7 +1000,6 @@ def bury(cfg: config.Config, release_id: str) -> None:
 def test_a_mixed_listing_of_tombstoned_and_unconfirmed_releases_is_a_label_with_nothing_new(
     installed, monkeypatch
 ):
-    """The false refusal the round found, driven."""
     bury(installed, "hf-1")
     job_id = sweep_job(monkeypatch, counting(SLUGS[0], confirmed=frozenset()), LABELS[0])
     assert swept(job_id)["data"]["state"] == str(jobs.JobState.SUCCEEDED)
@@ -1034,8 +1021,7 @@ def test_a_tombstoned_release_is_never_sent_to_the_provider_for_verification(
     """The local questions first, the provider call last."""
     bury(installed, "hf-1")
     fake = counting(SLUGS[0])
-    job_id = sweep_job(monkeypatch, fake, LABELS[0])
-    swept(job_id)
+    swept(sweep_job(monkeypatch, fake, LABELS[0]))
     assert fake.verifications == 1, fake.verifications
     assert offers(installed) == {"hf-2": SLUGS[0]}
 
@@ -1070,7 +1056,6 @@ class SessionExpiredAtListing(FakeCatalogue):
 
 
 def test_a_refusal_the_artist_lookup_raises_in_kind_keeps_its_own_reason(installed, monkeypatch):
-    """The third seam boundary, brought onto the rule the other two already kept."""
     job_id = sweep_job(monkeypatch, SessionExpiredAtListing(), LABELS[0])
     unswept(job_id)
     assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
@@ -1110,7 +1095,6 @@ def tracked(*, releases=None, confirmed=None, cls=FakeCatalogue) -> FakeCatalogu
 
 
 def test_a_label_whose_catalogue_the_library_already_holds_offers_nothing(installed, monkeypatch):
-    """R-259's closing condition, driven through the real dispatcher and driver."""
     register(LABELS[0])
     hold(
         installed, "Aurora Bloom - Sun Path.flac", "Nova Reef - Tide.flac",
@@ -1127,8 +1111,7 @@ def test_a_release_with_one_track_still_missing_is_offered_beside_one_that_is_he
 ):
     """Every track, not any track. The composite for the test above."""
     hold(installed, "Aurora Bloom - Sun Path.flac", "Mira Vale - Glass Hour.flac")
-    job_id = sweep_job(monkeypatch, tracked(), LABELS[0])
-    swept(job_id)
+    swept(sweep_job(monkeypatch, tracked(), LABELS[0]))
     assert offers(installed) == {"hf-1": SLUGS[0]}
 
 
@@ -1138,8 +1121,7 @@ def test_a_release_listing_no_tracks_and_a_release_that_is_gone_are_both_offered
     """Two absences that must not read as ownership."""
     hold(installed, "Mira Vale - Glass Hour.flac")
     fake = tracked(releases={"hf-1": ([], 2026)})
-    job_id = sweep_job(monkeypatch, fake, LABELS[0])
-    swept(job_id)
+    swept(sweep_job(monkeypatch, fake, LABELS[0]))
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
     assert sorted(fake.releases_asked_for) == ["hf-1", "hf-2"]
 
@@ -1162,8 +1144,7 @@ def test_an_unconfirmed_release_is_never_read_and_a_confirmed_one_is_read_once(
 ):
     """Ownership is a provider read now, so it is asked after verification."""
     fake = tracked(confirmed={"hf-1"})
-    job_id = sweep_job(monkeypatch, fake, LABELS[0])
-    swept(job_id)
+    swept(sweep_job(monkeypatch, fake, LABELS[0]))
     assert fake.releases_asked_for == ["hf-1"]
     assert offers(installed) == {"hf-1": SLUGS[0]}
 
@@ -1247,7 +1228,6 @@ def test_a_sweep_of_two_labels_walks_the_library_once(installed, monkeypatch):
 
 
 def test_a_refusal_the_track_read_raises_in_kind_keeps_its_own_reason(installed, monkeypatch):
-    """The same pass through rule the other three seam boundaries keep."""
     job_id = sweep_job(monkeypatch, tracked(cls=TracksSessionExpired), LABELS[0])
     unswept(job_id)
     assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
@@ -1355,7 +1335,6 @@ def item_cause(job_id: str, item_id: str):
 def test_a_rate_limited_listing_fails_its_item_as_retryable_and_the_job_says_resume(
     installed, monkeypatch
 ):
-    """R-704, the eleventh sitting's shape: one label settled, one rate limited."""
     register(*LABELS[:2])
     waits = _ladder_without_waiting(monkeypatch)
     _, limit = _one_label_rate_limited(monkeypatch)
