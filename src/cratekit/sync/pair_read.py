@@ -44,22 +44,22 @@ class _Reader:
     store: Any
     #: Every playlist ``crate organize`` mirrors (U147).
     mirrored: frozenset[str] = frozenset()
-    #: U198, R-988. Every row the account had no track for, as remembered,
-    #: and what this plan asked fresh or matched since.
+    #: U198, R-988. Rows the account had no track for, as remembered, and
+    #: what this plan asked fresh or matched since.
     misses: Mapping[str, Any] = field(default_factory=dict)
     fresh: dict[str, Any] = field(default_factory=dict)
     matched: set[str] = field(default_factory=set)
     #: U202. Each account root folder's playlists, listed once per plan.
     inside: dict[str, dict[str, str]] = field(default_factory=dict)
-    #: U216. When the account says each playlist in a folder was made, listed
-    #: once per plan, and only for a folder adopted with no record of what it held.
+    #: U216. Each playlist's made date, only for a folder adopted with no record
+    #: of what it held.
     made_at: dict[str, dict[str, Any]] = field(default_factory=dict)
-    #: U229. Each landed INBOX playlist's codes and rows, and each intake
-    #: job's reports, read once per plan whichever pair asks for them.
+    #: U229. Each landed INBOX playlist's codes and each intake job's reports,
+    #: read once per plan.
     landed_codes: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     reports: dict[str, tuple[dict[str, Any], ...] | Exception] = field(default_factory=dict)
-    #: R-1385. Each track a pair of this plan asks to acquire, by remote id,
-    #: with the pair's key and name, so a later pair listing it awaits it.
+    #: R-1385. Each track a pair of this plan acquires, with the pair's key and
+    #: name, so a later pair listing it awaits it.
     asked: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     @cached_property
@@ -102,10 +102,9 @@ class _Reader:
 
     @cached_property
     def landings(self) -> tuple[dict[str, frozenset[str]], tuple[Path, ...]]:
-        """The landing records' INBOX playlists, and the log's entries unread, read once per plan.
+        """The landing records' INBOX playlists and the log's entries unread, read once per plan.
 
-        R-1383. Both halves of one scan, so a landing whose record does not
-        read is never read as no landing.
+        One scan, so an unreadable landing is never read as no landing (R-1383).
         """
         return landed_inbox_playlists(self.cfg)
 
@@ -118,12 +117,10 @@ class _Reader:
     def stopped(self) -> tuple[dict[str, tuple[Any, Any]], tuple[str, ...]]:
         """Each pair's write stopped part way through its order, and the runs' steps unread (U225).
 
-        Read once per plan, from every run's steps still kept, so a fresh
-        plan knows a write that stopped part way through a pair's order, and
-        from every pair's steps carried past its run (R-1372), whatever their
-        age, so a stop is never forgotten while its pair is unfinished. A
-        carried record gives way to its own run's steps when those are still
-        kept under the same plan, since they say whether the pair finished.
+        Read from every run's kept steps and every pair's carried steps
+        (R-1372), so a stop is never forgotten while its pair is unfinished. A
+        carried record gives way to its own run's steps under the same plan,
+        since they say whether the pair finished.
         """
         from cratekit.core import held_plan
 
@@ -149,13 +146,10 @@ class _Reader:
     def stopped_write(self, account_id: str, held: Any) -> Any:
         """The write on this pair that stopped part way through its order since its snapshot, or None (U225).
 
-        The pair's latest write that began to order and never finished, when
-        no later run finished the pair and it began after the pair's last
-        snapshot.
-        A snapshot that cannot be read as a moment says nothing was written
-        since, so nothing is finished from a write it cannot place. And a
-        write that began before the pair was marked is another pair's: a
-        carried record outlives a pair forgotten and marked again (R-1372).
+        A snapshot that cannot be read as a moment places no write after it,
+        so nothing is finished. A write begun before the pair was marked is
+        another pair's, since a carried record outlives a pair marked again
+        (R-1372).
         """
         from cratekit.favorites import placeholders
         if not account_id or held is None:
@@ -175,13 +169,9 @@ class _Reader:
     def first_stop(self, account_id: str) -> Any:
         """The write that stopped part way through ordering this account playlist, for a first sync, or None (R-1376).
 
-        A pair released after a stop and paired again, or marked and never
-        written whole, syncs first with no snapshot, and the account it reads
-        is the stopped write's scramble, which a first sync's order would put
-        into rekordbox. Read whatever the mark, since the stop predates the
-        new one, and FOR ITS ORDER ALONE: its bases are another pair's, and a
-        first sync has none to fold. The latest write that began to order the
-        playlist and that no later run finished, as :meth:`stopped` keeps it.
+        Read whatever the mark, since the stop predates it, so a first sync
+        never puts the stopped write's scramble into rekordbox; FOR ITS ORDER
+        ALONE, since its bases are another pair's and a first sync folds none.
         """
         if not account_id:
             return None
@@ -210,10 +200,8 @@ class _Reader:
     def landed_anywhere(self) -> dict[str, tuple[str, ...]]:
         """ISRC to content ids, from every INBOX playlist landed on this library (U229).
 
-        Whichever account playlist a landing brought a track in through, the
-        row it made is the library's copy of that track, so a pair asking for
-        the track is asked to add that row and never to download it again.
-        Read once per plan, and only when a pair reaches it.
+        A landed row is the library's copy whichever playlist brought it, so a
+        pair adds it and never downloads the track again.
         """
         every: set[str] = set()
         for ids in self.mirrors.values():
@@ -225,10 +213,9 @@ class _Reader:
     ) -> tuple[dict[str, Any], ...] | None:
         """One finished intake job's reports, None when they cannot be read, read once per plan.
 
-        A job whose frozen configuration no longer reads refuses the plan of
-        the pair that queued it, as it always has, and is passed over by every
-        other pair's (``own`` false, U229), since one pair's old job is no
-        reason to stop every pair's plan.
+        A job whose frozen configuration no longer reads refuses only the plan
+        of the pair that queued it, and is passed over by every other pair's
+        (``own`` false, U229).
         """
         from cratekit.intake import missing_cli
 
@@ -253,9 +240,7 @@ class _Reader:
     def held_by_jobs(self) -> dict[str, tuple[tuple[str, str], ...]]:
         """Each track any pair's intake job on this library holds, read once per plan (R-1385).
 
-        Remote id to the account playlist and its name of every job holding
-        it, newest first, from the jobs :attr:`pair_jobs` lists: every one
-        that did not fail or cancel, as a pair's own are read.
+        Remote id to each holding job's account playlist and name, newest first.
         """
         found: dict[str, list[tuple[str, str]]] = {}
         for job in self.pair_jobs:
@@ -284,10 +269,8 @@ def pair_jobs(cfg: config.Config, store) -> tuple[jobs.Job, ...]:
 def file_identity(cfg: config.Config, recorded: str) -> tuple[str, str]:
     """The ISRC and album tag the row's audio file carries, or empty strings.
 
-    Every way this cannot read, a path that is not local, a prefix no rule
-    maps, a file that is gone, a tag that is not an ISRC, answers empty, which
-    leaves the row to be matched on nothing and named as unmatched, the route
-    ``outbound.source.file_identity`` gives a collection export's row.
+    Every failure to read answers empty, leaving the row unmatched and named,
+    as ``outbound.source.file_identity`` does for a collection export's row.
     """
     from cratekit.modules.outbound import source
 
@@ -345,15 +328,9 @@ def landed_inbox_playlists(
 ) -> tuple[dict[str, frozenset[str]], tuple[Path, ...]]:
     """Each account playlist's INBOX playlists, as the landing records name them (U128), and the unread.
 
-    PUBLIC because the custom playlist twins' backfill (U149) finds a landed
-    track's row the same way a pair does.
-
-    THE UNREAD HALF IS KEPT (R-1383). Every entry of the log this build
-    cannot read is answered beside the playlists, the log itself when it is
-    there and cannot be listed, as the session log's own gates count every
-    one (``session.assert_no_unresolved_session``): a torn record cannot say
-    its workflow, and a state a later build wrote cannot say whether its
-    landing stands, so none of them is read as no landing.
+    Public for the twins' backfill (U149). THE UNREAD HALF IS KEPT (R-1383),
+    since an unreadable record cannot say whether its landing stands, so none
+    is read as no landing.
     """
     standing = {
         session.SessionState.AWAITING_IMPORT,
@@ -396,15 +373,10 @@ def landed_isrcs(
     *,
     read: Callable[[str], Iterable[tuple[str, str]]] | None = None,
 ) -> dict[str, tuple[str, ...]]:
-    """ISRC to content ids, read from the files of the INBOX playlists named.
+    """ISRC to content ids, read from the files of the INBOX playlists named (U128).
 
-    U128 records each INBOX playlist a landing made for an account playlist
-    with the account playlist's identifier. A track a pair queued and a landing
-    brought sits there, and its row may carry no ISRC of its own, since a
-    landed row's code is in its file. Only those rows' files are read.
-
-    ``read`` is how one playlist's codes are read, :func:`mirror_codes` unless
-    a caller keeps its own copy, as a plan does so each file is read once (U229).
+    A landed row's code may be only in its file. ``read`` reads one playlist's
+    codes, :func:`mirror_codes` unless a caller keeps its own copy (U229).
     """
     found: dict[str, list[str]] = {}
     for mirror in sorted(set(playlist_ids)):
