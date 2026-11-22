@@ -1,6 +1,6 @@
 """``crate rebuild``: queue a full-scope rebuild of one governed tree (U20).
 
-The actor is typed on the command line, never read from the environment or
+The actor is typed on the command line, never taken from a variable or
 defaulted, since an actor nobody typed is the product answering for the user.
 Only the engine clears the unconverged flag. The work is queued with one item
 per native tree (U53); a library with no native tree files no job, since an

@@ -1,7 +1,7 @@
 """What doctor's checks answer with and are handed: the finding, the report, the probes.
 
-Split out of ``cli.doctor`` by U303; every name here is also reachable as
-``cratekit.cli.doctor.NAME``.
+Split out of ``cli.doctor`` by U303. The names other code reads on
+``cratekit.cli.doctor`` stay reachable there; the rest are read here.
 """
 
 from __future__ import annotations

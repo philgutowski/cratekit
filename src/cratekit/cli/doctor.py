@@ -4,7 +4,7 @@ Doctor answers named checks, each with a remedy token per failure, and
 ``cli/registry.py`` lets every verb declare the checks it depends on, so a
 missing binary or credential is found before a paid step rather than during it
 (R3). The check families live in ``doctor_model``, ``doctor_library``,
-``doctor_credentials``, ``doctor_backup`` and ``doctor_state``; this hub keeps
+``doctor_keys``, ``doctor_backup`` and ``doctor_state``; this hub keeps
 the table and the verbs.
 
 * Every check answers on every run, so a consumer can diff two reports.
@@ -39,7 +39,7 @@ from cratekit.cli.doctor_backup import (
     _check_full_check,
     _check_full_comparison,
 )
-from cratekit.cli.doctor_credentials import (
+from cratekit.cli.doctor_keys import (
     BINARY_NAMES,
     CREDENTIALS_BY_CHECK,
     OFFERED_WHEN_SPENT,
@@ -58,9 +58,11 @@ from cratekit.cli.doctor_library import (
     _check_paths_resolved,
     _check_rekordbox_closed,
     _check_rekordbox_pins,
-    _check_taxonomy,
     _check_taxonomy_schema,
     _check_trash,
+    _library_state_unreadable,
+    _origin_verdict,
+    _volume_clause,
 )
 from cratekit.cli.doctor_model import (
     Finding,
@@ -71,6 +73,7 @@ from cratekit.cli.doctor_model import (
     _declared_python_bound,  # noqa: F401
     _Inputs,
     _probe_trash,  # noqa: F401
+    _unchecked,
     requires_check,
     satisfies,
 )
@@ -91,7 +94,7 @@ from cratekit.cli.doctor_state import (
     _open_state,  # noqa: F401
 )
 from cratekit.cli.output import Envelope
-from cratekit.core import backup_facts, config, profiles, session, tree_registry
+from cratekit.core import backup_facts, config, profiles, session, taxonomy, tree_registry
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, access_remedy
 from cratekit.core.exit_codes import Remedy
 
@@ -111,6 +114,101 @@ def offered(key: str, membership: profiles.Membership) -> bool:
     return any(
         entry.name in spenders and entry.available_to(membership)
         for entry in registry.entries()
+    )
+
+
+def _check_taxonomy(inputs: _Inputs) -> Finding:
+    key, title = "taxonomy.active", "active taxonomy template"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    unreadable = _library_state_unreadable(inputs, "the active template")
+    if unreadable is not None:
+        return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
+    shipped, unlistable = taxonomy.shipped_templates()
+    named = inputs.cfg.taxonomy.template
+    if unlistable is not None:
+        # "Could not look" is not "not present": a damaged install is a defect,
+        # and setup cannot repair packaged data.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"{unlistable}. Whether a template named {named!r} ships was "
+                f"therefore not established, and neither was the active copy "
+                f"beside the database. This is a damaged or partial install "
+                f"rather than a configuration error, so re-running setup would "
+                f"not repair it"
+            ),
+            remedy=Remedy.REPORT_DEFECT,
+        )
+    if named not in shipped:
+        # Asserted, so a configured name that does not ship cannot read green.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"taxonomy.template names {named!r} and no template ships under "
+                f"that name; shipped: {', '.join(shipped)}. A re-run of setup "
+                f"replaces a recorded name the shipped set does not contain"
+            ),
+            remedy=Remedy.RUN_SETUP,
+        )
+    path = config.state_path("taxonomy_active", inputs.cfg)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, NotADirectoryError):
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"no active taxonomy template at {path}. S6 makes the library "
+                f"self-describing by copying the chosen template beside the "
+                f"database, and routing has no declared tree without it"
+            ),
+            remedy=Remedy.RUN_SETUP,
+        )
+    except (OSError, UnicodeDecodeError) as exc:
+        # Separate from "not there", since setup leaves an existing file alone,
+        # and it claims no existence, since an untraversable parent lands here.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"the active taxonomy template at {path} could not be read "
+                f"({exc}), so whether the library declares a usable tree was not "
+                f"established. Whether the file is even there is unknown too: a "
+                f"directory on the way to it that this account cannot open fails "
+                f"the same way. Setup leaves an existing copy alone, so this is a "
+                f"permission or a corruption to repair rather than an answer to "
+                f"give again"
+            ),
+            # A corruption is a defect to report, a permission one to grant.
+            remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
+        )
+    try:
+        declared = taxonomy.load_taxonomy(text)
+    except taxonomy.TaxonomyError as exc:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=f"the active taxonomy template at {path} is not usable: {exc}",
+            remedy=Remedy.RUN_SETUP,
+        )
+    status, origin = _origin_verdict(inputs.cfg, text, named)
+    return Finding(
+        key=key,
+        title=title,
+        status=status,
+        detail=(
+            f"an active template at {path}, {_volume_clause(inputs)}, parses and "
+            f"declares {len(declared.buckets)} buckets; taxonomy.template names "
+            f"the shipped {named!r}; {origin}"
+        ),
     )
 
 

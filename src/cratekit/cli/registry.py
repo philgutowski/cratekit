@@ -367,7 +367,11 @@ ENTRIES: tuple[Entry, ...] = (
     # ── A row's rekordbox defaults (R-923) ──────────────────────────────────
     Entry(
         name="repair.rows",
-        summary="give each live library row rekordbox's own defaults where a " "column is empty, and its file's inode where the file id is random, so " "it loads to a deck; writes no file",
+        summary=(
+            "give each live library row rekordbox's own defaults where a "
+            "column is empty, and its file's inode where the file id is random, so "
+            "it loads to a deck; writes no file"
+        ),
         module="cratekit.write.row_defaults_cli", builder="build", handler_key="repair.rows",
         # No feature row or source script: the source never created a row.
         # Gated by ``repair``, a corrective pass over rows the library holds.
@@ -389,7 +393,11 @@ ENTRIES: tuple[Entry, ...] = (
     # ── The ContentLink probe (A32, R-928) ──────────────────────────────────
     Entry(
         name="repair.link",
-        summary="write chosen values into the row probe columns, ContentLink " "and ISRC, of chosen live library rows, the experiment that asks which " "column keeps a landed row off a deck; writes no file",
+        summary=(
+            "write chosen values into the row probe columns, ContentLink "
+            "and ISRC, of chosen live library rows, the experiment that asks which "
+            "column keeps a landed row off a deck; writes no file"
+        ),
         module="cratekit.write.row_link_cli", builder="build", handler_key="repair.link",
         # No feature row or source script; gated by ``repair`` as ``repair.rows`` is.
         module_id="repair", emits=frozenset({"plan"}), output_schema="plan/1",
@@ -497,7 +505,9 @@ ENTRIES: tuple[Entry, ...] = (
         module="cratekit.cli.rebuild", builder="build", handler_key="rebuild", feature_rows=(12,),
         argv_builder="rebuild_argv", long_running=True, emits=frozenset({"job_state"}),
         output_schema="job_state/1", writes=frozenset({"db_tree"}), destructive=True,
-        doctor_checks=("library.mounted", "library.identity", "rekordbox.closed", "library.paths_resolved"),
+        doctor_checks=(
+            "library.mounted", "library.identity", "rekordbox.closed", "library.paths_resolved",
+        ),
         gates=(
             CLOUD_SYNC_UNREADABLE_GATE,
             GateSpec(
@@ -618,7 +628,9 @@ ENTRIES: tuple[Entry, ...] = (
         # tracklist file is no write surface, as for ``intake missing``.
         adjudicates=True, emits=frozenset({"match"}), output_schema="match/1",
         # The library is asked, so doctor must require it.
-        doctor_checks=("library.mounted", "binary.ffmpeg", "binary.ffprobe", "credential.recognition"),
+        doctor_checks=(
+            "library.mounted", "binary.ffmpeg", "binary.ffprobe", "credential.recognition",
+        ),
     ),
     Entry(
         name="intake.playlist", summary="import a streaming playlist's tracks into the library",
@@ -630,7 +642,11 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="intake.missing",
-        summary="write the list acquire download reads from the missing tracks of a " "finished intake job, a whole sync pass, or a text list searched on " "the provider",
+        summary=(
+            "write the list acquire download reads from the missing tracks of a "
+            "finished intake job, a whole sync pass, or a text list searched on "
+            "the provider"
+        ),
         module="cratekit.intake.missing_cli", builder="build_missing",
         handler_key="intake.missing", feature_rows=(3, 35),
         # ``--list`` offers candidates and version questions for review (U79).
@@ -650,7 +666,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: batch playlist (R-770); on the bridge, an intake file.
         writes=frozenset({"xml", "files", "db_tree"}), destructive=True,
         #: The database checks hold for the native medium only.
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
         gates=(
             # A content row, answered by a separate recorded act (R34, R-770).
             GateSpec(
@@ -662,12 +680,17 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="intake.shelve",
-        summary="file an imported batch folder into the processed tree, by year and date, " "and point its rows at it",
+        summary=(
+            "file an imported batch folder into the processed tree, by year and date, "
+            "and point its rows at it"
+        ),
         module="cratekit.intake.shelve_cli", builder="build_shelve", handler_key="intake.shelve",
         emits=frozenset({"plan"}), output_schema="plan/1",
         #: One folder rename and the path column of its rows, never the tree (U154).
         writes=frozenset({"files", "db_metadata"}), destructive=True,
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
         gates=(
             # A path write on the collection, answered by a recorded act (R34).
             GateSpec(
@@ -746,7 +769,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="acquire.fallback",
-        summary="search SoundCloud and YouTube for a list's missing tracks and offer " "what they hold for review; downloads nothing",
+        summary=(
+            "search SoundCloud and YouTube for a list's missing tracks and offer "
+            "what they hold for review; downloads nothing"
+        ),
         module="cratekit.acquire.fallback_cli", builder="build", handler_key="acquire.fallback",
         feature_rows=(7,),
         # Offers candidates and version questions for review (U80).
@@ -758,7 +784,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="acquire.fallback-fetch",
-        summary="download the second source candidates accepted in review into staging, " "marked lossy and tagged from the list's row",
+        summary=(
+            "download the second source candidates accepted in review into staging, "
+            "marked lossy and tagged from the list's row"
+        ),
         module="cratekit.acquire.fallback_cli", builder="build_fetch",
         handler_key="acquire.fallback-fetch", feature_rows=(7,), argv_builder="fetch_argv",
         long_running=True,
@@ -770,7 +799,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="acquire.bandcamp",
-        summary="list the Bandcamp account's purchases, newest first, each with what " "the library already owns; downloads nothing",
+        summary=(
+            "list the Bandcamp account's purchases, newest first, each with what "
+            "the library already owns; downloads nothing"
+        ),
         module="cratekit.acquire.bandcamp_cli", builder="build", handler_key="acquire.bandcamp",
         feature_rows=(6,),
         # A plan a person reads, so the diagnostic surface (U176).
@@ -780,7 +812,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="acquire.bandcamp-fetch",
-        summary="download the Bandcamp purchases the library does not own into a " "batch folder under download staging, what it owns held back",
+        summary=(
+            "download the Bandcamp purchases the library does not own into a "
+            "batch folder under download staging, what it owns held back"
+        ),
         module="cratekit.acquire.bandcamp_cli", builder="build_fetch",
         handler_key="acquire.bandcamp-fetch", feature_rows=(6,), argv_builder="fetch_argv",
         long_running=True, emits=frozenset({"job_state"}), output_schema="job_state/1",
@@ -804,7 +839,9 @@ ENTRIES: tuple[Entry, ...] = (
         # ``--export`` writes a new file beside an export for a bridge tree (U86).
         writes=frozenset({"db_tree", "xml"}), destructive=True,
         taxonomy_terms=("inbox", "genre_energy"),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
         gates=(
             GateSpec(
                 name="route.inbox.apply", options=("apply", "abort"),
@@ -815,7 +852,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="route.unplaced",
-        summary="find tracks in the collection that no governed tree places, " "or place an export's with --export",
+        summary=(
+            "find tracks in the collection that no governed tree places, "
+            "or place an export's with --export"
+        ),
         module="cratekit.write.routing_cli", builder="build_unplaced",
         handler_key="route.unplaced", feature_rows=(14,), source_scripts=("dj-sort-unplaced",),
         emits=frozenset({"plan"}), output_schema="plan/1",
@@ -827,13 +867,18 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="route.resort",
-        summary="add already-routed tracks to their new place after a genre or energy " "change, additive, the old membership stays and is named",
+        summary=(
+            "add already-routed tracks to their new place after a genre or energy "
+            "change, additive, the old membership stays and is named"
+        ),
         module="cratekit.write.routing_cli", builder="build_resort", handler_key="route.resort",
         feature_rows=(13,), source_scripts=("dj-resort-energy", "dj-resort-genre"),
         argv_builder="resort_argv", long_running=True, emits=frozenset({"job_state"}),
         output_schema="job_state/1", writes=frozenset({"db_tree"}), destructive=True,
         taxonomy_terms=("genre_energy", "low", "med", "high"),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
         gates=(
             GateSpec(
                 name="route.resort.apply", options=("apply", "abort"),
@@ -941,7 +986,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── Sync ────────────────────────────────────────────────────────────────
     Entry(
         name="sync.all",
-        summary="queue each enabled source's own increment under one intake run; " "label releases are left to crate label sync",
+        summary=(
+            "queue each enabled source's own increment under one intake run; "
+            "label releases are left to crate label sync"
+        ),
         module="cratekit.sync.cli", builder="build_all", handler_key="sync.all",
         feature_rows=(25,), source_scripts=("dj-sync",),
         # Not long running: each source queues under its own key (U61, R-203).
@@ -958,7 +1006,11 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="sync.land",
-        summary="take a sync pass to its landing in one verb: the pass, its intake " "jobs, the missing list, the download and the tail, stopping at the " "landing's gate",
+        summary=(
+            "take a sync pass to its landing in one verb: the pass, its intake "
+            "jobs, the missing list, the download and the tail, stopping at the "
+            "landing's gate"
+        ),
         module="cratekit.cli.sync_land", builder="build", handler_key="sync.land",
         feature_rows=(25,),
         # Not long running: each job it drives queues under its own verb (U152).
@@ -972,13 +1024,20 @@ ENTRIES: tuple[Entry, ...] = (
             # it writes nothing the pass would not, so ``-d`` answers it.
             GateSpec(
                 name="sync.land.without-vocals", options=("go", "stop"),
-                prompt="Take the pass although the vocal model cannot score here, so " "every row it lands carries no voxlevel and no vox My Tag?",
+                prompt=(
+                    "Take the pass although the vocal model cannot score here, so "
+                    "every row it lands carries no voxlevel and no vox My Tag?"
+                ),
             ),
         ),
     ),
     Entry(
         name="sync.night",
-        summary="run the sync pass unattended, for a schedule overnight: refuses beside " "rekordbox, a running job or another pass, holds the night's provider " "budget, answers no gate and stops at the landing's gate",
+        summary=(
+            "run the sync pass unattended, for a schedule overnight: refuses beside "
+            "rekordbox, a running job or another pass, holds the night's provider "
+            "budget, answers no gate and stops at the landing's gate"
+        ),
         module="cratekit.cli.sync_night", builder="build", handler_key="sync.night",
         feature_rows=(25,),
         # Not long running, for ``sync.land``'s reason (U293).
@@ -992,13 +1051,19 @@ ENTRIES: tuple[Entry, ...] = (
     # touched. No gate: every limit is the night verb's.
     Entry(
         name="schedule.install",
-        summary="install the nightly run of crate sync night as a launchd agent of your " "own on macOS, replacing one already installed",
+        summary=(
+            "install the nightly run of crate sync night as a launchd agent of your "
+            "own on macOS, replacing one already installed"
+        ),
         module="cratekit.cli.schedule", builder="build_install", handler_key="schedule.install",
         feature_rows=(25,), emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
     ),
     Entry(
         name="schedule.show",
-        summary="show the nightly run's schedule: installed or not, its time, the crate " "it runs, whether launchd has it loaded and the last night's line",
+        summary=(
+            "show the nightly run's schedule: installed or not, its time, the crate "
+            "it runs, whether launchd has it loaded and the last night's line"
+        ),
         module="cratekit.cli.schedule", builder="build_show", handler_key="schedule.show",
         feature_rows=(25,), emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
     ),
@@ -1010,7 +1075,11 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="sync.bandcamp",
-        summary="take new Bandcamp purchases to their landing in one verb: the plan, the " "fetch tagged by label, the tail and a rehearsal, stopping at the " "landing's gate",
+        summary=(
+            "take new Bandcamp purchases to their landing in one verb: the plan, the "
+            "fetch tagged by label, the tail and a rehearsal, stopping at the "
+            "landing's gate"
+        ),
         module="cratekit.cli.sync_bandcamp", builder="build", handler_key="sync.bandcamp",
         feature_rows=(6,),
         # Not long running, for ``sync.land``'s reason (U179).
@@ -1024,7 +1093,10 @@ ENTRIES: tuple[Entry, ...] = (
         name="sync.labels",
         # Retired (U109), kept so a sweep queued earlier can resume with
         # ``--job``; otherwise it refuses ``verb-retired``.
-        summary="resume a labels sweep queued before crate label sync replaced it; " "retired, it queues nothing new",
+        summary=(
+            "resume a labels sweep queued before crate label sync replaced it; "
+            "retired, it queues nothing new"
+        ),
         module="cratekit.label.cli", builder="build_sync", handler_key="sync.labels",
         feature_rows=(21,), source_scripts=("dj-label-batch",), module_id="labels",
         argv_builder="sync_labels_argv", long_running=True, emits=frozenset({"job_state"}),
@@ -1071,7 +1143,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="label.approved",
-        summary="write the list acquire download reads from the label releases " "accepted in review",
+        summary=(
+            "write the list acquire download reads from the label releases "
+            "accepted in review"
+        ),
         module="cratekit.label.approved_cli", builder="build_approved",
         handler_key="label.approved", feature_rows=(22,), module_id="labels",
         # ``diagnostic/1``, for ``intake.missing``'s reason (R-402).
@@ -1083,7 +1158,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="label.held",
-        summary="list the releases the label genre gate is holding back, or return " "one to review",
+        summary=(
+            "list the releases the label genre gate is holding back, or return "
+            "one to review"
+        ),
         module="cratekit.label.held_cli", builder="build_held", handler_key="label.held",
         feature_rows=(21,), module_id="labels",
         # ``diagnostic/1``, since the renderer shows checks (R-798).
@@ -1095,7 +1173,11 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="label.sync",
-        summary="ask, label by label, about the releases new since each label was " "last asked, record each answer, then download what was answered for " "behind one gate",
+        summary=(
+            "ask, label by label, about the releases new since each label was "
+            "last asked, record each answer, then download what was answered for "
+            "behind one gate"
+        ),
         # A CLI module in front of ``label.sync_cli`` (U190), since only a CLI
         # module may reach the chain ``sync land`` runs.
         module="cratekit.cli.label_sync", builder="build_sync", handler_key="label.sync",
@@ -1125,7 +1207,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="label.judge",
-        summary="judge the label releases waiting in review by their label's kind, " "and hold the ones the genre gate would not have filed",
+        summary=(
+            "judge the label releases waiting in review by their label's kind, "
+            "and hold the ones the genre gate would not have filed"
+        ),
         module="cratekit.label.judge_cli", builder="build_judge", handler_key="label.judge",
         feature_rows=(21,), module_id="labels", argv_builder="label_judge_argv",
         # Queued, so a pass over thousands of paced reads resumes (R-815).
@@ -1137,7 +1222,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="label.artists",
-        summary="give the open label releases whose artist reads as a provider " "object address the artist's name",
+        summary=(
+            "give the open label releases whose artist reads as a provider "
+            "object address the artist's name"
+        ),
         module="cratekit.label.artists_cli", builder="build_artists", handler_key="label.artists",
         feature_rows=(21,), module_id="labels",
         # ``diagnostic/1``, for ``label.held``'s reason (R-840).
@@ -1157,7 +1245,11 @@ ENTRIES: tuple[Entry, ...] = (
     # ── A label's folder of year playlists on the account (R-835) ───────────
     Entry(
         name="label.playlists",
-        summary="build a followed label's folder of private year playlists on the " "streaming account; adds, never removes, and never adds a track the " "library removed through delete review",
+        summary=(
+            "build a followed label's folder of private year playlists on the "
+            "streaming account; adds, never removes, and never adds a track the "
+            "library removed through delete review"
+        ),
         module="cratekit.label.playlists_cli", builder="build_playlists",
         handler_key="label.playlists", feature_rows=(23,), source_scripts=("dj-label",),
         module_id="labels", emits=frozenset({"plan"}), output_schema="plan/1",
@@ -1200,7 +1292,11 @@ ENTRIES: tuple[Entry, ...] = (
     # ── Taking dropped tracks off a label's year playlists (R-836) ──────────
     Entry(
         name="label.prune",
-        summary="take the tracks the genre gate holds, the catalogue no longer " "confirms, or the library removed through delete review off the year " "playlists this product made for a label",
+        summary=(
+            "take the tracks the genre gate holds, the catalogue no longer "
+            "confirms, or the library removed through delete review off the year "
+            "playlists this product made for a label"
+        ),
         module="cratekit.label.prune_cli", builder="build_prune", handler_key="label.prune",
         feature_rows=(23,), module_id="labels", emits=frozenset({"plan"}), output_schema="plan/1",
         #: The account only: ``remove_tracks`` on a year playlist this product
@@ -1232,7 +1328,9 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(34,), module_id="adoption", argv_builder="adopt_apply_argv",
         long_running=True, emits=frozenset({"job_state"}), output_schema="job_state/1",
         writes=frozenset({"db_tree", "db_metadata"}), destructive=True,
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
         gates=(
             GateSpec(
                 name="adopt.apply.approve", options=("approve", "abort"),
@@ -1248,17 +1346,25 @@ ENTRIES: tuple[Entry, ...] = (
     # ``adopt.apply``'s plan and census (R-780).
     Entry(
         name="adopt.move",
-        summary="move each track from the energy or style sub it holds to the one " "its own file names, adding before it removes",
+        summary=(
+            "move each track from the energy or style sub it holds to the one "
+            "its own file names, adding before it removes"
+        ),
         module="cratekit.adopt.move_cli", builder="build", handler_key="adopt.move",
         feature_rows=(13,), module_id="adoption", argv_builder="adopt_move_argv",
         long_running=True, emits=frozenset({"job_state"}), output_schema="job_state/1",
         writes=frozenset({"db_tree"}), destructive=True,
         taxonomy_terms=("genre_energy", "low", "med", "high"),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
         gates=(
             GateSpec(
                 name="adopt.move.approve", options=("approve", "abort"),
-                prompt="Move these tracks, adding each to its new sub and then " "removing it from the old one?",
+                prompt=(
+                    "Move these tracks, adding each to its new sub and then "
+                    "removing it from the old one?"
+                ),
                 # Explicit (R34): a removal takes something away.
                 explicit=True, digest_source="plan",
             ),
@@ -1313,7 +1419,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="export.prune",
-        summary="take the tracks no longer in a library playlist off the remote " "playlist it was exported to",
+        summary=(
+            "take the tracks no longer in a library playlist off the remote "
+            "playlist it was exported to"
+        ),
         module="cratekit.export.prune_cli", builder="build_prune", handler_key="export.prune",
         feature_rows=(36,), module_id="export", emits=frozenset({"plan"}), output_schema="plan/1",
         #: The account only: ``remove_tracks`` on a playlist ``export.playlist``
@@ -1330,7 +1439,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── A set as a playlist on the account, and its archive (R-837) ─────────
     Entry(
         name="export.set",
-        summary="make an identified set or a typed tracklist a private playlist on the " "streaming account; adds, never removes",
+        summary=(
+            "make an identified set or a typed tracklist a private playlist on the "
+            "streaming account; adds, never removes"
+        ),
         module="cratekit.export.set_cli", builder="build_set", handler_key="export.set",
         feature_rows=(36,), module_id="export", emits=frozenset({"plan"}), output_schema="plan/1",
         #: The account only, and not destructive, as ``export.playlist``: a
@@ -1348,7 +1460,10 @@ ENTRIES: tuple[Entry, ...] = (
             ),
             GateSpec(
                 name="export.set.rename", options=("apply", "abort"),
-                prompt="Rename this set's playlist on the streaming account to its " "INSPIRATION playlist's name, and record the new name?",
+                prompt=(
+                    "Rename this set's playlist on the streaming account to its "
+                    "INSPIRATION playlist's name, and record the new name?"
+                ),
                 # Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
@@ -1356,7 +1471,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="export.archive",
-        summary="file a downloaded set's playlist in Downloaded Sets <year> on the " "streaming account, and record it as taken",
+        summary=(
+            "file a downloaded set's playlist in Downloaded Sets <year> on the "
+            "streaming account, and record it as taken"
+        ),
         module="cratekit.export.set_cli", builder="build_archive", handler_key="export.archive",
         feature_rows=(36,), module_id="export", emits=frozenset({"plan"}), output_schema="plan/1",
         #: The account only: the playlist moves into the year's folder (U142),
@@ -1368,7 +1486,10 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(
             GateSpec(
                 name="export.archive.confirm", options=("apply", "abort"),
-                prompt="File this set playlist in Downloaded Sets for its year on the " "streaming account?",
+                prompt=(
+                    "File this set playlist in Downloaded Sets for its year on the "
+                    "streaming account?"
+                ),
                 # Explicit, as ``label.mark``'s is (R34).
                 explicit=True, digest_source="plan",
             ),
@@ -1446,7 +1567,9 @@ ENTRIES: tuple[Entry, ...] = (
         module="cratekit.write.routing_cli", builder="build_pending", handler_key="route.pending",
         feature_rows=(13,), emits=frozenset({"plan"}), output_schema="plan/1",
         writes=frozenset({"db_tree"}), destructive=True,
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
     ),
     # ── Landing (U72) ───────────────────────────────────────────────────────
@@ -1522,7 +1645,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── The DOWNLOADED prefix, retired (U242) ───────────────────────────────
     Entry(
         name="sync.taken",
-        summary="record every account playlist already taken, the prefixed and the " "marked, in Cratekit's own record",
+        summary=(
+            "record every account playlist already taken, the prefixed and the "
+            "marked, in Cratekit's own record"
+        ),
         module="cratekit.sync.taken_cli", builder="build_taken", handler_key="sync.taken",
         emits=frozenset({"plan"}), output_schema="plan/1",
         #: No write surface: only the mark record, this product's own state.
@@ -1538,7 +1664,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="sync.strip",
-        summary="take the retired DOWNLOADED prefix off every account playlist, " "each recorded as taken first",
+        summary=(
+            "take the retired DOWNLOADED prefix off every account playlist, "
+            "each recorded as taken first"
+        ),
         module="cratekit.sync.strip_cli", builder="build_strip", handler_key="sync.strip",
         emits=frozenset({"plan"}), output_schema="plan/1",
         #: The account only: ``rename_playlist``, recorded first under
@@ -1548,7 +1677,10 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(
             GateSpec(
                 name="sync.strip.confirm", options=("apply", "abort"),
-                prompt="Take the DOWNLOADED prefix off these playlists on the streaming " "account?",
+                prompt=(
+                    "Take the DOWNLOADED prefix off these playlists on the streaming "
+                    "account?"
+                ),
                 # Explicit, as ``sync.unmark``'s is (R34).
                 explicit=True, digest_source="plan",
             ),
@@ -1581,7 +1713,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── The folder suggestion (R-797) ───────────────────────────────────────
     Entry(
         name="report.genres",
-        summary="name every genre holding 50 or more tracks with no top level " "folder of its own; creates nothing",
+        summary=(
+            "name every genre holding 50 or more tracks with no top level "
+            "folder of its own; creates nothing"
+        ),
         module="cratekit.adopt.genres_cli", builder="build", handler_key="report.genres",
         # No feature row. The adoption module, not reports: it reads the
         # database through adoption's collection reader.
@@ -1592,7 +1727,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── A row's genre from its file (R-816) ─────────────────────────────────
     Entry(
         name="tag.rows",
-        summary="write each library row's genre from its file where the two " "disagree, the genre and nothing else; writes no file",
+        summary=(
+            "write each library row's genre from its file where the two "
+            "disagree, the genre and nothing else; writes no file"
+        ),
         module="cratekit.tagging.rows_cli", builder="build", handler_key="tag.rows",
         # No feature row or source script. Gated by ``repair``, for
         # ``tag.retag``'s reason.
@@ -1619,7 +1757,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── The genres an older mapping wrote, corrected on the file (R-799) ────
     Entry(
         name="tag.remap",
-        summary="rewrite the genre on files a tag job filed by a mapping the " "taxonomy has since changed, from what the job recorded; writes no row",
+        summary=(
+            "rewrite the genre on files a tag job filed by a mapping the "
+            "taxonomy has since changed, from what the job recorded; writes no row"
+        ),
         module="cratekit.tagging.remap_cli", builder="build", handler_key="tag.remap",
         # No feature row or source script. Gated by ``repair``, as ``tag.rows`` is.
         module_id="repair", emits=frozenset({"plan"}), output_schema="plan/1",
@@ -1639,7 +1780,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── A genre for a row with none (U114) ──────────────────────────────────
     Entry(
         name="tag.suggest",
-        summary="suggest a genre for each row with none on the row or the file, " "from its artist, its folder and optionally the catalogues; writes file and row",
+        summary=(
+            "suggest a genre for each row with none on the row or the file, "
+            "from its artist, its folder and optionally the catalogues; writes file and row"
+        ),
         module="cratekit.tagging.suggest_cli", builder="build", handler_key="tag.suggest",
         # No feature row or source script. Core, as ``tag.folder``: adoption
         # files by genre.
@@ -1647,7 +1791,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: The file and the row, so they agree, the row as ``tag.rows`` writes it.
         writes=frozenset({"files", "db_metadata"}), destructive=True,
         taxonomy_terms=("genre_energy",),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
         gates=(
             GateSpec(
                 name="tag.suggest.confirm", options=("apply", "abort"),
@@ -1661,7 +1807,11 @@ ENTRIES: tuple[Entry, ...] = (
     # ── The needs genre backlog (U292) ──────────────────────────────────────
     Entry(
         name="tag.backlog",
-        summary="sort every row adoption leaves under needs genre by cause, with " "each verb that settles it and one question per genre word no folder " "takes; writes nothing",
+        summary=(
+            "sort every row adoption leaves under needs genre by cause, with "
+            "each verb that settles it and one question per genre word no folder "
+            "takes; writes nothing"
+        ),
         module="cratekit.tagging.backlog_cli", builder="build", handler_key="tag.backlog",
         # No feature row or source script. Core, as ``tag.suggest``, whose plan
         # it reads; the diagnostic surface, as ``report.genres``.
@@ -1675,7 +1825,11 @@ ENTRIES: tuple[Entry, ...] = (
     # gate over ``tag.backlog``'s plan.
     Entry(
         name="tag.campaign",
-        summary="apply the needs genre backlog under one gate: tag rows, tag " "suggest at the floor, the answered words, then tag rows again; writes " "file and row, names the resort",
+        summary=(
+            "apply the needs genre backlog under one gate: tag rows, tag "
+            "suggest at the floor, the answered words, then tag rows again; writes "
+            "file and row, names the resort"
+        ),
         module="cratekit.cli.verbs.tag_campaign", builder="build", handler_key="tag.campaign",
         # No feature row or source script. Gated by ``repair``, as ``tag.rows``,
         # its first and last step, so a composer is no way round a switch.
@@ -1683,11 +1837,17 @@ ENTRIES: tuple[Entry, ...] = (
         #: The union of its steps' surfaces.
         writes=frozenset({"files", "db_metadata"}), destructive=True,
         taxonomy_terms=("genre_energy",),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
         gates=(
             GateSpec(
                 name="tag.campaign.approve", options=("apply", "abort"),
-                prompt="Apply the needs genre campaign: the rows from their files, " "the suggestions at the floor, and the answered words, each through " "its own verb? Filing them into their folders asks its own gate.",
+                prompt=(
+                    "Apply the needs genre campaign: the rows from their files, "
+                    "the suggestions at the floor, and the answered words, each through "
+                    "its own verb? Filing them into their folders asks its own gate."
+                ),
                 #: Explicit (R34): it stands for its steps' explicit gates.
                 explicit=True, digest_source="plan",
             ),
@@ -1697,7 +1857,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── The INBOX rotation (U111) ───────────────────────────────────────────
     Entry(
         name="inbox.rotate",
-        summary="move stale INBOX batches into INBOX / Old and remove expired ones " "from Old, never a track",
+        summary=(
+            "move stale INBOX batches into INBOX / Old and remove expired ones "
+            "from Old, never a track"
+        ),
         module="cratekit.intake.rotate_cli", builder="build", handler_key="inbox.rotate",
         # The half of the source's rotation the aging report left to a person.
         feature_rows=(20,), source_scripts=("dj-inbox-rotation",), emits=frozenset({"plan"}),
@@ -1708,7 +1871,10 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(
             GateSpec(
                 name="inbox.rotate.approve", options=("approve", "abort"),
-                prompt="Move these batches into Old and remove these from it, " "keeping every track?",
+                prompt=(
+                    "Move these batches into Old and remove these from it, "
+                    "keeping every track?"
+                ),
                 #: Explicit (R34): a removal takes a playlist out of the library.
                 explicit=True, digest_source="plan",
             ),
@@ -1719,7 +1885,10 @@ ENTRIES: tuple[Entry, ...] = (
     # Rebuilds an emptied INBOX mirror of an account playlist.
     Entry(
         name="inbox.refill",
-        summary="refill each INBOX playlist a pass mirrored from the author's account, " "every track the library owns in the account's order, memberships only",
+        summary=(
+            "refill each INBOX playlist a pass mirrored from the author's account, "
+            "every track the library owns in the account's order, memberships only"
+        ),
         module="cratekit.intake.refill_cli", builder="build", handler_key="inbox.refill",
         # No feature row: the source never mirrored an account playlist.
         emits=frozenset({"plan"}), output_schema="plan/1",
@@ -1740,7 +1909,10 @@ ENTRIES: tuple[Entry, ...] = (
     # Clears the analysed rows out of the playlist the rekordbox visit selects.
     Entry(
         name="inbox.analyzed",
-        summary="take every row rekordbox has analysed out of INBOX / Analyze, leaving " "each row still waiting, memberships only",
+        summary=(
+            "take every row rekordbox has analysed out of INBOX / Analyze, leaving "
+            "each row still waiting, memberships only"
+        ),
         module="cratekit.intake.analyzed_cli", builder="build", handler_key="inbox.analyzed",
         # No feature row: the source never kept an analysis queue.
         emits=frozenset({"plan"}), output_schema="plan/1",
@@ -1750,7 +1922,10 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(
             GateSpec(
                 name="inbox.analyzed.approve", options=("apply", "abort"),
-                prompt="Take these analysed tracks out of INBOX / Analyze, keeping " "every track in the collection?",
+                prompt=(
+                    "Take these analysed tracks out of INBOX / Analyze, keeping "
+                    "every track in the collection?"
+                ),
                 #: Explicit (R34): a removal from a playlist.
                 explicit=True, digest_source="plan",
             ),
@@ -1761,7 +1936,10 @@ ENTRIES: tuple[Entry, ...] = (
     # A read only verdict on the visit; its exit status lets a skill wait on it.
     Entry(
         name="analyze.check",
-        summary="read rekordbox's analysis of the landed rows and say whether the visit " "is done, still waiting, or suspect; reads a copy, writes nothing",
+        summary=(
+            "read rekordbox's analysis of the landed rows and say whether the visit "
+            "is done, still waiting, or suspect; reads a copy, writes nothing"
+        ),
         module="cratekit.analysis.check_cli", builder="build", handler_key="analyze.check",
         # No feature row. Core, not analysis: it runs no detector, and the
         # landing it follows is core.
@@ -1772,7 +1950,10 @@ ENTRIES: tuple[Entry, ...] = (
     # The backfill for a set landed without ``--set``.
     Entry(
         name="intake.inspiration",
-        summary="write a landed set's permanent playlist under INSPIRATION, every " "identified track the library owns in set order, named the source system's way",
+        summary=(
+            "write a landed set's permanent playlist under INSPIRATION, every "
+            "identified track the library owns in set order, named the source system's way"
+        ),
         module="cratekit.intake.inspiration_cli", builder="build",
         handler_key="intake.inspiration",
         # No feature row: the source made these by hand.
@@ -1794,7 +1975,10 @@ ENTRIES: tuple[Entry, ...] = (
     # The one path that removes a genre Favorites membership.
     Entry(
         name="favorites.refresh",
-        summary="make every genre folder's Favorites playlist mirror All Favorites, " "adding what the folder holds that is a favourite and removing what is not",
+        summary=(
+            "make every genre folder's Favorites playlist mirror All Favorites, "
+            "adding what the folder holds that is a favourite and removing what is not"
+        ),
         module="cratekit.favorites.refresh_cli", builder="build", handler_key="favorites.refresh",
         # No feature row: the source kept no Favorites per genre.
         emits=frozenset({"plan"}), output_schema="plan/1",
@@ -1805,7 +1989,10 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(
             GateSpec(
                 name="favorites.refresh.approve", options=("approve", "abort"),
-                prompt="Make each genre folder's Favorites mirror All Favorites, adding " "these and removing those?",
+                prompt=(
+                    "Make each genre folder's Favorites mirror All Favorites, adding "
+                    "these and removing those?"
+                ),
                 #: Explicit (R34): a removal takes a membership away.
                 explicit=True, digest_source="plan",
             ),
@@ -1816,7 +2003,10 @@ ENTRIES: tuple[Entry, ...] = (
     # The backfill for hearts the landing did not place (U120, U146).
     Entry(
         name="favorites.backfill",
-        summary="put every heart on the account whose track the library owns into All " "Favorites and the playlist of the month it was hearted in, adding and never removing",
+        summary=(
+            "put every heart on the account whose track the library owns into All "
+            "Favorites and the playlist of the month it was hearted in, adding and never removing"
+        ),
         module="cratekit.favorites.backfill_cli", builder="build",
         handler_key="favorites.backfill",
         # No feature row: the landing does what the source's pass did.
@@ -1839,7 +2029,10 @@ ENTRIES: tuple[Entry, ...] = (
     # One time: splits the quarter playlists into months (U145).
     Entry(
         name="favorites.split",
-        summary="split every quarter playlist beside All Favorites into the playlists of " "the months its hearts were hearted in, then retire the emptied quarters",
+        summary=(
+            "split every quarter playlist beside All Favorites into the playlists of "
+            "the months its hearts were hearted in, then retire the emptied quarters"
+        ),
         module="cratekit.favorites.split_cli", builder="build", handler_key="favorites.split",
         # No feature row: the source filed by quarter.
         emits=frozenset({"plan"}), output_schema="plan/1",
@@ -1849,7 +2042,10 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(
             GateSpec(
                 name="favorites.split.approve", options=("approve", "abort"),
-                prompt="Put these quarter playlists' hearts into their month playlists and " "retire the quarters?",
+                prompt=(
+                    "Put these quarter playlists' hearts into their month playlists and "
+                    "retire the quarters?"
+                ),
                 #: Explicit (R34): it retires live playlists.
                 explicit=True, digest_source="plan",
             ),
@@ -1860,7 +2056,10 @@ ENTRIES: tuple[Entry, ...] = (
     # One time: orders the months already in the folder newest first (U180).
     Entry(
         name="favorites.order",
-        summary="put the folder that holds All Favorites in order: All Favorites first, " "the months newest first, then Undated, then everything else as it was",
+        summary=(
+            "put the folder that holds All Favorites in order: All Favorites first, "
+            "the months newest first, then Undated, then everything else as it was"
+        ),
         module="cratekit.favorites.order_cli", builder="build", handler_key="favorites.order",
         # No feature row: the source appended each month at the end.
         emits=frozenset({"plan"}), output_schema="plan/1",
@@ -1881,7 +2080,10 @@ ENTRIES: tuple[Entry, ...] = (
     # A composer, as ``sync.all`` is: every step and write is another verb's.
     Entry(
         name="organize",
-        summary="tidy rekordbox and the account by the product's own rules, one " "question per side; lists what you made and never moves it",
+        summary=(
+            "tidy rekordbox and the account by the product's own rules, one "
+            "question per side; lists what you made and never moves it"
+        ),
         module="cratekit.organize.cli", builder="build", handler_key="organize",
         # No feature row: each step's row is claimed by its own verb.
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
@@ -1890,17 +2092,28 @@ ENTRIES: tuple[Entry, ...] = (
         #: retitle what the product did not make.
         writes=frozenset({"db_tree", "db_metadata", "remote"}), destructive=True,
         taxonomy_terms=("genre_energy", "inbox", "inbox_old", "inspiration"),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider",
+        ),
         gates=(
             GateSpec(
                 name="organize.rekordbox.approve", options=("approve", "abort"),
-                prompt="Apply these steps to the rekordbox library? Nothing you " "made is moved and no track is removed.",
+                prompt=(
+                    "Apply these steps to the rekordbox library? Nothing you "
+                    "made is moved and no track is removed."
+                ),
                 #: Explicit (R34): it stands for its steps' explicit gates.
                 explicit=True, digest_source="plan",
             ),
             GateSpec(
                 name="organize.account.apply", options=("apply", "abort"),
-                prompt="Apply these steps to the streaming account? Only the " "removals listed are made: label debris whose tracks are in its " "label's folder, empty root playlists, and an emptied legacy year " "folder. A working custom playlist stays at the root until a " "sync marks it downloaded, which files it in its year folder.",
+                prompt=(
+                    "Apply these steps to the streaming account? Only the "
+                    "removals listed are made: label debris whose tracks are in its "
+                    "label's folder, empty root playlists, and an emptied legacy year "
+                    "folder. A working custom playlist stays at the root until a "
+                    "sync marks it downloaded, which files it in its year folder."
+                ),
                 #: Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
@@ -1911,7 +2124,10 @@ ENTRIES: tuple[Entry, ...] = (
     # The half of U117 after the author has heard a go's releases.
     Entry(
         name="label.heard",
-        summary="mark a label's dated playlist heard: its tracks go in the year " "playlist and the dated playlist is removed from the account",
+        summary=(
+            "mark a label's dated playlist heard: its tracks go in the year "
+            "playlist and the dated playlist is removed from the account"
+        ),
         module="cratekit.label.heard_cli", builder="build_heard", handler_key="label.heard",
         feature_rows=(23,), module_id="labels", emits=frozenset({"plan"}), output_schema="plan/1",
         #: The account only; the Record Labels tree stays on the bridge (R39).
@@ -1920,7 +2136,11 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(
             GateSpec(
                 name="label.heard.confirm", options=("apply", "abort"),
-                prompt="Mark these releases heard, put the dated playlist's tracks in " "the year, less any removed or pruned, and remove it from the " "streaming account?",
+                prompt=(
+                    "Mark these releases heard, put the dated playlist's tracks in "
+                    "the year, less any removed or pruned, and remove it from the "
+                    "streaming account?"
+                ),
                 #: Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
@@ -1930,7 +2150,11 @@ ENTRIES: tuple[Entry, ...] = (
     # Brings what the shipped template gained into a library's copy.
     Entry(
         name="taxonomy.upgrade",
-        summary="add the classes, buckets and vocabulary tables the shipped taxonomy " "template declares and this library's copy lacks, and state the shipped " "schema version",
+        summary=(
+            "add the classes, buckets and vocabulary tables the shipped taxonomy "
+            "template declares and this library's copy lacks, and state the shipped "
+            "schema version"
+        ),
         module="cratekit.cli.verbs.taxonomy", builder="build", handler_key="taxonomy.upgrade",
         # No feature row: the source's taxonomy was code.
         emits=frozenset({"plan"}), output_schema="plan/1",
@@ -1942,7 +2166,10 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(
             GateSpec(
                 name="taxonomy.upgrade.apply", options=("approve", "abort"),
-                prompt="Add these classes, buckets and vocabulary tables to this " "library's taxonomy copy and state the shipped schema version?",
+                prompt=(
+                    "Add these classes, buckets and vocabulary tables to this "
+                    "library's taxonomy copy and state the shipped schema version?"
+                ),
                 #: Explicit (R34): every verb routes by the copy.
                 explicit=True, digest_source="plan",
             ),
@@ -1952,7 +2179,10 @@ ENTRIES: tuple[Entry, ...] = (
     # The two answers for a genre word the taxonomy has no place for.
     Entry(
         name="taxonomy.alias",
-        summary="save a genre word the taxonomy has no place for as a tagging alias " "of one of its genre folders, and retag the files carrying it; writes files",
+        summary=(
+            "save a genre word the taxonomy has no place for as a tagging alias "
+            "of one of its genre folders, and retag the files carrying it; writes files"
+        ),
         module="cratekit.cli.verbs.taxonomy_word", builder="build_alias",
         handler_key="taxonomy.alias",
         # No feature row: the source's aliases were code.
@@ -1964,7 +2194,10 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(
             GateSpec(
                 name="taxonomy.alias.apply", options=("approve", "abort"),
-                prompt="Save this word as an alias of the genre in this library's " "taxonomy copy, and retag the files carrying it?",
+                prompt=(
+                    "Save this word as an alias of the genre in this library's "
+                    "taxonomy copy, and retag the files carrying it?"
+                ),
                 #: Explicit (R34): every verb routes by the copy.
                 explicit=True, digest_source="plan",
             ),
@@ -1972,7 +2205,10 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="taxonomy.folder",
-        summary="make a genre word the taxonomy has no place for a genre folder of " "its own, with energy bands, in this library's taxonomy copy",
+        summary=(
+            "make a genre word the taxonomy has no place for a genre folder of "
+            "its own, with energy bands, in this library's taxonomy copy"
+        ),
         module="cratekit.cli.verbs.taxonomy_word", builder="build_folder",
         handler_key="taxonomy.folder",
         # No feature row, for the alias's reason.
@@ -1992,24 +2228,35 @@ ENTRIES: tuple[Entry, ...] = (
     # ── A playlist pair, kept one list on both sides (U130) ─────────────────
     Entry(
         name="sync.pair",
-        summary="keep one of your account playlists and one rekordbox playlist the " "same list, each side merged against the last sync",
+        summary=(
+            "keep one of your account playlists and one rekordbox playlist the "
+            "same list, each side merged against the last sync"
+        ),
         module="cratekit.sync.pair_cli", builder="build", handler_key="sync.pair",
         # No feature row: the source kept no list on both sides.
         emits=frozenset({"plan"}), output_schema="plan/1",
         #: The rekordbox playlist's memberships and the account playlist's
         #: tracks. Destructive: a membership is taken off on both sides.
         writes=frozenset({"db_tree", "remote"}), destructive=True,
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider",
+        ),
         gates=(
             GateSpec(
                 name="sync.pair.rekordbox", options=("apply", "skip"),
-                prompt="Write these additions, removals and order to the rekordbox " "playlists, and queue these tracks for acquisition?",
+                prompt=(
+                    "Write these additions, removals and order to the rekordbox "
+                    "playlists, and queue these tracks for acquisition?"
+                ),
                 #: Explicit, as every database membership write is (R34).
                 explicit=True, digest_source="plan",
             ),
             GateSpec(
                 name="sync.pair.account", options=("apply", "skip"),
-                prompt="Write these additions, removals and order to the streaming " "account's playlists?",
+                prompt=(
+                    "Write these additions, removals and order to the streaming "
+                    "account's playlists?"
+                ),
                 #: Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
@@ -2019,18 +2266,26 @@ ENTRIES: tuple[Entry, ...] = (
     # ── The custom playlist twins' backfill (U149) ──────────────────────────
     Entry(
         name="sync.twins",
-        summary="give every downloaded custom playlist on the account its permanent " "twin in rekordbox's Custom Playlists <year> folder, paired to stay one list",
+        summary=(
+            "give every downloaded custom playlist on the account its permanent "
+            "twin in rekordbox's Custom Playlists <year> folder, paired to stay one list"
+        ),
         module="cratekit.sync.twins_cli", builder="build", handler_key="sync.twins",
         # No feature row: the source kept no rekordbox copy.
         emits=frozenset({"plan"}), output_schema="plan/1",
         #: The tree only: year folders, twin playlists and memberships. Not
         #: destructive: it removes nothing.
         writes=frozenset({"db_tree"}),
-        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider",
+        ),
         gates=(
             GateSpec(
                 name="sync.twins.approve", options=("approve", "abort"),
-                prompt="Make these twins and their folders in rekordbox, and pair each " "with its account playlist?",
+                prompt=(
+                    "Make these twins and their folders in rekordbox, and pair each "
+                    "with its account playlist?"
+                ),
                 #: Explicit, as every database membership write is (R34).
                 explicit=True, digest_source="plan",
             ),
@@ -2040,7 +2295,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── A twin's held tracks, let go at the author's choice (U221) ──────────
     Entry(
         name="sync.release",
-        summary="let a custom playlist twin's held tracks be queued at the next " "crate sync pair, one twin by its account playlist or every twin",
+        summary=(
+            "let a custom playlist twin's held tracks be queued at the next "
+            "crate sync pair, one twin by its account playlist or every twin"
+        ),
         module="cratekit.sync.release_cli", builder="build", handler_key="sync.release",
         # No feature row: the source queued every missing track unasked.
         emits=frozenset({"plan"}), output_schema="plan/1",
@@ -2049,7 +2307,10 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(
             GateSpec(
                 name="sync.release.approve", options=("approve", "abort"),
-                prompt="Let these twins' held tracks be queued for download at the " "next crate sync pair?",
+                prompt=(
+                    "Let these twins' held tracks be queued for download at the "
+                    "next crate sync pair?"
+                ),
                 #: Explicit: it decides what is downloaded next (U221).
                 explicit=True, digest_source="plan",
             ),
@@ -2058,7 +2319,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── A genre for the files every catalogue missed (U172) ─────────────────
     Entry(
         name="tag.guess",
-        summary="give each file in a folder with no genre one guessed from its " "artist's other tracks and the playlist it came from; writes files",
+        summary=(
+            "give each file in a folder with no genre one guessed from its "
+            "artist's other tracks and the playlist it came from; writes files"
+        ),
         module="cratekit.tagging.guess_cli", builder="build", handler_key="tag.guess",
         # No feature row or source script. Core, as ``tag.folder``: every pass
         # runs it.
@@ -2071,7 +2335,10 @@ ENTRIES: tuple[Entry, ...] = (
     # ── Tracks taken off a downloaded playlist (U287) ───────────────────────
     Entry(
         name="sync.removed",
-        summary="list each downloaded track you took off its playlist on the streaming " "account, and take the offered ones out of the rekordbox collection behind a gate",
+        summary=(
+            "list each downloaded track you took off its playlist on the streaming "
+            "account, and take the offered ones out of the rekordbox collection behind a gate"
+        ),
         module="cratekit.sync.removed_cli", builder="build_removed", handler_key="sync.removed",
         # No feature row. Core, as ``sync.taken``.
         emits=frozenset({"plan"}), output_schema="plan/1",
@@ -2079,7 +2346,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: Remove from Collection does, playlists renumbered (R-1830). No file:
         #: only ``delete review`` trashes one.
         writes=frozenset({"db_tree", "db_metadata"}), destructive=True,
-        doctor_checks=("credential.provider", "library.mounted", "rekordbox.closed", "rekordbox.pins"),
+        doctor_checks=(
+            "credential.provider", "library.mounted", "rekordbox.closed", "rekordbox.pins",
+        ),
         gates=(
             GateSpec(
                 name="sync.removed.confirm", options=("apply", "abort"),

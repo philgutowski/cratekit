@@ -30,7 +30,7 @@ from cratekit.acquire import adapter as adapter_contract
 from cratekit.cli import (
     doctor,
     doctor_backup,
-    doctor_credentials,
+    doctor_keys,
     doctor_library,
     doctor_model,
     doctor_state,
@@ -278,7 +278,7 @@ def test_every_credential_check_the_registry_declares_has_a_group_and_a_remedy()
     assert declared <= set(doctor.CREDENTIALS_BY_CHECK)
     for key in doctor.CREDENTIALS_BY_CHECK:
         assert f"binary.{key}" not in doctor.CHECK_KEYS
-        assert isinstance(Remedy(str(doctor_credentials._CREDENTIAL_REMEDY[key])), Remedy)
+        assert isinstance(Remedy(str(doctor_keys._CREDENTIAL_REMEDY[key])), Remedy)
 
 
 def test_every_binary_the_resolver_knows_about_is_probed():

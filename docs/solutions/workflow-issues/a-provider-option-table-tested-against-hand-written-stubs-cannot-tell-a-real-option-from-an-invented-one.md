@@ -2,7 +2,7 @@
 title: "U27's backup.remote trash-policy table was tested against hand-written rclone config stubs, so a Dropbox option rclone does not have and a OneDrive option rclone ignores both read green"
 date: 2026-09-11
 category: workflow-issues
-module: "src/cratekit/cli/doctor.py, tests/test_doctor.py"
+module: "src/cratekit/cli/doctor_backup.py, src/cratekit/cli/doctor.py, tests/test_doctor.py"
 problem_type: workflow_issue
 component: testing_framework
 severity: medium

@@ -26,7 +26,8 @@ KEBAB_LITERALS = {
     ],
     # 2026-11-22, U303: doctor's checks moved into their family modules, each
     # literal with the check that reads it (U125, U132, U159, U185 joined them).
-    'cli/doctor.py': ['doctor-check-failed'],
+    # Measured on the merged tree; do not bring back a package-wide total tuple.
+    'cli/doctor.py': ['doctor-check-failed', 'utf-8'],
     'cli/doctor_backup.py': ['rekordbox-backups'],
     'cli/doctor_library.py': ['internal-error', 'utf-8'],
     'cli/doctor_model.py': ['ls-remote'],
