@@ -180,15 +180,6 @@ new = '''    if False:
         params += (driver,)'''
 
 [[rows]]
-id = "J3_claim_takes_two"
-description = "claim: take a batch of two, so one driver claims an item it will never settle"
-file = "src/cratekit/core/jobs.py"
-surface = "user"
-tests = ["tests/test_jobs.py", "tests/test_jobs_batch.py", "tests/test_job_resume.py"]
-old = '''    claimed = claim_batch(store, job_id, driver, 1)'''
-new = '''    claimed = claim_batch(store, job_id, driver, 2)'''
-
-[[rows]]
 id = "R1_applied_keeps_duplicates"
 description = "ImportResult.applied: list an item inserted and resolved twice, so the import reports it as two changes"
 file = "src/cratekit/core/review_exchange.py"

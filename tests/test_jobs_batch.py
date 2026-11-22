@@ -194,7 +194,7 @@ def test_a_batch_that_fails_every_item_records_the_job_failed_then_raises(queue,
 
 @pytest.mark.parametrize(
     ("answer", "message"),
-    [({"a": None}, "no outcome"), ({"a": None, "b": "written"}, "")],
+    [({"a": None}, "no outcome"), ({"a": None, "b": "written"}, "neither what it produced")],
     ids=["no-answer", "neither-produced-nor-an-exception"],
 )
 def test_an_item_without_a_usable_outcome_is_failed_not_done(queue, cfg, answer, message):

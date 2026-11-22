@@ -3,6 +3,8 @@
 A hold is neither an item nor a suppression: it is never decided, a person can
 return it, and a returned hold is kept so nothing holds that candidate again.
 Imported back into ``core.review`` at its foot, and only from there.
+``item_id_for`` is read through ``core.review``, so a test that patches it
+there reaches this module too.
 """
 
 from __future__ import annotations
@@ -13,12 +15,12 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from cratekit.cli.output import canonical_json, timestamp
+from cratekit.core import review as _review
 from cratekit.core.review import (
     RUN_FIELD,
     ReviewStore,
     _assert_declared_queue,
     _payload_of,
-    item_id_for,
     normalize_identity,
     normalize_kind,
 )
@@ -169,7 +171,7 @@ def hold(
     (R-815), so a returned candidate is filed under the run that filed it.
     """
     declared = _assert_declared_queue(queue)
-    item_id = item_id_for(declared, kind, identity)
+    item_id = _review.item_id_for(declared, kind, identity)
     with store.immediate() as conn:
         _put_hold(
             store,

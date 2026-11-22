@@ -3,6 +3,8 @@
 A transport, not an editing surface: an import goes through the same checks
 as every other write, and never overwrites a local decision. Imported back
 into ``core.review`` at its foot, and only from there.
+``_item_from_row`` is read through ``core.review``, so a test that patches it
+there reaches this module too.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from cratekit.cli.output import timestamp
+from cratekit.core import review as _review
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.review import (
     _NEXT_ORDINAL,
@@ -23,7 +26,6 @@ from cratekit.core.review import (
     Verdict,
     _assert_declared_queue,
     _coerce_verdict,
-    _item_from_row,
     iter_items,
     normalize_kind,
     resolve,
@@ -128,7 +130,7 @@ def import_document(
             if incoming is not None and not _apply_incoming(store, item_id, raw, incoming, actor):
                 reasons[item_id] = CONFLICT_NOT_APPLIED
             continue
-        local = _item_from_row(row)
+        local = _review._item_from_row(row)
         if local.stored_verdict is not None and local.verdict is None:
             # A local verdict this build cannot read is a decision; it stands.
             reasons[item_id] = CONFLICT_LOCAL_VERDICT_STANDS

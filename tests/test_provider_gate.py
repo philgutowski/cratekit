@@ -819,7 +819,7 @@ _BAD = {
     [(key, value, phrase) for key, (values, phrase) in _BAD.items() for value in values],
     ids=[f"{key}={value!r}" for key, (values, _) in _BAD.items() for value in values],
 )
-def test_a_provider_number_that_is_not_positive_is_refused_naming_the_key(tmp_path, key, value, phrase):
+def test_a_pacing_or_ceiling_number_that_is_not_positive_is_refused_naming_the_key(tmp_path, key, value, phrase):
     """A non positive interval, or a cooldown or ceiling that is not a positive
     whole number, is one problem naming the key, refused at load."""
     data = _config_data(tmp_path, provider={key: value})

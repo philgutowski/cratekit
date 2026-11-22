@@ -1,6 +1,8 @@
 """The review queue's rounds and grouping: what a round left unoffered, counted by group (R-790).
 
 Imported back into ``core.review`` at its foot, and only from there.
+``list_items`` is read through ``core.review``, so a test that patches it
+there reaches this module too.
 """
 
 from __future__ import annotations
@@ -9,13 +11,13 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from cratekit.cli.output import timestamp
+from cratekit.core import review as _review
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.review import (
     DEFAULT_PAGE,
     RUN_FIELD,
     ReviewStore,
     _assert_declared_queue,
-    list_items,
 )
 from cratekit.core.review_holds import holds
 
@@ -108,7 +110,7 @@ def grouped(
     label_key = GROUPINGS[declared].get("label", (None, None))[0]
     cursor: int | None = None
     while True:
-        page = list_items(
+        page = _review.list_items(
             store,
             queue=declared,
             kinds=kinds,

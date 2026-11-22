@@ -730,9 +730,29 @@ def cancel(store: JobStore, job_id: str, *, stage: str | None = None) -> Job:
 
 
 def claim(store: JobStore, job_id: str, driver: str) -> Item | None:
-    """Take the next pending item, or None when there is nothing left."""
-    claimed = claim_batch(store, job_id, driver, 1)
-    return claimed[0] if claimed else None
+    """Take the next pending item, or None when there is nothing left.
+
+    The select and the update share one immediate transaction, or two drivers
+    read the same lowest pending ordinal and the second write silently wins.
+    """
+    with store.immediate() as conn:
+        row = conn.execute(
+            "SELECT item_id FROM job_items WHERE job_id = ? AND state = ? "
+            "ORDER BY ordinal LIMIT 1",
+            (job_id, str(ItemState.PENDING)),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute(
+            "UPDATE job_items SET state = ?, claimed_by = ?, claimed_at = ? "
+            "WHERE job_id = ? AND item_id = ?",
+            (str(ItemState.CLAIMED), driver, timestamp(), job_id, row["item_id"]),
+        )
+        claimed = conn.execute(
+            "SELECT * FROM job_items WHERE job_id = ? AND item_id = ?",
+            (job_id, row["item_id"]),
+        ).fetchone()
+    return _item_from_row(claimed)
 
 
 def claim_batch(store: JobStore, job_id: str, driver: str, limit: int) -> tuple[Item, ...]:
