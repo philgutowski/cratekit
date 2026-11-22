@@ -1,18 +1,9 @@
 """U276: an analysis run reads the key without the harmonic separation.
 
-A121 (sitting 94) read U241's three key methods against rekordbox's own keys
-on 300 library files: the whole track 159 equal, the windows 157, the plain
-chroma 161, the plain chroma in about half the whole track's time. So
-``plain`` is the default wherever a caller names no method, and ``whole`` and
-``windows`` stay selectable. What a fixture can honestly hold is held here:
-which method each caller gets, that the default never separates, that naming
-``whole`` is the old arithmetic bit for bit, that nothing but the key can move
-between the two, and that on the generated audio the two name the same key.
-Whether ``plain`` agrees with rekordbox on a library is the attended
-sitting's, with ``scripts/head_agreement.py --analyse 300 --step 4``.
-
-The audio tests skip where the analysis extra is absent, because the chroma is
-librosa's; the defaults and the bindings are held without it.
+``plain`` is the default wherever a caller names no method (A121's reading).
+Held here: which method each caller gets, that the default never separates,
+that ``whole`` is the old arithmetic bit for bit, and that nothing but the key
+can move. The audio tests skip where the analysis extra is absent.
 """
 
 from __future__ import annotations
@@ -37,11 +28,6 @@ def _script(name: str):
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
-
-
-# ---------------------------------------------------------------------------
-# Which method a caller gets when it names none
-# ---------------------------------------------------------------------------
 
 
 def test_the_default_key_method_is_the_plain_chroma():
@@ -154,11 +140,6 @@ def test_the_stage_script_times_the_default_method_when_none_is_named(tmp_path):
         assert parsed.key == method
 
 
-# ---------------------------------------------------------------------------
-# The recorded agreement the run answers with
-# ---------------------------------------------------------------------------
-
-
 def test_the_record_names_the_runs_method_and_the_method_its_key_was_read_with():
     recorded = detect.head_agreement()
     assert recorded["key_method"] == detect.KEY_PLAIN
@@ -187,11 +168,6 @@ def test_the_run_reads_the_method_that_agreed_the_most_in_the_least_time():
     plain, whole = reading["equal"][detect.KEY_DEFAULT], reading["equal"][detect.KEY_WHOLE]
     assert 100 * (whole - plain) / reading["files"] <= 1.0, "outside U241's one point bar"
     assert reading["seconds"][detect.KEY_DEFAULT] == min(reading["seconds"].values())
-
-
-# ---------------------------------------------------------------------------
-# The stage report
-# ---------------------------------------------------------------------------
 
 
 def _result(method: str, totals: dict[str, float]) -> dict:
@@ -244,11 +220,6 @@ def test_the_stages_a_run_times_are_the_methods_own():
 def test_a_stage_set_for_a_method_nobody_built_is_refused():
     with pytest.raises(ValueError):
         detect.stages_of("halves")
-
-
-# ---------------------------------------------------------------------------
-# The audio: what each method computes
-# ---------------------------------------------------------------------------
 
 
 def _extra():

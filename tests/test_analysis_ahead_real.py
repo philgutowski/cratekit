@@ -1,17 +1,8 @@
 """U241: the shipped detector, on real audio, through the real verb, serial against pooled.
 
-``tests/test_analysis_ahead.py`` proves the run ahead with a detector that
-reads a file's name, because that suite runs without the analysis extra. This
-file is the same claim with nothing faked on the measuring side: three
-synthesized tracks, decoded and measured by ``detect.analyse_file`` under a
-calibration, once in the driver and once in spawned workers that bind the
-shipped detector from the settings the driver sends them. The two folders are
-held to the same bytes.
-
-It is also the only test in which a worker rebuilds the calibration and binds
-the real detector for itself, which is the path every real run takes.
-
-Skipped where the analysis extra is absent.
+The same claim as ``tests/test_analysis_ahead.py`` with nothing faked on the
+measuring side, and the one test where a worker rebuilds the calibration and
+binds the real detector itself. Skipped where the analysis extra is absent.
 """
 
 from __future__ import annotations
