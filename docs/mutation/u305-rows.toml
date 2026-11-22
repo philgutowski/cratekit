@@ -47,3 +47,25 @@ tests = ["tests/test_match_states.py", "tests/test_listdoc.py", "tests/test_isrc
 old = '''    Wanted,
 '''
 new = ''''''
+
+[[rows]]
+id = "M6_registry_import_dropped"
+description = "registry: drop the local import of the label registry, so reading it raises NameError now that bandcamp_cli imports it only for type checking"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_cli.py", "tests/test_bandcamp_labels.py", "tests/test_bandcamp.py"]
+old = '''    from cratekit.label import registry as labels
+
+    del origin'''
+new = '''    del origin'''
+
+[[rows]]
+id = "M7_registration_warnings_import_dropped"
+description = "_registration_warnings: drop the local import of the label registry, so a tied seller's warning raises NameError"
+file = "src/cratekit/acquire/bandcamp_cli.py"
+surface = "user"
+tests = ["tests/test_bandcamp_cli.py", "tests/test_bandcamp_labels.py", "tests/test_bandcamp.py"]
+old = '''    from cratekit.label import registry as labels
+
+    warned: list[dict[str, str]] = []'''
+new = '''    warned: list[dict[str, str]] = []'''

@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
-from cratekit.acquire import match, match_cli, match_identity, match_library
+from cratekit.acquire import match, match_cli
 from cratekit.cli import output, registry
 from cratekit.core import config, naming, review, tags
 from cratekit.core.cause import CratekitError
@@ -262,6 +262,7 @@ def test_a_group_whose_first_word_is_a_credit_still_comes_off(tmp_path, group):
 def test_a_group_whose_first_word_is_the_abbreviation_ft_stays_a_credit(tmp_path):
     """``(Ft Worth Edit)`` reads as a credit, because ``Ft`` IS the word ``ft``, the rule
     ``core.tombstone`` records deletions by. Pinned so the choice is visible."""
+    from cratekit.acquire import match_identity
     from cratekit.core import tombstone
 
     spelled = "Sun Path (Ft Worth Edit)"
@@ -296,12 +297,14 @@ U262_EVERY_GROUP: tuple[str, ...] = (
 def test_the_matcher_and_the_tombstone_agree_on_what_a_credit_is(group):
     """U262. The matcher keeps its own copy of ``core.tombstone._is_a_credit`` because the rule sits
     inside the identity stamp, so this holds the two equal over one list of groups."""
+    from cratekit.acquire import match_identity
     from cratekit.core import tombstone
 
     assert match_identity._is_a_credit(group) == tombstone._is_a_credit(group)
 
 
 def test_the_matcher_and_the_tombstone_share_one_credit_vocabulary():
+    from cratekit.acquire import match_identity
     from cratekit.core import tombstone
 
     assert match_identity._CREDIT_MARKERS == tombstone._CREDIT_MARKERS
@@ -4507,6 +4510,7 @@ def test_the_version_vocabulary_is_u24s_element_for_element():
     """One question, one vocabulary, and there were two: the deletion pass and this module both ask
     "is this word a version designation". ``rerecorded`` is the one deliberate difference, a HEAD
     word."""
+    from cratekit.acquire import match_identity
     assert match.VERSION_WORDS == U24_VERSION_WORDS
     assert set(VOCABULARY_GAP) < match.VERSION_WORDS
         # Derived, so a word cannot be added to one and forgotten in the other.
@@ -4854,6 +4858,8 @@ def test_each_name_is_sorted_once_for_the_index_and_each_row_once_a_call(monkeyp
         calls.append(token)
         return real(token)
 
+    from cratekit.acquire import match_library
+
     monkeypatch.setattr(match, "_sorted_words", counted)
     monkeypatch.setattr(match_library, "_sorted_words", counted)
     index, rows = _u265_library(11)
@@ -5112,6 +5118,8 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     kept when its title agrees (joined, ``token_set_ratio``, spelled out per card 833, or empty),
     then the first five, led by what the card 833 lookup finds that the score did not."""
     from rapidfuzz import fuzz
+
+    from cratekit.acquire import match_library
 
     listed = match_library._SPELLED_OUT
 
@@ -5446,12 +5454,14 @@ def test_a_lookup_hit_discovery_ranked_past_the_five_still_leads(cfg, music, tmp
 
 
 def test_the_word_list_is_the_curated_one():
+    from cratekit.acquire import match_library
     assert dict(SPELLINGS) == dict(match_library._SPELLED_OUT)
 
 
 def test_the_word_list_maps_no_word_to_itself_and_only_folded_words():
     """A key is one folded word, so the lookup finds it after :func:`fold`; a value is what the key
     stands for, folded, and never the key itself."""
+    from cratekit.acquire import match_library
     for word, spelled in match_library._SPELLED_OUT.items():
         assert word == match.fold(word) and " " not in word, word
         assert spelled == match.fold(spelled) and spelled != word, word
@@ -5470,6 +5480,8 @@ def test_the_title_test_only_adds_agreement_and_only_for_a_spelled_out_equal_pai
     """The differential: over every pair of a corpus of titles, whatever agreed still agrees, a pair
     holding no listed word agrees exactly as before, and every pair that newly agrees is one
     string with the spaces gone once each listed word is spelled out."""
+    from cratekit.acquire import match_library
+
     listed = match_library._SPELLED_OUT
 
     def spelled(name: str) -> str:

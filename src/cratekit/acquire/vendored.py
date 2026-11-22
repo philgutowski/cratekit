@@ -449,7 +449,10 @@ def landed_file(
 
     No file raises ``NoFileLanded``, transient, naming the swallowed ``cause``
     (R-703). Under strict policy the landed FILE's codec is checked (R-196), and a
-    lossy one is a per track ``LosslessRefused``, left in place as evidence.
+    lossy one is a per track ``LosslessRefused``, left in place as evidence. Not
+    ``AdapterBroken``: an adapter level failure raised inside the per track loop
+    builds a failed ``InvocationResult`` from the tracks already landed, which
+    raises ``ValueError`` once an earlier track was permanently unavailable.
     """
     if not ok:
         message = f"the downloader reported no file for {key}"
