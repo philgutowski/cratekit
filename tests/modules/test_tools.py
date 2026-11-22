@@ -71,24 +71,24 @@ def library(tmp_path, monkeypatch):
 @pytest.fixture
 def cfg(library):
     """A validated config naming the synthetic library and a synthetic remote."""
-    return config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(library),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(library / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(library.parent / "staging")},
-            "profile": {"name": "slim"},
-            "backup": {
-                "remote": "remote",
-                "dest": "remote:mirror",
-                "archive_root": "remote:mirror-archive",
-                "db_dest_root": "remote:database-snapshots",
-            },
-        }
-    )
+    return _config(library, backup={
+        "remote": "remote", "dest": "remote:mirror", "archive_root": "remote:mirror-archive",
+        "db_dest_root": "remote:database-snapshots",
+    })
+
+
+def _config(library, **sections):
+    """A validated slim config over ``library``, with any further sections given."""
+    return config.from_dict({
+        "schema_version": config.CURRENT_SCHEMA_VERSION,
+        "library": {
+            "root": str(library), "volume_id": "F1E2-D3C4",
+            "db_path": str(library / "db" / "master.db"),
+        },
+        "paths": {"download_staging": str(library.parent / "staging")},
+        "profile": {"name": "slim"},
+        **sections,
+    })
 
 
 @pytest.fixture
@@ -184,25 +184,12 @@ def test_every_feature_inventory_row_this_unit_owns_has_a_verb():
     assert tools.VERB_NAMES == ("setbuild", "master", "backup.run")
 
 
-def test_every_verb_names_a_feature_toggle_that_actually_exists():
-    """A verb whose toggle is not a module cannot be switched off."""
+def test_every_verb_names_a_real_toggle_that_slim_leaves_off_and_full_turns_on():
+    """A verb whose toggle is not a module cannot be switched off; all three rows are Module."""
+    slim, full = profiles.resolve("slim").modules, profiles.resolve("full").modules
     for spec in tools.VERBS:
-        assert spec.feature in profiles.MODULES, (
-            f"{spec.name} answers to the toggle {spec.feature!r}, which is not a "
-            f"declared module, so nothing can turn it off"
-        )
-
-
-def test_no_utility_module_is_in_the_slim_profile():
-    """Feature Inventory: all three rows are Module, so slim runs none of them."""
-    slim = profiles.resolve("slim").modules
-    for spec in tools.VERBS:
+        assert spec.feature in profiles.MODULES, f"{spec.name}'s toggle is not a declared module"
         assert spec.feature not in slim
-
-
-def test_the_full_profile_enables_all_three():
-    full = profiles.resolve("full").modules
-    for spec in tools.VERBS:
         assert spec.feature in full
 
 
@@ -225,10 +212,7 @@ def test_the_verb_table_holds_no_imported_object():
         for node in ast.walk(ast.parse(source))
         if isinstance(node, ast.ImportFrom) and node.module
     }
-    assert not any(m.startswith("cratekit.modules.tools.") for m in imported), (
-        "the verb table imports one of the modules it describes, so building the "
-        "table is no longer lazy"
-    )
+    assert not any(m.startswith("cratekit.modules.tools.") for m in imported), "not lazy"
 
 
 def test_the_backup_verb_is_marked_destructive():
@@ -243,11 +227,7 @@ def test_every_declared_verb_is_in_the_static_registry():
 
     registered = set(registry.VERB_NAMES)
     missing = set(tools.VERB_NAMES) - registered
-    assert not missing, (
-        f"these verbs ship but are not registered: {sorted(missing)}. A verb "
-        f"outside the registry has no structured output, no exit codes, no gate "
-        f"handling, and no stub on a slim install."
-    )
+    assert not missing, f"these verbs ship but are not registered: {sorted(missing)}"
 
 
 def test_the_destructive_verb_is_wired_to_the_destructive_session_gates():
@@ -299,26 +279,10 @@ def test_every_refusal_cause_has_a_reserved_exit_code():
 TEMPLATE = NameTemplate(markers=(MarkerRule(field="lossy", literal="[MP3]"),))
 
 
-def track(
-    artist,
-    title,
-    key,
-    bpm=124.0,
-    genre="Deep House",
-    energy=5,
-    vox=None,
-    path="",
-):
+def track(artist, title, key, bpm=124.0, genre="Deep House", energy=5, vox=None, path=""):
     return setbuilder.Track(
-        artist=artist,
-        title=title,
-        key=setbuilder.canonical_key(key),
-        bpm=bpm,
-        genre=genre,
-        energy=energy,
-        vox=vox,
-        voxgender=None,
-        match=setbuilder.match_key(artist, title),
+        artist=artist, title=title, key=setbuilder.canonical_key(key), bpm=bpm, genre=genre,
+        energy=energy, vox=vox, voxgender=None, match=setbuilder.match_key(artist, title),
         path=path,
     )
 
@@ -373,44 +337,27 @@ def test_the_same_anchor_always_produces_the_same_answer(snapshot_index):
     assert [s.track.match for s in first.pool] == [s.track.match for s in second.pool]
 
 
-def test_a_track_in_the_wrong_key_never_enters_the_pool(snapshot_index):
-    anchor = setbuilder.resolve_anchor("Alder - Anchor Work", snapshot_index)
-    pool = {t.match for t, _ in setbuilder.build_pool(anchor, snapshot_index)}
-    assert setbuilder.match_key("Gum", "Wrong Key") not in pool
-
-
-def test_a_track_in_the_right_key_at_the_wrong_tempo_never_enters_the_pool(snapshot_index):
+def test_the_wrong_key_and_the_right_key_at_the_wrong_tempo_never_enter_the_pool(snapshot_index):
     """Harmonic compatibility alone is not compatibility."""
     anchor = setbuilder.resolve_anchor("Alder - Anchor Work", snapshot_index)
     pool = {t.match for t, _ in setbuilder.build_pool(anchor, snapshot_index)}
+    assert setbuilder.match_key("Gum", "Wrong Key") not in pool
     assert setbuilder.match_key("Hazel", "Right Key Wrong Tempo") not in pool
 
 
-def test_half_and_double_time_are_in_the_band():
+def test_the_band_holds_half_and_double_time_and_drops_when_the_anchor_has_no_tempo():
+    """A key-only pool is a real answer; excluding everything is not."""
     assert setbuilder.in_band(62.0, 124.0)
     assert setbuilder.in_band(248.0, 124.0)
     assert not setbuilder.in_band(100.0, 124.0)
-
-
-def test_an_anchor_with_no_tempo_drops_the_tempo_constraint():
-    """A key-only pool is a real answer; excluding everything is not."""
     assert setbuilder.in_band(90.0, None)
     assert not setbuilder.in_band(None, 124.0)
 
 
 @pytest.mark.parametrize(
     "code, tier",
-    [
-        ("8A", "perfect"),
-        ("9A", "perfect"),
-        ("7A", "perfect"),
-        ("8B", "perfect"),
-        ("10A", "boost"),
-        ("6A", "wider"),
-        ("11A", "wider"),
-        ("7B", "wider"),
-        ("9B", "wider"),
-    ],
+    [("8A", "perfect"), ("9A", "perfect"), ("7A", "perfect"), ("8B", "perfect"), ("10A", "boost"),
+     ("6A", "wider"), ("11A", "wider"), ("7B", "wider"), ("9B", "wider")],
 )
 def test_the_camelot_tiers_are_the_ported_ones(code, tier):
     assert setbuilder.compatible_keys("8A")[code] == tier
@@ -431,21 +378,13 @@ def test_an_off_wheel_key_is_rejected_rather_than_normalized(code):
 
 def test_an_unowned_anchor_with_no_key_is_unresolved_rather_than_guessed(snapshot_index):
     """No network call ships here, so an unowned anchor asks rather than invents."""
-    plan = setbuilder.build_set(
-        "Nobody - Not In The Library", snapshot_index, taxonomy=default_taxonomy()
-    )
+    absent = "Nobody - Not In The Library"
+    plan = setbuilder.build_set(absent, snapshot_index, taxonomy=default_taxonomy())
     assert plan.anchor.unresolved
     assert plan.pool == () and plan.sequence == ()
 
-
-def test_an_unowned_anchor_with_a_supplied_key_builds_but_flags_the_key(snapshot_index):
-    plan = setbuilder.build_set(
-        "Nobody - Not In The Library",
-        snapshot_index,
-        taxonomy=default_taxonomy(),
-        key="8A",
-        bpm=124.0,
-    )
+    taxonomy = default_taxonomy()
+    plan = setbuilder.build_set(absent, snapshot_index, taxonomy=taxonomy, key="8A", bpm=124.0)
     assert plan.anchor.owned is False
     assert plan.anchor.key_needs_confirming is True
     assert plan.pool
@@ -462,8 +401,9 @@ def test_the_web_lookup_is_a_seam_that_is_absent_by_default(snapshot_index):
     setbuilder.build_set("Nobody - Absent", snapshot_index, taxonomy=default_taxonomy())
     assert calls == []
 
+    taxonomy = default_taxonomy()
     plan = setbuilder.build_set(
-        "Nobody - Absent", snapshot_index, taxonomy=default_taxonomy(), web_lookup=lookup
+        "Nobody - Absent", snapshot_index, taxonomy=taxonomy, web_lookup=lookup
     )
     assert calls == [("", "Nobody - Absent")]
     assert plan.anchor.key == "8A"
@@ -474,17 +414,14 @@ def test_the_vocal_threshold_is_a_parameter_and_never_imported():
     assert setbuilder.vocal_score(9, 9, threshold=None) == 0.7
     assert setbuilder.vocal_score(9, 9, threshold=5) == 0.3
     assert setbuilder.vocal_score(9, 1, threshold=5) == 1.0
+    # The clash the signal exists to avoid: two lead vocals at once.
+    assert setbuilder.vocal_score(8, 8, threshold=5) < setbuilder.vocal_score(8, 2, threshold=5)
 
     source = (SRC_ROOT / "cratekit" / "modules" / "tools" / "setbuilder.py").read_text()
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.ImportFrom) and node.module:
             assert "analysis" not in node.module
             assert "vocal" not in node.module
-
-
-def test_two_vocal_forward_tracks_score_below_a_mixed_pair():
-    """The clash the vocal signal exists to avoid: two lead vocals at once."""
-    assert setbuilder.vocal_score(8, 8, threshold=5) < setbuilder.vocal_score(8, 2, threshold=5)
 
 
 def test_genre_affinity_comes_from_the_declared_taxonomy(snapshot_index):
@@ -497,17 +434,9 @@ def test_genre_affinity_comes_from_the_declared_taxonomy(snapshot_index):
     assert pool, "nothing was pooled, so this would prove nothing"
 
     baseline = setbuilder.rank(pool, anchor, taxonomy=taxonomy)
-    shifted = setbuilder.rank(
-        pool,
-        anchor,
-        taxonomy=replace(
-            taxonomy, family=replace(taxonomy.family, same_genre=0.0, unrelated=1.0)
-        ),
-    )
-    assert [s.score for s in baseline] != [s.score for s in shifted], (
-        "changing the taxonomy's declared affinities changed no score, so the "
-        "ranker is not reading the declaration"
-    )
+    inverted = replace(taxonomy, family=replace(taxonomy.family, same_genre=0.0, unrelated=1.0))
+    shifted = setbuilder.rank(pool, anchor, taxonomy=inverted)
+    assert [s.score for s in baseline] != [s.score for s in shifted], "the declaration is unread"
 
 
 def test_a_genre_signal_of_zero_weight_removes_genre_from_the_score(snapshot_index):
@@ -532,14 +461,10 @@ def test_role_falls_out_of_energy_with_the_wheel_as_the_tiebreak(snapshot_index)
     assert setbuilder.assign_role(equal_up, anchor) == "after"
 
 
-def test_unknown_energy_scores_neutral_rather_than_zero():
-    """None means unknown. A track with no reading is not a quiet track."""
+def test_unknown_energy_scores_neutral_and_weights_must_sum_to_one():
+    """None means unknown; two differently normalized runs produce incomparable scores."""
     assert setbuilder.energy_score(None, 5, "before") == 0.5
     assert setbuilder.energy_score(5, None, "after") == 0.5
-
-
-def test_weights_that_do_not_sum_to_one_are_refused():
-    """Two differently normalized runs produce scores nobody can compare."""
     with pytest.raises(ValueError, match="sum to 1.0"):
         setbuilder.Weights(harmonic=0.9, bpm=0.9, genre=0.0, energy=0.0, vocal=0.0)
 
@@ -549,18 +474,11 @@ def test_weights_that_do_not_sum_to_one_are_refused():
 
 def test_the_index_reads_the_key_and_tempo_out_of_the_declared_head():
     """Not a private regular expression. The template owns the shape (U4)."""
-    entry = setbuilder.parse_entry(
-        {
-            "title": "08A - 124 - Real Title",
-            "artist": "Alder",
-            "genre": "Deep House",
-            "initialkey": None,
-            "energylevel": "6",
-            "voxlevel": "2",
-            "voxgender": None,
-        },
-        template=TEMPLATE,
-    )
+    raw = {
+        "title": "08A - 124 - Real Title", "artist": "Alder", "genre": "Deep House",
+        "initialkey": None, "energylevel": "6", "voxlevel": "2", "voxgender": None,
+    }
+    entry = setbuilder.parse_entry(raw, template=TEMPLATE)
     assert entry.key == "8A"
     assert entry.bpm == 124.0
     assert entry.title == "Real Title"
@@ -585,10 +503,8 @@ def test_the_initialkey_tag_wins_over_the_head():
 
 def test_a_track_with_no_usable_key_is_left_out_of_the_index():
     """It cannot be placed on the wheel, so it cannot be compared to anything."""
-    assert (
-        setbuilder.parse_entry({"title": "Just A Title", "artist": "A"}, template=TEMPLATE)
-        is None
-    )
+    keyless = {"title": "Just A Title", "artist": "A"}
+    assert setbuilder.parse_entry(keyless, template=TEMPLATE) is None
 
 
 def test_the_index_collapses_duplicate_works(tmp_path):
@@ -641,12 +557,7 @@ def test_a_cache_written_by_another_build_is_discarded_rather_than_deserialized(
     cache = tmp_path / "cache.json"
     cache.write_text(json.dumps({"cache_version": 0, "entries": {"x": {"nope": 1}}}))
 
-    index = setbuilder.build_index(
-        root,
-        template=TEMPLATE,
-        cache_path=cache,
-        reader=lambda p: {"title": "08A - 124 - Title", "artist": "Alder"},
-    )
+    index = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: GOOD)
     assert [t.title for t in index] == ["Title"]
 
 
@@ -691,12 +602,7 @@ def test_a_cache_with_no_template_stamp_is_discarded(tmp_path):
     cache.write_text(
         json.dumps({"cache_version": setbuilder.CACHE_VERSION, "entries": {str(audio): stale}})
     )
-    index = setbuilder.build_index(
-        root,
-        template=TEMPLATE,
-        cache_path=cache,
-        reader=lambda p: {"title": "08A - 124 - Title", "artist": "Alder"},
-    )
+    index = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: GOOD)
     assert [t.title for t in index] == ["Title"], "an unstamped cache was trusted"
 
 
@@ -835,13 +741,9 @@ def test_the_index_reads_tags_only_through_the_shared_container_reader():
 
 def test_the_index_reads_a_real_file_through_the_real_reader(tmp_path):
     """The one end-to-end proof, because the injected reader proves only itself."""
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
-        pytest.fail(
-            "ffmpeg is required to prove the index reads a real audio file. "
-            "This fails rather than skips because a skipped end-to-end proof is "
-            "indistinguishable from a passing one in every summary anybody reads."
-        )
+    if shutil.which("ffmpeg") is None:
+        pytest.fail("ffmpeg is required to prove the index reads a real audio file, and fails "
+                    "rather than skips, since a skipped proof reads as a passing one.")
     from cratekit.core.tags import write_tags
 
     root = tmp_path / "music"
@@ -854,16 +756,9 @@ def test_the_index_reads_a_real_file_through_the_real_reader(tmp_path):
     )
     assert proc.returncode == 0, proc.stderr[-400:]
 
-    assert write_tags(
-        path,
-        {
-            "title": "08A - 124 - Real Title",
-            "artist": "Alder",
-            "genre": "Deep House",
-            "energylevel": 6,
-            "voxlevel": 2,
-        },
-    )
+    written = {"title": "08A - 124 - Real Title", "artist": "Alder", "genre": "Deep House",
+               "energylevel": 6, "voxlevel": 2}
+    assert write_tags(path, written)
     index = setbuilder.build_index(root, template=TEMPLATE)
     assert len(index) == 1
     entry = index[0]
@@ -881,9 +776,7 @@ def test_the_structured_payload_carries_a_version(snapshot_index):
     assert payload["anchor"]["tempo"] == 124.0
     assert all("score" in row for row in payload["pool"])
 
-
-def test_no_structured_payload_in_this_unit_carries_a_tempo_TAG_key(snapshot_index):
-    """R17 at the serialization boundary, checked against the guard's own set."""
+    # R17 at the serialization boundary, checked against the guard's own set.
     from tests.test_no_beatgrid_ever import FORBIDDEN_TAG_KEYS
 
     def keys(value):
@@ -895,9 +788,6 @@ def test_no_structured_payload_in_this_unit_carries_a_tempo_TAG_key(snapshot_ind
             for item in value:
                 yield from keys(item)
 
-    payload = setbuilder.as_payload(
-        setbuilder.build_set("Alder - Anchor Work", snapshot_index, taxonomy=default_taxonomy())
-    )
     offenders = sorted(set(keys(payload)) & FORBIDDEN_TAG_KEYS)
     assert not offenders, f"the set-builder payload carries tempo tag keys: {offenders}"
 
@@ -907,13 +797,9 @@ def test_no_structured_payload_in_this_unit_carries_a_tempo_TAG_key(snapshot_ind
 
 def _synth_wav(tmp_path: Path, name: str = "set.wav", seconds: int = 2) -> Path:
     """A short real recording. Silence would measure as negative infinity."""
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
-        pytest.fail(
-            "ffmpeg is required to prove that mastering leaves the source "
-            "unmodified. This fails rather than skips because a skipped "
-            "audio-safety proof reads as a passing one."
-        )
+    if shutil.which("ffmpeg") is None:
+        pytest.fail("ffmpeg is required to prove that mastering leaves the source unmodified, "
+                    "and fails rather than skips, since a skipped proof reads as a passing one.")
     out = tmp_path / name
     if seconds in _SYNTHESIZED:
         out.write_bytes(_SYNTHESIZED[seconds])
@@ -957,9 +843,8 @@ def test_mastering_reports_before_and_after_loudness(mastered):
     report = mastered[-1]
     assert report.before.integrated_lufs is not None
     assert report.after.integrated_lufs is not None
-    assert report.after.integrated_lufs == pytest.approx(
-        mastering.DEFAULT_SETTINGS.target_lufs, abs=1.5
-    )
+    target = mastering.DEFAULT_SETTINGS.target_lufs
+    assert report.after.integrated_lufs == pytest.approx(target, abs=1.5)
     assert report.bit_depth.startswith("16-bit")
 
 
@@ -1054,14 +939,11 @@ def test_a_silent_signal_reports_unknown_rather_than_negative_infinity():
     assert mastering.parse_loudness(stderr).integrated_lufs is None
 
 
-@pytest.mark.parametrize("window", [2, 1, 303, 64])
-def test_an_impossible_drift_window_is_refused_at_construction(window):
+def test_an_impossible_drift_window_or_a_positive_ceiling_is_refused_at_construction():
     """Otherwise ffmpeg fails minutes into an encode, naming its own filter."""
-    with pytest.raises(ValueError):
-        mastering.Settings(drift_window=window)
-
-
-def test_a_positive_true_peak_ceiling_is_refused():
+    for window in (2, 1, 303, 64):
+        with pytest.raises(ValueError):
+            mastering.Settings(drift_window=window)
     with pytest.raises(ValueError, match="ceiling"):
         mastering.Settings(true_peak_db=1.0)
 
@@ -1083,12 +965,8 @@ def test_joining_split_parts_quotes_a_path_containing_an_apostrophe(tmp_path):
     def runner(command):
         listing = Path(command.argv[command.argv.index("-i") + 1])
         written["text"] = listing.read_text()
-        # THE STAND-IN WRITES THE DESTINATION, because a real ffmpeg does and
-        # U44 made ``concatenate`` read its own output. Before that, a zero exit
-        # status was taken as proof the join happened and the path was returned
-        # unread, so this runner could report success over a file that was never
-        # created. Leaving the write out here would make the fixture assert that
-        # the join is unchecked, which is the behaviour that was removed.
+        # The stand-in writes the destination, as ffmpeg does: ``concatenate``
+        # reads its own output and refuses a join that wrote nothing.
         Path(command.argv[-1]).write_bytes(b"joined")
         return mastering.CommandResult(returncode=0)
 
@@ -1156,14 +1034,12 @@ def test_backup_with_rekordbox_running_skips_the_database_and_says_why(cfg, db_f
     assert plan.portion(backup_facts.Portion.FILES).will_run is True
 
 
-def test_the_background_agent_alone_is_enough_to_refuse(cfg, db_file, rclone):
-    """The fact the source system's original check missed."""
+def test_the_agent_alone_refuses_and_an_unrelated_process_named_rekordbox_does_not(
+    cfg, db_file, rclone
+):
+    """The fact the original check missed, and P7: a guard that over-refuses gets bypassed."""
     plan = backup.plan_backup(cfg, process_lister=lambda: ("rekordboxAgent",))
     assert plan.portion(backup_facts.Portion.DATABASE).refusal is backup.Refusal.REKORDBOX_RUNNING
-
-
-def test_an_unrelated_process_whose_name_contains_rekordbox_does_not_refuse(cfg, db_file, rclone):
-    """P7: a guard that refuses correct situations is one people learn to bypass."""
     plan = backup.plan_backup(cfg, process_lister=lambda: ("rekordbox-notes-editor",))
     assert plan.portion(backup_facts.Portion.DATABASE).will_run is True
 
@@ -1256,18 +1132,7 @@ def test_the_backup_source_contains_no_remote_literal():
 
 def test_an_unconfigured_remote_refuses_before_anything_runs(library, rclone):
     """No remote means no portion could run, so it is one refusal, not two."""
-    unconfigured = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(library),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(library / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(library.parent / "staging")},
-            "profile": {"name": "slim"},
-        }
-    )
+    unconfigured = _config(library)
     with pytest.raises(backup.BackupRefused) as excinfo:
         backup.plan_backup(unconfigured)
     assert excinfo.value.refusal is backup.Refusal.REMOTE_NOT_CONFIGURED
@@ -1466,21 +1331,15 @@ def test_no_provider_specific_flag_is_baked_into_the_commands(cfg, db_file, rclo
             assert not any(arg.startswith("--drive-") for arg in command.argv)
 
 
-def test_the_settings_directories_ride_the_database_portion(cfg, db_file, rclone, tmp_path):
-    """They hold the pointer to where the database lives."""
+def test_the_settings_directories_ride_the_database_portion_and_share_its_gate(
+    cfg, db_file, rclone, tmp_path
+):
+    """They point at the database, and a live application is writing them."""
     settings = tmp_path / "settings"
     settings.mkdir()
     plan = backup.plan_backup(cfg, process_lister=no_processes, settings_dirs=(settings,))
     labels = [c.label for c in plan.portion(backup_facts.Portion.DATABASE).commands]
     assert backup.SNAPSHOT_SETTINGS in labels
-
-
-def test_the_settings_directories_are_skipped_when_rekordbox_is_running(
-    cfg, db_file, rclone, tmp_path
-):
-    """They share the database's gate because a live application is writing them."""
-    settings = tmp_path / "settings"
-    settings.mkdir()
     plan = backup.plan_backup(cfg, process_lister=rekordbox_running, settings_dirs=(settings,))
     assert plan.portion(backup_facts.Portion.DATABASE).commands == ()
 
@@ -1748,22 +1607,19 @@ def test_never_recorded_is_a_different_answer_from_very_old(cfg):
     )
 
 
-def test_a_future_timestamp_is_named_rather_than_read_as_the_freshest_possible(cfg):
-    """A naive age comparison treats a negative age as the freshest value."""
+@pytest.mark.parametrize(
+    ("ahead", "state"),
+    [(timedelta(days=2), "RECORDED_IN_THE_FUTURE"), (timedelta(minutes=5), "KNOWN")],
+    ids=["future", "small-clock-difference"],
+)
+def test_a_future_timestamp_is_named_and_a_small_clock_difference_tolerated(cfg, ahead, state):
+    """A negative age is not the freshest value; two machines will not agree on the second."""
     now = datetime(2026, 8, 1, tzinfo=UTC)
-    _record(cfg, "FILES", now + timedelta(days=2), "remote:mirror")
-    by_portion = {a.portion: a for a in backup_facts.ages(cfg, now=now)}
-    entry = by_portion[backup_facts.Portion.FILES]
-    assert entry.state is backup_facts.AgeState.RECORDED_IN_THE_FUTURE
-    assert entry.age is None
-
-
-def test_a_small_clock_difference_between_machines_is_tolerated(cfg):
-    """Two installations of one library will not agree on the second."""
-    now = datetime(2026, 8, 1, tzinfo=UTC)
-    _record(cfg, "FILES", now + timedelta(minutes=5), "remote:mirror")
-    by_portion = {a.portion: a for a in backup_facts.ages(cfg, now=now)}
-    assert by_portion[backup_facts.Portion.FILES].state is backup_facts.AgeState.KNOWN
+    _record(cfg, "FILES", now + ahead, "remote:mirror")
+    entry = {a.portion: a for a in backup_facts.ages(cfg, now=now)}[backup_facts.Portion.FILES]
+    assert entry.state is getattr(backup_facts.AgeState, state)
+    if state == "RECORDED_IN_THE_FUTURE":
+        assert entry.age is None
 
 
 def test_the_quoted_age_is_none_unless_every_portion_has_a_usable_one(cfg):
@@ -1778,23 +1634,23 @@ def test_the_quoted_age_is_none_unless_every_portion_has_a_usable_one(cfg):
     assert backup_facts.oldest_usable_age(cfg, now=now) == timedelta(days=9)
 
 
-def test_an_unreadable_fact_file_is_not_reported_as_no_backup(cfg):
-    """They have opposite remediations, and one of them is alarming and wrong."""
+@pytest.mark.parametrize(
+    ("text", "remedy"),
+    [
+        ("{ this is not json", "REPAIR_BACKUP_FACTS"),
+        (json.dumps({"schema_version": backup_facts.SCHEMA_VERSION + 1, "portions": {}}),
+         "UPGRADE_CRATEKIT"),
+    ],
+    ids=["unreadable", "newer-build"],
+)
+def test_a_fact_file_that_cannot_be_read_refuses_rather_than_reporting_no_backup(cfg, text, remedy):
+    """No backup and an unreadable record have opposite remediations."""
     path = backup_facts.path_for(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{ this is not json")
+    path.write_text(text)
     with pytest.raises(backup_facts.BackupFactsUnreadable) as excinfo:
         backup_facts.read_facts(cfg)
-    assert excinfo.value.remedy is backup_facts.Remedy.REPAIR_BACKUP_FACTS
-
-
-def test_a_fact_file_from_a_newer_build_refuses_rather_than_guessing(cfg):
-    path = backup_facts.path_for(cfg)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"schema_version": backup_facts.SCHEMA_VERSION + 1, "portions": {}}))
-    with pytest.raises(backup_facts.BackupFactsUnreadable) as excinfo:
-        backup_facts.read_facts(cfg)
-    assert excinfo.value.remedy is backup_facts.Remedy.UPGRADE_CRATEKIT
+    assert excinfo.value.remedy is getattr(backup_facts.Remedy, remedy)
 
 
 def test_a_naive_timestamp_is_refused_where_it_is_produced(cfg):
@@ -1903,11 +1759,7 @@ def test_the_file_half_of_a_restore_copies_and_never_syncs(cfg, tmp_path, rclone
     assert "copy" in mirror[0].argv and "sync" not in mirror[0].argv
     # And it is FIRST, so the database lands last, after the bulk transfer.
     assert plan.commands[0].label == backup.RESTORE_MIRROR
-
-
-def test_the_file_half_is_off_by_default(cfg, tmp_path, rclone):
-    """The two halves cost very differently and are wanted at different times."""
-    target = _scratch(cfg, tmp_path)
+    # It is off by default: the two halves cost very differently.
     plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=_listing(cfg))
     assert backup.RESTORE_MIRROR not in [c.label for c in plan.commands]
 
@@ -2031,11 +1883,9 @@ def test_no_module_in_this_unit_reads_standard_input():
 
 
 def test_restore_refuses_while_rekordbox_holds_the_database(cfg, tmp_path, rclone):
-    """Replacing the file a live application holds open leaves the application and the disk
-    describing two different libraries.
-    """
+    """A live application and the disk would describe two different libraries."""
     refused = _restore_refused(
-        cfg, target=tmp_path, runner=Recorder(), process_lister=rekordbox_running,
+        cfg, target=tmp_path, runner=Recorder(), process_lister=rekordbox_running
     )
     assert refused.refusal is backup.Refusal.REKORDBOX_RUNNING
 
@@ -2151,31 +2001,25 @@ def test_a_snapshot_marked_for_another_library_is_refused(cfg, tmp_path, rclone)
     assert not any(c.label in backup.TRANSFERRING_LABELS for c in recorder.commands)
 
 
-def test_a_snapshot_marked_for_this_library_is_planned_and_says_so(cfg, tmp_path, rclone):
+def test_a_snapshot_marked_for_this_library_is_planned_and_compared_case_blind(
+    cfg, tmp_path, rclone
+):
+    """``diskutil`` prints uppercase and the adapters report lowercase."""
     plan = _restore(cfg, target=tmp_path, snapshot=STAMP, runner=marked(cfg))
     assert plan.snapshot == STAMP
     assert plan.recorded_volume == "f1e2-d3c4"
-
-
-def test_the_identity_is_compared_case_blind_like_the_volume_gate(cfg, tmp_path, rclone):
-    """``diskutil`` prints uppercase and the adapters report lowercase."""
     recorder = _listing(cfg, identity="library-volume.F1E2-d3c4\n")
     plan = _restore(cfg, target=tmp_path, snapshot=STAMP, runner=recorder)
     assert plan.recorded_volume == "f1e2-d3c4"
 
 
-def test_a_snapshot_carrying_two_identities_is_refused(cfg, tmp_path, rclone):
-    """Two libraries backing up in one second share one dated folder."""
+def test_two_identities_or_an_empty_marker_refuse_as_another_librarys(cfg, tmp_path, rclone):
+    """Two libraries backing up in one second share one folder; an empty marker is not unmarked."""
     both = marker_for(cfg.library.volume_id) + "\n" + marker_for("0000-AAAA") + "\n"
-    recorder = _listing(cfg, identity=both)
-    refused = _restore_refused(cfg, target=tmp_path, snapshot=STAMP, runner=recorder)
-    assert refused.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
-
-
-def test_a_marker_with_no_identity_after_its_prefix_is_not_read_as_unmarked(cfg, tmp_path, rclone):
-    recorder = _listing(cfg, identity="library-volume.\n")
-    refused = _restore_refused(cfg, target=tmp_path, snapshot=STAMP, runner=recorder)
-    assert refused.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
+    for identity in (both, "library-volume.\n"):
+        recorder = _listing(cfg, identity=identity)
+        refused = _restore_refused(cfg, target=tmp_path, snapshot=STAMP, runner=recorder)
+        assert refused.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
 
 
 def test_an_identity_listing_that_fails_is_not_read_as_an_unmarked_snapshot(cfg, tmp_path, rclone):
