@@ -482,7 +482,8 @@ def record_decline(
     cfg: config.Config, row: RemovedRow, *, actor: str, resolved: str | None = None
 ) -> review.Suppression:
     """Remember that a person said to keep this file (R35)."""
-    return declines(cfg).record(
+    store = declines(cfg)
+    return store.record(
         kind=tombstone.KIND_REMOVED_FILE,
         identity=row_identity(row),
         payload={
@@ -497,7 +498,8 @@ def record_decline(
 
 def revoke_decline(cfg: config.Config, suppression_id: str, *, actor: str) -> review.Suppression:
     """Lift a decline, so the file is offered again on the next run (R35)."""
-    return declines(cfg).revoke(suppression_id, actor=actor)
+    store = declines(cfg)
+    return store.revoke(suppression_id, actor=actor)
 
 
 def record_tombstone(
@@ -614,7 +616,8 @@ def list_tombstones(
     cfg: config.Config, *, include_revoked: bool = False
 ) -> tuple[review.Suppression, ...]:
     """Every tombstone, R36's LISTABLE half; revoked ones on request, for the audit."""
-    return tombstones(cfg).suppressions(include_revoked=include_revoked)
+    store = tombstones(cfg)
+    return store.suppressions(include_revoked=include_revoked)
 
 
 def suppressed_version(cfg: config.Config, *, artist: str, title: str) -> bool:
@@ -624,7 +627,8 @@ def suppressed_version(cfg: config.Config, *, artist: str, title: str) -> bool:
     here, since either feature can be switched off; it asks through
     ``core.tombstone``. A store that cannot be read refuses.
     """
-    return tombstones(cfg).suppresses(
+    store = tombstones(cfg)
+    return store.suppresses(
         tombstone.KIND_VERSION, tombstone.version_identity(artist=artist, title=title)
     )
 
