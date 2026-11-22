@@ -59,7 +59,7 @@ from cratekit.core import cause, config, locations, review, tags, taxonomy
 from cratekit.core.cause import REASONS, CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests.test_config import valid_data
-from tests.test_tags import _synth
+from tests._containers import synth_container
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -134,6 +134,20 @@ def _row(cfg_value, name: str, genre: str, content_id: str) -> adopt_scan.Collec
         genre=genre,
         deleted=False,
     )
+
+
+#: Each container's silence, synthesized by ffmpeg once per process and copied
+#: after, so a test pays for a file copy rather than an encoder run.
+_SYNTHESIZED: dict[str, bytes] = {}
+
+
+def _synth(tmp_path: Path, suffix: str) -> Path:
+    """One second of silence in ``suffix`` at ``tmp_path``, as ``synth_container`` makes it."""
+    if suffix not in _SYNTHESIZED:
+        _SYNTHESIZED[suffix] = synth_container(tmp_path, suffix).read_bytes()
+    out = tmp_path / f"probe{suffix}"
+    out.write_bytes(_SYNTHESIZED[suffix])
+    return out
 
 
 def _synth_in(directory: Path, suffix: str) -> Path:
