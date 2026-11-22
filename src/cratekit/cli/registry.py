@@ -1266,7 +1266,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── Deletion: one surface, two modules ──────────────────────────────────
-    #
     # Two modules so ``tombstone.list``, which writes nothing, did not wait on
     # the destructive verb (R36). ``delete.review`` runs inline, not queued
     # (U60, R-149): the person who confirmed the plan watches the files go.
@@ -1414,7 +1413,6 @@ ENTRIES: tuple[Entry, ...] = (
         # Landed (U28). The module path here is the one the dispatcher imports.
     ),
     # ── The rest of the review surface (U11) ────────────────────────────────
-    #
     # Appended rather than beside their siblings, so a concurrent branch
     # conflicts textually instead of auto merging unread.
     Entry(
@@ -1440,7 +1438,6 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"review_set"}), output_schema="review_set/1",
     ),
     # ── Deferred routing (U19) ──────────────────────────────────────────────
-    #
     # Appended rather than beside its siblings, for the reason above. Every
     # later block is appended the same way.
     Entry(
@@ -1674,7 +1671,6 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted", "rekordbox.pins", "library.paths_resolved"),
     ),
     # ── The needs genre campaign (U294) ─────────────────────────────────────
-    #
     # A composer, as ``organize`` is: each step is another verb's, under one
     # gate over ``tag.backlog``'s plan.
     Entry(
@@ -1699,7 +1695,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── The INBOX rotation (U111) ───────────────────────────────────────────
-    #
     Entry(
         name="inbox.rotate",
         summary="move stale INBOX batches into INBOX / Old and remove expired ones " "from Old, never a track",
@@ -1721,7 +1716,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── The INBOX refill (U134) ─────────────────────────────────────────────
-    #
     # Rebuilds an emptied INBOX mirror of an account playlist.
     Entry(
         name="inbox.refill",
@@ -1743,94 +1737,68 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── INBOX / Analyze, cleared (U166) ─────────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives. Every
-    # native landing adds the rows it creates to the one playlist the
-    # rekordbox visit selects; this takes out each row rekordbox analysed.
+    # Clears the analysed rows out of the playlist the rekordbox visit selects.
     Entry(
         name="inbox.analyzed",
         summary="take every row rekordbox has analysed out of INBOX / Analyze, leaving " "each row still waiting, memberships only",
         module="cratekit.intake.analyzed_cli", builder="build", handler_key="inbox.analyzed",
-        # NO FEATURE ROW. The source system never kept an analysis queue.
+        # No feature row: the source never kept an analysis queue.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: The database tree and nothing else: memberships of one playlist
-        #: under the intake root, soft deleted. No content row, no playlist
-        #: row, no file.
+        #: The tree only: memberships of one intake playlist, soft deleted.
         writes=frozenset({"db_tree"}), taxonomy_terms=("inbox",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(
             GateSpec(
                 name="inbox.analyzed.approve", options=("apply", "abort"),
                 prompt="Take these analysed tracks out of INBOX / Analyze, keeping " "every track in the collection?",
-                #: EXPLICIT (R34). A removal from a playlist, answered by a
-                #: recorded act, as the refill's addition is.
+                #: Explicit (R34): a removal from a playlist.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
     # ── The rekordbox visit, checked (U167) ─────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives. After
-    # the visit, one read only answer: is every landed row analysed, is each
-    # grid right, is the Key column filled, and how far rekordbox's key agrees
-    # with the title's. Its exit status is the verdict, so a skill can wait on it.
+    # A read only verdict on the visit; its exit status lets a skill wait on it.
     Entry(
         name="analyze.check",
         summary="read rekordbox's analysis of the landed rows and say whether the visit " "is done, still waiting, or suspect; reads a copy, writes nothing",
         module="cratekit.analysis.check_cli", builder="build", handler_key="analyze.check",
-        # NO FEATURE ROW. The source system never read rekordbox's result back.
-        # CORE, NOT THE ANALYSIS MODULE: it runs no detector and needs no
-        # extra, it reads rekordbox's own analysis through the binding every
-        # install has, and the landing it follows is core, so a slim install
-        # that lands rows can ask whether rekordbox finished with them.
+        # No feature row. Core, not analysis: it runs no detector, and the
+        # landing it follows is core.
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
         doctor_checks=("library.mounted", "rekordbox.closed"),
     ),
     # ── The set's permanent playlist (U121) ─────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives. The
-    # landing writes the playlist itself when given ``--set``; this is the
-    # backfill for a set that landed without it.
+    # The backfill for a set landed without ``--set``.
     Entry(
         name="intake.inspiration",
         summary="write a landed set's permanent playlist under INSPIRATION, every " "identified track the library owns in set order, named the source system's way",
         module="cratekit.intake.inspiration_cli", builder="build",
         handler_key="intake.inspiration",
-        # NO FEATURE ROW. The source system made these playlists by hand, and
-        # the author decided on 2026-10-09 that every set intake leaves one.
+        # No feature row: the source made these by hand.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: The database tree and nothing else: one playlist node under the
-        #: declared INSPIRATION folder, that folder when the root lacks it, and
-        #: the memberships. No content row, no file, no INBOX node.
+        #: The tree only: one playlist under INSPIRATION, and its memberships.
         writes=frozenset({"db_tree"}), taxonomy_terms=("inspiration",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(
             GateSpec(
                 name="intake.inspiration.approve", options=("apply", "abort"),
                 prompt="Write the set's playlist under INSPIRATION with these tracks?",
-                #: EXPLICIT (R34). A node written outside the intake flow stays
-                #: in the library for good, so no blanket affirmative satisfies it.
+                #: Explicit (R34): the node stays in the library for good.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
     # ── The genre Favorites (U119) ──────────────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives. The one
-    # path that removes a genre Favorites membership; the additive half runs at
-    # the end of an adoption that files a track and inside the tree rebuild.
+    # The one path that removes a genre Favorites membership.
     Entry(
         name="favorites.refresh",
         summary="make every genre folder's Favorites playlist mirror All Favorites, " "adding what the folder holds that is a favourite and removing what is not",
         module="cratekit.favorites.refresh_cli", builder="build", handler_key="favorites.refresh",
-        # NO FEATURE ROW. The source system never kept a Favorites per genre;
-        # the author decided it on 2026-10-09.
+        # No feature row: the source kept no Favorites per genre.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: The database tree and nothing else: one Favorites playlist under
-        #: each genre folder, and memberships added to it and marked removed
-        #: from it. No content row, no file, no node removed.
+        #: The tree only: each genre's Favorites playlist and its memberships.
         writes=frozenset({"db_tree"}), destructive=True,
         taxonomy_terms=("genre_energy", "favorites"),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
@@ -1838,32 +1806,22 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="favorites.refresh.approve", options=("approve", "abort"),
                 prompt="Make each genre folder's Favorites mirror All Favorites, adding " "these and removing those?",
-                #: EXPLICIT (R34). A removal takes a membership away, so no
-                #: blanket affirmative satisfies it.
+                #: Explicit (R34): a removal takes a membership away.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
     # ── The landed hearts placed (U120) ─────────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives. The
-    # native landing places a heart as it lands since U120, and an owned heart
-    # too since U146; this is the backfill for the hearts placed before then,
-    # every owned heart a hearts job reported, and for a landing whose source
-    # playlist was absent and skipped the placement.
+    # The backfill for hearts the landing did not place (U120, U146).
     Entry(
         name="favorites.backfill",
         summary="put every heart on the account whose track the library owns into All " "Favorites and the playlist of the month it was hearted in, adding and never removing",
         module="cratekit.favorites.backfill_cli", builder="build",
         handler_key="favorites.backfill",
-        # NO FEATURE ROW. The source system did this as part of its favourites
-        # pass; the author decided on 2026-10-09 that a landing does it here.
+        # No feature row: the landing does what the source's pass did.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: The database tree, memberships added to All Favorites and to a
-        #: month playlist, that playlist when the folder lacks it, and since
-        #: U153 one content column, the colour, Pink on every member that has
-        #: none. No content row made, no file, no node removed, no removal.
+        #: Memberships added, and the colour on members with none (U153).
         writes=frozenset({"db_tree", "db_metadata"}), destructive=True,
         taxonomy_terms=("favorites",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
@@ -1871,95 +1829,65 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="favorites.backfill.approve", options=("approve", "abort"),
                 prompt="Put these landed hearts into All Favorites and their month " "playlists?",
-                #: EXPLICIT (R34). A write to the live library's playlists, as
-                #: the refresh's and the landing's are, so no blanket
-                #: affirmative satisfies it.
+                #: Explicit (R34): a write to the live library's playlists.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
     # ── The quarters split into months (U145) ───────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives. A one
-    # time verb: since U145 a landed heart files by month, and this splits the
-    # quarter playlists already under Favorites into months and retires them.
+    # One time: splits the quarter playlists into months (U145).
     Entry(
         name="favorites.split",
         summary="split every quarter playlist beside All Favorites into the playlists of " "the months its hearts were hearted in, then retire the emptied quarters",
         module="cratekit.favorites.split_cli", builder="build", handler_key="favorites.split",
-        # NO FEATURE ROW. The source system filed by quarter; the author chose
-        # months on 2026-10-14.
+        # No feature row: the source filed by quarter.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: The database tree and nothing else: memberships added to month
-        #: playlists under the Favorites folder, those playlists when absent,
-        #: and each quarter playlist retired with its own memberships, a soft
-        #: delete. No content row and no file.
+        #: The tree only: month memberships added, quarters soft deleted.
         writes=frozenset({"db_tree"}), destructive=True, taxonomy_terms=("favorites",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(
             GateSpec(
                 name="favorites.split.approve", options=("approve", "abort"),
                 prompt="Put these quarter playlists' hearts into their month playlists and " "retire the quarters?",
-                #: EXPLICIT (R34). It retires playlists of the live library, so
-                #: no blanket affirmative satisfies it.
+                #: Explicit (R34): it retires live playlists.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
     # ── The Favorites folder put in order newest first (U180) ──────────────
-    #
-    # Appended, for the reason the deferred routing block above gives. A one
-    # time verb: since U180 a month is made in its newest first slot, and this
-    # puts the months already in the folder in that order.
+    # One time: orders the months already in the folder newest first (U180).
     Entry(
         name="favorites.order",
         summary="put the folder that holds All Favorites in order: All Favorites first, " "the months newest first, then Undated, then everything else as it was",
         module="cratekit.favorites.order_cli", builder="build", handler_key="favorites.order",
-        # NO FEATURE ROW. The source system appended each month at the end;
-        # the author asked for newest first on 2026-10-28.
+        # No feature row: the source appended each month at the end.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: The database tree and nothing else: the positions of the playlists
-        #: under the Favorites folder. No membership, no content row, no name,
-        #: no parent, no removal and no file.
+        #: The tree only: positions of the playlists in the Favorites folder.
         writes=frozenset({"db_tree"}), destructive=True, taxonomy_terms=("favorites",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(
             GateSpec(
                 name="favorites.order.approve", options=("approve", "abort"),
                 prompt="Put the Favorites folder in this order, newest month first?",
-                #: EXPLICIT (R34). It writes the positions of the live
-                #: library's playlists, so no blanket affirmative satisfies it.
+                #: Explicit (R34): it writes live playlist positions.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
     # ── The retroactive tidy (U112) ─────────────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives. A
-    # COMPOSER, as ``sync.all`` is: every step it plans is another verb's plan
-    # and every write another verb's write, so it owns no rule of its own.
+    # A composer, as ``sync.all`` is: every step and write is another verb's.
     Entry(
         name="organize",
         summary="tidy rekordbox and the account by the product's own rules, one " "question per side; lists what you made and never moves it",
         module="cratekit.organize.cli", builder="build", handler_key="organize",
-        # NO FEATURE ROW. The source system never tidied retroactively, and
-        # each row a step serves is claimed by the verb that owns the step.
+        # No feature row: each step's row is claimed by its own verb.
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        #: The union of its steps' surfaces: adoption writes the tree and its
-        #: rows, the rotation the tree, the label folders, the marks and the
-        #: archive the account. The set archive reads the INSPIRATION folder
-        #: for its second proof (U142), through a read handle, and the
-        #: parity step (U144) writes a playlist per downloaded set under that
-        #: folder, which is the tree, from the account's sets. No file is
-        #: written by any step it composes,
-        #: since the adoption is applied with no tag value. ``destructive``
-        #: because the rotation removes an expired batch playlist, a mark
-        #: retitles a playlist the product did not make, and the root step
-        #: (U143) removes the account root's label debris, empty playlists and
-        #: an emptied legacy year folder, each by name on the account's gate.
+        #: The union of its steps' surfaces (U142, U144); no file is written.
+        #: Destructive: the rotation, a mark and the root step (U143) remove or
+        #: retitle what the product did not make.
         writes=frozenset({"db_tree", "db_metadata", "remote"}), destructive=True,
         taxonomy_terms=("genre_energy", "inbox", "inbox_old", "inspiration"),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
@@ -1967,105 +1895,77 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="organize.rekordbox.approve", options=("approve", "abort"),
                 prompt="Apply these steps to the rekordbox library? Nothing you " "made is moved and no track is removed.",
-                #: EXPLICIT (R34). It stands for ``adopt.apply.approve`` and
-                #: ``inbox.rotate.approve``, both explicit.
+                #: Explicit (R34): it stands for its steps' explicit gates.
                 explicit=True, digest_source="plan",
             ),
             GateSpec(
                 name="organize.account.apply", options=("apply", "abort"),
                 prompt="Apply these steps to the streaming account? Only the " "removals listed are made: label debris whose tracks are in its " "label's folder, empty root playlists, and an emptied legacy year " "folder. A working custom playlist stays at the root until a " "sync marks it downloaded, which files it in its year folder.",
-                #: EXPLICIT, as every other write to the account is (R34).
+                #: Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
     # ── A label's dated playlist heard (U123) ───────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives. The
-    # half of U117 that happens once the author has heard a go's releases.
+    # The half of U117 after the author has heard a go's releases.
     Entry(
         name="label.heard",
         summary="mark a label's dated playlist heard: its tracks go in the year " "playlist and the dated playlist is removed from the account",
         module="cratekit.label.heard_cli", builder="build_heard", handler_key="label.heard",
         feature_rows=(23,), module_id="labels", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: One surface, the account: tracks added to a year playlist, and a
-        #: dated playlist the outbound ledger records this product CREATED
-        #: taken tracks off or removed. The heard list is written in the label
-        #: review store and the ledger entry dropped, neither of which is a
-        #: declared surface. Nothing in rekordbox is written: the Record
-        #: Labels tree stays on the xml bridge (R39). ``destructive`` because
-        #: it removes a playlist from the account.
+        #: The account only; the Record Labels tree stays on the bridge (R39).
+        #: Destructive: it removes a dated playlist this product created.
         writes=frozenset({"remote"}), destructive=True, doctor_checks=("credential.provider",),
         gates=(
             GateSpec(
                 name="label.heard.confirm", options=("apply", "abort"),
                 prompt="Mark these releases heard, put the dated playlist's tracks in " "the year, less any removed or pruned, and remove it from the " "streaming account?",
-                #: EXPLICIT, as every other write to the account is (R34).
+                #: Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
         ),
     ),
     # ── The taxonomy copy brought up to the shipped schema (U132) ───────────
-    #
-    # Appended, for the reason the deferred routing block above gives. Setup
-    # copies the shipped template once; this is how a class, a bucket or a
-    # source's vocabulary table the shipped template gained since reaches a
-    # library's copy.
+    # Brings what the shipped template gained into a library's copy.
     Entry(
         name="taxonomy.upgrade",
         summary="add the classes, buckets and vocabulary tables the shipped taxonomy " "template declares and this library's copy lacks, and state the shipped " "schema version",
         module="cratekit.cli.verbs.taxonomy", builder="build", handler_key="taxonomy.upgrade",
-        # NO FEATURE ROW. The source system had one taxonomy table in code and
-        # nothing to upgrade.
+        # No feature row: the source's taxonomy was code.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: No declared surface: the library's taxonomy copy beside the
-        #: database, and a dated backup of it, which are library state as the
-        #: profile verb's configuration is. No database row, no audio file, no
-        #: account. Not destructive: it only adds, and the copy as it was is
-        #: kept beside it.
+        #: No declared surface: the taxonomy copy and its backup are library
+        #: state. Not destructive: it only adds, keeping the old copy.
         writes=frozenset(),
-        #: The copy it upgrades is read by the verb itself, which refuses an
-        #: absent or unusable one by name before its gate, so taxonomy.active
-        #: is not declared here as well.
+        #: Not ``taxonomy.active``: the verb refuses an unusable copy itself.
         doctor_checks=("library.mounted",),
         gates=(
             GateSpec(
                 name="taxonomy.upgrade.apply", options=("approve", "abort"),
                 prompt="Add these classes, buckets and vocabulary tables to this " "library's taxonomy copy and state the shipped schema version?",
-                #: EXPLICIT (R34). The copy is the declaration every verb routes
-                #: by, so no blanket affirmative satisfies it.
+                #: Explicit (R34): every verb routes by the copy.
                 explicit=True, digest_source="plan",
             ),
         ),
     ),
     # ── A genre word outside the taxonomy, answered in one command (U194) ──
-    #
-    # Appended, for the reason the deferred routing block above gives. The two
-    # answers ``tag folder`` and ``tag guess`` offer for a word the taxonomy has
-    # no place for, each an edit of the library's copy in the upgrade's order.
+    # The two answers for a genre word the taxonomy has no place for.
     Entry(
         name="taxonomy.alias",
         summary="save a genre word the taxonomy has no place for as a tagging alias " "of one of its genre folders, and retag the files carrying it; writes files",
         module="cratekit.cli.verbs.taxonomy_word", builder="build_alias",
         handler_key="taxonomy.alias",
-        # NO FEATURE ROW. The source system had one taxonomy table in code and
-        # an alias was an edit of that code.
+        # No feature row: the source's aliases were code.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: THE FILE AND ONLY THE FILE, a genre rewritten to the folder's name,
-        #: beside the library's taxonomy copy and a dated backup of it, which
-        #: are library state as ``taxonomy.upgrade``'s are. No row is written:
-        #: the rows follow by ``tag.rows``, which the run names, so no database
-        #: is opened and the cloud sync decision is not one this can reach.
-        #: ``destructive`` because a genre a file carries is replaced.
+        #: The file only, beside the taxonomy copy (library state). Rows follow
+        #: by ``tag.rows``, so no cloud sync decision. Destructive: a genre is replaced.
         writes=frozenset({"files"}), destructive=True, taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted",),
         gates=(
             GateSpec(
                 name="taxonomy.alias.apply", options=("approve", "abort"),
                 prompt="Save this word as an alias of the genre in this library's " "taxonomy copy, and retag the files carrying it?",
-                #: EXPLICIT (R34). The copy is the declaration every verb routes
-                #: by, and a genre is written once and stays.
+                #: Explicit (R34): every verb routes by the copy.
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -2075,19 +1975,16 @@ ENTRIES: tuple[Entry, ...] = (
         summary="make a genre word the taxonomy has no place for a genre folder of " "its own, with energy bands, in this library's taxonomy copy",
         module="cratekit.cli.verbs.taxonomy_word", builder="build_folder",
         handler_key="taxonomy.folder",
-        # NO FEATURE ROW, for the alias's reason.
+        # No feature row, for the alias's reason.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: No declared surface, as ``taxonomy.upgrade``: the library's taxonomy
-        #: copy and a dated backup of it. No file and no row: the files already
-        #: carry the word, and ``route.resort`` files them, which the run
-        #: names. Not destructive: it only adds, and the copy as it was is
-        #: kept beside it.
+        #: No declared surface, as ``taxonomy.upgrade``; ``route.resort`` files
+        #: the tracks after. Not destructive: it only adds.
         writes=frozenset(), doctor_checks=("library.mounted",),
         gates=(
             GateSpec(
                 name="taxonomy.folder.apply", options=("approve", "abort"),
                 prompt="Add this genre folder to this library's taxonomy copy?",
-                #: EXPLICIT (R34), as the upgrade's.
+                #: Explicit (R34), as the upgrade's.
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -2097,29 +1994,23 @@ ENTRIES: tuple[Entry, ...] = (
         name="sync.pair",
         summary="keep one of your account playlists and one rekordbox playlist the " "same list, each side merged against the last sync",
         module="cratekit.sync.pair_cli", builder="build", handler_key="sync.pair",
-        # NO FEATURE ROW. The source system pulled a playlist one way and pushed
-        # one the other, and kept no list on both sides.
+        # No feature row: the source kept no list on both sides.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: Two surfaces. The rekordbox playlist's memberships, added, soft
-        #: removed and numbered through the guarded commit, and the account
-        #: playlist's tracks, added, taken off and ordered, on a playlist the
-        #: pairs record vouches for. No collection row and no audio file is
-        #: written, and an acquisition is a queued intake job, not a write. The
-        #: pair and its snapshot are this product's own state. ``destructive``
-        #: because a membership is taken off on both sides.
+        #: The rekordbox playlist's memberships and the account playlist's
+        #: tracks. Destructive: a membership is taken off on both sides.
         writes=frozenset({"db_tree", "remote"}), destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
         gates=(
             GateSpec(
                 name="sync.pair.rekordbox", options=("apply", "skip"),
                 prompt="Write these additions, removals and order to the rekordbox " "playlists, and queue these tracks for acquisition?",
-                #: EXPLICIT, as every database membership write is (R34).
+                #: Explicit, as every database membership write is (R34).
                 explicit=True, digest_source="plan",
             ),
             GateSpec(
                 name="sync.pair.account", options=("apply", "skip"),
                 prompt="Write these additions, removals and order to the streaming " "account's playlists?",
-                #: EXPLICIT, as every other write to the account is (R34).
+                #: Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
@@ -2130,20 +2021,17 @@ ENTRIES: tuple[Entry, ...] = (
         name="sync.twins",
         summary="give every downloaded custom playlist on the account its permanent " "twin in rekordbox's Custom Playlists <year> folder, paired to stay one list",
         module="cratekit.sync.twins_cli", builder="build", handler_key="sync.twins",
-        # NO FEATURE ROW. The source system let a custom playlist's rekordbox
-        # copy rotate out and kept none.
+        # No feature row: the source kept no rekordbox copy.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: The database tree and nothing else: a top level folder per year when
-        #: absent, a plain playlist per twin under it, and its memberships. No
-        #: content row, no file, nothing on the account. The pairs it marks are
-        #: this product's own state. Not ``destructive``: it removes nothing.
+        #: The tree only: year folders, twin playlists and memberships. Not
+        #: destructive: it removes nothing.
         writes=frozenset({"db_tree"}),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
         gates=(
             GateSpec(
                 name="sync.twins.approve", options=("approve", "abort"),
                 prompt="Make these twins and their folders in rekordbox, and pair each " "with its account playlist?",
-                #: EXPLICIT, as every database membership write is (R34).
+                #: Explicit, as every database membership write is (R34).
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
@@ -2154,19 +2042,15 @@ ENTRIES: tuple[Entry, ...] = (
         name="sync.release",
         summary="let a custom playlist twin's held tracks be queued at the next " "crate sync pair, one twin by its account playlist or every twin",
         module="cratekit.sync.release_cli", builder="build", handler_key="sync.release",
-        # NO FEATURE ROW. The source system queued a custom playlist's every
-        # missing track and asked nobody.
+        # No feature row: the source queued every missing track unasked.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: NO WRITE SURFACE, and not destructive: the pairs document is this
-        #: product's own state, and the write only empties a twin's hold.
-        #: Nothing is queued here; ``sync pair`` queues at its own gate.
+        #: No write surface: only the pairs document, this product's own state.
         writes=frozenset(), doctor_checks=("library.mounted",),
         gates=(
             GateSpec(
                 name="sync.release.approve", options=("approve", "abort"),
                 prompt="Let these twins' held tracks be queued for download at the " "next crate sync pair?",
-                #: EXPLICIT: the answer decides what the downloader is next
-                #: asked to fetch, which Phillip chooses per playlist (U221).
+                #: Explicit: it decides what is downloaded next (U221).
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -2176,18 +2060,11 @@ ENTRIES: tuple[Entry, ...] = (
         name="tag.guess",
         summary="give each file in a folder with no genre one guessed from its " "artist's other tracks and the playlist it came from; writes files",
         module="cratekit.tagging.guess_cli", builder="build", handler_key="tag.guess",
-        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system left a track
-        # no catalogue knew to a person in rekordbox.
-        #
-        # CORE, as ``tag.folder`` is: the tail runs it in every pass, and a
-        # genre is what a tree files a landed track by.
+        # No feature row or source script. Core, as ``tag.folder``: every pass
+        # runs it.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: THE FILE AND ONLY THE FILE, a genre on a file that carries none. It
-        #: READS the database, with ``require_closed`` off as ``name.apply``
-        #: does, so it never reaches the guarded writer or the cloud sync
-        #: decision, which binds to write intent only. NO GATE, as ``tag.folder``
-        #: writes the same field on the same files with none: Phillip answered
-        #: on 2026-11-01 that every guess is written and nothing waits on him.
+        #: The file only; the database is only read, so no cloud sync decision.
+        #: No gate, as ``tag.folder``: every guess is written (U172).
         writes=frozenset({"files"}), destructive=True, taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted",),
     ),
@@ -2196,35 +2073,25 @@ ENTRIES: tuple[Entry, ...] = (
         name="sync.removed",
         summary="list each downloaded track you took off its playlist on the streaming " "account, and take the offered ones out of the rekordbox collection behind a gate",
         module="cratekit.sync.removed_cli", builder="build_removed", handler_key="sync.removed",
-        # NO FEATURE ROW. The source system never read a playlist again once
-        # it had downloaded it.
-        #
-        # CORE, as ``sync.taken`` is: it reads what the playlists source swept.
+        # No feature row. Core, as ``sync.taken``.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: THE COLLECTION ITSELF (U288): an offered content row and every
-        #: membership, cue, history entry, analysis file row and mixer row
-        #: naming it, deleted as rekordbox's Remove from Collection deletes
-        #: them, and the ``TrackNo`` of each live membership after it in a playlist
-        #: it left numbered down as rekordbox numbers it (R-1830). The account
-        #: is only read, and no file is touched: the file
-        #: reaches the Trash through ``delete review`` alone.
+        #: The collection (U288): a row and everything naming it, deleted as
+        #: Remove from Collection does, playlists renumbered (R-1830). No file:
+        #: only ``delete review`` trashes one.
         writes=frozenset({"db_tree", "db_metadata"}), destructive=True,
         doctor_checks=("credential.provider", "library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(
             GateSpec(
                 name="sync.removed.confirm", options=("apply", "abort"),
                 prompt="Take these tracks out of the rekordbox collection?",
-                #: EXPLICIT (R34). A removal from the collection, answered by a
-                #: recorded act, as every destructive gate is.
+                #: Explicit (R34): a removal from the collection.
                 explicit=True, digest_source="plan",
             ),
             GateSpec(
                 name="sync.removed.retire", options=("retire", "abort"),
                 prompt="Retire these playlists the account no longer has?",
-                #: EXPLICIT (U320). A retired playlist stops keeping the tracks
-                #: on it, so later removals can be offered past it: answered
-                #: by a recorded act, as the removal itself is. It writes
-                #: Cratekit's own record only.
+                #: Explicit (U320): a retired playlist stops protecting its
+                #: tracks from removal. Writes only Cratekit's own record.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
@@ -2232,9 +2099,8 @@ ENTRIES: tuple[Entry, ...] = (
     ),
 )
 
-#: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that
-#: no layer below the CLI names a verb, and reads it from HERE rather than from a
-#: hand-kept copy so the guard cannot fall behind the registry.
+#: The verb names, read by ``tests/test_layering.py`` so no layer below the CLI
+#: names a verb, from here so the guard cannot fall behind the registry.
 VERB_NAMES: frozenset[str] = frozenset(entry.name for entry in ENTRIES)
 
 _BY_NAME: Mapping[str, Entry] = MappingProxyType({entry.name: entry for entry in ENTRIES})
@@ -2271,9 +2137,7 @@ def entry(name: str) -> Entry:
 def by_handler_key(key: str) -> Entry:
     """One verb by the key the job engine re-invokes it with.
 
-    Resolving a handler must not import anything (KTD26): the engine validates a
-    queued job's handler before spawning, and validating by import would defeat
-    the lazy-import stubs the whole scheme rests on.
+    It imports nothing (KTD26), so validating a queued handler keeps the lazy stubs.
     """
     try:
         return _BY_HANDLER[key]
