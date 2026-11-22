@@ -740,13 +740,16 @@ playlists the account answered not found for (below).
 When a track is offered, the run reads your backup acknowledgment and stops
 at the explicit gate `sync.removed.confirm`, which lists every offered track
 by artist, title, the playlists you took it off and its file, with the kept
-and left ones beside them. Answer it with `crate run decide RUN_ID
+and left ones beside them and how many playlist memberships the removal
+renumbers. Answer it with `crate run decide RUN_ID
 sync.removed.confirm apply --actor NAME`, then run `crate --run RUN_ID sync
 removed` again. `apply` takes each offered track out of the rekordbox
 collection the way rekordbox's own Remove from Collection does: the
 collection row and every membership, cue, history entry, analysis file row
 and mixer row naming it are deleted, and the playlists and history lists
-stay, emptier. Nothing else in the database moves, which the verb reads back
+stay, emptier. In each playlist the track leaves, the tracks after it move
+up one place for each removed track before them, as rekordbox numbers them,
+and nothing else on their rows changes. Nothing else in the database moves, which the verb reads back
 from the database after its commit, and it refuses with nothing written when
 the collection or the playlists moved since the gate. A track a My Tag (the
 landing's own `vox` and `dyn` included), a sampler slot, related tracks or any
@@ -758,8 +761,9 @@ of its session puts them back. `abort` writes nothing.
 
 Unlike rekordbox, the removal leaves the track's analysis files in the
 analysis folder and any artist or album row it was the last to name (rekordbox
-sweeps those at its next removal), and it does not renumber the tracks after
-it in a playlist or history list that keeps others.
+sweeps those at its next removal), and it does not renumber the plays after
+it in a history list that keeps others, since what rekordbox does there has
+not been measured.
 
 - **Offered**: the pass downloaded it, its file is where the pass's landing
   filed it, no other synced playlist on the account and none of your hearts

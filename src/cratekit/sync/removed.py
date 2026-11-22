@@ -267,6 +267,9 @@ class RemovedPlan:
     partial: bool = False
     #: Session records that could not be read; a record names what the pass made.
     unreadable: int = 0
+    #: The playlist memberships taking the offered rows out would renumber,
+    #: the members after a removed one in each playlist it left (R-1830).
+    renumbered: int = 0
     digest: str = ""
 
     @property
@@ -278,13 +281,14 @@ class RemovedPlan:
 
 
 def identity(plan: RemovedPlan) -> dict[str, Any]:
-    """What the digest covers: every playlist read, every answer, and the partial flag."""
+    """What the digest covers: every playlist read, every answer, the partial flag and the renumbering."""
     return {
         "kind": "sync-removed",
         "playlists": [one.identity() for one in plan.listings],
         "answers": [one.identity() for one in plan.answers],
         "partial": plan.partial,
         "unreadable": plan.unreadable,
+        "renumbered": plan.renumbered,
     }
 
 
@@ -881,11 +885,13 @@ def plan_removed(
                     unmeasured=unmeasured.get(held.content_id, {}),
                 )
             )
+    offered = [one.content_id for one in answers if one.answer == OFFERED]
     plan = RemovedPlan(
         listings=listings,
         answers=tuple(answers),
         partial=partial,
         unreadable=unreadable,
+        renumbered=len(rb_writer.CollectionRemoval.renumbering(db, offered)) if offered else 0,
     )
     return replace(plan, digest=digest_of(identity(plan)))
 
@@ -957,6 +963,8 @@ class Removed:
     deleted: Mapping[str, int]
     #: The update count the commit left, which the record carries.
     sequence: int | None
+    #: The playlist memberships renumbered behind the removed rows (R-1830).
+    renumbered: int = 0
 
 
 def _rollback_quietly(db: Any) -> None:
@@ -988,7 +996,10 @@ def apply_removed(
     WHAT IS WRITTEN IS REKORDBOX'S OWN REMOVE FROM COLLECTION (A178, A185),
     through :func:`rb_writer.remove_from_collection`: each offered content row
     and every row naming it in the six tables beside it, deleted outright, the
-    playlist and history list rows left as they are. A row any other table
+    playlist and history list rows left as they are. The members after a
+    removed one in each playlist it left are numbered down, ``TrackNo`` alone,
+    as rekordbox numbers them (A197, R-1830); a history list keeps its
+    numbers, since rekordbox's there was not measured. A row any other table
     names refuses the whole apply. Nothing else: no kept or left row, no
     playlist row, no file, never a beat grid. The analysis files rekordbox
     deletes are left, and the orphan artist and album rows are left for
@@ -1081,7 +1092,11 @@ def apply_removed(
             )
         session_id = record.session_id
     return Removed(
-        session_id=session_id, rows=offered, deleted=dict(removal.deleted), sequence=sequence
+        session_id=session_id,
+        rows=offered,
+        deleted=dict(removal.deleted),
+        sequence=sequence,
+        renumbered=len(removal.renumbered),
     )
 
 

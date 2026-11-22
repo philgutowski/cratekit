@@ -4059,7 +4059,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: THE COLLECTION ITSELF (U288): an offered content row and every
         #: membership, cue, history entry, analysis file row and mixer row
         #: naming it, deleted as rekordbox's Remove from Collection deletes
-        #: them. The account is only read, and no file is touched: the file
+        #: them, and the ``TrackNo`` of each live membership after it in a playlist
+        #: it left numbered down as rekordbox numbers it (R-1830). The account
+        #: is only read, and no file is touched: the file
         #: reaches the Trash through ``delete review`` alone.
         writes=frozenset({"db_tree", "db_metadata"}),
         destructive=True,

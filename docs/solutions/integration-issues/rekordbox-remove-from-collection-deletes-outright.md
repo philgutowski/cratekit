@@ -24,6 +24,8 @@ tags:
   - "soft-delete"
   - "usn"
   - "djmdcontent"
+  - "trackno"
+  - "r1830"
 ---
 
 # rekordbox's Remove from Collection deletes outright
@@ -117,5 +119,19 @@ landing from a rollback by a row it made, held under its recorded UUID). On its 
 album row and a genre row that no track carried any more (the album a `sync
 removed` removal left, a genre a retag had emptied), so orphan album and genre
 rows are pruned by rekordbox itself at launch.
-**Still unmeasured:** a history list holding other tracks, label rows, and
-My Tag and sampler rows.
+**Imitated since #925 (R-1830):** `rb_writer.CollectionRemoval` lowers the
+`TrackNo` of each live membership after a removed live one, in every playlist
+the removal deletes a row from, by one per removed live row below it, writing
+that one column from SQL so no `updated_at` or `rb_local_usn` moves, and the
+SQL confinement admits exactly those rows. A row marked `rb_local_deleted` is
+neither counted nor moved: this product's own membership writers leave a
+marked row at a number a live row also holds, and counting it put two live
+rows on one place (review round one). The binding's `remove_from_playlist`
+has the same numbering rule but is not reused: it commits by itself and
+stamps `updated_at` and `rb_local_usn` on every row it moves, and an ORM
+write of `TrackNo` adds `updated_at` through the binding's `onupdate`.
+**Still unmeasured:** a history list holding other tracks (left numbered as it
+was), a playlist already holding a gap or a row marked removed below the
+renumbered one (the rule is applied there unmeasured), how far
+`localUpdateCount` moves for a renumbering, label rows, and My Tag and
+sampler rows.
