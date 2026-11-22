@@ -44,98 +44,95 @@ names, which is how a Bandcamp batch of several sellers lands (U177).
 from __future__ import annotations
 
 import re
-from dataclasses import replace
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any
 
 from cratekit.cli.output import Envelope, approving_actor, digest_of
-from cratekit.core import (
-    analysis_store,
-    config,
-    drift,
-    jobs,
-    rb_writer,
-    rehearsal,
-    session,
-    snapshot,
-)
+from cratekit.core import config, rehearsal
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
-from cratekit.favorites import backfill, placement
-from cratekit.favorites import colour as colour_mod
 from cratekit.intake import (
     account_playlists,
     batch_name,
     filing,
     ingest,
-    label_filing,
+    land_native,
     landing,
     native,
     set_playlist,
-    shelve,
 )
 from cratekit.intake import cli as intake_cli
-from cratekit.write import metadata_cli
-
-#: The action every planned file carries until the apply reports on it.
-LAND = "land"
-LANDED = "landed"
-REFUSED = "refused"
-#: The one item a native landing appends for the batch playlist it wrote.
-PLAYLIST = "playlist"
-#: The item a native landing appends for each custom playlist twin it wrote (U149).
-TWIN = "twin"
-#: A planned twin the landing could not make, named with why (U149).
-TWINS_LEFT = "custom-playlist-twins-left"
-#: The item a native write appends for each favourites playlist it placed hearts in (U120).
-FAVORITES = "favorites"
-
-#: The notes a native landing carries about its hearts (U120).
-FAVORITES_PLACED = "favorites-placed"
-FAVORITES_SKIPPED = "favorites-placement-skipped"
-#: A heart's row a person coloured otherwise, left and named (U153).
-FAVORITES_COLOUR_HELD = "favorites-colour-held"
+from cratekit.intake.land_native import (  # noqa: F401 - re-exported, callers name these on land_cli
+    DATABASE_PIN,
+    LAND_ARCHIVE_FAILED,
+    _apply_landing_archive,
+    _place_owned,
+    _plan_set_archive,
+    _with_archive,
+    ask_then_write,
+)
+from cratekit.intake.land_rehearse import (  # noqa: F401 - re-exported, callers name these on land_cli
+    REHEARSAL_ARCHIVE_SKIPPED,
+    REHEARSAL_LINES_SHOWN,
+    REHEARSAL_VERB,
+    _fields_of,
+    _rehearse_native,
+    plan_identity,
+    plan_lines,
+    rehearsal_key,
+)
+from cratekit.intake.land_report import (  # noqa: F401 - re-exported, callers name these on land_cli
+    AUTO_ANALYSIS_STEP,
+    AWAITING_ANALYSIS,
+    BRIDGE_VOX_NONE,
+    BRIDGE_VOX_OWED,
+    DYN_NOT_WRITTEN,
+    FAVORITES,
+    FAVORITES_COLOUR_HELD,
+    FAVORITES_PLACED,
+    FAVORITES_SKIPPED,
+    FILED,
+    LAND,
+    LANDED,
+    PLAYLIST,
+    REFUSED,
+    TWIN,
+    TWINS_LEFT,
+    UNFILED,
+    VOX_MOSTLY_UNSCORED,
+    VOX_NOT_WRITTEN,
+    VOX_UNSCORED,
+    _folder,
+    _native_payload,
+    _native_reported,
+    _native_shown,
+    _payload,
+    _reported,
+    _shown,
+    _with_filing,
+    awaiting_analysis,
+    bridge_vox_fact,
+    collection_facts,
+    dyn_fact,
+    dyn_warnings,
+    favorites_facts,
+    favorites_notes,
+    playlist_item,
+    set_playlist_item,
+    split_facts,
+    twin_facts,
+    vox_fact,
+    vox_plan_warnings,
+    vox_warnings,
+)
 
 #: The two gates, one per medium. The xml one answers inline as it always has;
 #: the native one is explicit, because a content row in the collection is a
 #: new kind of write and R34 forbids a blanket answer for it.
 XML_GATE = "intake.land.confirm"
 NATIVE_GATE = "intake.land.native"
-#: The fact a native write's answer is pinned to outside its digest (U161):
-#: the database file the handle opened, as the screen's reads and writes line
-#: names it.
-DATABASE_PIN = "database"
-
-#: The warning a native landing carries: the rows are in the collection and
-#: rekordbox has not analysed them, which it does on request and not on sight.
-AWAITING_ANALYSIS = "rows-await-analysis"
-
-#: The warnings a native write carries about the vox My Tag (U127): a file
-#: whose score could not be read, and a landing that wrote no tag at all.
-VOX_UNSCORED = "vox-unscored"
-VOX_NOT_WRITTEN = "vox-not-written"
-#: The warning a native plan carries ON ITS GATE SCREEN when more than half the
-#: rows it adds carry no voxlevel (U181): the shape of a batch analysed while
-#: the vocal model could not load, which sitting 51 found by reading one line.
-VOX_MOSTLY_UNSCORED = "vox-mostly-unscored"
-#: The warning a native write carries when a row whose drift read as variable
-#: does not carry the dyn My Tag after the commit (U157), naming each row, so
-#: the person still runs it with Dynamic.
-DYN_NOT_WRITTEN = "dyn-not-written"
-
-#: What the bridge's gate screen says of the vox My Tag (U127), on a
-#: calibrated library; :func:`bridge_vox_fact` says the rest.
-BRIDGE_VOX_NONE = "not written, the xml bridge carries no My Tag"
-BRIDGE_VOX_OWED = (
-    f"{BRIDGE_VOX_NONE}; once rekordbox has imported the batch, run crate metadata "
-    f"mytags-vocals --apply to tag its vocal tracks"
-)
 
 _ORIGIN = ("intake.land_cli",)
-
-#: What a label playlist written, and a label row filed under none, are marked.
-FILED = "filed"
-UNFILED = "unfiled"
 
 #: The verb that proves an intake file imported. One spelling, beside the
 #: session it is persisted on, and named here for the callers that read it.
@@ -467,157 +464,6 @@ def _label_flag(
     return given.strip() if given is not None else None
 
 
-def _payload(
-    planned: landing.Plan,
-    *,
-    target: Path,
-    destination: Path,
-    export: Path,
-    manifest: landing.LabelManifest | None = None,
-    split: tuple[account_playlists.Claimed, ...] = (),
-    emptied: tuple[tuple[str, account_playlists.Left], ...] = (),
-) -> dict:
-    items = [
-        {"action": LAND, "from": str(item), "to": str(target / item.name)}
-        for item in planned.items
-    ]
-    identity = {
-        "kind": "land",
-        "folder": str(planned.folder),
-        "batch": planned.batch,
-        "target": str(target),
-        "destination": str(destination),
-        "export": str(export),
-        "files": planned.digest,
-    }
-    if manifest is not None:
-        # Only when one is given, so a landing without a manifest is compared
-        # exactly as it was before the manifest existed.
-        # The bytes and not only the path: a manifest rewritten under the same
-        # name files other tracks under other labels, and a digest of the name
-        # would call that the plan the person saw.
-        identity["manifest"] = str(manifest.path)
-        identity["manifest_bytes"] = manifest.digest
-    if split:
-        # Only when there is one, for the manifest's reason: a landing that
-        # splits nothing is compared exactly as it was before U113. Another
-        # split, or another name for one playlist, is another plan.
-        identity["playlists"] = [claimed.identity() for claimed in split]
-    if emptied:
-        # The left rows of an account playlist that holds nothing (U128).
-        identity["unplanned_left"] = [[name, row.identity()] for name, row in emptied]
-    return {
-        "digest": digest_of(identity),
-        "items": items,
-        "totals": {"count": len(items)},
-        "chunk": None,
-    }
-
-
-def _shown(
-    planned: landing.Plan,
-    *,
-    cfg: config.Config,
-    target: Path,
-    destination: Path,
-    manifest: landing.LabelManifest | None = None,
-    split: tuple[account_playlists.Claimed, ...] = (),
-    emptied: int = 0,
-) -> dict[str, Any]:
-    """What the gate screen puts in front of the person, one line per fact."""
-    shown: dict[str, Any] = {
-        "folder": str(planned.folder),
-        "lands in": str(target),
-        "playlist": planned.batch,
-        "intake file": str(destination),
-        "count": len(planned.items),
-        "files": [item.name for item in planned.items],
-        # U127: the xml bridge carries no My Tag, so the vox tag a native
-        # landing writes is a step this one leaves owed, said before the
-        # approval rather than discovered in a with vox playlist missing it.
-        "vox My Tag": bridge_vox_fact(cfg),
-    }
-    if split:
-        shown.update(
-            split_facts(
-                [(one.name, one.account_name, len(one.members), one.owned) for one in split],
-                len(account_playlists.unclaimed(planned.items, split)),
-                left=sum(len(one.left) for one in split) + emptied,
-            )
-        )
-    if manifest is not None:
-        # What the manifest ASKS for, since which rows have a file in this
-        # batch is known only once the batch folder can be indexed.
-        shown["labels filed from"] = str(manifest.path)
-        shown["label playlists named"] = [
-            f"{name} ({count} listed)" for name, count in sorted(manifest.playlists().items())
-        ]
-    return shown
-
-
-def bridge_vox_fact(cfg: config.Config) -> str:
-    """What the bridge's gate screen says of the vox My Tag (U127), by the calibration.
-
-    THE STEP OWED IS ONLY NAMED WHERE IT WOULD TAG FROM A FITTED CUT. The vocals
-    verb tags from the default cut on a library with none, which the native
-    landing refuses to do (R-276), so an uncalibrated library is told to
-    calibrate first, and an unreadable calibration is named, never refused:
-    the bridge writes no tag either way.
-    """
-    try:
-        cut = metadata_cli.load_vocal_threshold(cfg)
-    except CratekitError as exc:
-        return f"{BRIDGE_VOX_NONE}, and " + native.VOX_UNREADABLE.format(why=exc.cause.message)
-    if cut is None:
-        return f"{BRIDGE_VOX_NONE}, and {native.VOX_UNCALIBRATED}"
-    return BRIDGE_VOX_OWED
-
-
-def split_facts(
-    entries: list[tuple[str, str, int, int]], rest: int, *, left: int = 0
-) -> dict[str, Any]:
-    """The account playlists on a gate screen, each by the name it lands as (U113).
-
-    ``entries`` are each playlist's name, the account's own name for it, how
-    many tracks it holds and how many of those the library already owned
-    (U128); ``rest`` is how many files the batch playlist keeps and ``left``
-    how many rows of the account playlists no INBOX playlist holds. ONE
-    WORDING FOR BOTH MEDIA, so the same split reads the same on either screen.
-    """
-    facts: dict[str, Any] = {
-        "account playlists": [
-            f"{name} ({count} file(s)"
-            + (f", {owned} already in the library" if owned else "")
-            + ")"
-            + (f", the account's {account}" if account and name != account else "")
-            for name, account, count, owned in entries
-        ],
-        "batch playlist holds": (
-            f"{rest} file(s) no account playlist claimed"
-            if rest
-            else "nothing, so it is not written"
-        ),
-    }
-    if left:
-        facts["account playlist tracks left out"] = (
-            f"{left} no INBOX playlist will hold, each named with why after the landing"
-        )
-    return facts
-
-
-def _split_items(split: tuple[tuple[account_playlists.Claimed, int], ...]) -> list[dict[str, Any]]:
-    """One item per account playlist an intake file was given, with what it holds."""
-    return [
-        {
-            "action": PLAYLIST,
-            "playlist": claimed.name,
-            "account": claimed.playlist_id,
-            "count": count,
-        }
-        for claimed, count in split
-    ]
-
-
 def _planned(folder: Path, cfg: config.Config, batch: str) -> landing.Plan:
     """The engine's plan, or a plan of nothing for a folder with nothing in it.
 
@@ -631,57 +477,6 @@ def _planned(folder: Path, cfg: config.Config, batch: str) -> landing.Plan:
     if folder.is_dir() and not landing.listing(folder):
         return landing.Plan(folder=folder, batch=batch, items=(), digest="")
     return landing.plan(folder, cfg, batch)
-
-
-def _reported(payload: dict, landed: landing.Landed) -> dict:
-    """The plan, each item marked with what the apply actually did to it."""
-    refused = {str(entry.path): entry for entry in landed.refused}
-    items: list[dict[str, Any]] = []
-    for item in payload["items"]:
-        entry = refused.get(item["from"])
-        if entry is None:
-            items.append({**item, "action": LANDED})
-        else:
-            items.append(
-                {**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence}
-            )
-    totals = {
-        "count": payload["totals"]["count"],
-        "landed": len(landed.moved),
-        "refused": len(landed.refused),
-    }
-    items.extend(_split_items(landed.split))
-    if landed.labelled or landed.unlabelled:
-        # IN ``items`` AND ``totals``, because the plan surface is closed at
-        # four fields and a fifth is a schema break for every consumer. A label
-        # playlist written and a label row left out are both things this run
-        # did to the plan it was shown, which is what an item is.
-        items.extend(
-            {
-                "action": FILED,
-                "label": entry.label,
-                "year": entry.year,
-                "playlist": entry.playlist,
-                "count": len(entry.track_ids),
-            }
-            for entry in landed.labelled
-        )
-        items.extend(
-            {
-                "action": UNFILED,
-                "id": entry.ref,
-                "artist": entry.artist,
-                "title": entry.title,
-                "label": entry.label,
-                "year": entry.year,
-                "reason": entry.reason,
-                "why": entry.sentence,
-            }
-            for entry in landed.unlabelled
-        )
-        totals["filed"] = len(landed.labelled)
-        totals["unfiled"] = len(landed.unlabelled)
-    return {**payload, "items": items, "totals": totals}
 
 
 def _xml_split(
@@ -737,9 +532,7 @@ def intake_land(ctx) -> Envelope:
     _check_pass(pass_name)
     # READ BEFORE THE GATE, so a file that is not a manifest refuses before
     # anybody spends an answer on it, and the screen can say what it names.
-    manifest = (
-        landing.read_label_manifest(Path(ctx.args.manifest)) if ctx.args.manifest else None
-    )
+    manifest = landing.read_label_manifest(Path(ctx.args.manifest)) if ctx.args.manifest else None
     # TWO NAMES SINCE U110. The batch, its folder and its playlist, is what a
     # person reads in INBOX: the date and the source unless ``--name`` says
     # otherwise. The intake file keeps the identifier the marks read.
@@ -827,16 +620,14 @@ def intake_land(ctx) -> Envelope:
             ctx,
             cfg,
             planned,
-            declared=declared,
-            registry=registry,
+            medium=medium,
+            owned=owned,
+            rehearse=rehearse,
             manifest=manifest,
             label=label,
             label_from_tags=label_from_tags,
-            medium=medium,
             claims=claims,
             hearted=hearted,
-            owned=owned,
-            rehearse=rehearse,
         )
     if ctx.args.export is None and declared is not None:
         raise refuse(
@@ -965,522 +756,15 @@ def intake_land(ctx) -> Envelope:
 # ---------------------------------------------------------------------------
 
 
-def _filed_watch(cfg: config.Config, planned: landing.Plan) -> tuple[Path, ...]:
-    """The live folders a native landing could file its batch in, which a rehearsal watches.
-
-    The year folder the batch name or today names, where a new folder would
-    appear, and for a batch landed into again by its name the folder recorded
-    for it and that folder's own year folder, which may be another year's.
-    """
-    when, _said = shelve.filed_parts(planned.batch, on=batch_name.today())
-    watched = [shelve.processed_root(cfg) / f"{when.year}"]
-    again = batch_name.filed_folders(cfg).get(planned.batch)
-    if again is not None:
-        watched.extend((Path(again).parent, Path(again)))
-    return tuple(dict.fromkeys(watched))
-
-
-def _folder(rows: native.NativePlan) -> Path:
-    """The folder a native landing's plan chose for its files (U164)."""
-    if rows.folder is None:
-        raise refuse(
-            "internal-error",
-            "a native landing's plan carries no folder to land in, so nothing was moved",
-            remedy=Remedy.REPORT_DEFECT,
-            origin=_ORIGIN,
-        )
-    return rows.folder
-
-
-def _native_identity(
-    planned: landing.Plan, rows: native.NativePlan, *, target: Path
-) -> dict[str, Any]:
-    """What the native gate digests: the folder, batch, target, files and rows."""
-    return {
-        "kind": "land-native",
-        "folder": str(planned.folder),
-        "batch": planned.batch,
-        "target": str(target),
-        "files": planned.digest,
-        "collection": rows.digest,
-    }
-
-
-def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: Path) -> dict:
-    """The plan as the approval gate shows it: one item per file, with its row.
-
-    EVERY COLUMN THE ROW WOULD CARRY IS ON THE ITEM, and the digest is taken
-    over the files, the folder, the batch and the collection plan together, so
-    an answer given for one folder, one batch name, one library or one set of
-    rows is stale for another. The engine's own digest already covers the rows,
-    the root and the library's device and master id, and not the database's
-    path, which the screen shows (U161); the files' fingerprint covers what is
-    on disk.
-    """
-    by_target = {str(row.target): row for row in rows.rows}
-    hearts = (
-        {str(one.target): one.month for one in rows.favorites.items}
-        if rows.favorites is not None
-        else {}
-    )
-    filed = label_filing.label_of(rows.labels) if rows.labels is not None else {}
-    # U165: where adoption files each new row after the commit, by target.
-    sorted_into = {str(one.target): one for one in rows.filing or ()}
-    items = []
-    for item in planned.items:
-        row = by_target[str(target / item.name)]
-        entry: dict[str, Any] = {
-            "action": row.action,
-            "from": str(item),
-            "to": str(row.target),
-            "row": row.columns(),
-        }
-        if row.content_id is not None:
-            entry["content_id"] = row.content_id
-        if row.why:
-            entry["why"] = row.why
-        if str(row.target) in hearts:
-            entry["heart"] = hearts[str(row.target)] or "month left to the backfill"
-        if rows.labels is not None:
-            # U156: the label playlist each file is filed in, or none, which
-            # the screen's facts say why for.
-            entry["label"] = filed.get(str(row.target), "none")
-        if row.action == native.ADD and rows.vox_cut is not None and not rows.vox_blocked:
-            # U127: the score each added row was read at and whether it is tagged.
-            entry["voxlevel"] = row.voxlevel
-            entry["vox"] = row.vox
-        if row.action == native.ADD and row.drift_verdict not in ("", drift.UNSCORED):
-            # U157: the drift each added row was read at, its verdict and
-            # whether it is tagged dyn. A file with no reading is the fact
-            # line's to count, so a batch from before U157 shows as it did.
-            entry["drift"] = row.drift
-            entry["drift_verdict"] = row.drift_verdict
-            entry["dyn"] = row.dyn
-        if str(row.target) in sorted_into:
-            entry["files into"] = sorted_into[str(row.target)].shown()
-        items.append(entry)
-    identity = _native_identity(planned, rows, target=target)
-    if rows.favorites is not None and rows.favorites.skipped:
-        # THE SKIP IS AN ITEM OF THE PLAN, since the payload's keys are closed
-        # (``plan/1``) and the apply reports it back unchanged.
-        items.append(
-            {
-                "action": FAVORITES,
-                "playlist": rows.favorites.source_name,
-                "skipped": rows.favorites.skipped,
-            }
-        )
-    return {
-        "digest": digest_of(identity),
-        "items": items,
-        "totals": {"count": len(planned.items)},
-        "chunk": None,
-    }
-
-
-def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
-    """The hearts on a gate screen, one line per fact (U120)."""
-    if plan.skipped:
-        return {"hearts": f"none placed, {plan.skipped}"}
-    where = f"{plan.source_name!r} under {plan.folder_name!r}" if plan.folder_name else repr(plan.source_name)
-
-    def counted(month: str) -> str:
-        files = sum(1 for item in plan.items if item.month == month)
-        held = sum(1 for one in plan.owned if one.month == month)
-        said = f"{files} file(s)" + (f", {held} owned" if held else "")
-        return f"{month} ({said})" + (", made" if month in plan.creates else "")
-
-    hearts = f"{len(plan.items)} file(s) the account hearts"
-    if plan.owned:
-        hearts += f" and {len(plan.owned)} owned track(s)"
-    facts: dict[str, Any] = {
-        "hearts": f"{hearts}, into {where} and their month",
-        "month playlists": [counted(month) for month in plan.months],
-    }
-    if plan.owned:
-        # U146: the hearts on tracks the library already held, by title.
-        facts["owned hearts"] = [f"{one.title}, {one.month}" for one in plan.owned]
-    if plan.unknown:
-        facts["month left to the backfill"] = (
-            f"{plan.unknown} file(s) whose job froze no date, which join "
-            f"{plan.source_name!r} here and take their month from crate favorites backfill"
-        )
-    # THE COLOUR (U153): every landed heart's row and each uncoloured owned
-    # heart takes Pink, a row a person coloured is held, no Pink row is said.
-    if plan.colour_skipped:
-        facts["rows to colour Pink"] = f"none, {plan.colour_skipped}"
-    else:
-        facts["rows to colour Pink"] = len(plan.items) + len(plan.colour)
-    if plan.held:
-        facts["colour held"] = [one.said() for one in plan.held]
-    return facts
-
-
-def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
-    """What a native plan writes, one line per fact, for any verb's gate screen.
-
-    SHARED WITH ``intake file`` (R-770), which asks the same kind of question
-    over the same engine's plan: where the playlist hangs, which database is
-    written, which device the rows are stamped with, how the path is stored,
-    and what is left for rekordbox.
-    """
-    stored = (
-        f"under the base drive {rows.base_drive}, which rekordbox maps to {rows.current_drive}"
-        if rows.base_drive and rows.current_drive and rows.base_drive != rows.current_drive
-        else "under the mounted path"
-    )
-    facts = {
-        "playlist": f"{rows.playlist} under {rows.root_name} (row {rows.root_id})",
-        "reads and writes": str(rows.database),
-        "device": f"{rows.device_id} (master {rows.master_db_id})",
-        "paths stored": stored,
-        # U126: the value every added row is given, and the count that makes
-        # it the library's, so the person approves the number and its source.
-        "content link": (
-            f"{rows.link.value}, carried by {rows.link.carriers} of the library's "
-            f"{rows.link.rows} live rows"
-            if rows.link is not None
-            else "none, since no row is added"
-        ),
-        "left empty for rekordbox": list(native.LEFT_EMPTY),
-        "adds": len(rows.to_add()),
-        "already present": len(rows.present()),
-        "vox My Tag": vox_fact(rows),
-        "dyn My Tag": dyn_fact(rows),
-        # U166: the one playlist every added row joins for the rekordbox visit.
-        "analyze": (
-            (
-                f"{rows.root_name} / {native.ANALYZE}, every added row, "
-                + (
-                    f"found (row {rows.analyze_playlist_id})"
-                    if rows.analyze_playlist_id
-                    else "made"
-                )
-            )
-            if rows.to_add()
-            else "nothing, since no row is added"
-        ),
-    }
-    if rows.set_job_id:
-        facts["inbox playlist"] = rows.playlist
-        if rows.batch_playlist_id:
-            facts["inbox"] = (
-                f"adds to the playlist an earlier landing of this set made "
-                f"(row {rows.batch_playlist_id})"
-            )
-        elif rows.inbox_found_by_name:
-            facts["inbox"] = "found live by name, not recorded"
-        else:
-            facts["inbox"] = "made"
-    if rows.inbox_leftovers:
-        facts["inbox leftovers"] = (
-            "not joined automatically: "
-            + ", ".join(repr(name) for name in rows.inbox_leftovers)
-        )
-    return facts
-
-
-def vox_fact(rows: native.NativePlan) -> str:
-    """The vox My Tag a native plan writes, in one line, for any verb's gate screen (U127)."""
-    adding = rows.to_add()
-    if not adding:
-        return "none, since no row is added"
-    if rows.vox_blocked:
-        return f"none, {rows.vox_blocked}"
-    unscored = len(rows.vox_unscored())
-    return (
-        f"{len(rows.vox_tagged())} of {len(adding)} added row(s), each whose voxlevel "
-        f"is at or above the cut {rows.vox_cut:g}"
-        + (f"; {unscored} file(s) carry no score and get no tag" if unscored else "")
-    )
-
-
-def vox_plan_warnings(rows: native.NativePlan, *, folder: Path) -> list[dict[str, str]]:
-    """The gate screen's warning when most added rows carry no score, else none (U181).
-
-    One file in nineteen with no score is a file the model could not hear and
-    is said on the vox line. Most of a batch with no score is a batch analysed
-    with no model loaded, so it is a warning with its own code that a verb
-    running the landing lifts onto its own envelope, rather than a clause a
-    person has to notice at the end of a line.
-    """
-    adding = rows.to_add()
-    unscored = rows.vox_unscored()
-    if not adding or 2 * len(unscored) <= len(adding):
-        return []
-    return [
-        {
-            "code": VOX_MOSTLY_UNSCORED,
-            "message": (
-                f"{len(unscored)} of the {len(adding)} row(s) this landing adds carry "
-                f"no voxlevel, so they join with no vox My Tag; a batch this unscored "
-                f"was analysed with no vocal model loaded. Check crate doctor's "
-                f"install.extras row, score them with crate analyze vocals --unscored "
-                f"{folder}, then plan the landing again"
-            ),
-        }
-    ]
-
-
-def dyn_fact(rows: native.NativePlan) -> str:
-    """The dyn My Tag a native plan writes, in one line, for any verb's gate screen (U157)."""
-    adding = rows.to_add()
-    if not adding:
-        return "none, since no row is added"
-    variable = len(rows.drift_variable())
-    unscored = len(rows.drift_unscored())
-    said = (
-        f"{len(rows.dyn_tagged())} of {len(adding)} added row(s), each whose drift is at "
-        f"or above the cut {rows.drift_cut:g} percent"
-    )
-    if rows.dyn_blocked:
-        said = f"none of the {variable} variable row(s), {rows.dyn_blocked}"
-    if unscored:
-        said += f"; {unscored} file(s) carry no drift reading and get no tag"
-    return said
-
-
-def playlist_item(collection: native.NativeLanded) -> dict[str, Any]:
-    """The one item a native write appends for the batch playlist it wrote."""
-    return {
-        "action": PLAYLIST,
-        "playlist": collection.playlist,
-        "id": collection.playlist_id,
-        "tree": collection.tree_id,
-        "session": collection.session_id,
-    }
-
-
-def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dict[str, Any]:
-    """The facts beside the items on the gate screen, one line per fact."""
-    shown = {
-        "folder": str(folder),
-        "lands in": str(target),
-        **collection_facts(rows),
-        "left in staging": len(rows.unsupported()),
-    }
-    if rows.set_playlist is not None:
-        shown.update(set_playlist.facts(rows.set_playlist))
-    if rows.playlists:
-        claimed = {str(t) for one in rows.playlists for t in one.targets}
-        written = [row for row in rows.rows if row.action != native.UNSUPPORTED]
-        shown.update(
-            split_facts(
-                [
-                    (one.name, one.account_name, len(one.members), one.owned)
-                    for one in rows.playlists
-                ],
-                sum(1 for row in written if str(row.target) not in claimed),
-                left=sum(len(one.left) for one in rows.playlists) + len(rows.unplanned_left),
-            )
-        )
-    if rows.favorites is not None:
-        shown.update(favorites_facts(rows.favorites))
-    if rows.labels is not None:
-        shown.update(label_filing.facts(rows.labels))
-    warned = vox_plan_warnings(rows, folder=folder)
-    if warned:
-        shown["warnings"] = warned
-    if rows.twins:
-        shown["custom playlist twins"] = twin_facts(rows.twins)
-    return shown
-
-
-def twin_facts(planned) -> str:
-    """The landing's custom playlist twins (U149), one line: each made, each left and why."""
-    made = [one for one in planned if not one.why]
-    left = [one for one in planned if one.why]
-    said = [f"{one.folder.name} / {one.name}" for one in made]
-    said.extend(f"{one.account_name} gets none: {one.why}" for one in left)
-    return "; ".join(said)
-
-
-def _twin_notes(cfg: config.Config, rows, collection: native.NativeLanded) -> list[dict[str, str]]:
-    """Pair each twin the commit wrote (U149), and name each planned twin it could not make."""
-    from cratekit.sync import twins
-
-    notes = twins.pair_landed(cfg, collection.twins)
-    left = [one for one in (rows.twins if rows is not None else ()) if one.why]
-    if left:
-        notes.append(
-            {
-                "code": TWINS_LEFT,
-                "message": (
-                    f"{len(left)} account playlist(s) got no custom playlist twin: "
-                    + "; ".join(f"{one.account_name}: {one.why}" for one in left)
-                ),
-            }
-        )
-    return notes
-
-
-def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
-    """The plan, each item marked with what the apply actually did to it."""
-    refused = {str(entry.path): entry for entry in landed.refused}
-    added = {str(row.target): row for row in landed.collection.added}
-    present = {str(row.target): row for row in landed.collection.present}
-    items: list[dict[str, Any]] = []
-    for item in payload["items"]:
-        if item.get("action") == FAVORITES or item.get("area") == "account-archive":
-            # Favourites (U120) and the account archive folded into this landing
-            # (U129) are not file moves: they have no "from", so carry them through.
-            items.append(item)
-            continue
-        entry = refused.get(item["from"])
-        if entry is not None:
-            items.append(
-                {**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence}
-            )
-            continue
-        row = added.get(item["to"])
-        if row is not None:
-            items.append(
-                {
-                    **item,
-                    "action": LANDED,
-                    "content_id": row.content_id,
-                    "row": {
-                        **item["row"],
-                        "Title": row.title,
-                        "FolderPath": row.folder_path,
-                        rb_writer.FILE_ID_COLUMN: row.file_id,
-                        rb_writer.CONTENT_LINK_COLUMN: row.content_link,
-                    },
-                    "left_empty": sorted(row.empty),
-                    **({"vox": row.vox} if "vox" in item else {}),
-                    **({"dyn": row.dyn} if "dyn" in item else {}),
-                }
-            )
-            continue
-        held = present.get(item["to"])
-        items.append(
-            {
-                **item,
-                "action": LANDED,
-                "content_id": held.content_id if held is not None else item.get("content_id"),
-                "already_present": True,
-            }
-        )
-    totals = {
-        "count": payload["totals"]["count"],
-        "landed": len(landed.moved),
-        "refused": len(landed.refused),
-        "added": len(landed.collection.added),
-        "already present": len(landed.collection.present),
-        "memberships": landed.collection.memberships_added,
-    }
-    # WHAT ADOPTION READS BACK, not what the writer counted (U127): a tag
-    # written under a category rekordbox removed is no tag a person sees.
-    voxed = sum(1 for row in landed.collection.added if row.vox)
-    if voxed:
-        totals["vox tagged"] = voxed
-    # AND WHAT THE CHECK READS BACK (U157), on the same reading.
-    dyned = sum(1 for row in landed.collection.added if row.dyn)
-    if dyned:
-        totals["dyn tagged"] = dyned
-    if landed.collection.playlist_id:
-        items.append(playlist_item(landed.collection))
-    items.extend(
-        {
-            "action": PLAYLIST,
-            "playlist": written.name,
-            "id": written.playlist_id,
-            "account": written.account,
-            "count": written.tracks,
-            "tree": landed.collection.tree_id,
-            "session": landed.collection.session_id,
-        }
-        for written in landed.collection.playlists
-    )
-    items.extend(
-        {
-            "action": TWIN,
-            "playlist": f"{twin.folder} / {twin.name}",
-            "id": twin.playlist_id,
-            "account_id": twin.account_id,
-            "count": twin.tracks,
-            "session": landed.collection.session_id,
-        }
-        for twin in landed.collection.twins
-    )
-    placed = landed.collection.favorites
-    if placed is not None:
-        totals["hearts placed"] = placed.added
-        items.append(
-            {
-                "action": FAVORITES,
-                "playlist": placed.source_name,
-                "id": placed.source_id,
-                "count": placed.added_source,
-                "session": landed.collection.session_id,
-            }
-        )
-        items.extend(
-            {
-                "action": FAVORITES,
-                "playlist": name,
-                "id": row,
-                "count": count,
-                "created": name in placed.created,
-                "session": landed.collection.session_id,
-            }
-            for name, row, count in placed.months
-        )
-    kept = landed.collection.set_playlist
-    if kept is not None:
-        if kept.playlist_id:
-            items.append(set_playlist_item(kept, session_id=landed.collection.session_id))
-        totals = {
-            **totals,
-            "set playlist tracks": kept.members,
-            "set playlist left out": len(kept.left),
-        }
-    filed = landed.collection.labels
-    if filed is not None:
-        items.extend(
-            label_filing.item(one, tree=filed.tree_id, session_id=landed.collection.session_id)
-            for one in filed.years
-        )
-        totals = {
-            **totals,
-            "label playlists": len(filed.years),
-            "label memberships": filed.added(),
-            "filed under no label": len(filed.left),
-        }
-    return {**payload, "items": items, "totals": totals}
-
-
-def set_playlist_item(kept: set_playlist.Written, *, session_id: str) -> dict[str, Any]:
-    """The one item a write appends for the set's permanent playlist (U121)."""
-    return {
-        "action": PLAYLIST,
-        "playlist": kept.name,
-        "id": kept.playlist_id,
-        "folder": kept.folder_id,
-        "folder_created": kept.folder_created,
-        "playlist_created": kept.playlist_created,
-        "count": kept.members,
-        "added": kept.added,
-        "left": [one.identity() for one in kept.left],
-        "session": session_id,
-    }
-
-
 def _land_native(
     ctx,
     cfg: config.Config,
     planned: landing.Plan,
     *,
-    declared,
-    registry,
-    manifest: landing.LabelManifest | None,
-    label: str | None = None,
-    label_from_tags: bool = False,
     medium: ingest.IntakeMedium,
-    claims: tuple[account_playlists.Claim, ...] = (),
-    hearted: tuple[account_playlists.Hearted, ...] = (),
     owned: tuple[account_playlists.HeartRow, ...] = (),
     rehearse: bool = False,
+    **asked,
 ) -> Envelope:
     """Plan the rows against the database, ask, then move, write and file.
 
@@ -1505,22 +789,9 @@ def _land_native(
     same commit, so the batch and its label playlists land together or not at
     all.
     """
+    declared = medium.declared
     tree_id = declared.intake.id
-    # WHY THE LANDING FILES NOTHING AFTER IT, empty when it files (U165): asked,
-    # or a routing tree still on the bridge, where no database writer may write
-    # its membership and a filing could only end refused.
-    unfiled = (
-        "asked with --land-only"
-        if getattr(ctx.args, "land_only", False)
-        else (
-            ""
-            if medium.files_natively
-            else (
-                f"the tree {declared.tree.id!r} is on the xml bridge; cut it over with "
-                f"crate tree cutover {declared.tree.id}"
-            )
-        )
-    )
+    unfiled = land_native.unfiled_reason(ctx, medium)
     if ctx.args.export is not None:
         raise refuse(
             "intake-list-unusable",
@@ -1558,20 +829,7 @@ def _land_native(
     # without a snapshot copy of anything. Once here, and again by the engine
     # before its first move, as the xml landing's preflight is.
     landing.preflight_native(planned, cfg=cfg)
-    # THE SET AND ITS NAME BEFORE THE GATE (U121): a job that is not a finished
-    # set, and a name the page and the flags cannot complete, refuse with the
-    # files still in staging and nothing shown.
-    set_job: jobs.Job | None = None
-    words: set_playlist.SetWords | None = None
-    reports: tuple[dict[str, Any], ...] = ()
-    if ctx.args.set_job:
-        with jobs.open_store() as store:
-            set_job = set_playlist.set_job_or_refuse(store, str(ctx.args.set_job))
-            words = set_playlist.words_for(
-                set_job, dj=ctx.args.dj, set_name=ctx.args.set_name, set_date=ctx.args.set_date
-            )
-            reports = set_playlist.reports_of(store, set_job)
-
+    set_job, words, reports = land_native.read_set(ctx)
     set_planned: list[set_playlist.SetPlaylistPlan] = []
     # U129. The account playlist's archive rides on this landing's gate when the
     # set already has one recorded under the frozen INSPIRATION name.
@@ -1581,128 +839,17 @@ def _land_native(
         words=words,
         pass_name=ctx.args.pass_name or planned.batch,
     )
-
-    def planner(cfg: config.Config, planned: landing.Plan) -> Callable[[Any], native.NativePlan]:
-        # ONE PLANNER, TWO PLACES (U162): the live landing plans its own staging
-        # folder and music folder, and a rehearsal plans the same files again at
-        # its scratch area, through this same code, to apply them there.
-
-        def set_plan(db, files) -> set_playlist.SetPlaylistPlan | None:
-            if set_job is None or words is None:
-                return None
-            made = set_playlist.plan_for_landing(
-                cfg,
-                db,
-                declared,
-                set_job,
-                words,
-                reports,
-                files=files,
-                posted=getattr(ctx.args, "posted", None),
-            )
-            set_planned.append(made)
-            return made
-
-        def label_plan(db, files) -> label_filing.LabelPlan | None:
-            # A MANIFEST WITH NO LABEL ROW FILES NOTHING, and asks nothing of the
-            # catalogue tree, as the bridge's own check returns early on it.
-            if manifest is not None and manifest.rows:
-                return label_filing.plan_for_manifest(
-                    cfg, db, medium, manifest=manifest, files=files
-                )
-            if label is not None:
-                return label_filing.plan_for_label(db, medium, label=label, files=files)
-            if label_from_tags:
-                return label_filing.plan_for_tags(db, medium, files=files)
-            return None
-
-        def plan(db) -> native.NativePlan:
-            # THE FILED FOLDER, CHOSEN ON THIS HANDLE (U164): the batch lands
-            # where a shelve would have filed it, so every row carries its
-            # final FolderPath from the first commit and no shelve follows.
-            target = shelve.landing_target(cfg, db, planned.batch, on=batch_name.today())
-            files = [(item, target / item.name) for item in planned.items]
-            # THE INBOX PLAYLIST FOR A SET (U135): named for the set, and an earlier
-            # landing of the same job's playlist is added to under its first name.
-            # The batch folder stays the dated (or --name) landing name so two
-            # landings never share a folder; only the playlist joins.
-            inbox_name = planned.batch
-            batch_playlist_id = ""
-            set_job_id = ""
-            leftovers: tuple[str, ...] = ()
-            inbox_found_by_name = False
-            if set_job is not None and words is not None:
-                set_job_id = set_job.job_id
-                root_id = native.anchored_intake_root(db, tree_id, registry)
-                recorded = native.recorded_inbox_playlist(cfg, db, set_job_id, root_id)
-                if recorded is not None:
-                    batch_playlist_id, inbox_name = recorded
-                else:
-                    inbox_name = set_playlist.frozen_name(set_job) or set_playlist.playlist_name(
-                        words
-                    )
-                    inbox_found_by_name = native.live_inbox_named(db, inbox_name, root_id)
-                leftovers = native.leftover_set_inbox(
-                    cfg, db, set_job_id, root_id, inbox_name, keep_id=batch_playlist_id
-                )
-            split, emptied = _native_split(
-                db,
-                cfg,
-                claims,
-                tree_id=tree_id,
-                registry=registry,
-                batch=inbox_name,
-                target=target,
-            )
-            # EACH ACCOUNT PLAYLIST'S TWIN (U149), planned on this handle for
-            # the ones not paired yet, into the landing year's twin folder.
-            from cratekit.modules.outbound import pairs
-            from cratekit.sync import twins
-
-            landing_twins = twins.plan_landing(
-                db,
-                [(one.account, one.account_name or one.name) for one in split],
-                year=batch_name.today().year,
-                paired=pairs.PairStore(cfg).all(),
-            )
-            made = native.plan_rows(
-                cfg,
-                db,
-                tree_id=tree_id,
-                registry=registry,
-                batch=inbox_name,
-                files=files,
-                split=split,
-                unplanned_left=emptied,
-                pass_name=ctx.args.pass_name,
-                hearts=tuple(
-                    native.HeartItem(target=target / one.path.name, month=one.month, ref=one.ref)
-                    for one in hearted
-                ),
-                favorites_source=placement.source_name(declared),
-                owned_hearts=tuple(
-                    native.OwnedHeartItem(
-                        content_id=one.content_id, month=one.month, ref=one.ref, title=one.title
-                    )
-                    for one in backfill.owned_in_library(cfg, db, owned)
-                ),
-                set_plan=set_plan(db, files),
-                batch_playlist_id=batch_playlist_id,
-                set_job_id=set_job_id,
-                inbox_leftovers=leftovers,
-                inbox_found_by_name=inbox_found_by_name,
-                labels=label_plan(db, files),
-                twins=landing_twins,
-            )
-            made = replace(made, folder=target, batch=planned.batch)
-            # WHERE EACH NEW ROW WILL BE FILED, BEFORE IT EXISTS (U165), shown
-            # and digested, so the one answer covers the filing after the commit.
-            if unfiled:
-                return made
-            return native.with_filing(made, filing.predict(declared, made.to_add()))
-
-        return plan
-
+    planner = land_native.native_planner(
+        ctx,
+        medium,
+        owned=owned,
+        unfiled=unfiled,
+        set_job=set_job,
+        words=words,
+        reports=reports,
+        set_planned=set_planned,
+        **asked,
+    )
     archive_notes: list[dict[str, str]] = []
     applied: list[native.NativePlan] = []
 
@@ -1769,31 +916,9 @@ def _land_native(
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
     native.assert_rows_gridless(landed.collection)
     native.assert_rows_identified(landed.collection)
-    warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
-    warnings.extend(account_playlists.left_warning(landed.collection.left))
-    warnings.extend(_twin_notes(cfg, applied[-1] if applied else None, landed.collection))
-    warnings.extend(awaiting_analysis(landed.collection))
-    warnings.extend(vox_warnings(landed.collection))
-    warnings.extend(dyn_warnings(landed.collection))
-    warnings.extend(favorites_notes(payload, landed.collection))
-    warnings.extend(archive_notes)
-    if set_planned:
-        # ONCE PER RUN, from the first plan: the write takes the plan again.
-        warnings.extend(set_playlist.ignored_note(set_planned[0]))
-    kept = landed.collection.set_playlist
-    if kept is not None and kept.playlist_id:
-        set_playlist.assert_read_back(kept)
-        warnings.extend(set_playlist.written_note(kept))
-        warnings.extend(set_playlist.left_warning(kept.left))
-    elif kept is not None and set_planned:
-        # NOTHING WRITTEN, and the left rows are the write's own answer: the
-        # members whose files did not land as well as the plan's left rows.
-        warnings.extend(set_playlist.nothing_note(set_planned[0], left=len(kept.left)))
-        warnings.extend(set_playlist.left_warning(kept.left))
-    filed = landed.collection.labels
-    if filed is not None:
-        label_filing.assert_read_back(filed)
-        warnings.extend(label_filing.unfiled_warning(filed.left))
+    warnings = land_native.landed_warnings(
+        cfg, payload, landed, applied=applied, archive_notes=archive_notes, set_planned=set_planned
+    )
     reported = _native_reported(payload, landed)
     predicted = applied[-1].filing if applied else None
     if predicted is not None:
@@ -1809,65 +934,6 @@ def _land_native(
         warnings.extend(filing.warnings(sorted_in))
         reported = _with_filing(reported, sorted_in)
     return ctx.envelope(data=reported, warnings=warnings)
-
-
-def _with_filing(reported: dict, filed: filing.Filed) -> dict:
-    """The landed payload with what the filing after it did, in its totals (U165)."""
-    totals = {**reported["totals"], "filing": filed.state}
-    if filed.state == filing.FILED:
-        totals = {
-            **totals,
-            "filed": filed.filed,
-            "filing memberships": filed.memberships,
-            "placed nowhere": len(filed.nowhere),
-        }
-    # EACH ITEM ALREADY SAYS WHERE IT FILES, or why nowhere, in its
-    # ``files into``; the payload's keys are closed (``plan/1``).
-    return {**reported, "totals": totals}
-
-
-#: The verb a rehearsal record names, so a live landing reads only its own (U162).
-REHEARSAL_VERB = "intake land"
-
-#: The warning a set landing's rehearsal carries: its account archive was not rehearsed.
-REHEARSAL_ARCHIVE_SKIPPED = "intake-rehearsal-archive-skipped"
-
-#: At most this many differing lines on a live gate screen; the rest are counted.
-REHEARSAL_LINES_SHOWN = 40
-
-
-def rehearsal_key(planned: landing.Plan) -> dict[str, str]:
-    """What a live landing and its rehearsal share: the staging folder and the batch."""
-    return {"folder": str(planned.folder.resolve()), "batch": planned.batch}
-
-
-def plan_lines(
-    planned: landing.Plan, rows: native.NativePlan, *, target: Path, archived=None
-) -> list[str]:
-    """The native plan as ``path = value`` lines: the gate's identity and the engine's."""
-    return rehearsal.lines(plan_identity(planned, rows, target=target, archived=archived))
-
-
-def plan_identity(
-    planned: landing.Plan, rows: native.NativePlan, *, target: Path, archived=None
-) -> dict[str, Any]:
-    """What :func:`plan_lines` prints, as values, so a rehearsal maps them before they are text.
-
-    MAPPED AS VALUES, NEVER AS LINES (U188). Each line is a JSON value, which
-    escapes every character outside ASCII and every quote, so a path with an
-    accent in it is spelled in a line as no pair of real paths is, and a
-    rehearsal of a batch named with one refused on every path it held.
-    """
-    # NOT THE ENGINE'S OWN DIGEST, which is a hash of the plan lines below and
-    # so names every path in a form no mapping back can reach.
-    gate = {
-        key: value
-        for key, value in _native_identity(planned, rows, target=target).items()
-        if key != "collection"
-    }
-    if archived is not None:
-        gate = {**gate, "archive": archived.payload["digest"]}
-    return {"gate": gate, "plan": native.identity(rows)}
 
 
 def rehearsal_facts(planned: landing.Plan, *, digest: str, plan: list[str]) -> dict[str, Any]:
@@ -1896,806 +962,3 @@ def rehearsal_facts(planned: landing.Plan, *, digest: str, plan: list[str]) -> d
             shown.append(f"and {len(lines) - len(shown)} more line(s)")
         facts["differs from the rehearsal"] = shown
     return facts
-
-
-def _active_rows(db) -> int:
-    from sqlalchemy import text
-
-    return int(
-        db.session.execute(
-            text("SELECT COUNT(*) FROM djmdContent WHERE rb_local_deleted = 0")
-        ).scalar()
-    )
-
-
-def _rehearse_native(
-    ctx,
-    cfg: config.Config,
-    planned: landing.Plan,
-    *,
-    planner: Callable[..., Callable[[Any], native.NativePlan]],
-    payload_of: Callable[[native.NativePlan], dict],
-    archived,
-    declared,
-) -> Envelope:
-    """Rehearse the landing on a scratch area of this run's own, then remove it (U162).
-
-    THE LIVE PLAN IS MADE FIRST, over the live staging folder and music folder
-    and against the database copy, so its digest is the one the live landing
-    will show; it is what the rehearsal reports and records. THEN THE SAME
-    FILES ARE PLANNED AGAIN AT THE AREA, over their clones and the area's music
-    folder, and applied there. The area's plan with every scratch path mapped
-    back to its live one must read line for line as the live plan, or nothing
-    is applied and the lines that differ are named: what the rehearsal applied
-    is the plan the live run will be asked, not a plan like it.
-
-    NOTHING LIVE IS WRITTEN OR MOVED. The live database file set is hashed and
-    the live staging and music folders listed before and after, and a change
-    is refused as the defect it would be. The account archive of a set
-    landing is account side and is never rehearsed; the report says so.
-
-    A FAILURE KEEPS THE AREA AND NAMES IT, so whoever reads the refusal can
-    look at what the rehearsal saw. A rehearsal that ends removes it.
-    """
-    before = rehearsal.witness(
-        cfg,
-        (
-            planned.folder,
-            Path(cfg.library.root) / cfg.library.music_dir,
-            *_filed_watch(cfg, planned),
-        ),
-    )
-    area = rehearsal.open_area(cfg, ctx.run.run_id, files=planned.items, staging=planned.folder)
-    try:
-        facts, payload, lines = _rehearse_in(
-            cfg,
-            planned,
-            area=area,
-            planner=planner,
-            payload_of=payload_of,
-            archived=archived,
-            declared=declared,
-        )
-    except CratekitError as exc:
-        rehearsal.assert_untouched(before, kept=area.paths)
-        inner = exc.cause
-        raise refuse(
-            inner.reason,
-            f"{inner.message}; the rehearsal area is kept at "
-            f"{', '.join(str(path) for path in area.paths)}",
-            remedy=inner.remediation.remedy,
-            steps=inner.remediation.steps,
-            origin=_ORIGIN,
-            detail={**dict(inner.detail), "rehearsal_area": [str(path) for path in area.paths]},
-            inner=inner,
-        ) from exc
-    except KeyboardInterrupt as exc:
-        rehearsal.assert_untouched(before, kept=area.paths)
-        raise refuse(
-            "cancelled",
-            f"the rehearsal was interrupted; the rehearsal area is kept at "
-            f"{', '.join(str(path) for path in area.paths)}",
-            origin=_ORIGIN,
-            detail={"rehearsal_area": [str(path) for path in area.paths]},
-        ) from exc
-    except Exception as exc:
-        rehearsal.assert_untouched(before, kept=area.paths)
-        raise refuse(
-            "internal-error",
-            f"the rehearsal failed ({exc}); the rehearsal area is kept at "
-            f"{', '.join(str(path) for path in area.paths)}",
-            origin=_ORIGIN,
-            detail={"rehearsal_area": [str(path) for path in area.paths]},
-        ) from exc
-    rehearsal.assert_untouched(before, kept=area.paths)
-    rehearsal.remove(area)
-    facts["area removed"] = True
-    recorded = rehearsal.record(
-        ctx.run.run_id,
-        verb=REHEARSAL_VERB,
-        key=rehearsal_key(planned),
-        digest=payload["digest"],
-        plan=lines,
-        facts=facts,
-    )
-    facts["record"] = str(recorded)
-    data = {**payload, "totals": {**payload["totals"], "rehearsal": facts}}
-    warnings = []
-    if archived is not None:
-        warnings.append(
-            {
-                "code": REHEARSAL_ARCHIVE_SKIPPED,
-                "message": "the account archive this set landing would rename was planned "
-                "and digested and not rehearsed, since it is a write to the account",
-            }
-        )
-    return ctx.envelope(data=data, warnings=warnings)
-
-
-def _rehearse_in(
-    cfg: config.Config,
-    planned: landing.Plan,
-    *,
-    area: rehearsal.Area,
-    planner,
-    payload_of,
-    archived,
-    declared,
-) -> tuple[dict[str, Any], dict, list[str]]:
-    """Plan live, plan at the area, compare, apply at the area, read back. Answers the facts."""
-    db = rb_writer.open_db(area.database, require_closed=True, cfg=area.cfg)
-    try:
-        rows = planner(cfg, planned)(db)
-        target = _folder(rows)
-        payload = payload_of(rows)
-        lines = plan_lines(planned, rows, target=target, archived=archived)
-        # THE AREA'S PLAN IS MADE OUTSIDE THE REDIRECTION, reading the same
-        # installation state the live plan read (a pass's jobs, a set's job),
-        # so the only difference between the two plans is where the files are.
-        staged = landing.plan(area.staging, area.cfg, planned.batch)
-        scratch_rows = planner(area.cfg, staged)(db)
-        scratch_target = _folder(scratch_rows)
-        pairs = _mapped_back(
-            area,
-            planned,
-            target=target,
-            scratch_target=scratch_target,
-            rows=rows,
-            scratch_rows=scratch_rows,
-        )
-        back = rehearsal.lines(
-            rehearsal.mapped(
-                plan_identity(staged, scratch_rows, target=scratch_target, archived=archived),
-                pairs,
-            )
-        )
-        differ = rehearsal.differing(back, lines)
-        if differ:
-            raise refuse(
-                "decision-stale",
-                f"the plan made at the rehearsal area is not the live plan in "
-                f"{len(differ)} line(s), in {', '.join(_fields_of(differ))}, so nothing "
-                f"was applied there; the area's paths were compared after mapping "
-                + ", ".join(f"{scratch} to {live}" for scratch, live in pairs)
-                + "; a line only the area's plan has is marked -, one only the live plan has +: "
-                + "; ".join(differ[:REHEARSAL_LINES_SHOWN]),
-                origin=_ORIGIN,
-                detail={"differs": differ, "mapped": [list(pair) for pair in pairs]},
-            )
-        # A NAME THE LIVE BATCH FOLDER ALREADY HOLDS IS HELD AT THE AREA TOO,
-        # by an empty file of that name, so the area's move refuses the same
-        # files the live move will and the facts say so. Occupancy is asked at
-        # the move and not in the plan, so the plans alone cannot see it.
-        for item in staged.items:
-            if (target / item.name).exists() or (target / item.name).is_symlink():
-                scratch_target.mkdir(parents=True, exist_ok=True)
-                (scratch_target / item.name).touch()
-        with rehearsal.redirected(area):
-            session.assert_backup_acknowledged(area.cfg)
-            rows_before = _active_rows(db)
-            with landing.batch_lock(planned.batch):
-                landed = landing.apply_native(
-                    staged, cfg=area.cfg, db=db, rows=scratch_rows, declared=declared
-                )
-            native.assert_rows_gridless(landed.collection)
-            native.assert_rows_identified(landed.collection)
-            rows_after = _active_rows(db)
-    finally:
-        rb_writer.close_db(db)
-    # The check reads a throwaway copy on the temporary volume, so that room is
-    # measured first and a copy that still finds none is named as that, never
-    # as a database that failed its check (R-1677).
-    snapshot.assert_room_for_check(area.database)
-    try:
-        sound = rb_writer.integrity_ok(area.database, raise_copy_failure=True)
-    except rb_writer.IntegrityCheckCopyFailed as failed:
-        no_room = snapshot.check_had_no_room(failed, origin=_ORIGIN)
-        if no_room is not None:
-            raise no_room from failed
-        sound = False
-    if not sound:
-        raise refuse(
-            "snapshot-integrity-failed",
-            f"the database copy {area.database} fails SQLite's integrity check after "
-            f"the rehearsal's landing",
-            origin=_ORIGIN,
-            detail={"database": str(area.database)},
-        )
-    facts: dict[str, Any] = {
-        "run": area.run_id,
-        "landed": len(landed.moved),
-        "refused": len(landed.refused),
-        "added": len(landed.collection.added),
-        "already present": len(landed.collection.present),
-        "memberships": landed.collection.memberships_added,
-        "active rows before": rows_before,
-        "active rows after": rows_after,
-        "landed rows gridless": True,
-        "integrity": "ok",
-    }
-    return facts, payload, lines
-
-
-def _mapped_back(
-    area: rehearsal.Area,
-    planned: landing.Plan,
-    *,
-    target: Path,
-    scratch_target: Path,
-    rows: native.NativePlan,
-    scratch_rows: native.NativePlan,
-) -> tuple[tuple[str, str], ...]:
-    """Each scratch spelling in the area's plan and the live spelling it stands for.
-
-    The area's staging and its batch folder in the MOUNTED spelling, the one
-    every ``from`` and ``to`` is written in, and the batch folder again in the
-    STORED spelling rekordbox keeps ``FolderPath`` under (U188). On a library
-    whose base drive is not its mount, the live one, a row's path is stored
-    under the base drive, so neither mounted pair occurs in it and every row
-    differed by the area's prefix alone. The stored pair is spelled by the
-    writer's own :func:`native.stored_folder_path`, with the drives each plan
-    read off its database, so the comparison can never use a spelling rule
-    the rows were not written by. A library whose drive never moved stores the
-    mounted spelling, and the stored pair is the mounted one, dropped as a
-    repeat.
-    """
-    stored = (
-        native.stored_folder_path(
-            scratch_target,
-            base_drive=scratch_rows.base_drive,
-            current_drive=scratch_rows.current_drive,
-        ),
-        native.stored_folder_path(
-            target, base_drive=rows.base_drive, current_drive=rows.current_drive
-        ),
-    )
-    return tuple(
-        dict.fromkeys(
-            (
-                (str(area.staging), str(planned.folder)),
-                (str(scratch_target), str(target)),
-                stored,
-            )
-        )
-    )
-
-
-def _fields_of(differ: list[str]) -> list[str]:
-    """The fields the differing lines are in, each once, ``rows.columns.FolderPath`` for a row's path.
-
-    The line's path with every index taken out and its first part, ``gate``
-    or ``plan``, left off, so a field is named as the identity spells it and
-    a leaf that is one entry of a list is named by the list it is in.
-    """
-    names = []
-    for line in differ:
-        path = re.sub(r"\[\d+\]", "", line[2:].split(" = ", 1)[0])
-        names.append(path.split(".", 1)[-1])
-    return list(dict.fromkeys(names))
-
-
-def _place_owned(
-    ctx,
-    cfg: config.Config,
-    spec,
-    *,
-    declared,
-    owned: tuple[account_playlists.HeartRow, ...],
-    empty: dict,
-) -> Envelope:
-    """The pass's owned hearts All Favorites lacks, placed when no file was downloaded (U146).
-
-    THE LANDING'S GATE AND THE BACKFILL'S WRITER. Asked first of a handle
-    opened to read, so a pass whose owned hearts are all placed, which is
-    nearly every pass, opens nothing to write and asks nothing, and ends
-    NO_OP exactly as an empty landing did. When some heart is missing, the
-    order is :func:`ask_then_write`'s: the database opened with write intent,
-    the plan taken again on it, the acknowledgment, the gate, and the guarded
-    session of :func:`backfill.apply`, which takes the plan once more and
-    refuses a digest that moved, then reads every membership back.
-
-    A LIBRARY WITH NO ALL FAVORITES, OR TWO, IS NOT A REFUSAL, as a landing
-    with files skips its placement: there is nothing else to land, so the
-    pass ends NO_OP and says why.
-    """
-    source = placement.source_name(declared)
-    db = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
-    )
-    try:
-        first = backfill.plan_owned(cfg, db, source=source, rows=owned)
-    except CratekitError as exc:
-        if exc.cause.reason != placement.SOURCE_MISSING:
-            raise
-        return ctx.envelope(
-            data=empty,
-            outcome=Outcome.NO_OP,
-            warnings=[
-                {
-                    "code": FAVORITES_SKIPPED,
-                    "message": (
-                        f"nothing to land and no owned heart was placed: "
-                        f"{exc.cause.message}; run crate favorites backfill once the "
-                        f"playlist exists"
-                    ),
-                }
-            ],
-        )
-    finally:
-        rb_writer.close_db(db)
-    if not first.writes:
-        return ctx.envelope(data=empty, outcome=Outcome.NO_OP)
-
-    def written(db, approved: backfill.BackfillPlan) -> backfill.Backfilled:
-        return backfill.apply(
-            cfg, db, approved, source=source, analysis_roots=analysis_store.watch_roots(cfg)
-        )
-
-    payload, done = ask_then_write(
-        ctx,
-        cfg,
-        spec,
-        plan=lambda db: backfill.plan_owned(cfg, db, source=source, rows=owned),
-        payload=lambda planned: backfill.payload(planned, cfg),
-        shown=backfill.landing_facts,
-        write=written,
-    )
-    if done is None:
-        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
-    backfill.assert_read_back(done)
-    placed = done.placed
-    totals = {**payload["totals"], "hearts placed": placed.added}
-    warnings = [
-        {
-            "code": FAVORITES_PLACED,
-            "message": (
-                f"{placed.said()}, for {len(payload['items'])} owned heart(s); no file "
-                f"was landed; undo with a restore of session {done.session_id}"
-            ),
-        }
-    ]
-    # THE COLOUR'S NOTES (U153), the same two a landing with files carries.
-    if placed.colour_skipped:
-        warnings.append(
-            {
-                "code": colour_mod.PINK_COLOUR_MISSING,
-                "message": (
-                    f"no row is coloured: {placed.colour_skipped}; the hearts are placed "
-                    f"all the same, and crate favorites backfill colours them once the "
-                    f"library carries Pink again"
-                ),
-            }
-        )
-    if placed.held:
-        warnings.append(
-            {
-                "code": FAVORITES_COLOUR_HELD,
-                "message": (
-                    f"{len(placed.held)} row(s) carry a colour a person chose and keep it: "
-                    + "; ".join(one.said() for one in placed.held)
-                ),
-            }
-        )
-    return ctx.envelope(data={**payload, "totals": totals}, warnings=warnings)
-
-
-def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict[str, str]]:
-    """What a person reads about the hearts a landing placed, or did not (U120).
-
-    ON THE WARNINGS CHANNEL, for R-424's reason: the default renderer prints
-    a verb's outcome, its warnings and its run id, so a fact only the json
-    block states is a fact a person never reads. A skipped placement is said
-    with the home's own words; a placement is said with its counts.
-    """
-    skipped = next(
-        (
-            str(item.get("skipped") or "")
-            for item in payload.get("items", ())
-            if item.get("action") == FAVORITES and item.get("skipped")
-        ),
-        "",
-    )
-    if skipped:
-        return [
-            {
-                "code": FAVORITES_SKIPPED,
-                "message": (
-                    f"the batch landed and no heart was placed: {skipped}; run crate "
-                    f"favorites backfill once the playlist exists"
-                ),
-            }
-        ]
-    placed = collection.favorites
-    if placed is None:
-        return []
-    notes = [{"code": FAVORITES_PLACED, "message": placed.said()}]
-    # THE COLOUR'S OWN NOTES (U153), from what the write knew, so the apply
-    # reports the held rows and the missing Pink row the gate screen showed.
-    if placed.colour_skipped:
-        notes.append(
-            {
-                "code": colour_mod.PINK_COLOUR_MISSING,
-                "message": (
-                    f"no row is coloured: {placed.colour_skipped}; the hearts are "
-                    f"placed all the same, and crate favorites backfill colours them "
-                    f"once the library carries Pink again"
-                ),
-            }
-        )
-    if placed.held:
-        notes.append(
-            {
-                "code": FAVORITES_COLOUR_HELD,
-                "message": (
-                    f"{len(placed.held)} row(s) carry a colour a person chose and keep it: "
-                    + "; ".join(one.said() for one in placed.held)
-                ),
-            }
-        )
-    return notes
-
-
-def _native_split(
-    db,
-    cfg: config.Config,
-    claims: tuple[account_playlists.Claim, ...],
-    *,
-    tree_id: str,
-    registry,
-    batch: str,
-    target: Path,
-) -> tuple[tuple[native.PlaylistPlan, ...], tuple[tuple[str, account_playlists.Left], ...]]:
-    """Each account playlist named against what the database's INBOX holds, on the write handle.
-
-    AND EACH OWNED TRACK'S ROW FOUND BY PATH ON THE SAME HANDLE (U128), at plan
-    time, so the screen and the digest name the rows the apply adds and the
-    apply finds nothing again. Asked of the candidate rows whose stored path
-    ends in the file's name, the native landing's own lookup, rather than of
-    the whole collection. Answers the playlists and the left rows of the ones
-    left holding nothing.
-    """
-    if not claims:
-        return (), ()
-    held = native.inbox_held(db, native.anchored_intake_root(db, tree_id, registry))
-    named = account_playlists.named(claims, held, batch=batch)
-    names = {Path(path).name for one in named for member in one.members for path in member.paths}
-    resolved, emptied = account_playlists.resolve_owned(
-        cfg, named, native.candidate_rows(db, names)
-    )
-    return (
-        tuple(
-            native.PlaylistPlan(
-                name=claimed.name,
-                account=claimed.playlist_id,
-                members=tuple(
-                    native.PlaylistMember(target=target / member.file.name, member=member)
-                    if member.file is not None
-                    else native.PlaylistMember(content_id=member.row, member=member)
-                    for member in claimed.members
-                ),
-                account_name=claimed.account_name,
-                left=claimed.left,
-            )
-            for claimed in resolved
-        ),
-        emptied,
-    )
-
-
-
-
-#: Why a set landing's account archive did not finish after the rows wrote (U129).
-LAND_ARCHIVE_FAILED = "intake-land-archive-failed"
-
-
-def _apply_landing_archive(cfg, archived) -> list[dict[str, str]]:
-    """Apply the account archive after the landing wrote. Failures are warnings.
-
-    The landing's rows are already in the library. An account call that raises,
-    or an apply that leaves the playlist unrenamed, must not turn the landing
-    into a failure: both ride the warnings channel on the landed envelope.
-    """
-    if archived is None or not archived.writes:
-        return []
-    from cratekit.export import set_cli
-
-    try:
-        _data, warnings, _wrote = set_cli.apply_archive(cfg, archived)
-    except Exception as exc:
-        message = (
-            exc.cause.message if isinstance(exc, CratekitError) else f"{type(exc).__name__}: {exc}"
-        )
-        return [
-            {
-                "code": LAND_ARCHIVE_FAILED,
-                "message": (
-                    f"the account archive could not finish after the landing wrote "
-                    f"({message}); the batch is in the library, run crate export "
-                    f"archive over the set once the account can be reached"
-                ),
-            }
-        ]
-    return list(warnings)
-
-
-def _plan_set_archive(cfg, *, set_job, words, pass_name: str):
-    """The account archive for this set landing, or None when there is none to file (U129)."""
-    if set_job is None:
-        return None
-    from cratekit.export import set_cli
-    from cratekit.modules.outbound import ledger
-
-    name = set_playlist.frozen_name(set_job)
-    if not name and words is not None:
-        name = set_cli.set_name(set_playlist.playlist_name(words))
-    if not name or ledger.set_playlist(cfg, name) is None:
-        return None
-    try:
-        return set_cli.plan_archive_named(cfg, name, pass_name=pass_name)
-    except CratekitError:
-        # Soft: the landing still lands; archive can run later via export archive.
-        return None
-
-
-def _with_archive(payload: dict, archived) -> dict:
-    """Fold the archive plan into the landing's digest and items so one approval covers both."""
-    if archived is None:
-        return payload
-    identity = {
-        "land": payload["digest"],
-        "archive": archived.payload["digest"],
-    }
-    items = list(payload.get("items") or [])
-    for item in archived.payload.get("items") or []:
-        items.append({**item, "area": "account-archive"})
-    totals = dict(payload.get("totals") or {})
-    totals["archive_writes"] = bool(archived.writes)
-    return {
-        **payload,
-        "digest": digest_of(identity),
-        "items": items,
-        "totals": totals,
-    }
-
-
-
-#: What a native write plans: a landing's rows, or the owned hearts alone (U146).
-_Planned = TypeVar("_Planned")
-
-
-def ask_then_write(
-    ctx,
-    cfg: config.Config,
-    spec,
-    *,
-    plan: Callable[[Any], _Planned],
-    payload: Callable[[_Planned], dict],
-    shown: Callable[[_Planned], dict[str, Any]],
-    write: Callable[[Any, _Planned], Any],
-) -> tuple[dict, Any | None]:
-    """The order every native intake write keeps, held once. Answers (payload, written).
-
-    SHARED BY THE LANDING AND ``intake file`` (R-770), and by the landing's
-    owned hearts when no file came (U146), because the order is the contract
-    and two hand kept copies of it would come to differ:
-
-    * THE DATABASE IS OPENED WITH WRITE INTENT BEFORE THE PLAN, so a running
-      rekordbox or its agent refuses before anything is shown, and the plan is
-      made against the database the write will be made to;
-    * THE ACKNOWLEDGMENT IS READ BEFORE THE GATE (R-733): an approval is the
-      one way door on a live library, and a person who reads the whole plan
-      and answers should not then be refused by something the verb could have
-      read first;
-    * the gate is asked over the digested plan, and only ``apply`` writes;
-    * the handle is closed whatever happened.
-
-    * THE ANSWER IS PINNED TO THE FILE THE HANDLE OPENED (U161). The digest
-      names the library and not the file, so a copy rehearsal digests as the
-      live plan; the file is pinned on the run beside it, and a continuation
-      that opens another file is refused stale rather than writing there.
-
-    ``written`` is None when the answer was not ``apply``, and the payload is
-    then the plan as it was shown.
-    """
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    try:
-        rows = plan(db)
-        data = payload(rows)
-        session.assert_backup_acknowledged(cfg)
-        opened = rb_writer.handle_path(db) or rb_writer.live_db_path(cfg)
-        option = ctx.gate.require(
-            spec, plan=data, context=shown(rows), pinned={DATABASE_PIN: str(opened)}
-        )
-        if option != "apply":
-            return data, None
-        return data, write(db, rows)
-    finally:
-        rb_writer.close_db(db)
-
-
-#: The visit's short path (U319), which A33's probe at sitting 101 measured:
-#: with Auto Analysis on, a launch brought to the front raises one dialog whose
-#: OK analyses every row waiting, with no selection, on the fields and the mode
-#: the preference holds, so a dyn row still takes Dynamic. Said after the
-#: Analyze Tracks selections it stands in for, so "as above" names them, and
-#: ONE WORDING for every sentence that offers it: ``cli.tail`` spells the same
-#: for the step ``crate sync land`` prints, held to this by a test, since a
-#: lower package imports no feature module. Nothing here or in the visit turns
-#: Auto Analysis on: it is the person's.
-AUTO_ANALYSIS_STEP = (
-    "or, with Auto Analysis on, open rekordbox with its window in front and press OK "
-    "on its Auto Analysis dialog only when it shows every one of those Normal "
-    "settings with Vocal and CUE off and no field set otherwise, else Cancel it and "
-    "select as above; Auto Analysis runs on its preference's own mode, so the rows "
-    f"carrying the dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}"
-)
-
-
-def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
-    """The warning a native write carries when rows joined the collection, else none.
-
-    ONE SENTENCE FOR EVERY VERB THAT ADDS A ROW (R-770). ``intake file`` adds
-    one through the same engine and owes the person the same next step, and a
-    second wording of it is how one of the two goes stale.
-    """
-    if not collection.added:
-        return []
-    # ONE PLAYLIST, ANALYZE (U166), which holds every row still waiting and
-    # only those, so the visit is one selection rather than one per batch.
-    # TWO SELECTIONS IN IT (U157), each with its count and its settings: the
-    # rows without the dyn My Tag take Normal and the rows with it Dynamic.
-    # TWO PATHS TO THEM (U319): the selections with Auto Analysis off, and
-    # with it on the one dialog a launch in front raises, said in the one
-    # wording above, which leaves the dyn rows to their own Dynamic run.
-    dyned = sum(1 for row in collection.added if row.dyn)
-    normal = len(collection.added) - dyned
-    selections = (
-        f"run Analyze Tracks on the {normal} row(s) without the dyn My Tag with "
-        f"{drift.NORMAL_SETTINGS}, and on the {dyned} row(s) carrying it with "
-        f"{drift.DYNAMIC_SETTINGS}"
-    )
-    return [
-        {
-            "code": AWAITING_ANALYSIS,
-            "message": (
-                f"{len(collection.added)} row(s) joined the collection with no "
-                f"tempo, grid, key or waveform, and rekordbox analyses nothing on its "
-                f"own with Auto Analysis off; open rekordbox, select the "
-                f"{collection.analyze_name} playlist, which holds every row waiting "
-                f"for analysis, and {selections}; {AUTO_ANALYSIS_STEP}; then "
-                f"crate inbox analyzed takes out each row rekordbox analysed"
-            ),
-        }
-    ]
-
-
-def dyn_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
-    """What a person reads when a variable row did not get the dyn My Tag (U157), else none.
-
-    SHARED WITH ``intake file`` for :func:`awaiting_analysis`' reason. A row
-    whose drift read as variable and carries no mark would be analysed with
-    Normal by a person who selects by the mark, so each is named, with why,
-    and the step owed is to run it with Dynamic by hand. A file with no drift
-    reading is the screen's to count and not a warning: every batch analysed
-    before U157 is one, and Normal is what each of its rows always took.
-    """
-    if not collection.added:
-        return []
-    untagged = set(collection.dyn_missing)
-    if collection.dyn_blocked:
-        untagged.update(collection.dyn_variable)
-    if not untagged:
-        return []
-    if collection.dyn_blocked:
-        why = collection.dyn_blocked
-    elif collection.dyn_unread:
-        why = f"the tag could not be read back as crate analyze check reads it: {collection.dyn_unread}"
-    else:
-        why = (
-            f"the {native.DYN_VALUE} value it was written under is one rekordbox removed; "
-            f"check the {native.DYN_CATEGORY} My Tag category in rekordbox"
-        )
-    names = ", ".join(path.name for path in collection.dyn_variable if path in untagged)
-    return [
-        {
-            "code": DYN_NOT_WRITTEN,
-            "message": (
-                f"{len(untagged)} row(s) whose tempo moves do not carry the dyn My Tag, "
-                f"so select them by name and run Analyze Tracks on them with "
-                f"{drift.DYNAMIC_SETTINGS}: {names}; {why}"
-            ),
-        }
-    ]
-
-
-def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
-    """What a person reads about the vox My Tag a native write gave its rows, or did not (U127).
-
-    SHARED WITH ``intake file`` for :func:`awaiting_analysis`' reason. A file
-    with no score is named, never tagged on a guess; a landing that could tag
-    nothing says why and names the step owed. A row tagged is the report's.
-    """
-    if not collection.added:
-        return []
-    warnings: list[dict[str, str]] = []
-    if collection.vox_missing:
-        # PLANNED, WRITTEN, AND NOT WHAT ADOPTION READS: said, never reported
-        # as tagged, so a person is not told a row reaches with vox when the
-        # next adoption will not file it there.
-        why = (
-            f"the tag could not be read back as adoption reads it: {collection.vox_unread}"
-            if collection.vox_unread
-            else (
-                "the Vocals My Tag category or its vox value it was written under "
-                "is one rekordbox removed; check the Vocals category in rekordbox"
-            )
-        )
-        names = ", ".join(path.name for path in collection.vox_missing)
-        warnings.append(
-            {
-                "code": VOX_NOT_WRITTEN,
-                "message": (
-                    f"{len(collection.vox_missing)} row(s) planned for the vox My Tag "
-                    f"do not carry it, so they reach no with vox playlist: {names}; {why}"
-                ),
-            }
-        )
-    if collection.vox_blocked:
-        return [
-            *warnings,
-            {
-                "code": VOX_NOT_WRITTEN,
-                "message": (
-                    f"no row joined with the vox My Tag, so none reaches a with vox "
-                    f"playlist: {collection.vox_blocked}"
-                ),
-            }
-        ]
-    if not collection.vox_unscored:
-        return warnings
-    names = ", ".join(path.name for path in collection.vox_unscored)
-    return [
-        *warnings,
-        {
-            "code": VOX_UNSCORED,
-            "message": (
-                f"{len(collection.vox_unscored)} file(s) carry no voxlevel to read, so "
-                f"their rows got no vox My Tag: {names}; run crate analyze vocals on "
-                f"them and then crate metadata mytags-vocals --apply"
-            ),
-        }
-    ]
-
-
-__all__ = [
-    "AWAITING_ANALYSIS",
-    "DYN_NOT_WRITTEN",
-    "dyn_fact",
-    "dyn_warnings",
-    "LAND_ARCHIVE_FAILED",
-    "INTAKE_SUFFIX",
-    "NATIVE_GATE",
-    "RETIRED_SUFFIX",
-    "VERIFY_VERB",
-    "XML_GATE",
-    "ask_then_write",
-    "AUTO_ANALYSIS_STEP",
-    "awaiting_analysis",
-    "build_land",
-    "collection_facts",
-    "vox_fact",
-    "vox_plan_warnings",
-    "vox_warnings",
-    "VOX_NOT_WRITTEN",
-    "VOX_UNSCORED",
-    "BRIDGE_VOX_OWED",
-    "default_name",
-    "gate_named",
-    "intake_file",
-    "intake_land",
-    "intake_stem",
-    "playlist_item",
-    "set_playlist_item",
-    "pass_landed",
-    "unretired_name",
-]
