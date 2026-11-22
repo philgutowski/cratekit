@@ -62,11 +62,9 @@ DOWNLOAD_VERB = "acquire.download"
 RENAME_INCOMPLETE = "rename-incomplete"
 LAND_VERB = "intake.land"
 
-#: The genre guess the chain runs right after ``tag folder`` (U172), over the
-#: files every catalogue missed, and the flag that names the pass whose
-#: playlists vote. Not queued: it reads tags and writes a genre, file by file,
-#: in the foreground. Spelled here rather than imported, for the reason the
-#: vocals verb below gives; a test holds the words to the registry's.
+#: The genre guess run right after ``tag folder`` (U172), not queued, and the
+#: flag naming the pass whose playlists vote. Spelled here, not imported, as
+#: the vocals verb below is; a test holds the words to the registry's.
 GUESS_VERB = "tag.guess"
 GUESS_WORDS: tuple[str, ...] = ("tag", "guess")
 PASS_FLAG = "--pass"
@@ -74,16 +72,14 @@ PASS_FLAG = "--pass"
 #: The row the vocal rescore reports under, ``<namespace>.rescore`` (U181).
 RESCORE = "rescore"
 
-#: The vocals restamp the analyze step runs after ``analyze run`` (U181), over
-#: only the staged files that verb will never score again: the head, and no
-#: voxlevel. Spelled here rather than imported, since this module imports no
-#: feature module at its top; a test holds the flag to the verb's own.
+#: The vocal rescore after ``analyze run`` (U181), over staged files with the
+#: head and no voxlevel. Spelled here, since this module imports no feature
+#: module at its top; a test holds the flag to the verb's own.
 VOCALS_VERB = "analyze.vocals"
 VOCALS_WORDS: tuple[str, ...] = ("analyze", "vocals")
 VOCALS_UNSCORED = "--unscored"
 
-#: ``name apply``'s confirm, which is not explicit and is answered inline by the
-#: chain the way a person running the tail answers it.
+#: ``name apply``'s confirm, not explicit, so the chain answers it inline.
 NAME_GATE = "name.apply.confirm"
 NAME_OPTION = "apply"
 #: The landing's gate, explicit, answered by a separate recorded act.
@@ -92,22 +88,18 @@ LAND_OPTION = "apply"
 #: The actor the session answers as (CLAUDE.md, 2026-09-29).
 SESSION_ACTOR = "session"
 
-#: The two reasons a landing stops for a person rather than failing: its gate,
-#: and the backup acknowledgment it reads and this chain never mints.
+#: The two reasons a landing stops for a person: its gate, and the backup
+#: acknowledgment this chain never mints.
 GATE_STOP = "decision-required"
 ACK_STOP = "backup-acknowledgment-missing"
 
-#: The one playlist every native landing fills with the rows awaiting analysis
-#: (U166), as the shipped taxonomy names INBOX. Spelled here rather than
-#: imported, since this module imports no feature module at its top; a test
-#: holds it to :data:`cratekit.intake.native.ANALYZE` under the declared intake
-#: folder.
+#: The playlist every native landing fills with rows awaiting analysis (U166).
+#: Spelled here, not imported; a test holds it to
+#: :data:`cratekit.intake.native.ANALYZE`.
 ANALYZE_PLAYLIST = "INBOX / Analyze"
 
-#: The visit's short path with Auto Analysis on (U319), the wording
-#: :data:`cratekit.intake.land_cli.AUTO_ANALYSIS_STEP` owns. Spelled here
-#: rather than imported, as the playlist above is, and a test holds the two
-#: equal.
+#: The visit's short path with Auto Analysis on (U319). Spelled here, not
+#: imported; a test holds it to :data:`cratekit.intake.land_cli.AUTO_ANALYSIS_STEP`.
 AUTO_ANALYSIS_STEP = (
     "or, with Auto Analysis on, open rekordbox with its window in front and press OK "
     "on its Auto Analysis dialog only when it shows every one of those Normal "
@@ -117,15 +109,9 @@ AUTO_ANALYSIS_STEP = (
 )
 
 #: The rekordbox visit an attended session makes once the landing is applied,
-#: on Phillip's standard since 2026-10-27, over the one playlist every landing
-#: fills (U166), which holds every row still waiting and only those, then the
-#: clear that takes the analysed out. NO RELOAD TAGS SINCE U163: a landed row
-#: carries its artist, album, genre and year from the commit that made it.
-#: TWO SELECTIONS SINCE U157, the settings ``core.drift`` names for both: the
-#: rows a landing marked ``dyn`` because their tempo moves take Dynamic, and
-#: every other row Normal. TWO PATHS SINCE U319: those selections, or with
-#: Auto Analysis on the one dialog a launch in front raises, in the wording
-#: below.
+#: over the playlist every landing fills (U166), then the clear. The ``dyn``
+#: rows take Dynamic and the rest Normal (U157), or Auto Analysis answers both
+#: (U319); no reload tags is needed (U163).
 REKORDBOX_STEPS: tuple[str, ...] = (
     f"in rekordbox, select the {ANALYZE_PLAYLIST} playlist, which holds every "
     f"landed row waiting for analysis, and run Analyze Tracks on its rows "
@@ -144,10 +130,8 @@ Child = tuple[int, dict[str, Any]]
 def dispatch(argv: Sequence[str]) -> Child:
     """Run one verb through the real dispatcher here, and read its envelope.
 
-    The seam every step of every chain goes through, a module attribute so the
-    suite can stand in for a step the fixture cannot run. JSON output, so
-    standard output is exactly one envelope; the human words a refusal writes
-    to standard error are the parent's to render, from the cause.
+    The one seam every step goes through, a module attribute so the suite can
+    stand in for a step. JSON output, so standard output is one envelope.
     """
     from cratekit import cli  # noqa: PLC0415 - the dispatcher imports this module
 
@@ -169,7 +153,7 @@ def summary_of(envelope: dict[str, Any]) -> dict[str, Any]:
 
 
 def changed_said(changed: CratekitError) -> str:
-    """What made the folder unsafe to keep, said as a clause (review round two, D1)."""
+    """What made the folder unsafe to keep, said as a clause."""
     detail = changed.cause.detail or {}
     if "arrived" not in detail:
         return f"whether anything arrived while the tail ran cannot be read: {changed.cause.message}"
@@ -200,9 +184,8 @@ class Stop(Exception):
         super().__init__(error.cause.message)
         self.step = step
         self.error = error
-        #: Whether continuing can get past this stop once its cause is mended.
-        #: A job that ENDED cannot be driven again by a continuation, so it
-        #: would meet the same refusal every time.
+        #: Whether continuing can get past this stop once its cause is mended;
+        #: a job that ended cannot be driven again.
         self.continues = continues
 
     @classmethod

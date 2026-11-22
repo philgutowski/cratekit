@@ -335,12 +335,7 @@ def _unknown_pass(
 
 
 def _remember(ctx: Context, report: _Pass, pass_run: str) -> None:
-    """Record the pass on this run's own record now, before any step can stop it.
-
-    The dispatcher saves the record only when the verb answers or a gate
-    refuses, so a pass that fails at a later step, or is interrupted, would
-    otherwise leave a land run whose id continues nothing.
-    """
+    """Record the pass on this run's record now, so a pass that stops later can be continued."""
     ctx.run.related_runs[PASS_ROLE] = pass_run
     gates.save(ctx.run)
     report.say(
@@ -353,24 +348,10 @@ def _remember(ctx: Context, report: _Pass, pass_run: str) -> None:
 def _vocals(ctx: Context, report: _Pass, cfg: config.Config) -> None:
     """Stop before the pass when the vocal model cannot score here, until told to go on (U181).
 
-    Sitting 51 landed a pass from a copy installed without the vocals extra:
-    ``analyze run`` finished every file with no voxlevel, the head it wrote
-    made every later run skip them, and the landing plan said so in one line.
-    So the pass asks first, through the vocals module's one test, and before
-    anything is queued it stops at its named gate, whose screen names what is
-    missing and the command that mends it. ``go`` takes the pass on without
-    vocal scores, and the summary and a warning say so; ``stop`` refuses
-    ``vocal-scoring-unavailable`` with the same command.
-
-    THE STOP IS THE GATE'S OWN REFUSAL, decision required, rather than a
-    precondition of its own: every gate a verb declares refuses that way and
-    leaves its run resumable, so the answer is given inline with ``-d`` or
-    recorded with ``crate run decide`` and continued with ``--run``, the two
-    ways every other gate is answered.
-
-    A PROFILE WITH THE VOCALS MODULE OFF IS NOT ASKED. It has no vocals verb,
-    and is a person who chose not to score vocals, so its pass goes on as it
-    always did and the row says why nothing was asked.
+    Asked before anything is queued, since unscored rows are skipped by every
+    later run. The stop is the gate's own refusal, so the run stays resumable;
+    ``go`` goes on with a warning, ``stop`` refuses ``vocal-scoring-unavailable``.
+    A profile with the vocals module off is not asked.
     """
     report.say(PREFLIGHT, "the vocal model")
     if not tail.vocals_on(cfg):
@@ -436,10 +417,8 @@ def _vocals(ctx: Context, report: _Pass, cfg: config.Config) -> None:
 def _lift_failed_checks(report: _Pass, envelope: dict[str, Any]) -> None:
     """The pass's own failing checks, carried whole so a shortfall is read once.
 
-    ONE IS LEFT, BY DESIGN. The favourites write half refuses for want of the
-    export this verb never hands it, every pass, and a FAIL row on every pass
-    for the act the verb chose not to take would teach a person to read past
-    the row beside it, the withheld hearts. It is said once, as a note.
+    The favourites write half's refusal is left out and said once as a note,
+    since it fails every pass by this verb's choice.
     """
     data = envelope.get("data") or {}
     not_queued = tail.summary_of(envelope).get("not_queued") or {}
@@ -494,25 +473,16 @@ def _open_passes(cfg: config.Config) -> dict[str, list[str]]:
 def _left_behind(report: _Pass, cfg: config.Config, taken: str | None) -> None:
     """Name every open intake job this pass will not drive, by playlist, with the way on.
 
-    ``sync all`` leaves a playlist out of a new pass while an intake job for it
-    is still open, whether an earlier pass queued that job or a person typed
-    ``intake playlist``, and that job holds the playlist out of every later
-    pass until it is driven. The pass drives only its own run's jobs, so the
-    rest are said here, on a failing row, rather than nowhere.
-
-    GROUPED BY PLAYLIST, WITH AGE, SIZE AND COPIES (U182). Sitting 51 read 17
-    such jobs as ids alone, six weeks old, ten of them copies of two lists, and
-    could not judge one. Each job now says how old it is, how many tracks it
-    holds and which other open job holds exactly the same ones, and the row
-    says what a cancel buys, since cancelling is how a stale job is let go.
+    Such a job holds its playlist out of every pass, so it is said on a failing
+    row, grouped by playlist with age, size and copies, and what a cancel buys
+    (U182).
     """
     with jobs.open_store() as store:
         holds = cli_jobs.intake_holds(store, cfg.library.volume_id, now=cli_jobs.now())
     left = [hold for hold in holds if not taken or _run_of(hold.job) != taken]
     if not left:
         return
-    # ONE PLAYLIST AS THE PASS READS IT, a typed URL and a sweep's id together,
-    # named by the newest job that froze the account's name, else the newest.
+    # One playlist as the pass reads it, named by the newest job with a frozen name.
     grouped: dict[str, list[cli_jobs.Hold]] = {}
     for hold in left:
         grouped.setdefault(hold.identity or hold.label(), []).append(hold)
@@ -578,9 +548,7 @@ def _way_on(hold: cli_jobs.Hold) -> str:
     if run_id:
         way = f"continue its pass with: {_continue_command(run_id)}"
     elif _mirror_download(job) and job.state is jobs.JobState.QUEUED:
-        # U227: queued by organize for an edit made on the account, and the
-        # next new pass takes it, so driving it by hand would land it outside
-        # one. Only a queued one: a pass takes no other (round two, R3).
+        # Queued by organize; the next new pass takes it if still queued (U227).
         way = (
             "queued by crate organize for a track added on the account; the next new "
             "pass takes it: crate sync land"
@@ -593,11 +561,8 @@ def _way_on(hold: cli_jobs.Hold) -> str:
 def _sync(report: _Pass, cfg: config.Config) -> str | None:
     """Run ``sync all`` and return the pass's run, or None when there is none to take.
 
-    A PASS THAT QUEUED NOTHING IS NOT A PASS WITH NOTHING TO DO. ``sync all``
-    leaves out a playlist whose intake job is still open from an earlier pass,
-    the state sitting 47 started from: ``sync all`` typed by hand, its jobs
-    queued and never driven. That earlier pass is then the one to take, and
-    when there are several, which is a person's choice and the pass names them.
+    When it queued nothing, a single earlier pass with open intake jobs is
+    taken; several are a person's choice and are named.
     """
     envelope = tail.required(report, SYNC, ["sync", "all"])
     _lift_failed_checks(report, envelope)
@@ -642,10 +607,8 @@ def _mirror_download(job: jobs.Job) -> bool:
 def _take_mirror_downloads(report: _Pass, cfg: config.Config, run_id: str) -> list[str]:
     """Take every download ``crate organize`` queued for an account edit into the pass (U227).
 
-    Each intake job of this library the ``mirror-downloads`` step queued that
-    is still queued and carries no run is given ``run_id``, so the pass drives,
-    lists, downloads and lands it with its own. A job another pass took in
-    between is refused by the write and left as it is. Answers the jobs taken.
+    Each still queued ``mirror-downloads`` job of this library with no run is
+    given ``run_id``; one another pass took meanwhile is left. Answers the jobs taken.
     """
     taken: list[str] = []
     with jobs.open_store() as store:
@@ -687,12 +650,8 @@ def _pass_jobs(store: jobs.JobStore, run_id: str, cfg: config.Config) -> list[jo
 def _intake(report: _Pass, run_id: str, cfg: config.Config) -> bool:
     """Drive every intake job of the pass to settled; any not succeeded ends it.
 
-    A CANCELLED JOB IS NEVER DRIVEN AGAIN (U182). A person cancels a stale job
-    to let its playlist go, often one copy of several holding the same tracks
-    in one run, so a continued pass names each cancelled job, drives the rest,
-    and lists them without it. Returns whether any job was left out that way.
-    When every job of the run was cancelled the pass has nothing to take, and
-    it says the next pass queues those playlists again, never to resume one.
+    A cancelled job is named and never driven again (U182); returns whether any
+    was. When every job was cancelled the pass has nothing to take.
     """
     with jobs.open_store() as store:
         found = _pass_jobs(store, run_id, cfg)
@@ -719,11 +678,8 @@ def _intake(report: _Pass, run_id: str, cfg: config.Config) -> bool:
             error = tail.job_error(report, job)
             if job.is_open():
                 raise _Stop(INTAKE, error)
-            # AN INTAKE JOB THAT ENDED is not driven again by a continued pass,
-            # so the way on is the job's own retry or a new pass.
-            # A RETRYABLE ONE IS, ONCE ITS OWN RETRY HAS RUN, so its way on ends
-            # with the continuation (U183); one that cannot succeed ends with a
-            # new pass, the one command that can.
+            # An ended job is not driven again: a retryable one is retried, then
+            # the pass continued (U183); otherwise a new pass.
             if job.cause is not None and job.cause.retryable:
                 retry = f"retry the job first: crate job resume {job.job_id}"
                 raise _Stop(INTAKE, tail.with_steps(error, retry))
@@ -755,14 +711,10 @@ class _Listed:
 def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> _Listed:
     argv = ["intake", "missing", "--run", run_id]
     if without_cancelled:
-        # THE LISTING'S OWN WORD FOR LEAVING A CLOSED JOB OUT, which it then
-        # names on a failing row of its own. Only cancelled jobs reach here: a
-        # failed one ended the pass at its intake step.
+        # Leaves cancelled jobs out; a failed one already ended the pass.
         argv.append("--skip-failed")
     envelope = tail.required(report, MISSING, argv)
-    # THE LISTING'S OWN FAILING ROWS RIDE THROUGH, a missing track the provider
-    # cannot name exactly above all: it is in no download list, and the pass
-    # would otherwise say nothing of it.
+    # The listing's failing rows ride through, so an unnameable track is said.
     _lift_failed_checks(report, envelope)
     summary = tail.summary_of(envelope)
     listed = summary.get("list")

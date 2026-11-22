@@ -1161,25 +1161,18 @@ ENTRIES: tuple[Entry, ...] = (
         module="cratekit.label.playlists_cli", builder="build_playlists",
         handler_key="label.playlists", feature_rows=(23,), source_scripts=("dj-label",),
         module_id="labels", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: One surface, the account. A folder and its year playlists are
-        #: created, tracks are added and a playlist is put in the folder;
-        #: nothing is removed, retitled or deleted. What was written is
-        #: recorded in this product's own outbound ledger, which is not a
-        #: declared surface. NOT destructive, on ``export.playlist``'s
-        #: precedent: every write adds to the account.
+        #: The account only. Not destructive, as ``export.playlist``: every
+        #: write adds. The outbound ledger is not a declared surface.
         writes=frozenset({"remote"}), doctor_checks=("credential.provider",),
         gates=(
             GateSpec(
                 name="label.playlists.confirm", options=("apply", "abort"),
                 prompt="Build this label's folder of year playlists on the streaming account?",
-                # EXPLICIT, as every other write to the account is (R34).
+                # Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
-            # U191. A full build whose listing estimates more provider calls
-            # than ``playlists_cli.FULL_BUILD_CALLS`` stops here before any
-            # release is read. It writes nothing; it spends the provider's
-            # patience, which a breaker trip on a label of thousands of
-            # releases showed is worth a deliberate act of its own.
+            # A build over ``playlists_cli.FULL_BUILD_CALLS`` provider calls
+            # stops here first, since it spends the provider's patience (U191).
             GateSpec(
                 name="label.playlists.crawl", options=("crawl", "abort"),
                 prompt="Read this label's whole catalogue from the provider?", explicit=True,
@@ -1192,17 +1185,14 @@ ENTRIES: tuple[Entry, ...] = (
         summary="record the year playlists of a label whose batch has landed as taken",
         module="cratekit.label.mark_cli", builder="build_mark", handler_key="label.mark",
         feature_rows=(23,), module_id="labels", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: NO WRITE SURFACE since U242, and not destructive: the label's
-        #: folder on the account is read and nothing on it changes. Each year
-        #: playlist marked is held as taken in ``sync mark``'s record, this
-        #: product's own state, which ``sync unmark`` lets go. Before U242 the
-        #: mark was a retitle with the ``DOWNLOADED `` prefix.
+        #: No write surface (U242): the account is read, and the mark is held
+        #: in ``sync mark``'s record, this product's own state.
         writes=frozenset(), doctor_checks=("credential.provider",),
         gates=(
             GateSpec(
                 name="label.mark.confirm", options=("apply", "abort"),
                 prompt="Record these year playlists as taken?",
-                # EXPLICIT, as sync.mark's is, for the same reason (R34).
+                # Explicit, as ``sync.mark``'s is (R34).
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -1213,17 +1203,14 @@ ENTRIES: tuple[Entry, ...] = (
         summary="take the tracks the genre gate holds, the catalogue no longer " "confirms, or the library removed through delete review off the year " "playlists this product made for a label",
         module="cratekit.label.prune_cli", builder="build_prune", handler_key="label.prune",
         feature_rows=(23,), module_id="labels", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: One surface, the account, and the one write is ``remove_tracks`` on
-        #: a year playlist the outbound ledger records this product CREATED.
-        #: What was taken off is recorded in the outbound ledger, which is not
-        #: a declared surface. ``destructive`` because it is the first path
-        #: that takes anything away from the account.
+        #: The account only: ``remove_tracks`` on a year playlist this product
+        #: created. Destructive because it takes something away.
         writes=frozenset({"remote"}), destructive=True, doctor_checks=("credential.provider",),
         gates=(
             GateSpec(
                 name="label.prune.confirm", options=("apply", "abort"),
                 prompt="Take these tracks off this label's year playlists on the streaming account?",
-                # EXPLICIT, as every other write to the account is (R34).
+                # Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -1232,9 +1219,7 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="adopt.scan",
         summary="scan an existing library and propose a mapping into the taxonomy",
-        # LANDED. It shared a module string with its destructive sibling and was
-        # held behind that sibling's wall for no reason of its own; see
-        # ``ADOPT_APPLY_CLI_UNIT`` for the whole judgement.
+        # Its own module, apart from ``adopt.apply`` (``ADOPT_APPLY_CLI_UNIT``).
         module="cratekit.adopt.scan_cli", builder="build", handler_key="adopt.scan",
         feature_rows=(34,), module_id="adoption", argv_builder="adopt_scan_argv",
         long_running=True, emits=frozenset({"job_state"}), output_schema="job_state/1",
@@ -1252,20 +1237,15 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="adopt.apply.approve", options=("approve", "abort"),
                 prompt="Apply this adoption plan to the library?",
-                # R34 names this alongside the backup acknowledgment: no blanket
-                # affirmative satisfies it.
+                # Explicit (R34), as the backup acknowledgment is.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
-    # R-758. THE FIRST VERB THAT REMOVES A MEMBERSHIP, and a verb of its own
-    # rather than a mode of ``route.resort``. That verb is additive and says
-    # so in its summary, and a gate is declared per verb: an approval asked in
-    # a removing mode only is a gate this table cannot state and conformance 3
-    # cannot hold to firing. It sits in this group because what it moves is
-    # decided over ``adopt.apply``'s plan, read with the census that verb
-    # reads, and since R-780 over every band bucket the tree doubles a track in.
+    # A verb that removes a membership (R-758), not a mode of the additive
+    # ``route.resort``, since gates are declared per verb. Decided over
+    # ``adopt.apply``'s plan and census (R-780).
     Entry(
         name="adopt.move",
         summary="move each track from the energy or style sub it holds to the one " "its own file names, adding before it removes",
@@ -1279,8 +1259,7 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="adopt.move.approve", options=("approve", "abort"),
                 prompt="Move these tracks, adding each to its new sub and then " "removing it from the old one?",
-                # A removal is the one write this product makes that takes
-                # something away, so no blanket affirmative satisfies it (R34).
+                # Explicit (R34): a removal takes something away.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
