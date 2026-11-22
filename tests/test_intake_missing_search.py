@@ -215,15 +215,18 @@ def test_two_exact_candidates_are_offered_and_neither_is_picked(
     assert "Harbour Lights" in item.options[1].summary
     assert "2 tracks that match it exactly" in item.payload["why"]
     row = summary["rows"][0]
-    assert (row["state"], row["item_id"], row["candidates"]) == (
-        candidates.OFFERED,
-        item.item_id,
-        2,
-    )
+    assert (row["state"], row["item_id"], row["candidates"]) == (candidates.OFFERED, item.item_id, 2)
     check = checks(envelope)["candidates"]
     assert check["status"] == "fail"
     assert item.item_id in check["detail"]
     assert f"--queue {candidates.QUEUE} --kind {candidates.KIND}" in check["detail"]
+    # AN ACCEPTANCE NAMING NEITHER of the two candidates lists nothing and says how to clear it.
+    resolve(item.item_id, "accepted")
+    envelope = refused(path)
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert "without naming which of its 2 candidates" in envelope["cause"]["message"]
+    assert "crate review clear" in " ".join(envelope["cause"]["remediation"]["steps"])
+    assert not list(lists_dir(library).glob("*"))
 
 
 def test_an_exact_candidate_beside_a_row_that_cannot_be_read_is_offered(
@@ -302,8 +305,9 @@ def near_miss() -> FakeCatalogue:
 def test_a_near_miss_is_offered_with_its_score_and_is_not_listed(
     cfg, library, tmp_path, monkeypatch
 ):
+    """A near miss is offered, asked once however often it is listed, and listed as accepted."""
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    bind(monkeypatch, near_miss())
+    fake = bind(monkeypatch, near_miss())
     envelope, summary = ok(path)
     assert (summary["written"], summary["by_search"], summary["candidates_offered"]) == (0, 0, 1)
     item = the_item(cfg)
@@ -316,46 +320,28 @@ def test_a_near_miss_is_offered_with_its_score_and_is_not_listed(
     assert [o.option_id for o in item.options] == ["7002", "7005"], "best score first"
     assert "score 100" in item.options[0].summary
     assert "never picked from a score" in item.payload["why"]
-
-
-def test_a_second_run_offers_nothing_new_and_spends_no_search(
-    cfg, library, tmp_path, monkeypatch
-):
-    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    fake = bind(monkeypatch, near_miss())
-    found(path)
-    first = the_item(cfg)
+    # A SECOND RUN offers nothing new and spends no search.
     envelope = ok(path)[0]
     assert fake.searched_for == [SUN], "an open question was searched for again"
     again = the_item(cfg)
-    assert (again.item_id, again.updated) == (first.item_id, first.updated)
+    assert (again.item_id, again.updated) == (item.item_id, item.updated)
     assert envelope["data"]["summary"]["rows"][0]["state"] == candidates.WAITING
-
-
-def test_the_same_row_in_two_lists_is_one_question(cfg, library, tmp_path, monkeypatch):
-    bind(monkeypatch, near_miss())
-    found(tracklist(tmp_path, "Aurora Bloom - Sun Path", name="one.txt"))
+    # THE SAME ROW IN ANOTHER LIST is the same question.
     found(tracklist(tmp_path, "1. aurora bloom - SUN PATH", name="two.txt"))
     the_item(cfg)
-
-
-# An accepted candidate is listed by the next run
-
-
-def test_an_accepted_candidate_is_listed_by_the_next_run(cfg, library, tmp_path, monkeypatch):
-    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    fake = bind(monkeypatch, near_miss())
-    found(path)
-    resolve(the_item(cfg).item_id, "accepted", "--option", "7005")
+    # AN ACCEPTED CANDIDATE is listed by the next run, as the candidate's row.
+    resolve(item.item_id, "accepted", "--option", "7005")
     envelope, summary = ok(path)
     assert fake.searched_for == [SUN], "an answered row was searched for again"
     assert (summary["written"], summary["by_review"], summary["by_search"]) == (1, 1, 0)
     body = json.loads(Path(summary["list"]).read_text())
-    # THE ROW IS THE CANDIDATE'S, since that is the track the download fetches.
     assert [(t["id"], t["artist"], t["title"]) for t in body["tracks"]] == [
         ("7005", "Aurora Bloome", "Sun Path")
     ]
     assert checks(envelope)["candidates"]["status"] == "ok"
+
+
+# An accepted candidate is listed by the next run
 
 
 def test_an_acceptance_of_the_only_candidate_needs_no_option(cfg, library, tmp_path, monkeypatch):
@@ -368,21 +354,6 @@ def test_an_acceptance_of_the_only_candidate_needs_no_option(cfg, library, tmp_p
     resolve(the_item(cfg).item_id, "accepted")
     envelope = ok(path)[0]
     assert ids(envelope["data"]["summary"]) == ["7002"]
-
-
-def test_an_acceptance_naming_none_of_several_candidates_lists_nothing(
-    cfg, library, tmp_path, monkeypatch
-):
-    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    bind(monkeypatch, two_exact())
-    found(path)
-    item_id = the_item(cfg).item_id
-    resolve(item_id, "accepted")
-    envelope = refused(path)
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
-    assert "without naming which of its 2 candidates" in envelope["cause"]["message"]
-    assert "crate review clear" in " ".join(envelope["cause"]["remediation"]["steps"])
-    assert not list(lists_dir(library).glob("*"))
 
 
 def test_an_accepted_candidate_the_library_now_holds_is_not_listed_again(
@@ -478,13 +449,11 @@ def test_a_failure_on_the_second_row_leaves_the_first_row_unoffered(
     cfg, library, tmp_path, monkeypatch
 ):
     """Every answer is in hand before any offer, so a partial pass offers nothing."""
-
     class SecondFails(FakeCatalogue):
         def search_tracks(self, artist: str, title: str):
             if (artist, title) == TIDE:
                 raise RuntimeError("the provider stopped answering")
             return super().search_tracks(artist, title)
-
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path", "Nova Reef - Tide")
     bind(monkeypatch, SecondFails(searches=near_miss().searches))
     code, envelope = found(path)
@@ -499,8 +468,7 @@ def test_an_owned_row_is_never_searched_for(cfg, library, tmp_path, monkeypatch)
     owned(library, "Aurora Bloom - Sun Path.flac")
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path", "Nova Reef - Tide")
     fake = bind(
-        monkeypatch,
-        FakeCatalogue(searches={SUN: [Hit("7001", *SUN)], TIDE: [Hit("7010", *TIDE)]}),
+        monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", *SUN)], TIDE: [Hit("7010", *TIDE)]}),
     )
     envelope = ok(path)[0]
     assert fake.searched_for == [TIDE], "a track the library holds was searched for"
@@ -513,10 +481,8 @@ def test_a_list_the_library_holds_entirely_is_a_no_op_that_spends_no_login(
 ):
     owned(library, "Aurora Bloom - Sun Path.flac")
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-
     def unreachable(_cfg):
         raise AssertionError("the catalogue was resolved with nothing to search for")
-
     monkeypatch.setattr(catalogue, "resolve", unreachable)
     envelope = ok(path)[0]
     assert envelope["outcome"] == "no_op"
@@ -601,10 +567,8 @@ def test_a_folder_that_cannot_be_written_is_a_refusal_and_not_an_internal_error(
 def test_a_disk_that_refuses_the_write_is_this_verbs_refusal(cfg, library, tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Nova Reef - Tide")
     bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)]}))
-
     def full(*_args, **_kwargs):
         raise OSError(28, "No space left on device", str(tmp_path / "x.list.json"))
-
     monkeypatch.setattr(listdoc, "write", full)
     envelope = refused(path)
     assert envelope["cause"]["reason"] == "intake-list-unusable"
@@ -626,8 +590,7 @@ def test_the_verb_declares_that_it_adjudicates():
 def test_the_run_after_an_answer_lists_more_than_the_first_and_is_not_refused(
     cfg, library, tmp_path, monkeypatch
 ):
-    """The documented second run. Under one fixed name it was refused, because
-    the first run had already written a list and this one holds other bytes."""
+    """The run after an answer lists more under a new name rather than being refused."""
     path = tracklist(tmp_path, "Nova Reef - Tide", "Aurora Bloom - Sun Path")
     bind(
         monkeypatch,
@@ -638,20 +601,15 @@ def test_the_run_after_an_answer_lists_more_than_the_first_and_is_not_refused(
             }
         ),
     )
-    first = ok(path)[0]
+    _code, first = found(path)
+    # THE SAME WORK TWICE rewrites the same list.
+    again = ok(path)[0]
+    assert again["data"]["summary"]["list"] == first["data"]["summary"]["list"]
+    assert len(list(lists_dir(library).glob("*.list.json"))) == 1
     resolve(the_item(cfg).item_id, "accepted", "--option", "7002")
     second = ok(path)[0]
     assert ids(second["data"]["summary"]) == ["7010", "7002"]
     assert second["data"]["summary"]["list"] != first["data"]["summary"]["list"]
-
-
-def test_the_same_work_twice_rewrites_the_same_list(cfg, library, tmp_path, monkeypatch):
-    path = tracklist(tmp_path, "Nova Reef - Tide")
-    bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)]}))
-    _code, first = found(path)
-    second = ok(path)[0]
-    assert second["data"]["summary"]["list"] == first["data"]["summary"]["list"]
-    assert len(list(lists_dir(library).glob("*.list.json"))) == 1
 
 
 def test_two_tracklists_of_one_file_name_in_two_folders_do_not_collide(
@@ -670,8 +628,7 @@ def test_two_tracklists_of_one_file_name_in_two_folders_do_not_collide(
 def test_a_missing_row_of_another_services_list_is_searched_for_and_not_dropped(
     cfg, library, tmp_path, monkeypatch
 ):
-    """Its ref is that service's id, which the emitter writes as none. Sorted by
-    the ref alone it was in no file and on no check, at exit zero."""
+    """Its ref is that service's id, which the emitter writes as none, so it is searched."""
     path = tmp_path / "other.json"
     path.write_text(
         json.dumps(
@@ -745,8 +702,7 @@ def test_a_title_with_two_readings_is_never_listed_on_one_candidate(
 
 
 def test_a_failed_search_says_which_offers_it_did_not_make(cfg, library, tmp_path, monkeypatch):
-    """A version question the library raised is in the queue before the provider
-    is asked, so the refusal may not say nothing was offered."""
+    """A version question the library raised is queued first, so the refusal may not say none."""
     owned(library, "Nova Reef - Tide (Extended Mix).flac")
     path = tracklist(tmp_path, "Nova Reef - Tide", "Aurora Bloom - Sun Path")
     bind(monkeypatch, UnreadableCatalogue())
@@ -786,11 +742,9 @@ def test_rows_asked_by_isrc_and_rows_searched_for_share_one_catalogue(
         isrcs={"QZAAA2600001": [Hit("7010", *TIDE)]}, searches={SUN: [Hit("7001", *SUN)]}
     )
     resolved: list[object] = []
-
     def resolve_once(cfg_):
         resolved.append(cfg_)
         return fake
-
     monkeypatch.setattr(catalogue, "resolve", resolve_once)
     envelope = ok(path)[0]
     assert len(resolved) == 1, "one run restored the provider session twice"
@@ -832,8 +786,7 @@ def test_an_exact_candidate_under_the_floor_of_nothing_is_still_first():
 
 
 def test_the_only_exact_candidate_carrying_no_identifier_is_not_listed():
-    """Both exact hits lack an id, so their ids are ONE distinct value, the empty one, and only the
-    identifier condition stands between that and a listed row nothing can download."""
+    """Two exact hits with no id share ONE id, the empty one, and must still not be listed."""
     wanted, answer = answer_of(
         "Aurora Bloom - Sun Path",
         Hit("", "Aurora Bloom", "Sun Path"),
@@ -851,8 +804,7 @@ def test_exact_hits_with_no_identifier_are_reported_as_that_and_not_as_no_resemb
 
 
 def test_an_accepted_option_that_does_not_carry_its_own_track_lists_nothing(cfg):
-    """The option's id is what a person chose and its detail is what is listed,
-    so a detail naming another track is a download nobody accepted."""
+    """An option whose detail names another track is a download nobody accepted."""
     wanted = match.read_text_lines("Aurora Bloom - Sun Path")[0]
     other = match.read_row(Hit("9999", "Nova Reef", "Tide"), origin=match.TIDAL, position=1)
     with review.open_store(cfg) as items:
@@ -876,46 +828,46 @@ def test_an_accepted_option_that_does_not_carry_its_own_track_lists_nothing(cfg)
 
 
 def test_the_identity_is_the_folded_row_and_not_its_spelling():
+    """Keyed on the folded row, and on a title's own identity, so an accepted ``💧`` is never
+    listed for a later ``🌊`` row (review round one's fourth finding)."""
     one = match.read_text_lines("Aurora Bloom - Sun Path (Original Mix)")[0]
     two = match.read_text_lines("AURORA  BLOOM - sun path")[0]
     other = match.read_text_lines("Aurora Bloom - Sun Path (Extended Mix)")[0]
     assert candidates.item_id(one) == candidates.item_id(two)
     assert candidates.item_id(one) != candidates.item_id(other)
+    drop = match.read_text_lines("Aurora Bloom - \U0001f4a7")[0]
+    wave = match.read_text_lines("Aurora Bloom - \U0001f30a")[0]
+    assert candidates.item_id(drop) != candidates.item_id(wave)
+    assert candidates.identity(other) == {
+        "artist": "aurora bloom", "title": "sun path", "version": "extended mix"
+    }
 
 
 def test_a_store_that_cannot_be_read_is_not_read_as_nobody_was_asked(cfg, monkeypatch):
     wanted = match.read_text_lines("Aurora Bloom - Sun Path")[0]
-
     def broken(_store, _item_id):
         raise refuse("unavailable-transient", "the queue could not be read", origin=("review",))
-
     monkeypatch.setattr(review, "get", broken)
     with review.open_store(cfg) as items, pytest.raises(CratekitError) as caught:
         candidates.settled(items, wanted)
     assert caught.value.cause.reason == "unavailable-transient"
 
 
-def test_a_search_answered_by_another_emoji_title_is_not_exact():
-    """The same defect one module over: the exact flag compared recording tokens, and two emoji
-    titles by one artist fold to one, so a search for ``💧`` answered only by the artist's ``🔥``
-    listed it without a person and downloaded a record nobody asked for."""
-    _wanted, answer = answer_of(
-        "Aurora Bloom - \U0001f4a7", Hit("7001", "Aurora Bloom", "\U0001f525")
-    )
-    assert [one.exact for one in answer.candidates] == [False]
-    assert candidates.sole_exact(answer) is None
-
-
-def test_a_search_answered_by_the_same_emoji_title_is_exact():
-    _wanted, answer = answer_of("Aurora Bloom - ❤", Hit("7001", "Aurora Bloom", "❤️"))
-    assert [one.exact for one in answer.candidates] == [True]
-    assert candidates.sole_exact(answer) is not None
+@pytest.mark.parametrize(
+    ("line", "title", "exact"),
+    [("Aurora Bloom - \U0001f4a7", "\U0001f525", False), ("Aurora Bloom - ❤", "❤️", True)],
+    ids=["another-emoji", "the-same-emoji"],
+)
+def test_a_search_answered_by_another_emoji_title_is_not_exact(line, title, exact):
+    """Two emoji titles by one artist fold to one recording token, so the exact flag compares the
+    recording's identity: ``🔥`` answering ``💧`` is never listed without a person."""
+    _wanted, answer = answer_of(line, Hit("7001", "Aurora Bloom", title))
+    assert [one.exact for one in answer.candidates] == [exact]
+    assert (candidates.sole_exact(answer) is not None) is exact
 
 
 def test_two_emoji_rows_are_each_searched_and_listed(cfg, library, tmp_path, monkeypatch):
-    """Review round one's third finding: the dedupe of a line listed twice is keyed on the match
-    identifier, which two emoji titles by one artist shared, so the second was never searched
-    and never downloaded."""
+    """Two emoji titles by one artist share a match id, and each is still searched and listed."""
     drop, wave = "\U0001f4a7", "\U0001f30a"
     path = tracklist(tmp_path, f"Aurora Bloom - {drop}", f"Aurora Bloom - {wave}")
     fake = bind(
@@ -933,13 +885,3 @@ def test_two_emoji_rows_are_each_searched_and_listed(cfg, library, tmp_path, mon
     assert sorted(t["id"] for t in body["tracks"]) == ["7001", "7002"]
 
 
-def test_a_search_question_about_one_emoji_title_is_not_another_ones():
-    """Review round one's fourth finding: the question was keyed on the folded title, so an
-    accepted ``💧`` was listed for a later ``🌊`` row."""
-    drop = match.read_text_lines("Aurora Bloom - \U0001f4a7")[0]
-    wave = match.read_text_lines("Aurora Bloom - \U0001f30a")[0]
-    assert candidates.item_id(drop) != candidates.item_id(wave)
-    plain = match.read_text_lines("Aurora Bloom - Sun Path (Extended Mix)")[0]
-    assert candidates.identity(plain) == {
-        "artist": "aurora bloom", "title": "sun path", "version": "extended mix",
-    }
