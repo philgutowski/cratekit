@@ -12,16 +12,18 @@ from __future__ import annotations
 import errno
 import hashlib
 import sqlite3
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-from cratekit.core import config, rb_writer, rehearsal
+from cratekit.core import config, rb_writer, rehearsal, snapshot
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import land_cli, landing, native
+from cratekit.intake import batch_name, land_cli, landing, native
 from tests.cli_drive import drive
 from tests.test_intake_land_native import (
+    BATCH,
     _land,
     _land_first,
     _landed_rows,
@@ -68,35 +70,52 @@ def _rehearse() -> tuple[int, dict]:
     return drive(_land("--rehearse"))
 
 
+@pytest.fixture
+def cfg(native_library, silence) -> config.Config:
+    """The native library's configuration, with one file staged."""
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    return cfg
+
+
 # Nothing live moves, and the digest is the live plan's
 
 
-def _rehearse_two_untouched(cfg: config.Config, silence: Path) -> dict:
+def _rehearse_two_untouched(cfg: config.Config, silence: Path, name: str) -> dict:
     """Stage two files and rehearse them: applied on the copy, nothing live moved."""
     _stage(cfg, silence, "One.flac")
     _stage(cfg, silence, "Two.flac")
     staged = _bytes(_staging(cfg))
     database = _database(cfg)
 
-    code, rehearsed = _rehearse()
+    code, rehearsed = drive(["intake", "land", "--name", name, "--rehearse"])
 
     assert code == int(ExitCode.OK), rehearsed
     assert _bytes(_staging(cfg)) == staged
-    assert not _music(cfg).exists(), "the rehearsal made the live batch folder"
+    assert not _music(cfg, name).exists(), "the rehearsal made the live batch folder"
     assert _database(cfg) == database
     assert _landed_rows(cfg) == []
     facts = rehearsed["data"]["totals"]["rehearsal"]
     assert facts["landed"] == 2 and facts["added"] == 2 and facts["refused"] == 0
     assert facts["area removed"] is True
     assert _areas(cfg) == [], "a rehearsal that ended left its area"
+    _assert_live_equal(rehearsed, ["intake", "land", "--name", name])
     return rehearsed
 
 
-def test_a_rehearsal_leaves_staging_the_music_folder_and_the_database_as_they_were(
-    native_library, silence
-):
+def _assert_live_equal(rehearsed: dict, verb: list[str]) -> None:
+    code, live = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), live
+    shown = live["cause"]["detail"]["shown"]
+    assert shown["digest"] == rehearsed["data"]["digest"]
+    assert rehearsed["run_id"] in shown["rehearsal"]
+    assert "equal to this plan's" in shown["rehearsal"], shown["rehearsal"]
+    assert "differs from the rehearsal" not in shown
+
+
+def test_a_rehearsal_leaves_staging_music_and_database_as_they_were(native_library, silence):
     cfg, _root = native_library
-    rehearsed = _rehearse_two_untouched(cfg, silence)
+    rehearsed = _rehearse_two_untouched(cfg, silence, BATCH)
     # The landing was applied, on the copy, and read back there.
     facts = rehearsed["data"]["totals"]["rehearsal"]
     assert facts["active rows after"] == facts["active rows before"] + 2
@@ -106,31 +125,23 @@ def test_a_rehearsal_leaves_staging_the_music_folder_and_the_database_as_they_we
     assert sorted(Path(item["from"]).name for item in items) == ["One.flac", "Two.flac"]
     assert {str(Path(item["from"]).parent) for item in items} == {str(_staging(cfg))}
     assert {str(Path(item["to"]).parent) for item in items} == {str(_music(cfg))}
-    # And the live gate digests the same plan and says so.
-    _assert_live_equal(rehearsed)
 
 
-def _assert_live_equal(rehearsed: dict, verb: list[str] | None = None) -> None:
-    code, live = drive(verb or _land())
+def test_a_live_plan_names_its_own_batch_s_rehearsal_and_the_lines(cfg, silence):
+    """A live plan with no rehearsal of its own batch shows no rehearsal line,
+    and a rehearsal of another batch is not the one compared."""
+    code, live = drive(_land())
     assert code == int(ExitCode.DECISION_REQUIRED), live
     shown = live["cause"]["detail"]["shown"]
-    assert shown["digest"] == rehearsed["data"]["digest"]
-    assert rehearsed["run_id"] in shown["rehearsal"]
-    assert "equal to this plan's" in shown["rehearsal"], shown["rehearsal"]
-    assert "differs from the rehearsal" not in shown
-
-
-def test_a_live_plan_that_differs_names_the_rehearsal_and_prints_the_differing_lines(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
+    assert "rehearsal" not in shown and "differs from the rehearsal" not in shown
+    code, rehearsed = drive(["intake", "land", "--name", "another batch", "--rehearse"])
+    assert code == int(ExitCode.OK), rehearsed
+    code, live = drive(_land())
+    assert "rehearsal" not in live["cause"]["detail"]["shown"]
     code, rehearsed = _rehearse()
     assert code == int(ExitCode.OK), rehearsed
     _stage(cfg, silence, "Two.flac")
-
     code, live = drive(_land())
-
     assert code == int(ExitCode.DECISION_REQUIRED), live
     shown = live["cause"]["detail"]["shown"]
     assert shown["digest"] != rehearsed["data"]["digest"]
@@ -141,34 +152,20 @@ def test_a_live_plan_that_differs_names_the_rehearsal_and_prints_the_differing_l
     assert not any("Two.flac" in line for line in lines if line.startswith("- ")), lines
 
 
-def test_a_live_plan_with_no_rehearsal_of_its_own_batch_shows_no_rehearsal_line(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    code, live = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), live
-    shown = live["cause"]["detail"]["shown"]
-    assert "rehearsal" not in shown and "differs from the rehearsal" not in shown
-    # A rehearsal of another batch is not the one compared.
-    code, rehearsed = drive(["intake", "land", "--name", "another batch", "--rehearse"])
-    assert code == int(ExitCode.OK), rehearsed
-    code, live = drive(_land())
-    assert "rehearsal" not in live["cause"]["detail"]["shown"]
-
-
 # Refusals
 
 
-def test_a_rehearsal_with_rekordbox_running_refuses_and_copies_nothing(
+def test_empty_staging_rehearses_nothing_and_rekordbox_refuses(
     native_library, silence, monkeypatch
 ):
     cfg, _root = native_library
+    code, envelope = _rehearse()
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert _areas(cfg) == []
     _stage(cfg, silence, "One.flac")
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
-
     code, refused = _rehearse()
-
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "rekordbox-running"
     assert _areas(cfg) == []
@@ -185,26 +182,12 @@ def test_a_rehearsal_on_the_bridge_is_refused(acknowledged, silence):
     assert _areas(cfg) == []
 
 
-def test_an_empty_staging_folder_rehearses_nothing(native_library):
-    cfg, _root = native_library
-    code, envelope = _rehearse()
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
-    assert _areas(cfg) == []
-
-
-def test_a_scratch_plan_that_is_not_the_live_plan_applies_nothing(
-    native_library, silence, monkeypatch
-):
+def test_a_scratch_plan_not_the_live_plan_applies_nothing(cfg, monkeypatch):
     """The area's plan, mapped back, must read as the live plan. Mapping nothing
     back leaves every scratch path in it, so the rehearsal refuses before the
     apply and names the lines."""
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
     monkeypatch.setattr(rehearsal, "mapped", lambda value, _pairs: value)
-
     code, refused = _rehearse()
-
     assert refused["cause"]["reason"] == "decision-stale", refused
     assert "nothing was applied" in refused["cause"]["message"]
     differs = refused["cause"]["detail"]["differs"]
@@ -222,8 +205,13 @@ def test_a_scratch_plan_that_is_not_the_live_plan_applies_nothing(
 # Areas are per run, and a failed one is kept and named
 
 
-def test_two_rehearsals_use_two_areas_and_one_area_is_never_shared(native_library):
+def test_two_areas_are_apart_and_copy_library_state_only(native_library):
+    """Land reads the newest rehearsal of its own folder and batch."""
     cfg, _root = native_library
+    config.state_path("snapshots", cfg).joinpath("big").mkdir(parents=True)
+    config.state_path("session_log", cfg).mkdir(parents=True, exist_ok=True)
+    config.state_path("write_lock", cfg).parent.mkdir(parents=True, exist_ok=True)
+    config.state_path("write_lock", cfg).write_text("")
     first = rehearsal.open_area(cfg, "2026-10-31T01:00:00Z-aaaa")
     second = rehearsal.open_area(cfg, "2026-10-31T01:00:00Z-bbbb")
     try:
@@ -233,16 +221,30 @@ def test_two_rehearsals_use_two_areas_and_one_area_is_never_shared(native_librar
         with pytest.raises(CratekitError) as caught:
             rehearsal.open_area(cfg, "2026-10-31T01:00:00Z-aaaa")
         assert caught.value.cause.reason == "output-exists"
+        assert Path(config.library_state_dir(first.cfg)).is_relative_to(first.volume)
+        for key in ("tree_registry", "backup_ack"):
+            assert config.state_path(key, first.cfg).is_file(), key
+        for key in ("snapshots", "session_log", "write_lock"):
+            assert not config.state_path(key, first.cfg).exists(), key
+        assert rb_writer.live_db_path(first.cfg) == first.database
+        assert first.database.is_relative_to(first.volume)
+        assert Path(first.cfg.library.root, first.cfg.library.music_dir).is_relative_to(
+            first.volume
+        )
     finally:
         rehearsal.remove(first)
         rehearsal.remove(second)
+    key = {"folder": "/f", "batch": "b"}
+    rehearsal.record("r1", verb=land_cli.REHEARSAL_VERB, key=key, digest="d1", plan=[], facts={})
+    rehearsal.record("r2", verb="other verb", key=key, digest="d2", plan=[], facts={})
+    found = rehearsal.latest(verb=land_cli.REHEARSAL_VERB, key=key)
+    assert found is not None and found["run_id"] == "r1"
+    assert (
+        rehearsal.latest(verb=land_cli.REHEARSAL_VERB, key={"folder": "/f", "batch": "c"}) is None
+    )
 
 
-def test_a_rehearsal_beside_another_runs_area_lands_and_leaves_that_area_alone(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
+def test_a_rehearsal_leaves_another_runs_area_alone(cfg):
     other = rehearsal.open_area(
         cfg, "2026-10-31T01:00:00Z-other", files=[_staging(cfg) / "One.flac"]
     )
@@ -259,25 +261,28 @@ def test_a_rehearsal_beside_another_runs_area_lands_and_leaves_that_area_alone(
 
 @pytest.mark.parametrize(
     ("failure", "reason"),
-    [(RuntimeError("the power went"), "internal-error"), (KeyboardInterrupt(), "cancelled")],
+    [
+        (RuntimeError("the power went"), "internal-error"),
+        (KeyboardInterrupt(), "cancelled"),
+        (None, "backup-acknowledgment"),
+    ],
 )
-def test_an_interrupted_rehearsal_keeps_its_area_and_names_it(
-    native_library, silence, monkeypatch, failure, reason
-):
-    """A failure is an internal error and an interrupt a cancel, each naming the area."""
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
+def test_a_failed_rehearsal_keeps_its_area_and_names_it(cfg, monkeypatch, failure, reason):
+    """A failure is an internal error, an interrupt a cancel, and a refusal
+    inside the rehearsal keeps its reason, each naming the area."""
     database = _database(cfg)
 
     def interrupted(*_args, **_kwargs):
         raise failure
 
-    monkeypatch.setattr(native, "apply_rows", interrupted)
-
+    if failure is None:
+        config.state_path("backup_ack", cfg).unlink()
+    else:
+        monkeypatch.setattr(native, "apply_rows", interrupted)
     code, refused = _rehearse()
-
     assert code != int(ExitCode.OK), refused
-    assert refused["cause"]["reason"] == reason, refused
+    assert refused["cause"]["reason"].startswith(reason), refused
+    assert failure is not None or "rehearsal area is kept at" in refused["cause"]["message"]
     area = refused["cause"]["detail"]["rehearsal_area"]
     assert len(area) == 2 and all(Path(path).is_dir() for path in area)
     for path in area:
@@ -289,25 +294,18 @@ def test_an_interrupted_rehearsal_keeps_its_area_and_names_it(
     assert (Path(area[0]) / "staging").is_dir()
 
 
-def test_a_refusal_inside_the_rehearsal_keeps_its_reason_and_names_the_area(
-    native_library, silence, monkeypatch
-):
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    config.state_path("backup_ack", cfg).unlink()
-
-    code, refused = _rehearse()
-
-    assert refused["cause"]["reason"].startswith("backup-acknowledgment"), refused
-    assert "rehearsal area is kept at" in refused["cause"]["message"]
-    assert all(Path(path).is_dir() for path in refused["cause"]["detail"]["rehearsal_area"])
-
-
 # The helper's own guards
 
 
-def test_the_witness_refuses_a_live_database_that_changed(native_library, tmp_path):
+def test_the_witness_refuses_a_live_change(native_library, silence, tmp_path):
     cfg, _root = native_library
+    staged = _stage(cfg, silence, "One.flac")
+    before = rehearsal.witness(cfg, (_staging(cfg), _music(cfg)))
+    rehearsal.assert_untouched(before)
+    staged.rename(staged.with_name("Moved.flac"))
+    with pytest.raises(CratekitError) as caught:
+        rehearsal.assert_untouched(before)
+    assert str(_staging(cfg)) in caught.value.cause.message
     before = rehearsal.witness(cfg, ())
     with Path(cfg.library.db_path).open("ab") as handle:
         handle.write(b"\0")
@@ -317,38 +315,15 @@ def test_the_witness_refuses_a_live_database_that_changed(native_library, tmp_pa
     assert str(tmp_path) in caught.value.cause.message
 
 
-def test_the_witness_refuses_a_live_folder_that_changed(native_library, silence):
-    cfg, _root = native_library
-    staged = _stage(cfg, silence, "One.flac")
-    before = rehearsal.witness(cfg, (_staging(cfg), _music(cfg)))
-    rehearsal.assert_untouched(before)
-    staged.rename(staged.with_name("Moved.flac"))
-    with pytest.raises(CratekitError) as caught:
-        rehearsal.assert_untouched(before)
-    assert str(_staging(cfg)) in caught.value.cause.message
-
-
-def test_the_area_copies_library_state_but_no_lock_snapshot_or_session(native_library):
-    cfg, _root = native_library
-    config.state_path("snapshots", cfg).joinpath("big").mkdir(parents=True)
-    config.state_path("session_log", cfg).mkdir(parents=True, exist_ok=True)
-    config.state_path("write_lock", cfg).parent.mkdir(parents=True, exist_ok=True)
-    config.state_path("write_lock", cfg).write_text("")
-    area = rehearsal.open_area(cfg, "2026-10-31T01:00:00Z-state")
-    try:
-        assert Path(config.library_state_dir(area.cfg)).is_relative_to(area.volume)
-        for key in ("tree_registry", "backup_ack"):
-            assert config.state_path(key, area.cfg).is_file(), key
-        for key in ("snapshots", "session_log", "write_lock"):
-            assert not config.state_path(key, area.cfg).exists(), key
-        assert rb_writer.live_db_path(area.cfg) == area.database
-        assert area.database.is_relative_to(area.volume)
-        assert Path(area.cfg.library.root, area.cfg.library.music_dir).is_relative_to(area.volume)
-    finally:
-        rehearsal.remove(area)
-
-
-def test_a_clone_is_never_a_hard_link(tmp_path):
+def test_a_clone_is_never_a_hard_link_and_the_plan_lines_name_every_leaf(tmp_path):
+    """The differing lines name both sides."""
+    assert rehearsal.differing(["a = 1", "b = 2"], ["a = 1", "b = 3"]) == ["- b = 2", "+ b = 3"]
+    assert rehearsal.differing(["a = 1"], ["a = 1"]) == []
+    assert rehearsal.lines({"b": [1, {"c": "x"}], "a": True}) == [
+        "a = true",
+        "b[0] = 1",
+        'b[1].c = "x"',
+    ]
     source = tmp_path / "one.flac"
     source.write_bytes(b"audio")
     copy = tmp_path / "area" / "one.flac"
@@ -360,37 +335,10 @@ def test_a_clone_is_never_a_hard_link(tmp_path):
     assert source.read_bytes() == b"audio"
 
 
-def test_the_differing_lines_name_both_sides():
-    assert rehearsal.differing(["a = 1", "b = 2"], ["a = 1", "b = 3"]) == ["- b = 2", "+ b = 3"]
-    assert rehearsal.differing(["a = 1"], ["a = 1"]) == []
-
-
-def test_the_plan_lines_name_every_leaf():
-    assert rehearsal.lines({"b": [1, {"c": "x"}], "a": True}) == [
-        "a = true",
-        "b[0] = 1",
-        'b[1].c = "x"',
-    ]
-
-
-def test_land_cli_reads_the_newest_rehearsal_of_its_folder_and_batch(native_library):
-    cfg, _root = native_library
-    key = {"folder": "/f", "batch": "b"}
-    rehearsal.record("r1", verb=land_cli.REHEARSAL_VERB, key=key, digest="d1", plan=[], facts={})
-    rehearsal.record("r2", verb="other verb", key=key, digest="d2", plan=[], facts={})
-    found = rehearsal.latest(verb=land_cli.REHEARSAL_VERB, key=key)
-    assert found is not None and found["run_id"] == "r1"
-    assert (
-        rehearsal.latest(verb=land_cli.REHEARSAL_VERB, key={"folder": "/f", "batch": "c"}) is None
-    )
-
-
 # The review's round one
 
 
-def test_a_name_the_live_batch_folder_holds_is_refused_at_the_area_as_it_will_be_live(
-    native_library, silence
-):
+def test_a_name_the_live_folder_holds_is_refused_at_the_area(native_library, silence):
     """Occupancy is asked at the move, not in the plan, so the area holds the
     live folder's names too and the rehearsal refuses the file the live landing
     will refuse, rather than reporting it landed."""
@@ -401,9 +349,7 @@ def test_a_name_the_live_batch_folder_holds_is_refused_at_the_area_as_it_will_be
     (_music(cfg) / "One.flac").write_bytes(b"left by an earlier landing")
     _stage(cfg, silence, "One.flac")
     _stage(cfg, silence, "Two.flac")
-
     code, rehearsed = _rehearse()
-
     assert code == int(ExitCode.OK), rehearsed
     facts = rehearsed["data"]["totals"]["rehearsal"]
     assert facts["landed"] == 1 and facts["refused"] == 1 and facts["added"] == 1
@@ -412,42 +358,33 @@ def test_a_name_the_live_batch_folder_holds_is_refused_at_the_area_as_it_will_be
     assert _staged_names(cfg) == ["One.flac", "Two.flac"]
 
 
-def test_a_rehearsal_that_touched_the_live_library_is_refused_as_a_defect(
-    native_library, silence, monkeypatch
-):
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
+def _stray_into(monkeypatch, folder: Path) -> None:
+    """The engine's apply, run for real, then a file written into ``folder``."""
     real = landing.apply_native
 
     def straying(*args, **kwargs):
         landed = real(*args, **kwargs)
-        (_staging(cfg) / "Stray.flac").write_bytes(b"x")
+        (folder / "Stray.flac").write_bytes(b"x")
         return landed
 
     monkeypatch.setattr(landing, "apply_native", straying)
 
-    code, refused = _rehearse()
 
+def test_a_rehearsal_that_touched_the_live_library_is_refused(cfg, monkeypatch):
+    _stray_into(monkeypatch, _staging(cfg))
+    code, refused = _rehearse()
     assert refused["cause"]["reason"] == "internal-error", refused
     assert "rehearsal changed" in refused["cause"]["message"]
     assert str(_staging(cfg)) in refused["cause"]["message"]
     assert all(Path(path).is_dir() for path in refused["cause"]["detail"]["kept"])
 
 
-def test_a_rehearsal_that_touched_a_batch_filed_in_another_year_is_refused(
-    native_library, silence, monkeypatch
-):
+def test_a_rehearsal_that_touched_another_year_s_batch_is_refused(cfg, silence, monkeypatch):
     """A batch landed into again by its own name goes back to its recorded
     folder (U164), which may sit under another year than today's, and the
     rehearsal watches that folder too."""
-    from datetime import date
-
-    from cratekit.intake import batch_name
-
-    cfg, _root = native_library
     monkeypatch.setattr(batch_name, "today", lambda: date(2025, 12, 31))
     verb = ["intake", "land", "--name", "Friday warmup"]
-    _stage(cfg, silence, "One.flac")
     code, first, _refused = _two_acts(verb)
     assert code == int(ExitCode.OK), first
     filed = Path(cfg.library.root) / cfg.library.music_dir / "Processed_Tracks" / "2025"
@@ -455,17 +392,8 @@ def test_a_rehearsal_that_touched_a_batch_filed_in_another_year_is_refused(
     assert (filed / "One.flac").is_file()
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 27))
     _stage(cfg, silence, "Two.flac")
-    real = landing.apply_native
-
-    def straying(*args, **kwargs):
-        landed = real(*args, **kwargs)
-        (filed / "Stray.flac").write_bytes(b"x")
-        return landed
-
-    monkeypatch.setattr(landing, "apply_native", straying)
-
+    _stray_into(monkeypatch, filed)
     code, refused = drive([*verb, "--rehearse"])
-
     assert refused["cause"]["reason"] == "internal-error", refused
     assert str(filed) in refused["cause"]["message"]
 
@@ -477,12 +405,8 @@ def test_a_rehearsal_that_touched_a_batch_filed_in_another_year_is_refused(
         ("assert_rows_identified", "a landed row has no file id"),
     ],
 )
-def test_a_landed_row_the_read_back_refuses_is_refused_in_the_rehearsal(
-    native_library, silence, monkeypatch, check, said
-):
+def test_a_landed_row_the_read_back_refuses_is_refused(cfg, monkeypatch, check, said):
     """A row with a grid or with no file id, never reported gridless."""
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
     calls: list[object] = []
 
     def refusing(landed):
@@ -490,9 +414,7 @@ def test_a_landed_row_the_read_back_refuses_is_refused_in_the_rehearsal(
         raise land_cli.refuse("internal-error", said)
 
     monkeypatch.setattr(native, check, refusing)
-
     code, refused = _rehearse()
-
     assert calls, "the rehearsal never read its landed rows back"
     assert refused["cause"]["reason"] == "internal-error", refused
     assert said in refused["cause"]["message"]
@@ -505,9 +427,9 @@ def test_a_landed_row_the_read_back_refuses_is_refused_in_the_rehearsal(
 def _renamed_drive(cfg: config.Config, tmp_path: Path, base: str | None = None) -> str:
     """Record the database as made on a drive this machine no longer mounts.
 
-    The live library's shape: rekordbox stores every ``FolderPath`` under the
-    drive the database was made on, so the stored spelling differs from the
-    mounted one in its prefix. Answers the base drive.
+    rekordbox stores every ``FolderPath`` under the drive the database was
+    made on, so the stored spelling differs from the mounted one in its
+    prefix. Answers the base drive.
     """
     base = base or str(tmp_path.parent / "old-drive")
     conn = sqlite3.connect(cfg.library.db_path)
@@ -520,37 +442,33 @@ def _renamed_drive(cfg: config.Config, tmp_path: Path, base: str | None = None) 
     return base
 
 
-def test_a_library_whose_base_drive_is_not_its_mount_rehearses_equal_and_the_gate_says_so(
-    native_library, silence, tmp_path
-):
-    """Run 2026-10-31T12:26:03Z-0821: every row's FolderPath differed only by
-    the area's prefix under the base drive, which no mounted pair can reach."""
+def test_a_base_drive_not_the_mount_rehearses_equal(native_library, silence, tmp_path):
+    """Every row's FolderPath differed only by the area's prefix under the base
+    drive, which no mounted pair can reach. The batch is named with an accent:
+    every line is a JSON value, and an escaped accent is a spelling no mapped
+    pair holds, so it refused on every path in it while the plans were the same."""
     cfg, _root = native_library
     base = _renamed_drive(cfg, tmp_path)
-    rehearsed = _rehearse_two_untouched(cfg, silence)
+    name = "2026-09-29_café"
+    rehearsed = _rehearse_two_untouched(cfg, silence, name)
     # The plan shown is the live one, its rows stored under the base drive.
     stored = sorted(item["row"]["FolderPath"] for item in rehearsed["data"]["items"])
     assert stored == [
         str(
             native.stored_folder_path(
-                _music(cfg) / name, base_drive=base, current_drive=str(tmp_path)
+                _music(cfg, name) / one, base_drive=base, current_drive=str(tmp_path)
             )
         )
-        for name in ("One.flac", "Two.flac")
+        for one in ("One.flac", "Two.flac")
     ]
     assert all(path.startswith(base + "/library/") for path in stored), stored
-    _assert_live_equal(rehearsed)
 
 
-def test_on_a_renamed_drive_a_file_name_that_differs_still_refuses_and_names_the_line(
-    native_library, silence, tmp_path, monkeypatch
-):
+def test_on_a_renamed_drive_a_differing_name_still_refuses(cfg, tmp_path, monkeypatch):
     """The stored pair maps the prefix and nothing else: a FolderPath that
     differs past it is a real difference, refused and named with the spellings
     the comparison mapped, and the area is kept."""
-    cfg, _root = native_library
     base = _renamed_drive(cfg, tmp_path)
-    _stage(cfg, silence, "One.flac")
     real = rehearsal.mapped
 
     def planted(value, pairs):
@@ -562,9 +480,7 @@ def test_on_a_renamed_drive_a_file_name_that_differs_still_refuses_and_names_the
         return back
 
     monkeypatch.setattr(rehearsal, "mapped", planted)
-
     code, refused = _rehearse()
-
     assert code != int(ExitCode.OK), refused
     cause = refused["cause"]
     assert cause["reason"] == "decision-stale", refused
@@ -592,38 +508,29 @@ def test_on_a_renamed_drive_a_file_name_that_differs_still_refuses_and_names_the
     assert _landed_rows(cfg) == []
 
 
-def test_on_a_drive_recorded_as_its_own_mount_the_rehearsal_is_as_it_was(
-    native_library, silence, tmp_path
-):
+def test_on_a_drive_recorded_as_its_mount_it_is_as_it_was(cfg, tmp_path):
     """A library whose base drive is its mount stores the mounted spelling, so
     the stored pair adds nothing and the rehearsal compares equal as before."""
-    cfg, _root = native_library
     _renamed_drive(cfg, tmp_path, base=str(tmp_path))
-    _stage(cfg, silence, "One.flac")
-
     code, rehearsed = _rehearse()
-
     assert code == int(ExitCode.OK), rehearsed
     (item,) = rehearsed["data"]["items"]
     assert item["row"]["FolderPath"] == str(_music(cfg) / "One.flac")
-    _assert_live_equal(rehearsed)
+    _assert_live_equal(rehearsed, _land())
 
 
-def test_mapped_applies_the_longest_scratch_spelling_first_and_ignores_an_empty_one():
+def test_mapped_applies_the_longest_spelling_first_and_the_refusal_names_each_field_once():
     """A pair whose scratch spelling holds another's must not be half mapped by
-    the shorter one, whichever order the caller gave them in."""
+    the shorter one, whichever order the caller gave them in, and an empty one
+    is ignored. The refusal strips every index."""
     short = ("/drive/area", "/drive/live")
     long = ("/old/drive/area", "/old/stored")
     value = {"a": "/old/drive/area/Music/a.flac", "b": ["/drive/area/Music/b.flac"]}
-
     for pairs in ((short, long), (long, short)):
         assert rehearsal.mapped(value, pairs + (("", "/nowhere"),)) == {
             "a": "/old/stored/Music/a.flac",
             "b": ["/drive/live/Music/b.flac"],
         }
-
-
-def test_the_refusal_names_each_field_once_and_strips_every_index():
     assert land_cli._fields_of(
         [
             '- plan.rows[0].columns.FolderPath = "/a"',
@@ -632,25 +539,6 @@ def test_the_refusal_names_each_field_once_and_strips_every_index():
             '+ gate.target = "/c"',
         ]
     ) == ["rows.columns.FolderPath", "vox.rows", "target"]
-
-
-def test_a_batch_whose_name_is_not_ascii_rehearses_equal_and_the_gate_says_so(
-    native_library, silence, tmp_path
-):
-    """The review's round one: every line is a JSON value, and an escaped
-    accent is a spelling no mapped pair holds, so a batch named with one
-    refused on every path in it while the two plans were the same."""
-    cfg, _root = native_library
-    _renamed_drive(cfg, tmp_path)
-    name = "2026-09-29_café"
-    _stage(cfg, silence, "One.flac")
-
-    code, rehearsed = drive(["intake", "land", "--name", name, "--rehearse"])
-
-    assert code == int(ExitCode.OK), rehearsed
-    assert rehearsed["data"]["totals"]["rehearsal"]["landed"] == 1
-    assert _areas(cfg) == []
-    _assert_live_equal(rehearsed, ["intake", "land", "--name", name])
 
 
 # The rehearsal's check of its scratch database with no room for its copy (R-1677)
@@ -680,47 +568,28 @@ def _area_check_answers(monkeypatch, *, error: OSError | None) -> list[dict]:
     return asked
 
 
-def test_a_rehearsal_check_whose_copy_finds_no_room_is_refused_under_the_room_slug(
-    native_library, silence, monkeypatch
-):
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    asked = _area_check_answers(monkeypatch, error=OSError(errno.ENOSPC, "No space left"))
-
-    code, refused = _rehearse()
-
-    assert asked == [{"raise_copy_failure": True}]
-    assert refused["cause"]["reason"] == "snapshot-check-temp-full", refused
-    assert "/scratch" in refused["cause"]["message"]
-    assert "rehearsal area is kept at" in refused["cause"]["message"]
-
-
-@pytest.mark.parametrize("failing", ["the check", "its copy otherwise"])
-def test_a_copy_that_fails_its_integrity_check_is_refused_naming_the_area(
-    native_library, silence, monkeypatch, failing
-):
-    """Failed outright, or by a copy failure that is not a want of room."""
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
+@pytest.mark.parametrize("failing", ["no room", "the check", "its copy otherwise"])
+def test_a_failed_integrity_check_is_refused_naming_the_area(cfg, monkeypatch, failing):
+    """A copy that found no room is refused under the room slug; one failed
+    outright, or by a copy failure that is not a want of room, as failed."""
+    asked = []
     if failing == "the check":
         monkeypatch.setattr(rb_writer, "integrity_ok", lambda *_args, **_kwargs: False)
     else:
-        _area_check_answers(monkeypatch, error=OSError(errno.EACCES, "Permission denied"))
-
+        code = errno.ENOSPC if failing == "no room" else errno.EACCES
+        asked = _area_check_answers(monkeypatch, error=OSError(code, "refused"))
     code, refused = _rehearse()
-
-    assert refused["cause"]["reason"] == "snapshot-integrity-failed", refused
     assert "rehearsal area is kept at" in refused["cause"]["message"]
+    if failing == "no room":
+        assert asked == [{"raise_copy_failure": True}]
+        assert refused["cause"]["reason"] == "snapshot-check-temp-full", refused
+        assert "/scratch" in refused["cause"]["message"]
+    else:
+        assert refused["cause"]["reason"] == "snapshot-integrity-failed", refused
 
 
-def test_a_temporary_volume_with_no_room_for_the_rehearsal_check_refuses_before_its_copy(
-    native_library, silence, monkeypatch
-):
+def test_no_room_for_the_check_refuses_before_its_copy(cfg, monkeypatch):
     """Measured before the check's copy, as the capture's is: no copy is attempted."""
-    from cratekit.core import snapshot
-
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
     asked = _area_check_answers(monkeypatch, error=None)
     measured: list[tuple[Path, object]] = []
     real_measure = snapshot.assert_room_for_check
@@ -734,9 +603,7 @@ def test_a_temporary_volume_with_no_room_for_the_rehearsal_check_refuses_before_
         return real_measure(database, **kwargs)
 
     monkeypatch.setattr(snapshot, "assert_room_for_check", measuring)
-
     code, refused = _rehearse()
-
     assert refused["cause"]["reason"] == "snapshot-check-temp-full", refused
     assert "0 bytes free" in refused["cause"]["message"]
     assert asked == [], "the area's check copied after the measure refused"
