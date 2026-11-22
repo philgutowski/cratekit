@@ -57,20 +57,17 @@ def _refill(pass_name: str = PASS) -> list[str]:
 
 
 def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
-    """R34's two acts against the refill's explicit gate, then the acting drive."""
     return _gated(verb, gate=GATE, answer="apply")
 
 
 def _playlist_id(cfg: config.Config, name: str) -> str:
     """The landing's INBOX playlist of this name, never its custom playlist twin (U149)."""
-    (row,) = _query(
-        cfg,
+    sql = (
         "SELECT ID FROM djmdPlaylist WHERE Name = ? AND rb_local_deleted = 0 "
-        "AND ParentID NOT IN (SELECT ID FROM djmdPlaylist WHERE Name LIKE ? AND Attribute = 1)",
-        name,
-        f"{twins.FOLDER_PREFIX} %",
+        "AND ParentID NOT IN (SELECT ID FROM djmdPlaylist WHERE Name LIKE ? AND Attribute = 1)"
     )
-    return str(row[0])
+    ((playlist_id,),) = _query(cfg, sql, name, f"{twins.FOLDER_PREFIX} %")
+    return str(playlist_id)
 
 
 def _sql(cfg: config.Config, statement: str, *params) -> None:
@@ -82,20 +79,15 @@ def _emptied(cfg: config.Config, name: str = INBOX_NAME) -> str:
     """Sitting 34: every row of the playlist removed and dropped back in under a new id."""
     playlist_id = _playlist_id(cfg, name)
     held = _members(cfg, playlist_id)
-    for number, content_id in enumerate(held, start=1):
-        ((title, folder),) = _query(
-            cfg, "SELECT Title, FolderPath FROM djmdContent WHERE ID = ?", content_id
-        )
-        _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", content_id)
-        _sql(cfg, "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE ContentID = ?", content_id)
-        _sql(
-            cfg,
-            "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
-            "updated_at) VALUES (?, ?, ?, 0, '2026-10-09', '2026-10-09')",
-            f"9{number:04d}{content_id}",
-            title,
-            folder,
-        )
+    insert = (
+        "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
+        "updated_at) VALUES (?, ?, ?, 0, '2026-10-09', '2026-10-09')"
+    )
+    for number, cid in enumerate(held, start=1):
+        ((title, folder),) = _query(cfg, "SELECT Title, FolderPath FROM djmdContent WHERE ID = ?", cid)
+        _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", cid)
+        _sql(cfg, "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE ContentID = ?", cid)
+        _sql(cfg, insert, f"9{number:04d}{cid}", title, folder)
     assert _live_members(cfg, playlist_id) == []
     return playlist_id
 
@@ -120,15 +112,8 @@ def _refills(cfg: config.Config) -> list[session.SessionRecord]:
 
 def _live_members(cfg: config.Config, playlist_id: str) -> list[str]:
     titles = dict(_query(cfg, "SELECT ID, Title FROM djmdContent"))
-    return [
-        str(titles[str(row[0])])
-        for row in _query(
-            cfg,
-            "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? "
-            "AND rb_local_deleted = 0 ORDER BY TrackNo",
-            playlist_id,
-        )
-    ]
+    sql = "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0"
+    return [str(titles[str(row[0])]) for row in _query(cfg, sql + " ORDER BY TrackNo", playlist_id)]
 
 
 def _five_landed_and_emptied(cfg: config.Config, silence: Path) -> str:
@@ -394,9 +379,7 @@ def test_the_name_is_asked_only_of_a_playlist_no_record_gives_another_pass_and_o
     mine = {"1": under["1"]}
     found = refill.locate(db, mine, (), unreadable=1, account="pl-a", name=ACCOUNT, job_id="j")
     assert isinstance(found, refill.Unfound) and found.why == refill.UNREADABLE
-
-
-def test_one_playlist_two_jobs_answer_to_is_neither_jobs():
+    # One playlist two jobs answer to is neither job's.
     first = refill.Target("pl-a", ACCOUNT, "j1", "7", ACCOUNT, refill.BY_NAME)
     second = refill.Target("pl-b", ACCOUNT, "j2", "7", ACCOUNT, refill.BY_NAME)
     third = refill.Target("pl-c", "Deep Cuts", "j3", "8", "Deep Cuts", refill.BY_RECORD)

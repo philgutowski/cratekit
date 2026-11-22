@@ -8,6 +8,7 @@ D1 applies: nothing here names a real volume, person or track.
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import sqlite3
 from datetime import date, datetime, timedelta
@@ -52,11 +53,8 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
+    settings = {rb_writer.LIBRARY_SYNC_SETTING: 0}
+    monkeypatch.setattr(rb_writer, "read_rekordbox_settings", lambda *args, **kwargs: settings)
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(
@@ -71,15 +69,8 @@ def machine(tmp_path, monkeypatch):
     (root / "Music").mkdir(parents=True)
     (tmp_path / "staging").mkdir()
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    resolved = config.from_dict(
-        valid_data(
-            root,
-            rekordbox={
-                "pinned_app_version": RECORDED_APP_VERSION,
-                "validated_on": "2026-08-01",
-            },
-        )
-    )
+    pinned = {"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"}
+    resolved = config.from_dict(valid_data(root, rekordbox=pinned))
     config.save(resolved)
     config.reset_cache()
     adopt_fixtures.build(resolved, TRACKS)
@@ -98,18 +89,14 @@ def acknowledged(machine):
 
 def _cut_over_intake(cfg: config.Config) -> str:
     root_id = cutover_fixtures.add_folder(cfg, DECLARED.intake.display)
-    tree_registry.write(
-        cfg,
-        tree_registry.Registry().with_record(
-            tree_registry.TreeRecord(
-                tree_id=INTAKE,
-                mode=tree_registry.Mode.DATABASE,
-                cutover_on=TODAY,
-                root_id=root_id,
-                source=tree_registry.DerivationSource.TAXONOMY,
-            )
-        ),
+    record = tree_registry.TreeRecord(
+        tree_id=INTAKE,
+        mode=tree_registry.Mode.DATABASE,
+        cutover_on=TODAY,
+        root_id=root_id,
+        source=tree_registry.DerivationSource.TAXONOMY,
     )
+    tree_registry.write(cfg, tree_registry.Registry().with_record(record))
     return root_id
 
 
@@ -179,15 +166,10 @@ def _record_landing(
 ) -> None:
     """A native landing's session record naming its batch playlist, closed."""
     started = datetime.combine(landed, datetime.min.time().replace(hour=12)).astimezone()
-    record = session.SessionRecord(
-        session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-landing",
-        workflow=native.WORKFLOW,
-        started=started.isoformat(),
-        state=session.SessionState.CLOSED,
-        sources={INTAKE: str(source)},
-        ended=started.isoformat(),
-        detail={native.BATCH_PLAYLIST_KEY: {"id": playlist_id, "name": name}},
-    )
+    ident, stamp = f"{started.strftime('%Y%m%dT%H%M%S')}-landing", started.isoformat()
+    detail = {native.BATCH_PLAYLIST_KEY: {"id": playlist_id, "name": name}}
+    record = session.SessionRecord(ident, native.WORKFLOW, stamp, session.SessionState.CLOSED)
+    record.sources, record.ended, record.detail = {INTAKE: str(source)}, stamp, detail
     session.write_record(record, cfg)
 
 
@@ -230,9 +212,7 @@ def _olds(cfg: config.Config, root_id: str) -> list[str]:
     return _ids(cfg, sql + " AND COALESCE(rb_local_deleted, 0) = 0", OLD, root_id)
 
 
-def _two_acts(
-    verb: list[str], *, gate: str = GATE, answer: str = "approve"
-) -> tuple[int, dict, dict]:
+def _two_acts(verb: list[str], *, gate: str = GATE, answer: str = "approve") -> tuple:
     """R34's two acts against an explicit gate, then the acting drive."""
     code, refused = drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
@@ -246,10 +226,10 @@ def _two_acts(
 
 
 def _by_action(envelope: dict) -> dict[str, list[str]]:
-    found: dict[str, list[str]] = {}
+    found: dict[str, list[str]] = collections.defaultdict(list)
     for item in envelope["data"]["items"]:
-        found.setdefault(item["action"], []).append(item["playlist"])
-    return found
+        found[item["action"]].append(item["playlist"])
+    return dict(found)
 
 
 @pytest.fixture
@@ -699,10 +679,7 @@ def test_an_old_folder_declared_wrongly_is_a_taxonomy_problem_and_not_a_tracebac
     with pytest.raises(taxonomy.TaxonomyError) as raised:
         taxonomy.build_taxonomy(data)
     assert any(expected in problem for problem in raised.value.problems), raised.value.problems
-
-
-def test_a_template_without_the_section_declares_no_old_folder():
-    import tomllib
+    # A template without the section declares no Old folder.
     assert taxonomy.build_taxonomy(tomllib.loads(_template_with(""))).intake_old is None
     assert DECLARED.intake_old == taxonomy.Node("inbox_old", "Old")
 

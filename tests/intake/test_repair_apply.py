@@ -135,8 +135,7 @@ def _one_accepted(cfg, body: bytes = b"fLaC") -> tuple[Path, Path]:
     """One file named LONG, scanned, its proposal accepted. Answers (folder, file)."""
     folder = _folder(cfg)
     path = _audio(folder, LONG, body)
-    _scan(folder)
-    _accept(cfg, path)
+    _scan_accept(cfg, folder, path)
     return folder, path
 
 

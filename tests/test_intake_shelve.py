@@ -61,10 +61,8 @@ def _land_three(cfg: config.Config, silence: Path, *, name: str = BATCH) -> list
     for file in FILES:
         _stage(cfg, silence, file)
     verb = ["intake", "land", "--name", name]
-    code, acted, _refused = (
-        _two_acts(verb) if name == BATCH else _two_acts_of(verb, "intake.land.native")
-    )
-    assert code == int(ExitCode.OK), acted
+    acts = _two_acts(verb) if name == BATCH else _two_acts_of(verb, "intake.land.native")
+    assert acts[0] == int(ExitCode.OK), acts[1]
     _as_landed_before_u164(cfg, name)
     rows = _rows(cfg)
     assert len(rows) >= 3
@@ -117,19 +115,18 @@ def _open(cfg: config.Config):
     return rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
 
 
-def test_a_path_write_is_refused_by_the_whitelist_unless_the_shelve_policy_is_registered():
+def test_a_path_write_is_refused_unless_the_shelve_policy_owning_only_it_is_registered():
     dirty = [(rb_writer.CONTENT_TABLE, [rb_writer.FOLDER_PATH_COLUMN])]
     refused = rb_writer.guard_violations([], dirty, [])
     assert refused and rb_writer.FOLDER_PATH_COLUMN in refused[0], refused
     with rb_writer.field_policies_for_commit(rb_writer.SHELVE_POLICY):
         assert rb_writer.guard_violations([], dirty, []) == []
     assert rb_writer.guard_violations([], dirty, []), "the policy outlived its commit"
-
-
-def test_the_shelve_policy_owns_the_path_column_and_nothing_else():
-    assert dict(rb_writer.SHELVE_POLICY.fields) == {
-        rb_writer.FOLDER_PATH_COLUMN: rb_writer.Ownership.OWNED
-    }
+    owned = {rb_writer.FOLDER_PATH_COLUMN: rb_writer.Ownership.OWNED}
+    assert dict(rb_writer.SHELVE_POLICY.fields) == owned
+    # The filed name is the hand convention, zero padded.
+    assert shelve.filed_name(date(2026, 9, 3), "Favorites") == "09_03_26 Favorites"
+    assert shelve.filed_name(date(2025, 12, 19), "labels") == "12_19_25 labels"
 
 
 @pytest.mark.parametrize(
@@ -159,11 +156,6 @@ def test_the_shelve_policy_owns_the_path_column_and_nothing_else():
 )
 def test_parse_name_reads_the_two_shapes_and_refuses_the_rest(batch, expected):
     assert shelve.parse_name(batch) == expected
-
-
-def test_filed_name_is_the_hand_convention_zero_padded():
-    assert shelve.filed_name(date(2026, 9, 3), "Favorites") == "09_03_26 Favorites"
-    assert shelve.filed_name(date(2025, 12, 19), "labels") == "12_19_25 labels"
 
 
 def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
