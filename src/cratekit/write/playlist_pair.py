@@ -435,21 +435,7 @@ def by_content(rows: Iterable[Row]) -> Mapping[str, Row]:
 
 
 __all__ = [
-    "PLAIN_PLAYLIST",
-    "ROOT_PARENT",
-    "WORKFLOW",
-    "Change",
-    "Playlist",
-    "Row",
-    "Stamp",
-    "Written",
-    "apply",
-    "assert_read_back",
-    "by_content",
-    "content",
-    "members",
-    "read_playlist",
-    "renumber",
-    "rows_by_isrc",
-    "stamps",
+    "PLAIN_PLAYLIST", "ROOT_PARENT", "WORKFLOW", "Change", "Playlist", "Row", "Stamp", "Written",
+    "apply", "assert_read_back", "by_content", "content", "members", "read_playlist", "renumber",
+    "rows_by_isrc", "stamps",
 ]

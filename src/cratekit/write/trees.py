@@ -1,31 +1,21 @@
 """The tree writers: one implementation per write, in either medium (U18).
 
-A tree is a named subtree of the playlist hierarchy, and everything a workflow
-does to one comes through here, through the XML bridge (a spliced export the
-user re-imports) or the database (membership rows written directly). Which
-medium is correct for a tree is the registry's answer, asked in both
-directions. One implementation replaces the five splicers, two rating writers
-and second label engine of the system being ported, which disagreed on the
-inputs that mattered; nine golden files pin the bytes.
+Everything a workflow does to a tree (a named subtree of the playlist
+hierarchy) comes through here, by the XML bridge (a spliced export the user
+re-imports) or the database (membership rows written directly); which medium is
+correct is the registry's answer. One implementation replaces the source's five
+splicers, which disagreed where it mattered; nine goldens pin the bytes.
 
-This module locates nothing and splices nothing: ``rbxml`` holds the locates
-and the byte writers, so its guard covers every byte write. Here a write is
-decided and an emitter called, and every call names the tree it targets, since
-a bridge call that omits the tree is refused by nothing.
+This module locates and splices nothing: ``rbxml`` does, so its guard covers
+every byte write, and every call here names the tree it targets. No display
+name is spelled here (R19). The database half calls the session spine
+(:func:`cratekit.core.session.assert_gates`, a capture
+:func:`cratekit.core.snapshot.assert_verified` passed) and NAMES the analysis
+roots it could touch, or the watch (R17's fifth surface) watches nothing.
 
-No display name is spelled here (R19): the routing tree, intake flow, catalog
-tree and vocal sub-playlist arrive as declared values, and ``VOX_SUB_CLASS`` is
-a stable id.
-
-The database half calls the session spine rather than rebuilding it:
-:func:`cratekit.core.session.assert_gates`, a commit behind a capture
-:func:`cratekit.core.snapshot.assert_verified` passed, and the analysis roots it
-could touch NAMED, since the watch (R17's fifth surface) watches nothing
-otherwise.
-
-Under U9's A2 verdict rekordbox's XML import replaces unconditionally, so a tree
-that has taken a database-native write is permanently unsafe to XML import, and
-the bridge guard is what stops the next sweep walking through that door.
+Under U9's A2 verdict an XML import replaces unconditionally, so a tree that has
+taken a database-native write is permanently unsafe to XML import; the bridge
+guard stops the next sweep walking through that door.
 """
 
 from __future__ import annotations
@@ -871,26 +861,18 @@ def write_tree_membership(
 ) -> MembershipReport:
     """Write membership for a database-native tree, for rows that already exist.
 
-    The medium is checked first through
-    :func:`cratekit.core.tree_registry.anchored_root`, which refuses a tree on
-    the bridge, a record naming no root, and a root this library lacks (the
-    restored pre-cutover database). The session spine is called, not rebuilt:
-    the gates, a verified capture, and the analysis roots NAMED. Names match
-    the XML-era names, so a cutover adopts rather than duplicates. No content
-    row, tempo or analysis column is written.
+    :func:`cratekit.core.tree_registry.anchored_root` refuses a tree on the
+    bridge, a record naming no root, and a root this library lacks (a restored
+    pre-cutover database). Names match the XML-era names, so a cutover adopts
+    rather than duplicates. No content row, tempo or analysis column is written.
+    ``analysis_roots`` may not be empty, and the session is this function's own
+    (R29), so no outside gates factory can name no roots.
 
-    ``analysis_roots`` has no default and may not be empty, since a watch over
-    nothing reports any session clean. The session is this function's own: R29
-    is one source per run, and an outside gates factory could name no roots.
-
-    ``purpose`` is a declaration, not a bypass: a rebuild lifts only the
-    convergence latches whose remedy is a rebuild (see
-    :class:`cratekit.core.convergence.Purpose`). ``intent`` is the same
-    declaration for ``assert_gates``, where U32's latch would otherwise refuse
-    the rebuild it names as its remedy; a separate parameter, since the two
-    answer different questions. ``RECOVERY`` also lifts the unresolved-session
-    latch, so the rebuild asserts that one itself
-    (:func:`cratekit.write.rebuild.rebuild_tree`).
+    ``purpose`` lifts only the convergence latches whose remedy is a rebuild
+    (:class:`cratekit.core.convergence.Purpose`); ``intent`` is that declaration
+    for ``assert_gates``, where U32's latch would refuse the rebuild it names as
+    its remedy. ``RECOVERY`` also lifts the unresolved-session latch, so the
+    rebuild asserts that one itself (:func:`cratekit.write.rebuild.rebuild_tree`).
     """
     watched = _watched(analysis_roots)
     root_id = _writable_root(cfg, db, tree_id, registry, root_exists, purpose)
@@ -1237,36 +1219,12 @@ def _record_removal_commit(
 
 
 __all__ = [
-    "MEMBERSHIP_WORKFLOW",
-    "MOVE_WORKFLOW",
-    "VOX_SUB_CLASS",
-    "MembershipMove",
-    "MoveInterrupted",
-    "MoveReport",
-    "move_tree_membership",
-    "ContentRow",
-    "DuplicateFolders",
-    "MatchOutcome",
-    "MembershipReport",
-    "RouteReport",
-    "RowMatch",
-    "TreeUnreachable",
-    "VoxReport",
-    "add_to_root_playlist",
-    "add_vox_playlists",
-    "apply_playlist_changes",
-    "apply_rating_changes",
-    "apply_unplaced_changes",
-    "check_record_labels_tree",
-    "index_active_rows",
-    "insert_record_labels_tree",
-    "insert_record_labels_trees",
-    "match_active_rows",
-    "match_indexed_rows",
-    "membership_positions",
-    "attached_capture",
-    "rollback_quietly",
-    "root_playlist_members",
-    "soft_delete_marker",
-    "write_tree_membership",
+    "MEMBERSHIP_WORKFLOW", "MOVE_WORKFLOW", "VOX_SUB_CLASS", "MembershipMove", "MoveInterrupted",
+    "MoveReport", "move_tree_membership", "ContentRow", "DuplicateFolders", "MatchOutcome",
+    "MembershipReport", "RouteReport", "RowMatch", "TreeUnreachable", "VoxReport",
+    "add_to_root_playlist", "add_vox_playlists", "apply_playlist_changes", "apply_rating_changes",
+    "apply_unplaced_changes", "check_record_labels_tree", "index_active_rows",
+    "insert_record_labels_tree", "insert_record_labels_trees", "match_active_rows",
+    "match_indexed_rows", "membership_positions", "attached_capture", "rollback_quietly",
+    "root_playlist_members", "soft_delete_marker", "write_tree_membership",
 ]
