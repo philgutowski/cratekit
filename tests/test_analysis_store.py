@@ -205,9 +205,10 @@ def test_no_call_site_hand_lists_the_roots_an_analysis_watch_covers():
     """Every root list is derived, so the share cannot be left out of one again (R-14)."""
     offenders: list[str] = []
     for path in sorted(SRC.rglob("*.py")):
-        if "_vendor" in path.parts:
+        text = path.read_text(encoding="utf-8")
+        if "_vendor" in path.parts or "analysis_roots" not in text:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(text)
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue

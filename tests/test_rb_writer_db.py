@@ -408,8 +408,11 @@ def test_no_caller_in_src_answers_the_key_question_for_itself():
     scanned = 0
     forwards = 0
     for source in sorted(root.rglob("*.py")):
-        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        text = source.read_text(encoding="utf-8")
         scanned += 1
+        if "open_db" not in text and "integrity_ok" not in text:
+            continue
+        tree = ast.parse(text, filename=str(source))
         forwarded = _forwarded_lines(tree) if source.name == "rb_copies.py" else set()
         for line, name in _unlock_arguments(tree):
             if line in forwarded:

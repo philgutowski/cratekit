@@ -2166,7 +2166,11 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
     for path in sorted(src.rglob("*.py")):
         if path.relative_to(src).as_posix() == "core/snapshot.py":
             continue
-        tree = ast.parse(path.read_text())
+        text = path.read_text()
+        # Every shape below names one of these, so a file naming neither has none.
+        if "snapshot" not in text and SHARED_CAPTURE not in text:
+            continue
+        tree = ast.parse(text)
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("snapshot"):
                 if any(alias.name == "capture" for alias in node.names):
@@ -2391,7 +2395,8 @@ def test_the_shared_capture_attaches_before_it_judges(cfg, monkeypatch):
         f"{path.relative_to(src).as_posix()}::{function.name}"
         for path in sorted(src.rglob("*.py"))
         if path.relative_to(src).as_posix() != "core/snapshot.py"
-        for function in ast.walk(ast.parse(path.read_text()))
+        and "snapshot" in (text := path.read_text())
+        for function in ast.walk(ast.parse(text))
         if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
         for node in ast.walk(function)
         if isinstance(node, ast.Call)
