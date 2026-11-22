@@ -1591,6 +1591,17 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
     manifest = json.loads((captures[0] / compare.MANIFEST).read_text(encoding="utf-8"))
     assert manifest["scenarios"] == [
         "adopt/scan_and_apply_jobs_queued_driven_and_reported",
+        "analysis/calibrate_by_hand_and_by_fit",
+        "analysis/calibrate_over_the_library_and_what_it_will_not_fit",
+        "analysis/restamp_rescores_a_folder_and_then_finds_it_unchanged",
+        "analysis/run_analyses_a_folder_and_then_skips_it",
+        "analysis/run_queued_then_driven_with_a_keyless_file_and_a_gone_one",
+        "analysis/run_with_nothing_bound_refuses_its_item",
+        "analysis/validate_says_nothing_was_scored",
+        "analysis_check/every_row_not_analysed_when_the_tree_is_not_cut_over",
+        "analysis_check/nothing_in_scope_and_the_refusals",
+        "analysis_check/suspect_analysis",
+        "analysis_check/waiting_on_the_visit",
         "backup/backup_capture_and_the_restore_plan",
         "cli/a_config_no_verb_can_use",
         "cli/help_of_every_verb",
@@ -1599,7 +1610,20 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "label/registry_document_written_read_back_and_refused",
         "sync/collection_removal",
         "tagging/tag_write_to_an_audio_file",
+        "tagging_folder/a_folder_swept_through_the_record_shops",
+        "tagging_folder/a_sweep_that_asks_discogs_first",
+        "tagging_retag/a_folder_retagged_behind_its_gate",
+        "tagging_retag/the_zeroes_and_the_refusals",
         "tagging_rows/row_genres_written_from_their_files",
+        "tagging_suggest/backlog_empty_and_refused",
+        "tagging_suggest/backlog_sorted_by_cause_and_the_catalogue_kept",
+        "tagging_suggest/guess_over_a_library_that_cannot_be_read",
+        "tagging_suggest/guess_reported_written_and_then_nothing_left",
+        "tagging_suggest/suggest_asks_the_catalogue_once_across_the_two_acts",
+        "tagging_suggest/suggest_refusals",
+        "tagging_suggest/suggest_written_behind_its_gate_and_then_nothing_left",
+        "vocals/a_folder_scored_and_then_unchanged",
+        "vocals/a_tree_an_oversize_file_and_the_refusals",
         "write/guarded_tree_write",
         "write/xml_splice",
     ]
@@ -1610,7 +1634,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "12 scenarios" in summary and "no difference" in summary
+    assert "36 scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())
