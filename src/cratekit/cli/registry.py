@@ -1573,20 +1573,11 @@ ENTRIES: tuple[Entry, ...] = (
         name="export.collection",
         summary="write a collection export from a copy of the database, with rekordbox closed",
         module="cratekit.cli.export_collection", builder="build", handler_key="export.collection",
-        # NO FEATURE ROW. The inventory has no row for producing an export,
-        # since the source system never did, and claiming one would make a
-        # row look covered by a verb that does something else.
+        # No feature row: the source system never produced an export.
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        #: One XML, where the person says, created exclusively and never
-        #: replaced, which is why the verb is not destructive and asks nothing.
-        #: THE DATABASE IS READ THROUGH A DISPOSABLE COPY and no database
-        #: surface is declared. CORE, with no module behind it, although its
-        #: sibling under this group is the export module's: the verbs that
-        #: read this file are core, and a core workflow cannot wait on a
-        #: module somebody switched off.
-        #: ``library.paths_resolved`` joined with R-773, since a row under no
-        #: prefix rule is written as the database holds it, and that check is
-        #: where a person reads how many there are before relying on the file.
+        #: One new XML, never replaced, so not destructive; the database is read
+        #: through a copy. Core, since the verbs reading the file are core.
+        #: ``library.paths_resolved`` counts the unmapped rows (R-773).
         writes=frozenset({"xml"}),
         doctor_checks=("library.mounted", "rekordbox.closed", "library.paths_resolved"),
     ),
@@ -1595,18 +1586,10 @@ ENTRIES: tuple[Entry, ...] = (
         name="report.genres",
         summary="name every genre holding 50 or more tracks with no top level " "folder of its own; creates nothing",
         module="cratekit.adopt.genres_cli", builder="build", handler_key="report.genres",
-        # NO FEATURE ROW, for the reason ``export.collection`` gives: the source
-        # system never counted this, and no inventory row asks for it.
-        #
-        # THE ADOPTION MODULE AND NOT THE REPORTS MODULE, although it sits in
-        # the report group. Its siblings read an export through a package that
-        # admits no database module. This one reads the database, through the
-        # collection reader adoption uses, so it is switched with that reader,
-        # which is always available.
+        # No feature row. The adoption module, not reports: it reads the
+        # database through adoption's collection reader.
         module_id="adoption", emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # THE DATABASE IS ONLY READ, as ``route.unplaced`` argues for itself:
-        # no surface is declared, the verb is not destructive, and it asks
-        # nothing. The pins stay because the binding pin is checked on a read.
+        # The database is only read, as for ``route.unplaced``; the pins stay.
         taxonomy_terms=("genre_energy",), doctor_checks=("library.mounted", "rekordbox.pins"),
     ),
     # ── A row's genre from its file (R-816) ─────────────────────────────────
@@ -1614,35 +1597,23 @@ ENTRIES: tuple[Entry, ...] = (
         name="tag.rows",
         summary="write each library row's genre from its file where the two " "disagree, the genre and nothing else; writes no file",
         module="cratekit.tagging.rows_cli", builder="build", handler_key="tag.rows",
-        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system patched the
-        # genre attribute of an export and never wrote a database row, so no
-        # inventory row asks for this and no script is replaced by it.
-        #
-        # GATED BY ``repair``, as ``tag.retag`` is and for its reason: a
-        # corrective pass over metadata the library already holds.
+        # No feature row or source script. Gated by ``repair``, for
+        # ``tag.retag``'s reason.
         module_id="repair", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: THE ROW AND ONLY THE ROW. ``files`` is absent because nothing here
-        #: writes one: the file is the authority in this direction and the
-        #: engine calls no tag writer. This is the ``GenreID`` relink
-        #: ``tag.retag`` declared and never performed (R-246), performed here
-        #: for every row whose file disagrees and not only for a retagged one.
+        #: The row only, the ``GenreID`` relink (R-246); the file is the authority.
         writes=frozenset({"db_metadata"}), destructive=True, taxonomy_terms=("genre_energy",),
         doctor_checks=(
             "library.mounted",
             "rekordbox.closed",
             "rekordbox.pins",
-            # The plan counts a row under no prefix rule and leaves it alone,
-            # so a collection most of whose rows are unmapped plans nothing.
-            # The check reads the ratio that makes that plan empty.
+            # Unmapped rows are left alone, so the ratio decides the plan.
             "library.paths_resolved",
         ),
         gates=(
             GateSpec(
                 name="tag.rows.confirm", options=("apply", "abort"),
                 prompt="Write the genre on these rows from their files?",
-                #: EXPLICIT (R34). A write to rows of a live library is answered
-                #: by a separate recorded act with an actor, never by a flag on
-                #: the command that discovered the gate.
+                #: Explicit (R34): a write to rows of a live library.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
@@ -1653,25 +1624,17 @@ ENTRIES: tuple[Entry, ...] = (
         name="tag.remap",
         summary="rewrite the genre on files a tag job filed by a mapping the " "taxonomy has since changed, from what the job recorded; writes no row",
         module="cratekit.tagging.remap_cli", builder="build", handler_key="tag.remap",
-        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system had no general
-        # catalogue and so no word of one to file again.
-        #
-        # GATED BY ``repair``, as ``tag.retag`` and ``tag.rows`` are: a
-        # corrective pass over metadata the library already holds.
+        # No feature row or source script. Gated by ``repair``, as ``tag.rows`` is.
         module_id="repair", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: THE FILE AND ONLY THE FILE. The row follows by ``tag.rows``, which
-        #: the run names, so no database is opened here and the cloud sync
-        #: decision, which binds to write intent on the guarded writer, is not
-        #: one this verb can reach.
+        #: The file only: the row follows by ``tag.rows``, which the run names,
+        #: so no database is opened and no cloud sync decision.
         writes=frozenset({"files"}), destructive=True, taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted",),
         gates=(
             GateSpec(
                 name="tag.remap.confirm", options=("apply", "abort"),
                 prompt="Rewrite the genre on these files?",
-                #: EXPLICIT (R34). A genre is written once and stays, so the
-                #: rewrite of one is answered by a separate recorded act with
-                #: an actor, over a plan a person has read.
+                #: Explicit (R34): a genre is written once and stays.
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -1681,16 +1644,10 @@ ENTRIES: tuple[Entry, ...] = (
         name="tag.suggest",
         summary="suggest a genre for each row with none on the row or the file, " "from its artist, its folder and optionally the catalogues; writes file and row",
         module="cratekit.tagging.suggest_cli", builder="build", handler_key="tag.suggest",
-        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system left a track
-        # with no genre to a person in rekordbox, and no inventory row asks for
-        # a suggestion.
-        #
-        # CORE, as ``tag.folder`` is: it tags, and a genre is what adoption
-        # files by, so a core workflow does not wait on a module switched off.
+        # No feature row or source script. Core, as ``tag.folder``: adoption
+        # files by genre.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: THE FILE AND THE ROW, so the two agree. The file through the one
-        #: genre writer, the row through the ``GenreID`` relink ``tag.rows``
-        #: performs, under the same guard.
+        #: The file and the row, so they agree, the row as ``tag.rows`` writes it.
         writes=frozenset({"files", "db_metadata"}), destructive=True,
         taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
@@ -1698,7 +1655,7 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="tag.suggest.confirm", options=("apply", "abort"),
                 prompt="Write these suggested genres on the files and their rows?",
-                #: EXPLICIT (R34), for the reason ``tag.rows.confirm`` gives.
+                #: Explicit (R34), for ``tag.rows.confirm``'s reason.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
@@ -1709,38 +1666,25 @@ ENTRIES: tuple[Entry, ...] = (
         name="tag.backlog",
         summary="sort every row adoption leaves under needs genre by cause, with " "each verb that settles it and one question per genre word no folder " "takes; writes nothing",
         module="cratekit.tagging.backlog_cli", builder="build", handler_key="tag.backlog",
-        # NO FEATURE ROW AND NO SOURCE SCRIPT, for the reason ``tag.suggest``
-        # gives: the source system left a track with no genre to a person.
-        #
-        # CORE, as ``tag.suggest`` is, whose plan it reads. DOCTOR'S SURFACE,
-        # as ``report.genres`` is, since a person reads a report as check rows.
+        # No feature row or source script. Core, as ``tag.suggest``, whose plan
+        # it reads; the diagnostic surface, as ``report.genres``.
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # THE DATABASE IS ONLY READ, as ``report.genres`` argues for itself:
-        # no surface is declared, the verb is not destructive, and it asks
-        # nothing. The catalogue answers ``--catalogue`` keeps are
-        # ``tag.suggest``'s own state entry, which no surface names there
-        # either.
+        # The database is only read; ``--catalogue`` answers are state, not a surface.
         taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted", "rekordbox.pins", "library.paths_resolved"),
     ),
     # ── The needs genre campaign (U294) ─────────────────────────────────────
     #
-    # Appended, for the reason the deferred routing block above gives. A
-    # COMPOSER, as ``organize`` is: every step it runs is another verb's plan
-    # and another verb's write, under one gate over ``tag.backlog``'s plan.
+    # A composer, as ``organize`` is: each step is another verb's, under one
+    # gate over ``tag.backlog``'s plan.
     Entry(
         name="tag.campaign",
         summary="apply the needs genre backlog under one gate: tag rows, tag " "suggest at the floor, the answered words, then tag rows again; writes " "file and row, names the resort",
         module="cratekit.cli.verbs.tag_campaign", builder="build", handler_key="tag.campaign",
-        # NO FEATURE ROW AND NO SOURCE SCRIPT, for the reason ``tag.backlog``
-        # gives.
-        #
-        # GATED BY ``repair``, as ``tag.rows`` is: its first and last steps are
-        # that verb, and a composer is never a way round a module switched off.
+        # No feature row or source script. Gated by ``repair``, as ``tag.rows``,
+        # its first and last step, so a composer is no way round a switch.
         module_id="repair", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: The union of its steps' surfaces: ``tag.rows`` the row, ``tag.suggest``
-        #: file and row, ``taxonomy.alias`` the files. ``taxonomy.folder``
-        #: writes the copy, which no surface names there either.
+        #: The union of its steps' surfaces.
         writes=frozenset({"files", "db_metadata"}), destructive=True,
         taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
@@ -1748,9 +1692,7 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="tag.campaign.approve", options=("apply", "abort"),
                 prompt="Apply the needs genre campaign: the rows from their files, " "the suggestions at the floor, and the answered words, each through " "its own verb? Filing them into their folders asks its own gate.",
-                #: EXPLICIT (R34). It stands for ``tag.rows.confirm``,
-                #: ``tag.suggest.confirm``, ``taxonomy.alias.apply`` and
-                #: ``taxonomy.folder.apply``, all explicit.
+                #: Explicit (R34): it stands for its steps' explicit gates.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,

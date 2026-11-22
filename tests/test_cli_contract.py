@@ -255,7 +255,7 @@ def _modules_declaring_their_own_remedy() -> dict[str, type]:
 
 def test_every_module_declaring_its_own_remedies_stays_inside_one_vocabulary():
     """Module local remediation tokens stay a subset of the canonical vocabulary,
-        rather than becoming a second scheme for one idea."""
+    rather than becoming a second scheme for one idea."""
     modules = _modules_declaring_their_own_remedy()
     assert modules, "no module-local Remedy was found; the walk is broken, not the tree"
 
@@ -394,7 +394,7 @@ def test_every_guarded_writer_refusal_has_a_reserved_code(condition, slug):
 
 def test_the_two_process_refusal_and_the_lock_contention_are_different_codes():
     """The two process refusal and lock contention differ, since their remedies are
-        opposite: quit an application, or wait (KTD25)."""
+    opposite: quit an application, or wait (KTD25)."""
     assert REASONS["rekordbox-running"] is ExitCode.REKORDBOX_OPEN
     assert REASONS["write-lock-held"] is ExitCode.LIBRARY_BUSY
     assert REASONS["session-lock-held"] is ExitCode.LIBRARY_BUSY
@@ -428,7 +428,7 @@ def test_an_unreadable_cloud_state_and_an_active_one_are_different_failures():
 
 def test_the_unreadable_cloud_state_is_not_the_undeclared_gate_reason():
     """The unreadable cloud state is not ``decision-unknown-gate``, which is a
-        defect, while a declared gate with nothing recorded is the system working."""
+    defect, while a declared gate with nothing recorded is the system working."""
     assert REASONS["cloud-sync-unreadable"] is REASONS["decision-unknown-gate"]
     assert "cloud-sync-unreadable" != "decision-unknown-gate"
 
@@ -487,7 +487,7 @@ def test_every_reason_maps_into_the_vocabulary_and_every_refusal_is_reachable():
 
 def test_a_cause_round_trips_through_json_with_its_chain_intact():
     """A cause survives JSON, since the job engine re-invokes the CLI as a
-        subprocess (KTD26) and would otherwise fall back to exit codes."""
+    subprocess (KTD26) and would otherwise fall back to exit codes."""
     inner = Cause(
         reason="unavailable-transient",
         message="the provider timed out",
@@ -558,7 +558,7 @@ def test_the_five_structured_surfaces_r32_names_are_all_declared():
 
 def test_the_match_surface_reserves_three_states_from_its_first_version():
     """The match surface reserves R11's needs review state from its first version,
-        since adding it later would break every consumer keyed on the shape."""
+    since adding it later would break every consumer keyed on the shape."""
     document = output.schema_document("match")
     assert set(document["required"]) == {"matched", "needs_review", "missing"}
 
@@ -595,7 +595,7 @@ def test_every_previous_major_is_still_present_in_the_lock(name):
 @pytest.mark.parametrize("name", sorted(output.schema_names()))
 def test_the_committed_golden_validates_against_the_current_schema(name):
     """The golden still validates, since a version bump does not say whether last
-        version's envelope parses."""
+    version's envelope parses."""
     major = output.current_schema(name).split("/")[1]
     golden = json.loads((SCHEMA_DIR / "golden" / f"{name}.v{major}.json").read_text())
     assert output.envelope_problems(golden) == []
@@ -603,7 +603,7 @@ def test_the_committed_golden_validates_against_the_current_schema(name):
 
 def test_the_declared_envelope_keys_are_exactly_what_is_serialized():
     """Derived from a real envelope, so the declared keys every verb must carry
-        cannot fall behind the serializer."""
+    cannot fall behind the serializer."""
     document = output.build(
         verb="profile.show",
         run_id="r",
@@ -627,7 +627,7 @@ def test_exactly_two_verbs_are_interactive_and_one_file_holds_the_stdin_exemptio
 
 def test_the_envelope_never_carries_its_own_human_rendering():
     """Human rendering stays out of the JSON, or every wording change becomes a
-        schema change."""
+    schema change."""
     for name in output.schema_names():
         assert "render" not in output.schema_document(name)["required"]
     assert set(output.ENVELOPE_KEYS) & {"render", "text", "message"} == set()
@@ -800,8 +800,8 @@ def test_an_unanswered_gate_exits_with_the_documented_code_and_leaves_the_run_re
 
 def test_the_profile_gate_shows_the_delta_the_digest_was_taken_over(configured):
     """The profile gate shows the delta its digest covers (R-693): the declined
-        run's items, each module toggled, the digest, the profile and the totals, in
-        the json envelope and on screen."""
+    run's items, each module toggled, the digest, the profile and the totals, in
+    the json envelope and on screen."""
     code, out, _ = drive(["--output", "json", "profile", "set", "slim"])
     assert code == int(ExitCode.DECISION_REQUIRED)
     shown = json.loads(out)["cause"]["detail"]["shown"]
@@ -942,8 +942,8 @@ def test_the_unreadable_cloud_sync_override_is_a_DECLARED_GATE():
 
 def test_every_verb_that_writes_the_database_declares_the_cloud_sync_decision():
     """Every verb declaring a database write surface declares the cloud sync
-        decision, derived from the registry (P3), or its user gets a refusal with no
-        way to answer it."""
+    decision, derived from the registry (P3), or its user gets a refusal with no
+    way to answer it."""
     missing = sorted(
         entry.name
         for entry in registry.ENTRIES
@@ -978,7 +978,7 @@ def test_the_core_writer_never_learns_the_gates_name_or_any_flag_string():
 
 def test_no_environment_variable_or_config_key_can_answer_a_gate(configured, monkeypatch):
     """No environment variable or config key answers a gate, since a blanket
-        answer satisfies every gate at once, which R34 forbids."""
+    answer satisfies every gate at once, which R34 forbids."""
     for variable in ("CRATEKIT_YES", "CRATEKIT_DECISION", "CRATEKIT_ASSUME_YES"):
         monkeypatch.setenv(variable, "1")
     code, _, _ = drive(["profile", "set", "slim"])
@@ -1058,7 +1058,7 @@ def test_a_run_record_belongs_to_the_verb_that_created_it(configured):
 
 def test_help_succeeds_with_every_heavy_extra_absent(configured, monkeypatch):
     """Help succeeds with every heavy extra absent, blocked at the import system so
-        this is a test rather than an environment."""
+    this is a test rather than an environment."""
     blocked = {module for entry in registry.entries() for module in entry.extras_modules}
     assert blocked, "no entry declares an extras-backed dependency"
 
@@ -1112,7 +1112,7 @@ def test_a_module_with_missing_extras_becomes_a_stub_that_names_the_install_comm
 
 def test_a_defect_in_our_own_module_does_not_masquerade_as_a_missing_extra():
     """A defect in our own module raises as itself, not as a missing extra, which
-        would send a user to install a package that cannot help."""
+    would send a user to install a package that cannot help."""
     entry = registry.Entry(
         name="analyze.broken",
         summary="a verb with a defect of our own",
@@ -1191,8 +1191,8 @@ def test_the_registry_is_the_source_of_the_verb_names_the_layering_guard_reads()
 
 def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker():
     """A planned verb whose module has landed must lose its ``planned_in`` marker,
-        so the marker expires on its own. Walked rather than parametrized, so an empty
-        set is a valid population (P3) rather than a collection error."""
+    so the marker expires on its own. Walked rather than parametrized, so an empty
+    set is a valid population (P3) rather than a collection error."""
     import importlib.util
 
     leftover = []
@@ -1768,7 +1768,7 @@ def _intake_set_reaching_account_gate(monkeypatch) -> list[str]:
 
 def test_intake_set_sample_leaves_account_and_catalogue_seams_real(configured, monkeypatch):
     """The intake.set sample leaks no fake into later tests on this worker, since
-        ``account.forget`` clears only the opened handle."""
+    ``account.forget`` clears only the opened handle."""
     from cratekit.label import catalogue
     from cratekit.modules.outbound import account
 
@@ -2015,7 +2015,7 @@ def _routing_tree() -> tuple[str, str]:
 
 def _a_file_in_the_library() -> Path:
     """One empty file with an audio suffix under the configured library, which
-        ``intake file`` reads for tags and finds none."""
+    ``intake file`` reads for tags and finds none."""
     path = Path(config.load().library.root) / "Music" / "conformance-single.flac"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.touch()
@@ -2132,7 +2132,7 @@ def test_conformance_2_exit_codes_are_from_the_vocabulary_and_never_status_two(
 
 def test_conformance_2_only_the_entry_point_may_end_the_process():
     """Only the entry point ends the process; one boundary converts a cause into a
-        status, since ``SystemExit`` escapes an ``except Exception`` upstream."""
+    status, since ``SystemExit`` escapes an ``except Exception`` upstream."""
     offenders: list[str] = []
     for path, source in package_sources():
         relative = path.relative_to(SRC_ROOT).as_posix()
@@ -2281,7 +2281,7 @@ UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
 
 def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
     """Every gate the entry declares fired, except the ones named unreachable,
-        since only a drive that counts what fired holds a handler to its declaration."""
+    since only a drive that counts what fired holds a handler to its declaration."""
     declared = {spec.name for spec in entry.gates}
     exempt = declared & set(UNREACHABLE_GATES)
     expected = declared - exempt
@@ -2393,7 +2393,7 @@ def _acknowledge_where_the_verb_reads_it_first(entry: registry.Entry, cfg) -> No
 
 def test_every_verb_acknowledged_for_conformance_is_refused_without_one_elsewhere():
     """Each acknowledged verb names the test that drives it without an
-        acknowledgment, and that test exists."""
+    acknowledgment, and that test exists."""
     root = Path(__file__).resolve().parent.parent
     for name, node_id in ACKNOWLEDGED_BEFORE_THE_GATE.items():
         assert registry.entry(name).landed, name
@@ -2555,8 +2555,8 @@ def test_conformance_3_admits_a_verb_carrying_two_gates(
     ``_conformance_3`` answers gates cumulatively: an ordinary gate accumulates a
     flag, an explicit one takes its two acts and the run carries the answer under
     ``--run``. Plain then explicit carries an inline answer into a resumed run;
-    explicit then explicit records two decisions on one run without re asking the
-    first. Only the handler is synthetic; the rest of the path is shipped.
+    explicit then explicit records two decisions on one run without asking the first
+    again. Only the handler is synthetic; the rest of the path is shipped.
     """
     base = registry.entry("profile.set")
     first = replace(base.gates[0], explicit=explicit_first)
@@ -2572,7 +2572,7 @@ def test_conformance_3_admits_a_verb_carrying_two_gates(
 
 def test_the_csv_writer_guard_bites_and_stays_quiet_on_correct_code():
     """The csv writer guard fires on every import shape, aliased ones included,
-        and stays quiet on an unrelated attribute of that name and on a read (P7)."""
+    and stays quiet on an unrelated attribute of that name and on a read (P7)."""
     assert constructs_a_csv_writer("import csv\ncsv.writer(handle)\n")
     assert constructs_a_csv_writer("from csv import DictWriter\nDictWriter(handle, [])\n")
     assert constructs_a_csv_writer("import csv as spreadsheet\nspreadsheet.writer(handle)\n"), (
@@ -2783,7 +2783,7 @@ TAXONOMY_DISPLAY_NAMES = frozenset(
 @pytest.mark.parametrize("entry", ALL_ENTRIES, ids=lambda e: e.name)
 def test_conformance_7_taxonomy_terms_are_stable_identifiers(entry):
     """R19: a verb resolves the declared taxonomy, never a display name, since a
-        display name is a persisted key in five places and a rename orphans them."""
+    display name is a persisted key in five places and a rename orphans them."""
     for term in entry.taxonomy_terms:
         assert term in TAXONOMY_IDS, (
             f"{entry.name} names {term!r}, which is not a stable taxonomy id in "
@@ -2807,7 +2807,7 @@ def test_conformance_7_no_verb_module_hardcodes_a_taxonomy_display_name():
 @pytest.mark.parametrize("entry", ALL_ENTRIES, ids=lambda e: e.name)
 def test_conformance_8_anything_that_writes_declares_a_doctor_precondition(entry):
     """R3: anything that writes declares a doctor precondition, so health checks
-        gate the work rather than only feeding a report."""
+    gate the work rather than only feeding a report."""
     if entry.writes:
         assert entry.doctor_checks, (
             f"{entry.name} writes {sorted(entry.writes)} and declares no health "
@@ -2830,8 +2830,7 @@ def test_conformance_8_every_declared_check_key_exists_in_the_doctor_registry(co
 
 
 def test_conformance_8_every_declared_precondition_can_pass_and_can_refuse(configured):
-    """Every declared precondition passes on a healthy machine and refuses on a
-        broken one.
+    """Every declared precondition passes on a healthy machine, refuses on a broken one.
 
     Two runs over one configuration, differing only in seams. On a healthy machine
     none refuses, or the check gets worked around (P7); on ``machines.hostile()``
@@ -2965,7 +2964,7 @@ def test_every_feature_row_maps_to_a_verb_at_its_stated_disposition():
 
 def test_every_source_entry_point_is_either_mapped_or_written_down_as_cut():
     """Every source entry point is mapped or written down as cut, wider than the
-        inventory, since some live console scripts have no inventory row."""
+    inventory, since some live console scripts have no inventory row."""
     fixture = Path(__file__).resolve().parent / "fixtures" / "dj_tools_scripts.txt"
     scripts = [
         line.strip()
@@ -2986,7 +2985,7 @@ def test_every_source_entry_point_is_either_mapped_or_written_down_as_cut():
 
 def test_every_declared_module_toggle_is_used_by_at_least_one_verb():
     """Every declared toggle gates some verb, since a toggle nobody reads is a
-        config switch that does nothing."""
+    config switch that does nothing."""
     used = {entry.module_id for entry in registry.entries()} - {None}
     unused = sorted(set(profiles.MODULES) - used - registry.DEFERRED_MODULES)
     assert not unused, (
@@ -3024,7 +3023,7 @@ def slim_verb_paths():
 
 def test_every_live_toggle_is_driven_by_the_toggle_test_below():
     """Every live toggle gates a landed verb, which stops the derived
-        parametrisation below silently shrinking."""
+    parametrisation below silently shrinking."""
     waiting = {entry.module_id for entry in registry.entries() if not entry.landed}
     live = set(profiles.MODULES) - registry.DEFERRED_MODULES - waiting
     assert live <= set(_TOGGLES_WITH_LANDED_VERBS), sorted(
@@ -3152,7 +3151,7 @@ def test_a_scripted_run_with_no_terminal_reaches_a_gate_and_exits_with_its_code(
     configured, tmp_path
 ):
     """A scripted run with no standard input reaches a gate, exits with a documented
-        code and leaves a resumable run, rather than aborting at end of file."""
+    code and leaves a resumable run, rather than aborting at end of file."""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(SRC_ROOT)
     result = subprocess.run(
@@ -3248,7 +3247,7 @@ def test_a_gate_refusal_carries_what_the_verb_consulted(configured):
 
 def test_a_gate_refusal_with_no_context_carries_no_shown_key_at_all(configured):
     """A gate refusal with no context carries no ``shown`` key at all, so "shows
-        nothing" stays distinct from "looked and found nothing"."""
+    nothing" stays distinct from "looked and found nothing"."""
     state = gates.RunState(run_id="r", verb="probe", created="now")
     with pytest.raises(gates.DecisionRequired) as raised:
         gates.Gates(state=state).require(_context_spec(explicit=False))
@@ -3259,7 +3258,7 @@ def test_a_gate_refusal_with_no_context_carries_no_shown_key_at_all(configured):
 
 def test_the_explicit_inline_refusal_carries_the_context_too(configured):
     """The explicit inline refusal carries the context too, since it is the one a
-        person meets when trying to shortcut the acknowledgment (R34)."""
+    person meets when trying to shortcut the acknowledgment (R34)."""
     spec = _context_spec(explicit=True)
     state = gates.RunState(run_id="r", verb="probe", created="now")
     resolver = gates.Gates(state=state, supplied={spec.name: "proceed"})
@@ -3270,7 +3269,7 @@ def test_the_explicit_inline_refusal_carries_the_context_too(configured):
 
 def test_human_mode_renders_what_the_verb_showed_and_is_unchanged_without_it(configured):
     """Human mode renders what the verb showed, so a terminal user is not left with
-        a bare question; a refusal carrying nothing prints as it did before."""
+    a bare question; a refusal carrying nothing prints as it did before."""
     spec = _context_spec(explicit=False)
     carried = render.render_gate(
         gates.DecisionRequired(
@@ -3308,7 +3307,7 @@ def test_conformance_3_fails_a_verb_that_declares_a_gate_and_never_asks_it(
     configured, monkeypatch
 ):
     """Assertion 3 fails a verb that declares a gate and never asks it, in both
-        shapes, since nothing else holds a handler to its declared gates."""
+    shapes, since nothing else holds a handler to its declared gates."""
     base = registry.entry("profile.set")
     promoted = replace(base, gates=(base.gates[0], _SECOND_GATE))
     _swap_in(monkeypatch, promoted)

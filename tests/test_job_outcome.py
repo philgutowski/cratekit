@@ -592,8 +592,7 @@ def test_the_static_guard_refuses_the_shapes_it_exists_for(source, expected):
 
 
 def test_no_shell_keeps_a_hand_rolled_copy_of_the_mapping():
-    """No shell keeps its own copy of the mapping, which cannot know a state added
-    later (R-290).
+    """No shell keeps its own copy of the mapping, which cannot know new states (R-290).
 
     The predicate is matched, a condition reading both ``is_open()`` and ``cause``,
     because shells name their job differently and one spelling would miss the rest.
