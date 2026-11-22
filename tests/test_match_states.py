@@ -9,6 +9,7 @@ Parts: folding and versions, the on-disk index, resolution, the intake shapes, a
 from __future__ import annotations
 
 import ast
+import functools
 import io
 import json
 import re
@@ -1757,8 +1758,10 @@ def _source_of(dotted: str) -> str | None:
     return None
 
 
-def _imports_of(source: str, *, package: str) -> set[str]:
-    """Every module this source binds, with relative imports resolved.
+@functools.cache
+def _imports_of(source: str, *, package: str) -> frozenset[str]:
+    """Every module this source binds, with relative imports resolved; cached, since the
+    answer is a function of the text and the package alone.
 
     ``package`` is what a relative import is relative TO; without it ``from ..write import
     rbxml`` matches nothing.
@@ -1788,7 +1791,7 @@ def _imports_of(source: str, *, package: str) -> set[str]:
                     for argument in node.args
                     if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
                 )
-    return reached
+    return frozenset(reached)
 
 
 def reaches_an_export_reader(source: str, *, package: str = "cratekit.acquire") -> set[str]:
