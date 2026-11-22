@@ -18,7 +18,7 @@ from cratekit.acquire import match
 from cratekit.cli import registry
 from cratekit.core import review, tags
 from cratekit.core.exit_codes import ExitCode
-from cratekit.export import set_archive, set_cli, set_common, set_match, set_rename
+from cratekit.export import set_cli
 from cratekit.intake import candidates
 from cratekit.label import catalogue
 from cratekit.label.catalogue import AccountPlaylist
@@ -800,7 +800,7 @@ def test_sync_unmark_takes_the_archive_mark_off_again(account):
 
 @pytest.mark.parametrize(
     "source",
-    [Path(one.__file__) for one in (sets, set_cli, set_archive, set_common, set_match, set_rename)],
+    [Path(sets.__file__), *sorted(Path(set_cli.__file__).parent.glob("set_*.py"))],
 )
 def test_no_removal_shape_appears_in_the_set_path(source):
     called = {
