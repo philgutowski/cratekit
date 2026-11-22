@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 107,
+  "pytest_runs": 117,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -3020,6 +3020,357 @@
       "source": {
         "table": "r662-b.json",
         "id": "M13_fix_line_back_to_setup"
+      }
+    },
+    {
+      "id": "r662-b.M14_token_dropped_beside_others",
+      "description": "the token is dropped whenever the disagreement is present, even beside other problems",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "2b9f310ea71054cd",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_setup_token_stays_when_the_disagreement_is_not_the_only_problem"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(problems) > 1:\n        return Remediation(remedy=Remedy.RUN_SETUP, steps=steps)",
+      "new": "    if len(problems) > 2:\n        return Remediation(remedy=Remedy.RUN_SETUP, steps=steps)",
+      "source": {
+        "table": "r662-b.json",
+        "id": "M14_token_dropped_beside_others"
+      }
+    },
+    {
+      "id": "r662-b.M15_advice_names_spelled_remote",
+      "description": "the flag step recommends the spelled name, the one already refused, instead of the destinations' name",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a82a558435693a7a",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_disagreeing_remote_refusal_names_the_flag_and_the_flag_repairs_it",
+        "tests/test_doctor.py::test_the_setup_token_stays_when_the_disagreement_is_not_the_only_problem"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"re-run crate setup with --backup-remote {expected} to record the remote \"",
+      "new": "        f\"re-run crate setup with --backup-remote {spelled} to record the remote \"",
+      "source": {
+        "table": "r662-b.json",
+        "id": "M15_advice_names_spelled_remote"
+      }
+    },
+    {
+      "id": "r662-b.M16_flag_not_declared",
+      "description": "the parser no longer declares --backup-remote",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ede72302024afff0",
+      "subset": [
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 1414,
+      "baseline_collected": 1414,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_bare_folder_name_is_refused_by_the_wizard_however_it_arrives[flag]",
+        "tests/test_doctor.py::test_a_bare_folder_name_is_refused_by_the_wizard_however_it_arrives[prompt]",
+        "tests/test_doctor.py::test_a_mistyped_module_name_is_still_a_named_problem_not_a_traceback",
+        "tests/test_doctor.py::test_a_re_run_repairs_a_spelled_remote_rclone_does_not_know",
+        "tests/test_doctor.py::test_a_second_setup_run_asks_nothing_and_changes_nothing_it_was_not_asked_to",
+        "tests/test_doctor.py::test_an_empty_credential_leaves_the_exit_code_to_doctor",
+        "tests/test_doctor.py::test_an_install_with_no_templates_offers_no_closed_set_rather_than_an_empty_one",
+        "tests/test_doctor.py::test_setup_leaves_under_the_code_a_refusing_check_reserved",
+        "tests/test_doctor.py::test_setup_writes_nothing_beside_the_library_until_the_volume_is_asserted",
+        "tests/test_doctor.py::test_the_backup_flags_are_recorded_without_a_question",
+        "tests/test_doctor.py::test_the_disagreeing_remote_refusal_names_the_flag_and_the_flag_repairs_it",
+        "tests/test_doctor.py::test_the_wizard_on_a_clean_machine_produces_a_valid_config_and_a_green_doctor",
+        "tests/test_doctor.py::test_the_wizard_writes_the_active_template_on_a_linux_style_ordinary_directory",
+        "tests/test_doctor.py::test_the_wizard_writes_the_active_template_once_the_volume_is_the_recorded_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    parser.add_argument(\n        \"--backup-remote\",\n        help=\"the rclone remote the three destinations name, replacing a recorded one\",\n    )",
+      "new": "",
+      "source": {
+        "table": "r662-b.json",
+        "id": "M16_flag_not_declared"
+      }
+    },
+    {
+      "id": "r662-b.M18_repair_never_runs",
+      "description": "the rclone repair is never called",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e6c2ecacb565cec2",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_re_run_repairs_a_spelled_remote_rclone_does_not_know",
+        "tests/test_doctor.py::test_a_spelled_remote_rclone_lacks_is_replaced_by_the_destinations_remote"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not args.backup_remote:\n        _replace_a_remote_rclone_lacks(wizard, document, machine)",
+      "new": "    if False:\n        _replace_a_remote_rclone_lacks(wizard, document, machine)",
+      "source": {
+        "table": "r662-b.json",
+        "id": "M18_repair_never_runs"
+      }
+    },
+    {
+      "id": "r662-b.M7_composite_with_M9",
+      "description": "M7 and M9 together, what the unreadable configuration guard holds once the known destination guard is gone; batch a's M7 is the row it pairs with",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "65240e71a38d80cf",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_spelled_remote_is_kept_unless_rclone_was_read_and_lacks_it[rclone-absent]",
+        "tests/test_doctor.py::test_a_spelled_remote_is_kept_unless_rclone_was_read_and_lacks_it[rclone-knows-neither]",
+        "tests/test_doctor.py::test_a_spelled_remote_is_kept_unless_rclone_was_read_and_lacks_it[rclone-unreadable]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if remotes is None or spelled.split(\":\", 1)[0] in remotes or expected not in remotes:",
+      "new": "    remotes = remotes or {}\n    if spelled.split(\":\", 1)[0] in remotes:",
+      "source": {
+        "table": "r662-b.json",
+        "id": "M7_composite_with_M9"
+      }
+    },
+    {
+      "id": "r663-a.M11_setup_never_checks",
+      "description": "setup no longer asks before it saves, so the wrong file is recorded",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "22aa0b6d45b0bfad",
+      "subset": [
+        "tests/test_paths_resolved.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_setup_refuses_a_database_path_that_is_not_a_library_and_records_nothing[empty]",
+        "tests/test_paths_resolved.py::test_setup_refuses_a_database_path_that_is_not_a_library_and_records_nothing[foreign]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _refuse_a_database_that_is_not_one(cfg)\n",
+      "new": "",
+      "source": {
+        "table": "r663-a.json",
+        "id": "M11_setup_never_checks"
+      }
+    },
+    {
+      "id": "r663-a.M12_setup_stops_on_every_refusal",
+      "description": "setup's reason gate is removed, so a damaged library stops the verb rather than going to the notes and doctor",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9ff1b4e03233dbf7",
+      "subset": [
+        "tests/test_paths_resolved.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 51,
+      "baseline_collected": 51,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_setup_leaves_a_damaged_library_to_the_notes_and_doctor"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if exc.cause.reason == \"library-database-not-rekordbox\":\n            raise\n",
+      "new": "        raise\n",
+      "source": {
+        "table": "r663-a.json",
+        "id": "M12_setup_stops_on_every_refusal"
+      }
+    },
+    {
+      "id": "r83.P3_empty_secret_note_status",
+      "description": "R-347: the wizard's empty credential note is FAIL instead of INFO",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "407515b332aed403",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_credential_offer_accepted_and_left_empty_is_the_same_note_as_a_no",
+        "tests/test_doctor.py::test_an_empty_credential_leaves_the_exit_code_to_doctor"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                # whole wizard over a session blob only login can produce (R-347).\n                wizard.note(\n                    f\"setup.credential.{name}\",\n                    f\"credential {name}\",\n                    doctor.Status.INFO,",
+      "new": "                # whole wizard over a session blob only login can produce (R-347).\n                wizard.note(\n                    f\"setup.credential.{name}\",\n                    f\"credential {name}\",\n                    doctor.Status.FAIL,",
+      "source": {
+        "table": "r83.json",
+        "id": "P3_empty_secret_note_status"
+      }
+    },
+    {
+      "id": "r83.P4_empty_secret_branch",
+      "description": "R-347: remove the NothingEntered branch so the unreadable branch catches it",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f7213480a4affa9a",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_credential_offer_accepted_and_left_empty_is_the_same_note_as_a_no",
+        "tests/test_doctor.py::test_an_empty_credential_leaves_the_exit_code_to_doctor"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            except prompt.NothingEntered:\n                # An offer accepted and then left empty is the same fact as a\n                # no: nothing recorded, doctor reports it. A FAIL here failed the\n                # whole wizard over a session blob only login can produce (R-347).\n                wizard.note(\n                    f\"setup.credential.{name}\",\n                    f\"credential {name}\",\n                    doctor.Status.INFO,\n                    f\"{name} is not recorded and was not entered; doctor reports it\",\n                )\n                continue\n",
+      "new": "",
+      "source": {
+        "table": "r83.json",
+        "id": "P4_empty_secret_branch"
+      }
+    },
+    {
+      "id": "u154.G16_wizard_default_dropped",
+      "description": "setup records no processed_dir when nothing answers",
+      "file": "src/cratekit/cli/setup.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "50ce31cc9f7a1180",
+      "subset": [
+        "tests/test_setup_processed_dir.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 6,
+      "baseline_collected": 6,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setup_processed_dir.py::test_a_clean_machine_records_the_default_when_no_flag_names_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            question=\"Which folder under the music folder holds filed batches\",\n            default=config.DEFAULT_PROCESSED_DIR,\n",
+      "new": "            question=\"Which folder under the music folder holds filed batches\",\n            default=\"Filed_Elsewhere\",\n",
+      "source": {
+        "table": "u154.json",
+        "id": "G16_wizard_default_dropped"
       }
     }
   ],

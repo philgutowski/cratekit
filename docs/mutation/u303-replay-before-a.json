@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 66,
+  "pytest_runs": 70,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -597,6 +597,114 @@
       "source": {
         "table": "r-1.json",
         "id": "T10_no_yaml_falls_back"
+      }
+    },
+    {
+      "id": "r-1.T11_unreadable_config_falls_back",
+      "description": "A configuration that cannot be read falls back to the pre-commit floor instead of a sentence",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "06f62fc1b62bcfa8",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22933,
+      "baseline_collected": 22933,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        return (\n            (),\n            f\"{config_file} could not be read ({exc})\",\n            access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),\n        )\n",
+      "new": "        return (\"pre-commit\",), None, None\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T11_unreadable_config_falls_back"
+      }
+    },
+    {
+      "id": "r-1.T12_caller_ignores_unknown",
+      "description": "The check ignores an unknown configuration and reports on no extra types",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4edab57bc66850dd",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_configuration_that_does_not_parse_is_not_read_as_one_hook_type",
+        "tests/test_doctor.py::test_no_yaml_reader_is_unknown_rather_than_one_hook_type"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unknown is not None:",
+      "new": "    if False:",
+      "source": {
+        "table": "r-1.json",
+        "id": "T12_caller_ignores_unknown"
+      }
+    },
+    {
+      "id": "r-1.T13_missing_other_hook",
+      "description": "A configured hook type with no hook file is not reported",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "085b9e1de3c67747",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_configured_commit_msg_stage_with_no_hook_is_refused",
+        "tests/test_doctor.py::test_the_install_line_names_a_configuration_that_is_not_the_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            absent.append(f\"no {hook_type} hook at {other}\")\n            continue\n",
+      "new": "            continue\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T13_missing_other_hook"
       }
     }
   ],
