@@ -179,11 +179,7 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
             source = entries.derivation_source(tree_id)
             if source not in derived:
                 derived[source] = rebuild.declared_membership(
-                    cfg,
-                    declared,
-                    tree_id=tree_id,
-                    source=source,
-                    vocal_threshold=threshold,
+                    cfg, declared, tree_id=tree_id, source=source, vocal_threshold=threshold,
                     truth=readings,
                 )
             placements[tree_id], not_derived = derived[source]
@@ -193,9 +189,7 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
     genre: dict[str, str] = {}
     for placed in placements.values():
         for placement in placed:
-            folder_name, sub = routing_pass.destination(
-                declared, placement.bucket, placement.sub
-            )
+            folder_name, sub = routing_pass.destination(declared, placement.bucket, placement.sub)
             named = _column(declared, placement, destined=destined, vocal=vocal, genre=genre)
             named.setdefault(placement.location, f"{folder_name}/{sub}")
     items = [
@@ -209,14 +203,8 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
         for path in files
     ]
     return InboxPlan(
-        folder=folder,
-        items=items,
-        entries=entries,
-        native=native,
-        declared=declared,
-        placements=placements,
-        gaps=tuple(sorted(gaps)),
-        warnings=warnings,
+        folder=folder, items=items, entries=entries, native=native, declared=declared,
+        placements=placements, gaps=tuple(sorted(gaps)), warnings=warnings,
     )
 
 
@@ -529,6 +517,7 @@ PENDING_REMEDY = (
     "read: these tracks are placed once a tree is database native. An import is "
     "proven by intake imported --export with a Fresh Export, not by this verb"
 )
+
 
 def route_inbox(ctx) -> Envelope:
     """Offer a plan for the intake folder, then apply it if the person says so.
@@ -943,10 +932,7 @@ def route_pending(ctx) -> Envelope:
 
     items = [{"session_id": session_id} for session_id in session_ids]
     entries = tree_registry.read(cfg)
-    native = [
-        tree_id for tree_id in entries.tree_ids() if entries.is_database_native(tree_id)
-    ]
-    if not native:
+    if not _native_trees(entries):
         # NOTHING WAS READ, SO NOTHING IS CLAIMED (R-436, R-501).
         return ctx.envelope(
             data=_plan(items, kind="pending"),

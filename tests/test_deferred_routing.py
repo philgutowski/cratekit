@@ -1,39 +1,16 @@
 """U19: deferred routing, from the decision to the mark to the run that closes.
 
-WHAT THIS UNIT IS. New tracks arrive through the XML intake bridge, which means
-a person imports them and only then does the library hold a row for them. The
-placement was decided long before that, during acquisition, so it has to be
-written down and picked up again later. This file covers the three joints where
-that goes wrong: the decision that was never persisted, the mark that was written
-before the commit, and the run that closed while a track was still nowhere.
+Three joints go wrong when a placement is decided before the library holds a
+row: the decision never persisted, the mark written before the commit, and the
+run closed while a track was still nowhere. The plan's five scenarios are
+proved here (a pending track refuses the close, a crash between commit and
+mark converges, the pass before the import is read only, a deleted track is
+surfaced until acknowledged, a run with nothing to route closes), with a
+partial import, an ambiguous location, an unresolvable location and an
+unprovable read-back besides.
 
-THE FIVE SCENARIOS THE PLAN NAMES, and where each is proved:
-
-1. a run with a pending track refuses to close and closes after the routing verb
-   runs -> ``test_a_run_with_a_pending_track_refuses_to_close``
-   and ``test_a_run_closes_once_the_routing_pass_has_placed_its_track``
-2. a crash between commit and mark converges on restart with zero duplicate
-   memberships -> ``test_a_crash_between_the_commit_and_the_mark_converges``
-3. the routing verb run before import resolves nothing, marks nothing, and
-   reports not-ready -> ``test_the_pass_run_before_the_import_is_read_only``
-4. a track deleted by the user after import is surfaced and closeable only via
-   explicit acknowledgment -> ``test_a_track_deleted_after_import_is_surfaced``
-   and ``test_a_surfaced_track_closes_the_run_only_after_it_is_acknowledged``
-5. a run with nothing to route closes normally
-   -> ``test_a_run_with_nothing_to_route_closes``
-
-WHAT IS SUPPLEMENTED, because the five above leave four shapes uncovered. A
-partial import, where some rows arrived and some did not. An ambiguous location,
-which U18 refuses to write and this unit must therefore refuse to mark. A
-location that resolves to no path at all, which is a configuration failure rather
-than a missing import and must not be reported as one. And the fail-safe
-direction on the read-back: a track whose membership cannot be proved after the
-commit stays outstanding rather than being marked on the writer's word.
-
-D1 APPLIES TO EVERY NAME HERE. Nothing below names a real volume, a real person,
-or a real track. The synthetic paths still carry the character classes that
-matter, a space and an accented character, because those are what the identity
-primitives exist for.
+D1: no name here is a real volume, person or track; the synthetic paths keep a
+space and an accented character, which the identity primitives exist for.
 """
 
 from __future__ import annotations
@@ -84,9 +61,7 @@ PLAIN = "Second Track.flac"
 THIRD = "Third Track.flac"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Fixtures
 
 
 @pytest.fixture
@@ -119,13 +94,7 @@ def cfg(library, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _platform_seams(monkeypatch):
-    """Everything about THIS machine a temporary library cannot speak for.
-
-    The same four seams ``tests/test_tree_writer.py`` patches, for the same
-    reason: that these guards refuse is proved directly in
-    ``tests/test_rb_writer_db.py``, and re-proving it here would only prove the
-    fixture.
-    """
+    """Everything about THIS machine a temporary library cannot speak for."""
     from pyrekordbox.db6 import database as binding
 
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
@@ -168,13 +137,7 @@ def _music(cfg, name: str) -> str:
 
 
 def _destination(declared_taxonomy):
-    """The first bucket the shipped template declares, and a sub it really has.
-
-    DERIVED from the template rather than named, because a test that spells a
-    bucket identifier is a test that has to be edited when the shipped default
-    changes, and R19 puts that name in configuration precisely so nothing spells
-    it.
-    """
+    """The first bucket the shipped template declares, and a sub it really has (R19)."""
     bucket = declared_taxonomy.buckets[0]
     sub = routing.energy_sub(declared_taxonomy, bucket.id, declared_taxonomy.energy.scale_max)
     assert sub is not None, "the shipped template's first bucket declares no sub"
@@ -195,21 +158,13 @@ def _intent(cfg, declared_taxonomy, name: str, *, session_id: str = SESSION_ID):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Part 1: the ledger. Persisted at the decision, derived on the way out.
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Part 1: the ledger. Persisted at the decision, derived on the way out.
 
 
 def test_an_intent_is_readable_by_the_next_process_the_moment_it_is_decided(
     cfg, declared
 ):
-    """Approach 1. A restarted process must be able to read what it believed.
-
-    Written at the DECISION rather than at the end of the run, so the read below
-    goes through a fresh load off the disk rather than through the object the
-    writer returned. A ledger held in memory until the run finishes is a ledger
-    that is empty for exactly the runs somebody needs to recover.
-    """
+    """Approach 1. A restarted process must be able to read what it believed."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
 
     reloaded = routing_pass.read(cfg)
@@ -220,12 +175,7 @@ def test_an_intent_is_readable_by_the_next_process_the_moment_it_is_decided(
 
 
 def test_two_spellings_of_one_filename_are_one_record(cfg, declared):
-    """The 144-file loss, one layer up.
-
-    A ledger keyed on the raw recorded string holds two records for one file when
-    the two sides were spelled in different composition forms, and the second run
-    then routes a track the first run already routed.
-    """
+    """The 144-file loss, one layer up."""
     composed = _intent(cfg, declared, COMPOSED)
     decomposed = _intent(cfg, declared, DECOMPOSED)
     assert composed.track == decomposed.track
@@ -238,12 +188,7 @@ def test_two_spellings_of_one_filename_are_one_record(cfg, declared):
 def test_outstanding_is_derived_from_status_rather_than_from_a_stored_flag(
     cfg, declared
 ):
-    """Approach 3, asserted in both directions.
-
-    The state is the only thing that moves, and what is outstanding changes with
-    it. A stored flag beside the state is a second answer to one question, and
-    the two disagree the first time a crash lands between the two writes.
-    """
+    """Approach 3, asserted in both directions."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     track = routing_pass.read(cfg).for_session(SESSION_ID)[0].track
 
@@ -263,12 +208,7 @@ def test_outstanding_is_derived_from_status_rather_than_from_a_stored_flag(
 
 
 def test_every_status_is_either_settled_or_outstanding(declared):
-    """Derived by walking the enum, so the next state cannot fall between them (P3).
-
-    The DIRECTION is the property. A member nobody classified must land in the
-    outstanding half, because a state that settles a run by omission is a run
-    that closes over a track nobody looked at.
-    """
+    """Derived by walking the enum, so the next state cannot fall between them (P3)."""
     for member in routing_pass.TrackState:
         assert (member in routing_pass.SETTLED) != (member in routing_pass.OUTSTANDING)
     assert routing_pass.OUTSTANDING == frozenset(routing_pass.TrackState) - routing_pass.SETTLED
@@ -276,12 +216,7 @@ def test_every_status_is_either_settled_or_outstanding(declared):
 
 
 def test_no_taxonomy_display_name_reaches_the_persisted_record(cfg, declared):
-    """D5 and R19, asserted over the BYTES rather than over the shape.
-
-    Every display name the shipped template declares is searched for in the file,
-    so a future field that persists one fails here rather than at the rename that
-    orphans it. Derived from the template, never listed.
-    """
+    """D5 and R19, asserted over the BYTES rather than over the shape."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     text = routing_pass.path_for(cfg).read_text()
 
@@ -298,13 +233,7 @@ def test_no_taxonomy_display_name_reaches_the_persisted_record(cfg, declared):
 def test_the_ledger_and_every_directory_above_it_are_private_under_any_umask(
     cfg, declared, monkeypatch
 ):
-    """P1. A file mode is meaningless without the directory mode.
-
-    Walked from the library state root DOWN to the file rather than asserted on
-    the file alone, because a 0600 record inside a world-writable directory can
-    be unlinked and replaced by any local account, and this record decides
-    whether a run may close.
-    """
+    """P1. A file mode is meaningless without the directory mode."""
     previous = os.umask(0o000)
     try:
         routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
@@ -323,12 +252,7 @@ def test_the_ledger_and_every_directory_above_it_are_private_under_any_umask(
 
 
 def test_an_unreadable_ledger_refuses_rather_than_reading_as_nothing_outstanding(cfg):
-    """The gate that reads its own state through a tolerant reader fails open.
-
-    An unreadable ledger collapsed into "no records" is read as "nothing is
-    outstanding", which admits the one close this unit exists to refuse. It has
-    to be its own answer.
-    """
+    """The gate that reads its own state through a tolerant reader fails open."""
     path = routing_pass.path_for(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{ not json")
@@ -350,9 +274,7 @@ def test_acknowledging_without_a_named_actor_is_refused(cfg, declared):
         routing_pass.acknowledge(cfg, [track], session_id=SESSION_ID, actor="   ")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Part 2: resolution and readiness. Read-only, and no session anywhere.
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Part 2: resolution and readiness. Read-only, and no session anywhere.
 
 
 def _row(cfg, name: str, content_id: str, *, deleted: bool = False):
@@ -374,14 +296,7 @@ def _placements(cfg, declared_taxonomy, intents, rows, *, prefix_map=()):
 
 
 def test_every_sub_the_taxonomy_can_route_to_resolves_to_a_display_name(declared):
-    """P4. A derivation that replaces a list is checked against the real set.
-
-    The set is built by asking the routing rules what they can RETURN, over every
-    bucket and every level on the scale, rather than by listing the sub shapes
-    somebody remembered. A resolver that covered four of the five shapes would
-    look complete right up until a library used the fifth, and the failure would
-    be a run that cannot place a track it already decided on.
-    """
+    """P4. A derivation that replaces a list is checked against the real set."""
     produced = set()
     for bucket in declared.buckets:
         for level in [None, *range(0, declared.energy.scale_max + 1)]:
@@ -401,23 +316,13 @@ def test_every_sub_the_taxonomy_can_route_to_resolves_to_a_display_name(declared
 def test_a_sub_the_taxonomy_does_not_declare_refuses_rather_than_inventing_a_name(
     declared,
 ):
-    """An unresolvable identifier is a ledger and a template that disagree.
-
-    Falling back to the identifier itself would write a folder into somebody's
-    library named after an internal key, which is both wrong and invisible.
-    """
+    """An unresolvable identifier is a ledger and a template that disagree."""
     with pytest.raises(KeyError):
         routing_pass.destination(declared, declared.buckets[0].id, "a-sub-nobody-declared")
 
 
 def test_the_pass_matches_every_intent_against_rows_supplied_as_a_cursor(cfg, declared):
-    """The iterable consumed once, which is how the natural database read arrives.
-
-    A row set rebuilt or re-walked per intent silently matches nothing after the
-    first one when the caller's rows are a cursor, and the run reports clean. The
-    generator here is consumable exactly once, so an implementation that walks it
-    twice reports the second track absent.
-    """
+    """The iterable consumed once, which is how the natural database read arrives."""
     intents = [_intent(cfg, declared, PLAIN), _intent(cfg, declared, THIRD)]
     rows = (row for row in (_row(cfg, PLAIN, "1"), _row(cfg, THIRD, "2")))
     placed = _placements(cfg, declared, intents, rows)
@@ -435,12 +340,7 @@ def test_a_track_with_no_row_at_all_is_not_imported_rather_than_withdrawn(cfg, d
 
 
 def test_a_location_reaching_only_soft_deleted_rows_is_withdrawn(cfg, declared):
-    """The plan's fifth approach point, at the level the distinction is made.
-
-    rekordbox soft-deletes, so the row for a track the user removed is still
-    there wearing the marker. Reading that as "not imported" would tell somebody
-    to import a track they imported and then deliberately deleted.
-    """
+    """The plan's fifth approach point, at the level the distinction is made."""
     intents = [_intent(cfg, declared, PLAIN)]
     placed = _placements(cfg, declared, intents, [_row(cfg, PLAIN, "1", deleted=True)])
     assert placed[0].placement is routing_pass.Placement.WITHDRAWN
@@ -448,11 +348,7 @@ def test_a_location_reaching_only_soft_deleted_rows_is_withdrawn(cfg, declared):
 
 
 def test_a_tombstone_beside_a_live_row_resolves_cleanly(cfg, declared):
-    """The active-row rule, inherited rather than re-implemented.
-
-    A re-import leaves the old row soft-deleted beside the new one, and a matcher
-    that counted both would call one file ambiguous and refuse to place it.
-    """
+    """The active-row rule, inherited rather than re-implemented."""
     intents = [_intent(cfg, declared, PLAIN)]
     placed = _placements(
         cfg,
@@ -475,17 +371,7 @@ def test_two_active_rows_on_one_location_are_ambiguous_and_never_written(cfg, de
 def test_a_location_that_resolves_to_no_path_is_not_reported_as_a_missing_import(
     cfg, declared
 ):
-    """A configuration failure and a missing import have opposite answers.
-
-    An unmapped volume prefix reaches no row for a reason importing cannot fix,
-    so counting it as evidence that the import has not happened would send a
-    person round the same loop forever.
-
-    THE READINESS ASSERTION HERE USED TO SAY ``NOT_READY``, which is the sentence
-    this docstring forbids, written one line below it. That is finding eight, and
-    the answer is now its own member: the pass still writes nothing, and it no
-    longer tells anybody to import a track whose location maps nowhere.
-    """
+    """A configuration failure and a missing import have opposite answers."""
     intent = replace(
         _intent(cfg, declared, PLAIN), location="/somewhere/nothing/maps/onto/x.flac"
     )
@@ -495,12 +381,7 @@ def test_a_location_that_resolves_to_no_path_is_not_reported_as_a_missing_import
 
 
 def test_a_recorded_prefix_the_map_covers_resolves_to_its_row(cfg, declared):
-    """Both sides through one resolver, with the volume prefix map applied.
-
-    Most active rows in a real library record a volume name the drive stopped
-    using years ago. A pass that did not consult the map would report every one
-    of them absent and tell the user the import never happened.
-    """
+    """Both sides through one resolver, with the volume prefix map applied."""
     older = "/an/older/mount"
     intent = replace(_intent(cfg, declared, PLAIN), location=f"{older}/Music/{PLAIN}")
     rules = [locations.PrefixRule(older, str(cfg.library.root))]
@@ -518,12 +399,7 @@ def test_a_composition_form_mismatch_between_the_ledger_and_the_row_resolves(
 
 
 def test_readiness_over_nothing_pending_is_ready_rather_than_not_ready(cfg, declared):
-    """A run with nothing to route is not a run waiting for an import.
-
-    Reporting not-ready here would make the empty case indistinguishable from the
-    before-the-import case, and the refusal a caller built on it would refuse a
-    run that has nothing left to do.
-    """
+    """A run with nothing to route is not a run waiting for an import."""
     assert routing_pass.readiness(()) is routing_pass.Readiness.READY
 
 
@@ -538,9 +414,7 @@ def test_a_partly_imported_run_is_ready_and_places_only_what_arrived(cfg, declar
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Part 3: the pass, against a real database and the real session spine
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Part 3: the pass, against a real database and the real session spine
 
 
 def _registry(mode: tree_registry.Mode, *, root_id: str | None = ADOPTED_ROOT):
@@ -560,13 +434,7 @@ def _registry(mode: tree_registry.Mode, *, root_id: str | None = ADOPTED_ROOT):
 
 
 def _record_locations(db_path: Path, recorded: dict[str, str], *, removed=frozenset()):
-    """Give the disposable database's collection rows the paths this run decided on.
-
-    Written straight into the file BEFORE the guarded writer ever opens it,
-    because creating a collection row is exactly what the additive whitelist
-    forbids: intake creates those rows, and this unit only ever places rows
-    somebody else's import already made.
-    """
+    """Give the disposable database's collection rows the paths this run decided on."""
     import sqlite3
 
     conn = sqlite3.connect(db_path)
@@ -582,12 +450,7 @@ def _record_locations(db_path: Path, recorded: dict[str, str], *, removed=frozen
 
 
 def _state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
-    """Size and modification time of every file under each root.
-
-    The same shape ``tests/test_cli_contract.py`` uses for the same question, and
-    for the same reason: the defect class is a path that wrote something before
-    it decided not to, and only a fingerprint either side can see that.
-    """
+    """Size and modification time of every file under each root."""
     found: dict[str, tuple[int, int]] = {}
     for root in roots:
         base = Path(root)
@@ -606,15 +469,7 @@ def _state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
 
 @pytest.fixture
 def db(cfg, monkeypatch):
-    """A disposable database in a temporary directory, opened through the gate.
-
-    Built rather than substituted from a supplied snapshot, and that is a
-    deliberate departure from the sibling suites. What this file proves end to
-    end is that a track whose placement was decided BEFORE its row existed
-    reaches the tree once the row arrives, which needs rows whose recorded
-    locations this test chose. A supplied library's rows record somebody else's
-    paths, so substituting one would replace the proof with a different one.
-    """
+    """A disposable database in a temporary directory, opened through the gate."""
     path = Path(cfg.library.db_path)
     _build_disposable_database(path)
     _record_locations(path, {"1": _music(cfg, COMPOSED), "2": _music(cfg, PLAIN)})
@@ -676,12 +531,7 @@ def _memberships(db, content_id: str) -> int:
 def test_the_pass_places_a_track_and_marks_it_only_after_the_commit(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The happy path, end to end: decide, import, route, and the mark follows.
-
-    The mark is asserted against the RELOADED ledger rather than against the
-    report, because what a later process reads is the only thing that decides
-    whether the work is repeated.
-    """
+    """The happy path, end to end: decide, import, route, and the mark follows."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     report = _route(cfg, db, adopted_root, declared)
 
@@ -696,12 +546,7 @@ def test_the_pass_places_a_track_and_marks_it_only_after_the_commit(
 def test_the_track_lands_inside_the_tree_the_cutover_adopted(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """Proved by walking UP from the membership row, never down by name.
-
-    A lookup by name finds a namesake anywhere in the library and reports
-    success, which is the silent parallel tree wearing the check meant to prevent
-    it. Starting from the membership row that actually exists cannot do that.
-    """
+    """Proved by walking UP from the membership row, never down by name."""
     from pyrekordbox.db6 import tables
 
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
@@ -719,13 +564,7 @@ def test_the_track_lands_inside_the_tree_the_cutover_adopted(
 def test_the_pass_run_before_the_import_is_read_only(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The plan's third scenario, asserted against the FILESYSTEM.
-
-    "Resolves nothing and marks nothing" is not a claim about the return value. A
-    pass that took a session, wrote a lock, and then decided it had nothing to do
-    would satisfy every assertion about its report while leaving a trace, so the
-    whole state tree is fingerprinted either side of the call.
-    """
+    """The plan's third scenario, asserted against the FILESYSTEM."""
     intent = replace(
         _intent(cfg, declared, PLAIN), location=_music(cfg, "Not Yet There.flac")
     )
@@ -758,19 +597,7 @@ def test_the_pass_run_before_the_import_is_read_only(
 def test_a_crash_between_the_commit_and_the_mark_converges(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
-    """The plan's second scenario, driven by an ACTUAL crash in the window.
-
-    Not a test that the code contains the two calls in that order: an assertion
-    over source text cannot tell a correct order from a coincidental one, and the
-    property being claimed is about what survives a process that stopped. So the
-    mark is made to raise, the pass is re-driven for real, and the membership
-    rows are counted in the database afterwards.
-
-    THE ORDER IS THE WHOLE PROPERTY. Marked first and committed second, this
-    crash would leave a track recorded as placed and a playlist that never got
-    it, with nothing left that knows to try again. Committed first, the cost is a
-    re-run and the re-run deduplicates.
-    """
+    """The plan's second scenario, driven by an ACTUAL crash in the window."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     real_mark = routing_pass.mark
 
@@ -812,13 +639,7 @@ def test_a_second_pass_over_a_settled_run_writes_nothing(
 def test_a_track_whose_membership_cannot_be_proved_is_not_marked(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
-    """The fail-safe direction on the read-back.
-
-    The mark follows the commit AND the proof, so a proof that cannot be made
-    leaves the track outstanding and a later pass tries again. Marking on the
-    writer's own accounting would make the read-back decoration: the one thing it
-    can catch is a commit that reported success and placed nothing.
-    """
+    """The fail-safe direction on the read-back."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     monkeypatch.setattr(routing_pass, "membership_proven", lambda *args, **kwargs: False)
     report = _route(cfg, db, adopted_root, declared)
@@ -830,11 +651,7 @@ def test_a_track_whose_membership_cannot_be_proved_is_not_marked(
 def test_a_tree_still_on_the_bridge_refuses_and_marks_nothing(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """U18's inverse guard reaches the caller, and the ledger is untouched.
-
-    A pass that swallowed the refusal and marked the track anyway would record a
-    placement into a medium that does not own the tree.
-    """
+    """U18's inverse guard reaches the caller, and the ledger is untouched."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     with pytest.raises(tree_registry.TreeModeRefused):
         _route(cfg, db, adopted_root, declared, registry=_registry(tree_registry.Mode.XML))
@@ -860,12 +677,7 @@ def test_a_missing_acknowledgment_refuses_before_the_database_is_touched(
 
 
 def test_content_rows_reads_the_soft_delete_marker_off_the_row(cfg, monkeypatch, tmp_path):
-    """The withdrawn answer is only as good as the column it comes from.
-
-    Every test above supplies its own row values, which proves the RULE and
-    proves nothing about where the marker is read. This one opens a real database
-    with one row removed and asks the reader.
-    """
+    """The withdrawn answer is only as good as the column it comes from."""
     path = tmp_path / "removed" / "master.db"
     _build_disposable_database(path)
     _record_locations(
@@ -888,9 +700,7 @@ def test_content_rows_reads_the_soft_delete_marker_off_the_row(cfg, monkeypatch,
     assert rows["2"].recorded == _music(cfg, PLAIN)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Part 4: the run that will not close while anything is still nowhere
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Part 4: the run that will not close while anything is still nowhere
 
 
 def _open_run(cfg):
@@ -908,11 +718,7 @@ def test_a_run_with_nothing_to_route_closes(cfg, gates_pass):
 
 
 def test_a_run_with_a_pending_track_refuses_to_close(cfg, gates_pass, declared):
-    """The plan's first scenario, first half.
-
-    The refusal names the class of answer rather than a failure: nothing is
-    broken, the tool has done its half and the placement has not landed yet.
-    """
+    """The plan's first scenario, first half."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
 
@@ -940,11 +746,7 @@ def test_a_run_closes_once_the_routing_pass_has_placed_its_track(
 def test_a_run_whose_track_has_not_been_imported_still_refuses_to_close(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The pass ran, said not-ready, and settled nothing. The run stays open.
-
-    A pass that returned cleanly because there was nothing it could do must not
-    be mistaken for a pass that finished the work.
-    """
+    """The pass ran, said not-ready, and settled nothing. The run stays open."""
     record = _open_run(cfg)
     intent = replace(
         _intent(cfg, declared, PLAIN), location=_music(cfg, "Not Yet There.flac")
@@ -980,12 +782,7 @@ def test_a_track_deleted_after_import_is_surfaced(
 def test_the_routing_pass_never_acknowledges_a_track_by_itself(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The separation that makes surfacing mean anything.
-
-    A pass that could settle what it failed to place would make "surfaced for a
-    person to answer" and "quietly skipped" the same thing, which is the failure
-    the fifth approach point names.
-    """
+    """The separation that makes surfacing mean anything."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     _route(cfg, db, adopted_root, declared, rows=[_row(cfg, PLAIN, "2", deleted=True)])
 
@@ -996,12 +793,7 @@ def test_the_routing_pass_never_acknowledges_a_track_by_itself(
 def test_a_surfaced_track_closes_the_run_only_after_it_is_acknowledged(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The plan's fourth scenario, second half, and the ONLY way out of it.
-
-    Re-running the pass is asserted not to help, because a track somebody deleted
-    is never coming back and a remedy that has already been spent is what sends a
-    person round a loop.
-    """
+    """The plan's fourth scenario, second half, and the ONLY way out of it."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     removed = [_row(cfg, PLAIN, "2", deleted=True)]
@@ -1027,12 +819,7 @@ def test_a_surfaced_track_closes_the_run_only_after_it_is_acknowledged(
 
 
 def test_abandoning_a_run_is_not_gated_on_routing(cfg, gates_pass, declared):
-    """The escape is not gated, because a gate on the escape is a trap.
-
-    Closing claims a run finished, and that claim is what routing has to back up.
-    Abandoning claims the opposite, so refusing it would leave a user with a run
-    they can neither finish nor give up on.
-    """
+    """The escape is not gated, because a gate on the escape is a trap."""
     record = _open_run(cfg)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     abandoned = routing_pass.close_run(
@@ -1052,21 +839,11 @@ def test_one_run_of_another_session_does_not_hold_this_one_open(
     assert routing_pass.close_run(record, cfg).state is session.SessionState.CLOSED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The unit's verification: one real run, imported, routed, closed
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The unit's verification: one real run, imported, routed, closed
 
 
 def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, declared, monkeypatch):
-    """Import, route, tracks appear in database-native trees, run closes.
-
-    Against a DISPOSABLE database in a temporary directory, never the live
-    library. The import is modelled the way it really happens: the database is
-    CLOSED, the row appears while this process is not holding it, and the pass
-    opens it again afterwards. Doing it that way is not ceremony; it is the only
-    shape in which "run the pass before importing" and "run it after" are two
-    different states of the same run rather than two different tests.
-    """
+    """Import, route, tracks appear in database-native trees, run closes."""
     from pyrekordbox.db6 import tables
 
     path = Path(cfg.library.db_path)
@@ -1144,17 +921,11 @@ def test_one_real_run_imports_routes_and_closes(cfg, gates_pass, declared, monke
     assert routing_pass.read(cfg).outstanding(SESSION_ID) == ()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The softening paths this unit creates, closed in the commit that creates them
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The softening paths this unit creates, closed in the commit that creates them
 
 
 def _module_string_constants(tree: ast.AST) -> frozenset[str]:
-    """Every module-level name bound to a plain string in this source.
-
-    ``actor=ACTOR`` reads like a value and is a literal with a name on it, which
-    is the cheapest way past a guard that only looks at the argument node.
-    """
+    """Every module-level name bound to a plain string in this source."""
     named: set[str] = set()
     for node in tree.body if isinstance(tree, ast.Module) else []:
         targets: list[ast.expr] = []
@@ -1172,14 +943,7 @@ def _module_string_constants(tree: ast.AST) -> frozenset[str]:
 
 
 def _is_invented(node: ast.expr | None, constants: frozenset[str]) -> bool:
-    """True when this expression's value was chosen by the code, not by a person.
-
-    RECURSIVE, because every bypass found in review was one wrapper away from a
-    literal: an f-string with no substitution, a conditional between two
-    literals, two literals concatenated, a module constant. An expression
-    carrying a runtime value is not invented, which is why an f-string WITH a
-    substitution and a plain parameter both pass.
-    """
+    """True when this expression's value was chosen by the code, not by a person."""
     if node is None:
         return False
     if isinstance(node, ast.Constant):
@@ -1198,21 +962,7 @@ def _is_invented(node: ast.expr | None, constants: frozenset[str]) -> bool:
 
 
 def _made_up_actors(source: str) -> list[str]:
-    """Every ``acknowledge`` call whose actor is a value the caller invented.
-
-    An AST walk rather than a text search. The rule is about the ARGUMENT, and a
-    text search cannot tell a call from the word appearing in a docstring, which
-    is the shape that gets a guard muted rather than obeyed (P7).
-
-    IT LOOKS THROUGH FOUR WRAPPERS AND ONE UNPACKING, because matching only a
-    bare constant left the guard passable by ``actor=f"cli"``, ``actor=ACTOR``,
-    ``actor="cli" if x else "cli"`` and ``**{"actor": "cli"}``. Every one of those
-    records the product acknowledging a track to itself, which is what R34
-    forbids for a decision of this class. The other direction is asserted too:
-    a caller passing a parameter, an attribute, an f-string with a substitution,
-    or a mapping this walk cannot see is left alone, because a guard that fires
-    on correct code gets routed around and then protects nothing.
-    """
+    """Every ``acknowledge`` call whose actor is a value the caller invented (P7, R34)."""
     tree = ast.parse(source)
     constants = _module_string_constants(tree)
     found: list[str] = []
@@ -1251,16 +1001,7 @@ def _made_up_actors(source: str) -> list[str]:
 
 
 def test_no_caller_acknowledges_a_track_with_an_actor_it_invented():
-    """R34's shape, one layer up, ARMED NOW rather than when the first caller lands.
-
-    ``acknowledge`` refuses an empty actor, and that is all a function can do: it
-    cannot tell a name a person gave from a constant the calling code supplied.
-    A caller passing a literal would satisfy the check while recording that the
-    product acknowledged the track to itself, which is precisely what R34 forbids
-    for a decision of this class. Armed over the whole package today, so the
-    first caller to try it fails rather than the guard being written after the
-    fact and only ever confirming what already shipped.
-    """
+    """R34's shape, one layer up, ARMED NOW rather than when the first caller lands."""
     offenders: dict[str, list[str]] = {}
     for path in sorted(SRC_ROOT.rglob("*.py")):
         if "_vendor" in path.parts:
@@ -1276,20 +1017,7 @@ def test_no_caller_acknowledges_a_track_with_an_actor_it_invented():
 
 
 def test_the_intake_pipeline_records_its_routing_intents_at_the_decision():
-    """P5's countdown, armed the moment the pipeline that owes it lands.
-
-    Everything in this file is a mechanism with no subject until something writes
-    an intent, and the only place that can is intake, at the point it decides
-    where a new track goes. A pipeline that skipped the call would leave every
-    run closing cleanly with nothing outstanding, because nothing was ever
-    recorded, and this whole suite would stay green over a feature that never
-    runs.
-
-    It walks the SYNTAX TREE for the call rather than searching the text, because
-    a module's own docstring explaining why it defers routing would satisfy a text
-    search with every call deleted. That is the softening path wearing the
-    guard's clothes, and this repository has already shipped it once.
-    """
+    """P5's countdown, armed the moment the pipeline that owes it lands."""
     package = SRC_ROOT / "cratekit" / "intake"
     called = False
     for path in sorted(package.rglob("*.py")):
@@ -1319,12 +1047,7 @@ def test_the_intake_pipeline_records_its_routing_intents_at_the_decision():
 
 
 def _second_destination(declared_taxonomy):
-    """A second bucket the shipped template declares, DERIVED rather than named.
-
-    The pair of destinations is what makes "two runs, one file" a real test: two
-    runs that happened to decide the same folder prove nothing about whose record
-    is whose.
-    """
+    """A second bucket the shipped template declares, DERIVED rather than named."""
     bucket = declared_taxonomy.buckets[1]
     sub = routing.energy_sub(declared_taxonomy, bucket.id, declared_taxonomy.energy.scale_max)
     assert sub is not None, "the shipped template's second bucket declares no sub"
@@ -1332,11 +1055,7 @@ def _second_destination(declared_taxonomy):
 
 
 def _where(db, content_id: str) -> list[tuple[str | None, str]]:
-    """Every (folder, playlist) pair this content row actually sits in.
-
-    Walked UP from the membership rows, never down by name, for the reason
-    ``membership_proven`` gives: a lookup by name finds a namesake anywhere.
-    """
+    """Every (folder, playlist) pair this content row actually sits in."""
     found: list[tuple[str | None, str]] = []
     for membership in db.get_playlist_songs(ContentID=str(content_id)):
         playlist = db.get_playlist(ID=str(membership.PlaylistID))
@@ -1353,14 +1072,7 @@ def _where(db, content_id: str) -> list[tuple[str | None, str]]:
 def test_a_second_run_deferring_one_file_does_not_take_over_the_first_runs_record(
     cfg, gates_pass, declared
 ):
-    """One record per RUN and file, never one record per file.
-
-    Two runs touching one path is ordinary: a re-download to the same location, a
-    resumed intake, one track acquired twice from two sources. A ledger that can
-    hold only one record for the path lets the second run take ownership of the
-    first run's obligation, and the first run then closes reporting a placed
-    track that is in no playlist at all.
-    """
+    """One record per RUN and file, never one record per file."""
     first = session.open_session(
         cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-one"
     )
@@ -1380,12 +1092,7 @@ def test_a_second_run_deferring_one_file_does_not_take_over_the_first_runs_recor
 
 
 def test_marking_one_runs_track_leaves_another_runs_record_alone(cfg, declared):
-    """A mark is scoped to the run that made the decision it settles.
-
-    Matching on the track alone lets one run's pass report a placement into ITS
-    destination and settle a different run's record, whose destination was never
-    written. The two records name the same file and mean different playlists.
-    """
+    """A mark is scoped to the run that made the decision it settles."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-two")])
     track = routing_pass.read(cfg).for_session("run-two")[0].track
@@ -1398,13 +1105,7 @@ def test_marking_one_runs_track_leaves_another_runs_record_alone(cfg, declared):
 def test_two_overlapping_runs_over_one_file_each_reach_their_own_destination(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """Both runs driven to completion, and neither closes while it still owes work.
-
-    This is the whole of finding one in one drive: two runs decide two different
-    destinations for one file, each pass writes ITS destination, each run refuses
-    to close until its own record settles, and both destinations are in the
-    library at the end.
-    """
+    """Both runs driven to completion, and neither closes while it still owes work."""
     first = session.open_session(
         cfg, workflow=routing_pass.ROUTING_WORKFLOW, session_id="run-one"
     )
@@ -1447,13 +1148,7 @@ def test_two_overlapping_runs_over_one_file_each_reach_their_own_destination(
 
 
 def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg):
-    """U18 gave ``ContentRow.deleted`` no default. The producer must not supply one.
-
-    A default of False means active, which is the permissive answer, so a binding
-    that stops exposing the column hands every tombstone to the matcher as a live
-    row. The pass then places a track the user deleted on purpose, marks it
-    routed, and the run closes over it.
-    """
+    """U18 gave ``ContentRow.deleted`` no default. The producer must not supply one."""
 
     class Row:
         ID = "9"
@@ -1469,11 +1164,7 @@ def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg):
 
 
 def test_a_soft_delete_marker_that_reads_as_nothing_refuses(cfg):
-    """An exposed column holding no value is the same hazard wearing a value.
-
-    ``bool(None)`` is False, which is the permissive answer again, so a column
-    that is present and null must refuse exactly as a missing one does.
-    """
+    """An exposed column holding no value is the same hazard wearing a value."""
 
     class Row:
         ID = "9"
@@ -1494,13 +1185,7 @@ def test_a_soft_delete_marker_that_reads_as_nothing_refuses(cfg):
 def test_a_destination_the_taxonomy_no_longer_declares_is_its_own_placement(
     cfg, declared
 ):
-    """``Placement`` had five members and none of them meant this.
-
-    A ledger naming a sub the active template dropped is a real state: somebody
-    edited the taxonomy between the decision and the import. It is not a missing
-    row and it is not a defect, and reporting it as either sends a person to the
-    wrong remedy.
-    """
+    """``Placement`` had five members and none of them meant this."""
     stale = replace(_intent(cfg, declared, PLAIN), sub="a-sub-this-library-dropped")
     placed = _placements(cfg, declared, [stale], [_row(cfg, PLAIN, "1")])
     assert placed[0].placement is routing_pass.Placement.UNDECLARED
@@ -1510,13 +1195,7 @@ def test_a_destination_the_taxonomy_no_longer_declares_is_its_own_placement(
 def test_one_stale_destination_does_not_stop_the_other_tracks_in_the_run(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The good track is placed, and the bad one is reported rather than raised.
-
-    ``assert_settled`` promises the pass "places every track the library now holds
-    a row for, and reports one reason per track it could not place". A bare
-    ``KeyError`` out of the whole pass places none and reports no reason, so the
-    documented remedy is spent and the run can never close.
-    """
+    """The good track is placed, and the bad one is reported rather than raised."""
     good = _intent(cfg, declared, PLAIN)
     stale = replace(_intent(cfg, declared, COMPOSED), sub="a-sub-this-library-dropped")
     routing_pass.record_intents(cfg, [good, stale])
@@ -1535,12 +1214,7 @@ def test_one_stale_destination_does_not_stop_the_other_tracks_in_the_run(
 
 
 class _CrashOnce:
-    """A mark that dies the first time and works afterwards.
-
-    Replacing the mark outright would also undo the platform seams this whole
-    file runs behind, and the run would then fail on the machine rather than on
-    the property under test.
-    """
+    """A mark that dies the first time and works afterwards."""
 
     def __init__(self, real):
         self.real = real
@@ -1565,13 +1239,8 @@ def _crash_between_the_commit_and_the_mark(cfg, db, adopted, declared_taxonomy, 
 def test_a_recovery_run_after_a_rekordbox_rename_refuses_rather_than_duplicating(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
-    """R19 claims renaming a folder in rekordbox changes nothing, and re-running is the remedy.
-
-    The module rests on "a re-run is cheap because membership deduplicates", and
-    the dedup targets by DISPLAY NAME. Rename the folder between the crash and the
-    recovery and the recovery re-creates the folder under the taxonomy name, adds
-    the track a second time, and marks it routed. D5 forbids keying a persisted
-    record by a display name; this is the same lesson on the recovery path.
+    """R19 claims renaming a folder in rekordbox changes nothing, and re-running is the remedy
+    (D5).
     """
     from pyrekordbox.db6 import tables
 
@@ -1596,14 +1265,7 @@ def test_a_recovery_run_after_a_rekordbox_rename_refuses_rather_than_duplicating
 
 
 def _taxonomy_with_the_first_bucket_renamed(new_display: str):
-    """The shipped template, REBUILT, with one bucket's display name changed.
-
-    Rebuilt through the real parser rather than patched onto the frozen object,
-    because ``Taxonomy`` carries derived lookups beside its fields and a
-    dataclass replacement leaves them describing the template that was there
-    before. A test that edited the object in place would prove that the guard
-    reads a stale index, which is not the property under test.
-    """
+    """The shipped template, REBUILT, with one bucket's display name changed."""
     import tomllib
     from importlib import resources
 
@@ -1630,15 +1292,7 @@ def test_a_recovery_run_after_a_taxonomy_rename_converges_rather_than_duplicatin
 def test_a_recovery_run_after_a_rename_converges_once_the_tree_layer_can(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
-    """P5's countdown for the refusal above, so it cannot become permanent.
-
-    Refusing is correct and it is not service. What makes the re-run converge is
-    a persisted map from the stable destination identifiers to the node
-    identifiers a previous write used, which is the tree layer's record to own
-    and the reason this obligation is registered against the unit that owns it
-    rather than asserted in a docstring. When that lands, this file's rename
-    scenario must end with one membership and no refusal.
-    """
+    """P5's countdown for the refusal above, so it cannot become permanent."""
     from pyrekordbox.db6 import tables
 
     _crash_between_the_commit_and_the_mark(cfg, db, adopted_root, declared, monkeypatch)
@@ -1656,12 +1310,7 @@ def test_a_recovery_run_after_a_rename_converges_once_the_tree_layer_can(
 def test_a_bucket_folder_that_does_not_exist_yet_is_not_mistaken_for_a_rename(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """P7, the other direction. A guard that fires on correct code gets routed around.
-
-    A track already filed in one declared bucket, being placed into a second
-    declared bucket whose folder this library has never held, is the ordinary
-    case. The refusal above must not touch it.
-    """
+    """P7, the other direction. A guard that fires on correct code gets routed around."""
     other_bucket, other_sub = _second_destination(declared)
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN, session_id="run-one")])
     _route(cfg, db, adopted_root, declared, session_id="run-one")
@@ -1716,15 +1365,7 @@ for index in range(count):
 
 
 def test_two_processes_recording_intents_lose_none_of_them(cfg, library, tmp_path):
-    """REAL PROCESSES, not threads, because the hazard is a real process boundary.
-
-    Two writers interleaving an unlocked read-modify-write erases a fully recorded
-    decision. Nothing is then outstanding for it, the run closes clean, and a
-    track that was decided sits in no ledger at all: the one shape this whole
-    module exists to prevent, arriving through the writer rather than the reader.
-    A thread test would prove something about one interpreter's scheduler; the
-    ledger is documented as accumulating several runs from several sources.
-    """
+    """REAL PROCESSES, not threads, because the hazard is a real process boundary."""
     import subprocess
     import sys
 
@@ -1755,13 +1396,7 @@ def test_two_processes_recording_intents_lose_none_of_them(cfg, library, tmp_pat
 
 
 def test_the_lock_is_a_declared_state_entry_that_a_restore_never_replaces(cfg):
-    """A path composed under a state root is a file nothing walks or backs up.
-
-    And the role is not a detail: a restore that replaced the directory holding
-    this file would swap the inode a live lock is held on, and both holders would
-    go on believing they had exclusive access with nothing raised. That is the
-    argument the write lock and the session lock already record.
-    """
+    """A path composed under a state root is a file nothing walks or backs up."""
     entry = config.state_file(routing_pass.LOCK_KEY)
     assert entry.root is config.StateRoot.LIBRARY
     assert entry.snapshot is config.SnapshotRole.NEVER_RESTORED
@@ -1769,14 +1404,7 @@ def test_the_lock_is_a_declared_state_entry_that_a_restore_never_replaces(cfg):
 
 
 def test_everything_this_module_creates_is_private_under_any_umask(cfg, declared):
-    """P1 and P3 together: walk the tree, do not name the files in it.
-
-    The version of this test that named the ledger was already blind to the lock
-    beside it on the day the lock landed, which is the shape P3 exists to stop. A
-    walk covers whatever the next writer adds without anybody remembering, and
-    both halves are asserted because a 0600 record inside a world-writable
-    directory can be unlinked and replaced by any local account.
-    """
+    """P1 and P3 together: walk the tree, do not name the files in it."""
     previous = os.umask(0o000)
     try:
         routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
@@ -1806,14 +1434,7 @@ def test_everything_this_module_creates_is_private_under_any_umask(cfg, declared
 
 
 def test_a_run_whose_export_was_never_imported_refuses_to_close(cfg, gates_pass):
-    """The other state in which somebody still owes an act.
-
-    The unit's thesis is that a run cannot close while somebody still owes an
-    act. It enforced that for the routing half and not for the import half, so a
-    run sitting in ``awaiting-import`` with its pending action still attached
-    closed and released its capture, while the session spine went on refusing a
-    database surface for that same record.
-    """
+    """The other state in which somebody still owes an act."""
     record = session.open_session(cfg, workflow="an-intake-workflow", session_id=SESSION_ID)
     pending = session.pending_import(
         record,
@@ -1831,11 +1452,7 @@ def test_a_run_whose_export_was_never_imported_refuses_to_close(cfg, gates_pass)
 
 
 def test_abandoning_a_run_whose_export_was_never_imported_is_still_allowed(cfg, gates_pass):
-    """The escape stays open, for the reason the routing gate leaves it open.
-
-    A refusal with no way past it is how people learn to edit state files by
-    hand, and abandoning is the claim that the run did NOT finish.
-    """
+    """The escape stays open, for the reason the routing gate leaves it open."""
     record = session.open_session(cfg, workflow="an-intake-workflow", session_id=SESSION_ID)
     pending = session.pending_import(
         record,
@@ -1855,13 +1472,7 @@ def test_abandoning_a_run_whose_export_was_never_imported_is_still_allowed(cfg, 
 
 
 def test_an_unreadable_ledger_carries_its_remedy_to_the_boundary(cfg):
-    """S4. A refusal that is not a ``CratekitError`` reaches the user as a defect report.
-
-    The command-line boundary converts anything that is not a structured cause
-    into ``internal-error`` with ``report-defect``, discarding the remedy the
-    exception was carrying. ``session.py`` already converts an unreadable backup
-    fact file correctly, and this follows that precedent.
-    """
+    """S4. A refusal that is not a ``CratekitError`` reaches the user as a defect report."""
     path = routing_pass.path_for(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{ not json")
@@ -1897,12 +1508,7 @@ def test_a_tree_still_on_the_bridge_carries_its_remedy_to_the_boundary(
 
 
 def test_every_refusal_this_module_raises_is_a_structured_cause():
-    """P3. The set is DERIVED by walking the module rather than listed.
-
-    A guard that names today's two exception types stops covering the third the
-    day it is added, which is the same shape as a test that enumerates the files
-    it claims to quantify over.
-    """
+    """P3. The set is DERIVED by walking the module rather than listed."""
     import inspect
 
     raised: set[str] = set()
@@ -1940,16 +1546,7 @@ def test_every_refusal_this_module_raises_is_a_structured_cause():
 
 
 def test_every_refusal_the_pass_propagates_carries_its_remedy_too():
-    """The same rule, over the module this pass RAISES THROUGH rather than from.
-
-    DERIVED, by asking which exception types carry a remedy at all rather than by
-    naming the two the review found. A type that goes to the trouble of holding a
-    ``Remedy`` is a refusal somebody is meant to act on, and the only way that
-    remedy survives the command-line boundary is a structured cause. Fixing the
-    two named types and leaving a third beside them is precisely the shape P5
-    calls out: the same lesson applied in one place and not the other, and the
-    third one is invisible until somebody hits it.
-    """
+    """The same rule, over the module this pass RAISES THROUGH rather than from (P5)."""
     import inspect
 
     checked = 0
@@ -1979,12 +1576,7 @@ def test_every_refusal_the_pass_propagates_carries_its_remedy_too():
 def test_a_run_whose_locations_all_resolve_to_nothing_is_not_told_to_import(
     cfg, declared
 ):
-    """``readiness`` forbids the conflation the module docstring endorsed.
-
-    An unresolvable location reaches no row for a configuration reason importing
-    cannot fix. Answering "the import has not happened" sends a person round the
-    same loop forever, and the file said both things at once.
-    """
+    """``readiness`` forbids the conflation the module docstring endorsed."""
     intent = replace(
         _intent(cfg, declared, PLAIN), location="/somewhere/nothing/maps/onto/x.flac"
     )
@@ -2004,12 +1596,7 @@ def test_a_run_whose_destinations_are_all_undeclared_is_not_told_to_import(cfg, 
 def test_every_readiness_answer_except_ready_writes_nothing(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
-    """DERIVED over the enum, so a member added later cannot acquire the writing answer.
-
-    The direction is the property, exactly as it is for the settled and
-    outstanding halves: only ``READY`` may write, and everything else, including a
-    member nobody has classified yet, must leave the library alone.
-    """
+    """DERIVED over the enum, so a member added later cannot acquire the writing answer."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     for answer in routing_pass.Readiness:
         if answer is routing_pass.Readiness.READY:
@@ -2023,12 +1610,7 @@ def test_every_readiness_answer_except_ready_writes_nothing(
 
 
 def test_the_readiness_answers_are_three_rather_than_two():
-    """One file cannot argue both sides of the same question.
-
-    The module docstring endorsed the conflation and ``readiness`` forbade it. The
-    contradiction is resolved in the direction the function argued for, which
-    needs an answer that is neither ready nor not-ready to exist at all.
-    """
+    """One file cannot argue both sides of the same question."""
     assert len(routing_pass.Readiness) >= 3
     assert routing_pass.Readiness.UNANSWERABLE not in (
         routing_pass.Readiness.READY,
@@ -2040,11 +1622,7 @@ def test_the_readiness_answers_are_three_rather_than_two():
 
 
 def test_the_routing_verbs_have_landed():
-    """U20 discharged the countdown: the four verbs are no longer planned.
-
-    Derived from the registry, so a fifth entry added with a leftover marker
-    fails here rather than shipping as a declared-but-absent verb.
-    """
+    """U20 discharged the countdown: the four verbs are no longer planned."""
     from cratekit.cli import registry as cli_registry
 
     named = [
@@ -2060,28 +1638,14 @@ def test_the_routing_verbs_have_landed():
 
 
 def test_the_routing_command_line_module_is_no_longer_owed_in_the_register():
-    """The countdown fired and was discharged, not left as a comment.
-
-    P5's obligation belongs in ``tests/_pending.py`` rather than in a docstring,
-    and since U59 ``scripts/board.py`` reads a SECOND register beside it, the
-    ``planned_in`` markers on the verb registry. Either one naming a closed unit
-    is now a reported contradiction. That is why the discharge has to be visible
-    here: an obligation recorded only as a ``planned_in`` marker is owned by
-    nobody the moment the unit carrying the marker closes.
-    """
+    """The countdown fired and was discharged, not left as a comment (P5, U59)."""
     from tests import _pending
 
     assert "cratekit.write.routing_cli" not in _pending.PENDING
 
 
 def test_the_routing_verbs_close_their_runs_through_the_gated_close():
-    """P5's countdown for the close gate, armed when the surface that spends it lands.
-
-    ``session.close_session`` is exported and bypasses the routing gate entirely.
-    This unit has zero production callers, so nothing today obliges the first one
-    to close through ``routing_pass.close_run``, and a verb that closed through
-    the session spine would release its capture over a track sitting nowhere.
-    """
+    """P5's countdown for the close gate, armed when the surface that spends it lands."""
     module = SRC_ROOT / "cratekit" / "write" / "routing_cli.py"
     sources = (
         [module]
@@ -2148,13 +1712,7 @@ def test_the_intake_pipeline_closes_its_runs_through_the_gated_close():
     ],
 )
 def test_the_made_up_actor_guard_bites_each_evasion(source):
-    """P7's first half. Four documented bypasses, and each one has to fail.
-
-    A guard that only matched a bare literal was satisfied by an f-string, a
-    module constant, a conditional between two literals, and a dictionary
-    unpacked into the call. All of them record the product acknowledging a track
-    to itself, which is exactly what the guard exists to forbid.
-    """
+    """P7's first half. Four documented bypasses, and each one has to fail."""
     assert _made_up_actors(source), f"the guard did not bite: {source}"
 
 
@@ -2171,9 +1729,5 @@ def test_the_made_up_actor_guard_bites_each_evasion(source):
     ],
 )
 def test_the_made_up_actor_guard_does_not_fire_on_correct_code(source):
-    """P7's second half, and the half that decides whether the guard survives.
-
-    A guard with false positives gets suppressed, and a suppressed guard protects
-    nothing. Every line here is a caller doing exactly the right thing.
-    """
+    """P7's second half, and the half that decides whether the guard survives."""
     assert _made_up_actors(source) == [], f"the guard fired on correct code: {source}"
