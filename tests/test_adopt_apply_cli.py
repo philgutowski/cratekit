@@ -174,10 +174,7 @@ def test_the_whole_loop_runs_with_the_library_lock_actually_held(acknowledged, d
     )
 
     assert len(holders) == 1, "the loop did not reach the one entry the plan holds"
-    assert holders[0] is not None, (
-        "the tag write happened with no holder recorded against the library lock, "
-        "which is the residual's condition unchanged"
-    )
+    assert holders[0] is not None, "the tag write had no lock holder recorded"
     assert len(report.applied) == 1
     assert tags.read_genre_from_file(path) == "Adopted Genre"
     with session.session_lock(acknowledged):
@@ -188,8 +185,7 @@ def test_the_whole_loop_runs_with_the_library_lock_actually_held(acknowledged, d
     assert memberships, "the loop placed an entry and reported no membership for it"
     placed = [value for values in memberships.values() for value in values]
     assert placed and all(str(path) == value for value in placed), (
-        "the collector grouped something that is not a location, so handing it to "
-        "write_tree_membership would match nothing and report a clean session"
+        "the collector grouped a non location"
     )
     assert not set(placed) & {entry.content_id for entry in plan.applicable()}, (
         "the collector is back to grouping content identifiers, which is the defect"
@@ -240,7 +236,7 @@ def test_the_analysis_watch_reaches_a_share_outside_the_library_root(
     grid.parent.mkdir(parents=True)
     grid.write_bytes(b"not a real grid, and never written by this product")
     assert grid not in session.analysis_files_under([outside.library.root]), (
-        "the grid sits under the library root, so this cannot show the root alone misses it"
+        "the grid sits under the library root"
     )
 
     def tag_value(_entry, _declared):
@@ -266,10 +262,7 @@ def _refused_and_untouched(cfg_value, plan, declared, path, code, **overrides) -
     with pytest.raises(CratekitError) as excinfo:
         _apply(cfg_value, plan, declared, **overrides)
     assert excinfo.value.cause.code == code
-    assert path.read_bytes() == before, (
-        "a refused apply rewrote the file anyway, which is a refusal that has "
-        "already done the thing it refused"
-    )
+    assert path.read_bytes() == before, "a refused apply rewrote the file"
     assert adopt_apply.read(cfg_value).entry_ids() == frozenset()
 
 
@@ -435,7 +428,7 @@ def test_a_library_of_tombstones_and_an_empty_one_both_census_to_nothing(cfg, de
     assert adopt_scan.categories(tombstoned) == adopt_scan.categories(empty)
     assert len(tombstoned) == len(empty) == len(adopt_fixtures.BASELINE_CONTENT_IDS)
     assert len(live_rows) == len(adopt_fixtures.BASELINE_CONTENT_IDS), (
-        "the collection is what tells the two zeroes apart, and it must be able to"
+        "the collection tells the zeroes apart"
     )
 
 
@@ -508,10 +501,7 @@ def test_an_approved_run_queues_one_job_carrying_the_tree_and_the_digest(install
     held = _queued()
     assert len(held) == 1, "an approved run queued something other than exactly one job"
     assert held[0].payload["tree"] == expected.tree
-    assert held[0].payload["digest"] == expected.digest(), (
-        "the queued job does not carry the digest its approval was recorded "
-        "against, so a resume cannot tell this plan from one that has moved"
-    )
+    assert held[0].payload["digest"] == expected.digest(), "the job lacks the approved digest"
     assert envelope["data"]["job_id"] == held[0].job_id
     assert envelope["verb"] == verb.name
 
@@ -528,7 +518,7 @@ def test_an_approved_run_queues_one_job_carrying_the_tree_and_the_digest(install
     with jobs.open_store() as store:
         assert jobs.get(store, held[0].job_id).state is jobs.JobState.FAILED
     assert adopt_apply.read(installed).entry_ids() == frozenset(), (
-        "the applied ledger marked entries over an adoption that placed nothing"
+        "the ledger marked unplaced entries"
     )
 
 
@@ -538,10 +528,7 @@ def test_a_declined_run_queues_nothing_at_all(installed):
     code, envelope = drive(["--run", run_id, *APPLY])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == str(Outcome.NO_OP)
-    assert envelope["data"]["job_id"] == "", (
-        "R-234: cli.output requires job_id to be a string, so a null here failed "
-        "the declared job_state/1 schema this verb emits"
-    )
+    assert envelope["data"]["job_id"] == "", "R-234: job_id must be a string"
     assert _queued() == [], "a declined adoption was queued anyway"
 
 
@@ -619,8 +606,7 @@ def test_the_approval_gate_shows_every_entry_the_digest_was_taken_over(installed
     listed = {entry.entry_id for entry in plan.applicable()}
     document["listed"] = [entry for entry in document["entries"] if entry["id"] in listed]
     assert 0 < len(document["listed"]) < len(document["entries"]), (
-        "the fixture needs an applicable entry and one the plan will not touch, "
-        "or the screen's choice between them cannot be seen"
+        "the fixture needs both kinds of entry"
     )
 
     run_id, refused = _decided("approve")

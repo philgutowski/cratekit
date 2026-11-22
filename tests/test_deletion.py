@@ -75,15 +75,19 @@ def cfg(library_root):
     )
 
 
-@pytest.fixture
-def gates_pass(cfg, monkeypatch):
-    """The volume identity agrees, the acknowledgment is recorded, rekordbox is shut."""
+def _volume_agrees_and_rekordbox_is_shut(cfg, monkeypatch) -> None:
     monkeypatch.setattr(
         preflight, "default_identity_provider", lambda: lambda _path: cfg.library.volume_id
     )
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+
+
+@pytest.fixture
+def gates_pass(cfg, monkeypatch):
+    """The volume identity agrees, the acknowledgment is recorded, rekordbox is shut."""
+    _volume_agrees_and_rekordbox_is_shut(cfg, monkeypatch)
     session.record_acknowledgment(cfg, terminal=lambda: True)
     return cfg
 
@@ -311,8 +315,6 @@ def test_the_lock_lives_outside_the_coupled_set_it_guards(cfg):
 
 def test_two_real_processes_advancing_at_once_lose_nothing(cfg, tmp_path):
     """PROCESSES, not threads. The lock is advisory and per file descriptor."""
-    import subprocess
-
     config.save(cfg)
     script = tmp_path / "advance.py"
     script.write_text(
@@ -367,9 +369,7 @@ def test_a_confirmed_file_lands_in_the_trash_and_is_recoverable(tmp_path):
 
 
 def test_a_second_file_of_the_same_name_never_replaces_the_first(tmp_path):
-    """POSIX rename REPLACES. Two tracks of one name trashed a week apart is the
-    real shape, and the second one landing on the first is data loss performed by
-    the recovery mechanism itself."""
+    """POSIX rename REPLACES, so a second file of one name must land beside the first."""
     home = _home(tmp_path)
     for body in (b"first", b"second"):
         source = tmp_path / "track.flac"
@@ -461,8 +461,6 @@ def test_a_path_that_will_not_resolve_is_unresolved_and_never_deletable(cfg):
 @pytest.mark.parametrize("variant", ["same", "case", "composition"])
 def test_a_file_an_active_row_also_points_at_is_a_collision_in_every_spelling(cfg, variant):
     """The 144-file loss, in three spellings, proved by inode rather than by string."""
-    import unicodedata
-
     original = _music(cfg, ACCENTED)
     spelling = {
         "same": ACCENTED,
@@ -472,8 +470,7 @@ def test_a_file_an_active_row_also_points_at_is_a_collision_in_every_spelling(cf
     variant_path = Path(cfg.library.root) / "Music" / spelling
     active = [_row(cfg, spelling, "9")]
     answered = _categorize(cfg, [_removed(cfg, ACCENTED, "1")], _references(cfg, active))
-    # ASSERTED IN BOTH DIRECTIONS RATHER THAN SKIPPED, because which way this
-    # goes depends on the filesystem under the test and both answers are correct.
+    # Both directions are asserted: which holds depends on the filesystem.
     folds = variant_path.exists() and variant_path.stat().st_ino == original.stat().st_ino
     if folds:
         assert answered[0].category is candidates.Category.COLLIDES_WITH_ACTIVE_ROW
@@ -514,8 +511,7 @@ def test_a_file_a_playlist_still_references_is_not_trashed(cfg):
 
 
 def test_a_file_already_gone_is_finished_business_rather_than_unresolved(cfg):
-    """The resume case. A run interrupted after trashing some files must not
-    re-offer them, and must not report them as a configuration failure either."""
+    """The resume case: a trashed file is neither re-offered nor a configuration failure."""
     answered = _categorize(cfg, [_removed(cfg, ONE, "1")], _references(cfg, []))
     assert answered[0].category is candidates.Category.GONE
     assert answered[0].handled
@@ -614,10 +610,7 @@ def test_a_prefix_rule_whose_target_is_not_there_refuses_rather_than_proving_not
         cfg, _elsewhere(), prefix_map=[locations.PrefixRule(RECORDED_ELSEWHERE, str(typo))]
     )
     assert wrong.by_identity == {}
-    assert wrong.missing == (), (
-        "a rule pointing at a directory that is not there is not fifty separate "
-        "statements about fifty separate files"
-    )
+    assert wrong.missing == (), "a dead rule is one dead anchor, not fifty missing files"
     assert len(wrong.unanchored) == 50
     assert wrong.dead_anchors == (str(typo),)
     assert not wrong.complete
@@ -681,9 +674,7 @@ def test_a_removed_row_under_a_dead_rule_is_unresolved_rather_than_finished(cfg,
 def test_a_dead_prefix_rule_stops_the_whole_pass_before_anything_is_offered(
     cfg, gates_pass, tmp_path
 ):
-    """End to end. With the rule fused, this run reported one deletable candidate,
-    offered it, trashed the file, and advanced the watermark, while the active row
-    that would have collided with it was sitting under a directory nobody checked."""
+    """End to end: a dead rule refuses the plan before a collision it hides is offered."""
     _music(cfg, ONE)
     _baseline(cfg)
     elsewhere = _at(f"{RECORDED_ELSEWHERE}/Music/Track 0.flac", "9", usn=45)
@@ -695,9 +686,7 @@ def test_a_dead_prefix_rule_stops_the_whole_pass_before_anything_is_offered(
 
 
 def test_a_nul_byte_in_a_recorded_path_refuses_rather_than_escaping_as_a_defect(cfg):
-    """``os.stat`` raises ValueError for this, not OSError, so both handlers missed
-    it and it reached the command line as an internal defect rather than as a
-    refusal carrying its remedy (S4)."""
+    """``os.stat`` raises ValueError here, not OSError, and it must still refuse (S4)."""
     poisoned = trees.ContentRow(
         content_id="9",
         recorded=str(Path(cfg.library.root) / "Music" / "Bad\x00Name.flac"),
@@ -715,10 +704,7 @@ def test_a_streamed_row_is_neither_indexed_nor_counted_against_the_proof(cfg):
     streamed = trees.ContentRow(content_id="9", recorded="tidal:track:123", deleted=False)
     references = _references(cfg, [streamed])
     assert references.complete and not references.by_identity and not references.unmapped
-    assert references.not_a_path == ("9",), (
-        "excused from the proof is not the same as invisible; a set of rows the proof does not "
-        "cover is a claim, and a claim nobody can size is one nobody can check"
-    )
+    assert references.not_a_path == ("9",), "a row excused from the proof must still be counted"
 
 
 def test_a_tombstoned_row_never_contributes_to_the_reference_set(cfg):
@@ -789,6 +775,13 @@ def _confirm_all(cfg, items, verdict=review.Verdict.ACCEPTED):
             review.resolve(store, item.item_id, verdict, actor="cli")
 
 
+def _confirm_every(cfg, db, **plan):
+    """Plan, offer, and confirm every offered item; returns the plan."""
+    found = run.plan(cfg, db, actor="cli", **plan)
+    _confirm_all(cfg, run.present(cfg, found))
+    return found
+
+
 def _confirm_first(cfg, db, **plan):
     """Plan, offer, and confirm the first offered item, as a person would; returns the plan."""
     found = run.plan(cfg, db, actor="cli", **plan)
@@ -796,11 +789,12 @@ def _confirm_first(cfg, db, **plan):
     return found
 
 
-def _confirmed_one(cfg, tmp_path):
-    """A home with a Trash, and a baselined library whose one removal is confirmed."""
+def _confirmed_one(cfg, tmp_path, verdict=review.Verdict.ACCEPTED):
+    """A home with a Trash, and a baselined library whose one removal is answered."""
     home = _home(tmp_path)
     db = _prepared(cfg)
-    _confirm_first(cfg, db)
+    found = run.plan(cfg, db, actor="cli")
+    _confirm(cfg, run.present(cfg, found)[0].item_id, verdict)
     return home, db
 
 
@@ -834,27 +828,17 @@ def test_a_confirmed_file_is_trashed_and_leaves_a_tombstone(cfg, gates_pass, tmp
 
 
 def test_a_rejected_item_becomes_a_decline_and_the_file_stays(cfg, gates_pass, tmp_path):
-    home = _home(tmp_path)
-    db = _prepared(cfg)
-    found = run.plan(cfg, db, actor="cli")
-    offered = run.present(cfg, found)
-    _confirm(cfg, offered[0].item_id, review.Verdict.REJECTED)
+    home, db = _confirmed_one(cfg, tmp_path, review.Verdict.REJECTED)
     report = run.apply(cfg, db, actor="cli", home=home)
     assert report.trashed == () and len(report.declined) == 1
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
     assert len(stores.declines(cfg).suppressions()) == 1
-    # THE WATERMARK MAY NOT PASS OVER IT, and the previous version of this test
-    # asserted 50 here with a comment blessing the advance.
-    assert report.watermark.sequence == 40
+    assert report.watermark.sequence == 40, "the watermark may not pass over a decline"
 
 
 def test_revoking_a_decline_puts_the_file_back_in_front_of_a_person(cfg, gates_pass, tmp_path):
     """R35's revocability clause, driven through the path the product takes."""
-    home = _home(tmp_path)
-    db = _prepared(cfg)
-    found = run.plan(cfg, db, actor="cli")
-    offered = run.present(cfg, found)
-    _confirm(cfg, offered[0].item_id, review.Verdict.REJECTED)
+    home, db = _confirmed_one(cfg, tmp_path, review.Verdict.REJECTED)
     run.apply(cfg, db, actor="cli", home=home)
     held = stores.declines(cfg).suppressions()
     assert len(held) == 1
@@ -864,12 +848,7 @@ def test_revoking_a_decline_puts_the_file_back_in_front_of_a_person(cfg, gates_p
     assert [item.category for item in again.candidates] == [candidates.Category.DELETABLE]
     reoffered = run.present(cfg, again)
     assert len(reoffered) == 1
-    assert reoffered[0].verdict is None, (
-        "the review item still carried the rejection, so the next apply would "
-        "record the decline again and the revocation would change nothing"
-    )
-    # And the file moves once the person answers the re-offered question, which
-    # is the whole point of the clause.
+    assert reoffered[0].verdict is None, "the rejection survived the revocation"
     _confirm(cfg, reoffered[0].item_id)
     report = run.apply(cfg, db, actor="cli", home=home)
     assert len(report.trashed) == 1
@@ -896,14 +875,11 @@ def test_an_item_nobody_has_answered_holds_the_watermark_where_it_is(cfg, gates_
     db = _prepared(cfg, names=(ONE, TWO))
     found = run.plan(cfg, db, actor="cli")
     offered = run.present(cfg, found)
-    # The SECOND one is confirmed and the first is left open, so the watermark
-    # may not pass the first even though everything above it is finished.
+    # Only the second is confirmed, so the watermark may not pass the open first.
     _confirm(cfg, offered[1].item_id)
     report = run.apply(cfg, db, actor="cli", home=home)
     assert len(report.trashed) == 1
-    assert report.watermark.sequence == 40, (
-        "the watermark advanced past a removal nobody has answered for"
-    )
+    assert report.watermark.sequence == 40, "the watermark passed an unanswered removal"
 
 
 def test_a_confirmed_item_invalidated_before_the_move_is_refused_at_move_time(
@@ -923,8 +899,7 @@ def test_a_confirmed_item_invalidated_before_the_move_is_refused_at_move_time(
 def test_a_run_interrupted_after_trashing_resumes_without_re_offering(cfg, gates_pass, tmp_path):
     home, db = _confirmed_one(cfg, tmp_path)
     run.apply(cfg, db, actor="cli", home=home)
-    # The crash: the watermark is put back to where it was before the apply, so
-    # the next run sees the removal again exactly as an interrupted one would.
+    # The crash: the watermark is put back to where it stood before the apply.
     marks = watermark.WatermarkStore(cfg)
     with marks._locked():
         marks._write(replace(marks.read(), sequence=40))
@@ -993,8 +968,7 @@ def test_the_pass_refuses_while_the_background_agent_is_running(cfg, gates_pass,
 def test_a_decoy_volume_at_the_configured_path_refuses_before_anything_resolves(
     cfg, gates_pass, monkeypatch, tmp_path
 ):
-    """R38. A restored clone mounted where the real library belongs is internally
-    consistent all the way down to trashing the backup the recovery depends on."""
+    """R38: a restored clone mounted where the real library belongs is refused."""
     monkeypatch.setattr(
         preflight, "default_identity_provider", lambda: lambda _path: "SOME-OTHER-ID"
     )
@@ -1003,9 +977,7 @@ def test_a_decoy_volume_at_the_configured_path_refuses_before_anything_resolves(
     with pytest.raises(CratekitError) as excinfo:
         run.plan(cfg, db, actor="cli")
     assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
-    assert watermark.WatermarkStore(cfg).read() is None, (
-        "the refusal happened after something had already been written"
-    )
+    assert watermark.WatermarkStore(cfg).read() is None, "the refusal came after a write"
 
 
 def test_a_row_that_cannot_report_the_soft_delete_marker_refuses(cfg):
@@ -1048,12 +1020,7 @@ def test_a_database_that_cannot_report_its_update_counter_refuses(cfg):
 
 def test_the_apply_refuses_without_the_backup_acknowledgment(cfg, monkeypatch, tmp_path):
     """KTD24 binds the gates to DESTRUCTION, not to database writes."""
-    monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: lambda _path: cfg.library.volume_id
-    )
-    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+    _volume_agrees_and_rekordbox_is_shut(cfg, monkeypatch)
     _music(cfg, ONE)
     db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50)], usn=50)
     with pytest.raises(CratekitError) as excinfo:
@@ -1156,17 +1123,8 @@ def test_the_real_binding_answers_every_column_the_reader_asks_for(cfg, real_db)
 
 #: Every module name that would let this package speak to a streaming service.
 _NETWORK_MODULES = frozenset(
-    {
-        "requests",
-        "urllib",
-        "urllib3",
-        "http",
-        "socket",
-        "tidalapi",
-        "ftplib",
-        "smtplib",
-        "cratekit.acquire",
-    }
+    {"requests", "urllib", "urllib3", "http", "socket", "tidalapi", "ftplib", "smtplib"}
+    | {"cratekit.acquire"}
 )
 
 
@@ -1214,8 +1172,7 @@ def test_no_module_in_the_deletion_package_can_reach_a_streaming_service():
 
 def test_the_preview_and_the_write_run_the_same_categoriser():
     """A destructive verb whose dry run and real run take different code paths."""
-    source = (PACKAGE_ROOT / "candidates.py").read_text()
-    tree = ast.parse(source)
+    tree = ast.parse((PACKAGE_ROOT / "candidates.py").read_text())
     recheck = next(
         node
         for node in ast.walk(tree)
@@ -1226,10 +1183,7 @@ def test_the_preview_and_the_write_run_the_same_categoriser():
         for node in ast.walk(recheck)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     }
-    assert "categorize" in calls, (
-        "recheck no longer goes through the categoriser, so the review and the "
-        "move are two opinions about one library"
-    )
+    assert "categorize" in calls, "recheck must go through the categoriser"
 
 
 def test_every_category_is_classified_as_handled_or_not(cfg):
@@ -1237,9 +1191,7 @@ def test_every_category_is_classified_as_handled_or_not(cfg):
     for category in candidates.Category:
         item = candidates.Candidate(row=_removed(cfg, ONE, "1"), category=category)
         assert item.handled is (category in candidates.HANDLED)
-    assert candidates.Category.DELETABLE not in candidates.HANDLED, (
-        "a deletable candidate is finished business only once its file has moved"
-    )
+    assert candidates.Category.DELETABLE not in candidates.HANDLED, "deletable is not handled"
 
 
 def test_the_module_and_the_state_inventory_agree_about_which_stores_exist():
@@ -1288,10 +1240,7 @@ def test_tombstone_list_shows_what_the_deletion_pass_suppressed(
     payload = json.loads(out)["data"]
     assert [item["title"] for item in payload["items"]] == [Path(ONE).stem]
     assert payload["items"][0]["revoked"] is False
-    assert payload["unresolved"] == 0, (
-        "a settled suppression is not a backlog; unresolved is what the deletion "
-        "queue still has open"
-    )
+    assert payload["unresolved"] == 0, "a settled suppression is not a backlog"
 
 
 def test_tombstone_list_revokes_and_then_shows_the_lifted_record(
@@ -1307,8 +1256,6 @@ def test_tombstone_list_revokes_and_then_shows_the_lifted_record(
     payload = json.loads(out)["data"]
     assert [item["revoked"] for item in payload["items"]] == [True]
     assert not stores.suppressed_version(cfg, artist=ARTIST, title=Path(ONE).stem)
-    # And it is gone from the default listing afterwards, which is the other half
-    # of the same rule: the ordinary question is "what is suppressed".
     _code, plain, _err = _drive(["--output", "json", "tombstone", "list"])
     assert json.loads(plain)["data"]["items"] == []
 
@@ -1379,8 +1326,7 @@ def test_one_impossible_name_costs_one_file_rather_than_the_whole_pass(
     """Correct on safety, wrong on granularity, and this is the granularity."""
     home = _home(tmp_path)
     db = _prepared(cfg, names=(ONE, TWO))
-    found = run.plan(cfg, db, actor="cli")
-    _confirm_all(cfg, run.present(cfg, found))
+    _confirm_every(cfg, db)
     real = trash.move_to_trash
 
     def refuse_one(path, *, layout):
@@ -1400,14 +1346,11 @@ def test_one_impossible_name_costs_one_file_rather_than_the_whole_pass(
     assert [Path(item.candidate.resolved).name for item in report.trashed] == [TWO]
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
     assert len(report.refused) == 1
-    assert report.watermark.sequence == 40, (
-        "the watermark passed a removal that was confirmed and never moved"
-    )
+    assert report.watermark.sequence == 40, "the watermark passed a confirmed unmoved removal"
 
 
 def test_a_name_that_is_all_suffix_is_numbered_without_a_leading_space(tmp_path):
-    """``.flac`` used to collide onto " 2.flac", with a leading space and the
-    original name nowhere in it."""
+    """A name that is all suffix keeps itself and gains no leading space."""
     directory = tmp_path / "trash"
     directory.mkdir()
     (directory / ".flac").write_bytes(b"")
@@ -1448,9 +1391,7 @@ def test_an_anchor_that_answered_nothing_is_named_in_a_warning(cfg, gates_pass, 
     db = FakeDb([_content(cfg, ONE, "1", deleted=False, usn=44), elsewhere], usn=50)
     with caplog.at_level(logging.WARNING, logger="cratekit.deletion.run"):
         found = run.plan(cfg, db, actor="cli", prefix_map=[_identified(cfg, str(wrong))])
-    assert found.references.by_identity, (
-        "this library indexes a row, which is what silenced the previous warning"
-    )
+    assert found.references.by_identity, "the library must index a row"
     warned = [record.getMessage() for record in caplog.records if record.levelno >= logging.WARNING]
     assert warned, "an anchor that proved nothing went unmentioned"
     assert str(wrong) in warned[0]
@@ -1592,8 +1533,7 @@ def test_a_revoke_that_cannot_reopen_the_item_leaves_the_decline_standing(
         run.revoke(cfg, held.suppression_id, actor="cli")
     assert excinfo.value.cause.reason == "review-file-unusable"
     assert len(stores.declines(cfg).suppressions()) == 1, (
-        "the decline was lifted while the rejection that re-creates it was still "
-        "armed, which is the one half-done state that must not be reachable"
+        "the decline was lifted while its rejection stood"
     )
     broken["on"] = False
     again = run.plan(cfg, db, actor="cli")
@@ -1616,9 +1556,7 @@ def test_a_trash_directory_that_is_the_problem_is_not_blamed_on_one_name(tmp_pat
     monkeypatch.setattr(os, "open", too_long)
     with pytest.raises(OSError) as excinfo:
         trash._free_name(absent, ONE)
-    assert excinfo.value.errno == errno.ENAMETOOLONG, (
-        "a fact about the Trash was converted into an item scoped skip about a track"
-    )
+    assert excinfo.value.errno == errno.ENAMETOOLONG, "a Trash fault became an item skip"
 
 
 # Part 8: the round-three findings
@@ -1636,14 +1574,10 @@ def test_a_refusal_naming_a_dead_anchor_says_which_directory_to_mount(cfg, tmp_p
     with pytest.raises(CratekitError) as excinfo:
         candidates.assert_complete(references)
     steps = excinfo.value.cause.remediation.steps
-    assert steps, (
-        "the refusal carries no step at all, so a person whose archive drive is "
-        "unplugged is told to run doctor and nothing else"
-    )
+    assert steps, "the refusal carries no step at all"
     assert str(typo) in steps[0], "the step does not name the directory to mount"
     assert "mount" in steps[0] and "prefix rule" in steps[0], (
-        "the step names neither of the two acts that clear this, which are "
-        "mounting the volume and correcting the rule that points at it"
+        "the step must say mount or fix the rule"
     )
     # AND IT REACHES A PERSON.
     from cratekit.cli import render
@@ -1659,10 +1593,7 @@ def test_a_refusal_with_no_dead_anchor_offers_no_directory_to_mount(cfg):
     with pytest.raises(CratekitError) as excinfo:
         candidates.assert_complete(references)
     steps = excinfo.value.cause.remediation.steps
-    assert not any("mount the volume" in step for step in steps), (
-        "a refusal with no dead anchor offered a step naming an empty list of "
-        "directories, which reads as an instruction and names nothing"
-    )
+    assert not any("mount the volume" in step for step in steps), "a step names no directories"
     # U243: the one step it does offer is the rule for the prefix it names.
     assert len(steps) == 1 and 'from = "/nowhere/known"' in steps[0]
     assert excinfo.value.cause.remediation.remedy is Remedy.RUN_DOCTOR
@@ -1680,14 +1611,12 @@ def test_two_remixes_filed_under_one_title_are_two_tombstones(cfg):
     original = _remixed(cfg, ONE, "1", title="Strobe", version="")
     remix = _remixed(cfg, ONE, "2", title="Strobe", version="Michael Woods Remix")
     assert stores.version_of(original) != stores.version_of(remix), (
-        "two different versions of one recording produced one identity, so "
-        "deleting either suppresses both"
+        "two versions share one identity"
     )
     stores.record_tombstone(cfg, remix, actor="cli")
     assert stores.suppressed_version(cfg, artist=ARTIST, title="Strobe (Michael Woods Remix)")
     assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe"), (
-        "deleting the remix suppressed the original, which is music the user "
-        "still wants and will never be offered again"
+        "the original was suppressed"
     )
 
 
@@ -1757,8 +1686,7 @@ def test_the_real_binding_answers_the_version_columns_too(cfg, real_db):
         rb_writer.close_db(handle)
     versions = {row.content_id: row.version for row in seen.removed}
     assert versions == {"1": "Michael Woods Remix", "2": "Extended Mix"}, (
-        "the reader asked for a name the real binding does not answer, so every "
-        "identity silently collapses back onto artist and bare title"
+        "the version columns went unread"
     )
     by_id = {row.content_id: row for row in seen.removed}
     assert stores.version_of(by_id["1"])["title"] == "strobe (michael woods remix)"
@@ -1785,8 +1713,7 @@ def test_a_decline_whose_review_item_cannot_be_addressed_refuses(cfg, gates_pass
     assert excinfo.value.cause.reason == "internal-error"
     assert excinfo.value.cause.remediation.remedy is Remedy.REPORT_DEFECT
     assert stores.declines(cfg).suppressions()[0].suppression_id == drifted.suppression_id, (
-        "the decline was lifted anyway, so the half-done state the queue-first "
-        "order exists to avoid was reached through the derivation instead"
+        "the decline was lifted anyway"
     )
     # The other half of the derivation: the right kind, an identity this queue
     # could never have addressed.
@@ -1832,16 +1759,12 @@ def test_a_decline_recorded_between_the_plan_and_the_move_stops_the_move(
     home, db = _confirmed_one(cfg, tmp_path)
     calls = _decline_between_the_plan_and_the_move(cfg, monkeypatch, _removed(cfg, ONE, "1"))
     report = run.apply(cfg, db, actor="cli", home=home)
-    assert calls["count"] >= 2, (
-        "the decline was never recorded in the window this test is about, so a "
-        "pass here would say nothing about the re-check"
-    )
+    assert calls["count"] >= 2, "the decline was never recorded mid run"
     assert report.trashed == (), "a file somebody declined mid-run was trashed anyway"
     assert (Path(cfg.library.root) / "Music" / ONE).exists()
     assert [item.category for item in report.refused] == [candidates.Category.DECLINED]
     assert report.plan.candidates[0].category is candidates.Category.DELETABLE, (
-        "the plan already saw the decline, so this drove the plan's predicate "
-        "rather than the re-check's and proves nothing about the missing argument"
+        "the plan saw the decline"
     )
 
 
@@ -1887,14 +1810,10 @@ def test_a_tombstone_that_cannot_be_written_puts_the_file_back(
     with pytest.raises(CratekitError) as excinfo:
         run.apply(cfg, db, actor="cli", home=home)
     assert excinfo.value.cause.reason == "review-file-unusable", (
-        "the store's own refusal was replaced, so the remedy that says what is "
-        "wrong with the store was discarded"
+        "the store's own refusal was replaced"
     )
     original = Path(cfg.library.root) / "Music" / ONE
-    assert original.exists(), (
-        "the file is in the Trash with no tombstone, which is the state R36 says "
-        "cannot exist and which no later run can even notice"
-    )
+    assert original.exists(), "the file is in the Trash with no tombstone"
     assert original.read_bytes() == b"audio bytes"
     assert stores.list_tombstones(cfg, include_revoked=True) == ()
     assert list((home / ".Trash").iterdir()) == []
@@ -1904,10 +1823,7 @@ def test_a_tombstone_that_cannot_be_written_puts_the_file_back(
     again = run.plan(cfg, db, actor="cli")
     assert [item.category for item in again.candidates] == [candidates.Category.DELETABLE]
     finished = run.apply(cfg, db, actor="cli", home=home)
-    assert len(finished.trashed) == 1, (
-        "the deletion the store failure interrupted could not be completed by "
-        "re-running, which is the whole reason the move is undone rather than left"
-    )
+    assert len(finished.trashed) == 1, "re-running must complete the deletion"
     assert len(stores.list_tombstones(cfg)) == 1
 
 
@@ -1930,8 +1846,7 @@ def test_a_file_that_cannot_be_put_back_refuses_naming_both_paths(
     assert cause.detail["trashed_to"]
     assert cause.remediation.steps and "by hand" in cause.remediation.steps[0]
     assert cause.inner is not None and cause.inner.reason == "review-file-unusable", (
-        "the store failure that started this was dropped, so why the tombstone "
-        "could not be written is nowhere in the record"
+        "the store failure was dropped"
     )
 
 
@@ -1941,10 +1856,7 @@ def test_a_file_that_cannot_be_put_back_refuses_naming_both_paths(
 def test_the_name_search_gives_up_at_a_bound_a_person_will_wait_for(tmp_path, monkeypatch):
     """``MAX_NAME_ATTEMPTS`` raised to 10**9 left the suite green."""
     # THE VALUE, NOT A CEILING OVER IT.
-    assert trash.MAX_NAME_ATTEMPTS == 1000, (
-        "the bound is no longer the bound a person will wait behind, and the only "
-        "way to pin a constant is to assert the constant"
-    )
+    assert trash.MAX_NAME_ATTEMPTS == 1000, "the bound is the bound a person waits behind"
     directory = tmp_path / "trash"
     directory.mkdir()
     tries = {"count": 0}
@@ -1956,14 +1868,9 @@ def test_the_name_search_gives_up_at_a_bound_a_person_will_wait_for(tmp_path, mo
     monkeypatch.setattr(os, "open", always_taken)
     with pytest.raises(CratekitError) as excinfo:
         trash._free_name(directory, ONE)
-    assert excinfo.value.cause.scope is Scope.ITEM, (
-        "running out of numbers is one file's problem, not the volume's"
-    )
+    assert excinfo.value.cause.scope is Scope.ITEM, "running out of numbers is one file's problem"
     # NOT THE PIN, AND IT IS WORTH SAYING SO OUT LOUD.
-    assert tries["count"] == trash.MAX_NAME_ATTEMPTS, (
-        "the loop did not stop at the declared bound, so the constant names one "
-        "number and the code spends another"
-    )
+    assert tries["count"] == trash.MAX_NAME_ATTEMPTS, "the loop did not stop at the bound"
 
 
 # ── F9: a row excused from the proof that should never have been ─────────────
@@ -1984,19 +1891,13 @@ def test_a_row_that_is_a_path_this_build_cannot_name_refuses(cfg, recorded):
     active = [trees.ContentRow(content_id="9", recorded=recorded, deleted=False)]
     references = _references(cfg, active)
     assert references.unnameable == ("9",)
-    assert references.not_a_path == (), (
-        "a row naming a real file was excused with the streamed rows, and the "
-        "argument for excusing those is that they reference no file"
-    )
+    assert references.not_a_path == (), "a real file was excused as streamed"
     assert not references.complete
     with pytest.raises(CratekitError) as excinfo:
         candidates.assert_complete(references)
     assert excinfo.value.cause.reason == "deletion-reference-set-incomplete"
     assert excinfo.value.cause.detail["unnameable_rows"] == ["9"]
-    assert excinfo.value.cause.detail["unnameable"] == 1, (
-        "the tally the refusal reports is not the tally it refused on, so a person reading the "
-        "detail is told a different number from the one that stopped the run"
-    )
+    assert excinfo.value.cause.detail["unnameable"] == 1, "the detail's tally is not the refusal's"
     assert excinfo.value.cause.remediation.steps
 
 
@@ -2036,18 +1937,12 @@ def test_a_streamed_row_spelled_as_a_url_is_excused_rather_than_stopping_the_run
     _music(cfg, ONE)
     active = [trees.ContentRow(content_id="9", recorded=recorded, deleted=False)]
     references = _references(cfg, active)
-    assert references.unnameable == (), (
-        "a row that references no file was called a path this build cannot "
-        "name, which refuses the run with a step nothing can satisfy"
-    )
+    assert references.unnameable == (), "a non path row was called unnameable"
     assert references.not_a_path == ("9",)
     assert references.complete
     candidates.assert_complete(references)
     answered = _categorize(cfg, [_removed(cfg, ONE, "1")], references)
-    assert answered[0].category is candidates.Category.DELETABLE, (
-        "the run refused rather than proceeding, so the verb is off for every "
-        "library that has ever streamed anything"
-    )
+    assert answered[0].category is candidates.Category.DELETABLE, "a streamed row refused the run"
 
 
 # ── R4-F2: an interrupt is not an Exception ──────────────────────────────────
@@ -2063,10 +1958,7 @@ def test_an_interrupt_during_the_store_write_still_puts_the_file_back(
     with pytest.raises(interrupt):
         run.apply(cfg, db, actor="cli", home=home)
     original = Path(cfg.library.root) / "Music" / ONE
-    assert original.exists(), (
-        "an interrupt left the file in the Trash with no tombstone, which is the "
-        "one state in this unit that loses an invariant with no trace at all"
-    )
+    assert original.exists(), "an interrupt left a file with no tombstone"
     assert original.read_bytes() == b"audio bytes"
     assert stores.list_tombstones(cfg, include_revoked=True) == ()
     assert list((home / ".Trash").iterdir()) == []
@@ -2093,13 +1985,11 @@ def test_a_version_that_is_merely_a_substring_of_the_title_still_splits_the_iden
     """The containment short circuit was a PLAIN SUBSTRING TEST on folded text."""
     plain = _remixed(cfg, ONE, "1", title=title, version="")
     carried = _remixed(cfg, TWO, "2", title=title, version=version)
-    assert stores.version_of(plain) != stores.version_of(carried), (
-        "the two versions share one identity, so deleting either suppresses both"
-    )
+    assert stores.version_of(plain) != stores.version_of(carried), "two versions share one identity"
     stores.record_tombstone(cfg, carried, actor="cli")
     assert stores.suppressed_version(cfg, artist=ARTIST, title=f"{title} ({version})")
     assert not stores.suppressed_version(cfg, artist=ARTIST, title=title), (
-        "the version the person kept is suppressed, and it will never be offered to them again"
+        "the kept version is suppressed"
     )
 
 
@@ -2139,8 +2029,7 @@ def test_a_subtitle_that_is_not_a_mix_name_leaves_the_identity_the_provider_spel
     assert stores.version_of(seen.removed[0])["title"] == "atlas"
     stores.record_tombstone(cfg, seen.removed[0], actor="cli")
     assert stores.suppressed_version(cfg, artist=ARTIST, title="Atlas"), (
-        "the tombstone was written under a title no acquisition source will ever "
-        "ask about, so the suppression exists and does nothing"
+        "the tombstone's title is never asked about"
     )
 
 
@@ -2367,17 +2256,10 @@ def test_a_file_moved_by_hand_after_the_confirmation_is_recorded_rather_than_ret
     assert report.trashed == (), "there was nothing at the recorded path to move"
     assert [item.category for item in report.refused] == [candidates.Category.GONE]
     recorded = stores.list_tombstones(cfg, include_revoked=True)
-    assert len(recorded) == 1, (
-        "the confirmed removal was settled without the tombstone R36 makes part "
-        "of the deletion, so R36 is false for this row with nothing recording it"
-    )
-    assert recorded[0].payload["trashed_to"] == "", (
-        "the record claims this pass moved a file it never touched"
-    )
+    assert len(recorded) == 1, "a settled removal has no tombstone"
+    assert recorded[0].payload["trashed_to"] == "", "the record claims a move it never made"
     assert moved.exists(), "the file the person moved was destroyed"
-    assert recorded[0].suppression_id in caplog.text, (
-        "the person is not told which suppression to revoke if they only moved the file"
-    )
+    assert recorded[0].suppression_id in caplog.text, "the person is not told what to revoke"
 
 
 def test_a_resumed_deletion_whose_tombstone_was_recorded_is_still_finished_business(
@@ -2392,10 +2274,7 @@ def test_a_resumed_deletion_whose_tombstone_was_recorded_is_still_finished_busin
     report = run.apply(cfg, db, actor="cli", home=home)
     assert report.trashed == ()
     assert [item.category for item in report.refused] == [candidates.Category.GONE]
-    assert report.watermark.sequence == 50, (
-        "an interrupted run that had already recorded the deletion re-offered it "
-        "forever instead of resuming"
-    )
+    assert report.watermark.sequence == 50, "a recorded deletion was re-offered"
 
 
 # ── S1-D: three zero rows on the destructive path itself ─────────────────────
@@ -2441,9 +2320,7 @@ def test_a_move_that_fails_leaves_no_placeholder_wearing_the_track_s_name(
     with pytest.raises(type(raising)):
         trash.move_to_trash(source, layout=layout)
     assert source.read_bytes() == b"audio"
-    assert list((home / ".Trash").iterdir()) == [], (
-        "an empty file with a real track's name was left in the Trash"
-    )
+    assert list((home / ".Trash").iterdir()) == [], "an empty file was left in the Trash"
 
 
 def test_the_tombstone_store_is_proved_readable_before_any_file_is_touched(
@@ -2490,10 +2367,7 @@ def test_a_corrected_prefix_rule_lets_the_confirmed_deletion_through_on_the_retr
     again = run.plan(cfg, db, actor="cli", prefix_map=to_second)
     reoffered = run.present(cfg, again)
     assert len(reoffered) == 1
-    assert reoffered[0].verdict is None, (
-        "the item kept the confirmation made about the other file, so every "
-        "later apply refuses it again and the deletion can never complete"
-    )
+    assert reoffered[0].verdict is None, "the item kept the other file's verdict"
     assert reoffered[0].payload["path"] == str(second / "Music" / ONE)
     _confirm(cfg, reoffered[0].item_id)
     report = run.apply(cfg, db, actor="cli", home=home, prefix_map=to_second)
@@ -2556,7 +2430,7 @@ def test_a_remix_filed_as_a_bare_artist_name_is_spelled_the_way_a_provider_spell
         "the tombstone was written under a spelling no provider will ever produce"
     )
     assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe"), (
-        "deleting the remix suppressed the original"
+        "the original was suppressed"
     )
 
 
@@ -2598,8 +2472,7 @@ def test_a_featured_credit_bracket_does_not_stand_in_for_the_remix(cfg):
     original = _remixed_row(cfg, ONE, "1", title="Losing It (feat. Anna)", remixer="")
     remix = _remixed_row(cfg, TWO, "2", title="Losing It (feat. Anna)", remixer="Anna", usn=51)
     assert stores.version_of(original) != stores.version_of(remix), (
-        "the original and the remix of it share one identity, so deleting the "
-        "remix suppresses music the user still wants"
+        "the remix and the original share an identity"
     )
     stores.record_tombstone(cfg, remix, actor="cli")
     assert not stores.suppressed_version(cfg, artist=ARTIST, title="Losing It (feat. Anna)")
@@ -2629,9 +2502,7 @@ def test_the_module_no_longer_claims_the_remixer_column_makes_composition_safe(c
     assert stores.version_of(remixed)["title"] == "sun (sun path remix)"
     assert stores.version_of(remixed) != stores.version_of(titled)
     source = (SRC_ROOT / "cratekit" / "core" / "tombstone.py").read_text()
-    assert "unreachable in practice" not in source, (
-        "the corrected claim was left in place beside the code that disproves it"
-    )
+    assert "unreachable in practice" not in source, "the corrected claim is still there"
 
 
 # ── S2-A: the vocabulary's membership, pinned exactly ────────────────────────
@@ -2753,9 +2624,7 @@ _FALSE_POSITIVE_REMIXERS = (
 @pytest.mark.parametrize("remixer", _FALSE_POSITIVE_REMIXERS)
 def test_a_remixer_whose_name_carries_a_version_word_is_still_spelled_matchably(cfg, remixer):
     """THE ROUND'S HEADLINE FIX, SELF REFUTED BY THE TEST IT WAS BUILT ON."""
-    assert tombstone.reads_as_version(remixer), (
-        "this row no longer exercises the false positive it was written for"
-    )
+    assert tombstone.reads_as_version(remixer), "the row lost its false positive"
     row = _remixed_row(cfg, ONE, "1", title="Screamer", remixer=remixer)
     assert stores.version_of(row)["title"] == f"screamer ({remixer.casefold()} remix)"
     stores.record_tombstone(cfg, row, actor="cli")
@@ -2812,14 +2681,10 @@ def test_a_collection_row_with_no_id_reaches_the_pass_as_unidentifiable(cfg, gat
     nameless = _content(cfg, ONE, "1", deleted=True, usn=50)
     nameless.ID = None
     seen = library.read_collection(FakeQuery([nameless]))
-    assert seen.removed[0].content_id == "", (
-        "a row with no identifier was given the identifier 'None'"
-    )
+    assert seen.removed[0].content_id == "", "a row with no identifier got 'None'"
     found = run.plan(cfg, FakeDb([nameless], usn=50), actor="cli")
     assert [item.category for item in found.candidates] == [candidates.Category.UNIDENTIFIABLE]
-    assert run.present(cfg, found) == (), (
-        "a row that can never be deleted was put in front of a person as deletable"
-    )
+    assert run.present(cfg, found) == (), "an undeletable row was offered"
 
 
 # ── F6: the predicate wired at review time, unpinned in one of its two sites ──
@@ -2871,9 +2736,7 @@ def test_two_recordings_that_land_on_one_identity_are_refused_rather_than_suppre
         candidates.Category.AMBIGUOUS_VERSION,
         candidates.Category.AMBIGUOUS_VERSION,
     ]
-    assert run.present(cfg, found) == (), (
-        "a suppression that would take out a second recording was offered"
-    )
+    assert run.present(cfg, found) == (), "a suppression of two recordings was offered"
     assert found.candidates[0].problem
 
 
@@ -2926,7 +2789,7 @@ def test_the_collision_is_looked_for_across_the_whole_walk_not_the_offered_rows(
     above = _versioned(cfg, TWO, "2", usn=50, title="Strobe", isrc="BBBB22222222", subtitle="Refix")
     found = run.plan(cfg, FakeDb([below, above], usn=50), actor="cli")
     assert [item.row.content_id for item in found.candidates] == ["2"], (
-        "the row below the watermark should not be offered"
+        "a row below the watermark was offered"
     )
     assert found.candidates[0].category is candidates.Category.AMBIGUOUS_VERSION, (
         "the colliding row was invisible because it sat below the watermark"
@@ -2964,21 +2827,16 @@ def test_a_confirmed_removal_the_person_deleted_in_the_finder_does_not_block_the
     """THE HOLD THAT CLOSED A SILENT RETIREMENT WEDGED THE WHOLE QUEUE."""
     home = _home(tmp_path)
     db = _prepared(cfg, names=(ONE, TWO))
-    found = run.plan(cfg, db, actor="cli")
-    _confirm_all(cfg, run.present(cfg, found))
+    _confirm_every(cfg, db)
     (Path(cfg.library.root) / "Music" / ONE).unlink()
     with caplog.at_level(logging.WARNING):
         report = run.apply(cfg, db, actor="cli", home=home)
     assert [item.candidate.row.content_id for item in report.trashed] == ["2"]
     assert [item.category for item in report.refused] == [candidates.Category.GONE]
     assert len(stores.list_tombstones(cfg, include_revoked=True)) == 2, (
-        "the deletion the person completed themselves was never recorded, so R36 "
-        "is false for that row with nothing saying so"
+        "the Finder deletion was never recorded"
     )
-    assert report.watermark.sequence == 51, (
-        "a removal that was trashed and recorded is held behind one whose file "
-        "the person deleted in the Finder, forever"
-    )
+    assert report.watermark.sequence == 51, "a recorded removal is held forever"
     # And a later run has nothing left to do, which is what "finished" means.
     again = run.plan(cfg, db, actor="cli")
     assert again.candidates == ()
@@ -2999,12 +2857,10 @@ def test_an_unanswered_removal_whose_file_moved_is_retired_but_not_in_silence(
         report = run.apply(cfg, db, actor="cli", home=home)
     assert report.trashed == ()
     assert stores.list_tombstones(cfg, include_revoked=True) == (), (
-        "a deletion nobody asked for was recorded"
+        "an unasked deletion was recorded"
     )
     assert report.watermark.sequence == 50, "the deliberate scoping was changed"
-    assert "nothing will offer it again" in caplog.text, (
-        "the file went out of reach of both rekordbox and this pass without a word"
-    )
+    assert "nothing will offer it again" in caplog.text, "the file went out of reach silently"
     assert moved.exists()
 
 
@@ -3021,19 +2877,14 @@ def test_a_tombstone_an_earlier_build_wrote_is_still_recognised(cfg, gates_pass,
     removed = library.read_collection(FakeQuery([row])).removed[0]
     # THE EARLIER SPELLING IS A LITERAL, AND IT HAS TO BE.
     earlier = tombstone.version_identity(artist=removed.artist, title="Strobe (Michael Woods)")
-    assert earlier != stores.version_of(removed), (
-        "this row no longer exercises the spelling change it was written for"
-    )
+    assert earlier != stores.version_of(removed), "the row lost its spelling change"
     stores.tombstones(cfg).record(
         kind=tombstone.KIND_VERSION,
         identity=earlier,
         payload={"content_id": removed.content_id, "recorded": removed.recorded},
         actor="cli",
     )
-    assert stores.tombstone_predicate(cfg)(removed), (
-        "a deletion an earlier build recorded is not recognised, so the row is held open forever "
-        "and the person is told to put back a file that is already in the Trash where they put it"
-    )
+    assert stores.tombstone_predicate(cfg)(removed), "an earlier build's deletion is missed"
     # AND THE CONSULT IS NOT WIDENED WITH IT, which is the scope of the whole
     # change.
     assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe (Michael Woods Remix)")
@@ -3045,7 +2896,7 @@ def test_a_tombstone_an_earlier_build_wrote_is_still_recognised(cfg, gates_pass,
     report = run.apply(cfg, db, actor="cli", home=home)
     assert report.watermark.sequence == 50
     assert len(stores.list_tombstones(cfg, include_revoked=True)) == 1, (
-        "the deletion was recorded a second time under the new spelling"
+        "the deletion was recorded twice"
     )
 
 
@@ -3121,10 +2972,7 @@ def test_a_trash_directory_this_account_cannot_write_to_is_not_usable(tmp_path):
     files.chmod(0o500)
     try:
         status = trash.probe(music, home=home, platform="darwin")
-        assert not status.usable, (
-            "a Trash this account cannot write to was reported usable, so the move would be "
-            "attempted and the refusal that protects the file would never be raised"
-        )
+        assert not status.usable, "an unwritable Trash was reported usable"
         assert "not writable" in status.problem
         with pytest.raises(CratekitError) as excinfo:
             trash.assert_usable(music, home=home, platform="darwin")
@@ -3210,12 +3058,9 @@ def test_a_stale_empty_mount_point_writes_no_tombstone_and_retires_no_row(
     assert len(report.plan.references.missing) == 50
     assert [item.category for item in report.refused] == [candidates.Category.GONE] * len(gone)
     assert stores.list_tombstones(cfg, include_revoked=True) == (), (
-        "twenty deletions were RECORDED for an unmounted drive, so remounting it "
-        "brings none of those versions back"
+        "an unmounted drive's rows were recorded"
     )
-    assert report.watermark.sequence == 40, (
-        "the watermark walked past twenty rows whose files this run never saw"
-    )
+    assert report.watermark.sequence == 40, "the watermark passed twenty unseen rows"
     assert str(volume) in caplog.text
 
 
@@ -3251,9 +3096,7 @@ def test_an_unanswered_removal_under_a_stale_mount_point_is_not_retired_either(
     with caplog.at_level(logging.WARNING):
         report = run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
     assert report.trashed == ()
-    assert report.watermark.sequence == 40, (
-        "twenty unanswered removals were retired off an empty directory"
-    )
+    assert report.watermark.sequence == 40, "twenty removals were retired off nothing"
     assert "was NOT retired" in caplog.text
 
 
@@ -3397,7 +3240,7 @@ def test_appending_unconditionally_would_be_strictly_worse_and_by_how_much():
     assert all(
         tombstone.remixer_title("Strobe", value) == _provider_spelling(value, "designation")
         for value in differing
-    ), "the branch that survives has to be right on the values it survives for"
+    ), "the surviving branch must be right"
 
 
 def test_one_string_read_as_an_artist_and_as_a_designation_stays_two_identities(cfg):
@@ -3432,10 +3275,7 @@ def test_a_listing_says_which_suppressions_moved_no_file(cfg, gates_pass, tmp_pa
     }
     assert set(listed) == {Path(ONE).stem, Path(TWO).stem}
     assert listed[Path(ONE).stem]["trashed_to"], "a real move is not shown as one"
-    assert listed[Path(TWO).stem]["trashed_to"] == "", (
-        "a suppression written for a file this pass never touched is listed "
-        "exactly like one it moved into the Trash"
-    )
+    assert listed[Path(TWO).stem]["trashed_to"] == "", "an untouched file is listed as moved"
     assert set(listed[Path(ONE).stem]) >= {"version", "version_unbelieved", "isrc"}, (
         "the payload's own comment says an auditor can see which column value "
         "the identity was built from, and the listing did not emit it"
@@ -3475,9 +3315,7 @@ def test_two_spellings_of_one_isrc_are_one_recording(cfg):
     one = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="gbaya1500001")
     other = replace(_removed(cfg, TWO, "2"), title="Strobe", isrc="GBAYA1500001")
     assert stores.version_of(one) == stores.version_of(other)
-    assert stores.ambiguous_versions([one, other]) == frozenset(), (
-        "one recording filed twice was refused as two recordings on case alone"
-    )
+    assert stores.ambiguous_versions([one, other]) == frozenset(), "case alone made two recordings"
     third = replace(_removed(cfg, ACCENTED, "3"), title="Strobe", isrc="USRC17607839")
     assert stores.ambiguous_versions([one, third]) == frozenset({"1", "3"}), (
         "folding may not cost the discriminator the collision it exists for"
@@ -3493,8 +3331,7 @@ def test_the_display_form_of_one_isrc_is_not_two_recordings(cfg):
     other = replace(_removed(cfg, TWO, "2"), title="Strobe", isrc="GB-AYA-15-00001")
     assert stores.version_of(one) == stores.version_of(other)
     assert stores.ambiguous_versions([one, other]) == frozenset(), (
-        "the display form of a code is the same code, and reading it as a second "
-        "recording wedges the queue at that row forever"
+        "the display form is the same code"
     )
 
 
@@ -3503,7 +3340,7 @@ def test_a_placeholder_in_the_isrc_column_is_an_absent_code(cfg):
     real = replace(_removed(cfg, ONE, "1"), title="Strobe", isrc="GBAYA1500001")
     placeholder = replace(_removed(cfg, TWO, "2"), title="Strobe", isrc="-")
     assert stores.ambiguous_versions([real, placeholder]) == frozenset(), (
-        "a placeholder is an absent code, not a code that disagrees"
+        "a placeholder is an absent code"
     )
 
 
@@ -3620,13 +3457,8 @@ def test_a_tombstone_is_recognised_whatever_rule_composed_its_identity(cfg, gate
     """The recognition question no longer depends on the spelling at all."""
     removed = _one_removed_row(cfg, title="Strobe", remixer="Michael Woods")
     planted = _record_an_earlier_build_wrote(cfg, removed, title=spelling)
-    assert planted.identity != stores.version_of(removed), (
-        "this spelling is what this build writes, so it exercises no history"
-    )
-    assert stores.tombstone_predicate(cfg)(removed), (
-        "a deletion an earlier build recorded is not recognised, so the row is held open forever "
-        "and the person is told to put back a file that is already in the Trash where they put it"
-    )
+    assert planted.identity != stores.version_of(removed), "this spelling exercises no history"
+    assert stores.tombstone_predicate(cfg)(removed), "an earlier build's deletion is missed"
     # AND THE CONSULT IS NOT WIDENED WITH IT.
     assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe (Michael Woods Remix)")
 
@@ -3636,10 +3468,7 @@ def test_the_ordinary_row_whose_history_was_reported_as_absent(cfg, gates_pass):
     removed = _one_removed_row(cfg, title="Strobe Extended Mix", subtitle="Extended Mix")
     assert stores.version_of(removed)["title"] == "strobe extended mix (extended mix)"
     _record_an_earlier_build_wrote(cfg, removed, title="Strobe Extended Mix")
-    assert stores.tombstone_predicate(cfg)(removed), (
-        "the record the substring-test build wrote for an ordinary row is "
-        "orphaned, so that row holds the watermark and every removal above it"
-    )
+    assert stores.tombstone_predicate(cfg)(removed), "the old build's record is orphaned"
 
 
 def test_an_earlier_builds_record_retires_the_row_through_the_whole_pass(
@@ -3655,11 +3484,9 @@ def test_an_earlier_builds_record_retires_the_row_through_the_whole_pass(
     with caplog.at_level(logging.WARNING):
         report = run.apply(cfg, db, actor="cli", home=home)
     assert [item.category for item in report.refused] == [candidates.Category.GONE]
-    assert report.watermark.sequence == 50, (
-        "the row was held open, so every removal after it is held too"
-    )
+    assert report.watermark.sequence == 50, "the row was held open"
     assert len(stores.list_tombstones(cfg, include_revoked=True)) == 1, (
-        "a second tombstone was written for a deletion that already had one"
+        "a second tombstone was written"
     )
 
 
@@ -3810,10 +3637,7 @@ def test_this_builds_own_record_is_matched_on_its_version_not_on_its_row(cfg, ga
     assert stores.tombstone_predicate(cfg)(removed)
     edited = replace(removed, version="Club Mix")
     assert stores.version_of(edited) != stores.version_of(removed)
-    assert not stores.tombstone_predicate(cfg)(edited), (
-        "a row whose version column changed after the deletion was recorded is read as already "
-        "recorded, so the tombstone naming the version it claims now is never written"
-    )
+    assert not stores.tombstone_predicate(cfg)(edited), "an edited version reads as recorded"
 
 
 def test_reading_a_store_from_before_the_stamp_migrates_it_and_writes_nothing(cfg, gates_pass):
@@ -3824,10 +3648,7 @@ def test_reading_a_store_from_before_the_stamp_migrates_it_and_writes_nothing(cf
     path = stores.tombstones(cfg).path
     before = path.read_bytes()
     assert stores.tombstone_predicate(cfg)(removed)
-    assert path.read_bytes() == before, (
-        "asking a question rewrote the store, so a question can now fail in a "
-        "way that loses somebody's decisions"
-    )
+    assert path.read_bytes() == before, "a question rewrote the store"
     assert stores.summarize(stores.list_tombstones(cfg)[0])[stores.IDENTITY_SCHEME_FIELD] == "", (
         "an era before the stamp is a fact about the record, not a missing field"
     )
@@ -3895,9 +3716,7 @@ def test_a_revoked_tombstone_still_says_a_run_recorded_this_deletion(cfg, gates_
     record = stores.record_tombstone(cfg, removed, actor="cli", trashed_to="/x")
     stores.revoke_tombstone(cfg, record.suppression_id, actor="cli")
     assert stores.list_tombstones(cfg) == (), "the revocation did not take"
-    assert stores.tombstone_predicate(cfg)(removed), (
-        "revoking a tombstone re-opened a removal that was finished business"
-    )
+    assert stores.tombstone_predicate(cfg)(removed), "a revoke re-opened finished business"
 
 
 def test_the_stamp_field_is_spelled_on_disk_and_not_only_in_this_build(cfg):
@@ -3916,10 +3735,7 @@ def test_the_row_identity_composes_NFC_and_the_normal_form_is_pinned():
     decomposed = "Café Track.flac"
     assert composed != decomposed
     identity = tombstone.removed_file_identity(content_id="1", recorded=decomposed)
-    assert identity["recorded"] == composed, (
-        "the row identity is not composed to NFC, so a decline recorded under one "
-        "spelling of a path is orphaned when the collection reports the other"
-    )
+    assert identity["recorded"] == composed, "the row identity is not NFC"
     assert tombstone.removed_file_identity(content_id="1", recorded=composed) == identity
 
 
@@ -4006,9 +3822,7 @@ def test_prose_is_not_a_rule_and_a_reordered_call_is():
         "the docstring survived into the digested form, so rewording it moves "
         "the stamp and every record ever written falls to the row lookup"
     )
-    assert "casefold" in reworded and "normalize" in reworded, (
-        "the code did not survive into the digested form, so the stamp is vacuous"
-    )
+    assert "casefold" in reworded and "normalize" in reworded, "the code is missing from the digest"
 
 
 def test_a_record_of_another_kind_does_not_answer_the_tombstone_question(cfg, gates_pass):
@@ -4020,10 +3834,7 @@ def test_a_record_of_another_kind_does_not_answer_the_tombstone_question(cfg, ga
         payload={"content_id": removed.content_id, "recorded": removed.recorded},
         actor="cli",
     )
-    assert not stores.tombstone_predicate(cfg)(removed), (
-        "a record that is not a tombstone answered the tombstone question, so a "
-        "confirmed removal is retired against a decision nobody made about it"
-    )
+    assert not stores.tombstone_predicate(cfg)(removed), "a non tombstone answered as one"
 
 
 def test_a_row_that_cannot_be_identified_is_not_read_as_already_recorded(cfg, gates_pass):
@@ -4033,10 +3844,7 @@ def test_a_row_that_cannot_be_identified_is_not_read_as_already_recorded(cfg, ga
     anonymous = replace(removed, artist="", title="", version="", content_id="9")
     with pytest.raises(CratekitError):
         stores.version_of(anonymous)
-    assert not stores.tombstone_predicate(cfg)(anonymous), (
-        "a row nobody can identify reads as already recorded, so a confirmed "
-        "removal is retired for a file somebody merely renamed"
-    )
+    assert not stores.tombstone_predicate(cfg)(anonymous), "an unidentifiable row read as recorded"
 
 
 def test_nothing_reconstructs_a_former_builds_composition_any_more(cfg):
@@ -4082,12 +3890,7 @@ def review_cli(library_root, gates_pass, monkeypatch):
     _build_disposable_database(Path(ready.library.db_path))
     config.save(ready)
     config.reset_cache()
-    monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: lambda _path: ready.library.volume_id
-    )
-    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+    _volume_agrees_and_rekordbox_is_shut(ready, monkeypatch)
     session.record_acknowledgment(ready, terminal=lambda: True)
     return ready
 
@@ -4349,8 +4152,7 @@ def test_a_different_disk_at_a_mapped_target_stops_the_apply_before_any_file_mov
     """R-44 Open 1. The pass wrote to a second volume with no identity asked of it."""
     volume, rule, db, gone = _mapped_volume(cfg, tmp_path)
     home = _home(tmp_path)
-    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
-    _confirm_all(cfg, run.present(cfg, found))
+    _confirm_every(cfg, db, prefix_map=rule)
     _mounts.stand_in(monkeypatch, {volume: "BBBB-a-clone"}, otherwise=cfg.library.volume_id)
     with pytest.raises(CratekitError) as excinfo:
         run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
@@ -4378,7 +4180,7 @@ def test_a_volume_holding_only_removed_rows_does_not_settle_off_an_empty_mount_p
         run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
     assert excinfo.value.cause.reason == "mapped-volume-mismatch"
     assert stores.list_tombstones(cfg, include_revoked=True) == (), (
-        "twenty deletions were recorded off an empty directory"
+        "deletions recorded off an empty directory"
     )
     assert watermark.WatermarkStore(cfg).read().sequence == 40
 
@@ -4416,8 +4218,7 @@ def test_a_disk_swapped_after_the_plan_stops_a_confirmed_move(
     reads, arm = _identity_that_changes(monkeypatch, cfg, volume)
     volume, rule, db, gone = _mapped_volume(cfg, tmp_path, removed=1, volume_id=ARCHIVE_ID)
     home = _home(tmp_path)
-    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
-    _confirm_all(cfg, run.present(cfg, found))
+    _confirm_every(cfg, db, prefix_map=rule)
     arm(1)  # the rebuilt plan, and nothing after it
     with pytest.raises(CratekitError) as excinfo:
         run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
@@ -4436,8 +4237,7 @@ def test_a_drive_ejected_mid_queue_is_not_settled_as_a_queue_of_deletions(
     )
     volume, rule, db, gone = _mapped_volume(cfg, tmp_path, volume_id=ARCHIVE_ID)
     home = _home(tmp_path)
-    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
-    _confirm_all(cfg, run.present(cfg, found))
+    _confirm_every(cfg, db, prefix_map=rule)
     # The rebuilt plan, then the look at the top of the loop for the first item.
     arm(2)
     with pytest.raises(CratekitError) as excinfo:
@@ -4447,7 +4247,7 @@ def test_a_drive_ejected_mid_queue_is_not_settled_as_a_queue_of_deletions(
     assert excinfo.value.cause.reason == "mapped-volume-unmounted"
     assert reads["changed"], "the drive was never ejected, so this proved nothing"
     assert stores.list_tombstones(cfg, include_revoked=True) == (), (
-        "files on an ejected drive were recorded as deleted"
+        "an ejected drive's files were recorded"
     )
     assert watermark.WatermarkStore(cfg).read().sequence == 40
 
@@ -4483,8 +4283,7 @@ def test_a_file_in_a_volume_nested_under_the_rules_target_is_not_moved(
     )
     volume, rule, db, gone = _mapped_volume(cfg, tmp_path, removed=3, volume_id=ARCHIVE_ID)
     home = _home(tmp_path)
-    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
-    _confirm_all(cfg, run.present(cfg, found))
+    _confirm_every(cfg, db, prefix_map=rule)
     with pytest.raises(CratekitError) as excinfo:
         run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
     assert excinfo.value.cause.detail["probed"] == str(inner)
@@ -4510,8 +4309,7 @@ def test_a_file_under_the_library_root_asks_nothing_of_any_rule_before_it_moves(
     _music(cfg, ONE)
     run.plan(cfg, FakeDb([], usn=40), actor="cli", prefix_map=rule)
     db = FakeDb([_content(cfg, ONE, "1", deleted=True, usn=50)], usn=51)
-    found = run.plan(cfg, db, actor="cli", prefix_map=rule)
-    _confirm_all(cfg, run.present(cfg, found))
+    _confirm_every(cfg, db, prefix_map=rule)
     before = reads["count"]
     report = run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
     assert len(report.trashed) == 1

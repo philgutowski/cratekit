@@ -117,12 +117,10 @@ def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(f
 
     built = adopt_plan.build_adoption_plan(scanned, declared, tree=TREE_ID)
     applicable = {entry.content_id for entry in built.applicable()}
-    assert "evicted" not in applicable, (
-        "an excluded track reached the applicable set, which is the set apply_plan writes tags to"
-    )
+    assert "evicted" not in applicable, "an excluded track is applicable"
     assert "present" in applicable
     assert {track.content_id for track in scanned} == {"present", "evicted"}, (
-        "AE12 says an excluded track is carried in the plan rather than omitted from it"
+        "AE12: excluded is carried"
     )
 
 
@@ -145,9 +143,7 @@ def test_an_absent_genre_on_a_fat_file_comes_back_ABSENT(fat, cfg):
 
     report = adopt_revert.revert_tags(cfg)
     assert report.failed == {}
-    assert tags.read_tag_values(path, "genre") is None, (
-        "the field came back as a value rather than as an absence"
-    )
+    assert tags.read_tag_values(path, "genre") is None, "an absence came back as a value"
 
 
 def test_a_deleted_fat_file_strands_its_record_for_a_byte_identical_copy(fat, cfg):
@@ -173,9 +169,7 @@ def test_a_deleted_fat_file_strands_its_record_for_a_byte_identical_copy(fat, cf
 
     snapshots = adopt_revert.read(cfg).snapshots
     assert len(snapshots) == 1, "a second record was written beside the first"
-    assert snapshots[0].original == ("Original Genre",), (
-        "the surviving record stores adoption's OWN value as the original"
-    )
+    assert snapshots[0].original == ("Original Genre",), "adoption's value read as original"
     assert Path(snapshots[0].path) == moved
 
 
@@ -210,9 +204,5 @@ def test_a_record_whose_directory_is_gone_is_NOT_treated_as_a_deleted_file(fat, 
     snapshots = adopt_revert.read(cfg).snapshots
     by_path = {Path(record.path): record for record in snapshots}
     assert len(snapshots) == 2, "the byte identical copy was handed the vanished directory's record"
-    assert by_path[path].original == ("Original Genre",), (
-        "the original record's own value has to survive untouched"
-    )
-    assert by_path[backup].original == ("Adopted Genre",), (
-        "the copy carries what was actually on it when it was adopted"
-    )
+    assert by_path[path].original == ("Original Genre",), "the original must survive"
+    assert by_path[backup].original == ("Adopted Genre",), "the copy keeps its own value"

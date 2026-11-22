@@ -321,10 +321,7 @@ def test_a_row_removed_between_queueing_and_driving_fails_only_its_own_item(mach
     assert items["r-two"].state is jobs.ItemState.FAILED
     assert items["r-one"].state is jobs.ItemState.DONE
     assert items["r-two"].cause is not None
-    assert items["r-two"].cause.reason == "adopt-item-absent", (
-        "a track removed in rekordbox during a queued census reported as an "
-        "internal defect rather than as the library edit it is"
-    )
+    assert items["r-two"].cause.reason == "adopt-item-absent", "a removed track read as a defect"
 
 
 @pytest.mark.parametrize("verb", ["adopt.scan", "adopt.apply"])
@@ -372,8 +369,7 @@ def test_a_configured_volume_rewrite_reaches_the_census(machine, tmp_path):
     collection.reset_cache()
     resolved = {track.content_id: track for track in apply_cli.census(mapped, DECLARED)}
     assert resolved["r-elsewhere"].readability is adopt_scan.Readability.READABLE, (
-        "the census ignored the configured volume rewrite, so a library recorded "
-        "under an older volume name resolves nowhere"
+        "the volume rewrite was ignored"
     )
     assert resolved["r-elsewhere"].disposition is adopt_scan.Disposition.ROUTE
 
@@ -489,11 +485,7 @@ def test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run(cut_
     job_id = _applied()
     report = artifacts.committed(cut_over, job_id)[-1]
     assert report["gathered"] == [], "the loop had nothing outstanding, as this test needs"
-    assert report["added"] == 2, (
-        "the memberships were derived from what this run applied rather than from "
-        "the plan, so a kill between the membership write and the ledger mark "
-        "would be permanent"
-    )
+    assert report["added"] == 2, "memberships came from the run, not the plan"
     assert _memberships(cut_over)
 
 
@@ -513,12 +505,9 @@ def test_an_uncut_library_marks_nothing_and_the_job_stays_resumable(machine, roo
     if root_id is None:
         assert detail["tree_id"] == DECLARED.tree.id
     else:
-        assert detail["root_id"] == root_id, (
-            "the two tree refusals share a slug, so only the detail tells them apart"
-        )
+        assert detail["root_id"] == root_id, "only the detail tells them apart"
     assert adopt_apply.read(machine).entry_ids() == frozenset(), (
-        "the ledger marked entries over an adoption that placed nothing, so the "
-        "next run would find nothing outstanding and the gap would be permanent"
+        "the ledger marked unplaced entries"
     )
     with jobs.open_store() as store:
         assert jobs.get(store, job_id).state is jobs.JobState.FAILED
@@ -555,9 +544,7 @@ def test_a_collection_that_moved_after_approval_refuses_rather_than_applying(cut
 
     with pytest.raises(Exception):
         _worker(job_id, unauthorised)
-    assert _memberships(cut_over) == {}, (
-        "an unauthorised run wrote membership rows before anything asked whether it was authorised"
-    )
+    assert _memberships(cut_over) == {}, "an unauthorised run wrote rows"
 
     _sql(cut_over, "DELETE FROM djmdContent WHERE ID = ?", ("r-two",))
     with pytest.raises(Exception) as excinfo:
@@ -585,10 +572,7 @@ def test_an_interrupted_job_exits_with_its_own_cause_and_not_ok(machine):
         assert cancelled.cause is not None, "the fixture built a cause-free cancel"
 
         code, envelope = drive(argv)
-        assert code != int(ExitCode.OK), (
-            "an interrupted adoption reported through a normal envelope, so a person "
-            "whose work did not happen is told it finished"
-        )
+        assert code != int(ExitCode.OK), "an interrupt reported as finished"
         assert envelope["cause"]["reason"] == cancelled.cause.reason
 
 
@@ -629,10 +613,7 @@ def test_an_apply_whose_entries_failed_raises_rather_than_reporting_success(cut_
 
     assert code != int(ExitCode.OK)
     assert envelope["cause"]["inner"]["reason"] == "adopt-entries-failed", envelope
-    assert artifacts.committed(cut_over, job_id), (
-        "the artifact was not committed before the raise, so what happened to the "
-        "failed entry survives nowhere"
-    )
+    assert artifacts.committed(cut_over, job_id), "the artifact was not committed"
 
 
 def test_the_apply_opens_its_own_handle_with_write_intent(cut_over, monkeypatch):
@@ -677,8 +658,7 @@ def test_a_track_the_tree_write_could_not_place_is_never_marked_applied(cut_over
         "something a person can act on"
     )
     assert adopt_apply.read(cut_over).entry_ids() == frozenset(), (
-        "a track the tree write could not place was recorded as adopted, so the "
-        "next run would never offer it again"
+        "an unplaced track recorded as adopted"
     )
 
 
