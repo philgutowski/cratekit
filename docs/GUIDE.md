@@ -518,7 +518,9 @@ crate route pending
   starts, after the head, the `[MP3]` marker the naming verb writes and a
   part crediting the file's artist (alone,
   with others joined by "&", "," or "x", or with "The" or an accent written
-  otherwise; a title that merely holds the artist's name is a title), so the album
+  otherwise, and a letter accent stripping leaves alone, "ø", "æ", "œ", "ß",
+  "đ", "ł" or "þ", read as its plain spelling, "o", "ae", "oe", "ss", "d",
+  "l" or "th", so "Trentemoller" credits "Trentemøller"; a title that merely holds the artist's name is a title), so the album
   or the artist written after it in a title tag or in the name of a file with
   no title tag is never read as its title, and neither is a version;
   "Artist - X" with X ending in a version, which only a list of version
@@ -549,7 +551,9 @@ crate route pending
   misses a release of the plain title, and a maker named by the list's words
   alone, "DJ Deep" or "Digital", is read as no one and matched as before,
   another mix's release included. A maker's name is compared as a name
-  is, accents, "and" and a possessive aside, and "Rmx" is a remix; a row
+  is, accents, those plain spellings, "and" and a possessive aside, so
+  "Trentemoller Remix" takes a release listing "Trentemøller Remix" and the
+  reverse, while "Trentemoeller" stays another name, and "Rmx" is a remix; a row
   that writes the mix with no bracket is read by its last words, so "Dixon
   Remix" also takes "Sunrise Mood - Alan Dixon Remix". Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
@@ -730,18 +734,22 @@ crate sync removed
 again, and lists each track its pass recorded that the account no longer
 lists, with what it would do about the track's row in the collection. The
 database is read on a copy, so rekordbox must be closed. A run that offers
-nothing ends there and writes nothing.
+nothing ends there, and writes nothing but Cratekit's own record of synced
+playlists the account answered not found for (below).
 
 When a track is offered, the run reads your backup acknowledgment and stops
 at the explicit gate `sync.removed.confirm`, which lists every offered track
 by artist, title, the playlists you took it off and its file, with the kept
-and left ones beside them. Answer it with `crate run decide RUN_ID
+and left ones beside them and how many playlist memberships the removal
+renumbers. Answer it with `crate run decide RUN_ID
 sync.removed.confirm apply --actor NAME`, then run `crate --run RUN_ID sync
 removed` again. `apply` takes each offered track out of the rekordbox
 collection the way rekordbox's own Remove from Collection does: the
 collection row and every membership, cue, history entry, analysis file row
 and mixer row naming it are deleted, and the playlists and history lists
-stay, emptier. Nothing else in the database moves, which the verb reads back
+stay, emptier. In each playlist the track leaves, the tracks after it move
+up one place for each removed track before them, as rekordbox numbers them,
+and nothing else on their rows changes. Nothing else in the database moves, which the verb reads back
 from the database after its commit, and it refuses with nothing written when
 the collection or the playlists moved since the gate. A track a My Tag (the
 landing's own `vox` and `dyn` included), a sampler slot, related tracks or any
@@ -753,8 +761,9 @@ of its session puts them back. `abort` writes nothing.
 
 Unlike rekordbox, the removal leaves the track's analysis files in the
 analysis folder and any artist or album row it was the last to name (rekordbox
-sweeps those at its next removal), and it does not renumber the tracks after
-it in a playlist or history list that keeps others.
+sweeps those at its next removal), and it does not renumber the plays after
+it in a history list that keeps others, since what rekordbox does there has
+not been measured.
 
 - **Offered**: the pass downloaded it, its file is where the pass's landing
   filed it, no other synced playlist on the account and none of your hearts
@@ -773,10 +782,50 @@ it in a playlist or history list that keeps others.
   purpose, or the pass never brought a file for it.
 - A synced playlist or the hearts not read whole (unreadable, short of the
   count declared, or empty with nothing saying they hold none) stop every
-  offer, and are named. A synced playlist neither the account's list nor its
+  offer, and are named, save the hearts short only by what the provider
+  withholds and a retired playlist, both below. A synced playlist neither the account's list nor its
   id finds is named as gone: it offers none of its own tracks, and is read as
   still holding what its finished jobs recorded; one nothing readable records
   stops every offer.
+- **Hearts the provider withholds.** The streaming service counts hearts it
+  will not serve, so the hearts often list short of the count the account
+  declares ("349 declared, 340 listed, 9 withheld by the provider"). Short
+  only by that, with hearts served, they are read whole for this question,
+  since a heart the service will not serve is not one you see either, and the
+  plan names them with both counts. With no heart served at all, or short by
+  more than a tenth of their count or by more than 49 hearts, which a page of
+  a hundred the service dropped looks like, they still stop every offer. The service publishes no count of what
+  it withholds, so a shortfall inside that tenth is read as withheld.
+- **A playlist gone for good.** A synced playlist the account no longer lists
+  whose id answers not found is recorded, with the date, in the library's
+  `sync_unavailable.json`. When it answers not found again at least a day
+  after it first did, it is **retired**: from then on it holds nothing and
+  stops nothing, and the plan names it with its id and both dates. Seen once,
+  or twice the same day, it is read as before: gone, still holding what its
+  finished jobs recorded, or stopping every offer when nothing readable
+  records it. A playlist whose id failed any other way (an outage, a refused
+  session) records nothing and is never retired; a retired one whose id
+  fails that way is read for that run as before it was retired (gone, or
+  stopping every offer), and stays retired. A retired
+  playlist that opens again, or that the account lists again, is dropped from
+  the record and read as any other. Nothing is written on the account.
+- **Retiring them sooner.** The run names each playlist seen unavailable and
+  the one command that retires them now:
+
+  ```bash
+  crate --calls N --calls-per-hour M sync removed --retire
+  ```
+
+  It reads every synced playlist, about two calls each, so on an account with
+  hundreds of them it needs the ceilings raised as a run that finds a removal
+  does. It stops at the explicit gate
+  `sync.removed.retire`, which lists each one the account no longer lists
+  whose id answered not found on this read, with its id and the dates. Answer
+  it with `crate run decide RUN_ID sync.removed.retire retire --actor NAME`,
+  then run `crate --run RUN_ID sync removed --retire` again; then run `crate
+  sync removed` to plan without them. `abort` writes nothing. A synced
+  playlist it could not read, or whose id failed other than not found, is
+  named and never offered for retirement.
 - A run that finds a removal reads every synced playlist, about two calls
   each, so on an account with hundreds of them it stops at the call ceiling
   with nothing offered; run it again as `crate --calls N --calls-per-hour M
@@ -1313,10 +1362,25 @@ the `library.location_prefix_map` rule that would resolve it; rows that are no
 local file, rekordbox's streaming rows and `soundcloud:` locations among them,
 are left out and counted on the gate. A row rekordbox deletes outright on
 Remove from Collection leaves no mark for it to read, so its file is offered
-when `crate sync removed` took the row out and recorded it; a track you remove
-by hand in rekordbox is not offered, so you trash its file yourself (it can be
-offered when `sync removed` had taken that same track out before and a restore
-put it back). `crate
+when a Cratekit record names the row: `crate sync removed` took it out and
+recorded it, or a native landing made it, since every landing names the rows
+it makes on its session record. Such a removal is numbered the first time a
+review sees the row gone, so it is offered once, and the review that takes a
+library's first position takes the ones already gone as history. A track no
+record names, a hand import or a track landed before landings named their
+rows, is not offered when you remove it by hand in rekordbox, so you trash its
+file yourself. A restore, a bare metal recovery or a database copied back
+takes a landing's rows away as a removal does, so a landed track is offered
+only while rekordbox still holds another track of the same landing, or every
+playlist the landing made: none of those is in a database from before the
+landing. Deleting the landing's playlist in rekordbox does not stop its later
+removals being offered while one of its tracks is still there. A landing whose
+every track is gone, and whose playlist you deleted or which landed into a
+batch playlist that was already there, reads as rolled back: its files are
+kept, and the gate counts such landings as `landings read as rolled back`
+while one holds a removal no review has offered or taken as history.
+Landings made before landings recorded each track's identity are offered on
+their playlists alone. `crate
 sync removed` lists the downloaded tracks you took off their playlist on the
 account and, behind its gate, takes them out of the collection first. `crate
 tombstone list` shows what was
@@ -1562,6 +1626,7 @@ without one.
 | `inbox.rotate.approve` | approve | `inbox rotate` |
 | `inbox.refill.approve` | apply | `inbox refill` |
 | `sync.removed.confirm` | apply | `sync removed` |
+| `sync.removed.retire` | retire | `sync removed --retire` |
 | `inbox.analyzed.approve` | apply | `inbox analyzed` |
 | `favorites.backfill.approve` | approve | `favorites backfill` |
 | `favorites.refresh.approve` | approve | `favorites refresh` |

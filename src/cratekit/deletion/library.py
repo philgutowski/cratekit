@@ -6,9 +6,12 @@ persists with its path intact, so removals are identified exactly without this
 unit ever creating, editing, or deleting a database row. rekordbox 7.2 deletes
 a row OUTRIGHT on Remove from Collection (A178, A185), which leaves no marker,
 so a row ``crate sync removed`` takes out is read from the session record that
-names it instead, :func:`recorded_removals` (U288); a row a person removes by
-hand in rekordbox is still invisible here (R-1037), though a recorded removal
-of the same row can still stand when a restore put it back in between. Nothing in this module
+names it instead, :func:`recorded_removals` (U288), and a row a person removes
+by hand in rekordbox is read from the native landing's record of the rows it
+made, :func:`landed_absences` (R-1037): a landed row the database no longer
+holds, live or marked, of a landing the database shows was not rolled back
+(R-1844). A recorded removal of a row a restore put back can still stand. A row no Cratekit record names, a hand import or a row landed before the
+landing named its rows, is invisible here. Nothing in this module
 writes. Nothing in this module can write: it reads mapped rows into frozen values
 and hands those on, so every later stage in the pass operates on data rather than
 on live objects that could be mutated by accident.
@@ -32,8 +35,9 @@ no verb.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
+from dataclasses import dataclass, field
+from types import MappingProxyType
+from typing import Any, Callable, Iterable, Mapping
 
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
@@ -102,6 +106,11 @@ class CollectionRead:
 
     active: tuple[trees.ContentRow, ...]
     removed: tuple[RemovedRow, ...]
+    #: Every row's UUID the walk read, live or marked, by content id, empty
+    #: where the row holds none: what a landing's record is checked against
+    #: (R-1844). Read in the same walk, since a second walk of a cursor
+    #: returns nothing, and read only, as the rest of the value is.
+    uuids: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def database_identity(db: Any) -> str:
@@ -341,7 +350,9 @@ def read_collection(rows: Iterable[Any]) -> CollectionRead:
     """
     active: list[trees.ContentRow] = []
     removed: list[RemovedRow] = []
+    uuids: dict[str, str] = {}
     for row in rows:
+        uuids[_identifier(row, "ID")] = _text(row, "UUID")
         if not trees.soft_delete_marker(row):
             active.append(
                 trees.ContentRow(
@@ -366,7 +377,9 @@ def read_collection(rows: Iterable[Any]) -> CollectionRead:
                 version_unbelieved=unbelieved,
             )
         )
-    return CollectionRead(active=tuple(active), removed=tuple(removed))
+    return CollectionRead(
+        active=tuple(active), removed=tuple(removed), uuids=MappingProxyType(uuids)
+    )
 
 
 def _declared_membership_count(memberships: Any) -> int | None:
@@ -567,6 +580,158 @@ def _recorded_row(columns: Mapping[str, Any], sequence: int) -> RemovedRow:
     )
 
 
+#: The key a native landing names the rows it made under (R-1037), the
+#: landing's own (``intake.native``), spelled here for the reason the key above
+#: gives and held equal by ``tests/test_delete_landed_removed.py``. Its rows
+#: keep :data:`RECORDED_COLUMNS`, read back after the landing's commit, and
+#: the row's UUID under :data:`LANDED_UUID_KEY` (R-1844).
+LANDED_ROWS_KEY = "collection_landed"
+LANDED_UUID_KEY = "uuid"
+
+
+@dataclass(frozen=True, slots=True)
+class LandedAbsence:
+    """One row a landing made that the database no longer holds, before it is numbered.
+
+    ``landed`` is the update count the landing's commit left; of two landings
+    naming one row, the later one's is kept.
+    """
+
+    columns: Mapping[str, Any]
+    landed: int
+
+    def row(self, sequence: int) -> RemovedRow:
+        """The removal, at the sequence its first sighting was given."""
+        return _recorded_row(self.columns, sequence)
+
+
+@dataclass(frozen=True, slots=True)
+class LandedRead:
+    """What the landings' records offer, and the landings read as rolled back.
+
+    ``rolled_back`` holds, for each landing of this database that names a row
+    the database no longer holds and that nothing shows was not rolled back,
+    the content ids of its absent rows, so the gate can say how many landings
+    offered nothing (R-1844): a refusal nobody sees is the shape that hid
+    R-1844 itself.
+    """
+
+    absent: Mapping[str, LandedAbsence]
+    rolled_back: tuple[frozenset[str], ...] = ()
+
+    def unasked(self, numbered: Iterable[str]) -> int:
+        """How many rolled back landings hold an absent row no earlier run numbered.
+
+        A row an earlier run numbered was offered then, or taken as history,
+        while its landing stood, so its question was asked; a landing whose
+        every absent row is such a row is a batch already dealt with whose
+        playlist went later, and counting it would grow the screen's number
+        with every tidy up until it said nothing.
+        """
+        asked = {str(one) for one in numbered}
+        return sum(1 for rows in self.rolled_back if rows - asked)
+
+
+def _landing_stands(
+    playlists: Any,
+    rows: list[tuple[str, Mapping[str, Any], str]],
+    *,
+    uuids: Mapping[str, str],
+    playlist_held: Callable[[str], bool],
+) -> bool:
+    """Whether the database holds a fact no database from before the landing holds.
+
+    Either proof is enough. A row the landing made, held live or marked under
+    the UUID the landing recorded for it: the id is random and the UUID a
+    fresh one the landing wrote, so only the landing's own row carries the
+    pair, and an id alone is not enough, since a later import can draw the
+    same random id. Or every playlist the landing made, in any state: R-1037's
+    proof, which keeps a landing of one row offered while its playlist stays.
+    """
+    if any(uuid and uuids.get(content_id) == uuid for content_id, _columns, uuid in rows):
+        # ``uuid and``: a row recorded with no UUID matches no row holding none.
+        return True
+    if not isinstance(playlists, (list, tuple)) or not playlists:
+        return False
+    return all(playlist_held(str(one)) for one in playlists)
+
+
+def landed_absences(
+    details: Iterable[Mapping[str, Any]],
+    *,
+    database_identity: str,
+    present: Iterable[str],
+    uuids: Mapping[str, str],
+    playlist_held: Callable[[str], bool],
+) -> LandedRead:
+    """Every row a native landing made in THIS database that it holds no longer, by content id.
+
+    ``details`` is each session record's ``detail``. A record of another
+    database offers nothing, as a recorded removal of one does not. ``present``
+    is every content id the database holds, live or marked, and every one a
+    recorded removal already answers for, so one row is one removal. ``uuids``
+    is every held row's UUID by content id. A record with no update count
+    offers nothing, and one row named by two landings keeps the later one.
+
+    A LANDING ROLLED BACK IS NO REMOVAL. Its rows are absent and nobody took
+    them out: the database is from before it, put back by ``restore run``, by
+    a bare metal recovery from an older snapshot, or by a hand copy, the last
+    two leaving no record of their own. So a record offers its absent rows only
+    while the database holds a fact no database from before the landing holds
+    (:func:`_landing_stands`): one of the landing's own rows under its
+    recorded UUID, or every playlist it made. rekordbox's Remove from
+    Collection leaves the landing's other rows and every playlist row (A178,
+    A185); deleting a playlist in rekordbox's sidebar deletes its row outright
+    (A200) and leaves the rows; Cratekit's rotation soft deletes a playlist.
+    A landing whose every row is gone and whose playlists are not all held,
+    or that made none, offers nothing and is listed in ``rolled_back``:
+    nothing tells its removal from its rollback, and keeping a file is the
+    answer that costs nothing.
+    """
+    held = {str(one) for one in present}
+    found: dict[str, LandedAbsence] = {}
+    rolled_back: list[frozenset[str]] = []
+    for detail in details:
+        landed = detail.get(LANDED_ROWS_KEY) if isinstance(detail, Mapping) else None
+        if not isinstance(landed, Mapping):
+            continue
+        if str(landed.get("database_identity") or "") != str(database_identity):
+            continue
+        sequence = landed.get("sequence")
+        if not isinstance(sequence, int) or isinstance(sequence, bool):
+            continue
+        rows: list[tuple[str, Mapping[str, Any], str]] = []
+        for entry in landed.get("rows") or ():
+            columns = entry.get("columns") if isinstance(entry, Mapping) else None
+            if not isinstance(columns, Mapping):
+                continue
+            content_id = _identifier(_Recorded(columns), "ID")
+            if not content_id:
+                continue
+            uuid = entry.get(LANDED_UUID_KEY)
+            rows.append((content_id, columns, uuid if isinstance(uuid, str) else ""))
+        absent = [(content_id, columns) for content_id, columns, _uuid in rows if content_id not in held]
+        if not absent:
+            continue
+        if not _landing_stands(
+            landed.get("playlists"), rows, uuids=uuids, playlist_held=playlist_held
+        ):
+            rolled_back.append(frozenset(content_id for content_id, _columns in absent))
+            continue
+        for content_id, columns in absent:
+            seen = found.get(content_id)
+            if seen is None or seen.landed < sequence:
+                found[content_id] = LandedAbsence(columns=dict(columns), landed=sequence)
+    return LandedRead(
+        absent={key: found[key] for key in sorted(found)}, rolled_back=tuple(rolled_back)
+    )
+
+
+def playlist_ids(playlists: Iterable[Any]) -> frozenset[str]:
+    """Every playlist row's id, live or marked: what a landing's record is checked against."""
+    return frozenset(str(getattr(row, "ID", "")) for row in playlists if getattr(row, "ID", None))
+
+
 def recorded_removals(
     details: Iterable[Mapping[str, Any]],
     *,
@@ -616,11 +781,17 @@ __all__ = [
     "VERSION_IS_AN_ARTIST",
     "VERSION_IS_A_DESIGNATION",
     "CollectionRead",
+    "LANDED_ROWS_KEY",
+    "LANDED_UUID_KEY",
+    "LandedAbsence",
+    "LandedRead",
     "RECORDED_COLUMNS",
     "RECORDED_REMOVALS_KEY",
     "RemovedRow",
     "current_sequence",
     "database_identity",
+    "landed_absences",
+    "playlist_ids",
     "playlist_referenced",
     "read_collection",
     "recorded_removals",

@@ -24,6 +24,8 @@ tags:
   - "soft-delete"
   - "usn"
   - "djmdcontent"
+  - "trackno"
+  - "r1830"
 ---
 
 # rekordbox's Remove from Collection deletes outright
@@ -108,6 +110,28 @@ leaves. Since the row leaves no soft delete marker, its session record names
 every row it removed, and `crate delete review` reads that record to offer
 the file (R-1037), from a position the removal gives the pass when it has
 none, so a first review does not accept the removal as history.
-**Still unmeasured:** a track whose
-history list or playlist holds other tracks (whether `TrackNo` is renumbered),
-genre and label rows, and My Tag and sampler rows.
+**Measured at sitting 102 (A197, A200), 2026-11-22:** a throwaway between two
+real tracks in a playlist made by hand, taken out with Remove from Collection,
+leaves **the member after it renumbered**, `TrackNo` 3 to 2 (R-1830); a playlist
+deleted by hand in the sidebar is **deleted outright** from `djmdPlaylist`, no
+`rb_local_deleted` marker (R-1844; since #926 the deletion pass tells such a
+landing from a rollback by a row it made, held under its recorded UUID). On its next launch rekordbox also deleted an
+album row and a genre row that no track carried any more (the album a `sync
+removed` removal left, a genre a retag had emptied), so orphan album and genre
+rows are pruned by rekordbox itself at launch.
+**Imitated since #925 (R-1830):** `rb_writer.CollectionRemoval` lowers the
+`TrackNo` of each live membership after a removed live one, in every playlist
+the removal deletes a row from, by one per removed live row below it, writing
+that one column from SQL so no `updated_at` or `rb_local_usn` moves, and the
+SQL confinement admits exactly those rows. A row marked `rb_local_deleted` is
+neither counted nor moved: this product's own membership writers leave a
+marked row at a number a live row also holds, and counting it put two live
+rows on one place (review round one). The binding's `remove_from_playlist`
+has the same numbering rule but is not reused: it commits by itself and
+stamps `updated_at` and `rb_local_usn` on every row it moves, and an ORM
+write of `TrackNo` adds `updated_at` through the binding's `onupdate`.
+**Still unmeasured:** a history list holding other tracks (left numbered as it
+was), a playlist already holding a gap or a row marked removed below the
+renumbered one (the rule is applied there unmeasured), how far
+`localUpdateCount` moves for a renumbering, label rows, and My Tag and
+sampler rows.

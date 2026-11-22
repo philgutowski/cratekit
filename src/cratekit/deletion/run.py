@@ -34,9 +34,13 @@ has a reason it is where it is:
 
 **NOTHING HERE WRITES A DATABASE ROW (KTD15).** Deletion is driven by rekordbox's
 own soft-delete marker precisely so the guarded writer's unconditional delete
-prohibition never has to be reopened, and by the session records of ``crate
+prohibition never has to be reopened, by the session records of ``crate
 sync removed``, which deletes a row outright as rekordbox does (U288) and names
-each one it took out, since such a row carries no marker. The database is opened, read, and closed.
+each one it took out, since such a row carries no marker, and by the native
+landing's records of the rows it made, a landed row the database no longer
+holds, while the database still shows that landing was not rolled back (one
+of its rows under its recorded UUID, or every playlist it made), being one
+rekordbox's Remove from Collection took out (R-1037, R-1844). The database is opened, read, and closed.
 That is also why there is no capture: a snapshot protects database rows, this
 run creates, edits and deletes none, and the thing that is actually at risk is
 files, which a database snapshot does not hold. What protects those is the
@@ -80,6 +84,7 @@ below the modules names a verb.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 from dataclasses import dataclass
@@ -138,6 +143,13 @@ class Plan:
     #: recomputed because ``apply`` re-checks each candidate through the same
     #: categoriser and has to hand it the same answer the review was made under.
     ambiguous: frozenset[str] = frozenset()
+    #: The landings this run read as rolled back (R-1844) that hold an absent
+    #: row no run has numbered: the database holds neither one of the
+    #: landing's rows under its recorded UUID nor every playlist it made, so
+    #: none of its rows is offered, and no run offered that row or took it as
+    #: history. Said on the gate's screen, because a refusal nobody sees reads
+    #: as a library with nothing removed.
+    rolled_back: int = 0
 
     @property
     def deletable(self) -> tuple[Candidate, ...]:
@@ -237,21 +249,39 @@ def _assert_library_is_still(
     rb_writer.canary(db)
 
 
-def _recorded_details(cfg: config.Config) -> tuple[Mapping[str, Any], ...]:
-    """Each readable session record's detail, for the removals recorded in it (U288).
+def _recorded_details(cfg: config.Config) -> tuple[session.SessionRecord, ...]:
+    """Each readable session record, for the removals and landings recorded in it.
 
-    A record that cannot be read, or a log that cannot be listed, offers
-    nothing of its own, so the files it names stay where they are; the pass
-    says so rather than reading the silence as no removal.
+    U288's removals and R-1037's landed rows. A record that cannot be read,
+    or a log that cannot be listed, offers nothing of its own, so the files
+    it names stay where they are; the pass says so rather than reading the
+    silence as no removal.
     """
     found, unreadable = session.scan_log(cfg)
     if unreadable:
         logger.warning(
             "%d session record(s) could not be read, so a row a recorded removal "
-            "took out of the collection may not be offered this run",
+            "took out of the collection, or a landed row removed in rekordbox, "
+            "may not be offered this run",
             len(unreadable),
         )
-    return tuple(record.detail for record in found)
+    return found
+
+
+def _playlists_held(db: Any) -> Callable[[str], bool]:
+    """Whether the database holds a playlist row of an id, live or marked, read once when asked.
+
+    Asked only of a landing record that names a playlist, so a pass over a
+    library no landing named reads no playlist at all.
+    """
+    read: list[frozenset[str]] = []
+
+    def held(playlist_id: str) -> bool:
+        if not read:
+            read.append(library.playlist_ids(db.get_playlist()))
+        return playlist_id in read[0]
+
+    return held
 
 
 def plan(
@@ -268,10 +298,13 @@ def plan(
     """Read the library and answer every removal since the watermark. Writes no file.
 
     Read-only against the database and against the music volume. The one thing it
-    can write is the watermark, and only on the run that BASELINES: R35 says a
+    can write is the watermark's document, on the run that BASELINES: R35 says a
     first run on an existing library accepts the prior removals as history rather
     than presenting them, and accepting them is a decision that has to be
-    recorded or the next run makes it again.
+    recorded or the next run makes it again. And on a run that first sees a
+    landed row gone, or sees one live again, for the same reason (R-1037): the
+    number such a removal is given is a decision the next run must read back,
+    not make again at a later count.
     """
     rules = _rules(cfg, prefix_map)
     _assert_library_is_still(
@@ -295,16 +328,26 @@ def plan(
     # removed``, which records each row it took out in its session record. The
     # recorded rows join the marked ones here, before the baseline and the
     # watermark, so every rule below is the one a marked row meets.
-    seen = library.CollectionRead(
-        active=seen.active,
-        removed=seen.removed
-        + library.recorded_removals(
-            _recorded_details(cfg),
-            database_identity=identity,
-            present=[row.content_id for row in seen.active]
-            + [row.content_id for row in seen.removed],
-        ),
+    records = _recorded_details(cfg)
+    held = {row.content_id for row in seen.active} | {row.content_id for row in seen.removed}
+    recorded = library.recorded_removals(
+        [one.detail for one in records], database_identity=identity, present=held
     )
+    # AND A ROW A NATIVE LANDING MADE AND THE DATABASE NO LONGER HOLDS, which
+    # is the row a person removed by hand in rekordbox (R-1037). One that a
+    # recorded removal already names is that removal, at its own sequence.
+    # A landing is read as rolled back only when the database holds none of
+    # its own rows under their recorded UUIDs and not every playlist it made
+    # (R-1844), and the landings so read are counted for the gate's screen.
+    landings = library.landed_absences(
+        [one.detail for one in records],
+        database_identity=identity,
+        present=held | {row.content_id for row in recorded},
+        uuids=seen.uuids,
+        playlist_held=_playlists_held(db),
+    )
+    absent = landings.absent
+    seen = dataclasses.replace(seen, removed=seen.removed + recorded)
     highest = max((row.sequence for row in seen.removed), default=counter)
 
     mark, baselined = marks.baseline(
@@ -313,12 +356,28 @@ def plan(
         actor=actor,
         now=None if now is None else timestamp(now),
     )
+    # NUMBERED AFTER THE BASELINE, because a removal with no sequence of its
+    # own is given the count at its first sighting, and on the run that
+    # baselines that count is at or under the position it takes, so every row
+    # already gone is history (R35) without a rule of its own.
+    mark = marks.sight(
+        database_identity=identity,
+        absent=absent,
+        present=held,
+        counter=counter,
+    )
+    seen = dataclasses.replace(
+        seen,
+        removed=seen.removed
+        + tuple(one.row(mark.absent[key]) for key, one in absent.items()),
+    )
     if baselined:
         return Plan(
             database_identity=identity,
             watermark=mark,
             baselined=True,
             baselined_over=len(seen.removed),
+            rolled_back=landings.unasked(mark.absent),
         )
 
     # STRICTLY GREATER, AND THIS IS THE ONLY PLACE THE RULE IS APPLIED. The
@@ -382,6 +441,7 @@ def plan(
         candidates=answered,
         references=references,
         ambiguous=ambiguous,
+        rolled_back=landings.unasked(mark.absent),
     )
 
 

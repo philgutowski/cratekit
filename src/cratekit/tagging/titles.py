@@ -46,7 +46,12 @@ recording to it. Discogs lists a release's mixes as its tracks, and a remix
 took a release of four other mixes that way, so Discogs also asks
 :func:`named_versions` of the file and :func:`writes_version` of the row: a
 mix that names its maker must be written on the release. The other sources
-are unchanged.
+are unchanged. A maker and a credit are compared as names, folded
+(:func:`_folded`): accents off, and "ø", "æ", "œ", "ß", "đ", "ł" and "þ",
+which NFKD leaves whole, spelled plain (:data:`_PLAIN_SPELLINGS`), so
+"Trentemøller" is "Trentemoller" (U324), for a maker on Discogs and for the
+artist's credit every source reads a file's name by. A title is compared by
+its words as written.
 
 WHERE A LIST STILL DECIDES, and which way it fails. :data:`VERSION_WORDS`
 sheds a trailing version from a title and tells a dash tail that is a
@@ -67,6 +72,7 @@ import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
+from types import MappingProxyType
 
 from cratekit.core import naming
 from cratekit.core.tombstone import VERSION_WORDS
@@ -611,9 +617,47 @@ _CREDIT_JOIN = re.compile(r"[,&/;+]")
 _CREDIT_WORDS = frozenset({"x", "vs", "pres", "presents"}) | _FEATURING
 
 
-def _folded(word: str) -> str:
-    """A word with its accents taken off, so "Âme" and "Ame" are one name."""
+#: The Latin letters accent stripping leaves whole, each read as its plain
+#: spelling (U324). NFKD takes the accent off "Â", but "ø", "æ", "œ", "ß",
+#: "đ", "ł" and "þ" are letters of their own, so "Trentemøller" and the
+#: "Trentemoller" a file writes read as two makers, and a remix credited one
+#: way missed every release crediting it the other. Each letter is read one
+#: way only, "ø" as "o" and never "oe", so "Trentemoeller" stays another
+#: spelling. Both cases are listed, though every caller lowers its text
+#: first, so the fold reads a letter the same whoever calls it. Only these
+#: letters: "ð", "ı", "ħ", "ŧ" and "ŋ" are left as written.
+_PLAIN_SPELLINGS = MappingProxyType(
+    {
+        "ø": "o",
+        "Ø": "o",
+        "æ": "ae",
+        "Æ": "ae",
+        "œ": "oe",
+        "Œ": "oe",
+        "ß": "ss",
+        "đ": "d",
+        "Đ": "d",
+        "ł": "l",
+        "Ł": "l",
+        "þ": "th",
+        "Þ": "th",
+    }
+)
+_PLAIN_LETTERS = str.maketrans(dict(_PLAIN_SPELLINGS))
+
+
+def _unaccented(word: str) -> str:
+    """A word with its accents taken off, NFKD's combining marks dropped."""
     return "".join(c for c in unicodedata.normalize("NFKD", word) if not unicodedata.combining(c))
+
+
+def _folded(word: str) -> str:
+    """A word with its accents taken off, so "Âme" and "Ame" are one name,
+    and with the letters :data:`_PLAIN_SPELLINGS` lists, which NFKD leaves
+    whole, spelled plain, so "Trentemøller" and "Trentemoller" are too.
+    The table is read after the accents come off, so a letter carrying an
+    accent as well, "ǿ", is read as its plain spelling too."""
+    return _unaccented(word).translate(_PLAIN_LETTERS)
 
 
 def _credited_names(text: str) -> set[Words]:
@@ -647,17 +691,26 @@ def _artist_names(artist: str) -> frozenset[Words]:
     return frozenset(names)
 
 
-def _runs_in(inner: Words, outer: Words, *, initials: bool = False) -> bool:
+def _runs_in(inner: Words, outer: Words, *, written: Words | None = None) -> bool:
     """Whether ``inner`` is a run of ``outer``'s words, in order and together;
-    with ``initials``, a word of one letter in ``inner`` stands for a word it
-    opens, "B Badie" in "Bernard Badie"."""
+    with ``written``, ``inner``'s words as written before they were folded, a
+    word of one letter stands for a word it opens, "B Badie" in "Bernard
+    Badie". A letter is one with its accents off and before the table
+    spells it plain, main's rule exactly, since the fold spells "Þ" and "Æ"
+    with two (U324): "Þ Badie" still stands for "Þórður Badie" and "Ǽ Badie"
+    for "Æsir Badie", and a word NFKD itself spells with two, "Ĳ", is no
+    initial, as on main."""
     size = len(inner)
 
-    def same(mine: str, theirs: str) -> bool:
-        return mine == theirs or (initials and len(mine) == 1 and theirs.startswith(mine))
+    def initial(index: int) -> bool:
+        return written is not None and len(_unaccented(written[index])) == 1
+
+    def same(index: int, theirs: str) -> bool:
+        mine = inner[index]
+        return mine == theirs or (initial(index) and theirs.startswith(mine))
 
     return any(
-        all(same(mine, theirs) for mine, theirs in zip(inner, outer[start : start + size], strict=True))
+        all(same(index, theirs) for index, theirs in enumerate(outer[start : start + size]))
         for start in range(len(outer) - size + 1)
     )
 
@@ -667,7 +720,9 @@ def _names_the_artist(part: str, names: frozenset[Words], *, first: bool) -> boo
 
     It is when it reads as a credit naming the artist: one of the names it
     joins (:func:`_credited_names`) is one of the artist's names word for word,
-    accents aside, once a marker the naming verb writes before it ("[MP3] ")
+    accents aside and the letters :data:`_PLAIN_SPELLINGS` lists read plain
+    (:func:`_folded`), once a marker the
+    naming verb writes before it ("[MP3] ")
     is taken off: "Bernard Badie & Tide", "[MP3] Bernard Badie", "The Black
     Madonna" and "Ame" credit "Bernard Badie", "Black Madonna" and "Âme". Or
     its words, two or more, are a run of one of the artist's names, an
@@ -683,10 +738,11 @@ def _names_the_artist(part: str, names: frozenset[Words], *, first: bool) -> boo
         text = text.split(found[0], 1)[1]
     elif _numbered(found):
         return False
-    folded = tuple(_folded(word) for word in words(text))
+    written = words(text)
+    folded = tuple(_folded(word) for word in written)
     if names & _credited_names(text):
         return True
-    return len(folded) > 1 and any(_runs_in(folded, name, initials=True) for name in names)
+    return len(folded) > 1 and any(_runs_in(folded, name, written=written) for name in names)
 
 
 def _featuring_at(text: str) -> int | None:
@@ -1162,7 +1218,8 @@ def _naming_words(found: Words) -> Words:
     and opens with that are the reader's own fold (:data:`VERSION_WORDS` and
     a remaster's year, :func:`_a_version_word`, a year anywhere in a
     remaster's stretch), a mix's description (:data:`MIX_DESCRIPTIONS`) or a
-    spelling left out, and folded as a name is (accents off, "and", "the"
+    spelling left out, and folded as a name is (accents off, the letters
+    :data:`_PLAIN_SPELLINGS` lists read plain (:func:`_folded`), "and", "the"
     and a possessive "s" dropped). A version of those alone, "Extended
     Mix", "Original Mix", "Radio Edit", "Vocal Mix" or "2014 Remaster",
     names no other mix, and a stretch that does not end in a version word,
@@ -1341,7 +1398,8 @@ def _past_head(value: str) -> list[str] | None:
 
 
 def _same_name(part: str, artist: str) -> bool:
-    """Whether a part's words are the artist's words, accents and case aside."""
+    """Whether a part's words are the artist's words, accents and case aside
+    and the letters :data:`_PLAIN_SPELLINGS` lists read plain (:func:`_folded`)."""
     mine = tuple(_folded(word) for word in words(normalized(part)))
     return bool(mine) and mine == tuple(_folded(word) for word in words(normalized(artist)))
 

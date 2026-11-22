@@ -55609,6 +55609,8 @@ deleted membership has always left in a live playlist, and rekordbox orders a
 list by `TrackNo`, so the order shown is unchanged; whether rekordbox reads a
 gap as anything else is the measurement.
 
+**Measured, sitting 102 (A197), 2026-11-22.** On rekordbox 7.2.19, a playlist made by hand held a real track, a throwaway and a second real track at `TrackNo` 1, 2 and 3; the throwaway taken out with Remove from Collection, the AFTER copy held **the second real track at `TrackNo` 2: rekordbox renumbers the members after a removed one**, and the playlist's two other rows were otherwise unchanged. So Cratekit's removal, which leaves the gap, differs from rekordbox's. A history list holding other tracks was not measured, since it needs real tracks played on a deck.
+
 **Closes when:** an attended sitting removes one track from a playlist and a
 history list holding others with Remove from Collection, compares the copies,
 and the removal imitates what it finds. Ledger only: it closes at a sitting.
@@ -55779,3 +55781,418 @@ platform would pass there through the other.
 
 **Closes when:** the test passes the identity it means and asserts the
 reason it expects. Ledger only.
+
+---
+
+## R-1838. A 404 on a later page of a playlist whose id opened is read as a sighting, and sync removed calls it a playlist whose id does not open
+
+**Found:** at the review of #889, U320, round two, 2026-11-21.
+
+**The mechanism.** `sync.removed.read_one` reads any per playlist failure of
+`intake_cli.list_playlist_readable` on a playlist the account's list omits as
+"its id does not open", and `unavailable.answered_unavailable` reads its chain.
+A playlist whose id opens and whose first page is served, and whose later page
+answers 404 through the whole retry ladder, is recorded as a sighting and
+retired a day later, its why saying the id does not open.
+
+**Measured cost.** Driven by review round two on fixtures: recorded, then
+retired, the why untrue; the track it served was kept by its rekordbox twin,
+so no wrong offer was produced in the shape driven. Without a twin, a track
+on that playlist removed from another would be offered. A real 404 on a later
+page of a playlist that exists is unmeasured.
+
+**Closes when:** a sighting is read only off a failure of `playlist_for`
+itself, with the listing's later pages read as any other failure. Ledger only.
+
+---
+
+## R-1839. A sync removed run in flight writes over a retirement a person recorded while it read the account
+
+**Found:** at the review of #889, U320, round one, 2026-11-21.
+
+**The mechanism.** `removed_cli._read_synced` reads the record of not found
+answers before it asks the account and writes each read's answer, under the
+record's lock, after. A `--retire` answered while that run was reading is
+overwritten by the run's own answer for the same playlist, computed from the
+record as it stood before.
+
+**Measured cost.** Driven by review round one with a retirement written into
+the record mid read: the retirement was lost. The side it errs on keeps rows:
+the playlist answers not found again and is retired a day later, or is
+retired again. Not driven as two processes.
+
+**Closes when:** the write merges each read's answer over the entry as it
+stands under the lock, keeping a retirement made since the read. Ledger only.
+
+---
+
+## R-1840. Only a 404 or the client's not found class is a sighting, and what the account's thirteen vanished playlists answer is unmeasured
+
+**Found:** at the build of #889, U320, 2026-11-21.
+
+**The mechanism.** `sync.unavailable.answered_unavailable` counts a failure as
+a sighting only when the nearest status along its chain is 404, or, with no
+status, a declared cause of the client's class `ObjectNotFound` by its exact
+name. tidalapi 0.8.11 raises that class for a 404. A playlist deleted, made
+private or another user's may answer 401 or 403 rather than 404; such a
+playlist is never recorded, never retired, and still stops every offer, and
+`crate sync removed --retire` names it as not read whole rather than offering
+it.
+
+**Measured cost.** Not driven against the account. A179's run named 13 synced
+playlists the account no longer lists whose ids do not open, without their
+status. If they answer 404 the next two runs a day apart, or one
+`--retire`, release them; if not, nothing offered changes on that account.
+
+**Closes when:** the attended run of A179 (#842) records what those playlists
+answer and whether the second run offers the track. Ledger only: it closes at
+a sitting.
+
+---
+
+## R-1841. The provider publishes no withheld count, so a heart lost to a fault inside the hearts bound reads as withheld and sync removed can offer past it
+
+**Found:** at the build of #889, U320, and its review round one, 2026-11-21.
+
+**The mechanism.** The card asked for the hearts to be read whole when short
+"only by the count the provider declares it withholds". The provider declares
+one count, the total; `HeartsShortfall.withheld` is that total less the rows
+served by a walk that reached it. So nothing tells a heart the provider will
+not serve from one a fault dropped inside a window, or one skipped at a page
+boundary by a heart removed while the walk ran. `sync.removed.read_hearts`
+reads the hearts whole (`withheld`) when at least one heart was served and the
+shortfall is at most a tenth of the declared count (`WITHHELD_AT_MOST`) and at
+most 49 hearts (`WITHHELD_AT_MOST_HEARTS`, under half a page of a hundred,
+round two); a larger shortfall, or none served, stays short and stops every
+offer.
+
+**Measured cost.** Driven on fixtures by review round one with no bound: 349
+declared and 100 listed read whole, and a hearted track on the lost page was
+offered. With the bound that shape stays short, and so does round two's 1,020
+declared with a window of a hundred lost, which a tenth alone let through
+(both tested). Inside the bound, a window cut by fewer than half its rows, or a
+lost heart that is also a removed downloaded track would be offered at the
+gate; unmeasured live, and the provider has not been seen serving an empty
+window with a success status. The bound is the build's call on a question
+posted on the card under its question heading.
+
+**Closes when:** Phillip answers the question on #889 and the bound matches
+his answer, or the provider is found to publish which hearts it withholds.
+Ledger only.
+
+---
+
+## R-1842. When sync removed gives the deletion pass its first position, landed rows already gone are numbered at the first review and offered, not taken as history
+
+**Found:** at the review of #913, R-1037, round one, a hypothesis the review named and did not drive, 2026-11-21.
+
+**The mechanism.** `sync.removed` gives the deletion pass its first position
+when it has none, so a removal it records is not baselined away (U288). That
+position records no sightings, so a landed row removed in rekordbox before it
+is first seen by the next `delete review`, at a count past the position, and
+offered. R35 takes the removals before a library's first position as history,
+and a review that baselines does take them so; a position `sync removed` gave
+does not.
+
+**Measured cost.** Not driven. Each such row is a real removal of a Cratekit
+landed track, offered at the explicit gate with its proofs, so a person is
+asked about a removal older than the position rather than not asked; nothing
+is moved without the trash answer.
+
+**Closes when:** `sync removed`'s first position also numbers every absent
+landed row as history, or R35 is read as allowing it and GUIDE says so.
+Ledger only.
+
+---
+
+## R-1843. A track landed into a batch playlist that was already there is never offered by delete review when removed in rekordbox
+
+**Found:** at the review of #913, R-1037, round two, 2026-11-21.
+
+**The mechanism.** A landing's record names the playlists it made, and the
+deletion pass offers a landed row only while the database holds every one of
+them (`deletion.library.landed_absences`), because no database from before the
+landing holds one: a `restore run`, a bare metal recovery from an older
+snapshot and a hand copy all take the landing's rows away as a removal does,
+and the last two leave no record. Round one's guard, a restore record started
+after the landing, missed the bare metal recovery (round two's B1, driven end
+to end to a file in the Trash). A landing into a batch playlist that already
+existed, an explicit `--name` reused or a set landing adding to its recorded
+INBOX playlist (U135), makes none, so it names none and offers nothing.
+
+**Measured cost.** Driven: such a landing's track removed outright stays on
+disk and is not offered (`tests/test_delete_landed_removed.py`). A person
+trashes the file by hand, as before this card. Nothing is lost; the cost is
+the card's goal unmet for that landing.
+
+**Closes when:** a fact a removal keeps and every rollback takes away is found
+for a landing that made no playlist (an attended comparison of a removal
+against a restore), or the landing makes a marker row of its own that
+rekordbox leaves. Ledger only.
+
+---
+
+## R-1844. The landed row reader reads a landing whose playlists rekordbox deleted outright as rolled back, so its later removals are never offered
+
+**Found:** at the review of #913, R-1037, round one, 2026-11-21.
+
+**The mechanism.** `deletion.library.landed_absences` offers nothing of a
+landing whose playlists, the ones it made, the database no longer holds in any
+state, since any rollback to before the landing takes them away. Cratekit's own
+rotation soft deletes a playlist, so the row stays and the guard holds. What
+rekordbox 7.2.19 writes when a person deletes a playlist by hand was not
+measured: A185's playlist was deleted after its AFTER copy, and the same
+version deletes content rows outright.
+
+**Measured cost.** Not driven, since only rekordbox produces it. If rekordbox
+deletes the playlist row outright, every later removal of that landing's
+tracks is never offered, and the gate shows no count of it; the files stay on
+disk, which keeps rather than trashes.
+
+**Measured, sitting 102 (A200), 2026-11-22.** On rekordbox 7.2.19, a throwaway playlist made by hand holding one throwaway track, deleted in rekordbox's own sidebar ("Playlist will be deleted from all synced devices"): **its `djmdPlaylist` row is deleted outright, no `rb_local_deleted` marker left**, with its `djmdCloudFilterPlaylist` row and its membership; 18 other playlist rows changed, their order renumbered. So a landing whose made playlist Phillip deletes by hand reads as rolled back, and its later removals are never offered.
+
+**Closes when:** an attended check deletes a throwaway playlist made by hand
+in rekordbox and reads djmdPlaylist on before and after copies, and the guard
+is kept or given a fact rekordbox leaves.
+
+---
+
+## R-1845. A deletion watermark written at version 2 is refused by every build before R-1037, sync removed's first position included
+
+**Found:** at the review of #913, R-1037, round one, 2026-11-21.
+
+**The mechanism.** R-1037 keeps the number each absent landed row is given in
+the deletion watermark's document, so it writes version 2. A build before it
+reads only version 1 and refuses anything else (`deletion-watermark-unusable`,
+"it says version 2 and this build writes 1"). `crate sync removed` gives the
+pass its first position through the same store, so its document is version 2
+too.
+
+**Measured cost.** The review loaded the base's `watermark.py` against a
+document the branch wrote and drove the refusal. A refusal, nothing lost: an
+older install asked to run `delete review` or `sync removed` against a library
+a newer one already read stops and says why. No mixed install was driven.
+
+**Closes when:** every install that reads the library carries R-1037, or a
+reader of version 2 is backported. Ledger only: a refusal over an unusual
+install is the intended answer of a versioned document.
+
+---
+
+## R-1846. A Discogs release's artist is compared with no fold at all, so a file tagged with an artist's plain spelling misses every release crediting the accented one
+
+**Found:** at the build of #919, U324, 2026-11-21.
+
+**The mechanism.** `searchers._artist_matches`, which decides whether a
+Discogs release or track is credited to the file's artist, compares the
+credits after `titles.normalized` alone (NFC, lower case, trimmed), so
+neither an accent nor a letter U324's fold spells plain is read past:
+`_artist_matches("Ame", "Âme")`, `("Royksopp", "Röyksopp")` and
+`("Trentemoller", "Trentemøller")` are each False. U324 made a maker and a
+credit inside a title one name across those spellings
+(`titles._folded`), but the artist the release is credited to is a separate
+reader and is unchanged, as the card's scope (the version check) asked.
+
+**Measured cost.** Not driven on a live sweep. A file whose artist tag is
+written plain, "Royksopp", takes no Discogs release credited "Röyksopp",
+whatever its tracks, and goes on to Beatport; sitting 102's file is tagged
+with the accented spelling Discogs writes, so it is not affected.
+
+**Closes when:** the release artist check reads each credit through the
+same name fold (`titles._folded` word by word, or a public reader of it),
+held by a differential over the Discogs fixtures that no release credited
+to another artist newly matches. Ledger only: a miss, never a wrong genre.
+
+---
+
+## R-1847. A title spelled with a letter the name fold reads plain is still compared as written, so a credit now read past can cost the one match main made by misreading it
+
+**Found:** at the review of #919, U324, round one, 2026-11-21.
+
+**The mechanism.** U324 folds a maker's and a credit's name
+(`titles._folded`), never a title, which `Title.same` compares by its
+words as written: "Straße" and "Strasse", "Trentemøller Remix" and
+"Trentemoller Remix" as titles are two titles, on `main` and on the branch.
+Folding titles was left out on purpose, because a title's letters are
+words of a language, and "Bøg" and "Bog", or "Sø" and "So", are different
+words that a fold would join. Round two's reviewer counted, at `ba1231a2`,
+6 lost pairs of this shape where `main` matched the file's own title
+(round one's count, 12, was taken over a corpus one string shorter and
+before the fix rounds): artist "Trentemøller", file
+"Trentemoller - Sun Path - 02 Trentemøller Remix", row "Trentemoller
+Remix". `main` matched only because it read the plain credit
+"Trentemoller" as the title, which the row's core then met; the branch
+reads it as the credit, as `main` reads the same name spelled one way
+throughout, and the title "trentemøller remix" never meets the row's
+"trentemoller remix".
+
+**Measured cost.** 6 pairs over the differential's corpus, each a name
+that spells the credit one way and the title the other; 45 more lost pairs
+whose row is the file's title once folded are self titled shapes,
+"Trentemoller - Trentemoller Remix", which `main` already misses spelled
+one way ("Ame - Ame Remix"), so no regression. No real file of that shape was
+found. A title spelled with ø against a catalogue row spelled plain misses
+on `main` and on the branch alike.
+
+**Closes when:** a title comparison reads these letters plain where both
+sides are a name rather than a word (round two's smallest fix: fold a
+title's word only where its folded form is a word of the searched
+artist's folded names, so "Bøg" meets "Bog" only for an artist named
+Bøg), or a measured decision that it never does. Ledger only: a miss, never a wrong genre.
+
+---
+
+## R-1848. The name fold still keeps ð, ı, ħ, ŧ and ŋ as written, so an Icelandic maker written plain is another maker
+
+**Found:** at the review of #919, U324, round one, 2026-11-21.
+
+**The mechanism.** U324's table (`titles._PLAIN_SPELLINGS`) spells the
+letters the card named plain: ø, æ, œ, ß, đ, ł and þ. NFKD also leaves ð,
+ı, ħ, ŧ and ŋ whole, and the card did not list them, so `_folded("ð")` is
+"ð": "Sunrise Mood (Thordur Remix)" does not write "Sunrise Mood (Þórður
+Remix)", and `question("08A - 124 - Thordur Badie - Sun Path", "Þórður
+Badie")` keeps the credit in the question.
+
+**Measured cost.** Driven by round one's reviewer on hand built names; no
+live file of that shape is known. A Discogs version miss for such a remix,
+and a question carrying the credit.
+
+**Closes when:** each of these letters has a plain spelling chosen (ð as
+"d" or "dh" is a decision) and the table takes it, with a differential
+as U324's. Ledger only: a miss, never a wrong genre.
+
+---
+
+## R-1849. A database copied back by hand puts the update count under the deletion watermark, so a later outright removal is numbered under the position and never offered
+
+**Found:** at the review of #926, R-1844, round two, 2026-11-22.
+
+**The mechanism.** An absent landed row is numbered by the update count at the
+first run that sees it gone (`deletion.watermark.WatermarkStore.sight`, R-1037),
+and offered only when that number is past the watermark's position. A database
+put back by hand, or by a bare metal recovery from an older snapshot, brings back
+an older and lower update count, while the watermark document, which lives
+beside the library, keeps its later position. A row of a standing landing that is
+removed afterwards is numbered at the lower count, under the position, and never
+offered. `crate restore run` restores the watermark with the database, since it
+is COUPLED state, so it is not affected.
+
+**Measured cost.** Driven by round two's review on a disposable library: land,
+baseline, land two more, copy the database, move the count up by 500, remove and
+trash a track (watermark 713), write the copy back (count 213), and remove a
+landed track outright. It is numbered at 213 and nothing is offered, and the file
+is kept. This was already true on main before #926, which changes neither the
+numbering nor the filter.
+
+**Closes when:** the pass notices an update count lower than the watermark's
+position for the same database and says so, or numbers from the higher of the
+two, with a test of a hand copy back. Ledger only: the cost is a kept file, and
+the producer is a hand copy or a bare metal recovery, not a Cratekit verb.
+
+---
+
+## R-1850. A landing whose every row is gone and whose playlist was deleted by hand is read as rolled back, so its removals are never offered
+
+**Found:** at the review of #926, R-1844, round one, 2026-11-22.
+
+**The mechanism.** `deletion.library.landed_absences` reads a landing as standing
+when the database holds one of its rows, live or marked, under the UUID the
+landing recorded, or every playlist it made. When Phillip deletes the
+landing's playlist in rekordbox (deleted outright, A200) and every row of the
+landing is also gone, neither fact is left, and the landing reads as rolled
+back. That happens in three ways: a landing of one track, the most common case
+for A129; a batch cleared to its last track; or siblings taken out by `crate
+sync removed`, whose recorded removals prove nothing, since a rollback to
+before both leaves the record. A removal already offered on a sibling's proof
+is withdrawn once the last sibling goes. A landing into a batch playlist that
+was already there (R-1843) behaves the same way when it has a single row.
+
+**Measured cost.** Driven on disposable libraries in
+`tests/test_delete_landed_removed.py`: offered 0, the files kept, and the gate
+showing `landings read as rolled back: 1` while one of the landing's absent
+rows has never been numbered. Nothing goes to the Trash wrongly. Phillip
+trashes such files himself.
+
+**Closes when:** a fact no database from before the landing holds, and that a
+playlist deletion and a removal both leave, is found for a landing with no row
+left (a playlist folder the landing made, a lookup row only it made and
+rekordbox does not prune, or another one measured at an attended sitting), and
+`landed_absences` reads it. Ledger only: the cost is a kept file, and it is
+counted on the gate.
+
+---
+
+## R-1851. A history list that keeps other tracks keeps the gap a removed track's TrackNo leaves, and what rekordbox does there is unmeasured
+
+**Found:** at the build of #925, R-1830, 2026-11-22.
+
+**The mechanism.** #925 renumbers the members after a removed track in every
+playlist `crate sync removed` takes it out of, as sitting 102 (A197) measured
+rekordbox 7.2.19 doing. A history list is a different table,
+`djmdSongHistory`, with its own `TrackNo`, and no sitting has removed a track
+from a history list that holds other plays: A185's history list held the
+removed track alone. So `rb_writer.CollectionRemoval` deletes the removed
+track's history row and leaves the numbers of the plays after it as they
+were, and the SQL confinement refuses any history row moving.
+
+**Measured cost.** Not driven against rekordbox. A gap is what the history
+list shows nothing for: rekordbox orders the list by `TrackNo`, so the order
+of the plays is unchanged. Whether rekordbox renumbers there, and whether it
+reads a gap as anything, is the measurement.
+
+**Closes when:** an attended sitting plays two real tracks and a throwaway on
+a deck so one history list holds all three, removes the throwaway with
+Remove from Collection, compares the copies, and the removal imitates what it
+finds. Ledger only: it closes at a sitting.
+
+---
+
+## R-1852. Where a playlist already holds two live rows on one TrackNo, the removal's renumbering can leave two survivors tied that were apart
+
+**Found:** at the review of #925, R-1830, round two, 2026-11-22.
+
+**The mechanism.** `rb_writer.renumbered_positions` lowers each surviving
+live row by the removed live rows strictly below it. That keeps distinct live
+numbers distinct, but an input that already ties two live rows is not
+distinct: with r1 at 1, the removed x and a survivor r2b both at 2, and r3 at
+3, removing x leaves r2b and r3 both at 2; and two removed rows tied at 3
+between survivors at 2 and 4 leave both survivors at 2. `sync pair` then
+reads the tied survivors in row id order, which is random.
+
+**Measured cost.** Not driven as a verb. Round two read two candidate
+producers and neither leaves a live tie: `add_memberships` appends past the
+highest number, and `playlist_pair` numbers the live rows one through N. What
+rekordbox does with a tie was not measured.
+
+**Closes when:** a producer of a live tie is found and the rule leaves such a
+playlist unrenumbered, or rekordbox is measured on one. Ledger only.
+
+---
+
+## R-1853. A playlist already holding a gap or a row marked removed is renumbered by a rule rekordbox was not measured on
+
+**Found:** at the build of #925, R-1830, 2026-11-22.
+
+**The mechanism.** Sitting 102 (A197) measured one shape: a playlist made by
+hand at `TrackNo` 1, 2 and 3, every row live, the middle track removed. #925
+applies the binding's rule, held to live rows (`rb_writer.renumbered_positions`),
+to every playlist the removal leaves: each surviving live row above a removed
+live row goes down by one per removed live row below it; a row marked
+`rb_local_deleted` 1 is neither counted nor moved (review round one's B1); and
+a gap an earlier removal left stays a gap (1, 2, 3, 5 with 2 removed reads 1,
+2, 4). Cratekit's own playlists hold both shapes: U288's removals before #925
+left gaps, and the INBOX rotation, `intake analyzed` and `sync pair` mark
+memberships in live playlists. Whether rekordbox closes every gap, or does
+anything with a marked row, was not measured. Nor was how far
+`localUpdateCount` moves for a renumbering, or whether the renumbered row's
+`updated_at` and `rb_local_usn` stayed byte for byte (the sitting's words are
+"otherwise unchanged", read here as every column but `TrackNo`).
+
+**Measured cost.** Not driven against rekordbox. Live numbers that were
+distinct stay distinct and in their order, so the order rekordbox shows is
+the order before, and the next append still goes past the highest position.
+
+**Closes when:** an attended sitting reads, on copies before and after a
+Remove from Collection, a playlist holding a gap below the removed track, and
+the renumbered row's every column, and the rule is kept or given what
+rekordbox does. Ledger only.

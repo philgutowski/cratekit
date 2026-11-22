@@ -25,6 +25,17 @@ unhandled, and it stops BEFORE it, not after: two rows can share one sequence,
 and advancing to a sequence that still has an unhandled row on it skips that row
 on the next run, permanently.
 
+**IT NUMBERS A REMOVAL THAT CARRIES NO NUMBER OF ITS OWN (R-1037).** rekordbox
+7.2 deletes a removed row outright (A178, A185), and a row a Cratekit landing
+made and the database no longer holds is read as a removal, but a row that is
+not there carries no sequence. The update count at the FIRST run that sees it
+absent is its sequence, kept here, beside the position it is compared against,
+so a later run reads the same number and neither offers it twice nor skips it.
+A row seen live again is forgotten, so a second removal after a restore is
+numbered afresh. A landing rolled back is told from a removal before a row is
+numbered, by one of its rows held under its recorded UUID or every playlist it
+made (``library.landed_absences``, R-1844).
+
 **THE READ AND THE WRITE ARE ONE LOCKED CYCLE.** ``atomic_write_bytes`` makes the
 rename atomic and does nothing for the cycle around it. Two passes finishing at
 once both read the same watermark, both advance from what they read, and the
@@ -43,9 +54,9 @@ verb.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from cratekit.cli.output import timestamp
 from cratekit.core import config
@@ -55,8 +66,10 @@ from cratekit.core.cause import CratekitError, Scope, refuse
 #: stamped and never read proves nothing, which is exactly what the decision
 #: store next door had wrong: it wrote one into every document and its reader
 #: never looked, so a document from a newer build read as an empty store and the
-#: next write destroyed it.
-WATERMARK_VERSION = 1
+#: next write destroyed it. Version 2 added the sightings (R-1037), and a
+#: version 1 document is read as one with none, which is what it records.
+WATERMARK_VERSION = 2
+READABLE_VERSIONS = frozenset({1, WATERMARK_VERSION})
 
 #: The sequence a library that has never been baselined is at. Named rather than
 #: written as a bare zero at three call sites, because the number and the meaning
@@ -80,6 +93,10 @@ class Watermark:
     sequence: int
     recorded: str
     actor: str
+    #: The sequence each absent landed row was given at its first sighting,
+    #: by content id (R-1037). Bound to ``database_identity`` with the
+    #: position, so a rebuilt library starts with none.
+    absent: Mapping[str, int] = field(default_factory=dict)
 
     def applies_to(self, database_identity: str) -> bool:
         """Whether this position means anything for the database in front of us.
@@ -96,6 +113,7 @@ class Watermark:
             "sequence": self.sequence,
             "recorded": self.recorded,
             "actor": self.actor,
+            "absent": dict(sorted(self.absent.items())),
         }
 
 
@@ -208,7 +226,7 @@ class WatermarkStore:
         if not isinstance(raw, Mapping):
             raise self._unusable(f"the document is a {type(raw).__name__}, not a watermark")
         version = raw.get("version")
-        if version != WATERMARK_VERSION:
+        if isinstance(version, bool) or version not in READABLE_VERSIONS:
             raise self._unusable(
                 f"it says version {version!r} and this build writes {WATERMARK_VERSION}"
             )
@@ -222,11 +240,23 @@ class WatermarkStore:
             raise self._unusable(
                 f"its sequence is a {type(sequence).__name__} rather than a whole number"
             )
+        absent = raw.get("absent", {})
+        if not isinstance(absent, Mapping):
+            raise self._unusable(f"its sightings are a {type(absent).__name__}, not a mapping")
+        for content_id, sighted in absent.items():
+            if not isinstance(content_id, str) or not content_id:
+                raise self._unusable("a sighting names no content id")
+            if isinstance(sighted, bool) or not isinstance(sighted, int):
+                raise self._unusable(
+                    f"the sighting of {content_id!r} is a {type(sighted).__name__} "
+                    f"rather than a whole number"
+                )
         return Watermark(
             database_identity=identity,
             sequence=sequence,
             recorded=str(raw.get("recorded") or ""),
             actor=str(raw.get("actor") or ""),
+            absent=dict(absent),
         )
 
     def _write(self, mark: Watermark) -> None:
@@ -301,12 +331,55 @@ class WatermarkStore:
                 sequence=reached,
                 recorded=now or timestamp(),
                 actor=actor,
+                absent=dict(existing.absent) if existing is not None else {},
             )
+            self._write(mark)
+            return mark
+
+    def sight(
+        self,
+        *,
+        database_identity: str,
+        absent: Iterable[str],
+        present: Iterable[str],
+        counter: int,
+    ) -> Watermark:
+        """Number every absent landed row not yet numbered, and forget every one held again.
+
+        ``absent`` names each landed row the database does not hold. A row
+        first seen here is numbered at ``counter``, the count now, which a
+        removal advanced past every earlier run's. On the run that baselines
+        (R35) the count is at or under the new position, so every row already
+        gone is history without a rule of its own. A row already numbered keeps its number, so a removal is
+        neither offered twice nor hidden. ``present`` names the rows the
+        database holds, live or marked, and their sightings are dropped: a row
+        a restore put back is no removal, and its next removal is new.
+
+        Under the lock, with the position re-read, as :meth:`advance` is; a
+        document of another database refuses for the reason that one gives.
+        """
+        with self._locked():
+            existing = self.read()
+            if existing is None or not existing.applies_to(database_identity):
+                raise self._unusable(
+                    "it holds no position for the database this run read, so an "
+                    "absent row has nothing to be numbered against"
+                )
+            held = {str(one) for one in present}
+            kept = {key: value for key, value in existing.absent.items() if key not in held}
+            for content_id in absent:
+                if content_id in kept or content_id in held:
+                    continue
+                kept[str(content_id)] = int(counter)
+            if kept == dict(existing.absent):
+                return existing
+            mark = replace(existing, absent=kept)
             self._write(mark)
             return mark
 
 
 __all__ = [
+    "READABLE_VERSIONS",
     "UNBASELINED",
     "WATERMARK_VERSION",
     "Watermark",

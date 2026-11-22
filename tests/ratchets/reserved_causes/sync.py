@@ -119,12 +119,25 @@ KEBAB_LITERALS = {
     # 2026-11-15, U287: the removed tracks plan and its verb joined.
     # 2026-11-21, U288: the apply's stale plan and unverified read back, and
     # the applied warning.
-    'sync/removed.py': ['decision-stale', 'session-committed-unverified', 'sync-removed'],
+    # 2026-11-21, U320: the reader's refusal of served rows, a playlist that opened.
+    'sync/removed.py': [
+        'decision-stale',
+        'intake-list-unusable',
+        'session-committed-unverified',
+        'sync-removed',
+    ],
+    # 2026-11-21, U320: the withheld hearts, the playlists seen unavailable
+    # and retired, and the retire step's warning and digest kind.
     'sync/removed_cli.py': [
         'sync-removed-applied',
+        'sync-removed-hearts-withheld',
         'sync-removed-partial',
         'sync-removed-playlist-gone',
+        'sync-removed-playlist-retired',
+        'sync-removed-playlist-unavailable',
         'sync-removed-records-unreadable',
+        'sync-removed-retire',
+        'sync-removed-retired-now',
     ],
     'sync/run.py': ['sync-source-lookups-failed', 'utf-8'],
     # 2026-11-01, U149: the custom playlist twins and their backfill.
@@ -166,6 +179,8 @@ KEBAB_LITERALS = {
         'sync-unmark-changed-since-plan',
         'sync-unmark-no-mark',
     ],
+    # 2026-11-21, U320: the record of not found answers.
+    'sync/unavailable.py': ['sync-unavailable-record-unusable', 'utf-8'],
     'sync/watermarks.py': ['sync-watermark-unusable', 'utf-8'],
 }
 
@@ -174,6 +189,8 @@ NAMED_WITHOUT_OWN = {
     'sync/pair_cli.py': ['sync-pair-account-lagging', 'sync-pair-account-settling', 'sync-pair-steps-unwritten'],  # 2026-11-06, U226; U231 settling.
     # 2026-11-05, U221.
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
+    # 2026-11-21, U320: the reader's refusal of rows a playlist served.
+    'sync/removed.py': ['intake-list-unusable'],
 }
 
 NAMED_WITH_OWN = {
@@ -189,7 +206,13 @@ NAMED_WITH_OWN = {
     ],
     # 2026-11-05, U221.
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
+    # 2026-11-21, U320: the reader's refusal of rows a playlist served.
+    'sync/removed.py': ['intake-list-unusable'],
 }
+
+NAMED_WITH_INTEGER = frozenset({
+    'sync/removed.py',  # 2026-11-21, U320: the read back's twenty differences beside the reader's refusal.
+})
 
 LITERAL_HOLDERS = {
     'sync/artifacts.py': ['sync-artifacts-unusable'],
@@ -220,7 +243,8 @@ LITERAL_HOLDERS = {
     # 2026-11-05, U221.
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     # 2026-11-21, U288: the removal's stale plan and unverified read back.
-    'sync/removed.py': ['decision-stale', 'session-committed-unverified'],
+    # 2026-11-21, U320: the reader's refusal of rows a playlist served.
+    'sync/removed.py': ['decision-stale', 'intake-list-unusable', 'session-committed-unverified'],
     'sync/run.py': ['sync-source-lookups-failed'],
     # 2026-11-12, U242: the strip verb joined.
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
@@ -229,9 +253,12 @@ LITERAL_HOLDERS = {
     'sync/twins.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'sync/unmark_cli.py': ['internal-error'],
+    # 2026-11-21, U320: the record of not found answers.
+    'sync/unavailable.py': ['sync-unavailable-record-unusable'],
     'sync/watermarks.py': ['sync-watermark-unusable'],
 }
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'sync/removed.py',  # 2026-11-21, U288: the read back names its first twenty differences.
+    'sync/unavailable.py',  # 2026-11-21, U320: a playlist retires a day after its first not found.
 })

@@ -86,6 +86,7 @@ opens no database of its own.
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -158,6 +159,35 @@ INBOX_JOB_KEY = "job"
 #: intake file is on the bridge.
 PASS_KEY = "pass"
 
+#: The session record field naming every row a landing made (R-1037): the
+#: database by its identity, the update count the landing's commit left, the
+#: playlists it made, and each row's :data:`LANDED_COLUMNS` and its UUID
+#: (:data:`LANDED_UUID_KEY`) as the database holds them after the commit. rekordbox 7.2 deletes a row a person
+#: removes OUTRIGHT (A178, A185), so the deletion pass reads a landed row the
+#: database no longer holds as that removal, and this record is the only place
+#: the row's file and identity are written down. Read by ``deletion.library``,
+#: which spells it again (``tests/test_delete_landed_removed.py``).
+LANDED_ROWS_KEY = "collection_landed"
+#: The field each landed row's UUID is kept under, beside its columns (R-1844):
+#: the row's identity, a fresh ``uuid4`` this landing wrote under a random id,
+#: so no database from before the landing holds the pair and a row still held
+#: under it proves the landing was not rolled back, whatever became of the
+#: playlists it made. Spelled again in ``deletion.library``.
+LANDED_UUID_KEY = "uuid"
+#: The columns a landed row is named by: the ones a recorded removal keeps
+#: (``rb_writer.RECORDED_COLUMNS``), spelled here so this package reaches no
+#: further into the core.
+LANDED_COLUMNS: tuple[str, ...] = (
+    "ID",
+    "FolderPath",
+    "FileSize",
+    "ArtistName",
+    "Title",
+    "ISRC",
+    "RemixerName",
+    "Subtitle",
+)
+
 #: The session record field listing the account playlists a landing wrote, each
 #: by identifier and name (U113). The intake's one spelling, shared with the
 #: intake file's record.
@@ -222,6 +252,8 @@ DYN_NO_CATEGORY = (
 )
 
 _ORIGIN = ("intake.native",)
+
+logger = logging.getLogger(__name__)
 
 
 #: The content columns a landing links to a lookup row (U163), and the one it
@@ -2066,6 +2098,10 @@ def apply_rows(
                 root_id=plan.root_id,
             )
         playlist_id = ""
+        # EVERY PLAYLIST ROW BEFORE THIS LANDING WRITES ONE (R-1037), so its
+        # record names only the playlists it MADE: a rollback to before the
+        # landing cannot hold one of those, and a removal leaves them.
+        playlists_before = frozenset(str(row.ID) for row in db.get_playlist())
         written: list[WrittenPlaylist] = []
         left: list[tuple[str, Left]] = [
             *plan.unplanned_left,
@@ -2253,6 +2289,10 @@ def apply_rows(
                     len(added_ids),
                     memberships + analyze_added,
                     cfg,
+                    landed=_landed_rows(
+                        db, plan, added_ids, (playlist_id, *(one.playlist_id for one in written)),
+                        before=playlists_before,
+                    ),
                     playlist_id=playlist_id,
                     written=written,
                     placed=placed,
@@ -2270,6 +2310,10 @@ def apply_rows(
             len(added_ids),
             memberships + analyze_added,
             cfg,
+            landed=_landed_rows(
+                db, plan, added_ids, (playlist_id, *(one.playlist_id for one in written)),
+                before=playlists_before,
+            ),
             playlist_id=playlist_id,
             written=written,
             placed=placed,
@@ -2535,6 +2579,7 @@ def _record_landing_commit(
     cfg: config.Config,
     *,
     playlist_id: str,
+    landed: Mapping[str, Any] | None = None,
     written: Sequence[WrittenPlaylist] = (),
     placed: placement.Placed | None = None,
     set_written: set_playlist.Written | None = None,
@@ -2575,6 +2620,11 @@ def _record_landing_commit(
     # same name goes back to the folder and the name stays taken.
     if plan.folder is not None and plan.batch:
         record.detail[FILED_BATCH_KEY] = {"batch": plan.batch, "folder": str(plan.folder)}
+    # AND EVERY ROW IT MADE (R-1037), so the deletion pass offers a landed
+    # row's file once rekordbox has deleted the row outright. Persisted by the
+    # content table's commit below, which is recorded whenever a row landed.
+    if landed is not None:
+        record.detail[LANDED_ROWS_KEY] = dict(landed)
     # AND THE PASS (R-777), which is what ``sync mark --pass`` reads as the
     # proof this pass landed. Only with the commit, never for a plan.
     if plan.pass_name:
@@ -2678,6 +2728,68 @@ def _record_landing_commit(
             session.ChangeSummary((session.TreeChange(tree=DYN_CHANGE_KEY, created=dyn_written),)),
             cfg,
         )
+
+
+def _plain(value: Any) -> Any:
+    return value if value is None or isinstance(value, (int, float)) else str(value)
+
+
+def _landed_rows(
+    db: Any,
+    plan: NativePlan,
+    added_ids: Sequence[tuple[RowPlan, str]],
+    joined: Iterable[str],
+    *,
+    before: frozenset[str],
+) -> dict[str, Any] | None:
+    """What :data:`LANDED_ROWS_KEY` records of a committed landing, read back from the database.
+
+    THE ROWS AS THE DATABASE HOLDS THEM, read after the commit, so a column
+    the binding filled differently from the plan is recorded as it is. The
+    update count is the one the commit left. The playlists are the ones the
+    rows joined that this landing MADE, every id in ``joined`` that was not a
+    playlist row ``before`` it wrote: a removal in rekordbox leaves them (A178,
+    A185), and no database from before the landing holds one. Each row's UUID
+    is kept beside its columns (R-1844), since a person deleting the playlist
+    in rekordbox deletes its row outright (A200) and the rows the landing made
+    are then what tells a removal from a rollback, whatever put the database
+    back.
+
+    A READ THAT FAILS RECORDS NOTHING and says so: the landing has committed,
+    so refusing here would report a landing that happened as failed, and a
+    record naming no row only keeps the files, since the deletion pass offers
+    nothing it does not name.
+    """
+    if not added_ids:
+        return None
+    try:
+        rows = []
+        for _row, content_id in added_ids:
+            content = db.get_content(ID=content_id)
+            if content is None:
+                raise LookupError(f"the row {content_id!r} could not be read back")
+            rows.append(
+                {
+                    "content_id": str(content_id),
+                    "columns": {name: _plain(getattr(content, name, None)) for name in LANDED_COLUMNS},
+                    LANDED_UUID_KEY: str(getattr(content, "UUID", None) or ""),
+                }
+            )
+        sequence = int(db.get_local_usn())
+    except Exception as exc:  # noqa: BLE001 - any read failure records nothing
+        logger.warning(
+            "the rows this landing made could not be read back for its record (%s), so "
+            "the deletion pass will not offer their files if they are removed in rekordbox",
+            exc,
+        )
+        return None
+    playlists = sorted({str(one) for one in joined if one and str(one) not in before})
+    return {
+        "database_identity": plan.master_db_id,
+        "sequence": sequence,
+        "playlists": playlists,
+        "rows": rows,
+    }
 
 
 def landed_passes(cfg: config.Config) -> tuple[str, ...]:

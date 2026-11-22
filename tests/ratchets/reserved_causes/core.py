@@ -258,6 +258,7 @@ KEBAB_LITERALS = {
         'sync-release-not-a-twin',  # 2026-11-05, U221.
         'sync-release-unnamed',  # 2026-11-05, U221.
         'sync-source-lookups-failed',
+        'sync-unavailable-record-unusable',  # 2026-11-21, U320.
         'sync-watermark-unusable',
         'tag-folder-unwritten',
         'tag-remap-unwritten',

@@ -1,0 +1,24 @@
+name = "r1037-zeros"
+pass_kind = "light"
+
+[[rows]]
+id = "M2_no_sequence_read"
+description = "landed_absences: read a record whose update count is missing or not a number"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        if not isinstance(sequence, int) or isinstance(sequence, bool):
+            continue
+        playlists = landed.get("playlists") or ()'''
+new = '''        sequence = sequence if isinstance(sequence, int) else 0
+        playlists = landed.get("playlists") or ()'''
+
+[[rows]]
+id = "M5_any_playlist_held"
+description = "landed_absences: one playlist of the landing's still held is enough, not all of them"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        if not all(playlist_held(str(one)) for one in playlists):'''
+new = '''        if not any(playlist_held(str(one)) for one in playlists):'''
+

@@ -4059,7 +4059,9 @@ ENTRIES: tuple[Entry, ...] = (
         #: THE COLLECTION ITSELF (U288): an offered content row and every
         #: membership, cue, history entry, analysis file row and mixer row
         #: naming it, deleted as rekordbox's Remove from Collection deletes
-        #: them. The account is only read, and no file is touched: the file
+        #: them, and the ``TrackNo`` of each live membership after it in a playlist
+        #: it left numbered down as rekordbox numbers it (R-1830). The account
+        #: is only read, and no file is touched: the file
         #: reaches the Trash through ``delete review`` alone.
         writes=frozenset({"db_tree", "db_metadata"}),
         destructive=True,
@@ -4076,6 +4078,17 @@ ENTRIES: tuple[Entry, ...] = (
                 prompt="Take these tracks out of the rekordbox collection?",
                 #: EXPLICIT (R34). A removal from the collection, answered by a
                 #: recorded act, as every destructive gate is.
+                explicit=True,
+                digest_source="plan",
+            ),
+            GateSpec(
+                name="sync.removed.retire",
+                options=("retire", "abort"),
+                prompt="Retire these playlists the account no longer has?",
+                #: EXPLICIT (U320). A retired playlist stops keeping the tracks
+                #: on it, so later removals can be offered past it: answered
+                #: by a recorded act, as the removal itself is. It writes
+                #: Cratekit's own record only.
                 explicit=True,
                 digest_source="plan",
             ),
