@@ -279,13 +279,15 @@ def _without_remote(cfg_value):
 
 
 def test_the_listing_shows_a_session_with_its_timestamp_workflow_and_per_tree_counts(installed):
-    """AE18's first half, through the dispatcher rather than through the engine."""
+    """AE18's first half, through the dispatcher, on a library never acknowledged:
+    read only, so it is outside the gates."""
     record, _captured = completed_session(installed)
 
     code, envelope = _drive(["restore", "list"])
 
     assert code == int(ExitCode.OK), envelope
     rows = envelope["data"]["items"]
+    assert rows, "the listing returned nothing on a library with a session"
     assert [row["session_id"] for row in rows] == [record.session_id]
     only = rows[0]
     assert only["started"] == record.started
@@ -308,16 +310,6 @@ def test_a_session_whose_capture_is_gone_is_listed_and_says_why(installed):
     assert only["session_id"] == record.session_id
     assert only["restorable"] is False
     assert only["unusable"], "an unusable capture was listed with no sentence saying why"
-
-
-def test_the_listing_answers_on_a_library_that_has_never_acknowledged_a_backup(installed):
-    """Read only, so it is outside the gates, and this is what proves it."""
-    completed_session(installed)
-
-    code, envelope = _drive(["restore", "list"])
-
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["items"], "the listing returned nothing on a library with a session"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -593,18 +585,25 @@ def test_the_digest_moves_when_the_discard_set_moves(installed):
     )
 
 
-def test_the_digest_moves_when_the_mirror_half_is_added(installed, monkeypatch):
-    """Approving one session must not also authorise pulling a mirror off the network."""
+def test_the_digest_moves_when_the_mirror_half_or_the_rehearsal_flag_is_added(
+    installed, monkeypatch
+):
+    """Approving one session authorises neither a mirror pull nor, from a preview,
+    a restore that performs every step."""
     record, _captured = completed_session(installed)
-    # The offer now asks the remote which snapshot it is offering, so the
-    # off-machine half needs a remote to ask.
+    # The offer asks the remote which snapshot it is offering.
     _fake_rclone(installed, monkeypatch)
 
     _code, capture_only = _drive(["restore", "run", record.session_id])
     _code, with_mirror = _drive(["restore", "run", record.session_id, "--from-backup"])
+    _code, preview = _drive(["restore", "run", record.session_id, "--dry-run"])
 
     assert _offered_digest(capture_only) != _offered_digest(with_mirror), (
         "adding the mirror half did not move the digest"
+    )
+    assert _offered_digest(preview) != _offered_digest(capture_only), (
+        "the rehearsal flag did not move the digest, so a decision made about a "
+        "preview is honoured against a restore that performs every step"
     )
 
 
@@ -1107,34 +1106,22 @@ def test_a_target_restores_the_database_into_the_directory_it_names(
     assert live.read_bytes() == b"database, generation one"
 
 
-def test_a_target_that_is_the_library_root_is_refused(installed, monkeypatch):
-    """The first destination check, over the spelling a person reaches for first."""
-    acknowledge(installed)
-    log = _fake_rclone(installed, monkeypatch)
-
-    code, envelope = _drive(
-        ["restore", "run", "--from-backup", "--target", str(installed.library.root)]
-    )
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "restore-target-is-live-root"
-    assert not log.exists(), "the remote was reached by a run that is refused"
-
-
 @pytest.mark.parametrize(
     "where, why",
     [
+        ("root", "the library root itself"),
         ("inside", "a directory underneath the library root"),
         ("above", "the directory the library root sits in"),
     ],
 )
-def test_a_target_that_holds_the_library_or_sits_in_it_is_refused(
-    installed, where, why
+def test_a_target_that_is_holds_or_sits_in_the_library_is_refused(
+    installed, monkeypatch, where, why
 ):
-    """The rest of the containment check, which equality alone does not cover."""
+    """The containment check, over the root and what equality alone does not cover."""
     acknowledge(installed)
+    log = _fake_rclone(installed, monkeypatch)
     root = Path(installed.library.root)
-    named = root / "beneath" if where == "inside" else root.parent
+    named = {"root": root, "inside": root / "beneath", "above": root.parent}[where]
     if where == "inside":
         named.mkdir()
 
@@ -1143,6 +1130,7 @@ def test_a_target_that_holds_the_library_or_sits_in_it_is_refused(
     assert code == int(ExitCode.PRECONDITION), f"{why}: {envelope}"
     assert envelope["cause"]["reason"] == "restore-target-is-live-root", why
     assert envelope["cause"]["detail"]["check"] == "containment", why
+    assert not log.exists(), "the remote was reached by a run that is refused"
 
 
 def test_a_target_whose_database_lands_on_the_live_one_is_refused(
@@ -1152,17 +1140,7 @@ def test_a_target_whose_database_lands_on_the_live_one_is_refused(
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch)
     home = tmp_path / "home" / "rekordbox"
-    home.mkdir(parents=True)
-    outside = replace(
-        installed,
-        library=replace(
-            installed.library,
-            db_path=home / "master.db",
-            db_outside_root_acknowledged_on="2026-09-18",
-        ),
-    )
-    config.save(outside)
-    config.reset_cache()
+    outside = _database_outside(installed, home)
     (home / "master.db").write_bytes(b"database, generation one")
     assert backup.database_target_for(outside, home) == config.state_path(
         "rekordbox_db", outside
@@ -1183,26 +1161,19 @@ def test_a_target_whose_database_lands_on_the_live_one_is_refused(
     assert "live database" in envelope["cause"]["message"], envelope
 
 
-def test_a_target_with_no_off_machine_pull_is_refused(installed):
-    """The flag names where a PULLED database goes, so it needs the pull."""
+@pytest.mark.parametrize("case", ["no-pull", "beside-a-discard", "beside-a-named-session"])
+def test_a_target_without_the_pull_or_beside_a_capture_rollback_is_refused(installed, case):
+    """The flag names where a pulled database goes, and never beside a rollback."""
     acknowledge(installed)
+    if case == "no-pull":
+        argv = ["restore", "run", "--target", "/somewhere/else"]
+    else:
+        record, _captured = completed_session(installed)
+        named = [record.session_id] if case == "beside-a-named-session" else []
+        extra = ["--discard", "s-1"] if case == "beside-a-discard" else []
+        argv = ["restore", "run", *named, "--from-backup", "--target", "/somewhere/else", *extra]
 
-    code, envelope = _drive(["restore", "run", "--target", "/somewhere/else"])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "restore-target-invalid"
-
-
-@pytest.mark.parametrize("extra", [["--discard", "s-1"], []])
-def test_a_target_beside_a_capture_rollback_is_refused(installed, extra):
-    """Both halves on two volumes is the composition this refuses outright."""
-    acknowledge(installed)
-    record, _captured = completed_session(installed)
-    named = [record.session_id] if not extra else []
-
-    code, envelope = _drive(
-        ["restore", "run", *named, "--from-backup", "--target", "/somewhere/else", *extra]
-    )
+    code, envelope = _drive(argv)
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "restore-target-invalid"
@@ -1303,6 +1274,34 @@ def test_a_relative_target_is_compared_as_the_place_it_names(installed, monkeypa
     assert envelope["cause"]["detail"]["target"] == str(root), envelope
 
 
+def _database_outside(installed, home: Path):
+    """Save the acknowledged layout with the database in ``home``, outside the root."""
+    home.mkdir(parents=True)
+    outside = replace(
+        installed,
+        library=replace(
+            installed.library,
+            db_path=home / "master.db",
+            db_outside_root_acknowledged_on="2026-09-18",
+        ),
+    )
+    config.save(outside)
+    config.reset_cache()
+    return outside
+
+
+def _live_by_another_spelling(where: Path, code: int, envelope: dict, check: str, why: str):
+    """Refused as the live library where the filesystem folds case, and not otherwise."""
+    if _case_folds(where):
+        assert code == int(ExitCode.PRECONDITION), envelope
+        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
+        assert envelope["cause"]["detail"]["check"] == check
+    else:
+        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
+            f"this filesystem holds the two spellings as two directories, so {why}"
+        )
+
+
 def _case_folds(where: Path) -> bool:
     """Whether this filesystem reads two spellings of one name as one directory."""
     probe = where / "Case_Probe"
@@ -1348,44 +1347,16 @@ def test_a_differently_cased_database_directory_is_still_the_live_database(
     """The same fold, on the destination check rather than on containment."""
     acknowledge(installed)
     home = tmp_path / "home" / "Rekordbox"
-    home.mkdir(parents=True)
-    outside = replace(
-        installed,
-        library=replace(
-            installed.library,
-            db_path=home / "master.db",
-            db_outside_root_acknowledged_on="2026-09-18",
-        ),
-    )
-    config.save(outside)
-    config.reset_cache()
+    _database_outside(installed, home)
     (home / "master.db").write_bytes(b"database, generation one")
     shouted = home.with_name(home.name.upper())
     assert str(shouted) != str(home)
 
     code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
 
-    if _case_folds(tmp_path):
-        assert code == int(ExitCode.PRECONDITION), envelope
-        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
-        assert envelope["cause"]["detail"]["check"] == "destination"
-    else:
-        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
-            f"this filesystem holds the two spellings as two directories, so the "
-            f"database would land in {shouted} and not on the live one"
-        )
-
-
-def test_the_digest_moves_when_the_rehearsal_flag_does(installed):
-    """The hole one flag over, found by this unit's review of the target."""
-    record, _captured = completed_session(installed)
-
-    _code, preview = _drive(["restore", "run", record.session_id, "--dry-run"])
-    _code, real = _drive(["restore", "run", record.session_id])
-
-    assert _offered_digest(preview) != _offered_digest(real), (
-        "the rehearsal flag did not move the digest, so a decision made about a "
-        "preview is honoured against a restore that performs every step"
+    _live_by_another_spelling(
+        tmp_path, code, envelope, "destination",
+        f"the database would land in {shouted} and not on the live one",
     )
 
 
@@ -1404,15 +1375,9 @@ def test_a_differently_cased_ancestor_still_puts_the_target_inside_the_library(
 
     code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(inside)])
 
-    if _case_folds(tmp_path):
-        assert code == int(ExitCode.PRECONDITION), envelope
-        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
-        assert envelope["cause"]["detail"]["check"] == "containment"
-    else:
-        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
-            f"this filesystem holds the two spellings as two directories, so "
-            f"{inside} is not inside the library"
-        )
+    _live_by_another_spelling(
+        tmp_path, code, envelope, "containment", f"{inside} is not inside the library"
+    )
 
 
 def test_a_database_that_is_not_on_disk_yet_is_still_the_live_database(
@@ -1421,17 +1386,7 @@ def test_a_database_that_is_not_on_disk_yet_is_still_the_live_database(
     """The half of the destination check that ``samefile`` alone cannot make."""
     acknowledge(installed)
     home = tmp_path / "home" / "rekordbox"
-    home.mkdir(parents=True)
-    outside = replace(
-        installed,
-        library=replace(
-            installed.library,
-            db_path=home / "master.db",
-            db_outside_root_acknowledged_on="2026-09-18",
-        ),
-    )
-    config.save(outside)
-    config.reset_cache()
+    _database_outside(installed, home)
     assert not (home / "master.db").exists(), (
         "the database is on disk here, so the first half of the check answers "
         "this and the half under measurement is not reached"
@@ -1440,15 +1395,10 @@ def test_a_database_that_is_not_on_disk_yet_is_still_the_live_database(
 
     code, envelope = _drive(["restore", "run", "--from-backup", "--target", str(shouted)])
 
-    if _case_folds(tmp_path):
-        assert code == int(ExitCode.PRECONDITION), envelope
-        assert envelope["cause"]["reason"] == "restore-target-is-live-root"
-        assert envelope["cause"]["detail"]["check"] == "destination"
-    else:
-        assert envelope.get("cause", {}).get("reason") != "restore-target-is-live-root", (
-            f"this filesystem holds the two spellings as two directories, so the "
-            f"database would land in {shouted} and not where the live one belongs"
-        )
+    _live_by_another_spelling(
+        tmp_path, code, envelope, "destination",
+        f"the database would land in {shouted} and not where the live one belongs",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1490,8 +1440,8 @@ def test_a_backup_landing_between_the_two_acts_moves_the_digest(installed, monke
     )
 
 
-def test_what_is_offered_is_what_is_pulled(installed, monkeypatch):
-    """The newest stamp is resolved once, shown, approved, and then used."""
+def test_what_is_offered_is_what_is_pulled_and_reported(installed, monkeypatch):
+    """The newest stamp is resolved once, shown, approved, used, and named in the report."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch, snapshots=(STAMP, LATER))
 
@@ -1506,6 +1456,11 @@ def test_what_is_offered_is_what_is_pulled(installed, monkeypatch):
     assert code == int(ExitCode.OK), envelope
     copied = _copied_from(log)
     assert copied and all(f"/{LATER}/db/" in source for source in copied), copied
+    totals = envelope["data"]["totals"]
+    assert totals["snapshot"] == LATER
+    assert totals["recorded_volume"] == preflight.normalize_identity(
+        installed.library.volume_id
+    )
 
 
 def test_the_ledgers_traversal_value_is_refused_at_the_verb(installed, monkeypatch):
@@ -1639,20 +1594,6 @@ def test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for(installed, 
     assert envelope["cause"]["reason"] == "restore-flag-needs-pull"
     assert envelope["cause"]["detail"]["flags"] == [f for f in flags if f.startswith("--")]
     assert envelope["cause"]["remediation"]["steps"]
-
-
-def test_the_report_names_the_snapshot_that_arrived(installed, monkeypatch):
-    acknowledge(installed)
-    _fake_rclone(installed, monkeypatch, snapshots=(STAMP, LATER))
-
-    code, refused, envelope = _two_acts(["restore", "run", "--from-backup"])
-
-    assert code == int(ExitCode.OK), envelope
-    totals = envelope["data"]["totals"]
-    assert totals["snapshot"] == LATER
-    assert totals["recorded_volume"] == preflight.normalize_identity(
-        installed.library.volume_id
-    )
 
 
 def test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled(
@@ -1802,6 +1743,9 @@ def test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target(cfg,
     assert report.database == (backup.RESTORE_DATABASE, backup.RESTORE_DATABASE)
     assert report.snapshot == STAMP
     assert [c.label for c in remote.transfers][0] == backup.RESTORE_MIRROR
+    destinations = [Path(c.argv[3]) for c in remote.transfers]
+    assert len(destinations) == 3
+    assert all(d == target or d.is_relative_to(target) for d in destinations), destinations
 
     after = _everything_on_disk(tmp_path, state)
     outside = {
@@ -1812,19 +1756,6 @@ def test_a_recovery_lands_the_mirror_and_the_database_only_under_the_target(cfg,
     assert outside == {str(restore.recovery_lock_path())}, outside
     assert {p: b for p, b in after.items() if p in before} == before
     assert not Path(cfg.library.root).exists(), "the lost library's path was recreated"
-
-
-def test_every_transfer_is_pointed_under_the_target_and_nowhere_else(cfg, tmp_path):
-    target = _replacement(tmp_path)
-    remote = _Remote(cfg)
-
-    restore_cli.recover_under_bare_metal_session(
-        cfg, target=target, accepted=True, runner=remote, **_gone(cfg)
-    )
-
-    destinations = [Path(c.argv[3]) for c in remote.transfers]
-    assert len(destinations) == 3
-    assert all(d == target or d.is_relative_to(target) for d in destinations), destinations
 
 
 def _mounted(cfg_value, tmp_path):
