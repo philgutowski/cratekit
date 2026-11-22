@@ -1,13 +1,8 @@
 """U62: the provider catalogue adapter behind the label seam, driven against fakes.
 
-Every scenario the unit's brief names is here, and none of them reaches the
-provider. The client is a fake injected at ``provider_session.CLIENT_FACTORY``,
-which is the one place a client is built, so the adapter under test is the
-shipped class over a stand in for the network and nothing else. The live listing
-and the live sweep belong to the next attended sitting and are recorded in
-``docs/cutover.md``, not claimed here.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track.
+The client is a fake injected at ``provider_session.CLIENT_FACTORY``, so the
+adapter under test is the shipped class. Nothing reaches the provider. D1
+applies.
 """
 
 from __future__ import annotations
@@ -49,9 +44,7 @@ STORED = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fakes: a provider client and the objects it hands back
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Named:
@@ -257,9 +250,7 @@ def cfg(tmp_path, monkeypatch) -> config.Config:
     return built
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The session factory and the seam
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_recorded_session_resolves_the_adapter_over_a_pkce_login(cfg, monkeypatch):
@@ -290,20 +281,7 @@ def test_with_no_session_the_seam_still_refuses_the_credential_and_builds_no_cli
 
 
 def test_the_label_paths_refusal_carries_the_token_that_renders_the_procedure(cfg, monkeypatch):
-    """U97, closing R-411, and deliberately narrow about what it proves.
-
-    It does NOT prove that two surfaces agree; doctor is never invoked here and
-    a test that claimed otherwise would be spending a name it had not earned.
-    What it holds is this path's half of the agreement: the refusal leaves
-    ``catalogue.resolve`` carrying ``AUTHENTICATE_PROVIDER`` and nothing else,
-    so the words it reaches a person with are the ones ``cli/render`` holds for
-    every surface. The words themselves are pinned once, in
-    ``tests/test_cli_contract.py``.
-
-    The token is asserted first and the rendering second, because a producer
-    that switched to another token would still render something sensible and
-    would still be the defect.
-    """
+    """U97, closing R-411, and deliberately narrow about what it proves."""
     use_client(monkeypatch, FakeClient())
 
     with pytest.raises(CratekitError) as excinfo:
@@ -432,9 +410,7 @@ def test_a_rejected_login_leaves_the_stored_session_alone(monkeypatch):
     assert secrets.get_json(secrets.Credential.PROVIDER_SESSION) == STORED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The playlist reference and the playlist read
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -552,9 +528,7 @@ def test_the_rows_read_through_the_provider_row_reader_with_every_field():
     assert wanted[-1].ref == "329"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The label roster and the absence contract
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Creator:
@@ -652,9 +626,7 @@ def test_a_client_that_cannot_name_its_account_refuses_rather_than_owning_nothin
         tidal_catalogue.TidalCatalogue(client).account_playlists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U70: the account's hearts, the sixth read
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class HeartsFavorites:
@@ -722,9 +694,7 @@ def test_a_hearts_listing_that_never_ends_raises_and_never_returns_a_short_one()
     assert excinfo.value.cause.detail["playlist"] == "favorites"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-504: a hearts listing shorter than the account declares is reported
-# ═══════════════════════════════════════════════════════════════════════════
 
 #: The live shape R-383 measured and R-504 drove: 197 counted, 12 withheld.
 DECLARED_HEARTS = 197
@@ -828,12 +798,7 @@ def test_a_client_that_exposes_no_favourites_refuses_rather_than_holding_no_hear
 
 
 def test_the_reserved_reference_is_never_a_playlist_reference():
-    """``favorites`` cannot name a playlist, so reserving it shadows none.
-
-    A playlist a person TITLED favorites is referenced by its identifier or
-    its URL, which is what ``playlist_id`` accepts, so the reserved word and a
-    real playlist can never be the same input.
-    """
+    """``favorites`` cannot name a playlist, so reserving it shadows none."""
     for spelling in ("favorites", "Favorites", " FAVORITES "):
         with pytest.raises(tidal_catalogue.PlaylistReferenceInvalid):
             tidal_catalogue.playlist_id(spelling)
@@ -1567,9 +1532,7 @@ def test_a_credit_starting_with_p_or_c_is_resolved_whole():
     assert adapter.artist_for(labels.LabelEntry(label_id="cadenza", name="Cadenza")).artists == [act]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-261 and R-393: a crawl that did not read everything says so
-# ═══════════════════════════════════════════════════════════════════════════
 
 HARBOUR = "(P) 2026 Harbour Lights"
 
@@ -1769,9 +1732,7 @@ def test_a_plain_artist_object_missing_one_listing_is_recorded_by_the_source(cfg
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Structural guards over the adapter's own source
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _tree() -> ast.Module:
@@ -1813,9 +1774,7 @@ def test_the_adapter_imports_nothing_vendored():
     assert not [name for name in imported if "_vendor" in name], imported
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # End to end: intake a playlist, then hand its document to the download verb
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_intake_playlist_queues_one_item_per_track_and_download_accepts_the_document(
@@ -1875,9 +1834,7 @@ def test_the_review_queue_is_untouched_by_a_playlist_intake(cfg, monkeypatch):
         assert list(review.list_items(queue)) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U75: one release read again by identifier
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class ProviderAlbum:
@@ -2067,9 +2024,7 @@ def test_the_adapter_raises_the_seams_own_exception():
     assert tidal_catalogue.ReleaseUnresolvable is catalogue.ReleaseUnresolvable
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-840: one release's artist read again by identifier
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Addressed:
@@ -2185,9 +2140,7 @@ def test_the_adapter_and_the_verb_meet_over_a_gone_release(cfg, monkeypatch, pau
     assert outcome.kind == approved_cli.GONE
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U78: the tracks one ISRC is filed under
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class IsrcClient(FakeClient):
@@ -2260,9 +2213,7 @@ def test_a_client_with_no_isrc_lookup_refuses_at_once_and_never_climbs_the_ladde
     assert pauses == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U79: a text search for one artist and title
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class TrackSearchClient(FakeClient):
@@ -2357,9 +2308,7 @@ def test_a_search_for_nothing_is_refused_before_the_provider_is_asked(artist, ti
     assert client.track_searches == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-515: a release listed short of its declared count carries the shortfall
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_release_listed_short_of_its_count_carries_the_shortfall_and_its_rows(pauses):
@@ -2383,11 +2332,7 @@ def test_a_full_release_carries_no_shortfall(pauses):
 
 
 def test_a_listing_that_serves_more_than_its_declared_count_carries_no_shortfall():
-    """A release or playlist declaring 4 that serves 6 rows is not a shortfall.
-
-    Without this, ``listed >= declared`` could become ``listed == declared``
-    unseen and a long listing would mint a negative withheld (R-515 S5).
-    """
+    """A release or playlist declaring 4 that serves 6 rows is not a shortfall."""
     rows = [object() for _ in range(6)]
     fake = FakeCatalogue(playlists={"p": FakePagedPlaylist(rows, declared=4)})
     listed, short = label_cli.playlist_listing_or_refuse(fake, "p")

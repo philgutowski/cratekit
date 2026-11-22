@@ -1,18 +1,8 @@
 """U26: label registry, sweeps, import, and harvest.
 
-The brief names six scenarios. Each one has a test below:
-
-1. a sweep's review output is a review-queue item, not a file
-2. a label whose crawl surfaces items outside a naive date floor still returns them
-3. an unverified catalogue match is dropped and reported, never acquired
-4. a tombstoned version is reported suppressed by the sweep
-5. a listing longer than one page returns fully
-6. the registry survives a label rename without orphaning its state
-
-Scope is most-recent-N plus owned-dedup. A last-pulled year is an audit record
-and never a floor (KTD11). Verification drops unconfirmed rather than guessing.
-Listing goes through cratekit.acquire.listing. Tombstones are consulted through
-cratekit.core.tombstone and the decision store U16 already owns.
+Scope is most recent N plus owned dedup; a last pulled year is never a floor
+(KTD11). Verification drops unconfirmed rather than guessing. Listing goes
+through cratekit.acquire.listing, tombstones through cratekit.core.tombstone.
 """
 
 from __future__ import annotations
@@ -126,9 +116,7 @@ def _confirm_named(allowed: set[str]):
     return search
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. Registry identity survives a rename
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_registry_survives_a_label_rename_without_orphaning_its_state(cfg):
@@ -173,9 +161,7 @@ def test_the_registry_records_an_id_seed(cfg):
     assert entry.seed_artists == ("id:99",)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. Date floor is not scope
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_crawl_outside_a_naive_date_floor_still_returns_those_items(cfg):
@@ -202,9 +188,7 @@ def test_a_crawl_outside_a_naive_date_floor_still_returns_those_items(cfg):
     assert "old" in identities
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. Unverified matches are dropped and reported
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_unverified_catalogue_match_is_dropped_and_reported_never_acquired(cfg):
@@ -230,9 +214,7 @@ def test_an_unverified_catalogue_match_is_dropped_and_reported_never_acquired(cf
     assert all(drop.reason != "confirmed" for drop in found.dropped)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. Tombstoned versions are reported suppressed
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_tombstoned_version_is_reported_suppressed_by_the_sweep(cfg):
@@ -264,9 +246,7 @@ def test_a_tombstoned_version_is_reported_suppressed_by_the_sweep(cfg):
     assert all(item.identity != "dead" for item in found.candidates)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. Pagination
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_listing_longer_than_one_page_returns_fully(cfg):
@@ -292,9 +272,7 @@ def test_the_sweep_does_not_call_a_provider_listing_directly():
     assert problems == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. Review output is a queue item, not a file
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_sweep_review_output_is_a_review_queue_item_not_a_file(cfg, tmp_path):
@@ -338,11 +316,7 @@ def test_a_sweep_review_output_is_a_review_queue_item_not_a_file(cfg, tmp_path):
 
 
 def test_an_offered_release_records_the_artist_name_not_the_provider_object(cfg):
-    """The live sweep stored str(album.artist), which is a memory address.
-
-    Identity, label and title were correct. A stand-in whose str is the name
-    would hide it, so this one stringifies the way the client does.
-    """
+    """The live sweep stored str(album.artist), which is a memory address."""
     from cratekit.label import registry as labels
     from cratekit.label import sweep
 
@@ -397,9 +371,7 @@ def test_the_label_package_does_not_construct_a_csv_writer():
         assert not constructs_a_csv_writer(path.read_text()), path
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Acquisition set
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_sweep_produces_the_same_acquisition_set_as_the_source_algorithm(cfg):
@@ -464,14 +436,7 @@ def test_increment_does_not_use_the_watermark_as_a_date_floor(cfg):
 
 
 def test_an_owned_newest_release_does_not_hide_an_older_unowned_one(cfg):
-    """R-137, driven through ``LabelSource.list_recent`` and the increment.
-
-    The source used to take its newest N before anything asked about ownership,
-    and the increment's scope dropped the owned ones from that already sliced
-    list. A label whose newest release was held then offered nothing at a limit
-    of one, over an older release the library did not have. The owned identities
-    now reach the listing, so they are dropped before the cap and not after it.
-    """
+    """R-137, driven through ``LabelSource.list_recent`` and the increment."""
     from cratekit.label import registry as labels
     from cratekit.label import sweep
 
@@ -504,9 +469,7 @@ def test_an_owned_newest_release_does_not_hide_an_older_unowned_one(cfg):
     assert list(result.processed) == ["old"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Harvest: playlist to labels, imports nothing
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_harvest_offers_verified_labels_and_imports_nothing(cfg, tmp_path):
@@ -541,9 +504,7 @@ def test_harvest_offers_verified_labels_and_imports_nothing(cfg, tmp_path):
     assert list(tmp_path.rglob("*.xml")) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Import is a single-label increment, not a date-floored crawl
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_unreadable_intent_file_refuses_rather_than_going_empty(cfg):
@@ -602,15 +563,7 @@ def _adapter_absent(monkeypatch):
 
 
 def test_harvest_on_a_build_with_no_adapter_refuses_that_nothing_is_bound(cfg, monkeypatch):
-    """R14, and the false statement U52 removed.
-
-    The old refusal told a person their playlist could not be listed, on every
-    call, having contacted nothing at all. That is a refusal whose stated cause
-    is false, and it sends somebody to check a playlist that is fine. The
-    message assertion is the whole point rather than a nicety: the slug and the
-    sentence have to agree about which of the two failed. Since U62 an adapter
-    ships, so the build without one is made here by failing its import.
-    """
+    """R14, and the false statement U52 removed."""
     from cratekit.core import secrets
     from cratekit.core.cause import CratekitError
     from cratekit.label import cli as label_cli
@@ -633,13 +586,7 @@ def test_harvest_on_a_build_with_no_adapter_refuses_that_nothing_is_bound(cfg, m
 
 
 def test_harvest_with_no_provider_session_refuses_the_credential_instead(cfg):
-    """The other refusal a shipped build gives, and it is a different act to fix.
-
-    A missing credential is the person's to undo and doctor already says how; a
-    missing adapter is this build's own limitation and authenticating again
-    would not move it. Harvest reaches both through one seam, so the pair is
-    asserted here rather than only at ``catalogue.resolve``.
-    """
+    """The other refusal a shipped build gives, and it is a different act to fix."""
     from cratekit.core.cause import CratekitError
     from cratekit.label import cli as label_cli
 
@@ -698,13 +645,7 @@ def test_with_no_provider_session_the_catalogue_seam_names_the_credential(cfg):
 def test_with_a_session_recorded_and_no_adapter_the_seam_refuses_that_nothing_is_bound(
     cfg, monkeypatch
 ):
-    """The credential is real here, recorded through the module that owns it.
-
-    Recorded rather than monkeypatched, because the point of the second refusal
-    is that it survives a person doing everything right. The keychain is an
-    in-memory dictionary for the whole suite, so this writes the presence index
-    the way a login would and reads it back through the shipped function.
-    """
+    """The credential is real here, recorded through the module that owns it."""
     from cratekit.core import secrets
     from cratekit.core.cause import CratekitError
     from cratekit.label import catalogue
@@ -726,12 +667,7 @@ def test_with_a_session_recorded_and_no_adapter_the_seam_refuses_that_nothing_is
 
 
 def test_the_catalogue_seam_answers_bound_without_reading_a_credential(cfg, monkeypatch):
-    """Asked at enqueue, where the answer is still useful, so it must not raise.
-
-    Both answers are driven. The shipped build imports its adapter and says so,
-    and a build whose adapter does not import says the opposite, so the answer
-    is read off the build rather than written down as a constant.
-    """
+    """Asked at enqueue, where the answer is still useful, so it must not raise."""
     from cratekit.core import secrets
     from cratekit.label import catalogue
 
@@ -901,14 +837,7 @@ def test_a_listing_that_cannot_be_paged_raises_instead_of_reporting_empty(
 
 
 def test_a_provider_error_out_of_the_crawl_is_not_an_empty_catalogue(cfg, monkeypatch):
-    """The wrap is not narrowed to the one exception type this layer knows.
-
-    ``ListingNotPaginated`` is Cratekit's own, and it is the exception a reader
-    of ``listing`` notices first. The one that actually reaches a person is the
-    PROVIDER's, re-raised by ``fetch_with_retry`` once the ladder is spent, and
-    its type is whatever the installed client version raises. A conversion that
-    only knew the first would report an unreadable catalogue as empty.
-    """
+    """The wrap is not narrowed to the one exception type this layer knows."""
     from cratekit.label import registry as labels
     from cratekit.label import sweep
 
@@ -955,13 +884,7 @@ def test_an_artist_exposing_no_listing_method_raises_rather_than_crawling_nothin
 
 
 def test_one_working_listing_with_no_releases_still_reports_empty(cfg):
-    """The adversarial half. A quiet label must not become an error.
-
-    ``AlbumsOnlyArtist`` exposes one method the crawl can page and it answers
-    with nothing, which is an exhausted crawl rather than an unread one. A fix
-    that raised on an empty release list would pass every test above and turn
-    this one red, which is the whole reason it is here.
-    """
+    """The adversarial half. A quiet label must not become an error."""
     label_id, source = _label_source(
         cfg,
         "Quiet Imprint",
@@ -1001,13 +924,7 @@ def test_an_unreadable_listing_stops_the_increment_at_the_lookup(cfg, monkeypatc
 
 
 def test_a_label_the_catalogue_cannot_resolve_stops_the_increment(cfg):
-    """The path ``list_for_label`` never sees, driven end to end.
-
-    ``LabelSource.list_recent`` resolves the artist object BEFORE
-    ``list_for_label`` is reached, so a fix that lived only in the checking
-    function would leave this label silently skipped and the run reported empty.
-    ``UnreadableCatalogue`` raises where the protocol says it must.
-    """
+    """The path ``list_for_label`` never sees, driven end to end."""
     from cratekit.core.cause import CratekitError
     from tests.label_fakes import UnreadableCatalogue
 
@@ -1024,12 +941,7 @@ def test_a_label_the_catalogue_cannot_resolve_stops_the_increment(cfg):
 
 
 def test_a_registered_label_with_no_artist_object_refuses_rather_than_skipping(cfg):
-    """The bare ``continue`` this unit removed, asserted as gone.
-
-    A favourite label the source cannot get an artist object for was skipped
-    silently, so a registry of five labels and five missing objects produced a
-    sweep that reported it had looked and found nothing new.
-    """
+    """The bare ``continue`` this unit removed, asserted as gone."""
     from cratekit.core.cause import CratekitError
 
     _label_source_id, source = _label_source(
@@ -1046,17 +958,7 @@ def test_a_registered_label_with_no_artist_object_refuses_rather_than_skipping(c
 
 
 def test_the_missing_artist_refusal_names_the_missing_object_not_the_listing(cfg):
-    """REMOVE EACH GUARD LAYER ALONE, and this is the layer the test above cannot see.
-
-    A source that answered ``None`` for the missing artist object would still
-    refuse, one layer down: ``_crawl_or_refuse`` finds no listing method on
-    ``None`` and raises for that. So the test above passes with the guard in
-    ``_artist_for`` deleted, and a guard covered by another guard is a guard
-    nothing covers. The two refusals send a person to different places, a
-    catalogue that never produced an object against an object that cannot be
-    paged, so the sentence is what distinguishes them and the sentence is what
-    is pinned.
-    """
+    """REMOVE EACH GUARD LAYER ALONE, and this is the layer the test above cannot see."""
     _label_source_id, source = _label_source(
         cfg,
         "Life and Death",
@@ -1075,14 +977,7 @@ def test_the_missing_artist_refusal_names_the_missing_object_not_the_listing(cfg
 def test_a_source_with_neither_verifier_nor_catalogue_refuses_rather_than_confirming_nothing(
     cfg,
 ):
-    """The verifier's own missing-object case, which the docstring names and no test drove.
-
-    A source built with neither piece cannot confirm anything, and a stub that
-    answered "unconfirmed" for every release would drop them all and hand the
-    increment an empty result over a catalogue it read in full. That is the
-    absence-as-evidence shape in one more place, and it is a lookup failure
-    rather than a sweep that found nothing.
-    """
+    """The verifier's own missing-object case, which the docstring names and no test drove."""
     from cratekit.label import registry as labels
 
     _label_source_id, source = _label_source(
@@ -1121,13 +1016,7 @@ class ProxyThatFetchesOnAttributeAccess:
 
 
 def test_an_artist_object_that_raises_on_inspection_is_a_lookup_failure_not_a_defect(cfg):
-    """The listing probe sits inside the boundary, as the listing itself does.
-
-    ``crawl.can_list`` reads attributes off the artist object, and an adapter's
-    artist may fetch on attribute access. Outside the ``try`` the provider's
-    own error bypassed the increment's conversion and failed the item as an
-    internal error telling the person to file a defect over an outage.
-    """
+    """The listing probe sits inside the boundary, as the listing itself does."""
     from cratekit.core.cause import CratekitError
 
     _label_source_id, source = _label_source(
@@ -1146,13 +1035,7 @@ def test_an_artist_object_that_raises_on_inspection_is_a_lookup_failure_not_a_de
 
 
 def test_a_refusal_raised_mid_crawl_passes_through_the_listing_boundary_unchanged(cfg):
-    """The crawl's boundary keeps the rule the verifier's states.
-
-    An adapter that discovers mid page that the stored session expired refuses
-    ``credential-missing``, which names an act the person can take. Wrapped
-    into a lookup failure it would have become "retry when the provider is
-    reachable".
-    """
+    """The crawl's boundary keeps the rule the verifier's states."""
     from cratekit.core.cause import CratekitError, refuse
 
     class RefusingArtist:
@@ -1186,13 +1069,7 @@ def test_the_crawl_probes_exactly_the_methods_the_listing_reads_by_default():
 
 
 def test_a_rate_limit_is_recognized_through_the_errors_it_was_declared_from():
-    """R-704. The sweep asks the error and every ``raise X from`` behind it.
-
-    A client that wraps the provider's answer still carries it, so a wrapped
-    ``TooManyRequests`` is a rate limit. An implicit context is read only for
-    a structured 429 status, never for its type, and an error that is not a
-    rate limit is not one.
-    """
+    """R-704. The sweep asks the error and every ``raise X from`` behind it."""
     from tidalapi.exceptions import TooManyRequests
 
     from cratekit.label import sweep
@@ -1209,7 +1086,6 @@ def test_a_rate_limit_is_recognized_through_the_errors_it_was_declared_from():
     # The client reads a 429's body as JSON before it builds its own error, so
     # a gateway's non JSON 429 arrives as a decode error raised while handling
     # it. The context counts because it carries the status itself.
-    # Driven through the client's own translation rather than built by hand.
     import requests
     from tidalapi.exceptions import http_error_to_tidal_error
 
@@ -1241,10 +1117,8 @@ def test_a_rate_limit_is_recognized_through_the_errors_it_was_declared_from():
     assert str(sweep._lookup_failure("the words", limit)) == "the words"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U237: a copyright line keeps the label's first letter, and a needle
 # confirms only the label it names
-# ═══════════════════════════════════════════════════════════════════════════
 
 # Names measured clipped on a live pass: a bare leading P or C was read as a
 # phonographic or copyright mark and dropped.

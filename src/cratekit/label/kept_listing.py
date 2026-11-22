@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.core import config
-from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.core.cause import CratekitError
 from cratekit.label import kept_reads
 from cratekit.label.catalogue import artist_name
 
@@ -177,18 +177,10 @@ class Summary:
 
 
 def _unusable(path: Path, what: str) -> CratekitError:
-    return refuse(
-        UNUSABLE,
-        f"the listing kept for this label at {path.name} could not be read "
-        f"({what}), so what the label's listing already holds is unknown; nothing "
-        f"was asked of the provider and nothing was written",
-        steps=(
-            f"delete {path} to list the label again from the start; it holds "
-            f"provider answers only and nothing else is lost",
-        ),
-        scope=Scope.RUN,
-        origin=_ORIGIN,
-        detail={"problem": what, "path": str(path)},
+    return kept_reads.unusable(
+        UNUSABLE, _ORIGIN, path, what, kept="listing",
+        held="what the label's listing already holds", written="",
+        again="list the label again",
     )
 
 

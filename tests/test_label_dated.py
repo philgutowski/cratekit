@@ -223,9 +223,7 @@ def test_organize_reports_a_dated_playlist_past_the_age_and_moves_nothing(kompak
     dated.apply(cfg, account, _plan(cfg, fake, account, today=date(2026, 9, 2)))
     writes = len(account.chunks), len(account.moves), len(account.created)
     planned = _plan(cfg, fake, account)
-    assert [(one.name, one.days) for one in planned.aged] == [
-        ("Kompakt 2023 new 2026-09-01", 38)
-    ]
+    assert [(one.name, one.days) for one in planned.aged] == [("Kompakt 2023 new 2026-09-01", 38)]
     assert not planned.writes
     dated.apply(cfg, account, planned)
     assert (len(account.chunks), len(account.moves), len(account.created)) == writes
@@ -282,9 +280,7 @@ def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finish
     assert held["Kompakt 2023 new 2026-10-09"] == ["t4", "t5"]
 
 
-def test_a_move_refused_after_the_create_names_the_playlist_left_at_the_root(
-    kompakt, monkeypatch
-):
+def test_a_move_refused_after_the_create_names_the_playlist_left_at_the_root(kompakt, monkeypatch):
     cfg, fake, account = kompakt
     _built(cfg, fake, account)
     _record(cfg, [_answer(["r3"], "2026-10-09")])
@@ -321,9 +317,7 @@ def test_a_label_with_no_folder_yet_refuses_the_apply_before_any_write(kompakt):
 
 
 def _organize(cfg) -> Area:
-    return organize_account.plan_area(
-        cfg, available=frozenset({"labels"}), kompakt=[_entry()]
-    )
+    return organize_account.plan_area(cfg, available=frozenset({"labels"}), followed=[_entry()])
 
 
 def _step(area: Area):

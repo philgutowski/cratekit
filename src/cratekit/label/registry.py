@@ -322,11 +322,7 @@ class Registry:
         return {old: new for old, new in self.renamed.items() if old not in self.labels}
 
     def by_name(self, name: str) -> LabelEntry | None:
-        wanted = _name_key(name)
-        for entry in self.labels.values():
-            if _name_key(entry.name) == wanted:
-                return entry
-        return None
+        return next(iter(self.named(name)), None)
 
     def named(self, name: str) -> tuple[LabelEntry, ...]:
         """Every label whose display name is ``name``, in registry order.
@@ -749,13 +745,8 @@ class RegistryStore:
         return self.update(mutate).by_id(label_id)
 
     def remove(self, name_or_id: str) -> bool:
-        held = self.load()
-        entry = held.resolve(name_or_id)
+        entry = self.load().resolve(name_or_id)
         if entry is None:
             return False
-
-        def mutate(current: dict[str, LabelEntry]) -> None:
-            current.pop(entry.label_id, None)
-
-        self.update(mutate)
+        self.update(lambda current: current.pop(entry.label_id, None) and None)
         return True

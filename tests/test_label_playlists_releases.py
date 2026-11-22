@@ -102,8 +102,7 @@ def test_two_taken_releases_in_one_year_add_to_that_year_only(kompakt, monkeypat
     read = _reads(monkeypatch, account)
     _took(cfg, ("r3", "2023"), ("r4", "2023"))
     done = _exits(ExitCode.OK, _releases())
-    # THE TAKEN RELEASES AND NOTHING ELSE: no roster, no listing, no verifier,
-    # and no other release's tracks.
+    # THE TAKEN RELEASES AND NOTHING ELSE: no roster, listing, verifier or other tracks.
     assert fake.asked_for == []
     # Once by the run that asked the gate and once by the run that applied.
     assert sorted(fake.releases_asked_for) == ["r3", "r3", "r4", "r4"]
@@ -176,8 +175,7 @@ def test_a_second_run_plans_nothing(kompakt):
 def test_an_answer_no_go_has_taken_is_not_read(kompakt):
     cfg, fake, account = kompakt
     _took(cfg, ("r3", "2023"), settled=False)
-    code, done = _releases()
-    assert code == int(ExitCode.OK), done
+    done = _exits(ExitCode.OK, _releases())
     assert done["outcome"] == "no_op"
     assert [w["code"] for w in done["warnings"]] == ["label-playlists-nothing-taken"]
     # NOT EVEN THE FOLDER is made for a sync that took nothing.
@@ -191,8 +189,7 @@ def test_another_labels_answers_are_not_read(kompakt):
     document = sync_cli.load_record(cfg)
     document["answers"][0]["label_id"] = "another-label"
     sync_cli.write_record(cfg, document)
-    code, done = _releases()
-    assert code == int(ExitCode.OK), done
+    done = _exits(ExitCode.OK, _releases())
     assert [w["code"] for w in done["warnings"]] == ["label-playlists-nothing-taken"]
     assert fake.releases_asked_for == [] and account._writes == 0
 
@@ -201,7 +198,7 @@ def test_a_label_nobody_follows_is_still_a_plan_of_nothing(kompakt):
     _cfg, fake, account = kompakt
     code, done = _decided(["label", "playlists", "Nobody Follows This", "--releases"], (BUILD, "apply"))
     assert code == int(ExitCode.OK), done
-    assert [w["code"] for w in done["warnings"]] == ["label-playlists-not-kompakt"]
+    assert [w["code"] for w in done["warnings"]] == ["label-playlists-not-followed"]
     assert fake.asked_for == [] and account._writes == 0
 
 
@@ -299,9 +296,7 @@ def test_a_full_build_over_the_threshold_stops_at_its_gate_after_the_count(
     assert account._writes == 0
 
 
-def test_a_full_build_declined_at_its_crawl_gate_reads_and_writes_nothing(
-    kompakt, small_threshold
-):
+def test_a_full_build_declined_at_its_crawl_gate_reads_and_writes_nothing(kompakt, small_threshold):
     _cfg, fake, account = kompakt
     done = _exits(ExitCode.OK, _decided(["label", "playlists", LABEL], (CRAWL, "abort")))
     assert done["outcome"] == "no_op"
@@ -312,9 +307,7 @@ def test_a_full_build_answered_crawl_reads_the_catalogue_and_asks_the_build_gate
     kompakt, small_threshold
 ):
     _cfg, fake, account = kompakt
-    _exits(
-        ExitCode.OK, _decided(["label", "playlists", LABEL], (CRAWL, "crawl"), (BUILD, "apply"))
-    )
+    _exits(ExitCode.OK, _decided(["label", "playlists", LABEL], (CRAWL, "crawl"), (BUILD, "apply")))
     (folder_id,) = account.folder_names
     assert set(_years(account, folder_id)) == {"Kompakt 2021", "Kompakt 2022", "Kompakt 2023"}
     assert "r1" in fake.releases_asked_for
@@ -348,8 +341,7 @@ def test_the_crawl_gate_is_asked_again_when_the_listing_grows(
 def test_a_go_whose_every_release_is_gone_says_so_and_not_that_nothing_was_taken(kompakt):
     cfg, fake, account = kompakt
     _took(cfg, ("r7", "2020"))
-    code, done = _releases()
-    assert code == int(ExitCode.OK), done
+    done = _exits(ExitCode.OK, _releases())
     assert [w["code"] for w in done["warnings"]] == ["label-playlists-nothing-left"]
     assert "1 gone from the provider" in done["warnings"][0]["message"]
     assert account._writes == 0 and account.folders_created == []
@@ -367,8 +359,7 @@ def test_a_release_named_only_by_its_review_item_is_never_asked_for_or_shown_as_
 
 def test_a_release_the_provider_dates_by_nothing_takes_the_year_its_answer_recorded(kompakt):
     cfg, _fake, account = kompakt
-    # r5 carries no year at the provider. Its answer recorded 2019 for one and
-    # nothing usable for the other, which is left out as undated.
+    # r5 has no provider year: one answer recorded 2019, the other nothing usable.
     _took(cfg, ("r5", "2019"))
     assert _releases()[0] == int(ExitCode.OK)
     (folder_id,) = account.folder_names
@@ -378,8 +369,7 @@ def test_a_release_the_provider_dates_by_nothing_takes_the_year_its_answer_recor
 def test_a_recorded_year_that_is_not_four_digits_is_undated(kompakt):
     cfg, _fake, account = kompakt
     _took(cfg, ("r5", "19"))
-    code, done = _releases()
-    assert code == int(ExitCode.OK), done
+    done = _exits(ExitCode.OK, _releases())
     assert [w["code"] for w in done["warnings"]] == ["label-playlists-nothing-left"]
     assert "1 with no year" in done["warnings"][0]["message"]
     assert account._writes == 0
@@ -387,9 +377,7 @@ def test_a_recorded_year_that_is_not_four_digits_is_undated(kompakt):
 
 def test_a_full_builds_digest_is_the_plan_identity_alone(kompakt):
     cfg, fake, account = kompakt
-    planned = folders.plan(
-        cfg, playlists_cli.read_catalogue(cfg, _entry(), fake), account
-    )
+    planned = folders.plan(cfg, playlists_cli.read_catalogue(cfg, _entry(), fake), account)
     assert playlists_cli.plan_payload(planned, name=LABEL)["digest"] == digest_of(
         planned.identity()
     )

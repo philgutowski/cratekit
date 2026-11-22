@@ -42,8 +42,7 @@ MARK = "label.mark.confirm"
 LABEL = "Kompakt"
 LABEL_ID = "kompakt"
 
-#: Three release years, four releases, seven tracks, plus three releases the
-#: plan must leave out for three different reasons.
+#: Three years, four releases, seven tracks, and three releases left out for three reasons.
 RELEASES = {
     "r1": ([FakeTrack("t1"), FakeTrack("t2")], 2021),
     "r2": ([FakeTrack("t3")], 2022),
@@ -51,8 +50,7 @@ RELEASES = {
     "r4": ([FakeTrack("t6"), FakeTrack("t7")], 2023),
     # Dated by nothing the seam can read as a year.
     "r5": ([FakeTrack("t8")], None),
-    # Not confirmed as the label's, since a roster artist's release elsewhere
-    # is not this label's catalogue.
+    # Not confirmed as the label's.
     "r6": ([FakeTrack("t9")], 2023),
 }
 LISTED = [
@@ -137,9 +135,7 @@ def _two_acts(argv: list[str], gate: str, option: str = "apply") -> tuple[int, d
     refused = _exits(ExitCode.DECISION_REQUIRED, drive(argv))
     assert refused["cause"]["detail"]["gate"] == gate
     run_id = refused["run_id"]
-    _exits(
-        ExitCode.OK, drive(["run", "decide", run_id, gate, option, "--actor", "a-person"])
-    )
+    _exits(ExitCode.OK, drive(["run", "decide", run_id, gate, option, "--actor", "a-person"]))
     return drive(["--run", run_id, *argv])
 
 
@@ -167,8 +163,7 @@ def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
         spec = entry.gates[0]
         assert (spec.name, spec.options, spec.explicit) == (gate, ("apply", "abort"), True)
         assert spec.digest_source == "plan"
-    # U191: the build's second gate is the full crawl's, explicit too, and the
-    # mark has no second gate.
+    # U191: the build's second gate is the full crawl's; the mark has none.
     assert len(registry.entry("label.mark").gates) == 1
     (_build, crawl) = registry.entry("label.playlists").gates
     assert (crawl.name, crawl.options, crawl.explicit, crawl.digest_source) == (
@@ -219,10 +214,9 @@ def test_a_label_nobody_follows_is_a_plan_of_nothing_still_gated(installed, monk
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     account = outbound_fakes.StrictAccount()
     bind_account(monkeypatch, account)
-    code, done = _two_acts(["label", "playlists", "Nobody Follows This"], BUILD)
-    assert code == int(ExitCode.OK), done
+    done = _exits(ExitCode.OK, _two_acts(["label", "playlists", "Nobody Follows This"], BUILD))
     assert done["outcome"] == "no_op"
-    assert [w["code"] for w in done["warnings"]] == ["label-playlists-not-kompakt"]
+    assert [w["code"] for w in done["warnings"]] == ["label-playlists-not-followed"]
     assert fake.asked_for == [] and account._writes == 0
 
 
@@ -338,9 +332,7 @@ def test_two_playlists_named_for_one_year_leave_that_year_alone(kompakt):
 
 
 # 4. A refusal part way, and the resume
-def test_a_refusal_part_way_leaves_what_was_written_recorded_and_a_resume_finishes(
-    kompakt,
-):
+def test_a_refusal_part_way_leaves_what_was_written_recorded_and_a_resume_finishes(kompakt):
     cfg, _fake, account = kompakt
     account.fail_on = frozenset({"Kompakt 2022"})
     failed = _exits(ExitCode.INTERNAL, _build())
@@ -357,12 +349,9 @@ def test_a_refusal_part_way_leaves_what_was_written_recorded_and_a_resume_finish
     assert len(account.chunks) == 3, "the resume added the first year's tracks again"
 
 
-def test_a_playlist_made_and_not_yet_moved_is_moved_on_the_resume_and_not_made_again(
-    kompakt,
-):
+def test_a_playlist_made_and_not_yet_moved_is_moved_on_the_resume_and_not_made_again(kompakt):
     cfg, _fake, account = kompakt
-    # The FIRST year playlist the fake will make. A move that fails on it is a
-    # build stopped between the create and the move.
+    # A move failing on the first year made stops the build between create and move.
     account.fail_on = frozenset({"pl-1"})
     code, _failed = _build()
     assert code == int(ExitCode.INTERNAL)
@@ -379,8 +368,7 @@ def test_a_playlist_made_and_not_yet_moved_is_moved_on_the_resume_and_not_made_a
 def test_a_track_the_provider_will_not_add_is_recorded_and_not_asked_again(kompakt):
     cfg, fake, account = kompakt
     account.unaddable = {"t5"}
-    code, done = _build()
-    assert code == int(ExitCode.OK), done
+    done = _exits(ExitCode.OK, _build())
     assert [w["code"] for w in done["warnings"]] == ["label-playlists-tracks-refused"]
     assert ledger.label_shape(cfg, LABEL_ID).years["2023"].refused == frozenset({"t5"})
     assert not _plan(cfg, fake, account).writes
@@ -409,9 +397,7 @@ def test_the_sweep_never_reads_a_built_year_playlist_as_intake(built):
     for playlist_id in built:
         listed = AccountPlaylist(playlist_id=playlist_id, name="Kompakt 2021", tracks=2)
         assert (
-            sync_playlists.exclusion(
-                listed, recorded=set(), in_flight=set(), label_built=built
-            )
+            sync_playlists.exclusion(listed, recorded=set(), in_flight=set(), label_built=built)
             is sync_playlists.Excluded.LABEL_FOLDER
         )
 
@@ -461,9 +447,7 @@ def test_the_mark_takes_each_year_and_records_it_for_unmark(built):
     ]
 
 
-def test_a_second_mark_plans_nothing_and_a_build_after_it_reuses_the_marked_years(
-    built,
-):
+def test_a_second_mark_plans_nothing_and_a_build_after_it_reuses_the_marked_years(built):
     cfg, fake, account = built
     xml = _landed(cfg)
     assert _mark(xml)[0] == int(ExitCode.OK)
@@ -481,9 +465,7 @@ def test_sync_unmark_takes_the_label_mark_off_again(built):
         for pid, title in account.titles.items()
     ]
     account.renamed.clear()
-    code, done = _two_acts(
-        ["sync", "unmark", "--pass", "label-sync-batch"], "sync.unmark.confirm"
-    )
+    code, done = _two_acts(["sync", "unmark", "--pass", "label-sync-batch"], "sync.unmark.confirm")
     assert code == int(ExitCode.OK), done
     assert account.renamed == [], "a release writes nothing on the account (U242)"
     assert mark_record.MarkRecord(cfg).taken_ids() == frozenset()
@@ -523,10 +505,7 @@ def test_no_removal_shape_appears_in_the_label_folder_path(source):
             node.attr if isinstance(node, ast.Attribute) else node.name
             for node in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
             if (isinstance(node, ast.Attribute) and any(s in node.attr.lower() for s in shapes))
-            or (
-                isinstance(node, ast.FunctionDef)
-                and any(s in node.name.lower() for s in shapes)
-            )
+            or (isinstance(node, ast.FunctionDef) and any(s in node.name.lower() for s in shapes))
         }
     )
     assert named == [], named
@@ -559,8 +538,7 @@ class _Endpoint:
                 base_url: str | None = None) -> _Answer:
         params = dict(params or {})
         assert (method, path) == ("GET", "my-collection/playlists/folders")
-        # THE ENDPOINT SERVES EVERY KIND AND COUNTS EVERY KIND (R-887): a folder
-        # holds folders and playlists alike, and the walk keeps one kind.
+        # THE ENDPOINT SERVES AND COUNTS EVERY KIND (R-887); the walk keeps one.
         assert "includeOnly" not in params
         if params["folderId"] == "root":
             held = [
@@ -752,8 +730,7 @@ def test_the_client_library_still_offers_the_folder_calls_the_adapter_makes():
     # R-878: the folder walks reach past the listing methods to these.
     assert callable(getattr(tidalapi.session.Session, "parse_folder", None))
     assert callable(getattr(tidalapi.request.Requests, "request", None))
-    # R-1016: both playlist walks parse with the parser's own ``parse``, never
-    # its ``parse_factory``, and the account walk reaches the user's request.
+    # R-1016: both playlist walks parse with ``parse``, never ``parse_factory``.
     assert callable(getattr(tidalapi.playlist.Playlist, "parse", None))
     session = tidalapi.session.Session()
     handle = session.folder()
@@ -791,11 +768,10 @@ def test_a_label_folder_deleted_on_the_account_is_said_not_failed(built):
 
 def test_a_mark_of_a_label_nobody_follows_says_so(kompakt):
     cfg, _fake, _account = kompakt
-    code, done = _two_acts(
-        ["label", "mark", "Kompakd", "--xml", str(_landed(cfg))], MARK
+    done = _exits(
+        ExitCode.OK, _two_acts(["label", "mark", "Kompakd", "--xml", str(_landed(cfg))], MARK)
     )
-    assert code == int(ExitCode.OK), done
-    assert [w["code"] for w in done["warnings"]] == ["label-playlists-not-kompakt"]
+    assert [w["code"] for w in done["warnings"]] == ["label-playlists-not-followed"]
 
 
 def test_a_mark_the_record_cannot_take_names_what_it_took_before(built, monkeypatch):
@@ -833,9 +809,7 @@ def test_a_recorded_year_deleted_on_the_account_is_left_alone_not_refused(built)
     assert left.action == folders.UNREADABLE and not left.writes
 
 
-def test_a_catalogue_that_confirms_nothing_is_refused_not_shown_empty(
-    installed, monkeypatch
-):
+def test_a_catalogue_that_confirms_nothing_is_refused_not_shown_empty(installed, monkeypatch):
     labels.RegistryStore().add(LABEL)
     fake = _catalogue()
     fake.confirmed = frozenset()
@@ -921,9 +895,7 @@ def test_an_unrecorded_marked_year_in_the_folder_is_matched_by_its_marked_name(k
 
 
 # 9. Written for the zero rows of mutation batch b
-def test_the_sync_pass_hands_the_sweep_every_year_playlist_a_build_recorded(
-    built, monkeypatch
-):
+def test_the_sync_pass_hands_the_sweep_every_year_playlist_a_build_recorded(built, monkeypatch):
     from cratekit.sync import cli as sync_cli
     cfg, _fake, _account = built
     handed: list[frozenset[str]] = []
@@ -976,8 +948,7 @@ def test_a_title_changed_between_the_plan_and_the_write_is_not_renamed(built):
             listed["pl-2"] = "Kompakt Live"
         return listed
     account.folder_playlists = retitled_after_the_plan
-    code, done = drive(["--run", run_id, *argv])
-    assert code == int(ExitCode.OK), done
+    done = _exits(ExitCode.OK, drive(["--run", run_id, *argv]))
     assert "pl-2" not in dict(account.renamed)
     assert [w["code"] for w in done["warnings"]] == ["label-mark-changed-since-plan"]
 

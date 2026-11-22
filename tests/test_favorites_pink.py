@@ -1,10 +1,7 @@
 """R-228: pink rows outside All Favorites join the favourites sweep.
 
-THE COLOUR READ IS FAKED HERE. A real read only open needs a disposable
-library, which other suites already drive for rb_writer. This file pins the
-union, the refusals and the plan facts against stand in rows and a patched
-``read_pink_track_ids``, so the product decisions stay testable without a
-database.
+THE COLOUR READ IS FAKED HERE: the union, the refusals and the plan facts are
+pinned against stand in rows and a patched ``read_pink_track_ids``.
 """
 
 from __future__ import annotations
@@ -70,23 +67,22 @@ def installed(tmp_path, monkeypatch):
     source.forget_libraries()
 
 
+def _export(installed, **shape) -> Path:
+    return outbound_fakes.write_export(installed.library.root / "outbound", **shape)
+
+
+def _union(installed, pink: tuple[str, ...], **shape):
+    library = source.read_library(_export(installed, **shape))
+    return favorites_cli.union_with_pink(library, source.resolve(library, outbound_fakes.FAVORITES), pink)
+
+
 def test_pink_colour_id_looks_up_by_name_and_skips_soft_deleted():
-    db = _FakeDB(
-        colours=[
-            _Colour("9", "Pink", rb_local_deleted=1),
-            _Colour("7", "Pink"),
-            _Colour("3", "Red"),
-        ],
-        contents=[],
-    )
-    assert favorites_cli.pink_colour_id(db) == "7"
+    colours = [_Colour("9", "Pink", rb_local_deleted=1), _Colour("7", "Pink"), _Colour("3", "Red")]
+    assert favorites_cli.pink_colour_id(_FakeDB(colours, [])) == "7"
 
 
 def test_pink_colour_id_refuses_when_no_live_pink_row():
-    db = _FakeDB(
-        colours=[_Colour("1", "Pink", rb_local_deleted=1), _Colour("2", "Red")],
-        contents=[],
-    )
+    db = _FakeDB([_Colour("1", "Pink", rb_local_deleted=1), _Colour("2", "Red")], [])
     with pytest.raises(CratekitError) as caught:
         favorites_cli.pink_colour_id(db)
     assert caught.value.cause.reason == favorites_cli.PINK_COLOUR_MISSING
@@ -107,12 +103,7 @@ def test_pink_content_ids_skips_soft_deleted_and_non_pink():
 
 
 def test_union_offers_pink_outside_playlist_and_keeps_playlist_non_pink(installed):
-    path = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=(1,), tracks=4
-    )
-    library = source.read_library(path)
-    playlist = source.resolve(library, outbound_fakes.FAVORITES)
-    resolved = favorites_cli.union_with_pink(library, playlist, ("1", "3", "4"))
+    resolved = _union(installed, ("1", "3", "4"), favorites=(1,), tracks=4)
     assert resolved.track_ids == ("1", "3", "4")
     assert resolved.from_playlist == 1
     assert resolved.from_colour == 3
@@ -120,26 +111,14 @@ def test_union_offers_pink_outside_playlist_and_keeps_playlist_non_pink(installe
 
 
 def test_union_leaves_non_pink_outside_playlist_out(installed):
-    path = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=(1, 2), tracks=4
-    )
-    library = source.read_library(path)
-    playlist = source.resolve(library, outbound_fakes.FAVORITES)
-    resolved = favorites_cli.union_with_pink(library, playlist, ("1",))
+    resolved = _union(installed, ("1",), favorites=(1, 2), tracks=4)
     assert resolved.track_ids == ("1", "2")
-    assert "3" not in resolved.track_ids
-    assert "4" not in resolved.track_ids
     assert resolved.from_playlist == 2
     assert resolved.from_colour == 1
 
 
 def test_union_names_pink_rows_the_export_lacks(installed):
-    path = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=(1,), tracks=2
-    )
-    library = source.read_library(path)
-    playlist = source.resolve(library, outbound_fakes.FAVORITES)
-    resolved = favorites_cli.union_with_pink(library, playlist, ("1", "99", "98"))
+    resolved = _union(installed, ("1", "99", "98"), favorites=(1,), tracks=2)
     assert resolved.track_ids == ("1",)
     assert resolved.pink_missing == ("99", "98")
     assert resolved.from_colour == 1
@@ -155,9 +134,7 @@ def test_resolve_sweep_refuses_empty_favorites_before_colour(installed, monkeypa
         raise AssertionError("colour must not be read after an empty playlist refusal")
 
     monkeypatch.setattr(favorites_cli, "read_pink_track_ids", boom)
-    path = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=()
-    )
+    path = _export(installed, favorites=())
     with pytest.raises(CratekitError) as caught:
         favorites_cli.resolve_sweep(str(path), None, cfg=installed)
     assert caught.value.cause.reason == "export-playlist-empty"
@@ -165,7 +142,7 @@ def test_resolve_sweep_refuses_empty_favorites_before_colour(installed, monkeypa
 
 
 def test_resolve_sweep_propagates_the_colour_reads_own_cause(installed, monkeypatch):
-    path = outbound_fakes.write_export(installed.library.root / "outbound")
+    path = _export(installed)
 
     def unread(cfg):
         del cfg
@@ -182,9 +159,7 @@ def test_resolve_sweep_propagates_the_colour_reads_own_cause(installed, monkeypa
 
 
 def test_the_gate_names_colour_and_playlist_counts(installed, monkeypatch):
-    path = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=(1,), tracks=3
-    )
+    path = _export(installed, favorites=(1,), tracks=3)
     monkeypatch.setattr(favorites_cli, "read_pink_track_ids", lambda cfg: ("1", "3"))
     code, refused = drive(favorites_verb(path))
     assert code == int(ExitCode.DECISION_REQUIRED), refused
@@ -196,11 +171,7 @@ def test_the_gate_names_colour_and_playlist_counts(installed, monkeypatch):
 
 
 def test_pink_missing_is_warned_beside_dangling(installed, monkeypatch):
-    path = outbound_fakes.write_export(
-        installed.library.root / "outbound",
-        favorites=(1, 99),
-        tracks=2,
-    )
+    path = _export(installed, favorites=(1, 99), tracks=2)
     monkeypatch.setattr(favorites_cli, "read_pink_track_ids", lambda cfg: ("2", "88"))
     code, refused = drive(favorites_verb(path))
     assert code == int(ExitCode.DECISION_REQUIRED), refused
@@ -225,43 +196,31 @@ def test_pink_missing_is_warned_beside_dangling(installed, monkeypatch):
     assert "99" in dangling["message"]
 
 
-def test_pink_outside_playlist_is_offered_and_hearted(installed, monkeypatch):
-    path = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=(1,), tracks=3
-    )
+def _swept_with_pink_three(installed, monkeypatch, hearts: set[str]):
+    path = _export(installed, favorites=(1,), tracks=3)
     monkeypatch.setattr(favorites_cli, "read_pink_track_ids", lambda cfg: ("3",))
-    account = outbound_fakes.StrictAccount(catalog=catalog(1, 3))
+    account = outbound_fakes.StrictAccount(catalog=catalog(1, 3), hearts=hearts)
     bind(monkeypatch, account)
     _run, job_id = approve_and_queue(favorites_verb(path), "sync.favorites.confirm")
-    del _run
     code, resumed = _resume(job_id)
     assert code == int(ExitCode.OK), resumed
+    return account, resumed
+
+
+def test_pink_outside_playlist_is_offered_and_hearted(installed, monkeypatch):
+    account, resumed = _swept_with_pink_three(installed, monkeypatch, set())
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert sorted(account.hearted) == ["tid-1", "tid-3"]
 
 
 def test_pink_already_hearted_is_counted_as_already(installed, monkeypatch):
-    path = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=(1,), tracks=3
-    )
-    monkeypatch.setattr(favorites_cli, "read_pink_track_ids", lambda cfg: ("3",))
-    account = outbound_fakes.StrictAccount(catalog=catalog(1, 3), hearts={"tid-3"})
-    bind(monkeypatch, account)
-    _run, job_id = approve_and_queue(favorites_verb(path), "sync.favorites.confirm")
-    del _run
-    code, resumed = _resume(job_id)
-    assert code == int(ExitCode.OK), resumed
+    _account, resumed = _swept_with_pink_three(installed, monkeypatch, {"tid-3"})
     assert resumed["data"]["progress"]["outbound"]["hearted"] == ["tid-1"]
     assert resumed["data"]["progress"]["outbound"]["already"] == ["tid-3"]
 
 
 def test_pink_readers_call_trees_soft_delete_marker():
-    """The watcher named trees.soft_delete_marker; a private read would widen the pin.
-
-    The readers live in ``favorites/colour.py`` since U153, and the sweep's
-    shell reaches them from there, so both files are read: the one that holds
-    the readers must call the marker, and neither may read the column itself.
-    """
+    """The readers in ``colour.py`` call the one soft delete reader, and neither file reads the column."""
     source_text = Path("src/cratekit/favorites/colour.py").read_text()
     assert "trees.soft_delete_marker" in source_text
     for path in ("src/cratekit/favorites/colour.py", "src/cratekit/favorites/cli.py"):

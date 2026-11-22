@@ -1,15 +1,10 @@
 """``crate favorites split``: the quarter playlists under Favorites split into months and retired (U145).
 
-A one time verb: every quarter playlist beside All Favorites is found, each
-member dated, each month it fills or makes shown with its count and each
-quarter it retires, and on approval the memberships go in one commit and the
-emptied quarters are retired in a second. A member dated nowhere goes to
-``Undated`` and is named.
-
-A LIBRARY WITH NO QUARTER LEFT ASKS NOTHING: a second run opens no gate and
-ends NO_OP. A run stopped between its two commits plans the same split again,
-is approved against the same digest, and finishes. The order is
-:func:`spine.run`'s.
+A one time verb: each month it fills or makes and each quarter it retires is
+shown, and on approval the memberships go in one commit and the emptied
+quarters are retired in a second. A member dated nowhere goes to ``Undated``.
+A library with no quarter left asks nothing, and a run stopped between its two
+commits plans the same split again and finishes. The order is :func:`spine.run`'s.
 
 Layer: modules.
 """
@@ -17,7 +12,7 @@ Layer: modules.
 from __future__ import annotations
 
 from cratekit.cli.output import Envelope, load_config
-from cratekit.core import active_taxonomy, analysis_store, config
+from cratekit.core import active_taxonomy
 from cratekit.favorites import placeholders, placement, spine, split
 
 #: The gate, explicit: a write that retires playlists of the live library.
@@ -38,18 +33,8 @@ def build(parser, entry) -> None:
     parser.set_defaults(_handler=favorites_split)
 
 
-def planned(cfg: config.Config, *, source: str) -> split.SplitPlan:
-    """The plan over the library as it stands, through a handle opened to read and closed."""
-    with spine.handle(cfg) as db:
-        return split.plan(cfg, db, source=source)
-
-
-def written(cfg: config.Config, approved: split.SplitPlan, *, source: str) -> split.Split:
-    """Apply the plan through a handle of this function's own, opened to write."""
-    with spine.handle(cfg, write=True) as db:
-        return split.apply(
-            cfg, db, approved, source=source, analysis_roots=analysis_store.watch_roots(cfg)
-        )
+#: The plan on a handle opened to read and closed, and the write on its own write handle.
+planned, written = spine.handles(split)
 
 
 def _members(said: tuple[split.Member, ...]) -> str:

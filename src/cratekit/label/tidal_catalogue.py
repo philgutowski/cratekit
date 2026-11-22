@@ -164,10 +164,7 @@ class LabelRoster(listing.HeldReleases):
         Not deduplicated: ``listing.artist_releases`` does that when the crawl reads
         the roster. A member without ``method`` is recorded in ``missing``.
         """
-        held: list[Any] = []
-        for artist in self.artists:
-            held.extend(self._lister(artist, method, missing))
-        return held
+        return [row for artist in self.artists for row in self._lister(artist, method, missing)]
 
     def held(self, method: str) -> list[Any] | None:
         return self._listed.get(method)

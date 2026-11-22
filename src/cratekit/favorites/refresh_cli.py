@@ -1,17 +1,10 @@
 """``crate favorites refresh``: every genre folder's Favorites made to mirror All Favorites (U119).
 
 The one path that REMOVES a genre Favorites membership, behind its own
-explicit gate, as every writer that takes a membership away stands behind
-one. Every folder is planned against the library as it stands, its adds and
-removes shown, and on approval both halves are written through the genre
-favorites engine, the additions in one commit and the removals in a second.
-The additive half also runs after an adoption that files a track and in the
-rebuild, so this verb is where a favourite that left All Favorites, or a
-track added to a genre Favorites by hand, is taken out.
-
-The order is :func:`spine.run`'s, the gate asked before the nothing to
-refresh check. Database native routing trees only; the engine refuses a tree
-on the bridge by name.
+explicit gate: each folder's adds and removes are shown, and on approval
+written through the genre favorites engine, the additions in one commit and
+the removals in a second. The order is :func:`spine.run`'s, the gate asked
+before the nothing to refresh check; the engine refuses a tree on the bridge.
 
 Layer: modules.
 """

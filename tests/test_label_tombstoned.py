@@ -1,15 +1,7 @@
 """U243: a track the library removed leaves its label year playlists and stays off.
 
-``crate delete review`` tombstones a track it trashes, the record that the
-library stopped holding that version on purpose. Before this unit the label
-side asked that record about a release and never about a track, so a removed
-track stayed on its year playlist (``label prune`` planned nothing) and a year
-built afresh would add it back. These drive both verbs through the dispatcher,
-with the tombstone written by the deletion pass's own recorder, the catalogue
-and the account faked, and assert the removed track leaves, is never added, and
-that a year playlist the prune empties is said and kept.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track.
+Both verbs are driven through the dispatcher, the tombstone written by the
+deletion pass's own recorder, the catalogue and account faked. D1 applies.
 """
 
 from __future__ import annotations
@@ -135,9 +127,7 @@ def _taken(envelope: dict) -> list[tuple[str, str]]:
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The prune takes a removed track off
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_tombstoned_track_on_a_year_playlist_is_pruned(built):
@@ -211,9 +201,7 @@ def test_a_removed_track_stays_off_after_a_full_build(built):
     assert built.account.playlists["pl-3"] == ["t5", "t6", "t7"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. A build never adds a removed track
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_full_build_never_adds_a_tombstoned_track(followed):
@@ -257,9 +245,7 @@ def test_a_releases_build_never_adds_a_tombstoned_track(followed):
     assert followed.account.playlists[made] == ["t5"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The kept reads carry the words the question is asked under
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_kept_read_judges_a_track_by_the_words_it_kept(followed):
@@ -336,9 +322,7 @@ def test_a_kept_track_whose_words_are_not_text_is_refused(followed):
     assert refused["cause"]["reason"] == kept_reads.UNUSABLE
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The question itself
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_question_is_asked_of_one_read_of_the_store(installed, monkeypatch):
@@ -384,9 +368,7 @@ def test_the_track_words_are_read_as_the_downloader_tags_them():
     assert tombstoned.track_title(SimpleNamespace(full_name="", name="Bare")) == "Bare"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. Round one's findings: heard, the releases screen, a year of nothing
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -487,9 +469,7 @@ def test_a_kept_read_missing_any_track_word_is_read_again(followed, tracks):
     assert "r3" in followed.fake.releases_asked_for
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. Round two's findings: a single named for its track, a prune heard undid
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _with_a_single() -> FakeCatalogue:

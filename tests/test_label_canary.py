@@ -1,33 +1,11 @@
 """U277: a label whose only confirmed releases are held says nothing new.
 
-Sitting 94 ran ``crate label sync --next --label rawax`` over a listing of 119
-releases and was refused as a catalogue it could not confirm. Sitting 93 had
-asked about all seven of Rawax's releases then, four credited ``Rawax`` and
-three credited ``RAWAXXX``, another act the old substring needle matched, so
-all seven are held. The sweep re-verifies one held release to tell a dead
-verifier from a label with nothing new, and it took the newest, a
-``RAWAXXX`` one, which U237's whole word needle rightly answers as a
-mismatch; every held release then counted as unconfirmed and 112 dropped
-plus 7 held was the 119 read.
-
-When every release the sweep turned down is a mismatch, the verifier
-answered each with another label's name, so the only question left is
-whether the needle still names anything of the label's, and a held release
-whose own line it names answers that. When the verifier gave no answer for
-some release, the held release re-verified is one the provider is READ for,
-one with no line first, since the real catalogue judges a release carrying a
-line from that line alone (round one of U277's review). These tests verify
-through the shipped catalogue's own read over a fake session, and drive both
-the guided ``--next`` and the sweep worker.
-
-R-1634 closed the case U277 left: with every held release carrying a line,
-the one re-verified was judged from it with no provider read, so a provider
-answering album reads with no line left the label saying nothing new. When a
-drop is not a mismatch, the held release is now read again from the provider
-through the catalogue's ``reread_release``, and the ``reverified`` line says
-whether an answer came from the provider or from the release's own line.
-
-NOTHING HERE REACHES A NETWORK OR ACCEPTS A RELEASE.
+The sweep re-verifies one held release to tell a dead verifier from a label
+with nothing new. When every drop is a mismatch, a held release whose own line
+names the label is asked; otherwise one the provider is read for, through the
+catalogue's ``reread_release`` (R-1634). These verify through the shipped
+catalogue's own read over a fake session, and drive both ``--next`` and the
+sweep worker. Nothing here reaches a network or accepts a release.
 """
 
 from __future__ import annotations
@@ -43,7 +21,7 @@ from cratekit.label import catalogue, sweep, sync_cli, tidal_catalogue
 from cratekit.label import registry as labels
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
-from tests.test_config import valid_data
+from tests.test_label_registry_verbs import install
 from tests.test_label_workers import queued_sweep
 
 LABEL = "Rawax"
@@ -52,15 +30,7 @@ SLUG = "rawax"
 
 @pytest.fixture
 def installed(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    data = valid_data(root)
-    data["profile"] = {"name": "full"}
-    resolved = config.from_dict(data)
-    config.save(resolved)
-    config.reset_cache()
+    resolved = install(tmp_path, monkeypatch)
     code, envelope = drive(["label", "registry", "add", LABEL])
     assert code == int(ExitCode.OK), envelope
     return resolved
@@ -182,9 +152,7 @@ def filed(cfg: config.Config) -> list[review.Item]:
         return list(review.list_items(store, queue=str(Queue.LABEL_RELEASE), limit=None))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The guided sync, ``--next``
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_live_shape_answers_nothing_new_rather_than_refusing(installed, monkeypatch):
@@ -304,13 +272,7 @@ def test_a_provider_that_answers_turns_the_same_shape_into_nothing_new(installed
 def test_an_unanswered_release_with_no_held_release_to_read_refuses_as_before(
     installed, monkeypatch
 ):
-    """Sitting 94's shape with three new releases the provider answers with no line.
-
-    No held release lacks a line. On U277 the newest held, a RAWAXXX one, was
-    judged from its line and answered mismatch; since R-1634 a held ``Rawax``
-    one is read again from the provider, which answers it with no line, so the
-    label still refuses, now naming the provider's answer.
-    """
+    """Sitting 94's shape with three new releases the provider answers with no line."""
     held = [*rawaxxx(), *rawax()]
     session = Session(degraded=True)
     bind(monkeypatch, [*(lineless(f"m{n}") for n in range(3)), *held, *others(112)], session=session)
@@ -335,9 +297,7 @@ def test_a_listing_with_no_release_held_asks_no_canary_and_says_none(installed, 
     assert [one for one in envelope["data"]["checks"] if "reverified" in one["key"]] == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The sweep worker, the go's twin of the refusal
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_worker_answers_the_live_shape_as_nothing_new(installed, monkeypatch):
@@ -385,9 +345,7 @@ def test_the_worker_refuses_a_degraded_provider_over_held_lines_that_name_the_la
     assert filed(installed) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The engine: which held release is the canary
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -460,12 +418,7 @@ def test_no_canary_is_asked_when_the_sweep_confirmed_something(installed, entry)
 def test_with_every_drop_a_mismatch_a_held_labels_line_is_asked_before_one_with_none(
     installed, entry
 ):
-    """Every drop carried another label's name, so the verifier is answering.
-
-    The held release with no line is newest, and its read credits nothing; the
-    held Rawax line below it is the one that shows the needle still names the
-    label's releases.
-    """
+    """Every drop carried another label's name, so the verifier is answering."""
     releases = [lineless("n1"), *rawax(), *others(3)]
     fake = LineCatalogue()
     found = sweep.list_for_label(
@@ -504,12 +457,7 @@ def test_with_a_drop_the_verifier_gave_no_answer_for_a_held_release_with_no_line
 def test_a_degraded_provider_refuses_though_the_newest_held_release_names_the_label(
     installed, monkeypatch
 ):
-    """The newest held line names the label and an older held release has none.
-
-    The read the new release failed on is the provider's, so the held release
-    the provider is read for is asked, not the newest, which its own line
-    would confirm with no provider call (round two of U277's review, P8).
-    """
+    """The newest held line names the label and an older held release has none."""
     held = [*rawax(), lineless("n0", "2024")]
     session = Session({"n0": "2024 Rawax"}, degraded=True)
     bind(monkeypatch, [lineless("m0"), *held, *others(3)], session=session)
@@ -523,9 +471,7 @@ def test_a_degraded_provider_refuses_though_the_newest_held_release_names_the_la
     assert session.reads == ["m0", "n0"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. R-1634: the release re-verified is read from the provider, never its line
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def every_line_shape(cfg: config.Config, monkeypatch, session: Session, *, also: list | None = None):
@@ -593,13 +539,7 @@ def test_a_provider_crediting_another_label_still_answers_nothing_new(installed,
 def test_a_provider_that_answers_with_no_credit_for_the_new_ones_answers_nothing_new(
     installed, monkeypatch
 ):
-    """The real nothing new kept: the provider reads the held release and credits the label.
-
-    The new releases genuinely carry no credit, the provider answers the held
-    one's read with its line, so the label has nothing new. The RAWAXXX holds
-    newest are passed over for a held ``Rawax`` line, which a healthy read
-    confirms, so R-1635's false refusal clears too.
-    """
+    """The real nothing new kept: the provider reads the held release and credits the label."""
     session = Session({one.id: "2025 Rawax" for one in rawax()})
     every_line_shape(installed, monkeypatch, session, also=rawaxxx())
 
@@ -628,11 +568,7 @@ def test_the_worker_answers_nothing_new_when_the_provider_reads_the_held_release
 
 
 def test_with_no_provider_read_to_hand_a_held_line_counts_as_unverified(installed, entry):
-    """A sweep handed only a verifier cannot read the provider for a held release with a line.
-
-    So it is not asked, and the listing counts as one that confirmed nothing,
-    rather than answering nothing new from the line.
-    """
+    """A sweep handed only a verifier cannot read the provider for a held release with a line."""
     releases = [lineless("m1"), *rawax(), *others(3)]
     fake = LineCatalogue(session=Session({"a1": "2025 Rawax"}))
     found = sweep.list_for_label(
@@ -697,9 +633,7 @@ def test_with_a_drop_given_no_credit_the_held_label_line_comes_before_another_ac
     assert fake._session.reads == ["m1", "a1"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The seam: ``TidalCatalogue.reread_release``
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Gone(Exception):
@@ -771,9 +705,7 @@ def test_a_forced_read_that_raises_fails_the_item_in_the_lookup_vocabulary(
     assert filed(installed) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. A held release the provider has withdrawn (round one of R-1634's review)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class PartlyGone(Session):
@@ -855,9 +787,7 @@ def test_a_lone_withdrawn_held_release_refuses(installed, entry):
     assert found.held_unconfirmed == 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. What the answer rested on, and where the forced read comes from
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_drop_a_mismatch_over_a_held_release_with_no_line_says_the_provider_was_read(
@@ -903,12 +833,7 @@ def test_a_source_handed_a_bare_verifier_beside_a_catalogue_forces_no_read(insta
 
 
 def test_a_withdrawn_held_release_is_never_replaced_by_another_acts(installed, monkeypatch):
-    """The only other held release is another act's: no second read, and the gone answer refuses.
-
-    Read, it would answer ``mismatch`` however healthy the provider is, and the
-    refusal would name that act's credit as the needle to set (round two of
-    R-1634's review).
-    """
+    """The only other held release is another act's: no second read, and the gone answer refuses."""
     session = PartlyGone({}, {"a1"})
     held = [release("a1", "2025", "Rawax"), release("p0", "2024", "2024 Planet Radio")]
     bind(monkeypatch, [lineless("m0"), *held, *others(3)], session=session)

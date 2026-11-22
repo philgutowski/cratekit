@@ -39,9 +39,7 @@ def _two_acts(argv: list[str], option: str = "apply") -> tuple[int, dict]:
     assert refused["cause"]["detail"]["gate"] == GATE
     assert refused["cause"]["detail"]["explicit"] is True
     run_id = refused["run_id"]
-    _exits(
-        ExitCode.OK, drive(["run", "decide", run_id, GATE, option, "--actor", "a-person"])
-    )
+    _exits(ExitCode.OK, drive(["run", "decide", run_id, GATE, option, "--actor", "a-person"]))
     return drive(["--run", run_id, *argv])
 
 
@@ -280,9 +278,7 @@ def test_a_track_the_year_will_not_take_keeps_the_dated_playlist(kompakt):
     assert _heard(cfg) == ["r3"]
 
 
-def test_a_removal_refused_part_way_names_the_adds_marks_nothing_and_a_resume_finishes(
-    kompakt,
-):
+def test_a_removal_refused_part_way_names_the_adds_marks_nothing_and_a_resume_finishes(kompakt):
     cfg, fake, account = kompakt
     folder_id = _made(cfg, fake, account, [_answer(["r3"], DAY)])
     ids = _ids(account, folder_id)

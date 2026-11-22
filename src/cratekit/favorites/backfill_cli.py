@@ -1,12 +1,9 @@
 """``crate favorites backfill``: every owned heart, put where a landing now puts them (U120, U146).
 
-The attended half of the favourites placement: every heart a hearts job
-reported whose track the library holds and All Favorites lacks is shown with
-its month and the count per month, and on approval added to All Favorites and
-its month in one guarded commit. It removes and moves nothing, so a second
-run over a placed library writes nothing. The order is :func:`spine.run`'s,
-the gate asked before the nothing to place check; the hearts are gathered
-once, since finding them walks the library.
+Each heart a hearts job reported whose track the library holds and All
+Favorites lacks is shown with its month, and on approval added to All
+Favorites and its month in one guarded commit; nothing is removed or moved.
+The order is :func:`spine.run`'s, the gate asked before the nothing to place check.
 
 Layer: modules.
 """
@@ -14,7 +11,7 @@ Layer: modules.
 from __future__ import annotations
 
 from cratekit.cli.output import Envelope, load_config
-from cratekit.core import active_taxonomy, analysis_store, config
+from cratekit.core import active_taxonomy
 from cratekit.favorites import backfill, colour, placement, spine
 
 #: The gate, explicit: a write to the live library's playlists.
@@ -39,20 +36,8 @@ def build(parser, entry) -> None:
     parser.set_defaults(_handler=favorites_backfill)
 
 
-def planned(cfg: config.Config, *, source: str) -> backfill.BackfillPlan:
-    """The plan over the library as it stands, through a handle opened to read and closed."""
-    with spine.handle(cfg) as db:
-        return backfill.plan(cfg, db, source=source)
-
-
-def written(
-    cfg: config.Config, approved: backfill.BackfillPlan, *, source: str
-) -> backfill.Backfilled:
-    """Apply the plan through a handle of this function's own, opened to write."""
-    with spine.handle(cfg, write=True) as db:
-        return backfill.apply(
-            cfg, db, approved, source=source, analysis_roots=analysis_store.watch_roots(cfg)
-        )
+#: The plan on a handle opened to read and closed, and the write on its own write handle.
+planned, written = spine.handles(backfill)
 
 
 def _notes(plan: backfill.BackfillPlan) -> list[dict[str, str]]:

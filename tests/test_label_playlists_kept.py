@@ -19,11 +19,7 @@ from tests.cli_drive import drive
 from tests.label_fakes import FakeTrack
 from tests.test_label_playlists import BUILD, LABEL, LABEL_ID, LISTED, _entry, _exits, _years
 from tests.test_label_playlists import kompakt as kompakt  # noqa: PLC0414 - fixture
-from tests.test_label_playlists_releases import (
-    RELEASES,
-    _decided,
-    _took,
-)
+from tests.test_label_playlists_releases import RELEASES, _decided, _took
 from tests.test_label_playlists_releases import (
     small_threshold as small_threshold,  # noqa: PLC0414 - fixture
 )
@@ -32,9 +28,7 @@ from tests.test_label_workers import installed as installed  # noqa: PLC0414 - f
 CRAWL = playlists_cli.CRAWL_GATE
 FULL = ["label", "playlists", LABEL]
 
-#: The releases a full build reads, in the order it reads them: the listed ones
-#: the fake confirms, newest year first, the undated one last. r6 is listed and
-#: not confirmed, so it is never read.
+#: The releases a full build reads, in order; r6 is not confirmed, so never read.
 READ = ["r3", "r4", "r2", "r1", "r7", "r5"]
 
 
@@ -77,9 +71,7 @@ def _age_every_read(by: timedelta, only: set[str] | None = None) -> None:
 
 
 # 1. A build the breaker stops part way resumes where it stopped
-def test_a_build_parked_part_way_resumes_and_reads_only_what_it_had_not(
-    kompakt, monkeypatch
-):
+def test_a_build_parked_part_way_resumes_and_reads_only_what_it_had_not(kompakt, monkeypatch):
     _cfg, fake, account = kompakt
     switch = _parks_after(monkeypatch, fake, 3)
     code, refused = drive(FULL)
@@ -115,9 +107,7 @@ def test_a_resumed_build_plans_what_a_build_in_one_go_plans(kompakt, monkeypatch
     }
 
 
-def test_a_build_refused_part_way_by_a_failed_read_keeps_the_reads_before_it(
-    kompakt, monkeypatch
-):
+def test_a_build_refused_part_way_by_a_failed_read_keeps_the_reads_before_it(kompakt, monkeypatch):
     _cfg, fake, account = kompakt
     # r1 is read fourth and fails as an outage, not as a release that is gone.
     real = fake.release_tracks
@@ -136,9 +126,7 @@ def test_a_build_refused_part_way_by_a_failed_read_keeps_the_reads_before_it(
     assert account._writes == 0
 
 
-def test_a_park_whose_reads_cannot_be_written_is_still_told_as_the_park(
-    kompakt, monkeypatch
-):
+def test_a_park_whose_reads_cannot_be_written_is_still_told_as_the_park(kompakt, monkeypatch):
     _cfg, fake, account = kompakt
     _parks_after(monkeypatch, fake, 3)
     _full_disk(monkeypatch)
@@ -187,8 +175,7 @@ def test_a_read_dated_in_the_future_is_read_again(kompakt):
 
 
 def test_the_age_is_seven_days():
-    # The recommendation on the decisions page, 2026-11-01. A change to it is
-    # Phillip's answer, and this pin is what moves with it.
+    # The decisions page's answer of 2026-11-01; this pin moves with it.
     assert kept_reads.KEPT_FOR == timedelta(days=7)
 
 
@@ -226,8 +213,7 @@ def test_a_kept_read_keeps_a_track_the_provider_will_not_play_out_of_the_year(ko
     unplayable.available = False
     fake.releases["r1"] = ([FakeTrack("t1"), unplayable], 2021)
     assert drive(FULL)[0] == int(ExitCode.DECISION_REQUIRED)
-    # U243: each track's words ride with it, so a removed track is judged
-    # without reading the release again.
+    # U243: each track's words ride with it, so a removal is judged unread.
     assert _stored()["reads"]["r1"]["tracks"] == [
         {"id": "t1", "available": True, "artist": "", "title": "Track t1"},
         {"id": "t2", "available": False, "artist": "", "title": "Track t2"},
@@ -292,9 +278,7 @@ def test_the_crawl_gate_counts_the_kept_reads_and_estimates_only_the_rest(
     assert unkept.kept == 0 and counted.plan()["digest"] == unkept.plan()["digest"]
 
 
-def test_a_resume_under_the_same_crawl_answer_is_not_stale(
-    kompakt, small_threshold, monkeypatch
-):
+def test_a_resume_under_the_same_crawl_answer_is_not_stale(kompakt, small_threshold, monkeypatch):
     _cfg, fake, _account = kompakt
     code, refused = drive(FULL)
     run_id = refused["run_id"]
@@ -303,8 +287,7 @@ def test_a_resume_under_the_same_crawl_answer_is_not_stale(
     assert drive(["--run", run_id, *FULL])[0] != int(ExitCode.OK)
     switch["after"] = None
     fake.releases_asked_for.clear()
-    # THE CRAWL DIGEST IS OVER THE LISTING, not over what is left to read, so
-    # the answer given before the park still holds for the run that resumes.
+    # THE CRAWL DIGEST IS OVER THE LISTING, so the answer holds on the resume.
     refused = _exits(ExitCode.DECISION_REQUIRED, drive(["--run", run_id, *FULL]))
     assert refused["cause"]["detail"]["gate"] == BUILD
     assert sorted(fake.releases_asked_for) == sorted(READ[3:])
@@ -346,9 +329,7 @@ def test_a_resume_under_the_same_crawl_answer_is_not_stale(
         ),
     ],
 )
-def test_a_store_that_cannot_be_read_refuses_before_any_release_is_read(
-    kompakt, written, problem
-):
+def test_a_store_that_cannot_be_read_refuses_before_any_release_is_read(kompakt, written, problem):
     _cfg, fake, account = kompakt
     path = kept_reads.path_for(LABEL_ID)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -407,9 +388,7 @@ def _full_disk(monkeypatch) -> list[str]:
     return tried
 
 
-def test_a_store_that_cannot_be_written_still_shows_the_plan_and_says_so(
-    kompakt, monkeypatch
-):
+def test_a_store_that_cannot_be_written_still_shows_the_plan_and_says_so(kompakt, monkeypatch):
     _cfg, fake, account = kompakt
     tried = _full_disk(monkeypatch)
     code, refused = drive(FULL)
@@ -423,8 +402,7 @@ def test_a_store_that_cannot_be_written_still_shows_the_plan_and_says_so(
         f"run could not be kept (OSError: [Errno 28] No space left on device), so a "
         f"later run reads them again"
     )
-    code, done = _decided(FULL, (BUILD, "apply"))
-    assert code == int(ExitCode.OK), done
+    done = _exits(ExitCode.OK, _decided(FULL, (BUILD, "apply")))
     assert [w["code"] for w in done["warnings"]] == ["label-playlists-reads-unkept"]
     assert account._writes > 0
     assert not kept_reads.path_for(LABEL_ID).exists()
@@ -527,9 +505,7 @@ def test_an_age_reads_in_minutes_then_hours_then_days(age, said):
 
 
 # 9. What the review of round 2 found unpinned
-def test_a_resumed_run_that_cannot_write_says_both_the_reuse_and_the_loss(
-    kompakt, monkeypatch
-):
+def test_a_resumed_run_that_cannot_write_says_both_the_reuse_and_the_loss(kompakt, monkeypatch):
     _cfg, fake, _account = kompakt
     switch = _parks_after(monkeypatch, fake, 3)
     assert drive(FULL)[0] != int(ExitCode.OK)
@@ -544,13 +520,10 @@ def test_a_resumed_run_that_cannot_write_says_both_the_reuse_and_the_loss(
     )
 
 
-def test_an_abort_after_a_failed_write_still_warns_the_reads_were_not_kept(
-    kompakt, monkeypatch
-):
+def test_an_abort_after_a_failed_write_still_warns_the_reads_were_not_kept(kompakt, monkeypatch):
     _cfg, _fake, account = kompakt
     _full_disk(monkeypatch)
-    code, done = _decided(FULL, (BUILD, "abort"))
-    assert code == int(ExitCode.OK), done
+    done = _exits(ExitCode.OK, _decided(FULL, (BUILD, "abort")))
     assert done["outcome"] == "no_op"
     assert [w["code"] for w in done["warnings"]] == ["label-playlists-reads-unkept"]
     assert account._writes == 0

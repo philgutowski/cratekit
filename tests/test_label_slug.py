@@ -1,10 +1,7 @@
 """R-381: a label slug transliterates before it folds, and the loader migrates.
 
-The producer is the carried-over registry of the fourth attended sitting, which
-stored ``Sueño`` as ``sue-o`` and ``Voll Schön`` as ``voll-sch-n`` while the
-source system keyed both as ``sueno`` and ``voll-schoen``. The stored documents
-here are written as raw JSON, the way that sitting left them, rather than
-through :meth:`RegistryStore.add`, which now produces the new identifier.
+Stored documents are written as raw JSON in the old identifiers, as a carried
+over registry left them, rather than through :meth:`RegistryStore.add`.
 """
 
 from __future__ import annotations
@@ -238,12 +235,7 @@ def test_an_old_identifier_reused_by_a_new_label_stops_following(cfg):
 
 
 def test_a_renamed_entry_under_the_old_fold_is_not_taken_by_its_old_name(cfg):
-    """``sue-o`` renamed to ``Sueño Recordings`` is not what ``add Sueño`` means.
-
-    The name decides, the way every other verb resolves one, so re-adding the
-    old spelling files it under its own slug rather than renaming the entry a
-    person already renamed.
-    """
+    """``sue-o`` renamed to ``Sueño Recordings`` is not what ``add Sueño`` means."""
     del cfg
     store_registry({"sue-o": "Sueño Recordings"})
 

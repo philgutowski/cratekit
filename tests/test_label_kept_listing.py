@@ -79,9 +79,7 @@ class Credited:
 
 
 def label_release(release_id: str, *, by: str, year: str = "2025") -> Release:
-    return Release(
-        release_id, copyright=f"(P) {year} {LABEL}", year=year, artists=[Credited(by)]
-    )
+    return Release(release_id, copyright=f"(P) {year} {LABEL}", year=year, artists=[Credited(by)])
 
 
 def roster_client(budget: Budget, *, acts: int = 4) -> CountedClient:
@@ -97,16 +95,17 @@ def roster_client(budget: Budget, *, acts: int = 4) -> CountedClient:
         for number in range(1, acts + 1)
     ]
     found = [label_release(f"{one.id}01", by=one.id) for one in artists]
-    return CountedClient(
-        budget,
-        artists=artists,
-        albums_by_query={LABEL: found},
-    )
+    return CountedClient(budget, artists=artists, albums_by_query={LABEL: found})
 
 
 @pytest.fixture
 def entry() -> labels.LabelEntry:
     return labels.LabelEntry(label_id="kept-recordings", name=LABEL)
+
+
+@pytest.fixture
+def budget() -> Budget:
+    return Budget()
 
 
 @pytest.fixture
@@ -133,8 +132,7 @@ def fresh_calls(entry) -> tuple[int, list[str]]:
 
 
 # A second ask asks nothing
-def test_a_second_listing_of_the_same_label_asks_the_provider_nothing(entry, clock):
-    budget = Budget()
+def test_a_second_listing_of_the_same_label_asks_the_provider_nothing(entry, clock, budget):
     first = adapter(roster_client(budget)).artist_for(entry)
     spent = budget.calls
     assert spent > 0
@@ -145,8 +143,7 @@ def test_a_second_listing_of_the_same_label_asks_the_provider_nothing(entry, clo
     assert "no listing call" in second.kept.said()
 
 
-def test_a_kept_release_reads_as_the_provider_object_did(entry, clock):
-    budget = Budget()
+def test_a_kept_release_reads_as_the_provider_object_did(entry, clock, budget):
     first = tidal_catalogue.listing.artist_releases(adapter(roster_client(budget)).artist_for(entry))
     second = tidal_catalogue.listing.artist_releases(adapter(roster_client(budget)).artist_for(entry))
     by_id = {one.id: one for one in first}
@@ -159,8 +156,7 @@ def test_a_kept_release_reads_as_the_provider_object_did(entry, clock):
         assert tidal_catalogue.artist_name(kept) == tidal_catalogue.artist_name(live)
 
 
-def test_a_kept_release_verifies_with_no_call(entry, clock):
-    budget = Budget()
+def test_a_kept_release_verifies_with_no_call(entry, clock, budget):
     client = roster_client(budget)
     adapter(client).artist_for(entry)
     roster = adapter(client).artist_for(entry)
@@ -192,8 +188,7 @@ def test_a_listing_stopped_at_the_ceiling_continues_with_only_the_unread_part(en
     assert "continued from an earlier run" in roster.kept.said()
 
 
-def test_a_ceiling_stop_inside_discovery_keeps_every_search_it_finished(entry, clock):
-    budget = Budget()
+def test_a_ceiling_stop_inside_discovery_keeps_every_search_it_finished(entry, clock, budget):
     budget.ceiling = 30
     with pytest.raises(jobs.Parked):
         adapter(roster_client(budget)).artist_for(entry)
@@ -206,15 +201,13 @@ def test_a_ceiling_stop_inside_discovery_keeps_every_search_it_finished(entry, c
 
 
 # The first run lists each artist once
-def test_the_first_listing_pages_each_discovered_artist_once(entry, clock):
-    budget = Budget()
+def test_the_first_listing_pages_each_discovered_artist_once(entry, clock, budget):
     adapter(roster_client(budget)).artist_for(entry)
     pages = [one for one in budget.asked if one.startswith(("albums ", "singles "))]
     assert len(pages) == len(set(pages)), pages
 
 
-def test_without_a_store_the_roster_still_lists_each_member_now():
-    budget = Budget()
+def test_without_a_store_the_roster_still_lists_each_member_now(budget):
     act = CountedArtist(budget, "Act", [label_release("1", by="1")], artist_id="1")
     roster = tidal_catalogue.LabelRoster([act])
     assert [one.id for one in tidal_catalogue.listing.artist_releases(roster)] == ["1"]
@@ -222,8 +215,7 @@ def test_without_a_store_the_roster_still_lists_each_member_now():
 
 
 # What makes it ask again
-def test_a_listing_older_than_the_kept_life_is_asked_again(entry, clock):
-    budget = Budget()
+def test_a_listing_older_than_the_kept_life_is_asked_again(entry, clock, budget):
     adapter(roster_client(budget)).artist_for(entry)
     whole = budget.calls
     clock[0] = NOW + kept_reads.KEPT_FOR
@@ -233,8 +225,7 @@ def test_a_listing_older_than_the_kept_life_is_asked_again(entry, clock):
     assert "older than" in roster.kept.said()
 
 
-def test_a_listing_just_inside_the_kept_life_is_still_answered(entry, clock):
-    budget = Budget()
+def test_a_listing_just_inside_the_kept_life_is_still_answered(entry, clock, budget):
     adapter(roster_client(budget)).artist_for(entry)
     whole = budget.calls
     clock[0] = NOW + kept_reads.KEPT_FOR - timedelta(minutes=1)
@@ -242,8 +233,7 @@ def test_a_listing_just_inside_the_kept_life_is_still_answered(entry, clock):
     assert budget.calls == whole
 
 
-def test_a_listing_kept_in_the_future_is_not_fresh(entry, clock):
-    budget = Budget()
+def test_a_listing_kept_in_the_future_is_not_fresh(entry, clock, budget):
     adapter(roster_client(budget)).artist_for(entry)
     whole = budget.calls
     clock[0] = NOW - timedelta(hours=1)
@@ -253,14 +243,9 @@ def test_a_listing_kept_in_the_future_is_not_fresh(entry, clock):
 
 @pytest.mark.parametrize(
     "changed",
-    [
-        {"match": "Kept Recordings Ltd"},
-        {"seed_artists": ("id:1",)},
-        {"name": "Kept Records"},
-    ],
+    [{"match": "Kept Recordings Ltd"}, {"seed_artists": ("id:1",)}, {"name": "Kept Records"}],
 )
-def test_a_label_entry_that_changed_reads_the_kept_listing_as_empty(entry, clock, changed):
-    budget = Budget()
+def test_a_label_entry_that_changed_reads_the_kept_listing_as_empty(entry, clock, changed, budget):
     adapter(roster_client(budget)).artist_for(entry)
     whole = budget.calls
     other = labels.LabelEntry(
@@ -288,9 +273,7 @@ def test_a_failed_listing_is_not_kept(entry, clock, monkeypatch):
         def get_ep_singles(self, limit=None, offset=0):
             raise RuntimeError("the provider failed")
     client = roster_client(budget)
-    client.artists[0] = Failing(
-        budget, "Act 1", [label_release("101", by="1")], artist_id="1"
-    )
+    client.artists[0] = Failing(budget, "Act 1", [label_release("101", by="1")], artist_id="1")
     roster = adapter(client).artist_for(entry)
     assert roster.unread  # the failure was recorded, not read as empty
     document = json.loads(kept_listing.path_for(entry.label_id).read_text())
@@ -298,8 +281,7 @@ def test_a_failed_listing_is_not_kept(entry, clock, monkeypatch):
     assert "1 get_ep_singles" not in document["listed"]
 
 
-def test_an_artist_with_no_identifier_is_listed_and_not_kept(entry, clock):
-    budget = Budget()
+def test_an_artist_with_no_identifier_is_listed_and_not_kept(entry, clock, budget):
     own = CountedArtist(budget, LABEL, [label_release("9", by="")])
     client = CountedClient(budget, artists=[own], albums_by_query={})
     adapter(client).artist_for(entry)
@@ -493,8 +475,7 @@ def test_a_listing_the_client_does_not_expose_stays_unread_on_every_run(entry, c
     assert "no listing call" not in second.kept.said()
 
 
-def test_a_kept_seed_the_provider_no_longer_has_is_unread_not_empty(entry, clock):
-    budget = Budget()
+def test_a_kept_seed_the_provider_no_longer_has_is_unread_not_empty(entry, clock, budget):
     client = roster_client(budget)
     seeded = labels.LabelEntry(label_id=entry.label_id, name=LABEL, seed_artists=("id:2",))
     adapter(client).artist_for(seeded)
@@ -523,8 +504,7 @@ def test_a_failed_artist_read_in_discovery_still_refuses_rather_than_skipping(en
         adapter(client).artist_for(entry)
 
 
-def test_the_listing_line_names_the_age_of_what_it_reused(entry, clock):
-    budget = Budget()
+def test_the_listing_line_names_the_age_of_what_it_reused(entry, clock, budget):
     adapter(roster_client(budget)).artist_for(entry)
     clock[0] = NOW + timedelta(days=2)
     roster = adapter(roster_client(budget)).artist_for(entry)

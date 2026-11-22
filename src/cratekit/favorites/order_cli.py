@@ -1,14 +1,9 @@
 """``crate favorites order``: the Favorites folder put in order newest first (U180).
 
-A one time verb: the folder that holds All Favorites is read, each
-playlist's position now and after shown, and on approval the positions are
-written in one commit: All Favorites on top, the months newest first,
-``Undated``, then everything else in its current relative order. Every
-landing, the backfill and the split make a month in its own slot since, so
-the verb need not run again.
-
-A FOLDER ALREADY IN ORDER ASKS NOTHING: it opens no gate and ends NO_OP. The
-order is :func:`spine.run`'s.
+A one time verb: each playlist's position now and after is shown, and on
+approval written in one commit, All Favorites on top, the months newest first,
+``Undated``, then the rest in their relative order. A folder already in order
+asks nothing. The order is :func:`spine.run`'s.
 
 Layer: modules.
 """
@@ -16,7 +11,7 @@ Layer: modules.
 from __future__ import annotations
 
 from cratekit.cli.output import Envelope, load_config
-from cratekit.core import active_taxonomy, analysis_store, config
+from cratekit.core import active_taxonomy
 from cratekit.favorites import order, placement, spine
 
 #: The gate, explicit: a write to the positions of the live library's playlists.
@@ -33,18 +28,8 @@ def build(parser, entry) -> None:
     parser.set_defaults(_handler=favorites_order)
 
 
-def planned(cfg: config.Config, *, source: str) -> order.OrderPlan:
-    """The plan over the library as it stands, through a handle opened to read and closed."""
-    with spine.handle(cfg) as db:
-        return order.plan(db, source=source)
-
-
-def written(cfg: config.Config, approved: order.OrderPlan, *, source: str) -> order.Ordered:
-    """Apply the plan through a handle of this function's own, opened to write."""
-    with spine.handle(cfg, write=True) as db:
-        return order.apply(
-            cfg, db, approved, source=source, analysis_roots=analysis_store.watch_roots(cfg)
-        )
+#: The plan on a handle opened to read and closed, and the write on its own write handle.
+planned, written = spine.handles(order, lambda _cfg, db, source: order.plan(db, source=source))
 
 
 def _done(plan: order.OrderPlan, done: order.Ordered) -> tuple[dict, dict[str, str]]:

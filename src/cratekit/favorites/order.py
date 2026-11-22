@@ -106,10 +106,6 @@ class OrderPlan:
         }
 
 
-def _kind(rank: tuple[int, int]) -> str:
-    return KINDS[rank[0]]
-
-
 def plan(db: Any, *, source: str) -> OrderPlan:
     """The folder's order against the rule, planned on this handle.
 
@@ -134,7 +130,7 @@ def plan(db: Any, *, source: str) -> OrderPlan:
         Child(
             row=str(row.ID),
             name=str(getattr(row, "Name", "") or ""),
-            kind=_kind(placement.rank(row, home.source_id)),
+            kind=KINDS[placement.rank(row, home.source_id)[0]],
             seq=placement.seq_of(row),
             slot=slot,
             at=at[str(row.ID)],
@@ -237,11 +233,7 @@ def order_violations(
                 f"{folder_id!r} at the planned position {slot}"
             )
     for key in sorted(set(before.playlists) & set(after.playlists)):
-        changed = {
-            name
-            for name, old, new in zip(p_cols, before.playlists[key], after.playlists[key])
-            if old != new
-        }
+        changed = spine.changed(p_cols, before.playlists[key], after.playlists[key])
         allowed = _SEATED_COLUMNS if key in planned else frozenset()
         if changed - allowed:
             violations.append(

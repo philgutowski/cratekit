@@ -1,15 +1,7 @@
 """U178: a registered label can carry its genre, so tag folder tags its files with it.
 
-Sitting 46 measured the cost this unit removes. ``tag folder`` settled 96 of 96
-PULS tracks and wrote no genre, because Traxsource and Bandcamp refused every
-search with a bot check, the general catalogue could not be asked without an
-ISRC, and Beatport had no hit. Phillip answered for all of them: every PULS
-track is ``Rominimal``. So a label in the registry carries a genre, checked
-against the taxonomy when it is set, and ``tag folder`` writes it onto every
-file of the label with no genre without asking any catalogue.
-
-Three layers, three sections: the registry and its verb, the engine's tier,
-and the sweep end to end through the real dispatcher and a resume.
+Three layers: the registry and its verb, the engine's tier, and the sweep end
+to end through the real dispatcher and a resume.
 """
 
 from __future__ import annotations
@@ -30,7 +22,7 @@ from cratekit.tagging import cli as tag_cli
 from cratekit.tagging.tag import LabelAnswer, SearchHit
 from tests._containers import synth_container
 from tests.cli_drive import drive
-from tests.test_config import valid_data
+from tests.test_label_registry_verbs import install
 from tests.test_tag_workers import bound, item_causes, resume_argv, tag_job
 from tests.test_tagging_engine import SPECIFIC, _jpeg, answering, plant
 
@@ -38,25 +30,14 @@ LABEL = "PULS"
 GENRE = "Rominimal"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch) -> config.Config:
     """A configured machine on the full profile, which turns the label verbs on,
     so the registry verb has a taxonomy to ask."""
-    library = tmp_path / "library"
-    (library / "Music").mkdir(parents=True)
-    (library / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
-    data = valid_data(library)
-    data["profile"] = {"name": "full"}
-    built = config.from_dict(data)
-    config.save(built)
-    config.reset_cache()
-    return built
+    return install(tmp_path, monkeypatch)
 
 
 @pytest.fixture(scope="module")
@@ -133,9 +114,7 @@ def never_published(hit, isrc):
     raise AssertionError("the general catalogue was offered a file")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The registry carries a label's genre, checked against the taxonomy
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_genre_the_taxonomy_routes_is_stored_as_typed_and_the_screen_says_where(cfg):
@@ -265,9 +244,7 @@ def test_a_registry_written_before_genres_existed_reads_with_none(cfg):
     assert held().genre is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The engine: a label's genre is a tier before the catalogue search
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_puls_file_with_no_genre_gets_its_labels_genre_with_no_searcher_called(folder, silence):
@@ -402,9 +379,7 @@ def test_no_seam_reads_no_label_and_tags_exactly_as_before(folder, silence):
     assert result.label == ""
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The sweep, through the real dispatcher and a resume
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def sweep(*argv: str) -> tuple[jobs.Job, dict]:
@@ -543,9 +518,7 @@ def test_a_label_typed_on_a_resume_is_still_said_to_be_unapplied(cfg, folder, si
     assert tag_cli.LABEL_ON_RESUME in [warning["code"] for warning in resumed["warnings"]]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. Review round one: what the first build reported and did not do
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def refusing_writes(monkeypatch) -> None:
@@ -657,11 +630,7 @@ def test_a_label_typed_on_a_resume_is_not_applied_and_says_so(cfg, folder, silen
 def test_a_file_its_own_label_answered_for_is_never_named_as_outranked(
     cfg, folder, silence, monkeypatch
 ):
-    """The mutation table's one zero, E9: the reset of the file's tag on the label path.
-
-    Only a labelled file with NO picture reaches the return that carries the
-    tag, since it is searched for its art, so that is the file this drives.
-    """
+    """The mutation table's one zero, E9: the reset of the file's tag on the label path."""
     registered("--genre", GENRE)
     registered("--genre", "Progressive House", name="Sudbeat")
     track(folder, silence, "a", label="Sudbeat", picture=False)
@@ -674,9 +643,7 @@ def test_a_file_its_own_label_answered_for_is_never_named_as_outranked(
     assert tag_cli.LABEL_TAG_OUTRANKED not in [warning["code"] for warning in resumed["warnings"]]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. A display name two labels share, R-1476
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def two_alphas() -> None:

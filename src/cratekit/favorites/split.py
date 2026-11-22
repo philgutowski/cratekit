@@ -92,18 +92,10 @@ def quarters(db: Any, home: placement.Home) -> tuple[Quarter, ...]:
 
 
 @dataclass(frozen=True, slots=True)
-class Dated:
-    """When one member was hearted, and who said so."""
-
-    hearted: datetime | None
-    dated_by: str
-
-
-@dataclass(frozen=True, slots=True)
 class Dating:
-    """Each member's date by content row, and what finding them read."""
+    """Each member's date and who said so by content row, and what finding them read."""
 
-    by_row: Mapping[str, Dated]
+    by_row: Mapping[str, tuple[datetime | None, str]]
     #: Whether the account was listed at all this run.
     listed: bool = False
     #: The provider's shortfall when the listing came back short (R-504).
@@ -126,22 +118,16 @@ def _tied(
     """
     if not rows or not wanted:
         return {}
-    index, suppresses, identify = view
-    resolved: list[tuple[datetime, list[Path]]] = []
-    for track, when in rows:
-        found = match.resolve_one(track, index, suppresses=suppresses, suppression_id=identify)
-        if found.state is match.MatchState.MATCHED:
-            resolved.append((when, [Path(path) for path in found.paths]))
-    paths = list(dict.fromkeys(path for _when, held in resolved for path in held))
+    found = backfill.resolved(view, [(when, track) for track, when in rows])
+    paths = list(dict.fromkeys(path for _when, path in found))
     if not paths:
         return {}
     by_path = native.content_ids_for(db, cfg, paths)
     dates: dict[str, datetime] = {}
-    for when, held in resolved:
-        for path in held:
-            content_id = by_path.get(str(path))
-            if content_id is not None and content_id in wanted and content_id not in dates:
-                dates[content_id] = when
+    for when, path in found:
+        content_id = by_path.get(str(path))
+        if content_id is not None and content_id in wanted and content_id not in dates:
+            dates[content_id] = when
     return dates
 
 
@@ -174,8 +160,8 @@ def date_members(cfg: config.Config, db: Any, content_ids: Iterable[str]) -> Dat
         return Dating(by_row={})
     view = match_cli.library_view(cfg)
     job_rows, unreadable = _job_rows(cfg)
-    by_row: dict[str, Dated] = {
-        content_id: Dated(when, BY_JOB)
+    by_row = {
+        content_id: (when, BY_JOB)
         for content_id, when in _tied(cfg, db, view, job_rows, wanted).items()
     }
     listed = False
@@ -191,9 +177,9 @@ def date_members(cfg: config.Config, db: Any, content_ids: Iterable[str]) -> Dat
             if (when := placeholders.parse_hearted(said.get(intake_cli.HEARTED))) is not None
         ]
         for content_id, when in _tied(cfg, db, view, account_rows, rest).items():
-            by_row[content_id] = Dated(when, BY_ACCOUNT)
+            by_row[content_id] = (when, BY_ACCOUNT)
     for content_id in wanted - set(by_row):
-        by_row[content_id] = Dated(None, BY_NONE)
+        by_row[content_id] = (None, BY_NONE)
     return Dating(by_row=by_row, listed=listed, withheld=withheld, unreadable=unreadable)
 
 
@@ -324,11 +310,10 @@ def _planned(
     in_quarters = _in_quarters(held_quarters)
     gone = taken_back(db, home, in_quarters)
     titles = _titles(db, in_quarters)
-    every: list[Member] = []
-    for content_id, names in in_quarters.items():
-        dated = dating.by_row.get(content_id, Dated(None, BY_NONE))
-        title = titles.get(content_id, "")
-        every.append(Member(content_id, title, tuple(names), dated.hearted, dated.dated_by))
+    every = [
+        Member(cid, titles.get(cid, ""), tuple(names), *dating.by_row.get(cid, (None, BY_NONE)))
+        for cid, names in in_quarters.items()
+    ]
     members = tuple(one for one in every if one.content_id not in gone)
     by_month: dict[str, list[str]] = {}
     for one in members:
@@ -375,7 +360,7 @@ def replan(db: Any, approved: SplitPlan, *, source: str) -> SplitPlan:
     """
     home = placement.resolve_home(db, source)
     dating = Dating(
-        by_row={one.content_id: Dated(one.hearted, one.dated_by) for one in approved.members},
+        by_row={one.content_id: (one.hearted, one.dated_by) for one in approved.members},
         listed=approved.listed,
         withheld=approved.withheld,
         unreadable=approved.unreadable,
@@ -503,13 +488,7 @@ def addition_violations(
                 f"named {name!r} under {parent!r}"
             )
     for key in sorted(set(before.playlists) & set(after.playlists)):
-        changed = {
-            name
-            for name, old, new in zip(p_cols, before.playlists[key], after.playlists[key])
-            if old != new
-        }
-        if not changed:
-            continue
+        changed = spine.changed(before.playlist_columns, before.playlists[key], after.playlists[key])
         allowed = (
             _BOOKKEEPING
             if key in wanted or str(before.playlists[key][parent_at]) in beside
@@ -738,7 +717,6 @@ __all__ = [
     "BY_ACCOUNT",
     "BY_JOB",
     "BY_NONE",
-    "Dated",
     "Dating",
     "Member",
     "Quarter",

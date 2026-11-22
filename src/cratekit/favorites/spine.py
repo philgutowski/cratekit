@@ -1,15 +1,10 @@
-"""What the favourites verbs and writers share, written once.
+"""What the four favourites verbs and their writers share, written once.
 
-THE FOUR VERBS ARE ONE SHAPE (split, backfill, order, refresh): the backup
-acknowledgment before anything is read (R-733), the plan on a handle opened
-to read and closed, the gate over the digested plan, the write on a handle
-opened with write intent that takes the plan again and refuses a digest that
-moved, then the read back. :func:`run` is that body; each verb hands it its
-differences as data, and its own order of the gate and the nothing to do check.
-
-THE WRITERS SHARE THEIR REFUSALS: an empty analysis watch, a digest that moved,
-a commit that reached rows its plan did not name, and a read back the database
-does not hold. Each keeps its own wording.
+:func:`run` is the verbs' one shape: the backup acknowledgment before anything
+is read (R-733), the plan on a handle opened to read and closed, the gate over
+the digested plan, the write on its own write handle, which takes the plan
+again and refuses a digest that moved, then the read back. The writers share
+their refusals, each in its own wording.
 
 Layer: modules.
 """
@@ -21,7 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
 from cratekit.cli.output import Envelope, declared_gate
-from cratekit.core import config, rb_writer, session
+from cratekit.core import analysis_store, config, rb_writer, session
 from cratekit.core.cause import Outcome, refuse
 from cratekit.write import trees
 
@@ -48,6 +43,26 @@ def handle(cfg: config.Config, *, write: bool = False) -> Iterator[Any]:
 def note(code: str, message: str) -> dict[str, str]:
     """One warning a verb carries."""
     return {"code": code, "message": message}
+
+
+def handles(engine: Any, plan: Callable[..., Any] | None = None) -> tuple[Callable, Callable]:
+    """A verb's ``planned`` and ``written``: ``engine``'s plan and apply, each on its own handle.
+
+    ``plan(cfg, db, source)`` stands in for ``engine.plan`` when its signature differs.
+    """
+
+    def planned(cfg: config.Config, *, source: str) -> Any:
+        """The plan over the library as it stands, through a handle opened to read and closed."""
+        with handle(cfg) as db:
+            return plan(cfg, db, source) if plan else engine.plan(cfg, db, source=source)
+
+    def written(cfg: config.Config, approved: Any, *, source: str) -> Any:
+        """Apply the plan through a handle of this function's own, opened to write."""
+        with handle(cfg, write=True) as db:
+            roots = analysis_store.watch_roots(cfg)
+            return engine.apply(cfg, db, approved, source=source, analysis_roots=roots)
+
+    return planned, written
 
 
 def notes(*said: tuple[Any, str, str]) -> list[dict[str, str]]:
@@ -166,6 +181,11 @@ def confined(
             origin=origin,
             detail={"violations": violations},
         )
+
+
+def changed(columns: Iterable[str], before: Iterable[Any], after: Iterable[Any]) -> set[str]:
+    """The columns one row's two readings differ in."""
+    return {name for name, old, new in zip(columns, before, after) if old != new}
 
 
 def verified(done: Any, said: str, origin: tuple[str, str], *, commits: str = "commit") -> None:

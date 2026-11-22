@@ -1,18 +1,9 @@
 """R-790: a label sweep offers a window of its newest releases, not its catalogue.
 
-The first sweep of 32 favourite labels filed 2,832 releases at a cap of four
-hundred each, back catalogue included, and nothing said which were new. These
-tests drive the window through the real dispatcher, queue and worker where the
-property is about what a person is handed, and through the sweep engine where
-it is about which release takes a place.
-
-NO DATE FLOOR, ANYWHERE (KTD11). A later sweep files only what is new because
-the releases it already offered hold their places in the window, and the
-watermark tests below advance every watermark past every release to prove
-nothing reads one.
-
-NOTHING HERE ACCEPTS A RELEASE. Every filed item is asserted undecided, because
-a download follows only a decision the author makes in review.
+Driven through the real dispatcher, queue and worker where the property is
+what a person is handed, and through the sweep engine where it is which
+release takes a place. No date floor anywhere (KTD11): the watermark tests
+advance every watermark past every release. Nothing here accepts a release.
 """
 
 from __future__ import annotations
@@ -31,25 +22,11 @@ from cratekit.label import registry as labels
 from cratekit.sync import artifacts, run, watermarks
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
-from tests.test_config import valid_data
+from tests.test_label_registry_verbs import installed as installed  # noqa: PLC0414
 from tests.test_label_workers import queued_sweep
 
 LABEL = "Anjunadeep"
 SLUG = "anjunadeep"
-
-
-@pytest.fixture
-def installed(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    data = valid_data(root)
-    data["profile"] = {"name": "full"}
-    resolved = config.from_dict(data)
-    config.save(resolved)
-    config.reset_cache()
-    return resolved
 
 
 def catalogue_of(count: int, *, newest: int = 2026) -> list[FakeRelease]:
@@ -87,9 +64,7 @@ def register(*argv: str) -> None:
     assert code == int(ExitCode.OK), envelope
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. Through the worker: what a person is handed
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_first_sweep_files_the_default_ten_and_counts_the_other_forty(installed, monkeypatch):
@@ -207,9 +182,7 @@ def test_an_item_filed_before_runs_were_recorded_groups_as_an_unrecorded_run(ins
     assert row == {"run": None, "items": 1, "labels": 1, "beyond": None, "held": 0}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The engine: which release takes a place
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -321,9 +294,7 @@ def test_a_watermark_past_every_release_still_offers_the_unowned_unoffered_ones(
     assert source.listings[0][1].beyond == 2
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U238: what lies past the window is counted by the label's own copyright line
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def mixed_roster(label: str = LABEL) -> list[FakeRelease]:
@@ -432,9 +403,7 @@ def test_the_first_run_stays_the_filing_run_when_an_open_item_is_offered_again(i
     assert again.verdict is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The settings and the grouping refuse what they cannot mean
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("value", [0, -3, True, "10", 2.5])
@@ -492,9 +461,7 @@ def test_a_queue_with_no_grouping_refuses_rather_than_listing_nothing(installed)
     assert envelope["cause"]["reason"] == "review-selection-invalid"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. What the review of this unit found
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def item_causes(job_id: str) -> dict[str, str | None]:

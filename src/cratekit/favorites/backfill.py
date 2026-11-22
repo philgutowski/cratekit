@@ -139,13 +139,17 @@ def owned_paths(
     """
     if not rows:
         return []
-    index, suppresses, identify = match_cli.library_view(cfg)
-    found: list[tuple[account_playlists.HeartRow, Path]] = []
-    for row in rows:
-        resolved = match.resolve_one(row.wanted, index, suppresses=suppresses, suppression_id=identify)
-        if resolved.state is not match.MatchState.MATCHED:
-            continue
-        found.extend((row, Path(said)) for said in resolved.paths)
+    return resolved(match_cli.library_view(cfg), [(row, row.wanted) for row in rows])
+
+
+def resolved(view: tuple[Any, Any, Any], wanted: Iterable[tuple[Any, match.Wanted]]) -> list:
+    """Each ``(key, track)`` with every library file the one match rule resolves the track to."""
+    index, suppresses, identify = view
+    found: list[tuple[Any, Path]] = []
+    for key, track in wanted:
+        hit = match.resolve_one(track, index, suppresses=suppresses, suppression_id=identify)
+        if hit.state is match.MatchState.MATCHED:
+            found.extend((key, Path(said)) for said in hit.paths)
     return found
 
 

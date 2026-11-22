@@ -1,10 +1,8 @@
 """The favourites colour read against a real open, and a library that is not there.
 
-The suite's autouse stub replaces ``read_pink_track_ids`` everywhere else, so
-every test here is marked ``real_pink_read`` and reaches ``rb_writer``. A
-missing database must stop both verbs with the open's own cause, never an
-internal error, and under ``crate sync all`` it is the favourites source's
-refusal while the rest of the pass still runs.
+Marked ``real_pink_read`` past the suite's autouse stub. A missing database
+stops both verbs with the open's own cause; under ``crate sync all`` it is the
+favourites source's refusal while the rest of the pass still runs.
 """
 
 from __future__ import annotations
@@ -54,9 +52,7 @@ def test_a_missing_database_is_the_favourites_refusal_under_sync_all(
 
     code, envelope = drive(["sync", "all", "--export", str(exported)])
 
-    # EVERY SOURCE REFUSES ON ITS OWN HERE, no provider session being stored, so
-    # the pass ends refused and names each source's reason. The favourites
-    # source's is the open's own cause, and the hearts listing was still asked.
+    # Every source refuses on its own here, the favourites one with the open's own cause.
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] != "internal-error", envelope
     sources = envelope["cause"]["detail"]["sources"]

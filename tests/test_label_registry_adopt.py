@@ -1,14 +1,7 @@
-"""U100: an accepted harvested label is added to the registry.
+"""U100: an accepted harvested label is added to the registry (R-419).
 
-R-419 is the reason this file exists. Harvest offered labels into review and
-nothing read the verdict, so every approved label was typed again into
-``label registry add``.
-
-THE ITEMS ARE OFFERED BY THE REAL PRODUCER. ``harvest.from_tracks`` writes them
-with a verifier that confirms every name, which is the provider seam and nothing
-else, and they are answered through ``review resolve`` on the real dispatcher.
-The registry is read back through ``label registry list``, so a test cannot pass
-over an adopt that wrote a file ``list`` does not show.
+Items are offered by the real producer, ``harvest.from_tracks``, answered
+through ``review resolve`` and read back through ``label registry list``.
 """
 
 from __future__ import annotations
@@ -25,21 +18,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.label import harvest
 from cratekit.label import registry as labels
 from tests.cli_drive import drive
-from tests.test_config import valid_data
-
-
-@pytest.fixture
-def installed(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    data = valid_data(root)
-    data["profile"] = {"name": "full"}
-    resolved = config.from_dict(data)
-    config.save(resolved)
-    config.reset_cache()
-    return resolved
+from tests.test_label_registry_verbs import installed as installed  # noqa: PLC0414
 
 
 def offer(cfg: config.Config, *names: str) -> dict[str, str]:
@@ -95,12 +74,7 @@ def test_an_accepted_label_is_added_once_and_a_second_run_adds_none(installed):
 
 
 def test_an_adopt_that_adds_nothing_does_not_rewrite_the_registry(installed):
-    """A rewrite of equal entries is not harmless: ``recognize`` drops what it cannot read.
-
-    The second run in the test above leaves equal bytes whether or not it
-    wrote, so it cannot tell the two apart. A record the loader skips can: a
-    save of what was loaded discards it.
-    """
+    """A rewrite of equal entries is not harmless: ``recognize`` drops what it cannot read."""
     path = config.state_path("label_intent")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -175,13 +149,7 @@ def test_a_label_held_under_a_folded_name_is_reported_not_duplicated(installed, 
 
 
 def test_a_carried_over_accented_label_is_not_filed_twice(installed):
-    """R-381: ``Sueño`` carried over under the source system's ``sueno``.
-
-    Written before R-381 closed, when the name slugged to ``sue-o`` and a
-    presence check on the slug alone filed a second entry. The slug now matches,
-    and the test still holds the name fold. Offered decomposed, so the name also
-    has to fold through NFC to be recognised.
-    """
+    """R-381: ``Sueño`` carried over under the source system's ``sueno``."""
     store = labels.RegistryStore()
     store.update(
         lambda current: current.update(
