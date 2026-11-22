@@ -313,6 +313,9 @@ def test_a_second_mint_replaces_the_record_and_moves_the_window(installed):
     on_disk = session.read_acknowledgment(installed)
     assert on_disk.actor == session.derive_actor()
     assert on_disk.expires_at.isoformat() == second["data"]["summary"]["expires_at"]
+    # The report says what the person was shown, read off the record written.
+    assert second["data"]["summary"]["shown"] == [entry.to_json() for entry in on_disk.shown]
+    assert second["data"]["summary"]["shown"], "the mint reported no ages"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

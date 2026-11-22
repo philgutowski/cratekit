@@ -943,6 +943,13 @@ def test_an_unsupported_container_is_refused_rather_than_attempted(tmp_path):
     assert excinfo.value.refusal is mastering.Refusal.SOURCE_UNSUPPORTED
 
 
+def test_a_recording_is_read_whatever_the_case_of_its_suffix(tmp_path):
+    """A recorder that names its files in capitals is not refused as a stranger."""
+    loud = tmp_path / "REC001.WAV"
+    loud.write_bytes(b"")
+    mastering._check_source(loud)
+
+
 def test_joining_split_parts_quotes_a_path_containing_an_apostrophe(tmp_path):
     """ffmpeg's concat list unescapes a doubled quote; a raw one truncates."""
     part = tmp_path / "it's part one.wav"
@@ -1030,6 +1037,46 @@ def test_the_agent_alone_refuses_and_an_unrelated_process_named_rekordbox_does_n
     assert plan.portion(backup_facts.Portion.DATABASE).refusal is backup.Refusal.REKORDBOX_RUNNING
     plan = backup.plan_backup(cfg, process_lister=lambda: ("rekordbox-notes-editor",))
     assert plan.portion(backup_facts.Portion.DATABASE).will_run is True
+
+
+def test_the_engine_helpers_keep_their_shapes(cfg):
+    """A warning's keys in envelope order, a refused portion never runs, the log
+    reader keeps only objects, and each destination is required up front."""
+    import dataclasses
+
+    assert list(backup._warning("code", "message")) == ["code", "message"]
+    refused = backup.PortionPlan(
+        portion=backup_facts.Portion.FILES,
+        refusal=backup.Refusal.REKORDBOX_RUNNING,
+        kind=backup.KIND_SKIPPED,
+    )
+    assert refused.will_run is False
+    assert backup._logged('{"level": "info"}\n[1]\n2\nnot json\n') == [{"level": "info"}]
+    for key in ("dest", "archive_root", "db_dest_root"):
+        bare = dataclasses.replace(cfg, backup=dataclasses.replace(cfg.backup, **{key: ""}))
+        with pytest.raises(backup.BackupRefused) as excinfo:
+            backup._require_destinations(bare)
+        assert excinfo.value.refusal is backup.Refusal.DESTINATION_NOT_CONFIGURED
+        assert f"backup.{key}" in excinfo.value.detail
+
+
+def test_the_quick_walk_reads_hashes_globs_and_names_as_rclone_does():
+    """Two readings agree only with their hashes, an exclude reads as rclone's
+    glob at the root or at any depth, and a decomposed name is found."""
+    from cratekit.modules.tools import backup_record
+
+    one = backup_record.Entry(size=1, mtime_ns=2, sha256="a")
+    assert one.agrees(backup_record.Entry(size=1, mtime_ns=2, sha256="a"))
+    assert not one.agrees(backup_record.Entry(size=1, mtime_ns=2, sha256="b"))
+
+    matcher = backup_record._excludes(["/top/**", "*.tmp", "cache/**"])
+    assert matcher.file("top/x/y") and not matcher.file("sub/top/x")
+    assert matcher.file("a/b/c.tmp") and matcher.file("deep/cache/f")
+    assert matcher.directory("top") and matcher.directory("deep/cache")
+    assert not matcher.directory("sub/top")
+
+    composed, decomposed = "café.wav", "café.wav"
+    assert backup_record.first_uncomposed([composed, decomposed]) == decomposed
 
 
 def test_the_backup_source_reads_no_environment_and_spells_no_remote():
