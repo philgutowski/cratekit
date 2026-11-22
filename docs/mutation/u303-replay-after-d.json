@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22934,
   "baseline_exit": 1,
-  "pytest_runs": 155,
+  "pytest_runs": 170,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -4754,6 +4754,545 @@
       "source": {
         "table": "u284.json",
         "id": "T2_pass_stop_unsaid"
+      }
+    },
+    {
+      "id": "u319.M10_sync_stop_drops_the_short_path",
+      "description": "tail: the step crate sync land prints names one path again",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ddcffd992a3f8ede",
+      "subset": [
+        "tests/test_drift.py",
+        "tests/test_rekordbox_visit_skill.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 183,
+      "baseline_collected": 183,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_drift.py::test_the_sync_stop_offers_the_auto_analysis_path_after_the_selections_it_stands_in_for"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    f\"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}; \"\n    f\"{AUTO_ANALYSIS_STEP}\",",
+      "new": "    f\"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}\",",
+      "source": {
+        "table": "u319.json",
+        "id": "M10_sync_stop_drops_the_short_path"
+      }
+    },
+    {
+      "id": "u168.C3_default_actor_cli",
+      "description": "_actor: default to cli whatever the terminal",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b4d3e3229aae9471",
+      "subset": [
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 8,
+      "baseline_collected": 8,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_decide_continue.py::test_a_continuation_that_refuses_answers_with_its_refusal_and_keeps_the_answer",
+        "tests/test_run_decide_continue.py::test_a_session_answers_and_mints_in_one_command_with_no_actor_given",
+        "tests/test_run_decide_continue.py::test_with_no_terminal_and_no_actor_the_answer_is_the_sessions"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if session.has_controlling_terminal():\n        return TERMINAL_ACTOR, \"a terminal, and no --actor\"",
+      "new": "    if True:\n        return TERMINAL_ACTOR, \"a terminal, and no --actor\"",
+      "source": {
+        "table": "u168.json",
+        "id": "C3_default_actor_cli"
+      }
+    },
+    {
+      "id": "u168.C4_default_actor_session",
+      "description": "_actor: default to session even at a terminal",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2cfe968353a8a009",
+      "subset": [
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 8,
+      "baseline_collected": 8,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_decide_continue.py::test_at_a_terminal_and_no_actor_the_answer_is_the_command_lines"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if session.has_controlling_terminal():\n        return TERMINAL_ACTOR, \"a terminal, and no --actor\"",
+      "new": "    if False:\n        return TERMINAL_ACTOR, \"a terminal, and no --actor\"",
+      "source": {
+        "table": "u168.json",
+        "id": "C4_default_actor_session"
+      }
+    },
+    {
+      "id": "u168.C5_given_actor_ignored",
+      "description": "_actor: ignore an actor given with --actor",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3dbad7fb6a15fef7",
+      "subset": [
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 8,
+      "baseline_collected": 8,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_decide_continue.py::test_an_actor_given_is_recorded_whatever_the_terminal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if given is not None:\n        return given, \"given with --actor\"",
+      "new": "    if False:\n        return given, \"given with --actor\"",
+      "source": {
+        "table": "u168.json",
+        "id": "C5_given_actor_ignored"
+      }
+    },
+    {
+      "id": "u168.C6_no_argv_continues",
+      "description": "_continued: skip the refusal for a run that keeps no command line",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eb8fcc3719fdf5d8",
+      "subset": [
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 8,
+      "baseline_collected": 8,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_decide_continue.py::test_a_run_that_keeps_no_command_line_is_refused_with_the_answer_recorded"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if state.argv is None:\n        raise CratekitError(",
+      "new": "    if state.argv is None and False:\n        raise CratekitError(",
+      "source": {
+        "table": "u168.json",
+        "id": "C6_no_argv_continues"
+      }
+    },
+    {
+      "id": "u168.C7_continue_without_run",
+      "description": "_continued: dispatch the verb again without --run, as a new run",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "55da5d5fda25b631",
+      "subset": [
+        "tests/test_run_decide_continue.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1006,
+      "baseline_collected": 1006,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_run_decide_continue_resumes_the_owning_verb_with_its_own_arguments",
+        "tests/test_run_decide_continue.py::test_a_session_answers_and_mints_in_one_command_with_no_actor_given"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    envelope = cli.dispatch([\"--run\", state.run_id, *state.argv], stderr=sys.stderr)",
+      "new": "    envelope = cli.dispatch([*state.argv], stderr=sys.stderr)",
+      "source": {
+        "table": "u168.json",
+        "id": "C7_continue_without_run"
+      }
+    },
+    {
+      "id": "u170.R10_moved_guard",
+      "description": "_retire_one: record on a gate that moved since the plan",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ff11c50042c97dc2",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1705,
+      "baseline_collected": 1705,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_a_gate_answered_after_the_plan_was_read_is_said_and_not_answered_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if state.open_gate != one.gate:",
+      "new": "    if False:",
+      "source": {
+        "table": "u170.json",
+        "id": "R10_moved_guard"
+      }
+    },
+    {
+      "id": "u170.R11_digest_ids_only",
+      "description": "retire: digest the planned run ids alone, not when each went idle",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c4fa1fa6f452ebb3",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1705,
+      "baseline_collected": 1705,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_answer_is_stale_once_a_planned_run_is_resumed_even_if_it_stays_old"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    plan = {\"digest\": digest_of(items), \"count\": len(items), \"items\": items}",
+      "new": "    plan = {\"digest\": digest_of([one[\"run_id\"] for one in items]), \"count\": len(items), \"items\": items}",
+      "source": {
+        "table": "u170.json",
+        "id": "R11_digest_ids_only"
+      }
+    },
+    {
+      "id": "u170.R12_default_week",
+      "description": "retire: default threshold fixed at seven days, not the file's",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b3c97e8e57c8319b",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1705,
+      "baseline_collected": 1705,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_retire_reads_its_default_threshold_from_the_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        age = timedelta(days=config.load().reports.open_gate_stale_days)",
+      "new": "        age = timedelta(days=7)",
+      "source": {
+        "table": "u170.json",
+        "id": "R12_default_week"
+      }
+    },
+    {
+      "id": "u170.R1_zero_days",
+      "description": "older_than: accept 0d",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0c1f3bc7b5d82731",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1705,
+      "baseline_collected": 1705,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_age_that_is_not_a_whole_number_of_days_is_a_usage_error[0d]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_AGE = re.compile(r\"^([1-9][0-9]*)d$\")",
+      "new": "_AGE = re.compile(r\"^([0-9]+)d$\")",
+      "source": {
+        "table": "u170.json",
+        "id": "R1_zero_days"
+      }
+    },
+    {
+      "id": "u170.R2_ceiling",
+      "description": "older_than: the ceiling one day higher",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fb14fd95f4f40a6a",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1705,
+      "baseline_collected": 1705,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_age_that_is_not_a_whole_number_of_days_is_a_usage_error[3651d]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not match or days > config.MAX_OPEN_GATE_STALE_DAYS:",
+      "new": "    if not match or days > config.MAX_OPEN_GATE_STALE_DAYS + 1:",
+      "source": {
+        "table": "u170.json",
+        "id": "R2_ceiling"
+      }
+    },
+    {
+      "id": "u170.R3_own_run",
+      "description": "old_gates: plan the asking run too",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0dcce679abf7c81e",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1705,
+      "baseline_collected": 1705,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_retire_never_retires_its_own_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if path.stem == skip:",
+      "new": "        if False:",
+      "source": {
+        "table": "u170.json",
+        "id": "R3_own_run"
+      }
+    },
+    {
+      "id": "u170.R4_unreadable_dropped",
+      "description": "old_gates: drop an unreadable record without saying so",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "77e96199a4bc35c7",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1705,
+      "baseline_collected": 1705,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_a_record_retire_cannot_read_is_said_and_not_dropped"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            unreadable.append(path.stem)",
+      "new": "            pass",
+      "source": {
+        "table": "u170.json",
+        "id": "R4_unreadable_dropped"
+      }
+    },
+    {
+      "id": "u170.R5_answers_apply",
+      "description": "_retire_one: record the gate's first option, apply, instead of abort",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9d0efc9e9e3ea213",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1705,
+      "baseline_collected": 1705,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_explicit_gate_is_retired_with_abort_and_never_apply",
+        "tests/test_run_retire.py::test_retire_asks_once_over_every_old_gate_and_answers_only_those"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    gates.record(state, spec, gates.RETIRE_OPTION, actor=SESSION_ACTOR)",
+      "new": "    gates.record(state, spec, spec.options[0], actor=SESSION_ACTOR)",
+      "source": {
+        "table": "u170.json",
+        "id": "R5_answers_apply"
+      }
+    },
+    {
+      "id": "u170.R6_actor_cli",
+      "description": "_retire_one: record the abort as cli instead of session",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c915c0756c89cdd",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1705,
+      "baseline_collected": 1705,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_explicit_gate_is_retired_with_abort_and_never_apply",
+        "tests/test_run_retire.py::test_retire_asks_once_over_every_old_gate_and_answers_only_those"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    gates.record(state, spec, gates.RETIRE_OPTION, actor=SESSION_ACTOR)",
+      "new": "    gates.record(state, spec, gates.RETIRE_OPTION, actor=TERMINAL_ACTOR)",
+      "source": {
+        "table": "u170.json",
+        "id": "R6_actor_cli"
       }
     }
   ],
