@@ -206,3 +206,43 @@ surface = "user"
 tests = ["tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
 old = '''            artist, title, fetch=touch, pacer=pacer, declared=declared, track=track, query=_query'''
 new = '''            artist, title, fetch=touch, pacer=pacer, declared=declared, track=track, query=lambda *parts: " ".join(parts)'''
+
+[[rows]]
+id = "C1_named_no_suffix"
+description = "What P2 does hold: plan_verbs.named drops the 'and N more' clause altogether, so a sentence past the cap never says names were left out"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+pairs_with = "P2_named_and_more"
+tests = ["tests/test_tag_remap.py", "tests/test_tag_suggest.py", "tests/test_tag_guess.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_shared_homes.py"]
+old = '''    return shown + (f" and {more} more" if more > 0 else "")'''
+new = '''    return shown'''
+
+[[rows]]
+id = "C2_kept_ignores_unasked"
+description = "What P5 does hold: KeptCatalogue never asks again a kept row that passed over a catalogue, so a token recorded later is never used the same day"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+pairs_with = "P5_unasked_discogs"
+tests = ["tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py"]
+old = '''        return not set(kept.passed_over) <= self._unasked'''
+new = '''        return False'''
+
+[[rows]]
+id = "C3_applied_written_zero"
+description = "What P8 does hold: plan_verbs.applied reports nothing written after a write, so a whole write reads as none"
+file = "src/cratekit/tagging/plan_verbs.py"
+surface = "user"
+pairs_with = "P8_applied_read_back"
+tests = ["tests/test_tag_rows.py", "tests/test_tag_remap.py", "tests/test_tag_suggest.py"]
+old = '''    data["totals"] = {**data["totals"], "written": written.written, "read_back": written.read_back}'''
+new = '''    data["totals"] = {**data["totals"], "written": 0, "read_back": written.read_back}'''
+
+[[rows]]
+id = "C4_reports_reversed"
+description = "What R1 does hold: tagging.artifacts.committed reads the reports last item first, so the sweep's summary lists its files out of item order"
+file = "src/cratekit/tagging/artifacts.py"
+surface = "user"
+pairs_with = "R1_reports_in_item_order"
+tests = ["tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_shared_homes.py"]
+old = '''    return _REPORTS.committed(cfg, job_id, ordered=_in_item_order)'''
+new = '''    return _REPORTS.committed(cfg, job_id, ordered=lambda paths: _in_item_order(paths)[::-1])'''
