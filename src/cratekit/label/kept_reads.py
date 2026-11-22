@@ -82,31 +82,19 @@ class Kept:
         )
 
 
-def unusable(
-    reason: str, origin: tuple[str, ...], path: Path, what: str, *, kept: str, held: str,
-    written: str, again: str,
-) -> CratekitError:
-    """The refusal of a kept store that cannot be read, both stores' one shape."""
+def _unusable(path: Path, what: str) -> CratekitError:
     return refuse(
-        reason,
-        f"the {kept} kept for this label at {path.name} could not be read "
-        f"({what}), so {held} is unknown; nothing was asked of the provider and "
-        f"nothing was written{written}",
+        UNUSABLE,
+        f"the release reads kept for this label at {path.name} could not be read "
+        f"({what}), so which releases were already read is unknown; nothing was "
+        f"asked of the provider and nothing was written to the account",
         steps=(
-            f"delete {path} to {again} from the start; it holds provider answers only "
-            f"and nothing else is lost",
+            f"delete {path} to read the label's catalogue again from the start; "
+            f"it holds provider answers only and nothing else is lost",
         ),
         scope=Scope.RUN,
-        origin=origin,
+        origin=_ORIGIN,
         detail={"problem": what, "path": str(path)},
-    )
-
-
-def _unusable(path: Path, what: str) -> CratekitError:
-    return unusable(
-        UNUSABLE, _ORIGIN, path, what, kept="release reads",
-        held="which releases were already read", written=" to the account",
-        again="read the label's catalogue again",
     )
 
 
