@@ -172,17 +172,14 @@ def refused(transport: FakeTransport, **kwargs):
 # Signing and the request
 
 
-def test_the_signature_is_the_protocols_hmac_over_the_line_joined_tuple():
+def test_the_signature_is_the_protocols_hmac_and_the_request_never_carries_the_signing_key():
     line = "\n".join(["POST", "/v1/identify", "an-access-key", "audio", "1", "1700000000"])
     expected = base64.b64encode(hmac.new(b"a-signing-key", line.encode(), hashlib.sha1).digest()).decode()
     # The pair arrives through the fixture rather than as keyword literals,
     # because the repository scan reads ``access_key="..."`` as a credential.
     access, signing = fixed_credentials()
     assert acrcloud.sign(access_key=access, timestamp="1700000000", signing_key=signing) == expected
-
-
-def test_the_request_carries_the_access_key_and_never_the_signing_key():
-    access, signing = fixed_credentials()
+    # The request carries the access key and never the signing key.
     request = acrcloud.request_for(
         b"pcm", access_key=access, signing_key=signing, host=HOST, timestamp="1700000000"
     )
@@ -210,15 +207,13 @@ def test_the_request_carries_the_access_key_and_never_the_signing_key():
         (37.0, (0, 25)),
         (60.0, (0, 25)),
         (300.0, tuple(range(0, 289, 25))),
+        (7200.0, tuple(range(0, 288 * 25, 25))),
+        (7199.5, tuple(range(0, 288 * 25, 25))),
     ],
 )
-def test_the_grid_is_a_function_of_the_duration_alone(duration_s, offsets):
+def test_the_grid_is_a_function_of_the_duration_alone_and_counted_without_building_it(duration_s, offsets):
     assert acrcloud.sample_offsets(duration_s) == offsets
-
-
-@pytest.mark.parametrize("duration_s", [0.0, 5.0, 12.0, 36.0, 37.0, 60.0, 300.0, 7200.0, 7199.5])
-def test_the_planned_count_is_the_grids_length_without_building_it(duration_s):
-    assert acrcloud.planned_calls(duration_s) == len(acrcloud.sample_offsets(duration_s))
+    assert acrcloud.planned_calls(duration_s) == len(offsets)
 
 
 def test_a_nonsense_duration_is_refused_by_the_bound_before_any_grid_exists(ledger):
@@ -538,6 +533,8 @@ def test_an_empty_recording_sends_nothing(ledger):
 
 def test_the_ledger_is_keyed_by_month_and_survives_a_corrupt_file(tmp_path, ledger):
     assert ledger.used("2026-09") == 0
+    assert ledger.record(0, "2026-09") == 0
+    assert not (tmp_path / "usage.json").exists(), "recording nothing wrote something"
     assert ledger.record(3, "2026-09") == 3
     assert ledger.record(2, "2026-09") == 5
     assert ledger.record(4, "2026-10") == 4
@@ -549,11 +546,6 @@ def test_the_ledger_is_keyed_by_month_and_survives_a_corrupt_file(tmp_path, ledg
     (tmp_path / "usage.json").write_text('{"2026-09": "seven", "2026-08": 2}')
     assert ledger.used("2026-09") == 0
     assert ledger.used("2026-08") == 2
-
-
-def test_recording_nothing_writes_nothing(tmp_path, ledger):
-    assert ledger.record(0, "2026-09") == 0
-    assert not (tmp_path / "usage.json").exists()
 
 
 def test_the_ledger_and_the_cache_live_in_their_declared_installation_state_entries():
@@ -573,12 +565,7 @@ def test_the_month_key_is_the_calendar_month():
 # The credentials and the seam
 
 
-def test_the_keychain_credentials_are_read_by_name_after_the_gate():
-    record_keys()
-    assert acrcloud.keychain_credentials() == ("k-1", "s-1")
-
-
-def test_a_credential_missing_after_the_gate_is_credential_missing_with_its_own_remedy():
+def test_the_keychain_credentials_are_read_by_name_and_a_missing_one_is_credential_missing():
     secrets.set(str(secrets.Credential.IDENTIFY_KEY), "k-1")
     with pytest.raises(CratekitError) as excinfo:
         acrcloud.keychain_credentials()
@@ -586,6 +573,8 @@ def test_a_credential_missing_after_the_gate_is_credential_missing_with_its_own_
     assert cause.reason == "credential-missing"
     assert cause.remediation.remedy == Remedy.SET_CREDENTIAL
     assert cause.detail["credential"] == str(secrets.Credential.IDENTIFY_SIGNING_KEY)
+    record_keys()
+    assert acrcloud.keychain_credentials() == ("k-1", "s-1")
 
 
 def test_a_keychain_that_cannot_be_reached_keeps_the_stores_own_remedy(monkeypatch):
@@ -803,13 +792,15 @@ def test_a_changed_file_plan_or_host_misses_the_cache(tmp_path, cache, ledger, c
     assert result.cached == 0
 
 
-def test_the_same_bytes_under_another_name_hit_the_cache(tmp_path, cache, ledger):
+def test_the_same_bytes_under_another_name_hit_the_cache_and_the_digest_is_their_sha256(tmp_path, cache, ledger):
     """The identity is the audio. A copy is the same recording."""
     cached_run(FakeTransport(*three_answers()), real_recording(tmp_path), cache, ledger)
     silent = FakeTransport()
     copy = real_recording(tmp_path, name="a copy.mp3")
     assert cached_run(silent, copy, cache, ledger).cached == 3
     assert silent.requests == []
+    exact = real_recording(tmp_path, b"exactly these bytes", name="exact.mp3")
+    assert acrcloud.content_digest(exact) == hashlib.sha256(b"exactly these bytes").hexdigest()
 
 
 @pytest.mark.parametrize(
@@ -830,16 +821,14 @@ def test_every_field_of_the_plan_moves_the_key(changed):
     assert acrcloud.ChunkPlan(**base).key() == acrcloud.ChunkPlan(**base).key()
 
 
-def test_the_digest_is_the_sha256_of_the_bytes(tmp_path):
-    source = real_recording(tmp_path, b"exactly these bytes")
-    assert acrcloud.content_digest(source) == hashlib.sha256(b"exactly these bytes").hexdigest()
-
-
 def test_a_chunk_that_got_no_answer_is_never_kept_so_only_the_gap_is_paid_again(tmp_path, cache, ledger):
+    """The month counts only the gap: with exactly two calls left, counting the
+    whole grid against it would refuse a pass that fits."""
     source = real_recording(tmp_path)
     assert cached_run(a_gap(), source, cache, ledger).unreached == 2
+    assert ledger.used("2026-09") == 3
     fill = FakeTransport(miss(), hit("Nova Reef", "Tide"))
-    second = cached_run(fill, source, cache, ledger)
+    second = cached_run(fill, source, cache, ledger, budget=Budget(monthly=5))
     assert [r.sample for r in fill.requests] == [b"chunk@25", b"chunk@50"]
     assert (second.calls, second.cached, second.unreached) == (2, 1, 0)
     assert [row.title for row in second.rows] == ["Sun Path", "Tide"]
@@ -1002,17 +991,6 @@ def test_the_monthly_bound_reads_what_is_owed_and_the_parts_ceiling_reads_the_gr
         "kind": "monthly",
         "key": acrcloud.MONTHLY_KEY,
     }
-
-
-def test_the_monthly_bound_counts_only_the_gap_on_a_partly_kept_recording(tmp_path, cache, ledger):
-    """One chunk kept and two owed, with exactly two calls left in the month.
-    Counting the whole grid against the month would refuse a pass that fits."""
-    source = real_recording(tmp_path)
-    cached_run(a_gap(), source, cache, ledger)
-    assert ledger.used("2026-09") == 3
-    fill = FakeTransport(miss(), miss())
-    result = cached_run(fill, source, cache, ledger, budget=Budget(monthly=5))
-    assert (result.calls, result.cached) == (2, 1)
 
 
 def test_the_bound_identifier_hands_the_cache_through(tmp_path, cache, ledger):

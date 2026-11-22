@@ -1282,39 +1282,38 @@ def test_the_reserved_reference_is_read_however_it_is_cased(cfg, library, monkey
     assert job_of(job_id).payload[intake_cli.SOURCE] == "favorites"
 
 
-def test_a_truncated_hearts_listing_refuses_whole_and_queues_nothing(cfg, monkeypatch):
-    class Truncated(StrictCatalogue):
-        def favourite_tracks(self):
-            raise listing.ListingTruncated("favorite_tracks spent its whole budget")
+class Truncated(StrictCatalogue):
+    def favourite_tracks(self):
+        raise listing.ListingTruncated("favorite_tracks spent its whole budget")
 
-    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Truncated(hearts=five_hearts())))
+
+class Expired(StrictCatalogue):
+    def favourite_tracks(self):
+        raise refuse(
+            "credential-missing",
+            "the stored session expired mid listing",
+            remedy=Remedy.REAUTHENTICATE_PROVIDER,
+            origin=("test",),
+        )
+
+
+@pytest.mark.parametrize(
+    "fake, reason, kind",
+    [
+        (lambda: Truncated(hearts=five_hearts()), "label-playlist-unreadable", "ListingTruncated"),
+        (UnreadableCatalogue, "label-playlist-unreadable", None),
+        (Expired, "credential-missing", None),
+    ],
+    ids=["truncated-refuses-whole", "unreadable-not-empty", "adapter-refusal-passes-through"],
+)
+def test_a_hearts_listing_that_fails_refuses_and_queues_nothing(cfg, monkeypatch, fake, reason, kind):
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake()))
     code, envelope = drive(["intake", "playlist", "favorites"])
     assert code != OK
-    assert envelope["cause"]["reason"] == "label-playlist-unreadable", envelope
-    assert envelope["cause"]["detail"]["kind"] == "ListingTruncated"
+    assert envelope["cause"]["reason"] == reason, envelope
+    if kind is not None:
+        assert envelope["cause"]["detail"]["kind"] == kind
     assert no_jobs()
-
-
-def test_an_unreadable_hearts_listing_is_unreadable_not_empty(cfg, monkeypatch):
-    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(UnreadableCatalogue()))
-    code, envelope = drive(["intake", "playlist", "favorites"])
-    assert envelope["cause"]["reason"] == "label-playlist-unreadable", envelope
-    assert no_jobs()
-
-
-def test_an_adapter_refusal_under_the_hearts_listing_passes_through(cfg, monkeypatch):
-    class Expired(StrictCatalogue):
-        def favourite_tracks(self):
-            raise refuse(
-                "credential-missing",
-                "the stored session expired mid listing",
-                remedy=Remedy.REAUTHENTICATE_PROVIDER,
-                origin=("test",),
-            )
-
-    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Expired()))
-    code, envelope = drive(["intake", "playlist", "favorites"])
-    assert envelope["cause"]["reason"] == "credential-missing", envelope
 
 
 def test_a_heart_without_an_identifier_is_refused_by_position(cfg, monkeypatch):
@@ -1375,16 +1374,12 @@ def test_a_recognised_track_is_keyed_by_recording_version_and_isrc_and_a_provide
     assert intake_cli.item_key(provider) == "101"
     assert intake_cli.item_key(plain).startswith("rc_")
     assert "Sun" not in intake_cli.item_key(plain), "an item identifier is never a display name"
-
-
-def test_two_recognised_emoji_titles_by_one_artist_are_two_items():
-    """Two titles of emoji alone fold to one recording token, and the key
-    hashes the recording's identity, so they are two items; a title that
-    folds to something keeps the key it always had."""
+    # Two titles of emoji alone fold to one recording token, and the key hashes
+    # the recording's identity, so they are two items; a title that folds to
+    # something keeps the key it always had.
     fire = match.Wanted(artist="Aurora Bloom", title="\U0001f525")
     drop = match.Wanted(artist="Aurora Bloom", title="\U0001f4a7")
     assert intake_cli.item_key(fire) != intake_cli.item_key(drop)
-    plain = match.Wanted(artist="Aurora Bloom", title="Sun Path")
     token = match.recording_token("Aurora Bloom", "Sun Path")
     assert intake_cli.item_key(plain) == "rc_" + match.digest(token, "", "")
 
@@ -1461,31 +1456,21 @@ def test_the_configured_monthly_bound_is_the_one_the_verb_meets(library, recogni
     assert no_jobs(), "a refused set queued a job"
 
 
-def test_a_month_within_the_configured_bound_is_paid_for(library, recognised):
-    _recognition(library, monthly_calls=3)
-    three_tracks(recognised)
-    code, envelope = identify(recording(library))
-    assert code in OK_OR_ASKED, envelope
-    assert len(recognised.requests) == 3
-    assert recognised.ledger.used() == 3
-
-
 @pytest.mark.parametrize("verb", ["identify", "set"])
-def test_the_configured_host_is_the_one_every_paid_call_is_sent_to(library, recognised, verb):
-    _recognition(library, host="identify-eu-west-1.acrcloud.com")
+def test_the_configured_host_and_month_are_the_ones_every_paid_call_meets(library, recognised, verb):
+    """A month within the configured bound is paid for, every call goes to the
+    configured host, and a queued set freezes the section it was identified under."""
+    _recognition(library, host="identify-eu-west-1.acrcloud.com", monthly_calls=3)
     three_tracks(recognised)
     code, envelope = drive(["intake", verb, str(recording(library))])
     assert code in OK_OR_ASKED, envelope
     assert [request.url for request in recognised.requests] == [
         f"https://identify-eu-west-1.acrcloud.com{acrcloud.ENDPOINT}"
     ] * 3
-
-
-def test_a_queued_set_freezes_the_recognition_section_it_was_identified_under(library, recognised):
-    _recognition(library, host="identify-eu-west-1.acrcloud.com", monthly_calls=50)
-    job_id, _ = queued_three(recognised, library)
-    frozen = jobs.frozen_config(job_of(job_id)).recognition
-    assert frozen == config.RecognitionConfig(host="identify-eu-west-1.acrcloud.com", monthly_calls=50)
+    assert recognised.ledger.used() == 3
+    if verb == "set":
+        frozen = jobs.frozen_config(job_of(envelope["data"]["job_id"])).recognition
+        assert frozen == config.RecognitionConfig(host="identify-eu-west-1.acrcloud.com", monthly_calls=3)
 
 
 # R-678: what a person reads without asking for json
@@ -1608,7 +1593,7 @@ def test_a_set_longer_than_one_run_is_queued_as_one_job_with_the_parts_said(
     assert job.payload[intake_cli.PARTS] == 2
     frozen = job.payload[intake_cli.TRACKS]
     assert [said["title"] for said in frozen.values()] == ["Sun Path", "Tide", "Glass Hour"]
-    assert [item.item_id for item in items_of(job_id)] == list(frozen), ("item order is the set order")
+    assert [item.item_id for item in items_of(job_id)] == list(frozen), "item order is the set order"
     code, resumed = drive(resume_argv(job_id))
     assert resumed["data"]["progress"]["parts"] == 2, "the split was forgotten on resume"
 
