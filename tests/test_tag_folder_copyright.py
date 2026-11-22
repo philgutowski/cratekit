@@ -87,13 +87,7 @@ def downloaded(
     label: str | None = None,
     genre: str | None = None,
 ) -> Path:
-    """One FLAC file as the vendored downloader leaves it, with a picture.
-
-    THE COPYRIGHT LINE IS WRITTEN UNDER THE DOWNLOADER'S OWN KEY, upper case
-    ``COPYRIGHT`` through mutagen, never through Cratekit's writer, so what is
-    read is what a real download carries rather than what this unit's own
-    table writes.
-    """
+    """One FLAC file as the vendored downloader leaves it, with a picture."""
     from mutagen.flac import FLAC
 
     path = folder / f"{name}.flac"
@@ -407,10 +401,7 @@ def test_each_named_label_carries_its_own_genre():
 
 @pytest.mark.parametrize(
     ("needle", "line"),
-    [
-        ("2020 Vision", "\u2117 2020 Vision Quest"),
-        ("1985 Music", "(P) 1985 Music For Nations"),
-    ],
+    [("2020 Vision", "\u2117 2020 Vision Quest"), ("1985 Music", "(P) 1985 Music For Nations")],
 )
 def test_a_lines_year_never_completes_a_needle(needle, line):
     """Review round two: matched on the raw line, the year completed the needle."""

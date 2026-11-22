@@ -1,45 +1,15 @@
 """R-1534, R-1631, R-1636 and R-1646: a title matches only its own recording, in every source.
 
-THE DEFECTS. The shared matcher stripped a trailing bracket from the first "("
-to the last ")" and then compared the two titles by raw substring. A title that
-starts and ends with a bracket stripped to the empty string, which is in every
-title (R-1534). A title with a bracket in mid title was cut at it, so "Knee
-(Not Just) Deep (Part 1)" read as "knee", in "Knee Slapper"; a containment
-between whole titles read a word inside one title's brackets as the other
-title ("Intro" in "Sunrise Mood (Intro)"), refused only for a hand list of
-version words that missed "vocal", "acapella", "reprise" and more; and two
-titles compared by characters, so "Club" was in "Nightclub" and "Original Mix"
-in "Sunrise Mood - Original Mix" (R-1631). Each wrote another recording's genre
-onto the file for good, since a genre is fill if empty.
-
-WHAT HOLDS NOW. Two titles match when they name the same words once each has
-shed what is not its title: its trailing bracket groups, read as balanced
-groups from the end; a catalogue row's dash tail; the file's head, the
-``KEY - BPM - `` the live library writes into the title tag, and every dash
-part of it that is not its title, the searched artist's name, a version, an
-album (R-1636); a feature credit; a trailing run of the domain's version words; its
-leading bracket groups. A name "Artist - X" with X ending in a version, a
-title X or the artist's self titled track in that version, is read neither
-way alone and matches only a row writing the same split (R-1646). Nothing is compared by characters, and a word read only
-inside the other title's brackets is never its title. A side with no letter or
-digit matches nothing, and a number is part of the title. The tables below
-drive the shapes the matcher must keep on every source, the headed title
-included. What it gives up is recorded in R-1631's residuals: a title written
-only inside the other's trailing brackets ("How Does It Feel" against
-"Untitled (How Does It Feel)"), whose evidence is the same as the wrong shape
-"Intro" against "Sunrise Mood (Intro)", pinned below as a known cost, and some
-shapes of a file with no title tag, asked by its name.
-
-HOW IT IS READ, SINCE U280. The matcher is `cratekit.tagging.titles`: a
-file's title or name is read once into its parts, each with its role and how
-that was told, and an outcome, titled, ambiguous or unreadable; a row is read
-by its own structure; and the tables above hold as they were written. Section
-L pins the parse itself, the shapes R-1651 named that are ambiguous now, the
-whole name read as written, and a property over names the naming verb
-renders.
-
-NOTHING HERE OPENS A SOCKET. Pages are synthetic text in the shapes the
-parsers read, handed to the injected fetch seam.
+Two titles match when they name the same words once each has shed what is not
+its title (trailing bracket groups read from the end, a row's version dash
+tail, the file's ``KEY - BPM`` head and its dash parts that are an artist, a
+version or an album, a feature credit, a trailing version run, leading
+groups); "Artist - X" with X ending in a version matches only a row writing
+the same split (R-1646). Nothing is compared by characters, and a side with no
+letter or digit matches nothing. A title written only inside the other's
+trailing brackets is a known cost, pinned below. Section L pins the parse
+itself (U280). Nothing here opens a socket: pages are synthetic text handed to
+the injected fetch seam.
 """
 
 from __future__ import annotations
@@ -90,9 +60,7 @@ def silence(tmp_path_factory) -> Path:
     return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
 
 
-# ---------------------------------------------------------------------------
 # A. The shared matcher, both ways round
-# ---------------------------------------------------------------------------
 
 
 #: (searched, found) pairs that name the same recording and must match.
@@ -317,9 +285,7 @@ def test_a_title_with_no_letter_or_digit_does_not_match_itself(noise):
     assert not _matches(noise, noise)
 
 
-# ---------------------------------------------------------------------------
 # B. Beatport, which scores its rows rather than asking the shared matcher
-# ---------------------------------------------------------------------------
 
 
 def _beatport_hit(title: str, rows: list[dict]):
@@ -461,9 +427,7 @@ def test_beatport_reads_no_artist_from_a_row_crediting_an_empty_name():
     assert _beatport_answer(_beatport_hit(OTHER, [row])) == "miss"
 
 
-# ---------------------------------------------------------------------------
 # C. The scraped parsers, which read the shared matcher
-# ---------------------------------------------------------------------------
 
 
 def _traxsource_hit(title: str, found: str):
@@ -512,9 +476,7 @@ def test_the_scraped_parsers_still_match_a_title_to_its_own_row(searched, found)
     assert (band.genre, band.source) == (BUCKET_GENRE, searchers.BANDCAMP)
 
 
-# ---------------------------------------------------------------------------
 # D. Discogs, moved onto the shared matcher
-# ---------------------------------------------------------------------------
 
 
 def _discogs_hit(title: str, track: str):
@@ -544,16 +506,11 @@ def test_discogs_takes_no_track_that_does_not_write_the_files_named_mix(searched
 
 
 def test_discogs_reads_no_single_whose_title_is_noise():
-    fetch = routed(
-        search=results(42),
-        releases={42: release(42, title="()", tracks=[])},
-    )
+    fetch = routed(search=results(42), releases={42: release(42, title="()", tracks=[])})
     assert discogs_answer(searcher(fetch)(ARTIST, OTHER)).answer == "miss"
 
 
-# ---------------------------------------------------------------------------
 # E. The write itself, driven through tag_one as the review drove it
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("title", ["(Intro)", BRACKETED, "(Intro) (Extended Mix)"])
@@ -687,9 +644,7 @@ def test_a_file_whose_title_tag_carries_its_head_still_takes_its_own_genre(
     assert tags.read_genre_from_file(path) == result.genre_written
 
 
-# ---------------------------------------------------------------------------
 # F. R-1636: a dash part of the file's title that is not its title
-# ---------------------------------------------------------------------------
 
 #: (file title, another recording by the artist) pairs in which the file's
 #: title was read from a dash part that is not its title: a version tail with a
@@ -847,9 +802,7 @@ def test_an_untagged_file_still_takes_its_own_rows_genre_by_its_name(tmp_path, s
     assert tags.read_genre_from_file(path) == OWN_ROWS_GENRE
 
 
-# ---------------------------------------------------------------------------
 # G. R-1636, review round one: the artist's part as a name writes it
-# ---------------------------------------------------------------------------
 
 #: (artist tag, file title, its own row): the artist's part of the title is
 #: the tag's artist written as a name writes it, a collaboration, "The", an
@@ -959,10 +912,8 @@ def test_each_rule_of_the_title_start_holds(artist, title, own, other):
     assert not searchers._title_matches(title, other, artist=artist)
 
 
-# ---------------------------------------------------------------------------
 # H. R-1636, review round two: a title holding the artist's name, and where
 #    the both ways reading stops
-# ---------------------------------------------------------------------------
 
 #: (artist tag, file title, its own row, another recording by the artist).
 ROUND_TWO = [
@@ -1058,9 +1009,7 @@ def test_what_is_not_the_artists_credit_is_never_passed_over(artist, title, othe
     assert not searchers._title_matches(title, other, artist=artist)
 
 
-# ---------------------------------------------------------------------------
 # I. R-1646: "Artist - X" with X ending in a version is read neither way alone
-# ---------------------------------------------------------------------------
 
 #: (file title, a row) pairs in the card's shape: the searched artist's part,
 #: then a part ending in a version word. The name is a title X by the artist,
@@ -1264,10 +1213,8 @@ def test_an_untagged_file_in_the_shape_writes_no_genre_off_a_row_that_reads_it_o
     assert tags.read_genre_from_file(path) is None
 
 
-# ---------------------------------------------------------------------------
 # J. R-1646, review round one: the whole title never collapses onto the
 #    artist's part, and the split guards each hold
-# ---------------------------------------------------------------------------
 
 #: (file title, the self titled row it must not match): a feature credit in
 #: the artist's part cut the whole title reading down to the artist's name
@@ -1355,10 +1302,8 @@ def test_a_track_numbered_title_after_a_version_ending_album_is_still_the_title(
     assert not _matches(title, "Summer")
 
 
-# ---------------------------------------------------------------------------
 # K. R-1646, review round two: only the artist's own name before a feature
 #    credit keeps the whole name unshed
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -1417,9 +1362,7 @@ def test_a_bracketed_title_before_a_feature_is_read_without_the_credit(title, ow
     assert _matches(title, own)
 
 
-# ---------------------------------------------------------------------------
 # L. U280: a title read once into typed parts, ambiguity an outcome
-# ---------------------------------------------------------------------------
 
 #: (artist tag, file title, each part's role, the outcome): the parse says what
 #: each dash part is, and a name only a list of version words could read is
@@ -1606,15 +1549,24 @@ def test_every_name_the_naming_verb_renders_finds_its_own_row_and_no_other():
     version, and no other title's, nor the artist's self titled row, nor the
     album, nor a version alone."""
     chance = random.Random(791)
+    rows: dict[str, titles.Row] = {}
+
+    def matched(file: titles.FileName, row: str) -> bool:
+        # ``searchers._title_matches`` with each side read once: both reads are pure.
+        if row not in rows:
+            rows[row] = titles.read_row(row)
+        return titles.matches(file, rows[row])
+
     for _ in range(3000):
         artist, searched, title, album = _rendered(chance)
+        file = titles.read_file(searched, artist)
         for version in ROW_VERSIONS:
-            assert searchers._title_matches(searched, title + version, artist=artist), (searched, title + version)
+            assert matched(file, title + version), (searched, title + version)
         others = [other for other in GENERATED_TITLES if other != title]
         wrong = [*(other + chance.choice(ROW_VERSIONS) for other in others), album, "Original Mix", "Extended Mix"]
         wrong += [name for name in ("Bernard Badie", "Tide", "Black Madonna", "Ame") if name not in title]
         for row in wrong:
-            assert not searchers._title_matches(searched, row, artist=artist), (searched, row)
+            assert not matched(file, row), (searched, row)
 
 
 #: (artist tag, file title, a row): a whole name is read as written, never shed
@@ -1705,9 +1657,7 @@ def test_what_the_whole_name_found_the_parse_still_reads(artist, title, row):
     assert searchers._title_matches(title, row, artist=artist)
 
 
-# ---------------------------------------------------------------------------
 # U324. A credit spelled with a letter accent stripping leaves alone
-# ---------------------------------------------------------------------------
 
 #: (artist tag, file title, the credit as a row would write it, the title a
 #: catalogue is asked): the artist's part is the tag's artist spelled with a

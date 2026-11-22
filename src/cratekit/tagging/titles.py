@@ -49,9 +49,7 @@ Words = tuple[str, ...]
 TitleSplit = tuple[Words, Words]
 
 
-# ---------------------------------------------------------------------------
 # Text: words, brackets, the dash between parts
-# ---------------------------------------------------------------------------
 
 
 def normalized(value: str) -> str:
@@ -159,9 +157,7 @@ def title_core(value: str) -> tuple[str, bool]:
     return _unbracketed(current), True
 
 
-# ---------------------------------------------------------------------------
 # Words a title sheds: a feature credit, a version, a remaster's year
-# ---------------------------------------------------------------------------
 
 #: The words that open a featured artist's credit written into a title.
 _FEATURING = frozenset({"feat", "ft", "featuring"})
@@ -229,9 +225,7 @@ def _ends_in_version(text: str) -> bool:
     return bool(named) and named[-1] in VERSION_WORDS
 
 
-# ---------------------------------------------------------------------------
 # A title: one stretch of text, and the names it is known by
-# ---------------------------------------------------------------------------
 
 
 def _shed(found: Words) -> set[Words]:
@@ -348,9 +342,7 @@ def read_title(
     )
 
 
-# ---------------------------------------------------------------------------
 # A catalogue row, read by its own structure
-# ---------------------------------------------------------------------------
 
 
 def _a_tail_to_shed(tail: str, *, file: bool) -> bool:
@@ -419,9 +411,7 @@ def read_beatport_row(name: str, mix: str) -> Row:
     return Row(row.titles, row.splits | _row_splits(f"{normalized(name)} ({normalized(mix)})"))
 
 
-# ---------------------------------------------------------------------------
 # A file's head: the KEY - BPM the naming verb writes, and a track number
-# ---------------------------------------------------------------------------
 
 #: The tempos a head carries before any key, as the naming verb writes them: a
 #: whole number of beats a minute. A number outside it, "909" or "1998", is a
@@ -527,9 +517,7 @@ def _a_track_number(part: str) -> bool:
     return _LONE_TRACK_NUMBER.fullmatch(_LEADING_GROUPS.sub("", part).strip()) is not None
 
 
-# ---------------------------------------------------------------------------
 # The searched artist's credit, as a name writes it
-# ---------------------------------------------------------------------------
 
 #: What joins two names in one credit, "Aurora Bloom & Tide", "Aurora Bloom,
 #: Tide" or "Aurora Bloom; Tide". "and" is not here: it is in names, "Above and
@@ -691,9 +679,7 @@ def _credit_words(part: str) -> set[Words]:
     return {each for each in found if each}
 
 
-# ---------------------------------------------------------------------------
 # A file's title or name, read into its parts
-# ---------------------------------------------------------------------------
 
 
 class Role(Enum):
@@ -976,9 +962,7 @@ def read_file(value: str, artist: str) -> FileName:
     return FileName(roles, Outcome.TITLED, tuple(read), tuple(read.values()), whole)
 
 
-# ---------------------------------------------------------------------------
 # The match
-# ---------------------------------------------------------------------------
 
 
 def _any_same(mine: Iterable[Title], theirs: Iterable[Title]) -> bool:
@@ -1002,9 +986,7 @@ def matches(file: FileName, row: Row) -> bool:
     return _any_same((*file.titles, *whole), row.titles)
 
 
-# ---------------------------------------------------------------------------
 # The version a file's title names, and whether a catalogue title writes it (U318)
-# ---------------------------------------------------------------------------
 
 
 #: Words describing a mix without naming its maker, noise beside
@@ -1163,9 +1145,7 @@ def writes_version(value: str, named: frozenset[Words], *, titled: bool) -> bool
     return any(len(whole) > len(name) and whole[-len(name) :] == name for name in named)
 
 
-# ---------------------------------------------------------------------------
 # The question a catalogue is asked (U289)
-# ---------------------------------------------------------------------------
 
 
 class Read(Enum):
