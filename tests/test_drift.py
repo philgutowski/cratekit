@@ -1,12 +1,6 @@
-"""U157: the drift verdict, its cut, and the two file tags the analysis writes.
+"""U157: the drift verdict, its cut, and the two file tags, without the analysis extra.
 
-Everything here runs without the analysis extra: the verdict words and the
-comparison in ``core.drift``, the cut in configuration, the finalize writing
-the two tags from whatever the detector answered, and the no grid rule over
-the new fields. The measurement itself, which needs librosa, is
-``tests/test_analysis_drift.py``.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+The librosa measurement is ``tests/test_analysis_drift.py``.
 """
 
 from __future__ import annotations
@@ -31,9 +25,7 @@ from tests.test_analysis_workers import unbound as unbound  # noqa: PLC0414
 from tests.test_config import valid_data
 from tests.test_no_beatgrid_ever import FORBIDDEN_TAG_KEYS
 
-# ---------------------------------------------------------------------------
 # The verdict against the cut
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -132,9 +124,7 @@ def test_the_auto_analysis_step_cancels_on_any_other_field_and_leaves_dyn_to_dyn
         "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on"
     ), "the standard is unchanged"
 
-# ---------------------------------------------------------------------------
 # The cut is configuration
-# ---------------------------------------------------------------------------
 
 
 def test_the_cut_defaults_to_the_shipped_value():
@@ -165,9 +155,7 @@ def test_a_whole_number_cut_loads_and_reaches_the_detector_binding(tmp_path, mon
     assert light._DETECT.keywords["drift_cut"] == 3.0
 
 
-# ---------------------------------------------------------------------------
 # The finalize writes what the detector answered, and only that
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
@@ -226,16 +214,13 @@ def test_a_track_too_thin_to_judge_carries_unknown_and_no_level(cfg, folder, sil
 
 
 def test_a_detector_that_measures_no_drift_writes_neither_tag(cfg, folder, silence, monkeypatch):
-    """The batch fakes and any detector older than U157: no level and no
-    verdict, which a landing reads as unscored rather than as steady."""
+    """No level and no verdict, which a landing reads as unscored, not steady."""
     done, report = _analysed(folder, silence, monkeypatch, _detector())
     assert tags.read_tags(done, ("driftlevel", "drift")) == {"driftlevel": None, "drift": None}
     assert report["drift"] is None and report["drift_verdict"] is None
 
 
-# ---------------------------------------------------------------------------
 # Neither field is a tempo (R17)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("field", ["driftlevel", "drift"])
@@ -249,8 +234,7 @@ def test_the_drift_fields_carry_no_tempo_key_in_any_container(field):
 
 @pytest.mark.parametrize("suffix", [".flac", ".mp3", ".m4a", ".aiff"])
 def test_a_file_carrying_a_drift_carries_no_tempo_frame(tmp_path, suffix):
-    """Read raw, below the tag table, so a writer that slipped a tempo frame
-    in beside the drift would show here whatever the table says."""
+    """Read raw, below the tag table, so a slipped tempo frame shows here."""
     import mutagen
 
     path = synth_container(tmp_path, suffix)

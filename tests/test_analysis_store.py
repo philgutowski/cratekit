@@ -1,15 +1,6 @@
-"""R-14. The analysis store is the share beside the database, and nothing else.
+"""R-14: analysis joins to the share beside the database, never the volume root export cache.
 
-A rekordbox library on an external volume has two directory trees ending in
-``PIONEER/USBANLZ``. The share under ``PIONEER/Master`` holds the beat grids and
-every row resolves into it. The one at the volume root is the USB export cache
-and no row resolves into it. ``AnalysisDataPath`` is stored share relative, so a
-join to the library root finds nothing and reads as "the analysis is missing".
-
-Every fixture here plants BOTH trees where the claim is about which one is
-found, because a fixture holding only the right tree cannot tell the right join
-from a wrong one that happens to land in the only place there is.
-"""
+Fixtures plant both ``PIONEER/USBANLZ`` trees, so a wrong join cannot land in the only tree."""
 
 from __future__ import annotations
 
@@ -30,8 +21,7 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "cratekit"
 #: A track's analysis key, in the UUID shape the share uses.
 KEY = "1f0c2b9e-6a41-4c55-9d1e-7b3f0a2c5e11"
 
-#: A stored ``AnalysisDataPath`` in the shape rekordbox writes it: share
-#: relative, with a leading separator, a three character bucket, then the key.
+#: A stored ``AnalysisDataPath`` as rekordbox writes it, share relative.
 STORED = f"/PIONEER/USBANLZ/8d2/{KEY}/ANLZ0000.DAT"
 
 #: The date an outside database was accepted, in the shape the loader requires.
@@ -41,12 +31,7 @@ ACCEPTED = "2026-09-11"
 def _cfg(
     root: Path, db_path: Path, monkeypatch, *, acknowledged: str | None = None
 ) -> config.Config:
-    """A validated config over ``root``, with the database wherever it is put.
-
-    The environment override is aimed at the same root, because validation
-    applies it before the containment rule runs and the suite's isolation points
-    it elsewhere.
-    """
+    """A validated config over ``root``, with the environment override aimed at the same root."""
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     library: dict[str, str] = {
         "root": str(root),
@@ -86,7 +71,6 @@ def contained(volume, monkeypatch) -> config.Config:
 
 @pytest.fixture
 def home(tmp_path) -> Path:
-    """Where an outside database lives, standing in for the platform default."""
     return tmp_path / "home" / "rekordbox"
 
 
@@ -98,7 +82,6 @@ def outside(volume, home, monkeypatch) -> config.Config:
 
 @pytest.fixture
 def rclone_on_path(tmp_path, monkeypatch) -> Path:
-    """A resolvable rclone that nothing executes, since every runner is injected."""
     fake = tmp_path / "bin" / "rclone"
     fake.parent.mkdir(parents=True, exist_ok=True)
     fake.write_text("#!/bin/sh\nexit 0\n")
@@ -131,9 +114,7 @@ def _codes(warnings) -> list[str]:
     return [warning["code"] for warning in warnings]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The join
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_stored_analysis_path_joins_to_the_share_and_not_to_the_library_root(
@@ -157,7 +138,6 @@ def test_a_stored_analysis_path_joins_to_the_share_and_not_to_the_library_root(
 
 
 def test_the_share_follows_the_database_when_it_sits_outside_the_root(outside, home):
-    """The share is the database's sibling, not a fixed place under the library."""
     assert analysis_store.share_root(outside) == home / "share"
     assert analysis_store.analysis_file(outside, STORED) == (
         home / "share" / "PIONEER" / "USBANLZ" / "8d2" / KEY / "ANLZ0000.DAT"
@@ -181,9 +161,7 @@ def test_a_stored_path_that_climbs_out_of_the_share_is_refused(contained):
         analysis_store.analysis_file(contained, "/PIONEER/../../master.db")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The watch
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_contained_share_is_watched_through_the_library_root(contained, volume):
@@ -209,7 +187,6 @@ def test_an_outside_share_is_watched_alongside_the_library_root(outside, volume,
 
 
 def _hand_listed(function: ast.AST) -> set[str]:
-    """Names this function binds to a literal list, tuple or set of roots."""
     literal = (ast.List, ast.Tuple, ast.Set)
     names: set[str] = set()
     for node in ast.walk(function):
@@ -225,13 +202,7 @@ def _hand_listed(function: ast.AST) -> set[str]:
 
 
 def test_no_call_site_hand_lists_the_roots_an_analysis_watch_covers():
-    """Every root list is derived, so the share cannot be left out of one again.
-
-    A literal is refused whether it is written at the keyword or bound to a name
-    first, which were the two shapes the call sites used before R-14. A parameter
-    passed through, or a list built from one, is not a literal and is allowed:
-    those are the writers the call sites feed, not call sites themselves.
-    """
+    """Every root list is derived, so the share cannot be left out of one again (R-14)."""
     offenders: list[str] = []
     for path in sorted(SRC.rglob("*.py")):
         if "_vendor" in path.parts:
@@ -259,18 +230,11 @@ def test_no_call_site_hand_lists_the_roots_an_analysis_watch_covers():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The backup
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _rclone_matches(pattern: str, path: str) -> bool:
-    """Whether an rclone filter pattern matches a slash rooted path.
-
-    rclone's rules as far as the mirror's patterns use them: a leading slash
-    anchors at the transfer root, otherwise the pattern matches any trailing run
-    of components, ``**`` crosses separators and ``*`` does not.
-    """
+    """Whether an rclone filter matches a slash rooted path, by the rules the mirror uses."""
     body = ""
     index = 0
     text = pattern.lstrip("/")
@@ -320,7 +284,6 @@ def _share_commands(plan: backup.BackupPlan) -> list[backup.Command]:
 
 
 def _outside_library(home: Path) -> Path:
-    """An outside database with a grid in the share beside it. Returns the share."""
     home.mkdir(parents=True, exist_ok=True)
     (home / "master.db").write_bytes(b"SQLite format 3\x00")
     _plant(home / "share" / "PIONEER" / "USBANLZ" / "8d2" / KEY / "ANLZ0000.DAT")
@@ -330,11 +293,7 @@ def _outside_library(home: Path) -> Path:
 def test_an_outside_share_rides_the_database_portion_to_its_own_mirror(
     outside, home, rclone_on_path
 ):
-    """R-338's cost, reversed: a command names the share, and nothing warns.
-
-    Before this the plan named the share in no command and said so with a
-    warning, which is a backup that returns every row without its grids.
-    """
+    """R-338 reversed: a command names the share, and nothing warns."""
     share = _outside_library(home)
 
     plan = backup.plan_backup(outside, process_lister=lambda: (), settings_dirs=())
@@ -347,8 +306,7 @@ def test_an_outside_share_rides_the_database_portion_to_its_own_mirror(
     argv = carried[0].argv
     assert argv[1:3] == ("sync", str(share))
     assert argv[3] == "remote:database-snapshots/analysis-share/f1e2-d3c4/current"
-    # One run is undoable, as the mirror's is: whatever the sync would overwrite
-    # or delete moves to a dated folder first, outside the mirrored tree.
+    # One run is undoable: whatever the sync would overwrite moves to a dated folder first.
     assert argv[argv.index("--backup-dir") + 1] == (
         f"remote:database-snapshots/analysis-share/f1e2-d3c4/archive/{plan.stamp}"
     )
@@ -413,7 +371,6 @@ def test_a_live_rekordbox_refuses_the_share_with_the_database(outside, home, rcl
 
 
 def test_a_contained_share_is_not_copied_twice(contained, volume, rclone_on_path):
-    """The mirror already carries it, so the contained layout gains no command."""
     _both_trees(volume)
     config.state_path("rekordbox_db", contained).write_bytes(b"SQLite format 3\x00")
 
@@ -443,7 +400,6 @@ def test_an_outside_share_that_is_not_there_is_said_and_not_synced(
 
 
 def test_the_absent_share_warning_survives_a_refused_database_portion(outside, rclone_on_path):
-    """A skipped snapshot does not make an absent share a carried one."""
     plan = backup.plan_backup(
         outside, process_lister=lambda: ("rekordbox",), settings_dirs=()
     )
@@ -478,7 +434,6 @@ def test_two_libraries_under_one_snapshot_root_keep_two_share_mirrors(
 def test_a_library_with_no_usable_identity_still_carries_its_share(
     volume, home, monkeypatch, rclone_on_path
 ):
-    """An identity that cannot be a path component is not interpolated into one."""
     _outside_library(home)
     mine = _cfg(volume, home / "master.db", monkeypatch, acknowledged=ACCEPTED)
     unnamed = replace(mine, library=replace(mine.library, volume_id="../up and out"))
@@ -506,9 +461,7 @@ def test_a_rehearsed_backup_transfers_no_share(outside, home, rclone_on_path):
     assert shares and all(c.argv[-1] == "--dry-run" for c in shares)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The restore
-# ═══════════════════════════════════════════════════════════════════════════
 
 STAMP = "2026-08-01T000000Z"
 
@@ -557,7 +510,6 @@ def _planned(cfg: config.Config, target: Path, remote: _Remote) -> backup.Restor
 def test_a_restore_puts_an_outside_share_back_beside_the_database(
     outside, rclone_on_path, tmp_path
 ):
-    """R-338's other half: the grids land where the restored rows look for them."""
     remote = _Remote()
     target = tmp_path / "recovered"
 
@@ -579,8 +531,7 @@ def test_a_restore_puts_an_outside_share_back_beside_the_database(
 
 def test_the_share_is_listed_before_anything_is_cleared(outside, rclone_on_path, tmp_path):
     """The ledger's third option: planned from a listing, never found out by a failed copy."""
-    # THE LITERAL, measured with ``rclone lsf`` over a missing directory on
-    # 2026-09-20, and not the module's constant, which would make this X equals X.
+    # THE LITERAL ``rclone lsf`` answer, not the module's constant, which would be X equals X.
     remote = _Remote(share="", share_exit=3)
     target = tmp_path / "recovered"
     target.mkdir()
@@ -624,7 +575,6 @@ def test_a_share_mirror_that_could_not_be_listed_refuses_before_the_sidecars_go(
 
 
 def test_an_unmarked_snapshot_pulls_this_librarys_share(outside, rclone_on_path, tmp_path):
-    """A marker that failed to write does not orphan the share the same run carried."""
     remote = _Remote(marker=False)
 
     plan = _planned(outside, tmp_path / "recovered", remote)
@@ -636,7 +586,6 @@ def test_an_unmarked_snapshot_pulls_this_librarys_share(outside, rclone_on_path,
 def test_a_contained_restore_neither_lists_nor_pulls_a_share(
     contained, rclone_on_path, tmp_path
 ):
-    """The mirror half carries a contained share, so the database half gains nothing."""
     remote = _Remote()
 
     plan = _planned(contained, tmp_path / "recovered", remote)
@@ -649,12 +598,7 @@ def test_a_contained_restore_neither_lists_nor_pulls_a_share(
 def test_a_share_that_would_land_under_the_analysis_watch_is_withheld_and_not_asked_about(
     outside, volume, home, rclone_on_path
 ):
-    """A live restore is watched for moved analysis files, so it is not handed any.
-
-    Both watched roots, because either one ends the session refused: the library
-    root, where this layout's database lands today, and the live share's own
-    parent, where it would land if that were ever corrected.
-    """
+    """A live restore is watched for moved analysis files, so it is handed none."""
     home.mkdir(parents=True)
     for target in (volume, home):
         remote = _Remote()
@@ -672,7 +616,6 @@ def test_a_share_that_would_land_under_the_analysis_watch_is_withheld_and_not_as
 def test_a_caller_that_will_not_spend_the_database_half_is_not_refused_over_the_share(
     outside, rclone_on_path, tmp_path
 ):
-    """The bare metal recovery's switch: withheld, and the remote is never asked."""
     remote = _Remote(share="", share_exit=1)
     target = tmp_path / "recovered"
     target.mkdir()
@@ -703,26 +646,17 @@ def test_a_rehearsed_restore_transfers_no_share(outside, rclone_on_path, tmp_pat
     assert issued and all(c.argv[-1] == "--dry-run" for c in issued)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The share is read and copied, and never authored
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _is_local(place: str) -> bool:
-    """Whether an rclone location is on this machine. A remote is ``name:path``."""
     return ":" not in place.split("/", 1)[0]
 
 
 def test_no_backup_command_writes_to_this_machine_least_of_all_to_the_share(
     outside, home, rclone_on_path, tmp_path
 ):
-    """The beat grid constraint, for the capture: the share is a source and only a source.
-
-    Every grid this library holds is under the share, so a backup command with
-    the share, or anything local, as its destination is a command that can write
-    one. Read from the plan, which is the run (``run_backup`` executes the plan's
-    own commands and adds only a flag).
-    """
+    """The beat grid rule: the share is a source only, so no backup command writes locally."""
     share = _outside_library(home)
     settings = tmp_path / "rekordbox6"
     settings.mkdir()
@@ -757,13 +691,7 @@ def test_a_restore_writes_the_share_with_a_copy_and_only_beside_the_database(
 
 
 def test_the_backup_module_moves_analysis_files_and_never_opens_one():
-    """The constraint's other half, read off the source: no file is authored here.
-
-    The module's whole file surface is a directory it makes and the sidecars it
-    clears. Anything that opens or writes a file would be the first thing in it
-    able to produce an analysis file rather than move one, so it is refused by
-    name rather than left to a review to notice.
-    """
+    """The module moves analysis files and opens none, so it can never author a grid."""
     tree = ast.parse((SRC / "modules" / "tools" / "backup.py").read_text())
     authoring = {
         "open", "write_bytes", "write_text", "touch", "copy", "copy2", "copyfile",

@@ -1,43 +1,10 @@
-"""The backup-age fact: a FILE core reads, never a module core imports.
+"""The backup-age fact: a FILE core reads, never a module core imports (R15, KTD23).
 
-R15 requires every write session to warn that the database and the music files
-should be backed up, and to feed that warning with the backup age when the
-backup module is enabled. That sentence contains a trap, and this module exists
-to avoid it.
-
-THE TRAP. The obvious implementation is for the session code to call the backup
-module and ask. That makes core depend on a toggleable feature module, which
-KTD23 forbids in general and which breaks concretely here: the backup module is
-opt-in, so on a slim install the import fails, and it fails inside a warning
-that runs immediately before the riskiest operation in the product. The plan
-states the shape instead: backup PUBLISHES its age into library-scoped state,
-and the warning READS a fact. Nothing imports upward, and a library whose backup
-module was never installed answers "never recorded" rather than raising.
-
-WHY THE ANSWER IS PER PORTION AND NOT ONE TIMESTAMP. The database portion of a
-backup refuses outright while rekordbox or its background agent is running,
-because a copy taken mid-write is a torn database that opens cleanly and is
-silently wrong. The file mirror has no such constraint and completes anyway. So
-the normal state of a library backed up without quitting rekordbox first is
-"files current, database stale", and a single aggregate timestamp reports that
-library as fully backed up. The one thing R15's warning exists to tell a user is
-exactly the thing the aggregate would hide.
-
-WHY "NEVER RECORDED" IS ITS OWN ANSWER AND NOT A VERY LARGE AGE. They have
-different remediations. An unrecorded portion means the backup module has not
-run here at all, and the fix is to run it. A very old age means it ran and has
-not run since, and the fix is to run it again, possibly after quitting
-rekordbox. Collapsing them costs the caller the ability to say which.
-
-WHY A FUTURE TIMESTAMP IS A THIRD ANSWER. Any caller comparing an age against a
-maximum treats a negative age as the freshest possible value, so a record
-written by a machine with a skewed clock, or edited by hand, silently satisfies
-the check it was meant to fail. Naming it is the only way a caller can refuse it.
-
-This module reads and writes one small JSON file through the shared atomic
-writer, so it inherits that writer's explicit mode: a state file whose mode came
-from the umask is the defect P1 records, and this one names when a user's data
-was last protected.
+Importing the opt-in backup module would fail on a slim install, inside the
+warning before the riskiest operation, so backup publishes and core reads.
+Ages are PER PORTION, since files current and database stale is the normal
+state; never recorded and a future timestamp are answers of their own, each
+with its own remediation. Written through the shared atomic writer (P1).
 """
 
 from __future__ import annotations
@@ -52,44 +19,26 @@ from types import MappingProxyType
 
 from cratekit.core import cause, config
 
-#: The state entry this module owns. Named once, so the resolver and every
-#: caller cannot disagree about which file is meant.
+#: The state entry this module owns, named once so no caller means another file.
 STATE_KEY = "backup_facts"
 
-#: Bumped only when the on-disk shape changes incompatibly. A file carrying a
-#: newer version is not read: guessing at a shape a later build wrote is how a
-#: record of when the user's music was last protected turns into a wrong answer,
-#: and a wrong answer here is worse than no answer.
+#: A newer version is not read, since a guessed shape is worse than no answer.
 SCHEMA_VERSION = 1
 
-#: How far ahead of "now" a recorded completion may sit before it is treated as
-#: skewed rather than fresh. Two machines writing to one library will not agree
-#: on the second, and a network time correction can move a clock by minutes; an
-#: hour is comfortably past both and far short of any real backup interval.
+#: How far ahead of now a completion may sit before it reads as clock skew.
 FUTURE_TOLERANCE = timedelta(hours=1)
 
-#: The top level key holding when the file mirror last compared the library
-#: with the remote folder by folder (R-757). Beside ``portions`` and not inside
-#: a portion's entry, because it is not a backup: it is how the last backup of
-#: the files looked at the remote.
+#: When the file mirror last compared folder by folder (R-757), beside ``portions``.
 FULL_COMPARISON_KEY = "full_comparison"
 
-#: The top level key holding when the file mirror last ran a FULL CHECK (U317),
-#: the backup that lists the remote and compares every file on both sides, in
-#: either listing mode. Beside ``portions`` for the reason the key above is: it
-#: is how a backup looked at the remote, not a backup.
+#: When the file mirror last ran a FULL CHECK of every file on both sides (U317).
 FULL_CHECK_KEY = "full_check"
 
-#: How old the last full check may be before the next backup runs one rather
-#: than a quick one, decided by Phillip on 2026-11-21. Between full checks a
-#: backup compares the library with Cratekit's own record of what the last one
-#: left and never lists the remote, so this is how often the remote itself is
-#: read again.
+#: How old the last full check may be before the next backup runs one (2026-11-21).
 FULL_CHECK_DAYS = 7
 
-#: What a completed portion's run was, the word a fact records under ``kind``.
-#: The files portion is ``full``, ``quick`` or ``skipped``; the database portion
-#: is ``snapshot`` or ``unchanged``.
+#: A completed portion's ``kind``, files ``full``, ``quick`` or ``skipped``, and
+#: database ``snapshot`` or ``unchanged``.
 KIND_FULL = "full"
 KIND_QUICK = "quick"
 KIND_SKIPPED = "skipped"
@@ -99,19 +48,11 @@ KINDS = (KIND_FULL, KIND_QUICK, KIND_SKIPPED, KIND_SNAPSHOT, KIND_UNCHANGED)
 
 
 class Portion(StrEnum):
-    """The two halves of a library backup, each with its own gate.
+    """The two halves of a library backup, exactly the two R15 warns about."""
 
-    Exactly two, because R15 names exactly two things a user is warned about:
-    the database and the music files. Anything else a backup happens to copy
-    (rekordbox's own application settings, for instance) travels with one of
-    these rather than becoming a third answer nobody was warned about.
-    """
-
-    #: The music files and everything else on the volume EXCEPT the database
-    #: fileset, which never rides a live mirror.
+    #: The music files, EXCEPT the database fileset, which never rides a live mirror.
     FILES = "files"
-    #: The rekordbox database and its SQLite sidecars, captured as one matched
-    #: set with no rekordbox process running.
+    #: The database and its SQLite sidecars, one matched set with rekordbox closed.
     DATABASE = "database"
 
 
@@ -126,12 +67,7 @@ class AgeState(StrEnum):
 class Remedy(StrEnum):
     """What to do about an unreadable fact file, as a TOKEN not a command (D2).
 
-    THE THIRD MEMBER IS NOT A CORRUPTION. A file this account may not open and a
-    file whose contents are damaged are two conditions with opposite fixes, and
-    one token over both told a user to repair or reset the record of when their
-    music was last protected in order to fix a permission. The file may be
-    perfectly intact, and resetting library state is a destructive answer to a
-    question that was never asked.
+    THE THIRD MEMBER IS NOT A CORRUPTION, since a permission is never fixed by a reset.
     """
 
     REPAIR_BACKUP_FACTS = "repair-backup-facts"
@@ -142,11 +78,7 @@ class Remedy(StrEnum):
 class BackupFactsUnreadable(Exception):
     """The fact file exists and cannot be understood.
 
-    Deliberately NOT collapsed into "no backup recorded". A caller that treated
-    an unreadable record as an absent one would report a library with a perfectly
-    good backup as never backed up, and the user's fix (repair one small file) has
-    nothing to do with the fix the report implies (run a backup). KTD25: the
-    cause travels, the caller decides.
+    Never collapsed into no backup recorded, since the fixes differ (KTD25).
     """
 
     def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
@@ -157,22 +89,14 @@ class BackupFactsUnreadable(Exception):
 
 @dataclass(frozen=True, slots=True)
 class BackupFact:
-    """One portion's last successful completion.
-
-    ``destination`` is recorded because "backed up" is meaningless without
-    "where": a user who reconfigured their remote last month has a fresh-looking
-    age describing a destination they no longer use.
-    """
+    """One portion's last successful completion, and where, since an age needs its destination."""
 
     portion: Portion
     completed_at: datetime
     destination: str
-    #: Which kind of run completed the portion (U317), one of :data:`KINDS`, or
-    #: None for a fact a build before U317 wrote, every one of which was a full
-    #: run or a snapshot.
+    #: One of :data:`KINDS` (U317), or None from an earlier build, always a full run.
     kind: str | None = None
-    #: What that run changed and how long it took, as the run reported it, or
-    #: None where it was not recorded.
+    #: What that run changed and how long it took, or None where not recorded.
     summary: Mapping[str, object] | None = None
 
 
@@ -187,10 +111,8 @@ class PortionAge:
     destination: str | None = None
     kind: str | None = None
     summary: Mapping[str, object] | None = None
-    #: For the files portion only (U317): when the next full check is due, or
-    #: None when the next backup runs one at once, and why it does, or an empty
-    #: string when it does not. Carried here so a reader of the ages learns the
-    #: full check from the same reading.
+    #: Files portion only (U317), when the next full check is due, or None when the
+    #: next backup runs one, and why it does, or an empty string.
     full_check_due: datetime | None = None
     full_check_overdue: str = ""
 
@@ -200,61 +122,28 @@ class PortionAge:
 
 
 def path_for(cfg: config.Config) -> Path:
-    """Where the fact file lives, resolved through the state inventory.
-
-    Through ``state_path`` rather than composed here, because a module that
-    builds its own path under a state root has invented a state file the
-    inventory does not know about, and nothing that walks the inventory will
-    find it, snapshot it, or clear it.
-    """
+    """Where the fact file lives, through ``state_path`` so the inventory knows it."""
     return config.state_path(STATE_KEY, cfg)
 
 
 def read_facts(cfg: config.Config) -> dict[Portion, BackupFact]:
-    """Every recorded fact, keyed by portion. An absent file is an empty dict.
-
-    The portions half of :func:`_read`, which is the one reader of the file.
-    """
+    """Every recorded fact, keyed by portion. An absent file is an empty dict."""
     return _read(cfg)[0]
 
 
-#: What :func:`_read` hands back for the full comparison when the file does not
-#: carry the key at all, which is a different answer from carrying it as null.
+#: The full comparison of a file lacking the key, which differs from a null one.
 _ABSENT = object()
 
-#: The top level keys held beside the portions, each read unparsed by
-#: :func:`_read` and parsed by its own reader.
+#: Keys held beside the portions, read unparsed and parsed by their own readers.
 _HELD_KEYS = (FULL_COMPARISON_KEY, FULL_CHECK_KEY)
 
 
 def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], dict[str, object]]:
     """The file, read once: every portion's fact, and the held keys AS HELD.
 
-    THE FULL CHECK (U317) IS HELD THE SAME WAY, for the same reason, and an
-    absent key means the same thing: a build before U317 ran a full check every
-    time, so its files fact is the last full check.
-
-    ONE READER OF THE FILE, so a document the portions reader refuses cannot
-    answer a question about the full comparison.
-
-    THE FULL COMPARISON IS RETURNED UNPARSED, and that is deliberate. It feeds
-    one informational line, and the portions feed the age a destructive session
-    reads and the publish at the end of a transfer. Parsed here, a damaged
-    entry under that one key would refuse every reader of the file, and a
-    backup would fail after its transfer over a date nothing depends on.
-    :func:`full_comparison_age` parses it and is the only reader it can refuse.
-
-    THE PORTIONS, as :func:`read_facts` has always returned them:
-
-    Absent is normal and is not an error: it is the state of every library
-    before the backup module has run once. A file that exists but cannot be
-    parsed is an error, for the reason in :class:`BackupFactsUnreadable`.
-
-    Unknown portion names are IGNORED rather than raising, so a record written
-    by a build that knows a portion this one does not stays readable for the
-    portions both builds share. A newer SCHEMA_VERSION is a different matter and
-    does raise: an unknown portion is extra information, an unknown shape is a
-    reading this build cannot vouch for.
+    THE HELD KEYS ARE RETURNED UNPARSED, so a damaged informational entry cannot
+    refuse the age a destructive session reads. An absent file is normal, an
+    unknown portion is ignored, and a newer SCHEMA_VERSION raises.
     """
     path = path_for(cfg)
     try:
@@ -262,12 +151,8 @@ def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], dict[str, obje
     except FileNotFoundError:
         return {}, {key: _ABSENT for key in _HELD_KEYS}
     except OSError as exc:
-        # TWO CONDITIONS, TWO SENTENCES, TWO ACTS. A permission is not a
-        # corruption, and it does not establish that the file is there either: an
-        # untraversable PARENT raises exactly this, and nothing under such a
-        # parent has been observed at all. "Exists but could not be read" with
-        # "repair or reset them" beside it sent a user to reset library state
-        # over a directory their operating system would not open.
+        # TWO CONDITIONS, TWO SENTENCES, TWO ACTS. A permission is not a corruption,
+        # and an untraversable PARENT raises this too, so the file may not exist.
         if cause.permission_denied(exc) is not None:
             raise BackupFactsUnreadable(
                 f"{path} could not be read: {exc}. Whether the file is even "
@@ -349,10 +234,7 @@ def _full_comparison(
 ) -> BackupFact | None:
     """The last full comparison, parsed, or a refusal naming what cannot be read.
 
-    AN ABSENT KEY IS A FILE FROM A BUILD THAT HAD ONE MODE. Every build that
-    does not write this key lists the remote folder by folder, so the files
-    fact it left IS the last full comparison. Answering "never" there would
-    tell a person whose every backup so far was a full one that none ever ran.
+    AN ABSENT KEY IS A FILE FROM A BUILD THAT HAD ONE MODE, so its files fact answers.
     """
     if held is _ABSENT:
         return facts.get(Portion.FILES)
@@ -382,9 +264,7 @@ def _fact(portion: Portion, entry: dict, *, named: str, path: Path) -> BackupFac
             remedy=Remedy.REPAIR_BACKUP_FACTS,
         ) from exc
     if completed.tzinfo is None:
-        # A naive timestamp is unanswerable, not merely awkward: two
-        # installations of one library can sit in different zones, so the
-        # same text would describe two different instants.
+        # A naive timestamp is unanswerable, since installations can sit in different zones.
         raise BackupFactsUnreadable(
             f"{path} records {named!r} without a time zone offset, so the "
             f"instant it names depends on who reads it",
@@ -397,9 +277,7 @@ def _fact(portion: Portion, entry: dict, *, named: str, path: Path) -> BackupFac
         portion=portion,
         completed_at=completed,
         destination=str(entry.get("destination") or ""),
-        # Read loosely: an unknown word or a damaged summary is no kind and no
-        # summary. The one key a run decides on, the files record's token, is
-        # then absent, and its absence sends the next run full.
+        # Read loosely; a missing kind sends the next files run full.
         kind=kind if kind in KINDS else None,
         summary=dict(summary) if isinstance(summary, dict) else None,
     )
@@ -427,11 +305,7 @@ def _age_of(portion: Portion, fact: BackupFact | None, moment: datetime) -> Port
 
 
 def full_comparison_age(cfg: config.Config, *, now: datetime | None = None) -> PortionAge:
-    """How long ago the file mirror last compared folder by folder (R-757).
-
-    The same three answers a portion's age has, and for the same reasons. It is
-    an age of the FILES portion's comparison, so that is the portion it names.
-    """
+    """How long ago the file mirror last compared folder by folder (R-757), as a files age."""
     moment = now or datetime.now(timezone.utc)
     facts, held = _read(cfg)
     return _age_of(
@@ -440,12 +314,7 @@ def full_comparison_age(cfg: config.Config, *, now: datetime | None = None) -> P
 
 
 def full_check_age(cfg: config.Config, *, now: datetime | None = None) -> PortionAge:
-    """How long ago the file mirror last ran a full check (U317).
-
-    The same three answers a portion's age has. An absent key is a file from a
-    build before U317, every run of which was a full check, so its files fact
-    answers; a null is a file this build wrote before any full check.
-    """
+    """How long ago the last full check ran (U317); an absent key answers the files fact."""
     moment = now or datetime.now(timezone.utc)
     facts, held = _read(cfg)
     return _age_of(
@@ -456,10 +325,7 @@ def full_check_age(cfg: config.Config, *, now: datetime | None = None) -> Portio
 
 
 def took(seconds: object) -> str:
-    """How long a recorded run took, as the words after a verb, or nothing.
-
-    One spelling for the verb's report and doctor, so the two say one thing.
-    """
+    """How long a recorded run took, one spelling for the verb's report and doctor."""
     if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
         return ""
     if seconds < 1:
@@ -468,23 +334,14 @@ def took(seconds: object) -> str:
 
 
 def full_check_due(answer: PortionAge) -> datetime | None:
-    """When the next full check is due, or None when one is due at once.
-
-    None for every answer that is not a known age: with no full check on
-    record, or one recorded in the future, the next backup runs one.
-    """
+    """When the next full check is due, or None when one is due at once."""
     if answer.state is not AgeState.KNOWN or answer.completed_at is None:
         return None
     return answer.completed_at + timedelta(days=FULL_CHECK_DAYS)
 
 
 def ages(cfg: config.Config, *, now: datetime | None = None) -> tuple[PortionAge, ...]:
-    """One answer per declared portion, always, in declaration order.
-
-    The set is DERIVED from :class:`Portion` rather than enumerated here, so a
-    portion added later cannot be silently absent from the report that decides
-    whether a user is warned (P3).
-    """
+    """One answer per declared portion, DERIVED from :class:`Portion` so none goes missing (P3)."""
     moment = now or datetime.now(timezone.utc)
     facts, held = _read(cfg)
     out = [_age_of(portion, facts.get(portion), moment) for portion in Portion]
@@ -502,11 +359,7 @@ def _full_check_schedule(
 ) -> tuple[datetime | None, str]:
     """When the next full check is due and why the next backup runs one (U317).
 
-    A DAMAGED FULL CHECK ENTRY IS A REASON, NEVER A REFUSAL, for the reason
-    :func:`_read` gives: ``ages`` feeds the age a destructive session reads, and
-    one damaged informational key must not refuse it. Every doubt is a reason:
-    no full check on record, one recorded in the future, one of another mirror,
-    and one :data:`FULL_CHECK_DAYS` old or more.
+    A DAMAGED FULL CHECK ENTRY IS A REASON, NEVER A REFUSAL, so ``ages`` still answers.
     """
     try:
         fact = _full_comparison(cfg, facts, held[FULL_CHECK_KEY], key=FULL_CHECK_KEY)
@@ -531,10 +384,7 @@ def oldest_usable_age(
 ) -> timedelta | None:
     """The age R15's warning quotes, or None when any portion has no usable one.
 
-    None rather than "the oldest of whatever happened to be readable", because
-    the warning's whole job is to say how well protected the library is, and a
-    number derived from half the portions describes a library that is half
-    protected as though it were fully protected.
+    Never the oldest readable age, which would call a half protected library protected.
     """
     reported = ages(cfg, now=now)
     if any(not entry.usable for entry in reported):
@@ -555,22 +405,9 @@ def record(
 ) -> Path:
     """Record one portion's successful completion, leaving the others alone.
 
-    ``full_comparison`` says this completion compared the library with the
-    remote folder by folder, and moves that fact to this instant. ``full_check``
-    does the same for the last full check (U317), and ``kind`` and ``summary``
-    say which kind of run this was and what it changed. Without it
-    the fact is carried through as it was read, INCLUDING the one a file from
-    an earlier build implies, so the first fast run after an upgrade does not
-    erase the date of the last full one.
-
-    Read-modify-write rather than a whole-file overwrite. The two portions
-    complete independently and often in the same run, and a writer that replaced
-    the file would erase the database portion's record every time the file mirror
-    finished on its own, which is the exact case this file exists to distinguish.
-
-    Refuses a naive timestamp at the boundary rather than storing one and
-    refusing at read time, so the failure lands on the code that produced the
-    value instead of on the user reading a warning weeks later.
+    Read, modify, write, since the portions complete independently. Held keys this
+    completion does not move carry through as read, and a naive timestamp is
+    refused here, at the code that made it.
     """
     if completed_at.tzinfo is None:
         raise ValueError(
@@ -585,8 +422,7 @@ def record(
     held = held_keys[FULL_COMPARISON_KEY]
     checked = held_keys[FULL_CHECK_KEY]
     if held is _ABSENT:
-        # BEFORE THE NEW FACT REPLACES THE OLD ONE, because what an earlier
-        # build's file implies is the files fact it wrote, not this one.
+        # BEFORE THE NEW FACT REPLACES THE OLD ONE, which an earlier build's file implies.
         held = _as_held(read.get(Portion.FILES))
     if checked is _ABSENT:
         # The same reading for the full check, for the same reason.
@@ -604,13 +440,8 @@ def record(
         checked = _as_held(facts[portion])
     payload = {
         "schema_version": SCHEMA_VERSION,
-        # ALWAYS WRITTEN, null included. Its absence is how a file from a build
-        # with one mode is recognised, so a build with two must never leave it
-        # out, or its own fast run would be read as a full one.
-        #
-        # CARRIED THROUGH AS IT WAS HELD when this record is not a full
-        # comparison, damaged or not. Replacing an entry nobody could read
-        # with null would turn "cannot be read" into "never ran".
+        # ALWAYS WRITTEN, null included, since absence marks a one mode build, and
+        # CARRIED THROUGH AS IT WAS HELD, so cannot be read never becomes never ran.
         FULL_COMPARISON_KEY: held,
         # Always written, null included, for the reason the key above is.
         FULL_CHECK_KEY: checked,
@@ -621,10 +452,7 @@ def record(
                 **({"kind": fact.kind} if fact.kind is not None else {}),
                 **({"summary": dict(fact.summary)} if fact.summary is not None else {}),
             }
-            # Sorted so the bytes are a function of the content alone. An
-            # unordered dump makes every write a diff even when nothing changed,
-            # which is noise in exactly the file somebody reads to find out
-            # whether anything changed.
+            # Sorted so the bytes are a function of the content alone.
             for fact in sorted(facts.values(), key=lambda f: f.portion.value)
         },
     }
@@ -635,86 +463,54 @@ def record(
     return path
 
 
-#: The portions, exposed as an immutable mapping for callers that want to render
-#: a name per portion without re-deriving the set.
+#: The portions as an immutable mapping, for rendering a name per portion.
 PORTIONS: MappingProxyType = MappingProxyType({p.value: p for p in Portion})
 
 
-# ---------------------------------------------------------------------------
 # What a queued backup item ran (R-349)
-# ---------------------------------------------------------------------------
 
 #: The inventory key of the per item outcome directory.
 OUTCOMES_KEY = "backup_outcomes"
 
-#: The ``progress`` field both ``job show`` and ``backup run --job`` carry the
-#: outcomes under. ``job_state/1`` closes its top level, so it rides inside.
+#: The ``progress`` field the outcomes ride inside, as ``job_state/1`` closes its top level.
 OUTCOMES_FIELD = "outcomes"
 
-#: The key :func:`read_outcomes` reports under when a job's directory exists and
-#: cannot be listed. Not a portion name, so it cannot be read as one item.
+#: Where :func:`read_outcomes` reports an unlistable job directory; never a portion name.
 UNLISTABLE = "(unlistable)"
 
 
 def outcome_path(job_id: str, item_id: str) -> Path:
-    """Where one queued item's outcome lives, keyed by job and item.
-
-    HERE AND NOT IN THE BACKUP MODULE, for the reason the module docstring gives
-    for the age: ``job show`` reads this, and ``job show`` is core CLI that must
-    not import a toggleable feature module (KTD23, KTD26). One path function
-    serves the writer and the reader, so the two cannot name different files.
-    """
+    """One queued item's outcome file, here so core ``job show`` imports no module (KTD23)."""
     return config.state_path(OUTCOMES_KEY) / job_id / f"{item_id}.json"
 
 
 def write_outcome(job_id: str, item_id: str, payload: dict) -> Path:
-    """Write one item's outcome now, atomically, owner only (P1).
-
-    The FAILURE channel. A successful item's outcome is staged and handed to the
-    job engine's commit instead, because that commit is what completes the item.
-    """
+    """Write one item's outcome now, atomically, owner only (P1), the FAILURE channel."""
     path = outcome_path(job_id, item_id)
     config.atomic_write_bytes(encode_outcome(payload), path)
     return path
 
 
 def clear_outcome(job_id: str, item_id: str) -> None:
-    """Remove one item's record before a new attempt at that item.
-
-    A retried item that fails some other way, before any transfer or on a fact
-    file it cannot write, reaches neither channel. Without this the previous
-    attempt's failed commands would sit beside the new attempt's different
-    cause, and a person would debug a failure that did not happen this time.
-    """
+    """Remove one item's record before a new attempt, so an old failure is not read as new."""
     outcome_path(job_id, item_id).unlink(missing_ok=True)
 
 
 def encode_outcome(payload: dict) -> bytes:
-    """The bytes both channels write, so a staged success and a direct failure
-    are the same format."""
+    """The bytes both channels write, so success and failure share one format."""
     return json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
 
 
 def read_outcomes(job_id: str) -> dict[str, dict] | None:
-    """Every recorded item outcome for one job, keyed by item, or None.
+    """Every recorded item outcome for one job, keyed by item, or None when none was recorded.
 
-    NONE MEANS NO ITEM OF THIS JOB EVER RECORDED ONE, which is every job that is
-    not a backup and every backup whose items have not run. The caller omits the
-    field on None rather than printing an empty mapping, so a job of another verb
-    does not grow a backup field.
-
-    A FILE THAT CANNOT BE READ IS REPORTED AS UNREADABLE, NOT SKIPPED. Skipping
-    it would print the other item's commands alone, and a reader would take the
-    missing item for one that never ran. Staged files are not outcomes and are
-    ignored: a staged file is one the engine had not yet committed.
+    A FILE THAT CANNOT BE READ IS REPORTED AS UNREADABLE, NOT SKIPPED; staged files are ignored.
     """
     directory = config.state_path(OUTCOMES_KEY) / job_id
     if not directory.is_dir():
         return None
     try:
-        # ``iterdir`` and not ``glob``: on 3.12 ``glob`` swallows a permission
-        # error on the directory and yields nothing, which is the "nothing ran"
-        # reading this branch exists to refuse. Measured in review, 2026-09-21.
+        # ``iterdir`` and not ``glob``, which swallows a permission error on 3.12.
         files = sorted(p for p in directory.iterdir() if p.suffix == ".json")
     except OSError as exc:
         # A directory that exists and cannot be listed is not "nothing ran".

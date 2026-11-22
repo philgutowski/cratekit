@@ -1,7 +1,4 @@
-"""U210: the steps a run's write records beside its held plan, read back only for that plan.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
-"""
+"""U210: the steps a run's write records beside its held plan, read back only for that plan."""
 
 from __future__ import annotations
 
