@@ -1027,72 +1027,176 @@ tests = ["tests/test_u242_taken.py", "tests/test_organize_inspiration.py"]
 old = '            stripped = untaken_name(name) if is_taken(playlist_id, name, held) else ""'
 new = '            stripped = untaken_name(name) if name.startswith("DOWNLOADED ") else ""'
 
-[[dropped]]
+[[rows]]
 id = "r837-a.A7_reserve_reuses_recorded"
+source = { table = "r837-a.json", id = "A7_reserve_reuses_recorded" }
 description = "ledger.reserve_set_playlist: a recorded set playlist is not reused, so the create runs again"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/ledger.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/ledger_reserve.py"
+surface = "user"
+moved = "the reuse check left ledger.reserve_set_playlist for ledger_reserve._reserve, the one reserve shared by the set, label year and mirrored playlists, so the record is read through the table it is handed; same condition reverted"
+tests = ["tests/modules/test_outbound.py", "tests/test_export_set.py", "tests/test_label_playlists.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+        recorded = str((held.get(key) or {}).get("remote_id") or "")
+        if recorded:'''
+new = '''
+        recorded = str((held.get(key) or {}).get("remote_id") or "")
+        if False:'''
 
-[[dropped]]
+[[rows]]
 id = "u214.M8_plan_left_lines"
+source = { table = "u214.json", id = "M8_plan_left_lines" }
 description = "mirror.plan: start left empty, so no unmirrored node reaches the step's plan or left count"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/mirror.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+moved = "the unmirrored lines still open mirror.plan's left list in mirror.py, written without the list[str] annotation; same list emptied"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '    left = [f"{label}: not mirrored, {reason}" for label, reason in folder.unmirrored]'
+new = '    left = []'
 
-[[dropped]]
+[[rows]]
 id = "u143-d.A5_playlist_read_back"
+source = { table = "u143-d.json", id = "A5_playlist_read_back" }
 description = "Adapter: report a root playlist removed though the provider still serves it"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+moved = "the root removal's read back moved into tidal_account._sent_and_read_back, shared with remove_playlist, which reads the playlist through _served and answers None for absent; same still served check reverted"
+tests = ["tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_root.py", "tests/test_outbound_tidal_account.py", "tests/test_provider_gate.py", "tests/test_prune.py", "tests/test_sync_pair_account.py"]
+old = '        if self._served(doing, identifier) is not None:'
+new = '        if False:'
 
-[[dropped]]
+[[rows]]
 id = "u230.M13_held_by_dropped"
+source = { table = "u230.json", id = "M13_held_by_dropped" }
 description = "decide: hand the genre rule no per playlist holders, so the lift never reaches the landed check"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/mirror_edits.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+moved = "decide now builds its decisions in one list, so the _decide_genre call in mirror_edits.py sits four spaces shallower; same holders argument dropped"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '            held_by={track: frozenset(titles) for track, titles in held_by.items()},'
+new = '            held_by=None,'
 
-[[dropped]]
+[[rows]]
 id = "u230.M12_queue_not_handed"
+source = { table = "u230.json", id = "M12_queue_not_handed" }
 description = "decide: hand the genre rule no queue"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/mirror_edits.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+moved = "decide now builds its decisions in one list, so the _decide_genre call in mirror_edits.py sits four spaces shallower; same queue emptied"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '            queued=by_queue,'
+new = '            queued={},'
 
-[[dropped]]
+[[rows]]
 id = "u227.R6_landed_item"
+source = { table = "u227.json", id = "R6_landed_item" }
 description = "Decision.item: drop the landed flag from what the gate shows"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/mirror_edits.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+moved = "Decision.item now shows its optional keys from one table of pairs kept when true, so the landed flag is its own entry there rather than an if; same flag left off what the gate shows"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''
+            ("landed", self.landed),
+'''
+new = ''
 
-[[dropped]]
+[[rows]]
 id = "u201.M1_plan_keeps"
+source = { table = "u201.json", id = "M1_plan_keeps" }
 description = "mirror.plan: removes an account track the hold keeps"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/mirror.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+moved = "the reused playlist's plan left the body of mirror.plan for the helper mirror._reused, so the same line sits eight spaces shallower; same hold.keep test dropped"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '    remove = tuple(one for one in names if one not in keep and one not in hold.keep)'
+new = '    remove = tuple(one for one in names if one not in keep)'
 
-[[dropped]]
+[[rows]]
 id = "u201.M2_plan_skips"
+source = { table = "u201.json", id = "M2_plan_skips" }
 description = "mirror.plan: adds back a track the hold skips"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/mirror.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+moved = "the reused playlist's plan left the body of mirror.plan for the helper mirror._reused, where the comprehension is folded onto one line; same hold.skip test dropped"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '            one for one in wanted if one not in on and one not in mine.refused and one not in hold.skip'
+new = '            one for one in wanted if one not in on and one not in mine.refused'
 
-[[dropped]]
+[[rows]]
 id = "u255.M3_membership_holds_nothing"
+source = { table = "u255.json", id = "M3_membership_holds_nothing" }
 description = "_membership: never hold the opened object, so the first add opens again, K + 4 GETs"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+moved = "tidal_account._membership now lists its identifiers on one line through _identifier, so the line before the hold differs; same hold of the opened object removed"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''
+            self._opened[playlist_id] = opened
+'''
+new = ''
 
-[[dropped]]
+[[rows]]
 id = "r1032.A1_adapter_ignores_any_agreeing"
+source = { table = "r1032.json", id = "A1_adapter_ignores_any_agreeing" }
 description = "match_track: drop any_agreeing on its way to _among, so the adapter refuses the tie for the mirror too"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_reads.py"
+surface = "user"
+moved = "match_track moved from tidal_account.py into the Reads mixin in tidal_reads.py and its _among call is folded shallower; same any_agreeing dropped on its way to _among"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_organize_mirror_tie.py"]
+old = '                    any_agreeing=any_agreeing,'
+new = '                    any_agreeing=False,'
 
-[[dropped]]
+[[rows]]
 id = "r358-round-2.A3_editor_check"
+source = { table = "r358-round-2.json", id = "A3_editor_check" }
 description = "Drop the editor check, so a playlist the account cannot edit is renamed"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+moved = "the editor check in rename_playlist stays in tidal_account.py with its refusal folded onto fewer lines and one message string; same check removed"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''
+        if not callable(retitle):
+            raise account.provider_failure(LookupError(
+                f"the provider's playlist {playlist_id!r} cannot be retitled by this account"
+            ), doing)
+'''
+new = ''
 
-[[dropped]]
+[[rows]]
 id = "u226.M11_settle_kept_ignored"
+source = { table = "u226.json", id = "M11_settle_kept_ignored" }
 description = "_settled: a caller's kept wording is ignored for the order's"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+moved = "_settled's if kept is None fallback became the parameter's default, no track was moved, since no caller ever passed pauses_from; ignoring the caller's wording is now a reassignment to that default at the top of _settled, the same effect the reverted condition had"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''
+        note = self._noting(identifier, after)
+        last: CratekitError | None = None
+        for attempt in range(ORDER_REREADS + 1):'''
+new = '''
+        kept = "no track was moved"
+        note = self._noting(identifier, after)
+        last: CratekitError | None = None
+        for attempt in range(ORDER_REREADS + 1):'''
 
-[[dropped]]
+[[rows]]
 id = "r836-a.A5_removal_never_retried"
+source = { table = "r836-a.json", id = "A5_removal_never_retried" }
 description = "tidal_account.remove_tracks: a removal by position is retried once, so a request that landed and timed out takes off whatever moved up"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+moved = "remove_tracks' removal by position stays in tidal_account.py, now one line with a lambda that binds nothing, since it is called before the loop moves on; same retries=0 dropped"
+tests = ["tests/test_prune.py", "tests/test_label_playlists.py", "tests/modules/test_outbound.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_export_collection.py"]
+old = '            accepted = self._call(doing, lambda: playlist.remove_by_indices(at), retries=0)'
+new = '            accepted = self._call(doing, lambda: playlist.remove_by_indices(at))'
 
-[[dropped]]
+[[rows]]
 id = "u216.M21_reserve_adopt_empty"
+source = { table = "u216.json", id = "M21_reserve_adopt_empty" }
 description = "reserve_folder: an adoption records an empty set whatever the plan listed"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/pairs.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+moved = "PairStore.reserve_folder's adoption in pairs.py writes the same expression on one line without the parentheses; same record of what it held emptied"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '                before = None if held is None else frozenset(str(one) for one in held if str(one))'
+new = '                before = frozenset()'
