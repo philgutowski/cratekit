@@ -1,5 +1,5 @@
 ---
-title: A row deleted outright carries no number, so the deletion pass numbers it at its first sighting, and only a playlist the landing made tells a removal from a rollback
+title: A row deleted outright carries no number, so the deletion pass numbers it at its first sighting, and only what the landing made tells a removal from a rollback
 date: 2026-11-21
 category: integration-issues
 module: "src/cratekit/deletion/run.py, src/cratekit/deletion/watermark.py, src/cratekit/deletion/library.py, src/cratekit/intake/native.py"
@@ -20,6 +20,7 @@ tags:
   - "watermark"
   - "remove-from-collection"
   - "r1037"
+  - "r1844"
   - "u288"
   - "restore"
   - "absence-as-evidence"
@@ -62,6 +63,17 @@ landing MADE: no database from before the landing holds one, and rekordbox's
 removal leaves every playlist row. So a landed row is offered only while every
 playlist its landing made remains, and a landing into a playlist already there,
 which made none, offers nothing.
+
+**A playlist is not a fact a person leaves alone (R-1844).** rekordbox 7.2.19
+deletes a playlist outright when a person deletes it in the sidebar (A200), so
+the playlist guard alone read the most ordinary tidy up as a rollback. The
+landing now records each row's UUID beside its columns, and a landing stands
+when the database holds one of its rows, live or marked, under that UUID, or
+every playlist it made. The content id is random and the UUID a fresh one the
+landing wrote, so no database from before the landing holds the pair; the id
+alone is not enough, since an import after a rollback can draw the same random
+id. What is still read as a rollback, a landing whose every row is gone and
+whose playlists are not all held, is counted on the gate's screen.
 
 ## How to apply
 
