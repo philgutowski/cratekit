@@ -1,40 +1,32 @@
 """U124: the restart state and the residuals are per unit files.
 
-Every unit used to append a paragraph to the head of ``RESTART-cratekit.md``
-and number its residuals in ``docs/residual-findings.md``, so two branches cut
-from one base conflicted in both files, and a residual's number was taken by
-whoever FILED rather than by whoever landed. A unit's restart paragraph is now
-``docs/restart/<unit>.md``, and a residual waits unnumbered in
-``docs/residuals/`` until ``board.py residuals --land`` numbers it on main.
-
-The scripts are loaded by path, the way ``tests/test_pending_units.py`` loads
-them, because they are not part of the distribution.
+A restart paragraph is ``docs/restart/<unit>.md``, and a residual waits in
+``docs/residuals/`` until ``scripts/board.py residuals --land`` numbers it on
+main. ``scripts/scan_repo.py`` guards the restart state.
 """
 
 from __future__ import annotations
 
 import functools
-import importlib.util
 import re
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from typing import NamedTuple
 
 import pytest
 
+from tests.test_board_reads import load_board as _load
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-#: The main commit U124 split ``RESTART-cratekit.md`` from. Pinned because the
-#: byte identity of the move is a statement about that one text.
+#: The main commit U124 split ``RESTART-cratekit.md`` from, the text the move is about.
 SPLIT_BASE = "a984968"
 
 
-def _load(name: str):
-    path = REPO_ROOT / "scripts" / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(f"{name}_under_test_u124", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+@pytest.fixture
+def board():
+    return _load("board")
 
 
 def _residual(title: str, found: str = "at the review of #1, U1, 2026-10-09.", **extra) -> str:
@@ -47,78 +39,67 @@ LEDGER_TEXT = (
     "## R-5. An older finding\n\n**Found:** long ago.\n\nBody.\n\n"
     "## R-12. The highest, past a gap\n\n**Found:** later.\n\nBody.\n"
 )
-
-
-def _run(root: Path):
-    def run(*argv: str) -> subprocess.CompletedProcess:
-        return subprocess.run(argv, cwd=root, capture_output=True, text=True, check=False)
-
-    return run
+NO_FOUND = "---\ntitle: A finding with no Found line\n---\n\nBody.\n"
 
 
 def _seed(root: Path):
     """A repository holding a restart file and a ledger, one commit on main."""
     root.mkdir(parents=True)
-    run = _run(root)
-    for argv in (
-        ("git", "init", "-q", "-b", "main"),
-        ("git", "config", "user.email", "fixture@example.invalid"),
-        ("git", "config", "user.name", "Fixture"),
-        ("git", "config", "commit.gpgsign", "false"),
-    ):
-        assert run(*argv).returncode == 0
+
+    def run(*argv: str) -> subprocess.CompletedProcess:
+        return subprocess.run(argv, cwd=root, capture_output=True, text=True, check=True)
+
+    run("git", "init", "-q", "-b", "main")
+    run("git", "config", "user.email", "fixture@example.invalid")
+    run("git", "config", "user.name", "Fixture")
+    run("git", "config", "commit.gpgsign", "false")
     (root / "docs" / "restart").mkdir(parents=True)
     (root / "docs" / "residuals").mkdir()
     (root / "docs" / "residual-findings.md").write_text(LEDGER_TEXT)
     (root / "RESTART-cratekit.md").write_text("# Restart\n\n## What is open\n\nNothing.\n")
     (root / "docs" / "restart" / "u1.md").write_text("**U1 built.** First.\n")
-    assert run("git", "add", "-A").returncode == 0
-    assert run("git", "commit", "-q", "--no-verify", "-m", "seed").returncode == 0
+    _commit(run, "seed")
     return run
 
 
-def _unit_branch(run, root: Path, unit: int) -> None:
-    """One unit's record, built the new way: a fragment and a residual file."""
-    assert run("git", "checkout", "-q", "-b", f"unit/{unit}", "main").returncode == 0
-    (root / "docs" / "restart" / f"u{unit}.md").write_text(f"**U{unit} built.** Its record.\n")
-    # Git keeps no empty folder, so the checkout back to main removed it.
-    folder = root / "docs" / "residuals"
-    folder.mkdir(exist_ok=True)
-    (folder / f"u{unit}-a-finding.md").write_text(
-        _residual(f"Unit {unit} left a finding")
-    )
-    assert run("git", "add", "-A").returncode == 0
-    assert run("git", "commit", "-q", "--no-verify", "-m", f"u{unit}").returncode == 0
-    assert run("git", "checkout", "-q", "main").returncode == 0
+def _commit(run, message: str) -> None:
+    run("git", "add", "-A")
+    run("git", "commit", "-q", "--no-verify", "-m", message)
+
+
+def _folder(tmp_path: Path, **files: str) -> tuple[Path, Path]:
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text(LEDGER_TEXT)
+    folder = tmp_path / "residuals"
+    folder.mkdir()
+    for name, text in files.items():
+        (folder / f"{name}.md").write_text(text)
+    return ledger, folder
 
 
 @pytest.mark.parametrize("order", [("unit/2", "unit/3"), ("unit/3", "unit/2")])
-def test_two_units_built_from_one_base_land_in_either_order(order, tmp_path, monkeypatch):
-    """The goal of the unit, driven through git rather than asserted of a layout.
-
-    Both branches are cut from the same main, each adds a restart fragment and
-    a residual file, and both merge without a conflict whichever lands first.
-    The numbers are then given at landing, past the ledger's highest, and the
-    one that landed first does not get a lower number for filing first: name
-    order decides within one landing, and that is the same for either order.
-    """
-    board = _load("board")
+def test_two_units_built_from_one_base_land_in_either_order(order, tmp_path, board):
+    """Both branches merge without a conflict, and name order decides the numbers."""
     root = tmp_path / "repo"
     run = _seed(root)
-    _unit_branch(run, root, 2)
-    _unit_branch(run, root, 3)
-
+    for unit in (2, 3):
+        run("git", "checkout", "-q", "-b", f"unit/{unit}", "main")
+        (root / "docs" / "restart" / f"u{unit}.md").write_text(f"**U{unit} built.** Its record.\n")
+        # Git keeps no empty folder, so the checkout back to main removed it.
+        (root / "docs" / "residuals").mkdir(exist_ok=True)
+        (root / "docs" / "residuals" / f"u{unit}-a-finding.md").write_text(
+            _residual(f"Unit {unit} left a finding")
+        )
+        _commit(run, f"u{unit}")
+        run("git", "checkout", "-q", "main")
     for branch in order:
-        merged = run("git", "merge", "--no-ff", "--no-edit", "-q", branch)
-        assert merged.returncode == 0, f"merging {branch} conflicted: {merged.stdout}{merged.stderr}"
-
-    assert (root / "docs" / "restart" / "u2.md").read_text() == "**U2 built.** Its record.\n"
-    assert (root / "docs" / "restart" / "u3.md").read_text() == "**U3 built.** Its record.\n"
-
+        run("git", "merge", "--no-ff", "--no-edit", "-q", branch)  # raises on a conflict
+    for unit in (2, 3):
+        record = (root / "docs" / "restart" / f"u{unit}.md").read_text()
+        assert record == f"**U{unit} built.** Its record.\n"
     ledger = root / "docs" / "residual-findings.md"
     folder = root / "docs" / "residuals"
-    landed = board.land_residuals(ledger, folder)
-    assert landed == [
+    assert board.land_residuals(ledger, folder) == [
         (13, "Unit 2 left a finding", False),
         (14, "Unit 3 left a finding", False),
     ]
@@ -126,21 +107,12 @@ def test_two_units_built_from_one_base_land_in_either_order(order, tmp_path, mon
     assert board.residual_files(folder) == []
 
 
-def test_the_number_given_at_landing_is_one_past_the_ledgers_highest(tmp_path):
-    """Past the highest, not past the count and not into a gap.
-
-    The fixture ledger holds R-5 and R-12, so a count would give 3 and a gap
-    filler would give 6. A second landing continues from what the first wrote.
-    """
-    board = _load("board")
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(LEDGER_TEXT)
-    folder = tmp_path / "residuals"
-    folder.mkdir()
-    (folder / "README.md").write_text("not a residual\n")
-    (folder / "u9-b.md").write_text(_residual("The second by name", issue="yes"))
-    (folder / "u9-a.md").write_text(_residual("The first by name"))
-
+def test_the_number_given_at_landing_is_one_past_the_ledgers_highest(tmp_path, board):
+    """Past R-12, the highest, not past the count of two and not into a gap."""
+    ledger, folder = _folder(tmp_path, README="not a residual\n", **{
+        "u9-b": _residual("The second by name", issue="yes"),
+        "u9-a": _residual("The first by name"),
+    })
     assert board.land_residuals(ledger, folder) == [
         (13, "The first by name", False),
         (14, "The second by name", True),
@@ -154,7 +126,6 @@ def test_the_number_given_at_landing_is_one_past_the_ledgers_highest(tmp_path):
     assert "Body.\n\n---\n\n## R-13. The first by name\n" in text
     assert "never.\n\n---\n\n## R-14. The second by name\n" in text
     assert [p.name for p in folder.iterdir()] == ["README.md"]
-
     (folder / "u10-c.md").write_text(_residual("A later landing"))
     assert board.land_residuals(ledger, folder) == [(15, "A later landing", False)]
 
@@ -171,45 +142,42 @@ def test_the_number_given_at_landing_is_one_past_the_ledgers_highest(tmp_path):
         ("---\ntitle: T\nfound: today.\nissue: maybe\n---\n\nBody.\n", "issue"),
         ("---\ntitle: R-12. Numbered by its filer\nfound: today.\n---\n\nBody.\n", "number"),
         ("---\ntitle: T\nfound: today.\n---\n\n\n", "no body"),
+        # A title citing another residual is not a number of its own.
+        (_residual("R-204 is discharged by half"), None),
     ],
 )
-def test_a_residual_file_the_landing_could_not_read_is_named(text, reason, tmp_path):
-    board = _load("board")
+def test_a_residual_file_the_landing_could_not_read_is_named(text, reason, tmp_path, board):
     (tmp_path / "u1-x.md").write_text(text)
     problems = board.residual_file_problems(tmp_path)
-    assert len(problems) == 1 and reason in problems[0], problems
+    assert problems == [] if reason is None else len(problems) == 1 and reason in problems[0]
 
 
-def test_a_title_citing_another_residual_is_not_a_number(tmp_path):
-    """The ledger holds headings like "R-204 is discharged by half"."""
-    board = _load("board")
-    (tmp_path / "u1-x.md").write_text(_residual("R-204 is discharged by half"))
-    assert board.residual_file_problems(tmp_path) == []
-
-
-def test_a_file_that_landed_once_is_not_numbered_again(tmp_path):
-    """A branch edit after the landing can bring a deleted file back."""
-    board = _load("board")
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(LEDGER_TEXT)
-    folder = tmp_path / "residuals"
-    folder.mkdir()
-    (folder / "u1-a.md").write_text(_residual("The highest, past a gap"))
-    with pytest.raises(ValueError, match="R-12 already"):
+@pytest.mark.parametrize(
+    ("files", "says"),
+    [
+        # A branch edit after the landing can bring a deleted file back.
+        ({"u1-a": _residual("The highest, past a gap")}, "R-12 already"),
+        # Validated before anything is written.
+        ({"u1-a": _residual("Fine on its own"), "u1-b": "no frontmatter\n"}, "u1-b.md"),
+    ],
+)
+def test_a_landing_that_cannot_number_every_file_writes_nothing(files, says, tmp_path, board):
+    ledger, folder = _folder(tmp_path, **files)
+    with pytest.raises(ValueError, match=says):
         board.land_residuals(ledger, folder)
     assert ledger.read_text() == LEDGER_TEXT
+    assert sorted(p.name for p in folder.iterdir()) == sorted(f"{n}.md" for n in files)
 
 
-def test_an_untracked_draft_is_neither_judged_nor_landed(tmp_path):
+def test_an_untracked_draft_is_neither_judged_nor_landed(tmp_path, board):
     """Only what git knows is filed. A draft blocked every unrelated commit."""
-    board = _load("board")
     root = tmp_path / "repo"
     run = _seed(root)
     folder = root / "docs" / "residuals"
     (folder / "u1-draft.md").write_text("half written\n")
     assert board.residual_file_problems(folder) == []
     (folder / "u1-filed.md").write_text(_residual("Filed and committed"))
-    assert run("git", "add", "docs/residuals/u1-filed.md").returncode == 0
+    run("git", "add", "docs/residuals/u1-filed.md")
     assert [p.name for p in board.residual_files(folder)] == ["u1-filed.md"]
     assert board.land_residuals(root / "docs" / "residual-findings.md", folder) == [
         (13, "Filed and committed", False)
@@ -217,159 +185,108 @@ def test_an_untracked_draft_is_neither_judged_nor_landed(tmp_path):
     assert (folder / "u1-draft.md").exists()
 
 
-def test_a_malformed_file_lands_nothing(tmp_path):
-    """Validated before anything is written, so the ledger and folder are untouched."""
-    board = _load("board")
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(LEDGER_TEXT)
-    folder = tmp_path / "residuals"
-    folder.mkdir()
-    (folder / "u1-a.md").write_text(_residual("Fine on its own"))
-    (folder / "u1-b.md").write_text("no frontmatter\n")
-    with pytest.raises(ValueError, match="u1-b.md"):
-        board.land_residuals(ledger, folder)
-    assert ledger.read_text() == LEDGER_TEXT
-    assert sorted(p.name for p in folder.iterdir()) == ["u1-a.md", "u1-b.md"]
-
-
-class _ClosingArgs:
-    def __init__(self, *, since=None, message_file=None):
-        self.since = since
-        self.message_file = message_file
-
-
-@pytest.mark.parametrize("path", ["hook", "range"])
+@pytest.mark.parametrize("path", ["hook", "range", "unreadable range"])
 def test_closing_refuses_a_landing_whose_residual_file_lacks_its_frontmatter(
-    path, tmp_path, monkeypatch
+    path, tmp_path, monkeypatch, board
 ):
-    """Both paths the check runs on: the commit-msg hook and CI's pushed range.
-
-    The message itself is clean and the register owes nothing, so the only
-    thing that can refuse is the residual file. A good file in its place passes.
-    """
-    board = _load("board")
-    folder = tmp_path / "residuals"
-    folder.mkdir()
+    """The hook, CI's pushed range, and a range it cannot read: the file alone refuses."""
+    _, folder = _folder(tmp_path)
     monkeypatch.setattr(board, "RESIDUALS_DIR", folder)
     monkeypatch.setattr(board, "owed_by_unit", lambda: {})
     message = tmp_path / "COMMIT_EDITMSG"
     message.write_text("docs(u1): the record\n")
+    args = SimpleNamespace(since="HEAD", message_file=None)
     if path == "hook":
-        args = _ClosingArgs(message_file=str(message))
+        args.message_file = str(message)
+    elif path == "range":
+        _seed(tmp_path / "repo")
+        monkeypatch.chdir(tmp_path / "repo")
     else:
-        root = tmp_path / "repo"
-        _seed(root)
-        monkeypatch.chdir(root)
-        args = _ClosingArgs(since="HEAD")
-
-    (folder / "u1-a.md").write_text("---\ntitle: A finding with no Found line\n---\n\nBody.\n")
+        args.since = "deadbeef"
+        monkeypatch.chdir(folder)
+    (folder / "u1-a.md").write_text(NO_FOUND)
     assert board.cmd_closing(args) == 2
-
     (folder / "u1-a.md").write_text(_residual("A finding with its Found line"))
     assert board.cmd_closing(args) == 0
 
 
-def test_an_unreadable_range_still_refuses_a_malformed_residual_file(tmp_path, monkeypatch):
-    board = _load("board")
-    folder = tmp_path / "residuals"
-    folder.mkdir()
-    (folder / "u1-a.md").write_text("no frontmatter\n")
-    monkeypatch.setattr(board, "RESIDUALS_DIR", folder)
-    empty = tmp_path / "not-a-repo"
-    empty.mkdir()
-    monkeypatch.chdir(empty)
-    assert board.cmd_closing(_ClosingArgs(since="deadbeef")) == 2
-
-
-def test_the_landing_refuses_off_main(tmp_path, monkeypatch, capsys):
-    """A number given on a branch is a number given by whoever filed."""
-    board = _load("board")
+def test_the_landing_refuses_off_main_and_behind_origin(tmp_path, monkeypatch, capsys, board):
+    """A number given on a branch, or behind the remote, may already be taken."""
     root = tmp_path / "repo"
     run = _seed(root)
-    assert run("git", "checkout", "-q", "-b", "unit/9").returncode == 0
+    run("git", "checkout", "-q", "-b", "unit/9")
     folder = root / "docs" / "residuals"
     (folder / "u9-a.md").write_text(_residual("Filed on a branch"))
-    assert run("git", "add", "-A").returncode == 0
+    run("git", "add", "-A")
     ledger = root / "docs" / "residual-findings.md"
     monkeypatch.setattr(board, "LEDGER", ledger)
     monkeypatch.setattr(board, "RESIDUALS_DIR", folder)
-
-    class Args:
-        land = True
-
-    assert board.cmd_residuals(Args()) == 1
+    land = SimpleNamespace(land=True)
+    assert board.cmd_residuals(land) == 1
     assert "unit/9" in capsys.readouterr().err
     assert ledger.read_text() == LEDGER_TEXT
 
-    assert run("git", "commit", "-q", "--no-verify", "-m", "u9").returncode == 0
-    assert run("git", "checkout", "-q", "main").returncode == 0
-    assert run("git", "merge", "-q", "unit/9").returncode == 0
-
-    # Behind the remote as last fetched: the highest read here may be stale.
-    assert run("git", "update-ref", "refs/remotes/origin/main", "unit/9").returncode == 0
-    assert run("git", "reset", "-q", "--hard", "HEAD~1").returncode == 0
-    assert board.cmd_residuals(Args()) == 1
+    run("git", "commit", "-q", "--no-verify", "-m", "u9")
+    run("git", "checkout", "-q", "main")
+    run("git", "update-ref", "refs/remotes/origin/main", "unit/9")
+    assert board.cmd_residuals(land) == 1
     assert "behind origin/main" in capsys.readouterr().err
-    assert run("git", "merge", "-q", "unit/9").returncode == 0
-
-    assert board.cmd_residuals(Args()) == 0
+    run("git", "merge", "-q", "unit/9")
+    assert board.cmd_residuals(land) == 0
     assert board.residual_titles(ledger)[13] == "Filed on a branch"
 
 
-def test_the_shipped_residual_folder_holds_only_files_that_can_land():
-    board = _load("board")
+def test_audit_counts_a_residual_file_that_cannot_land_as_a_contradiction(
+    tmp_path, monkeypatch, capsys, board
+):
+    """Everything else the audit reads matches, so the file alone moves the exit."""
+    _, folder = _folder(tmp_path)
+    monkeypatch.setattr(board, "RESIDUALS_DIR", folder)
+    monkeypatch.setattr(board, "repo_slug", lambda: ("fixture", "cratekit"))
+    monkeypatch.setattr(board, "load_issues", lambda: [])
+    monkeypatch.setattr(board, "reconcile", lambda owner, apply, labels_only=False: [])
+    monkeypatch.setattr(board, "owed_by_unit", lambda: {})
+    args = SimpleNamespace(labels_only=True)
+    (folder / "u1-a.md").write_text(_residual("Waiting for its number"))
+    assert board.cmd_audit(args) == 0
+    assert "1 residual file(s) in docs/residuals wait for a number" in capsys.readouterr().out
+    (folder / "u1-a.md").write_text(NO_FOUND)
+    assert board.cmd_audit(args) == 2
+    assert "CANNOT LAND" in capsys.readouterr().out
+
+
+def test_the_shipped_residual_folder_holds_only_files_that_can_land(board):
     assert board.residual_file_problems() == []
-
-
-# --------------------------------------------------------------------------
-# the restart state
 
 
 def _restart_text() -> str:
     return (REPO_ROOT / "RESTART-cratekit.md").read_text()
 
 
-def test_the_restart_state_as_shipped_passes_its_own_scan():
+def test_the_restart_state_as_shipped_passes_its_own_scan_and_no_other_file_is_judged(tmp_path):
     scan = _load("scan_repo")
     assert scan.restart_violations("RESTART-cratekit.md", _restart_text()) == []
+    path = tmp_path / "docs" / "restart" / "u999.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("**U999 built, 2026-10-10, on `relay/999`.** A record.\n")
+    assert scan.scan_tree(tmp_path, [path], check_identity=False) == []
+
+
+def _insert(anchor: str, text: str, before: bool = False):
+    return lambda t: t.replace(anchor, text + anchor if before else anchor + text, 1)
 
 
 @pytest.mark.parametrize(
     ("edit", "says"),
     [
-        (
-            lambda t: t.replace(
-                "## Main, verify",
-                "**U999 built, 2026-10-10, on `relay/999`.** A record.\n\n## Main, verify",
-                1,
-            ),
-            "head",
-        ),
-        (
-            lambda t: t.replace(
-                "## Main, verify",
-                "A plain paragraph somebody added.\n\n## Main, verify",
-                1,
-            ),
-            "head",
-        ),
+        (_insert("## Main, verify", "**U999 built, 2026-10-10, on `relay/999`.** A record.\n\n",
+                 before=True), "head"),
+        (_insert("## Main, verify", "A plain paragraph somebody added.\n\n", before=True), "head"),
         (lambda t: t + "\n## What U999 left behind\n\nThree residuals.\n", "U999"),
-        (
-            lambda t: t.replace(
-                "## What is open\n",
-                "## What is open\n\n**R-999 built, 2026-10-10.** A record.\n",
-                1,
-            ),
-            "opens a unit's record",
-        ),
-        (
-            lambda t: t.replace(
-                "## What is open\n",
-                "## What is open\n\n**Sitting 99, 2026-10-10, attended.** A record.\n",
-                1,
-            ),
-            "opens a unit's record",
-        ),
+        (_insert("## What is open\n", "\n**R-999 built, 2026-10-10.** A record.\n"),
+         "opens a unit's record"),
+        (_insert("## What is open\n", "\n**Sitting 99, 2026-10-10, attended.** A record.\n"),
+         "opens a unit's record"),
     ],
 )
 def test_a_unit_writing_into_the_restart_state_is_refused_by_the_scan(edit, says, tmp_path):
@@ -384,38 +301,18 @@ def test_a_unit_writing_into_the_restart_state_is_refused_by_the_scan(edit, says
     assert all(f.startswith("RESTART-cratekit.md: ") for f in findings)
 
 
-def test_the_scan_judges_no_other_file_by_the_restart_rule(tmp_path):
-    scan = _load("scan_repo")
-    path = tmp_path / "docs" / "restart" / "u999.md"
-    path.parent.mkdir(parents=True)
-    path.write_text("**U999 built, 2026-10-10, on `relay/999`.** A record.\n")
-    assert scan.scan_tree(tmp_path, [path], check_identity=False) == []
-
-
-def _paragraphs(text: str) -> list[str]:
-    return [p for p in text.split("\n\n") if p.strip()]
-
-
 class Rewording(NamedTuple):
-    """One span of a moved paragraph that a later unit changed on purpose."""
-
     unit: str
     fragment: str
     old: str
     new: str
 
 
-#: The deliberate rewordings of moved text since the split, as data. Each entry
-#: is the smallest span a later unit changed on purpose: the text as the split
-#: base has it, the text its fragment has now, and the fragment it lives in.
-#: The comparison applies each entry to the base's moved paragraphs and then
-#: compares byte for byte, so the rest of that paragraph, and every other
-#: paragraph, is still held exactly. An entry is checked before it is used, so
-#: a stale one fails rather than silently excusing nothing.
+#: The deliberate rewordings of moved text since the split, applied before the
+#: byte for byte comparison and checked first, so a stale entry fails.
 REWORDINGS = (
     # U195 (#469) stopped the public prose naming the service beside the
-    # vendored downloader, and this sentence of R-301's record was one it
-    # reworded on purpose. Restoring the old sentence would undo that unit.
+    # vendored downloader; restoring the old sentence would undo that unit.
     Rewording(
         unit="U195",
         fragment="r301.md",
@@ -425,28 +322,19 @@ REWORDINGS = (
 )
 
 
+def _paragraphs(text: str) -> list[str]:
+    return [p for p in text.split("\n\n") if p.strip()]
+
+
 @functools.cache
-def _split_base_restart() -> str:
+def _moved_paragraphs() -> tuple[str, ...]:
+    """The paragraphs the split moved out of the restart state, as the base had them."""
     shown = subprocess.run(
         ["git", "show", f"{SPLIT_BASE}:RESTART-cratekit.md"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
     )
     assert shown.returncode == 0, f"the split base {SPLIT_BASE} is not in this clone"
-    return shown.stdout
-
-
-def _moved_paragraphs() -> list[str]:
-    """The paragraphs the split moved out of the restart state, as the base had them.
-
-    "Moved" is read off the base's own layout, everything outside the sections
-    the restart state keeps, so a later edit to a kept section is not mistaken
-    for a lost record.
-    """
-    scan = _load("scan_repo")
-    sections = re.split(r"\n(?=## )", _split_base_restart())
+    sections = re.split(r"\n(?=## )", shown.stdout)
     # The head kept its title and its first paragraph; the rest was records.
     moved = _paragraphs(sections[0])[2:]
     for section in sections[1:]:
@@ -454,19 +342,18 @@ def _moved_paragraphs() -> list[str]:
         if heading == "## Main, verify before trusting it":
             # The heading and the command block stayed.
             moved += _paragraphs(section)[2:]
-        elif heading not in scan.RESTART_SECTIONS:
+        elif heading not in _load("scan_repo").RESTART_SECTIONS:
             moved += _paragraphs(section)
-    return moved
+    return tuple(moved)
 
 
 def _fragments() -> dict[str, str]:
     return {p.name: p.read_text() for p in sorted((REPO_ROOT / "docs" / "restart").glob("*.md"))}
 
 
-def _stale_rewordings(
-    moved: list[str], fragments: dict[str, str], rewordings: tuple[Rewording, ...]
-) -> list[str]:
-    """Every entry that no longer describes a change the tree actually holds."""
+def _lost(fragments: dict[str, str], rewordings=REWORDINGS, check: bool = True) -> list[str]:
+    """Stale table entries, else the opening of every moved paragraph no fragment holds."""
+    moved = _moved_paragraphs()
     stale = []
     for entry in rewordings:
         found = sum(p.count(entry.old) for p in moved)
@@ -474,142 +361,63 @@ def _stale_rewordings(
             stale.append(f"{entry.unit}: its old text is in the split base {found} times, not once")
         if entry.new not in fragments.get(entry.fragment, ""):
             stale.append(f"{entry.unit}: its new text is not in {entry.fragment}")
-    return stale
-
-
-def _lost_paragraphs(
-    moved: list[str], fragments: dict[str, str], rewordings: tuple[Rewording, ...]
-) -> list[str]:
-    """The opening of every moved paragraph no fragment holds verbatim, after the table."""
-    expected = moved
+    if stale and check:
+        return stale
+    expected = list(moved)
     for entry in rewordings:
         expected = [p.replace(entry.old, entry.new) for p in expected]
     joined = "\n\n".join(fragments.values())
     return [p[:80] for p in expected if p not in joined]
 
 
-def _problems(
-    moved: list[str], fragments: dict[str, str], rewordings: tuple[Rewording, ...]
-) -> list[str]:
-    """The check's whole verdict: a stale table is reported and never applied."""
-    stale = _stale_rewordings(moved, fragments, rewordings)
-    if stale:
-        return stale
-    return _lost_paragraphs(moved, fragments, rewordings)
-
-
 def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
-    """The split moved text and changed none of it, but for the named rewordings.
-
-    Every paragraph of the restart state at the split base that is not in the
-    restart state now is found verbatim in some ``docs/restart/`` file, once
-    the ``REWORDINGS`` table is applied to it. A paragraph can only be split at
-    a blank line, and the split moved whole records, so a paragraph is the
-    unit of comparison. The base commit is on main's history, so a clone
-    without it is a shallow one, and CI does not run the suite.
-    """
-    moved = _moved_paragraphs()
-    assert len(moved) > 250
-    assert _problems(moved, _fragments(), REWORDINGS) == []
-
-
-R301_OPENING = "**The session before: R-301, issue #168"
+    """The split moved whole records and changed none, but for the named rewordings."""
+    assert len(_moved_paragraphs()) > 250
+    assert _lost(_fragments()) == []
 
 
 @pytest.mark.parametrize(
-    "old, new",
+    "change",
     [
-        # A word in the same paragraph, outside the reworded span.
-        ("tagging searchers", "tag searchers"),
-        # A word inside the reworded span itself.
-        ("downloader, neither", "downloader, nor"),
-        # A word in the same sentence, just before the span.
-        ("literal\nprovider hosts", "literal\nprovider names"),
+        ("tagging searchers", "tag searchers"),  # outside the reworded span
+        ("downloader, neither", "downloader, nor"),  # inside it
+        ("literal\nprovider hosts", "literal\nprovider names"),  # just before it
+        "first", "middle", "last",  # a paragraph removed from another fragment
     ],
 )
-def test_another_change_to_the_reworded_record_still_fails(old, new):
-    moved = _moved_paragraphs()
+def test_a_changed_or_removed_paragraph_still_fails(change):
     fragments = _fragments()
-    assert fragments["r301.md"].count(old) == 1
-    fragments["r301.md"] = fragments["r301.md"].replace(old, new)
-    lost = _lost_paragraphs(moved, fragments, REWORDINGS)
-    assert [p for p in lost if p.startswith(R301_OPENING)] != []
-
-
-@pytest.mark.parametrize("position", ["first", "middle", "last"])
-def test_a_paragraph_removed_from_another_fragment_still_fails(position):
-    moved = _moved_paragraphs()
-    fragments = _fragments()
-    joined = "\n\n".join(fragments.values())
-    # Paragraphs held by exactly one fragment other than R-301's, so removing
-    # it from that one fragment is a real loss.
-    held_once = [
-        (name, p)
-        for p in moved
-        if joined.count(p) == 1
-        for name, text in fragments.items()
-        if name != "r301.md" and p in text
-    ]
-    assert len(held_once) > 200
-    index = {"first": 0, "middle": len(held_once) // 2, "last": -1}[position]
-    name, paragraph = held_once[index]
-    fragments[name] = fragments[name].replace(paragraph, "")
-    assert paragraph[:80] in _lost_paragraphs(moved, fragments, REWORDINGS)
+    if isinstance(change, tuple):
+        assert fragments["r301.md"].count(change[0]) == 1
+        fragments["r301.md"] = fragments["r301.md"].replace(*change)
+        opening = "**The session before: R-301, issue #168"
+    else:
+        joined = "\n\n".join(fragments.values())
+        # Paragraphs held by exactly one fragment other than R-301's.
+        held_once = [
+            (name, p) for p in _moved_paragraphs() if joined.count(p) == 1
+            for name, text in fragments.items() if name != "r301.md" and p in text
+        ]
+        assert len(held_once) > 200
+        name, paragraph = held_once[{"first": 0, "middle": len(held_once) // 2, "last": -1}[change]]
+        fragments[name] = fragments[name].replace(paragraph, "")
+        opening = paragraph[:80]
+    assert [p for p in _lost(fragments, check=False) if p.startswith(opening)]
 
 
 @pytest.mark.parametrize(
     "entry, says",
     [
-        (
-            Rewording("U0", "r301.md", "the vendored Tidal\nservice, neither", REWORDINGS[0].new),
-            "in the split base 0 times",
-        ),
-        (
-            Rewording("U0", "r301.md", "\n", REWORDINGS[0].new),
-            "times, not once",
-        ),
-        (
-            Rewording("U0", "r301.md", REWORDINGS[0].old, "the vendored\nfetcher, neither"),
-            "its new text is not in r301.md",
-        ),
-        (
-            Rewording("U0", "r999.md", REWORDINGS[0].old, REWORDINGS[0].new),
-            "its new text is not in r999.md",
-        ),
+        (REWORDINGS[0]._replace(old="the vendored Tidal\nservice, neither"),
+         "in the split base 0 times"),
+        (REWORDINGS[0]._replace(old="\n"), "times, not once"),
+        (REWORDINGS[0]._replace(new="the vendored\nfetcher, neither"),
+         "its new text is not in r301.md"),
+        (REWORDINGS[0]._replace(fragment="r999.md"), "its new text is not in r999.md"),
     ],
 )
 def test_a_stale_rewording_fails_rather_than_excusing_nothing(entry, says):
     # Added beside the real entry, so the only thing wrong is the stale one.
-    problems = _problems(_moved_paragraphs(), _fragments(), REWORDINGS + (entry,))
+    problems = _lost(_fragments(), REWORDINGS + (entry._replace(unit="U0"),))
     assert len(problems) == 1
     assert says in problems[0]
-
-
-def test_audit_counts_a_residual_file_that_cannot_land_as_a_contradiction(
-    tmp_path, monkeypatch, capsys
-):
-    """The audit reads the folder as well as the ledger, and a bad file is exit 2.
-
-    Everything the board itself reads is doubled to an empty board that
-    matches, so the residual file is the only thing that can move the exit.
-    A good file waiting is named and leaves the board matching.
-    """
-    board = _load("board")
-    folder = tmp_path / "residuals"
-    folder.mkdir()
-    monkeypatch.setattr(board, "RESIDUALS_DIR", folder)
-    monkeypatch.setattr(board, "repo_slug", lambda: ("fixture", "cratekit"))
-    monkeypatch.setattr(board, "load_issues", lambda: [])
-    monkeypatch.setattr(board, "reconcile", lambda owner, apply, labels_only=False: [])
-    monkeypatch.setattr(board, "owed_by_unit", lambda: {})
-
-    class Args:
-        labels_only = True
-
-    (folder / "u1-a.md").write_text(_residual("Waiting for its number"))
-    assert board.cmd_audit(Args()) == 0
-    assert "1 residual file(s) in docs/residuals wait for a number" in capsys.readouterr().out
-
-    (folder / "u1-a.md").write_text("---\ntitle: No Found line\n---\n\nBody.\n")
-    assert board.cmd_audit(Args()) == 2
-    assert "CANNOT LAND" in capsys.readouterr().out
