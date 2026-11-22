@@ -1,12 +1,10 @@
 """U156: a native landing files its label tracks under the Record Labels tree.
 
-R-771 refused ``--manifest`` on a native intake tree, because label filing was
-written into the intake file the native medium never makes, so a label batch
-reached INBOX filed under nothing. Driven here through the real dispatcher
-against the disposable database the native landing suite builds: a manifest's
-rows, or one label named with ``--label`` and each file's date tag, become
-``Record Labels / <Label> / <Label> <year>`` in the batch's own commit, read
-back from SQL. The bridge keeps ``tests/test_landing_labels.py`` unchanged.
+Driven through the real dispatcher against the native landing suite's
+disposable database: a manifest's rows, or one label named with ``--label``
+and each file's date tag, become ``Record Labels / <Label> / <Label> <year>``
+in the batch's own commit, read back from SQL. The bridge keeps
+``tests/test_landing_labels.py``.
 
 D1 applies. Nothing here names a real volume, a real person or a real track.
 """
@@ -29,6 +27,7 @@ from tests import cutover_fixtures
 from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_intake_land_native import (
+    GATE,
     _assert_refused_before_the_gate,
     _batch_playlist,
     _land,
@@ -184,29 +183,18 @@ def test_a_manifest_files_its_matched_rows_under_label_and_year_and_names_the_un
         ("Kompakt 2024", 1, True),
         ("Kompakt 2025", 2, True),
     ]
-
-
-def test_the_record_names_each_year_filed_and_counts_it_under_the_catalogue_tree(
-    native_library, silence, tmp_path
-):
-    """What a later ``label mark`` of a native batch reads in place of an intake file (R-916)."""
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
-
-    code, acted, _ = _two_acts(_land("--manifest", str(manifest)))
-
-    assert code == int(ExitCode.OK), acted
+    # The record names each year filed, what a later ``label mark`` of a
+    # native batch reads in place of an intake file (R-916).
     (record,) = session.records(cfg)
-    ((filed,),) = [record.detail[label_filing.RECORD_KEY]]
-    assert {k: filed[k] for k in ("name", "label", "year", "tracks")} == {
-        "name": "Kompakt 2025",
-        "label": "Kompakt",
-        "year": 2025,
-        "tracks": 1,
-    }
+    assert [
+        {k: filed[k] for k in ("name", "label", "year", "tracks")}
+        for filed in record.detail[label_filing.RECORD_KEY]
+    ] == [
+        {"name": "Kompakt 2025", "label": "Kompakt", "year": 2025, "tracks": 2},
+        {"name": "Kompakt 2024", "label": "Kompakt", "year": 2024, "tracks": 1},
+    ]
     changes = {change.tree: change.created for change in record.change.trees}
-    assert changes[DECLARED.catalog.id] == 1
+    assert changes[DECLARED.catalog.id] == 3
     assert record.sources[DECLARED.catalog.id] == "committed"
 
 
@@ -236,19 +224,6 @@ def test_the_record_names_each_landed_rows_provider_track_for_the_account_mirror
     assert account_mirror.landed_tracks(cfg) == expected
     ((playlist_id, _parent, _attr),) = _batch_playlist(cfg)
     assert set(expected) < set(_members(cfg, str(playlist_id)))
-
-
-def test_a_landing_with_label_records_no_provider_track(native_library, silence):
-    """``--label`` names no track, so there is nothing to record."""
-    cfg, _root = native_library
-    _dated(cfg, silence, "One.flac", "2025-03-01")
-
-    code, acted, _ = _two_acts(_land("--label", "Kompakt"))
-
-    assert code == int(ExitCode.OK), acted
-    (record,) = session.records(cfg)
-    assert label_filing.RECORD_KEY in record.detail
-    assert label_filing.PROVIDER_KEY not in record.detail
 
 
 def test_the_digest_moves_with_the_manifests_bytes(native_library, silence, tmp_path):
@@ -366,11 +341,15 @@ def test_an_existing_year_playlist_gains_members_and_loses_none(native_library, 
 
 
 def test_the_same_files_landed_again_add_no_second_membership(native_library, silence):
-    """A file the collection already holds is present, and its year playlist already holds it."""
+    """A file the collection already holds is present, and its year playlist
+    already holds it. ``--label`` names no provider track, so none is recorded."""
     cfg, _root = native_library
     _dated(cfg, silence, "One.flac", "2021")
     code, acted, _ = _two_acts(_land("--label", "PULS"))
     assert code == int(ExitCode.OK), acted
+    (record,) = session.records(cfg)
+    assert label_filing.RECORD_KEY in record.detail
+    assert label_filing.PROVIDER_KEY not in record.detail
     before = _filed(cfg)
 
     # The landed file is held, so a second landing of its copy finds it present.
@@ -385,23 +364,17 @@ def test_the_same_files_landed_again_add_no_second_membership(native_library, si
     assert again["data"]["totals"]["label memberships"] == 0
 
 
-def test_the_digest_moves_with_the_label(native_library, silence):
-    cfg, _root = native_library
-    _dated(cfg, silence, "One.flac", "2021")
-
-    _code, puls = drive(_land("--label", "PULS"))
-    _code, other = drive(_land("--label", "Kompakt"))
-
-    assert _shown(puls)["digest"] != _shown(other)["digest"]
-
-
-def test_an_answer_given_for_one_label_is_stale_for_another(native_library, silence):
+def test_the_label_moves_the_digest_and_an_answer_for_one_is_stale_for_another(
+    native_library, silence
+):
     cfg, _root = native_library
     _dated(cfg, silence, "One.flac", "2021")
     code, refused = drive(_land("--label", "PULS"))
     assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _code, other = drive(_land("--label", "Kompakt"))
+    assert _shown(refused)["digest"] != _shown(other)["digest"]
     run_id = refused["run_id"]
-    decided, _ = drive(["run", "decide", run_id, land_gate(), "apply", "--actor", "a-person"])
+    decided, _ = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
     assert decided == int(ExitCode.OK)
 
     code, acted = drive(["--run", run_id, *_land("--label", "Kompakt")])
@@ -409,12 +382,6 @@ def test_an_answer_given_for_one_label_is_stale_for_another(native_library, sile
     assert code == int(ExitCode.DECISION_STALE), acted
     assert _staged_names(cfg) == ["One.flac"]
     assert _tree_folders(cfg) == []
-
-
-def land_gate() -> str:
-    from cratekit.intake import land_cli
-
-    return land_cli.NATIVE_GATE
 
 
 def test_a_file_left_in_staging_is_filed_nowhere(native_library, silence):
@@ -437,12 +404,15 @@ def test_a_file_left_in_staging_is_filed_nowhere(native_library, silence):
 # ---------------------------------------------------------------------------
 
 
-def test_label_on_the_bridge_is_refused_before_the_gate_naming_the_flag(acknowledged, silence):
+@pytest.mark.parametrize("flag", [("--label", "PULS"), ("--label-from-tags",)], ids=lambda f: f[0])
+def test_a_label_flag_on_the_bridge_is_refused_before_the_gate_naming_it(
+    acknowledged, silence, flag
+):
     cfg = acknowledged
     _stage(cfg, silence, "One.flac")
-    code, envelope = drive(_land("--label", "PULS"))
+    code, envelope = drive(_land(*flag))
     _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
-    assert "--label" in envelope["cause"]["message"]
+    assert flag[0] in envelope["cause"]["message"]
 
 
 def test_label_beside_a_manifest_is_refused_before_the_gate(native_library, silence, tmp_path):
@@ -488,9 +458,9 @@ def test_a_playlist_where_the_label_folder_belongs_is_refused_before_the_gate(
     assert "a playlist named 'PULS'" in envelope["cause"]["message"]
 
 
-def test_a_taxonomy_with_no_catalog_tree_is_refused_by_name(native_library, silence, monkeypatch):
-    cfg, _root = native_library
-    _dated(cfg, silence, "One.flac", "2021")
+@pytest.fixture
+def no_catalog(monkeypatch):
+    """A taxonomy that declares no catalogue tree."""
     from cratekit.intake import ingest
 
     real = ingest.intake_medium
@@ -500,6 +470,11 @@ def test_a_taxonomy_with_no_catalog_tree_is_refused_by_name(native_library, sile
         return replace(medium, declared=replace(medium.declared, catalog=None))
 
     monkeypatch.setattr(ingest, "intake_medium", without_catalog)
+
+
+def test_a_taxonomy_with_no_catalog_tree_is_refused_by_name(native_library, silence, no_catalog):
+    cfg, _root = native_library
+    _dated(cfg, silence, "One.flac", "2021")
     code, envelope = drive(_land("--label", "PULS"))
     _assert_refused_before_the_gate(cfg, code, envelope, "catalog-tree-undeclared")
 
@@ -610,7 +585,7 @@ def test_a_year_playlist_made_after_the_answer_makes_the_answer_stale(native_lib
     code, refused = drive(_land("--label", "PULS"))
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     run_id = refused["run_id"]
-    decided, _ = drive(["run", "decide", run_id, land_gate(), "apply", "--actor", "a-person"])
+    decided, _ = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
     assert decided == int(ExitCode.OK)
     made = _playlist(cfg, "PULS 2021", label)
 
@@ -894,7 +869,7 @@ def test_the_screen_names_each_label_folder_the_write_makes(native_library, sile
 
 
 def test_a_manifest_with_no_label_row_asks_nothing_of_the_catalogue_tree(
-    native_library, silence, tmp_path, monkeypatch
+    native_library, silence, tmp_path, no_catalog
 ):
     """As the bridge's own check returns early on it: a list manifest files nothing."""
     cfg, _root = native_library
@@ -903,16 +878,6 @@ def test_a_manifest_with_no_label_row_asks_nothing_of_the_catalogue_tree(
     provenance = {"1": listdoc.Provenance(source="list")}
     written = listdoc.write(tmp_path, "intake-missing-test", rows, provenance)
     assert written.manifest_path is not None
-    from cratekit.intake import ingest
-
-    real = ingest.intake_medium
-
-    def without_catalog(cfg_):
-        medium = real(cfg_)
-        return replace(medium, declared=replace(medium.declared, catalog=None))
-
-    monkeypatch.setattr(ingest, "intake_medium", without_catalog)
-
     code, acted, refused = _two_acts(_land("--manifest", str(written.manifest_path)))
 
     assert code == int(ExitCode.OK), acted
@@ -1020,16 +985,6 @@ def test_the_digest_moves_between_one_label_and_each_files_own(native_library, s
 
     assert _shown(one)["label playlists"] == _shown(own)["label playlists"]
     assert _shown(one)["digest"] != _shown(own)["digest"]
-
-
-def test_label_from_tags_on_the_bridge_is_refused_before_the_gate_naming_the_flag(
-    acknowledged, silence
-):
-    cfg = acknowledged
-    _stage(cfg, silence, "One.flac")
-    code, envelope = drive(_land("--label-from-tags"))
-    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
-    assert "--label-from-tags" in envelope["cause"]["message"]
 
 
 @pytest.mark.parametrize("beside", ["--label", "--manifest"])
