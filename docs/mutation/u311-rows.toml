@@ -1,0 +1,204 @@
+name = "u311"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_warning_key_order"
+description = "The shared warning builder writes message before code, changing every warning's key order in the envelope"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    return {"code": code, "message": message}'''
+new = '''    return {"message": message, "code": code}'''
+
+[[rows]]
+id = "A2_refused_portion_runs"
+description = "A portion with a refusal still reads as one that will run"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''        return self.refusal is None and (bool(self.commands) or self.kind in _NOTHING_TO_SEND)'''
+new = '''        return bool(self.commands) or self.kind in _NOTHING_TO_SEND'''
+
+[[rows]]
+id = "A3_database_destination_not_required"
+description = "The destination check forgets the database snapshot root, so a run without it is not refused up front"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    keys = ("dest", "archive_root", "db_dest_root")'''
+new = '''    keys = ("dest", "archive_root")'''
+
+[[rows]]
+id = "A4_logged_takes_any_json"
+description = "The comparison log reader keeps any JSON value, not only objects"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+old = '''    return [entry for entry in map(_parsed, stderr.splitlines()) if isinstance(entry, dict)]'''
+new = '''    return [entry for entry in map(_parsed, stderr.splitlines()) if entry is not None]'''
+
+[[rows]]
+id = "A5_agrees_ignores_the_hash"
+description = "Two readings of a file agree whatever their hashes say"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+old = '''        return (self.size, self.mtime_ns, self.sha256) == (other.size, other.mtime_ns, other.sha256)'''
+new = '''        return (self.size, self.mtime_ns) == (other.size, other.mtime_ns)'''
+
+[[rows]]
+id = "A6_double_star_stays_in_a_segment"
+description = "The glob reader no longer reads a double star as one token, so it stops crossing separators"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+old = '''re.findall(r"\*\*|.", text, re.S)'''
+new = '''re.findall(r".", text, re.S)'''
+
+[[rows]]
+id = "A7_unanchored_exclude_anchors"
+description = "An exclude without a leading slash is matched only at the root, not at any path's end"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+old = '''    head = "^" if anchored else "(?:^|/)"'''
+new = '''    head = "^"'''
+
+[[rows]]
+id = "A8_no_directory_matcher"
+description = "A dir/** exclude gets no directory matcher, so the walk descends into the excluded folder"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+old = '''directories=tuple(d for _, d in pairs if d is not None)'''
+new = '''directories=()'''
+
+[[rows]]
+id = "A9_uncomposed_reads_nfd"
+description = "The decomposed name check asks for NFD instead of NFC, flagging composed names and missing decomposed ones"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+old = '''unicodedata.is_normalized("NFC", path)'''
+new = '''unicodedata.is_normalized("NFD", path)'''
+
+[[rows]]
+id = "A10_paths_keep_the_trailing_empty"
+description = "Reading a path list keeps the empty name after the last line feed"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+old = '''    return tuple(feed.split("\n")[:-1]) if feed else ()'''
+new = '''    return tuple(feed.split("\n")) if feed else ()'''
+
+[[rows]]
+id = "C1_first_loudness_block"
+description = "The loudness reader takes the first JSON block in ffmpeg's stderr instead of the last"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    for raw in reversed(_JSON_BLOCK.findall(stderr_text or "")):'''
+new = '''    for raw in _JSON_BLOCK.findall(stderr_text or ""):'''
+
+[[rows]]
+id = "C2_any_block_is_the_report"
+description = "The loudness reader takes any JSON object, not one carrying its marker"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''        if isinstance(data, dict) and marker in data:'''
+new = '''        if isinstance(data, dict):'''
+
+[[rows]]
+id = "C3_suffix_case_matters"
+description = "A recording whose suffix is upper case is refused as unsupported"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    if path.suffix.lower() not in SOURCE_SUFFIXES:'''
+new = '''    if path.suffix not in SOURCE_SUFFIXES:'''
+
+[[rows]]
+id = "C4_24_bit_loses_its_depth"
+description = "A 24 bit source's encode no longer asks for 24 bits per sample"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''    return (*flac, "-sample_fmt", "s32", "-bits_per_raw_sample", "24"), "", "24-bit"'''
+new = '''    return (*flac, "-sample_fmt", "s32"), "", "24-bit"'''
+
+[[rows]]
+id = "C5_binaries_out_of_order"
+description = "The shared binary lookup answers its names in reverse, swapping ffmpeg and ffprobe"
+file = "src/cratekit/modules/tools/mastering.py"
+surface = "user"
+old = '''        return [binaries.resolve(name) for name in names]'''
+new = '''        return [binaries.resolve(name) for name in reversed(names)]'''
+
+[[rows]]
+id = "C6_relative_key_dropped"
+description = "The relative key (same number, other letter) leaves the perfect tier"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    perfect = ((0, letter), (1, letter), (-1, letter), (0, other))'''
+new = '''    perfect = ((0, letter), (1, letter), (-1, letter))'''
+
+[[rows]]
+id = "C7_wider_tier_steps_down"
+description = "The wider tier's plus three step becomes minus three"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    wider = ((-2, letter), (3, letter), (-1, other), (1, other))'''
+new = '''    wider = ((-2, letter), (-3, letter), (-1, other), (1, other))'''
+
+[[rows]]
+id = "C8_unreadable_number_raises"
+description = "A tag that is not a number raises instead of reading as absent"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''    except (TypeError, ValueError):
+        return None'''
+new = '''    except TypeError:
+        return None'''
+
+[[rows]]
+id = "C9_anchor_comes_back"
+description = "The anchor is no longer excluded from its own pool by match key"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+old = '''        if anchor_match and track.match == anchor_match:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D1_stamp_name_unstripped"
+description = "A stamp line's name is not stripped, so a spaced version line is not found"
+file = "src/cratekit/skills/cli.py"
+surface = "user"
+old = '''            yield name.strip(), value'''
+new = '''            yield name, value'''
+
+[[rows]]
+id = "D2_empty_extra_kept"
+description = "An empty name between commas is kept as an extra in the install command"
+file = "src/cratekit/modules/extras.py"
+surface = "user"
+old = '''    return tuple(e.strip() for e in (match["extras"] or "").split(",") if e.strip())'''
+new = '''    return tuple(e.strip() for e in (match["extras"] or "").split(","))'''
+
+[[rows]]
+id = "D3_tempo_never_read"
+description = "The library report reads a field the name head never carries, so no track has a tempo"
+file = "src/cratekit/modules/reports/library.py"
+surface = "user"
+old = '''    written = (parse_head(name, template=template) or {}).get("bpm")'''
+new = '''    written = (parse_head(name, template=template) or {}).get("tempo")'''
+
+[[rows]]
+id = "B1_verb_refusal_origin"
+description = "The restore verb's own refusals carry no step beside their condition"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+old = '''            remediation=Remediation(steps=(step,)),'''
+new = '''            remediation=Remediation(steps=()),'''
+
+[[rows]]
+id = "B2_acknowledgment_hides_what_it_showed"
+description = "Both mints report an acknowledgment without the ages it was shown"
+file = "src/cratekit/session/cli.py"
+surface = "user"
+old = '''        "shown": [entry.to_json() for entry in acknowledgment.shown],'''
+new = '''        "shown": [],'''
+
+[[rows]]
+id = "B3_iso_drops_a_present_moment"
+description = "The backup ages report a recorded moment as none"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+old = '''    return moment.isoformat() if moment is not None else None'''
+new = '''    return None'''

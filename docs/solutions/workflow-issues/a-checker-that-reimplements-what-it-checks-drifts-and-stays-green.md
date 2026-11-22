@@ -153,8 +153,9 @@ implementations can only be compared by running both.
 **Replace the fixture table with a real instance of the target, small and
 synthetic but real.** `_fixture_parser` at `tests/test_skills_lint.py:306` is a
 tiny `argparse.ArgumentParser` rather than a dictionary, and its docstring states
-the property that matters: "It is a real `argparse.ArgumentParser` rather than a
-table, so the fixtures exercise the same code path the real tree does." The
+the property that matters: "A tiny real argparse parser for the fixture skills,
+so each fixture proves one rule through the same code path the real tree takes."
+The
 fixtures stay isolated, and they stop being able to encode a private theory of
 the target.
 
@@ -166,18 +167,17 @@ rather than by `split()`. Second, deciding which of the target's verdicts count:
 here exit 0 is `--help` and `--version`, which are real answers rather than
 failures, at `tests/test_skills_lint.py:162`. Third, handling the target's state.
 `real_parser` at `:76` builds a FRESH parser per call, and its docstring says
-why: "`parse_args` mutates the namespace it builds and argparse keeps state on
-the parser for a failed parse. A shared instance made one skill's bad command
-affect the next skill's verdict, which is the shape of a test that passes or
-fails depending on ordering."
+why: "argparse keeps state on a parser after a failed parse." A shared instance
+made one skill's bad command affect the next skill's verdict, which is the shape
+of a test that passes or fails depending on ordering. (Its longer docstring, cut
+to that rule by U311, is at `c9192091`.)
 
 **Say which configuration of the real thing you are checking against, and pin the
 other question separately.** `real_parser` deliberately builds the FULL
-membership rather than the machine's active profile, because "linting against
-whichever profile happens to be configured on the machine running the suite would
-make the result a property of that machine". Which verbs a profile hides is a
+membership rather than the machine's active profile, "so the verdict is not a
+property of the machine's profile". Which verbs a profile hides is a
 different question, and the same commit pinned it in its own test,
-`test_a_profile_disabled_verb_is_absent_rather_than_refusing` at `:672`, by
+`test_a_profile_disabled_verb_is_absent_rather_than_refusing` at `:561`, by
 building both presets and driving a verb one of them excludes.
 
 **Check what the repository already drives before you build a second model of
@@ -188,7 +188,7 @@ already carried the answer to four of the five defective command shapes.
 **Keep the anti vacuity guard next to the checker, because a checker with nothing
 to check is also green.** `lint_skills` over an empty directory returns an empty
 problem list, which is correct and indistinguishable from twelve clean skills.
-`test_the_real_tree_holds_exactly_the_skills_that_are_meant_to_ship` at `:765`
+`test_the_real_tree_holds_exactly_the_skills_that_are_meant_to_ship` at `:612`
 asserts the membership so the lint cannot be satisfied by deletion. A checker
 that delegates its verdict to the real thing still owes you proof that it ran.
 
@@ -369,9 +369,9 @@ judgment axis described in Guidance, and it is closest to P4 and P2.
 AND THE SAME SHAPE SURVIVED ONE LEVEL DOWN, IN THE CORRECTION ITSELF.
 `test_a_command_missing_a_required_positional_fails`, now the case
 `missing required value` of `test_a_command_that_does_not_parse_is_reported`,
-is named for the defect the walker could not see,
-and its docstring says "argparse wants an argument the skill never mentions". Its
-fixture parser declares its only positional as `value` with `nargs="*"`, which
+was named for the defect the walker could not see, and its docstring said
+"argparse wants an argument the skill never mentions" (U311 renamed the case for
+what it drives, "A flag missing the value argparse wants"). Its fixture parser declares its only positional as `value` with `nargs="*"`, which
 argparse treats as optional, so the command it drives fails for a different
 reason:
 
@@ -381,7 +381,7 @@ reason:
 The test still bites where the walker did not, verified, since the walker returned
 `[]` for `crate sync --track-limit` by skipping the flag's argument slot. But the
 property it claims to hold is held elsewhere, by `test_real_skills_pass_lint` at
-`:783` against the real parser and the real tree. The fixture was named from the
+`:622` against the real parser and the real tree. The fixture was named from the
 model of the fix rather than measured against the parser, which is a small
 instance of the very thing the fix was about, and it is worth knowing that
 deleting a reimplementation does not automatically delete the habit that produced
@@ -529,6 +529,7 @@ the target's:
         with contextlib.redirect_stderr(buffer), contextlib.redirect_stdout(buffer):
             parser.parse_args(argv)
     except SystemExit as exit_code:
+        _rejected(parser_for)
         # 0 is --help and --version, which are real answers rather than failures.
         if exit_code.code in (0, None):
             return []
@@ -609,10 +610,10 @@ behaviour was pinned against the parser, `tests/test_skills_lint.py:561`, and th
 docstring names the property:
 
 ```python
-    PINNED AGAINST THE PARSER RATHER THAN THE PROSE, so this stays true when
-    somebody rewrites the sentence. What it forbids is the product quietly
-    changing to a refusal model while twelve skills go on describing whichever
-    one they were written against.
+    """A switched off module's verb never reaches argparse: an invalid choice,
+    not a refusal with a cause. Pinned against the parser, so skills describing
+    it stay true if the product changes model.
+    """
 ```
 
 with an anti vacuity assertion before the drive, so the pin cannot pass by the
