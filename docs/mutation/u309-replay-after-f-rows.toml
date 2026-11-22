@@ -1035,7 +1035,7 @@ source = { table = "u227.json", id = "R4_folder_compare" }
 description = "_landed_there: compare the playlist alone, so another genre's band of the same name reads as the landing's"
 file = "src/cratekit/modules/outbound/mirror_edits.py"
 surface = "user"
-tests = ["tests/test_repair_rows.py"]
+tests = ["tests/test_mirror_edits_u227.py"]
 old = '    return bool(there) and all((place.folder, place.playlist) in places for place in there)'
 new = '    return bool(there) and all(any(place.playlist == one[1] for one in places) for place in there)'
 
