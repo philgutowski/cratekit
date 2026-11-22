@@ -1,31 +1,16 @@
 """Where a landed heart goes in the library: All Favorites and its month (U120, U145).
 
-This engine is the placement, called by the native landing inside its own
-commit and by ``crate favorites backfill``. A heart joins the one playlist
-every favourite is in and the playlist of the UTC month it was hearted in,
-``Favorites / 2026-10`` (U145), or ``Undated`` with no date. An owned heart
-joins too (U146). The quarters already there are ``crate favorites split``'s.
+Called by the native landing inside its own commit and by ``crate favorites
+backfill``. A heart, owned ones too (U146), joins the one playlist every
+favourite is in and its UTC month's playlist, ``2026-10``, or ``Undated``.
 
-**ADD ONLY.** A membership that is absent is added, through the one writer that
-owns "only when absent", and none is ever taken away or moved between months:
-an undated heart that later gets a date stays where it was put.
-
-**THE SOURCE IS NAMED ONCE AND READ, NEVER MADE**: the one live PLAIN playlist
-the taxonomy's playlist class mirrors, else the outbound default. A library
-with none or two refuses under U119's reason rather than inventing one, so a
-landing says so and lands its hearts. An EMPTY source is a fine source here.
-
-**THE MONTH IS READ FROM THE JOB** (``intake.cli.HEARTED``); the backfill asks
-the account only for a heart listed before the key existed.
-
-**A MONTH IS MADE IN ITS PLACE (U180)**, its newest first slot, by
-:func:`month_row`, so the folder keeps the order ``crate favorites order``
-puts it in.
-
-**A PLACED HEART IS COLOURED PINK (U153)** in the same commit, the author's
-signal that a row is a favourite. Only a row with no colour is coloured: one a
-person coloured otherwise is held and named. A library with no live Pink row
-places the memberships, colours nothing and says so. See ``favorites.colour``.
+**ADD ONLY**, through the one writer that owns "only when absent": nothing is
+taken away or moved between months. **THE SOURCE IS READ, NEVER MADE**: the one
+live plain playlist the taxonomy's playlist class names, else the outbound
+default; none or two refuses under U119's reason. **A MONTH IS MADE IN ITS
+NEWEST FIRST SLOT** (U180). **A PLACED HEART WITH NO COLOUR IS COLOURED PINK**
+in the same commit (U153); a colour a person chose is held, and with no live
+Pink row nothing is coloured and the memberships still land.
 
 Layer: modules.
 """

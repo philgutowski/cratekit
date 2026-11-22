@@ -1,27 +1,15 @@
 """The quarter playlists under Favorites, split into months and retired (U145).
 
-A landed heart went into its UTC quarter's playlist, ``Favorites / 2026-Q4``,
-until the author chose a month grain (U145). So the folder reads one way, the
-quarters are split once: every live member of every quarter playlist joins its
-own month's playlist, ``2026-10``, and the emptied quarters are retired.
+The author chose a month grain, so every live member of every quarter playlist
+joins its own month's playlist and the emptied quarters are retired.
 ``crate favorites split`` asks; this module plans and writes.
 
-**THE DATE IS THE JOB'S FIRST AND THE ACCOUNT'S SECOND, LISTED ONCE.** Every row
-of every hearts job on this library is read, whatever its match state, and tied
-to the library's rows by the one match rule. A member no job dates is looked
-for among the account's hearts, listed once and only when needed; a member
-dated nowhere goes to ``Undated`` and is named, since its quarter is retired.
-
-**ADD ONLY, THEN RETIRE.** The memberships go in one commit, through the one
-writer that owns "only when absent". The quarters are retired in a SECOND
-commit by :func:`rb_writer.remove_playlist_node`, the INBOX rotation's soft
-delete, and only once every member a quarter holds reads back live in its
-month.
-
-**A RUN STOPPED PARTWAY RE-PLANS TO THE SAME DIGEST.** The digest covers what
-the split is FOR, never what the months hold already or whether they exist,
-so a run whose second commit did not land is approved against the same
-digest, adds nothing and retires the quarters.
+**THE DATE IS THE JOB'S FIRST AND THE ACCOUNT'S SECOND**, the account listed
+once and only when needed; a member dated nowhere goes to ``Undated``.
+**ADD ONLY, THEN RETIRE**: the memberships in one commit, the quarters soft
+deleted in a second, and only once every member reads back live in its month.
+**THE DIGEST COVERS WHAT THE SPLIT IS FOR**, never what the months hold, so a
+run stopped between the commits re-plans to the same digest and finishes.
 
 Layer: modules.
 """

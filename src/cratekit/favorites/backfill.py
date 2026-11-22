@@ -1,24 +1,15 @@
 """The owned hearts the account carries, placed where a landing now puts them (U120, U146).
 
-``crate favorites backfill`` asks; this module gathers the hearts the library
-owns that are not in All Favorites and their month, and places them in one
-guarded session. The native landing calls :func:`plan_owned` and
-:func:`apply` too, for the owned hearts of a pass that brought no file.
+``crate favorites backfill`` asks; this module gathers and writes, and the
+native landing calls :func:`plan_owned` and :func:`apply` for a pass that
+brought no file. A heart to place is one a hearts job reported, in any state,
+whose row resolves to a file the library holds, and that All Favorites and a
+dated playlist beside it do not both hold (:func:`placement.filed`).
 
-**A HEART TO PLACE (U146)** is one a hearts job on this library REPORTED, in
-any state, whose row resolves by the one match rule to a file the library
-holds now, wherever it sits. A heart All Favorites holds is placed only when
-no dated playlist beside it holds it (:func:`placement.filed`); any other is
-already placed and counted.
-
-**THE ACCOUNT IS ASKED ONCE, AND ONLY WHEN A HEART NEEDS PLACING**, since the
-author may have taken a heart back. One a whole listing no longer carries is
-taken back and named; one a short or uncounted listing lacks is held back and
-named, as the provider may have withheld it. A heart the author took out of
-All Favorites in rekordbox is taken back too, run after run.
-
-**THE DATE IS THE JOB'S, ELSE THE ACCOUNT'S**; a heart dated nowhere goes to
-``Undated``. **NOTHING HERE TAKES A HEART OR A MEMBERSHIP AWAY** (R36).
+**THE ACCOUNT IS ASKED ONCE, ONLY WHEN A HEART NEEDS PLACING**: a heart a whole
+listing lacks is taken back, one a short or uncounted listing lacks is held
+back, and one the author took out of All Favorites stays out. **THE DATE IS THE
+JOB'S, ELSE THE ACCOUNT'S**, else ``Undated``. **NOTHING IS TAKEN AWAY** (R36).
 
 Layer: modules.
 """

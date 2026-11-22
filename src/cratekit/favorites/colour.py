@@ -1,19 +1,13 @@
 """The Pink colour: what it is, which rows carry it, and how a heart gets it (R-228, U153).
 
-PINK IS THE OPERATOR'S STANDING SIGNAL that a row is a favourite: the sweep
-(``favorites.cli``) reads it, and the landing and ``crate favorites backfill``
-write it onto every heart they place, so the colour and All Favorites agree.
+Pink is the operator's signal that a row is a favourite: the sweep reads it,
+and the landing and the backfill write it on every heart they place. It is
+**LOOKED UP BY NAME** inside the open that uses it, and **ONLY A ROW WITH NO
+COLOUR IS COLOURED**, by the core writer's definition of unset: the track
+colour policy is OWNED, so a colour a person chose is held, never overwritten.
 
-**LOOKED UP BY NAME, NEVER HARD CODED**, on ``djmdColor.Commnt``, inside the
-open that uses it; a library with no live Pink row is a named condition.
-
-**ONLY A ROW WITH NO COLOUR IS COLOURED**, by the core writer's one definition
-of unset (``rb_writer.FIELD_EMPTIES``): the track colour policy is OWNED, so a
-row a person coloured otherwise is held and named here, never overwritten.
-
-Layer: modules. The write goes through ``rb_writer.write_metadata_field``
-under the baseline ``track-color`` policy, on the caller's handle and inside
-the caller's commit.
+Layer: modules. Writes go through ``rb_writer.write_metadata_field`` on the
+caller's handle, inside the caller's commit.
 """
 
 from __future__ import annotations

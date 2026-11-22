@@ -1,17 +1,9 @@
-"""The favourites playlists named once, on both sides: the account's quarters and rekordbox's months.
+"""The favourites playlists named once, on both sides (KTD7: no product imports).
 
-THE ACCOUNT SIDE: the source system puts the hearts the library does not own
-into one private provider playlist per UTC quarter, ``Favorites 2026-Q2``,
-the favourites source's to sweep. The name is the only thing that tells them
-apart from other account playlists, so the playlists source asks it here.
-
-THE REKORDBOX SIDE (U120, U145): a heart is filed in its UTC month's
-playlist, ``2026-10``, beside All Favorites, or ``Undated`` with no date.
-:data:`QUARTER_LABEL` survives only so ``crate favorites split`` can find the
-quarter playlists the library filed by before U145.
-
-A MODULE OF ITS OWN, WITH NO IMPORTS FROM THE PRODUCT, so the core playlists
-source can ask without importing the favourites CLI (KTD7).
+The account side: the source system's private quarter playlists, ``Favorites
+2026-Q2``, which the playlists source must tell from other account playlists
+by name. The rekordbox side: a heart filed in its UTC month's playlist,
+``2026-10``, or ``Undated``; :data:`QUARTER_LABEL` survives only for the split.
 
 Layer: modules.
 """

@@ -116,7 +116,7 @@ def _acts() -> tuple[int, dict, dict]:
 def _approved() -> tuple[dict, dict]:
     code, acted, refused = _acts()
     assert code == int(ExitCode.OK), acted
-    return acted, refused
+    return acted, refused["cause"]["detail"]["shown"]
 
 
 
@@ -130,11 +130,10 @@ def test_a_folder_oldest_first_reads_newest_first_with_all_favorites_first_and_u
     memberships, content = _memberships(cfg), _content(cfg)
     assert _order(cfg, folder_id) == [SOURCE, "Undated", "2026-08", "2026-09", "2026-10"]
 
-    acted, refused = _approved()
+    acted, shown = _approved()
 
     after = [SOURCE, "2026-10", "2026-09", "2026-08", "Undated"]
     assert _order(cfg, folder_id) == after
-    shown = refused["cause"]["detail"]["shown"]
     assert shown["order now"] == [SOURCE, "Undated", "2026-08", "2026-09", "2026-10"]
     assert shown["order after"] == after
     assert shown["playlists to move"] == 4
@@ -168,7 +167,7 @@ def test_a_folder_already_in_order_plans_no_writes_and_opens_no_gate(home):
 def test_a_second_run_after_the_order_asks_nothing(home):
     cfg, folder_id, _source_id = home
     _make(cfg, folder_id, "2026-08", "2026-10")
-    acted, _refused = _approved()
+    acted, _shown = _approved()
 
     code, again = drive(VERB)
 
@@ -182,7 +181,7 @@ def test_a_non_month_playlist_keeps_its_relative_place_after_the_months(home):
     _make(cfg, folder_id, "Crates", kind="folder")
     _make(cfg, folder_id, "2026-Q2", "Undated", "Alpha", "2026-10")
 
-    acted, _refused = _approved()
+    acted, _shown = _approved()
 
     assert _order(cfg, folder_id) == [
         SOURCE, "2026-10", "2026-08", "Undated", "Zeta", "Crates", "2026-Q2", "Alpha"
@@ -212,7 +211,7 @@ def test_a_soft_deleted_month_is_neither_moved_nor_counted(home):
     planned = order_cli.planned(cfg, source=SOURCE)
     assert [one.name for one in planned.children] == [SOURCE, "2026-09", "2026-08"]
     assert made["2026-07"] not in {one.row for one in planned.children}
-    acted, _refused = _approved()
+    acted, _shown = _approved()
 
     assert _order(cfg, folder_id) == [SOURCE, "2026-09", "2026-08"]
     assert [row for row in _playlist_rows(cfg) if str(row[0]) == made["2026-07"]] == removed_row
@@ -307,7 +306,7 @@ def test_the_order_takes_the_positions_the_live_children_hold_and_no_other(home)
     seqs = {source_id: 1, made["2026-08"]: 4, made["Gone"]: 7, made["2026-09"]: 9, made["2026-10"]: 9}
     _set(cfg, "Seq", **seqs)
 
-    acted, _refused = _approved()
+    acted, _shown = _approved()
 
     assert _order(cfg, folder_id) == [SOURCE, "2026-10", "2026-09", "2026-08"]
     assert [_seq(cfg, made[name]) for name in ("2026-10", "2026-09", "2026-08")] == [4, 9, 10]
@@ -320,7 +319,7 @@ def test_only_a_row_whose_position_changes_is_written(home):
     made = _make(cfg, folder_id, "2026-10", "2026-08", "2026-09", "Undated")
     rows = {str(row[0]): row for row in _playlist_rows(cfg)}
 
-    acted, _refused = _approved()
+    acted, _shown = _approved()
 
     after = {str(row[0]): row for row in _playlist_rows(cfg)}
     assert after[made["2026-10"]] == rows[made["2026-10"]]
@@ -353,7 +352,7 @@ def test_the_splits_months_land_in_order(home, silence, monkeypatch):
     _quarter(cfg, folder_id, "2026-Q4", "One", "Two")
     _account(monkeypatch, {})
 
-    acted, _refused = _split_approved()
+    acted, _shown = _split_approved()
 
     assert _order(cfg, folder_id) == [SOURCE, "2026-11", "2026-10", "2026-09"]
 

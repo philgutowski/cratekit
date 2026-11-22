@@ -81,10 +81,10 @@ def _acts(verb: list[str] = VERB) -> tuple[int, dict, dict]:
 
 
 def _approved(verb: list[str] = VERB) -> tuple[dict, dict]:
-    """The verb's two acts, approved, ending OK: the answer and the gate's refusal."""
+    """The verb's two acts, approved, ending OK: the answer and what the gate showed."""
     code, acted, refused = _acts(verb)
     assert code == int(ExitCode.OK), acted
-    return acted, refused
+    return acted, refused["cause"]["detail"]["shown"]
 
 
 def _removed(cfg, playlist_id: str) -> bool:
@@ -118,9 +118,8 @@ def test_a_quarter_of_seventeen_splits_into_fifteen_and_two_and_is_retired(
     )
     fake = _account(monkeypatch, {})
 
-    acted, refused = _approved()
+    acted, shown = _approved()
 
-    shown = refused["cause"]["detail"]["shown"]
     assert shown["quarters to retire"] == ["2026-Q4 (17)"]
     assert shown["month playlists"] == ["2026-10 (15), made", "2026-11 (2), made"]
     assert shown["memberships to add"] == 17
@@ -148,9 +147,8 @@ def test_a_member_no_job_dates_takes_the_accounts_date_and_one_dated_nowhere_goe
     )
     fake = _account(monkeypatch, {"Summer": AUG, "Nowhere": None})
 
-    acted, refused = _approved()
+    acted, shown = _approved()
 
-    shown = refused["cause"]["detail"]["shown"]
     assert shown["month playlists"] == ["2026-08 (1), made", "Undated (1), made"]
     # The row's artist is linked, so the screen names it (U163).
     assert shown["undated"] == [f"Probe - Nowhere (row {_rows(cfg)['Nowhere']}, from 2026-Q3)"]
@@ -210,9 +208,9 @@ def test_a_member_two_quarters_hold_is_one_member_and_both_quarters_retire(
     )
     _account(monkeypatch, {})
 
-    acted, refused = _approved()
+    acted, shown = _approved()
 
-    assert refused["cause"]["detail"]["shown"]["quarters to retire"] == ["2026-Q3 (1)", "2026-Q4 (2)"]
+    assert shown["quarters to retire"] == ["2026-Q3 (1)", "2026-Q4 (2)"]
     found = _favorites(cfg, folder_id)
     assert found["2026-11"] == ["Twice"] and found["2026-10"] == ["Once"]
     assert _removed(cfg, q3) and _removed(cfg, q4)
@@ -230,10 +228,10 @@ def test_a_month_already_there_is_added_to_and_a_member_it_holds_is_not_added_tw
     )
     _account(monkeypatch, {})
 
-    acted, refused = _approved()
+    acted, shown = _approved()
 
-    assert refused["cause"]["detail"]["shown"]["month playlists"] == ["2026-10 (2)"]
-    assert refused["cause"]["detail"]["shown"]["memberships to add"] == 1
+    assert shown["month playlists"] == ["2026-10 (2)"]
+    assert shown["memberships to add"] == 1
     assert _live(cfg, october) == [_rows(cfg)["Held"], _rows(cfg)["New"]]
 
 
@@ -243,7 +241,7 @@ def test_the_record_carries_both_commits_under_the_favourites_key(native_library
     )
     _account(monkeypatch, {})
 
-    acted, _refused = _approved()
+    acted, _shown = _approved()
 
     (record,) = [r for r in session.records(cfg) if r.workflow == split.WORKFLOW]
     assert record.state is session.SessionState.CLOSED
@@ -390,7 +388,7 @@ def test_no_content_row_tempo_or_grid_is_written(native_library, silence, monkey
     _account(monkeypatch, {})
     before = _query(cfg, "SELECT * FROM djmdContent ORDER BY ID")
 
-    acted, _refused = _approved()
+    acted, _shown = _approved()
 
     assert _query(cfg, "SELECT * FROM djmdContent ORDER BY ID") == before
     assert analysis_store.watch_roots(cfg)
@@ -486,9 +484,8 @@ def test_a_member_taken_out_of_all_favorites_goes_to_no_month_and_its_quarter_st
     q4 = _quarter(cfg, folder_id, "2026-Q4", "Kept", "Dropped")
     _account(monkeypatch, {})
 
-    acted, refused = _approved()
+    acted, shown = _approved()
 
-    shown = refused["cause"]["detail"]["shown"]
     assert shown["month playlists"] == ["2026-11 (1), made"]
     assert shown["taken back"] == [
         f"Probe - Dropped (row {rows['Dropped']}, from 2026-Q4), removed from {SOURCE!r} in rekordbox"
@@ -517,7 +514,7 @@ def test_a_heart_every_sync_froze_again_is_resolved_once_with_its_first_dated_me
 
     monkeypatch.setattr(split.match, "resolve_one", counted)
 
-    acted, _refused = _approved()
+    acted, _shown = _approved()
 
     assert _favorites(cfg, folder_id)["2026-10"] == ["Often"]
     assert asked == ["tid-Often", "tid-Often"], "once per plan, and the two acts are two plans"
@@ -542,7 +539,7 @@ def test_a_job_row_owned_when_its_job_ran_still_dates_the_member(home, silence, 
     _quarter(cfg, folder_id, "2026-Q4", "Owned")
     fake = _account(monkeypatch, {})
 
-    acted, _refused = _approved()
+    acted, _shown = _approved()
 
     with jobs.open_store() as store:
         states = {report.get("state") for report in missing_cli.job_reports(store, job)}
@@ -561,9 +558,9 @@ def test_a_heart_taken_back_and_hearted_again_is_not_taken_back(home, silence, m
     _quarter(cfg, folder_id, "2026-Q4", "Again")
     _account(monkeypatch, {})
 
-    acted, refused = _approved()
+    acted, shown = _approved()
 
-    assert "taken back" not in refused["cause"]["detail"]["shown"]
+    assert "taken back" not in shown
     assert _favorites(cfg, folder_id)["2026-11"] == ["Again"]
 
 
@@ -575,7 +572,7 @@ def test_a_track_taken_out_of_a_quarter_by_hand_goes_to_no_month(native_library,
     _take_out(cfg, q4, _rows(cfg)["Went"])
     _account(monkeypatch, {})
 
-    acted, refused = _approved()
+    acted, shown = _approved()
 
-    assert refused["cause"]["detail"]["shown"]["quarters to retire"] == ["2026-Q4 (1)"]
+    assert shown["quarters to retire"] == ["2026-Q4 (1)"]
     assert _favorites(cfg, folder_id) == {SOURCE: [], "2026-11": ["Stays"]}

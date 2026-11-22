@@ -1,23 +1,13 @@
 """``crate sync favorites``: confirm the remote half, queue it, then run it.
 
-The outbound confirm is a separate gate from any local write. ``handle`` is
-the per item worker behind the ``sync.favorites`` handler key, the caller of
-``hearts.heart_back``, whose engine is add-only.
+``handle`` is the per item worker behind ``sync.favorites``, the caller of the
+add only ``hearts.heart_back``. A favourite is a member of the named playlist
+unioned with every pink row, read from a read only open of the live database
+(R-228); a pink row the export lacks is named beside dangling.
 
-**WHAT A FAVOURITE IS HERE**: a member of a named playlist (by default the
-one the source system maintains) unioned with every pink row, pink being the
-operator's standing signal that a row should be hearted. An export carries no
-colour, so pink is read from a read only open of the live database (R-228). A
-pink row the export lacks is named beside dangling; the empty playlist
-refusal stays ahead of the colour read.
-
-**NO LOCAL WRITE HAPPENS HERE, AND NOTHING SAYS OTHERWISE (R-424).**
-``colors`` is ``None``, since colouring the row is a live database write that
-belongs behind the guarded session, and :data:`LOCAL_WRITE_WARNING` says so
-where a person reads it.
-
-**ADD ONLY IS A PROPERTY OF THE TYPE**: ``RemoteAccount`` declares no remove,
-and this shell passes no ``flags``.
+**NO LOCAL WRITE HAPPENS HERE, AND NOTHING SAYS OTHERWISE (R-424)**: ``colors``
+is ``None`` and :data:`LOCAL_WRITE_WARNING` says so where a person reads it.
+**ADD ONLY IS A PROPERTY OF THE TYPE**: ``RemoteAccount`` declares no remove.
 
 Layer: modules.
 """

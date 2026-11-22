@@ -1,24 +1,12 @@
 """The folder that holds All Favorites, put in order newest first (U180).
 
-``crate favorites order`` asks once; this module plans and writes. A month is
-made in its own slot since, by :func:`placement.month_row`, so the folder
-stays in order without the verb.
-
-**THE ORDER IS ONE RULE**, :func:`placement.rank`: All Favorites, by its row;
-each live plain playlist named as a month, newest first; a live plain playlist
-named ``Undated``; then everything else in its current relative order. A soft
-deleted child is never read, ranked or written.
-
-**POSITIONS ARE SLOTS, NOT A COUNT.** The ``Seq`` values the live children
-hold now are given out again in the target order, through
-:func:`placement.seat`, never the binding's ``move_playlist(seq=)``, which
-numbers live and removed rows as one run. Only a row whose ``Seq`` changes is
-written, and nothing but positions: the commit is confined from SQL by
-:func:`assert_order_confined` and the folder read back in order.
-
-**THE DIGEST IS THE TARGET ORDER**, so a folder shuffled by hand between the
-approval and the write still writes the approved order, and a month made or
-removed in between is another plan.
+``crate favorites order`` asks once; a month is made in its own slot since.
+**THE ORDER IS ONE RULE**, :func:`placement.rank`: All Favorites, the months
+newest first, ``Undated``, then the rest in their relative order; a soft
+deleted child is never read or written. **POSITIONS ARE SLOTS**: the ``Seq``
+values the live children hold are given out again in the target order, never
+the binding's ``move_playlist(seq=)``, and only a row whose ``Seq`` changes is
+written, confined from SQL and read back. **THE DIGEST IS THE TARGET ORDER**.
 
 Layer: modules.
 """
