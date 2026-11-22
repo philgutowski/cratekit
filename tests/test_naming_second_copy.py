@@ -1,12 +1,7 @@
 """U212: a rename held back by a second copy of one recording says so.
 
-Sitting 55 (A70) downloaded two tracks an unlanded pass had already staged and
-named. The new copies, named for their provider ids, rendered to the names the
-earlier copies held, and ``name apply`` refused ``rename-incomplete`` with "is
-already taken in the folder by a file nothing here is renaming", which sent the
-session to compare audio by hand. When the file in the way carries the same
-ISRC as the file held back, the plan and the refusal now say it is the same
-recording twice, and carry the ISRC for the verb that ran the step.
+When the file in the way carries the same ISRC as the file held back, the plan
+and the refusal say it is one recording twice and carry the ISRC.
 """
 
 # ruff: noqa: F811, the fixtures below are imported from the naming apply suite by name

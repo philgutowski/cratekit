@@ -1,12 +1,9 @@
 """``crate repair link``: chosen values written into the row probe columns of
-chosen live rows through the guard, the experiment that asks which column keeps a
-landed row off a deck (A32, R-928).
+chosen live rows through the guard (A32, R-928).
 
-The library, the seams and the acknowledgment are ``repair rows``'s, imported
-from its suite rather than typed again. What is added is the two probe columns:
-every row rekordbox made is given the ContentLink and the empty ISRC rekordbox
-writes, and the two rows a landing made are given the binding's ContentLink and
-a NULL ISRC, so those two columns are the whole difference.
+The library, seams and acknowledgment are ``repair rows``'s; rows rekordbox
+made carry its ContentLink and empty ISRC, the two landed rows the binding's,
+so those two columns are the whole difference.
 """
 
 # ruff: noqa: F811, the fixtures below are imported from the repair rows suite by name
@@ -105,9 +102,7 @@ def _refused(cfg, *specs: str) -> str:
     return caught.value.cause.reason
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Parsing a triple
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_triple_reads_row_column_and_a_value_of_the_columns_type():
@@ -157,9 +152,7 @@ def test_the_probe_policy_names_exactly_the_columns_asked_and_refuses_any_other(
     assert rb_writer.ROW_PROBE_OWNER not in rb_writer.registered_field_policies()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The plan
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_plan_is_each_triple_its_values_and_who_else_carries_each(machine):
@@ -199,24 +192,41 @@ def test_no_triple_at_all_refuses(machine):
     assert caught.value.cause.reason == row_link.PROBE_INVALID
 
 
-def test_the_same_row_and_column_twice_refuses(machine):
+@pytest.mark.parametrize(
+    ("update", "specs", "reason"),
+    [
+        pytest.param(
+            None, (f"101:{LINK}={HOUSE}", f"101:{LINK}={HOUSE}"), row_link.PROBE_INVALID,
+            id="the-same-row-and-column-twice",
+        ),
+        pytest.param(None, (f"999:{LINK}={HOUSE}",), row_link.ROW_UNKNOWN, id="an-unknown-row"),
+        pytest.param(None, (f"301:{LINK}={HOUSE}",), row_link.ROW_UNKNOWN, id="a-tombstone"),
+        pytest.param(
+            None, (f"101:{LINK}={HOUSE}", f"999:{ISRC}="), row_link.ROW_UNKNOWN,
+            id="one-bad-triple-refuses-the-whole-plan",
+        ),
+        pytest.param(
+            None, (f"101:{LINK}={NOBODY}",), row_link.VALUE_UNHELD, id="a-link-nobody-carries"
+        ),
+        pytest.param(None, (f"101:{ISRC}=NOBODY",), row_link.VALUE_UNHELD, id="an-isrc-nobody-carries"),
+        pytest.param(
+            f"UPDATE djmdContent SET {LINK} = {NOBODY} WHERE ID = '301'",
+            (f"101:{LINK}={NOBODY}",), row_link.VALUE_UNHELD, id="a-value-only-a-tombstone-carries",
+        ),
+        pytest.param(
+            # 601 holds 7 with two fellows; two rows carry the binding's value: equal.
+            f"UPDATE djmdContent SET {LINK} = 7 WHERE ID IN ('401', '501', '601')",
+            (f"601:{LINK}={BINDING}",), row_link.VALUE_MINORITY,
+            id="a-value-as-many-rows-carry-as-the-rows-own",
+        ),
+    ],
+)
+def test_a_triple_the_plan_cannot_take_refuses_by_name(machine, update, specs, reason):
+    """A repeated, unknown, unheld or minority triple refuses the whole plan before any gate."""
     seed(machine)
-    assert _refused(machine, f"101:{LINK}={HOUSE}", f"101:{LINK}={HOUSE}") == row_link.PROBE_INVALID
-
-
-def test_an_unknown_identifier_refuses_by_name_before_any_gate(machine):
-    seed(machine)
-    assert _refused(machine, f"999:{LINK}={HOUSE}") == row_link.ROW_UNKNOWN
-
-
-def test_a_tombstone_refuses_as_unknown_though_the_row_is_in_the_table(machine):
-    seed(machine)
-    assert _refused(machine, f"301:{LINK}={HOUSE}") == row_link.ROW_UNKNOWN
-
-
-def test_one_bad_triple_refuses_the_whole_plan(machine):
-    seed(machine)
-    assert _refused(machine, f"101:{LINK}={HOUSE}", f"999:{ISRC}=") == row_link.ROW_UNKNOWN
+    if update:
+        _sql(machine, update)
+    assert _refused(machine, *specs) == reason
 
 
 def test_a_row_already_at_the_value_plans_nothing_for_that_triple(machine):
@@ -230,18 +240,6 @@ def test_a_row_already_at_a_value_nobody_else_carries_still_plans_nothing(machin
     _sql(machine, f"UPDATE djmdContent SET {LINK} = ? WHERE ID = '201'", NOBODY)
     plan = _planned(machine, f"201:{LINK}={NOBODY}")
     assert plan.writes == 0 and plan.probes[0].carriers == 0
-
-
-def test_a_value_no_other_live_row_carries_refuses(machine):
-    seed(machine)
-    assert _refused(machine, f"101:{LINK}={NOBODY}") == row_link.VALUE_UNHELD
-    assert _refused(machine, f"101:{ISRC}=NOBODY") == row_link.VALUE_UNHELD
-
-
-def test_a_value_only_a_tombstone_carries_refuses_as_unheld(machine):
-    seed(machine)
-    _sql(machine, f"UPDATE djmdContent SET {LINK} = ? WHERE ID = '301'", NOBODY)
-    assert _refused(machine, f"101:{LINK}={NOBODY}") == row_link.VALUE_UNHELD
 
 
 def test_the_bindings_value_onto_a_row_rekordbox_made_refuses_as_the_minority(machine):
@@ -264,13 +262,6 @@ def test_a_null_counts_its_fellows_as_null_so_writing_one_back_is_the_minority(m
     assert (plan.probes[0].carriers, plan.probes[0].fellows) == (6, 1)
     # 201 holds the empty text with five fellows; two hold X1: refused.
     assert _refused(machine, f"201:{ISRC}=X1") == row_link.VALUE_MINORITY
-
-
-def test_a_value_carried_by_as_many_rows_as_the_rows_own_refuses_too(machine):
-    seed(machine)
-    _sql(machine, f"UPDATE djmdContent SET {LINK} = 7 WHERE ID IN ('401', '501', '601')")
-    # 601 holds 7 with two fellows; two rows carry the binding's value: equal, refused.
-    assert _refused(machine, f"601:{LINK}={BINDING}") == row_link.VALUE_MINORITY
 
 
 def test_a_value_more_rows_carry_than_the_rows_own_is_enough_though_not_the_house(machine):
@@ -323,9 +314,7 @@ def test_the_digest_does_not_move_with_the_carrier_count(machine):
     assert two.digest == one.digest
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The two acts and the apply
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_two_acts_write_each_triple_and_move_no_other_column(acknowledged):
@@ -583,9 +572,7 @@ def test_apply_refuses_an_empty_watch_before_touching_the_database(acknowledged)
     assert str(_content(acknowledged)["101"][LINK]) == str(BINDING)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The read back, pure
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _probe(content_id="101", column=LINK, value=HOUSE, was=str(BINDING)) -> row_link.Probe:
@@ -641,21 +628,20 @@ def test_judge_names_a_row_that_could_not_be_read():
     assert wrong == ("101: the row could not be read",) and moved == ()
 
 
-def test_assert_read_back_refuses_a_moved_column_as_the_guards_defect():
+@pytest.mark.parametrize(
+    ("found", "reason"),
+    [
+        pytest.param({"moved": ("101: BPM",)}, "whitelist-violation", id="a-moved-column"),
+        pytest.param({"wrong": ("101: x",)}, "internal-error", id="a-wrong-value"),
+    ],
+)
+def test_assert_read_back_refuses_and_names_the_undo(found, reason):
+    """A moved column is the guard's defect; either way the durable write names its undo."""
+    written = row_link.Written(session_id="s", written=1, rows=1, read_back=0, **found)
     with pytest.raises(CratekitError) as caught:
-        row_link.assert_read_back(
-            row_link.Written(session_id="s", written=1, rows=1, read_back=1, moved=("101: BPM",))
-        )
-    assert caught.value.cause.reason == "whitelist-violation"
+        row_link.assert_read_back(written)
+    assert caught.value.cause.reason == reason
     assert "restore session s" in " ".join(caught.value.cause.remediation.steps)
-
-
-def test_assert_read_back_refuses_a_wrong_value():
-    with pytest.raises(CratekitError) as caught:
-        row_link.assert_read_back(
-            row_link.Written(session_id="s", written=1, rows=1, read_back=0, wrong=("101: x",))
-        )
-    assert caught.value.cause.reason == "internal-error"
 
 
 def test_assert_read_back_passes_a_clean_write():

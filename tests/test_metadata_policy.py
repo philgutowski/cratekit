@@ -1,19 +1,8 @@
 """The per-field metadata policy, and the key field it may never author (U21).
 
-TWO KINDS OF TEST LIVE HERE AND THEY ARE NOT INTERCHANGEABLE.
-
-The behavioural half drives the policy through real decisions on real rows. The
-STRUCTURAL half asserts a shape is absent from the package, and it walks the
-syntax tree to do it. That distinction was bought expensively: a countdown in an
-earlier unit asserted three tokens appeared in a module's SOURCE TEXT, the
-module's own docstring explained why it called all three, and the test would have
-kept passing with every call deleted. A module that documents why it never
-authors a key value contains the word ``KeyID`` several times over, so a grep
-here would be green for the wrong reason forever.
-
-Sets are derived by walking rather than by listing (P3). A test whose name
-quantifies over "every operation" and then hand-lists three of them is a test
-whose name is already false on the day an operation is added.
+The behavioural half drives real decisions on real rows; the structural half
+walks the syntax tree, never the source text, since a module explaining why it
+never authors a key names ``KeyID`` in prose. Sets are derived by walking (P3).
 """
 
 from __future__ import annotations
@@ -66,9 +55,7 @@ def _clean_registry():
     rb_writer.reset_field_policies()
 
 
-# ---------------------------------------------------------------------------
 # Scenario 1: the policy rejects an operation writing an unowned field
-# ---------------------------------------------------------------------------
 
 
 def test_every_operation_is_refused_a_field_it_did_not_declare():
@@ -114,9 +101,7 @@ def test_enabling_only_one_operation_widens_the_column_set_by_exactly_its_fields
     assert "GenreID" not in columns
 
 
-# ---------------------------------------------------------------------------
 # Scenario 2: a rating backfill skips rows carrying a manual rating
-# ---------------------------------------------------------------------------
 
 
 def test_a_rating_backfill_fills_an_empty_rating_with_a_star_not_a_byte():
@@ -212,9 +197,7 @@ def test_the_rating_curve_is_read_from_the_taxonomy_not_hardcoded():
     assert metadata.rating_for(99, theirs) is None
 
 
-# ---------------------------------------------------------------------------
 # Scenario 3: key padding rewrites only the title, and is idempotent
-# ---------------------------------------------------------------------------
 
 
 def test_padding_rewrites_the_key_span_and_leaves_every_other_byte_alone():
@@ -261,17 +244,13 @@ def test_a_row_with_no_title_is_surfaced_rather_than_dropped():
     assert [s.reason for s in plan.skipped] == ["no-title"]
 
 
-# ---------------------------------------------------------------------------
 # Scenario 4: every write to a key metadata field is refused
-# ---------------------------------------------------------------------------
 
 
 def test_no_operation_may_declare_a_key_field_even_as_fill_if_empty():
     """Registration refuses, so the mistake cannot reach a write path."""
     for mode in rb_writer.Ownership:
-        rogue = rb_writer.FieldPolicy(
-            owner="rogue", fields={"KeyID": mode}
-        )
+        rogue = rb_writer.FieldPolicy(owner="rogue", fields={"KeyID": mode})
         with pytest.raises(metadata.PolicyRefused) as caught:
             metadata._assert_declarable(rogue)
         assert "KeyID" in str(caught.value)
@@ -291,9 +270,7 @@ def test_every_unwritable_field_is_refused_and_carries_its_argument():
     """Walked, so a field added to the table is covered without editing this test."""
     assert metadata.UNWRITABLE_FIELDS, "the table must not be empty"
     for field_name, why in metadata.UNWRITABLE_FIELDS.items():
-        rogue = rb_writer.FieldPolicy(
-            owner="rogue", fields={field_name: rb_writer.Ownership.OWNED}
-        )
+        rogue = rb_writer.FieldPolicy(owner="rogue", fields={field_name: rb_writer.Ownership.OWNED})
         with pytest.raises(metadata.PolicyRefused):
             metadata._assert_declarable(rogue)
         assert len(why) > 20, f"{field_name} needs an argument, not a label"
@@ -305,16 +282,11 @@ def test_no_operation_in_the_table_declares_an_unwritable_field():
         assert not clash, f"{owner} declares {sorted(clash)}"
 
 
-# ---------------------------------------------------------------------------
 # Scenario 5: no code path creates a key row. The structural half.
-# ---------------------------------------------------------------------------
 
-#: Constructing the table class IS authoring a key row. The binding at the pinned
-#: version has no ``add_key`` and no ``create_key``, verified against
-#: ``Rekordbox6Database``: the only creation verbs it exposes are for albums,
-#: artists, content, genres, labels and playlists. The two absent names are
-#: forbidden anyway, because the hole this guard closes is a future binding that
-#: grows one, and a guard listing only what exists today would not fire on it.
+#: Constructing the table class IS authoring a key row. ``add_key`` and
+#: ``create_key`` do not exist in the pinned binding and are forbidden anyway, so
+#: the guard fires on a future binding that grows one.
 FORBIDDEN_KEY_SYMBOLS = frozenset({"DjmdKey", "add_key", "create_key", "resolve_key_id"})
 
 
@@ -393,9 +365,7 @@ def test_the_metadata_module_exposes_no_key_resolver():
     assert "resolve_key_id" not in metadata.__all__
 
 
-# ---------------------------------------------------------------------------
 # Scenario 6: a genre with no lookup row is skipped and surfaced, never created
-# ---------------------------------------------------------------------------
 
 
 def test_a_genre_with_no_lookup_row_is_skipped_and_surfaced():
@@ -404,9 +374,7 @@ def test_a_genre_with_no_lookup_row_is_skipped_and_surfaced():
     row = Row("1", GenreID=None)
     plan = metadata.plan_genre_retag([row], {"1": "Nonexistent Genre"}, db=db)
     assert plan.changes == ()
-    assert [(s.reason, s.detail) for s in plan.skipped] == [
-        ("genre-unknown", "Nonexistent Genre")
-    ]
+    assert [(s.reason, s.detail) for s in plan.skipped] == [("genre-unknown", "Nonexistent Genre")]
     metadata.write_plan(plan, {"1": row})
     assert row.GenreID is None
 
@@ -465,9 +433,7 @@ def test_an_unreadable_marker_is_not_collapsed_into_the_genre_unknown_skip():
     assert metadata.resolve_genre_id(live, "Nonexistent Genre") is None
 
     metadata.enable()
-    plan = metadata.plan_genre_retag(
-        [Row("1", GenreID=None)], {"1": "Nonexistent Genre"}, db=live
-    )
+    plan = metadata.plan_genre_retag([Row("1", GenreID=None)], {"1": "Nonexistent Genre"}, db=live)
     assert [s.reason for s in plan.skipped] == ["genre-unknown"]
 
     unreadable = FakeGenres([Row("6", Name="Nonexistent Genre")])
@@ -488,9 +454,7 @@ def test_a_deleted_marker_is_not_an_error_here_the_way_it_is_for_a_track():
     assert metadata.resolve_genre_id(db, "Melodic House") == "7"
 
 
-# ---------------------------------------------------------------------------
 # Scenario 7: the dry-run difference matches the applied result exactly
-# ---------------------------------------------------------------------------
 
 
 def test_the_preview_decisions_equal_the_applied_decisions():
@@ -534,9 +498,7 @@ def test_report_totals_name_every_decision_the_enum_declares():
     assert set(report.totals) == {d.value for d in rb_writer.Decision}
 
 
-# ---------------------------------------------------------------------------
 # The registration seam itself
-# ---------------------------------------------------------------------------
 
 
 def test_enable_reports_the_columns_the_guard_will_actually_enforce():
