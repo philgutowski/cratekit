@@ -961,23 +961,15 @@ ENTRIES: tuple[Entry, ...] = (
         summary="take a sync pass to its landing in one verb: the pass, its intake " "jobs, the missing list, the download and the tail, stopping at the " "landing's gate",
         module="cratekit.cli.sync_land", builder="build", handler_key="sync.land",
         feature_rows=(25,),
-        # NOT long_running, AND NO argv_builder (U152). Like ``sync all`` it
-        # queues nothing under its own key: every job it drives is queued by
-        # its own verb under that verb's key, and is driven here through that
-        # verb's own ``--job`` command line, in the foreground.
+        # Not long running: each job it drives queues under its own verb (U152).
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # THE STEPS' FILES, written by the verbs it runs: the download, the
-        # tags, the restamp and the renames. No database write: the landing it
-        # plans stops at its explicit gate on its own run, so the collection is
-        # written only by that verb, after a separate recorded answer.
+        # The files its steps write. No database write: the landing stops at
+        # its own explicit gate.
         writes=frozenset({"files"}), destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "credential.provider"),
         gates=(
-            # U181. Asked only when the vocal model cannot score here, before
-            # the pass queues anything: going on lands every row with no
-            # voxlevel. Not explicit, since it writes nothing the pass would
-            # not write anyway, so it is answered inline with ``-d``; ``stop``
-            # refuses ``vocal-scoring-unavailable``.
+            # Asked only when the vocal model cannot score (U181). Ordinary:
+            # it writes nothing the pass would not, so ``-d`` answers it.
             GateSpec(
                 name="sync.land.without-vocals", options=("go", "stop"),
                 prompt="Take the pass although the vocal model cannot score here, so " "every row it lands carries no voxlevel and no vox My Tag?",
@@ -989,28 +981,15 @@ ENTRIES: tuple[Entry, ...] = (
         summary="run the sync pass unattended, for a schedule overnight: refuses beside " "rekordbox, a running job or another pass, holds the night's provider " "budget, answers no gate and stops at the landing's gate",
         module="cratekit.cli.sync_night", builder="build", handler_key="sync.night",
         feature_rows=(25,),
-        # NOT long_running, AND NO argv_builder (U293), for ``sync.land``'s
-        # reason: it runs ``sync land`` in this process, and every job that
-        # drives is queued and driven under its own verb's key.
+        # Not long running, for ``sync.land``'s reason (U293).
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # ``sync land``'s files, written by the verbs it runs. No database
-        # write and no gate of its own: the landing it plans waits at its
-        # explicit gate for the session at the Mac, and this verb answers none.
+        # ``sync land``'s files. No gate: the landing waits at its own gate.
         writes=frozenset({"files"}), destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "credential.provider"),
     ),
-    # U295. The night pass on a schedule: one launchd user agent that runs
-    # ``crate sync night`` and nothing else. Core, beside the night verb, and
-    # macOS only by refusal rather than by profile, so every profile reads it.
-    #
-    # NO LIBRARY WRITE SURFACE AND NOT DESTRUCTIVE, on ``skills.install``'s
-    # argument: what install writes is the agent's plist in the person's own
-    # LaunchAgents directory and the directory of its log, the declared state
-    # entry ``schedule_log``; what remove deletes is that plist. Both leave the
-    # staging lock's file, held around the bootout. Nothing a
-    # library knows about is touched, so the destructive session's gates would
-    # be gates over the wrong thing. No gate either: installing a schedule
-    # approves nothing, since every limit the night keeps is the night verb's.
+    # The night pass as a launchd agent (U295), core and macOS only by refusal.
+    # No write surface and not destructive: only the agent's plist and log are
+    # touched. No gate: every limit is the night verb's.
     Entry(
         name="schedule.install",
         summary="install the nightly run of crate sync night as a launchd agent of your " "own on macOS, replacing one already installed",
@@ -1034,27 +1013,17 @@ ENTRIES: tuple[Entry, ...] = (
         summary="take new Bandcamp purchases to their landing in one verb: the plan, the " "fetch tagged by label, the tail and a rehearsal, stopping at the " "landing's gate",
         module="cratekit.cli.sync_bandcamp", builder="build", handler_key="sync.bandcamp",
         feature_rows=(6,),
-        # NOT long_running, AND NO argv_builder (U179), for ``sync.land``'s
-        # reason: every job it drives is queued by its own verb under that
-        # verb's key and driven through that verb's own command, in the
-        # foreground, so it queues nothing under its own.
+        # Not long running, for ``sync.land``'s reason (U179).
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # THE STEPS' FILES, written by the verbs it runs: the fetch, the tags,
-        # the restamp and the renames. No database write: the rehearsal writes
-        # a copy it removes, and the landing stops at its explicit gate on its
-        # own run, so the collection is written only by that verb, after a
-        # separate recorded answer.
+        # The files its steps write. No database write: the rehearsal uses a
+        # copy, and the landing stops at its own explicit gate.
         writes=frozenset({"files"}), destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "keychain.reachable"),
     ),
     Entry(
         name="sync.labels",
-        # RETIRED BY REDUCTION (U109). ``label.sync`` takes label releases now,
-        # and ``sync.all`` no longer composes this source. The entry stays, its
-        # handler key, worker and argv builder with it, because a sweep queued
-        # before U109 is resumed through ``sync labels --job`` and would
-        # otherwise have no way to run. Without ``--job`` it refuses
-        # ``verb-retired`` and names the guided verb.
+        # Retired (U109), kept so a sweep queued earlier can resume with
+        # ``--job``; otherwise it refuses ``verb-retired``.
         summary="resume a labels sweep queued before crate label sync replaced it; " "retired, it queues nothing new",
         module="cratekit.label.cli", builder="build_sync", handler_key="sync.labels",
         feature_rows=(21,), source_scripts=("dj-label-batch",), module_id="labels",

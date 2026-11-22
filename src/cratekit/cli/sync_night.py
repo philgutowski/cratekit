@@ -1,62 +1,17 @@
 """``crate sync night``: the sync pass run unattended, up to its landing gate (U293).
 
-A pass is one message since sitting 95, but Phillip sat through all of it:
-about three hours for 106 tracks at sitting 93, most of it download, tagging
-and Cratekit's own analysis, none of which writes the database or opens
-rekordbox. This verb is that part of the pass with nobody watching, meant to be
-fired by a schedule overnight, so his time at the Mac is the landing's gate and
-the rekordbox visit.
+It is ``crate sync land`` dispatched in this process, nothing decided again,
+plus what running unattended needs, each refused before any provider call: it
+takes no ``-d`` and no raised ``--calls`` line, so every explicit gate waits for
+the session; it runs alone, refusing beside rekordbox, a live job driver or the
+staging lock; it refuses while staging holds anything a landing would take
+(R-1499); it holds the night's call budget (:mod:`cratekit.core.night_budget`);
+and it continues its own pass when waiting is what mends the stop.
 
-IT IS ``crate sync land``, RUN THROUGH THE DISPATCHER IN THIS PROCESS, and
-nothing of the pass is decided again here: the same steps in the same order,
-the same refusals, the same stop at the landing's gate. What this verb adds is
-what running it unattended needs, each a refusal before the provider is asked
-anything:
-
-* **It answers nothing.** A ``-d`` given to it refuses, and so does a raised
-  ``--calls`` or ``--calls-per-hour``. It passes no answer of its own, so every
-  explicit gate the pass meets, the landing's, the backup acknowledgment, the
-  favourites write, and ``sync.land.without-vocals``, stops the pass there.
-  The one answer in its chain is the tail's own inline confirm of ``name
-  apply``, which renames the staged files and is the naming the brief asks
-  for; it writes nothing outside the staging folder.
-* **It runs alone.** It refuses while rekordbox or its agent is up, while any
-  Cratekit job has a live driver, and while another pass holds the staging lock
-  (:mod:`cratekit.core.staging_lock`), which ``crate sync land`` and ``crate
-  label sync --go`` hold too, so a night pass and a pass by hand never stage
-  over each other.
-* **It lands nothing beside what waits.** A new night pass refuses while the
-  staging folder holds anything a landing would take: a pass of an earlier
-  night waiting at its gate, a label go's download, a stray file. ``sync
-  land`` would refuse beside them too (R-1499), but only after ``sync all``
-  had spent calls and queued a new pass behind the one waiting.
-* **It holds a night's budget.** ``[provider] night_calls`` across every
-  firing of one night (:mod:`cratekit.core.night_budget`), held call by call
-  by the gate's night line (:func:`cratekit.core.provider_gate.night`), which
-  is the lower of what is left of the night and of one command's ceiling, with
-  the hour lowered to ``[provider] night_calls_per_hour``. A night already
-  spent refuses before any call.
-* **It continues its own pass.** A pass of its own that the night's budget,
-  the hour, a cooldown or the ceiling stopped short of its gate is continued
-  by the next firing with ``--pass-run``, since waiting is what mends it.
-
-IT NEVER APPROVES A GATE, NEVER MINTS THE ACKNOWLEDGMENT, NEVER WRITES THE
-DATABASE AND NEVER OPENS REKORDBOX. Nothing here decides a run, imports the
-acknowledgment's mint, or starts a process; the landing is planned by ``intake
-land`` and waits at its explicit gate for the session at the Mac.
-
-THE RECORD IS WHAT IS OWED, NOT THE LAST SNAPSHOT (review round one). A
-firing that refuses keeps a pass still waiting for the session or still to be
-continued, with every field its landing or its continue needs, and says only
-that it was refused; and every reader, ``--last``, doctor and the next firing,
-reads the record through :func:`settle`, so a wait whose pass has landed
-since, by its own native landing's proof, reads as settled.
-
-ONE LINE OF STATUS, WHATEVER THE ENDING. The last firing's record is written
-to ``night_status``, with one line a person reads and the fields the next step
-needs: the gate's run, the pass, the staging folder. ``crate doctor`` shows the
-line as ``sync.night``, and ``crate sync night --last`` prints the record and
-runs nothing, which is how the ``crate-sync`` skill starts from a waiting gate.
+It never approves a gate, mints the acknowledgment, writes the database or
+opens rekordbox. Each firing writes one record to ``night_status`` that keeps
+whatever is still owed, read through :func:`settle` by ``--last``, doctor and
+the next firing.
 """
 
 from __future__ import annotations
@@ -96,9 +51,8 @@ WAITING = "waiting"
 NOTHING = "nothing-new"
 STOPPED = "stopped"
 REFUSED = "refused"
-#: A wait the record names that has ended since: the gate was answered, or the
-#: staging folder no longer holds what the pass staged. Never written by a
-#: firing; :func:`settle` reads a record this way.
+#: A wait that has ended since, by its pass's landing. Never written by a
+#: firing; only :func:`settle` reads a record this way.
 SETTLED = "settled"
 OUTCOMES: tuple[str, ...] = (
     WAITING_GATE, WAITING_ACK, WAITING, NOTHING, STOPPED, REFUSED, SETTLED,
@@ -159,8 +113,7 @@ def status_path() -> Path:
 
 
 def read_status(path: Path | None = None) -> dict[str, Any] | None:
-    """The last firing's record, None when no night pass has run, and a
-    ``ValueError`` naming why when the file is there and cannot be read."""
+    """The last firing's record, None when none has run, ``ValueError`` when unreadable."""
     target = path if path is not None else status_path()
     try:
         text = target.read_text(encoding="utf-8")
@@ -236,8 +189,7 @@ def _spend_words(firing: _Firing) -> str:
         return "no provider call made"
     calls = firing.fields.get("calls")
     if calls is None:
-        # A TOTAL THAT COULD NOT BE READ AT THE CLOSE is said, never read as
-        # nothing spent (review round one); the next firing refuses over it.
+        # An unread total is said, never read as nothing spent.
         return (
             f"provider calls not read at the close, the night's "
             f"{firing.fields.get('budget')} held until they are"
@@ -355,8 +307,7 @@ def _gate_open(run_id: str) -> bool | None:
 
 
 def _landed(cfg: config.Config | None, name: str | None) -> bool | None:
-    """Whether a native landing of the pass named ``name`` has committed;
-    None when that cannot be read."""
+    """Whether a native landing of pass ``name`` has committed, None when unreadable."""
     if cfg is None or not name:
         return None
     from cratekit.intake import native  # noqa: PLC0415 - the landing's own proof
@@ -379,15 +330,9 @@ def settle(
 ) -> dict[str, Any] | None:
     """The record as things stand now, not as the firing that wrote it left them.
 
-    A record names the last firing's ending, and a wait it names may have ended
-    since (review round one, finding 3). ONE SIGNAL ENDS A WAIT: the pass's own
-    native landing, proven the way ``sync mark`` proves it. An answered gate
-    is not one, since an apply refused beside rekordbox or an abort leaves the
-    tracks staged; and an empty staging folder is not one, since it is no
-    pass's own and fills again with the next (review round two, findings 1 and
-    2). Such a record reads as :data:`SETTLED`, its line saying what ended it.
-    A wait whose landing cannot be read is left as written, since what it names
-    may still wait, and an answered gate over it is said in its line.
+    Only the pass's own native landing ends a wait, reading :data:`SETTLED`; an
+    answered gate or an empty staging folder can still leave tracks staged. A
+    wait whose landing cannot be read stays as written.
     """
     if not record or record.get("outcome") not in WAITS:
         return record
@@ -416,8 +361,7 @@ def settle(
 
 
 def _owed(record: Mapping[str, Any] | None) -> bool:
-    """Whether a settled record names a pass a later firing must not lose: one
-    waiting for a person, at any gate, or one the next firing continues."""
+    """Whether a settled record names a pass waiting for a person or to be continued."""
     if not record:
         return False
     return record.get("outcome") in (*WAITS, WAITING) or bool(_continued(record))
@@ -511,8 +455,7 @@ def _show_last(ctx: Context) -> Envelope:
          "detail": record["line"] if record else "no night pass has run on this installation",
          "remedy": None}
     ]
-    # EACH FIELD A LANDING NEEDS, as a row of its own, so the human output
-    # names them too and not only the JSON (review round one).
+    # Each field a landing needs is a row, so human output names it too.
     for name, title in (
         ("outcome", "outcome"), ("gate_run", "gate run"), ("pass_run", "pass run"),
         ("land_name", "pass name"), ("staging", "staging folder"), ("next", "next"),
@@ -557,11 +500,8 @@ def _refused(
 ) -> CratekitError:
     """A refusal before or around the pass, its record written and carried.
 
-    A REFUSAL NEVER ERASES WHAT IS OWED (review round one, findings 1 and 2).
-    When the last record names a pass waiting for the session, or one the next
-    firing continues, the record is kept as it was, every field a landing or a
-    continue needs with it, and only its line and its ``firing`` say this
-    firing was refused.
+    A refusal never erases what is owed: an owed record is kept whole, with only
+    its line and ``firing`` saying this firing was refused.
     """
     cause = error.cause
     if cause.reason == provider_gate.NIGHT:
@@ -600,16 +540,13 @@ def sync_night(ctx: Context) -> Envelope:
     try:
         last = settle(read_status())
     except ValueError:
-        # A RECORD THAT CANNOT BE READ CONTINUES NOTHING, and the folder
-        # reading below still refuses a pass beside what waits.
+        # An unreadable record continues nothing; the folder check still guards.
         last = None
     try:
         _no_answer(ctx)
         cfg = tail.load_config(_ORIGIN)
         with staging_lock.held("crate sync night", run_id=ctx.run.run_id):
-            # READ AGAIN UNDER THE LOCK (review round two, finding 9): the
-            # reading above serves a refusal before the lock, and this one the
-            # pass, so no other firing rewrites it in between.
+            # Read again under the lock, so no other firing rewrites it meanwhile.
             try:
                 last = settle(read_status(), cfg)
             except ValueError:
@@ -654,8 +591,7 @@ def _ended(
     spend = _spend_words(firing)
     refused = firing.fields.get("download_refused") or []
     if refused:
-        # A TRACK THE DOWNLOAD REFUSED IS NAMED IN THE LINE (review round one),
-        # since a pass that waits at its gate is landed without its own run.
+        # Name each track the download refused, since it lands without them.
         spend += f"; {len(refused)} track(s) refused by the download: " + ", ".join(
             f"{row['item_id']} ({row['reason']})" for row in refused
         )
@@ -721,8 +657,7 @@ def _ended(
     cause = _cause_of(code, envelope)
     detail = cause.detail or {}
     if int(cause.code) in {int(c) for c in gates.GATE_CODES}:
-        # THE PASS'S OWN GATE, ``sync.land.without-vocals`` above all: asked of
-        # nobody here, so the run waits at it and says which.
+        # The pass's own gate, such as ``sync.land.without-vocals``, waits here.
         gate = str(detail.get("gate") or cause.reason)
         line = f"{head}: waits for a person at {gate}: {cause.message}; {spend}"
         record = firing.record(

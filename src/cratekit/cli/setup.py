@@ -153,11 +153,7 @@ def _refuse(
 
 
 def _act(exc: BaseException, otherwise: str) -> str:
-    """The closing clause of a wizard sentence, chosen by the kind of refusal.
-
-    It comes from ``render.access_note`` so the sentence cannot contradict the
-    remedy token; ``otherwise`` closes a failure the system did not refuse.
-    """
+    """The closing clause by kind of refusal, from ``render.access_note``, else ``otherwise``."""
     note = render.access_note(exc)
     return f" {note}" if note is not None else f" {otherwise}"
 
@@ -358,11 +354,7 @@ class _Wizard:
         return answer
 
     def optional(self, question: str, *, default: bool = False) -> bool:
-        """A yes or no that may go unanswered, in which case it is a no.
-
-        Only for proposals the product may not make on its own, where silence
-        and no have the same consequence.
-        """
+        """A yes or no where silence is a no, for proposals the product may not make alone."""
         try:
             return self.prompter.confirm(question, default=default)
         except prompt.PromptUnavailable:
@@ -1093,10 +1085,7 @@ def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
 
 
 def _store(wizard: _Wizard, key: str, title: str, name: str, value: str) -> bool:
-    """Record ``value`` under ``name`` via ``secrets.set``, or note why not. True when stored.
-
-    The value is in no note; each sentence names the credential only.
-    """
+    """Record ``value`` under ``name``, or note why not, never quoting it. True when stored."""
     try:
         secrets.set(name, value)
     except secrets.CredentialError as exc:

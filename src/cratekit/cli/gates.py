@@ -689,19 +689,10 @@ def _strings(document: Any) -> set[str]:
 def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:
     """Write a decision into a run record, validating it against the gate.
 
-    The digest comes from what the run OFFERED, never from the caller. A person
-    answering in a later session has no way to quote the identity of something
-    they were shown by a process that has already exited.
-
-    SO A GATE THAT BINDS A PLAN IS ANSWERED ONLY ONCE ITS RUN REACHED IT
-    (R-1349). Its offer is recorded by :meth:`Gates.require` when the gate is
-    reached, and an answer recorded before that held no digest, which
-    ``require`` cannot compare, so the resume applied whatever plan it read
-    there with no screen ever shown. Reached means the run holds the gate's
-    offer, holds it open (a gate reached with nothing to digest is open and
-    offerless), or already holds an answer on it, which only a reached gate
-    can since this check. Refused before anything is written, so the run
-    reads exactly as it did.
+    The digest comes from what the run offered, never from the caller. So a
+    gate that binds a plan is answered only once its run reached it (R-1349),
+    meaning it holds the offer, holds the gate open, or holds an answer;
+    otherwise nothing is written.
     """
     if option not in spec.options:
         raise UnknownOption(spec, option)
@@ -725,10 +716,7 @@ def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:
 def blocked_by(state: RunState, verb: str) -> Cause | None:
     """The cause refusing ``verb`` while this run has an unverified pending action.
 
-    This is what makes ``pending_human_action`` load-bearing rather than
-    advisory. The source system tells the user to import an XML and then forgets;
-    nothing stops the next run from writing over the node that import was meant
-    to create.
+    What makes ``pending_human_action`` binding rather than advisory.
     """
     pending = state.pending
     if pending is None or verb not in pending.blocks:
@@ -766,8 +754,7 @@ def new_run(entry: Entry, run_id: str | None = None) -> RunState:
 # Open gates nobody will answer (U170)
 # ---------------------------------------------------------------------------
 
-#: The option an old open gate is retired with, and the only one. Every gate
-#: but two offers it, and a retirement answers nothing but no.
+#: The only option an old open gate is retired with: a retirement answers no.
 RETIRE_OPTION = "abort"
 
 
@@ -775,15 +762,10 @@ RETIRE_OPTION = "abort"
 class OldGate:
     """One open gate that has sat idle for longer than a threshold (U170).
 
-    ``idle_since`` is the LATER of the run's ``created`` stamp and the last
-    write of its record, because the dispatcher saves a run each time it is
-    resumed: a run started a month ago and resumed yesterday is a run somebody
-    is still working, and its age runs from yesterday.
-
-    ``kept`` is None when the gate can be retired, and otherwise says why not
-    in words. A gate whose verb no longer declares it, or whose options carry
-    no ``abort``, is old and still never answered by a retirement, since the
-    only safe answer to give on a person's behalf is no.
+    ``idle_since`` is the later of ``created`` and the record's last write,
+    since a resume saves the run. ``kept`` is None when the gate can be
+    retired, otherwise why not, for a gate its verb no longer declares or one
+    with no ``abort``.
     """
 
     run_id: str
@@ -818,9 +800,7 @@ def _instant(stamp: str) -> datetime | None:
 def idle_since(state: RunState, path: Path) -> datetime:
     """When this run was last touched: its start, or its record's last write if later.
 
-    A record whose file cannot be read for its time is as new as now, so a
-    gate whose age cannot be measured is never called old (absence of a
-    reading is not age).
+    An unreadable file time counts as now, so an unmeasured gate is never old.
     """
     try:
         written = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
@@ -835,10 +815,8 @@ def old_gate(
 ) -> OldGate | None:
     """This run's open gate when it has been idle for longer than ``older_than``.
 
-    THE ONE PREDICATE ``crate status`` AND ``crate run retire`` BOTH READ, so the
-    line status collapses and the set the command retires cannot be two sets.
-    None for a run with no open gate, a run waiting only on a pending human
-    action included, and for one touched within the threshold.
+    The one predicate ``crate status`` and ``crate run retire`` share, so they
+    name one set. None for a run with no open gate or one touched recently.
     """
     if state.open_gate is None:
         return None
@@ -876,9 +854,7 @@ def old_gate(
 # Another run of the same verb at its gate (U186)
 # ---------------------------------------------------------------------------
 
-#: How long a recorded answer on another run stays worth naming (U186). An
-#: answer given this morning is the run whose write a second plan may have
-#: been read across; one given yesterday is history the plan already reflects.
+#: How long a recorded answer on another run stays worth naming (U186).
 SIBLING_WINDOW = timedelta(hours=12)
 
 #: The warning code a run carries when another run of its verb holds an open
@@ -890,18 +866,10 @@ SIBLING_RUN = "gate-sibling-run"
 class Sibling:
     """Another run of the same verb that a second plan should know about (U186).
 
-    Either its gate is open, ``gate`` names it and ``at`` is when the run was
-    last touched (:func:`idle_since`, the same measure ``crate status`` ages a
-    gate by), or it answered within the window and ``gate`` is None. The
-    message says open when the gate is open, since a run that is waiting is
-    what a reader needs to hear first.
-
-    ``answers`` holds every answer the run gave within the window as
-    ``(gate, decision)``, oldest first, WHETHER OR NOT A LATER GATE IS OPEN.
-    A run that answered its plan and then stopped at the cloud sync gate has
-    still approved that plan, and ``run decide`` compares against exactly
-    that answer (the review of U186 drove a run left that way, and the
-    repeat went unsaid while the answers were dropped for an open gate).
+    Either ``gate`` names its open gate and ``at`` is :func:`idle_since`, or
+    it answered within the window and ``gate`` is None. ``answers`` holds
+    every answer inside the window, oldest first, even with a later gate open,
+    since an approved plan stays approved.
     """
 
     run_id: str
@@ -924,8 +892,8 @@ class Sibling:
             )
         gate, latest = self.answers[-1]
         if self.gate is not None:
-            # AN APPROVED PLAN STOPPED AGAIN is named by its answer and its open
-            # gate both, never as unanswered (the second review round of U186).
+            # An approved plan stopped again is named by its answer and its
+            # open gate, never as unanswered.
             return (
                 f"another run of {self.verb}, {self.run_id}, answered {gate} "
                 f"{latest.option} as {latest.actor} at "
@@ -952,18 +920,10 @@ def siblings(
 ) -> tuple[list[Sibling], list[str]]:
     """Every other run of ``verb`` with an open gate or an answer inside ``within``.
 
-    READ ONLY, and the one reader the dispatcher and ``run decide`` share
-    (U186), so the gate and the answer cannot name two sets. It takes no lock
-    and writes nothing: the warning it feeds informs, and ``decision-stale``
-    on the write handle stays the only guard.
-
-    ``exclude`` is the asking run, which is never its own sibling. The second
-    value is every record that could not be read, by its identifier: its verb is
-    unknown, so whether it is a sibling is unknown, and the caller says so
-    rather than reading the gap as no sibling (absence is not evidence).
-
-    An answer whose time cannot be read counts as inside the window, for the
-    same reason :func:`idle_since` calls an unmeasurable gate new.
+    Read only, and the one reader the dispatcher and ``run decide`` share;
+    the warning informs and guards nothing. ``exclude`` is the asking run. The
+    second value names every unreadable record, so a caller never reads the
+    gap as no sibling. An answer with an unreadable time counts as inside.
     """
     moment = now or datetime.now(timezone.utc)
     try:
