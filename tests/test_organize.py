@@ -49,6 +49,10 @@ from tests.test_config import valid_data
 from tests.test_export_set import BUILD as SET_BUILD
 from tests.test_export_set import NAME as SET_NAME
 from tests.test_export_set import ROWS, SEARCHES
+from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
+from tests.test_intake_land_native import (
+    _release_process_locks as _release_process_locks,  # noqa: PLC0414
+)
 from tests.test_label_playlists import LABEL, LABEL_ID, LISTED, RELEASES
 from tests.test_label_workers import register
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
@@ -84,28 +88,6 @@ def _tracks() -> tuple[adopt_fixtures.Track, ...]:
 
 
 # Fixtures
-
-
-@pytest.fixture(autouse=True)
-def _release_process_locks():
-    yield
-    session._HELD.clear()
-
-
-@pytest.fixture(autouse=True)
-def _platform_seams(monkeypatch):
-    """What a temporary library cannot speak for, as the rotation suite patches it."""
-    from pyrekordbox.db6 import database as binding
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
-    monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    settings = {rb_writer.LIBRARY_SYNC_SETTING: 0}
-    monkeypatch.setattr(rb_writer, "read_rekordbox_settings", lambda *args, **kwargs: settings)
-    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
-    real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False)
-    )
 
 
 @pytest.fixture
