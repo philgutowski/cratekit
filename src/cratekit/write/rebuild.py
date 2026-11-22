@@ -1013,14 +1013,13 @@ def _record_landed(
         )
     taken = {(entry.bucket, entry.sub) for entry in recorded}
     claimed = {(entry.folder_id, entry.playlist_id) for entry in recorded}
-    for entry in () if record is None else record.nodes:
-        if (entry.bucket, entry.sub) in taken:
-            continue
-        if _declared_display(tree.declared, entry.bucket, entry.sub, derived=False) is not None:
-            continue
-        if (entry.folder_id, entry.playlist_id) in claimed:
-            continue
-        recorded.append(entry)
+    recorded += [
+        entry
+        for entry in (() if record is None else record.nodes)
+        if (entry.bucket, entry.sub) not in taken
+        and _declared_display(tree.declared, entry.bucket, entry.sub, derived=False) is None
+        and (entry.folder_id, entry.playlist_id) not in claimed
+    ]
 
     if recorded:
         # Validated as a bijection before it is persisted, then REPLACED, not

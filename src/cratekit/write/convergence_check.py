@@ -490,10 +490,7 @@ def check(
     # database cursor, which reads empty to whoever walks it second.
     index = trees.index_active_rows(rows, root=cfg.library.root, prefix_map=rules)
     matches = trees.match_indexed_rows(
-        [entry.location for entry in placements],
-        index,
-        root=cfg.library.root,
-        prefix_map=rules,
+        [entry.location for entry in placements], index, root=cfg.library.root, prefix_map=rules
     )
     resolved_id: dict[str, str] = {}
     unmatched: list[trees.RowMatch] = []
