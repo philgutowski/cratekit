@@ -247,6 +247,10 @@ def test_an_unsendable_function_is_refused_at_construction_on_both_paths(plan_fo
         pool.stream_workers(
             plan_for(2), _square, range(2), initializer=_load, initargs=(lambda: None,)
         )
+    # The arguments are held to the rule with no initializer to receive them too.
+    for start in (pool.stream_workers, pool.map_workers):
+        with pytest.raises(ValueError, match="initializer argument 0"):
+            start(plan_for(2), _square, range(2), initargs=(lambda: None,))
 
 
 # A pool that died, an interrupt, a close, and a parent that is gone

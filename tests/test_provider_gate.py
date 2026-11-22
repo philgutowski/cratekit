@@ -1261,6 +1261,16 @@ def test_a_command_stops_before_the_call_past_its_ceiling_with_the_count_at_the_
     assert gate.spend().calls == 3, "the refused call was counted"
 
 
+
+def test_a_ceiling_of_one_says_one_call(paths, clock):
+    """The refusal counts in words a person reads: one call, not one calls."""
+    gate = ceiling_gate(paths, clock, 1)
+    with provider_gate.command():
+        send_through(gate, Transport())
+        with pytest.raises(jobs.Parked) as caught:
+            send_through(gate, Transport())
+    assert "this command made 1 call to the" in caught.value.cause.message
+
 def test_the_ceiling_never_says_kept_over_work_a_continue_does_again(paths, clock):
     """U217: not every command keeps what it read, so the stop claims nothing kept."""
     gate = ceiling_gate(paths, clock, 1)

@@ -359,3 +359,26 @@ def test_folding_the_case_does_not_make_a_different_volume_the_same_one(tmp_path
         tmp_path, LETTERED.upper(), {containing_mount(tmp_path): OTHER_LETTERED.upper()}
     )
     assert status.state is MountState.FOREIGN_VOLUME
+
+
+@pytest.mark.parametrize("refusal", [PermissionError(13, "denied"), OSError(1, "not permitted")])
+def test_a_refused_look_raises_rather_than_reading_as_no_mount(tmp_path, monkeypatch, refusal):
+    """U301. A stat or samefile this account may not make is not a no: it raises."""
+    import os
+
+    from cratekit.core import preflight
+
+    real_lstat = os.lstat
+
+    def refused(path, *args, **kwargs):
+        if str(path).startswith(str(tmp_path)):
+            raise refusal
+        return real_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "lstat", refused)
+    monkeypatch.setattr(Path, "samefile", lambda self, other: (_ for _ in ()).throw(refusal))
+    real_is_mount = getattr(preflight.is_mount_point, "real_is_mount", preflight.is_mount_point)
+    with pytest.raises(OSError):
+        real_is_mount(tmp_path / "slot")
+    with pytest.raises(OSError):
+        preflight.names_one_path(tmp_path / "a", tmp_path / "b")
