@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 101,
+  "pytest_runs": 153,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -1820,6 +1820,1766 @@
       "source": {
         "table": "r787.json",
         "id": "D2_set_guard_removed"
+      }
+    },
+    {
+      "id": "r787.D3_source_guard_removed",
+      "description": "doctor stops judging a native record by its source, so a native inbox from a catalogue crawl reads ok",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5114057cd0485c10",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_cutover_cli.py",
+        "tests/test_doctor.py",
+        "tests/test_incremental_sync.py",
+        "tests/test_intake_imported.py",
+        "tests/test_outbound_workers.py",
+        "tests/test_packaging.py",
+        "tests/test_paths_resolved.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 2223,
+      "baseline_collected": 2223,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_doctor_fails_a_native_inbox_whose_source_no_rebuild_reproduces"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            tree_id not in may_cut_over or record.source not in tree_registry.REBUILDABLE",
+      "new": "            tree_id not in may_cut_over",
+      "source": {
+        "table": "r787.json",
+        "id": "D3_source_guard_removed"
+      }
+    },
+    {
+      "id": "u132.D1_doctor_behind",
+      "description": "Doctor reads a copy behind the shipped schema as OK",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "49cdba9e2789675c",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_cutover_cli.py",
+        "tests/test_doctor.py",
+        "tests/test_incremental_sync.py",
+        "tests/test_intake_imported.py",
+        "tests/test_outbound_workers.py",
+        "tests/test_packaging.py",
+        "tests/test_paths_resolved.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 2223,
+      "baseline_collected": 2223,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_current_copy_with_every_entry_is_ok",
+        "tests/test_doctor.py::test_a_version_2_copy_without_favorites_is_named_with_both_versions"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not found.behind:\n",
+      "new": "    if found.behind:\n",
+      "source": {
+        "table": "u132.json",
+        "id": "D1_doctor_behind"
+      }
+    },
+    {
+      "id": "u132.D2_doctor_defect",
+      "description": "Doctor reports a shipped template defect as the copy not compared",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6068c861a966c0dd",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_cutover_cli.py",
+        "tests/test_doctor.py",
+        "tests/test_incremental_sync.py",
+        "tests/test_intake_imported.py",
+        "tests/test_outbound_workers.py",
+        "tests/test_packaging.py",
+        "tests/test_paths_resolved.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 2223,
+      "baseline_collected": 2223,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_shipped_template_that_does_not_load_is_a_defect_and_not_the_copy"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if exc.cause.reason == \"internal-error\":\n",
+      "new": "        if False:\n",
+      "source": {
+        "table": "u132.json",
+        "id": "D2_doctor_defect"
+      }
+    },
+    {
+      "id": "u159.M10_unread_reads_none_published",
+      "description": "_release_tags: a refused read answers no tags, so doctor says none is published",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9b9085f7196aaa23",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_release_read_parses_ls_remote_and_refuses_on_failure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if done.returncode != 0:\n        return None\n    tags = []",
+      "new": "    if done.returncode != 0:\n        return ()\n    tags = []",
+      "source": {
+        "table": "u159.json",
+        "id": "M10_unread_reads_none_published"
+      }
+    },
+    {
+      "id": "u159.M8_behind_reads_current",
+      "description": "_check_release: any parseable installed version passes, so a copy behind reads as current",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8944fe5bbd7f93df",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_newer_release_warns_with_the_one_pipx_command_keeping_the_extras",
+        "tests/test_doctor.py::test_a_newer_release_without_extras_names_plain_cratekit",
+        "tests/test_doctor.py::test_an_upgrade_adds_vocals_when_the_library_has_scored_a_track",
+        "tests/test_doctor.py::test_an_upgrade_keeps_the_extras_and_adds_nothing_for_a_library_never_scored"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if installed >= newest:",
+      "new": "    if True:",
+      "source": {
+        "table": "u159.json",
+        "id": "M8_behind_reads_current"
+      }
+    },
+    {
+      "id": "u170.D1_kept_folded",
+      "description": "status: fold every old gate, the kept ones too",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b793ba916e5c8624",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_old_gate_the_command_would_keep_is_listed_and_never_collapsed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if aged is not None and aged.retirable:",
+      "new": "            if aged is not None:",
+      "source": {
+        "table": "u170.json",
+        "id": "D1_kept_folded"
+      }
+    },
+    {
+      "id": "u170.D2_status_week",
+      "description": "status: threshold fixed at seven days, not the file's",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9311a38e8e6f03ce",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_status_reads_the_threshold_from_the_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    runs, folded = _run_report(timedelta(days=cfg.reports.open_gate_stale_days))",
+      "new": "    runs, folded = _run_report(timedelta(days=7))",
+      "source": {
+        "table": "u170.json",
+        "id": "D2_status_week"
+      }
+    },
+    {
+      "id": "u170.D3_open_runs_short",
+      "description": "status: open_runs leaves the folded gates out",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aa4aa052aa786ea4",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_status_collapses_old_gates_into_one_line_and_lists_new_ones_as_before"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"open_runs\": sum(1 for f in findings if f.key.startswith(\"run.\")) + folded,",
+      "new": "            \"open_runs\": sum(1 for f in findings if f.key.startswith(\"run.\")),",
+      "source": {
+        "table": "u170.json",
+        "id": "D3_open_runs_short"
+      }
+    },
+    {
+      "id": "u170.D4_line_dropped",
+      "description": "status: fold the gates and print no line for them",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f475c9a1db40b076",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_status_collapses_old_gates_into_one_line_and_lists_new_ones_as_before",
+        "tests/test_run_retire.py::test_status_reads_the_threshold_from_the_file",
+        "tests/test_run_retire.py::test_the_collapsed_line_names_the_dates_it_spans_and_reaches_a_person"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if old and older_than is not None:",
+      "new": "    if False:",
+      "source": {
+        "table": "u170.json",
+        "id": "D4_line_dropped"
+      }
+    },
+    {
+      "id": "u181.D1_extras_row_never_ok",
+      "description": "doctor install.extras: never report ok, so a copy whose model scores is told the extra is absent",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5d9c21e6a065611d",
+      "subset": [
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1414,
+      "baseline_collected": 1414,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_copy_whose_vocal_model_can_score_is_ok",
+        "tests/test_doctor.py::test_the_row_reads_the_vocals_modules_own_probe_with_the_loader_bound_or_not"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    missing = inputs.probes.vocal_requirement()\n    if missing is None:",
+      "new": "    missing = inputs.probes.vocal_requirement() or (\"extra\", \"forced\")\n    if missing is None:",
+      "source": {
+        "table": "u181.json",
+        "id": "D1_extras_row_never_ok"
+      }
+    },
+    {
+      "id": "u181.D2_files_offered_reinstall",
+      "description": "doctor install.extras: treat missing model files as the extra, so a reinstall that places nothing is printed",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a2c8152f38f5ec31",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_missing_model_files_are_named_and_no_reinstall_is_offered_for_them"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if kind != vocal_scoring.MISSING_EXTRA:",
+      "new": "    if False:",
+      "source": {
+        "table": "u181.json",
+        "id": "D2_files_offered_reinstall"
+      }
+    },
+    {
+      "id": "u181.D3_release_form_dropped",
+      "description": "doctor vocals_install_command: ignore a release install, so the command is the folder or pip form",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "895d550abbb07279",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_copy_without_the_vocals_extra_says_so_and_prints_the_reinstall_command",
+        "tests/test_doctor.py::test_a_git_install_of_a_branch_head_names_no_tag_that_does_not_exist",
+        "tests/test_doctor.py::test_the_row_reads_the_vocals_modules_own_probe_with_the_loader_bound_or_not"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if origin.kind == \"vcs\" and origin.url and origin.version and _is_release(origin.version):\n        extras = sorted({*origin.extras, VOCALS_EXTRA})",
+      "new": "    if False:\n        extras = sorted({*origin.extras, VOCALS_EXTRA})",
+      "source": {
+        "table": "u181.json",
+        "id": "D3_release_form_dropped"
+      }
+    },
+    {
+      "id": "u181.D4_release_form_no_vocals",
+      "description": "doctor vocals_install_command: the release form keeps the extras and does not add vocals",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f018b922f89b3681",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_copy_without_the_vocals_extra_says_so_and_prints_the_reinstall_command",
+        "tests/test_doctor.py::test_the_row_reads_the_vocals_modules_own_probe_with_the_loader_bound_or_not"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        extras = sorted({*origin.extras, VOCALS_EXTRA})",
+      "new": "        extras = sorted({*origin.extras})",
+      "source": {
+        "table": "u181.json",
+        "id": "D4_release_form_no_vocals"
+      }
+    },
+    {
+      "id": "u181.D5_upgrade_never_adds_vocals",
+      "description": "doctor _kept: the upgrade command never adds vocals, so a scored library upgrades without it",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b22daf28e200d26c",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_upgrade_adds_vocals_when_the_library_has_scored_a_track"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):",
+      "new": "    if True:",
+      "source": {
+        "table": "u181.json",
+        "id": "D5_upgrade_never_adds_vocals"
+      }
+    },
+    {
+      "id": "u181.D6_upgrade_always_adds_vocals",
+      "description": "doctor _kept: the upgrade command adds vocals for a library never scored",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5335205f58ec452a",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_newer_release_without_extras_names_plain_cratekit",
+        "tests/test_doctor.py::test_an_upgrade_keeps_the_extras_and_adds_nothing_for_a_library_never_scored"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):",
+      "new": "    if VOCALS_EXTRA in origin.extras:",
+      "source": {
+        "table": "u181.json",
+        "id": "D6_upgrade_always_adds_vocals"
+      }
+    },
+    {
+      "id": "u181.D7_scored_probe_false",
+      "description": "doctor _vocals_scored: never see the recorded calibration",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "577d48e2fe90cde3",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_library_has_scored_when_a_vocal_calibration_is_recorded"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg).is_file()",
+      "new": "    return False",
+      "source": {
+        "table": "u181.json",
+        "id": "D7_scored_probe_false"
+      }
+    },
+    {
+      "id": "u184.D1_volume_not_established",
+      "description": "_check_backup_acknowledgment: read the record off a volume nobody established, so a missing disk reads as none on record",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aa78ccd2bf825315",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_no_acknowledgment_is_claimed_absent_off_a_volume_nobody_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    unreadable = _library_state_unreadable(inputs, \"the backup acknowledgment\")",
+      "new": "    unreadable = None",
+      "source": {
+        "table": "u184.json",
+        "id": "D1_volume_not_established"
+      }
+    },
+    {
+      "id": "u184.D2_unreadable_is_a_note",
+      "description": "_check_backup_acknowledgment: report a record that cannot be understood as a note rather than a failure",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "efff5fe6cc4a96e4",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_acknowledgment_that_cannot_be_understood_is_a_failure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            status=Status.FAIL,\n            detail=(\n                f\"{exc.cause.message}. Every destructive verb refuses while the \"",
+      "new": "            status=Status.INFO,\n            detail=(\n                f\"{exc.cause.message}. Every destructive verb refuses while the \"",
+      "source": {
+        "table": "u184.json",
+        "id": "D2_unreadable_is_a_note"
+      }
+    },
+    {
+      "id": "u184.D3_remedy_chosen_here",
+      "description": "_check_backup_acknowledgment: name a remedy chosen here instead of the reader's own",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5e5cd2cde674e2d4",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_acknowledgment_that_cannot_be_understood_is_a_failure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            remedy=exc.cause.remediation.remedy,\n        )\n    if recorded is None:",
+      "new": "            remedy=Remedy.ACKNOWLEDGE_BACKUP,\n        )\n    if recorded is None:",
+      "source": {
+        "table": "u184.json",
+        "id": "D3_remedy_chosen_here"
+      }
+    },
+    {
+      "id": "u184.D4_expired_read_as_valid",
+      "description": "_check_backup_acknowledgment: drop the expired branch, so a lapsed record reads as valid with time left",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ab41ce0b6d9e3572",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_doctor_names_when_an_acknowledgment_lapsed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not recorded.valid_at(now):",
+      "new": "    if False:",
+      "source": {
+        "table": "u184.json",
+        "id": "D4_expired_read_as_valid"
+      }
+    },
+    {
+      "id": "u184.D5_wall_clock",
+      "description": "_check_backup_acknowledgment: read the wall clock rather than the run's own instant",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6211238947b6950a",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_doctor_shows_the_acknowledgments_expiry_beside_the_two_backup_ages"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    now = inputs.probes.now\n    expires = recorded.expires_at.replace(microsecond=0).isoformat()",
+      "new": "    now = datetime.now(timezone.utc)\n    expires = recorded.expires_at.replace(microsecond=0).isoformat()",
+      "source": {
+        "table": "u184.json",
+        "id": "D5_wall_clock"
+      }
+    },
+    {
+      "id": "u184.D6_hours_coefficient",
+      "description": "_check_backup_acknowledgment: halve the minutes per hour, so the time left is misstated",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c5b06584b340ff65",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_doctor_shows_the_acknowledgments_expiry_beside_the_two_backup_ages"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    hours, minutes = divmod(int(left.total_seconds()) // 60, 60)",
+      "new": "    hours, minutes = divmod(int(left.total_seconds()) // 60, 30)",
+      "source": {
+        "table": "u184.json",
+        "id": "D6_hours_coefficient"
+      }
+    },
+    {
+      "id": "u184.D7_rule_not_named",
+      "description": "_check_backup_acknowledgment: name the terminal rule whatever minted the record",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "163c8d3386416813",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_doctor_shows_the_acknowledgments_expiry_beside_the_two_backup_ages"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"the {recorded.rule} rule\"",
+      "new": "            f\"the terminal rule\"",
+      "source": {
+        "table": "u184.json",
+        "id": "D7_rule_not_named"
+      }
+    },
+    {
+      "id": "u184.D8_check_unlisted",
+      "description": "CHECKS: drop the new check, so doctor never shows the acknowledgment",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fb160f90f83ee2e0",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_acknowledgment_that_cannot_be_understood_is_a_failure",
+        "tests/test_doctor.py::test_doctor_names_when_an_acknowledgment_lapsed",
+        "tests/test_doctor.py::test_doctor_says_when_no_acknowledgment_is_on_record",
+        "tests/test_doctor.py::test_doctor_shows_the_acknowledgments_expiry_beside_the_two_backup_ages",
+        "tests/test_doctor.py::test_every_check_key_and_its_place_in_the_run_order_is_written_out",
+        "tests/test_doctor.py::test_no_acknowledgment_is_claimed_absent_off_a_volume_nobody_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    Check(\"backup.acknowledgment\", _check_backup_acknowledgment),",
+      "new": "",
+      "source": {
+        "table": "u184.json",
+        "id": "D8_check_unlisted"
+      }
+    },
+    {
+      "id": "u185.D1_push_newer_warns",
+      "description": "deadca7.push: invert the comparison, so a push after the last backup reads as held by it",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2beee280c6c5dd1a",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_push_newer_than_the_last_database_backup_warns_and_names_the_backup",
+        "tests/test_doctor.py::test_a_push_older_than_the_last_database_backup_is_held_by_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if completed is not None and pushed > completed:",
+      "new": "    if completed is not None and pushed < completed:",
+      "source": {
+        "table": "u185.json",
+        "id": "D1_push_newer_warns"
+      }
+    },
+    {
+      "id": "u185.D2_hidden_entries",
+      "description": "deadca7.push: count hidden entries, so a .DS_Store reads as a push",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fd2acee9a5d041d4",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_push_older_than_the_last_database_backup_is_held_by_it",
+        "tests/test_doctor.py::test_installed_with_an_empty_backup_folder_says_the_location_is_unconfirmed",
+        "tests/test_doctor.py::test_installed_with_no_push_says_so",
+        "tests/test_doctor.py::test_with_its_support_folder_here_the_install_signals_are_not_asked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        entry.stat().st_mtime for entry in folder.iterdir() if not entry.name.startswith(\".\")",
+      "new": "        entry.stat().st_mtime for entry in folder.iterdir()",
+      "source": {
+        "table": "u185.json",
+        "id": "D2_hidden_entries"
+      }
+    },
+    {
+      "id": "u185.D3_unread_folder",
+      "description": "deadca7.push: let an unreadable backup folder escape, so the check fails the report",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8fdf15423bf749c1",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_backup_folder_that_cannot_be_read_is_said_as_unread_and_does_not_fail",
+        "tests/test_doctor.py::test_a_backup_folder_whose_stat_is_refused_is_unread_never_no_push"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except OSError as exc:\n        # Unread is not none",
+      "new": "    except ZeroDivisionError as exc:\n        # Unread is not none",
+      "source": {
+        "table": "u185.json",
+        "id": "D3_unread_folder"
+      }
+    },
+    {
+      "id": "u186.N1_note_age",
+      "description": "doctor: the note's age halved to twelve hours, so a gate open twenty hours is listed",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ff389353569d8a48",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_doctor_leaves_a_gate_open_twenty_hours_off_the_list"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "OPEN_GATE_NOTE_AGE = timedelta(days=1)",
+      "new": "OPEN_GATE_NOTE_AGE = timedelta(hours=12)",
+      "source": {
+        "table": "u186.json",
+        "id": "N1_note_age"
+      }
+    },
+    {
+      "id": "u186.N2_note_fails",
+      "description": "doctor: the note is a failure when it lists a run, though the brief says never",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e52c30eac5b27fdf",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_doctor_lists_a_gate_open_two_days_and_not_one_open_an_hour",
+        "tests/test_gate_siblings.py::test_doctor_names_a_session_ack_left_blocked_as_sitting_51_left_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return Finding(key=OPEN_GATES_CHECK, title=\"runs at a gate\", status=Status.INFO, detail=detail)",
+      "new": "    return Finding(key=OPEN_GATES_CHECK, title=\"runs at a gate\", status=Status.FAIL if blocked else Status.INFO, detail=detail)",
+      "source": {
+        "table": "u186.json",
+        "id": "N2_note_fails"
+      }
+    },
+    {
+      "id": "u186.N3_note_unreadable_dropped",
+      "description": "doctor: a record that cannot be read is skipped, so the note reads as clean over it",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ccc4b72ed33dfe63",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_a_record_missing_a_field_is_named_unreadable_at_the_gate_and_in_doctor",
+        "tests/test_gate_siblings.py::test_doctor_says_a_record_it_could_not_read_and_still_never_fails"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except Exception:  # noqa: BLE001 - a note never fails; an unread record is named\n            unreadable.append(path.stem)\n            continue",
+      "new": "        except Exception:  # noqa: BLE001 - a note never fails; an unread record is named\n            continue",
+      "source": {
+        "table": "u186.json",
+        "id": "N3_note_unreadable_dropped"
+      }
+    },
+    {
+      "id": "u206.M24_doctor_set_aside_unnamed",
+      "description": "_check_isrc_cache: leave the set aside files out of the note",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7e8f4d3d9942648d",
+      "subset": [
+        "tests/test_isrc_cache.py",
+        "tests/test_sync_pair.py",
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_outbound_tidal_account.py",
+        "tests/test_label_tidal_catalogue.py",
+        "tests/test_organize_mirror_tie.py",
+        "tests/test_intake_land_rehearse.py",
+        "tests/test_doctor.py",
+        "tests/test_config.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1135,
+      "baseline_collected": 1135,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isrc_cache.py::test_doctor_names_a_set_aside_file_and_never_fails"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    aside = cache.set_aside()\n    if aside:",
+      "new": "    aside = cache.set_aside()\n    if False:",
+      "source": {
+        "table": "u206.json",
+        "id": "M24_doctor_set_aside_unnamed"
+      }
+    },
+    {
+      "id": "u211.C1_doctor_closed_is_a_note",
+      "description": "doctor rekordbox.closed: report an unconfirmed absence as OK rather than as a note",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34cd3dc18fdec83e",
+      "subset": [
+        "tests/test_process_scan.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 466,
+      "baseline_collected": 466,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_process_scan.py::test_doctor_names_an_unreadable_live_process_as_a_note"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            status=Status.INFO,\n            detail=(\n                f\"{exc.cause.message}. Every database write refuses until the scan \"",
+      "new": "            status=Status.OK,\n            detail=(\n                f\"{exc.cause.message}. Every database write refuses until the scan \"",
+      "source": {
+        "table": "u211.json",
+        "id": "C1_doctor_closed_is_a_note"
+      }
+    },
+    {
+      "id": "u211.C2_doctor_paths_take_no_copy",
+      "description": "doctor library.paths_resolved: let the unconfirmed refusal escape the check, so the rescue files it as a check that did not complete",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6bf3bc541d6c630e",
+      "subset": [
+        "tests/test_process_scan.py",
+        "tests/test_doctor.py",
+        "tests/test_paths_resolved.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 517,
+      "baseline_collected": 517,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_process_scan.py::test_doctor_names_an_unreadable_live_process_as_a_note"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except processes.AbsenceUnconfirmed as exc:\n        # NO COPY OVER AN ABSENCE NOBODY CONFIRMED (U211), said as unknown and",
+      "new": "    except LookupError as exc:\n        # NO COPY OVER AN ABSENCE NOBODY CONFIRMED (U211), said as unknown and",
+      "source": {
+        "table": "u211.json",
+        "id": "C2_doctor_paths_take_no_copy"
+      }
+    },
+    {
+      "id": "u224.M10_refused_backups_read_no_push",
+      "description": "_check_deadca7_push: a backup folder whose stat is refused reads as absent, so no push",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8717ebe86c9862b8",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_backup_folder_whose_stat_is_refused_is_unread_never_no_push"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(presence, OSError):\n            raise presence",
+      "new": "        if isinstance(presence, OSError):\n            presence = False",
+      "source": {
+        "table": "u224.json",
+        "id": "M10_refused_backups_read_no_push"
+      }
+    },
+    {
+      "id": "u224.M1_found_ignored",
+      "description": "_deadca7_presence: never count a present install place as found, so a bundle reads not installed again",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8f4d65d7ddf7cfaf",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_probe_that_raises_beside_a_present_bundle_still_reads_installed",
+        "tests/test_doctor.py::test_a_real_probes_value_asks_the_installed_probe",
+        "tests/test_doctor.py::test_installed_with_its_support_folder_unread_says_its_push_cannot_be_said",
+        "tests/test_doctor.py::test_installed_with_no_home_to_resolve_says_where_its_backups_land_is_unconfirmed",
+        "tests/test_doctor.py::test_sitting_68s_mac_the_bundle_and_no_support_folder_reads_installed_with_no_push",
+        "tests/test_doctor.py::test_the_bundle_in_the_accounts_own_applications_folder_reads_installed",
+        "tests/test_doctor.py::test_the_deadcatalog_state_folder_alone_reads_installed_with_no_push"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            elif state:\n                found.append(place)",
+      "new": "            elif False:\n                found.append(place)",
+      "source": {
+        "table": "u224.json",
+        "id": "M1_found_ignored"
+      }
+    },
+    {
+      "id": "u224.M2_unread_place_dropped",
+      "description": "_deadca7_presence: drop an install place the account cannot stat, so it reads absent",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eba6783e50f101f4",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_install_signal_that_cannot_be_read_is_unread_never_not_installed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                unread.append(f\"{place} could not be read ({_said(state)})\")",
+      "new": "                pass",
+      "source": {
+        "table": "u224.json",
+        "id": "M2_unread_place_dropped"
+      }
+    },
+    {
+      "id": "u224.M3_broken_installed_probe_silent",
+      "description": "_deadca7_presence: an install probe that raises adds nothing, so it reads not installed",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4379da9b6926f886",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_probe_that_raises_reads_unread_rather_than_not_installed[deadca7_installed]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            unread.append(f\"where its app is installed could not be located ({_said(exc)})\")",
+      "new": "            pass",
+      "source": {
+        "table": "u224.json",
+        "id": "M3_broken_installed_probe_silent"
+      }
+    },
+    {
+      "id": "u224.M4_unread_support_read_absent",
+      "description": "_deadca7_presence: a support folder whose stat is refused answers absent, so an installed app reads no push",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3d7d23fbfc92409b",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_installed_with_its_support_folder_unread_says_its_push_cannot_be_said"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            support = None\n            unread.append(f\"{home} could not be read",
+      "new": "            support = False\n            unread.append(f\"{home} could not be read",
+      "source": {
+        "table": "u224.json",
+        "id": "M4_unread_support_read_absent"
+      }
+    },
+    {
+      "id": "u224.M5_refused_stat_read_absent",
+      "description": "_folder_presence: any refused stat answers absent, the Path.is_dir shape on later Pythons",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a5d0993bd35d9d10",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_backup_folder_whose_stat_is_refused_is_unread_never_no_push",
+        "tests/test_doctor.py::test_a_support_folder_that_cannot_be_read_is_unread_never_not_installed",
+        "tests/test_doctor.py::test_an_install_signal_that_cannot_be_read_is_unread_never_not_installed",
+        "tests/test_doctor.py::test_installed_with_its_support_folder_unread_says_its_push_cannot_be_said"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except OSError as exc:\n        return exc\n    return stat.S_ISDIR(mode)",
+      "new": "    except OSError as exc:\n        return False\n    return stat.S_ISDIR(mode)",
+      "source": {
+        "table": "u224.json",
+        "id": "M5_refused_stat_read_absent"
+      }
+    },
+    {
+      "id": "u224.M6_unread_folded_into_not_installed",
+      "description": "_check_deadca7_push: nothing found and something unread reads not installed",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0e2b34f18d9144b9",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_probe_that_raises_reads_unread_rather_than_not_installed[deadca7_home]",
+        "tests/test_doctor.py::test_a_probe_that_raises_reads_unread_rather_than_not_installed[deadca7_installed]",
+        "tests/test_doctor.py::test_a_support_folder_that_cannot_be_read_is_unread_never_not_installed",
+        "tests/test_doctor.py::test_an_install_signal_that_cannot_be_read_is_unread_never_not_installed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if unread:\n            return said(\"whether DEADCA7 is installed here cannot be said: \"",
+      "new": "        if False:\n            return said(\"whether DEADCA7 is installed here cannot be said: \"",
+      "source": {
+        "table": "u224.json",
+        "id": "M6_unread_folded_into_not_installed"
+      }
+    },
+    {
+      "id": "u224.M7_install_signals_always_asked",
+      "description": "_deadca7_presence: ask the install signals even with the support folder here",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "5455be6644f82324",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_with_its_support_folder_here_the_install_signals_are_not_asked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not support:\n        try:\n            places = tuple(probes.deadca7_installed())",
+      "new": "    if True:\n        try:\n            places = tuple(probes.deadca7_installed())",
+      "source": {
+        "table": "u224.json",
+        "id": "M7_install_signals_always_asked"
+      }
+    },
+    {
+      "id": "u224.M8_default_probe_empty",
+      "description": "Probes: the install probe's default answers nothing, the regression that re-creates the bug",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b470c6caa3cc1f0a",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_real_probes_value_asks_the_installed_probe"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    deadca7_installed: Callable[[], tuple[Path, ...]] = _deadca7_installed",
+      "new": "    deadca7_installed: Callable[[], tuple[Path, ...]] = lambda: ()",
+      "source": {
+        "table": "u224.json",
+        "id": "M8_default_probe_empty"
+      }
+    },
+    {
+      "id": "u224.M9_path_through_a_file_unread",
+      "description": "_folder_presence: a stat through a file reads unread rather than absent",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f594262e15ecfe4e",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_install_place_reached_through_a_file_is_absent_not_unread"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except (FileNotFoundError, NotADirectoryError):\n        return False\n    except OSError as exc:\n        return exc",
+      "new": "    except FileNotFoundError:\n        return False\n    except OSError as exc:\n        return exc",
+      "source": {
+        "table": "u224.json",
+        "id": "M9_path_through_a_file_unread"
+      }
+    },
+    {
+      "id": "u263.D21_doctor_names_verbs",
+      "description": "doctor: drop the verbs from a failing binary row",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "799d1f14a20ac7f6",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_missing_ffmpeg_names_the_analysis_whose_decoder_it_is"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"{', '.join(inputs.requiring(key))} ({source}; override with {override})\"",
+      "new": "            f\"({source}; override with {override})\"",
+      "source": {
+        "table": "u263.json",
+        "id": "D21_doctor_names_verbs"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.D2_required_gate",
+      "description": "Report a broken Trash as a failure even where no verb needs it",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d872021b6cb588d3",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_broken_trash_is_informational_when_no_verb_this_profile_needs_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not inputs.required(key):\n        return Finding(\n            key=key,\n            title=title,\n            status=Status.INFO,\n            detail=(\n                f\"{status.problem}, and no verb this profile switches on moves a \"\n                f\"file to the Trash, so nothing depends on it today\"\n            ),\n        )\n",
+      "new": "",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "D2_required_gate"
+      }
+    },
+    {
+      "id": "u27-reports-round-1.D3_trash_remedy",
+      "description": "Answer a broken Trash with run-doctor, which is the token that sends a person here",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8a60920096253bb4",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_volume_with_no_usable_trash_refuses_because_a_verb_depends_on_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        remedy=Remedy.GRANT_PATH_ACCESS,",
+      "new": "        remedy=Remedy.RUN_DOCTOR,",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "D3_trash_remedy"
+      }
+    },
+    {
+      "id": "u27-reports-round-2.D1_probe_creates",
+      "description": "Round 1 zero, re-run against the replacement guard: take the creating default",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dec432f92c7cd446",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_trash_check_cannot_pass_by_having_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return trash.probe(path, create=False)",
+      "new": "    return trash.probe(path, create=True)",
+      "source": {
+        "table": "u27-reports-round-2.json",
+        "id": "D1_probe_creates"
+      }
+    },
+    {
+      "id": "u27-reports-round-3-fixes.F3_trash_absent_is_a_failure",
+      "description": "Report a volume whose Trash has not been created yet as a failure again",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2b81db5010fefa35",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_volume_with_no_trash_directory_yet_is_not_a_failure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if status.absent:",
+      "new": "    if False:",
+      "source": {
+        "table": "u27-reports-round-3-fixes.json",
+        "id": "F3_trash_absent_is_a_failure"
+      }
+    },
+    {
+      "id": "u27-round-8-independent.D1_finding_no_classification",
+      "description": "Invert the entry guard so a Finding carrying an exception is never classified",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2a3edc1928631d8d",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22933,
+      "baseline_collected": 22933,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        if self.error is None:\n            return",
+      "new": "        if self.error is not None:\n            return",
+      "source": {
+        "table": "u27-round-8-independent.json",
+        "id": "D1_finding_no_classification"
+      }
+    },
+    {
+      "id": "u27-round-8-independent.D2_finding_no_remedy_override",
+      "description": "Keep the branch's hard coded remedy token instead of the one the refusal kind chooses",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1125c65db1fe13c7",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22933,
+      "baseline_collected": 22933,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        if self.remedy is not refusal.remedy:\n            object.__setattr__(self, \"remedy\", refusal.remedy)",
+      "new": "",
+      "source": {
+        "table": "u27-round-8-independent.json",
+        "id": "D2_finding_no_remedy_override"
       }
     }
   ],
