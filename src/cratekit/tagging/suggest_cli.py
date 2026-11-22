@@ -33,7 +33,7 @@ from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session, taxonomy
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.tagging import plan_verbs, rows, searchers, suggest
-from cratekit.tagging.plan_verbs import counted, named
+from cratekit.tagging.plan_verbs import counted, named, warning
 
 #: The explicit gate a write is asked behind.
 CONFIRM_GATE = "tag.suggest.confirm"
@@ -169,37 +169,31 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
     left = sum(plan.counts[name] for name in suggest.LEFT)
     if left:
         found.append(
-            {
-                "code": ROWS_LEFT,
-                "message": (
-                    f"{left} row(s) with no genre were offered and are left as they "
-                    f"are ({counted(plan.counts, suggest.LEFT)}), each listed with its "
-                    f"votes; --band widens what is written, --set picks a genre for "
-                    f"one row, a split's included, and every one is offered again "
-                    f"next run"
-                ),
-            }
+            warning(
+                ROWS_LEFT,
+                f"{left} row(s) with no genre were offered and are left as they "
+                f"are ({counted(plan.counts, suggest.LEFT)}), each listed with its "
+                f"votes; --band widens what is written, --set picks a genre for "
+                f"one row, a split's included, and every one is offered again "
+                f"next run",
+            )
         )
     if plan.counts[suggest.FILE_HAS_GENRE]:
         found.append(
-            {
-                "code": FILE_AHEAD,
-                "message": (
-                    f"{plan.counts[suggest.FILE_HAS_GENRE]} row(s) carry no genre "
-                    f"and their file carries one, which tag rows writes onto the row"
-                ),
-            }
+            warning(
+                FILE_AHEAD,
+                f"{plan.counts[suggest.FILE_HAS_GENRE]} row(s) carry no genre "
+                f"and their file carries one, which tag rows writes onto the row",
+            )
         )
     if plan.unread:
         found.append(
-            {
-                "code": FILES_NOT_READ,
-                "message": (
-                    f"{plan.unread} row(s) were not offered because their file's "
-                    f"genre could not be read ({counted(plan.counts, rows.UNREAD)}); a "
-                    f"volume that is not mounted reads as {rows.FILE_MISSING}"
-                ),
-            }
+            warning(
+                FILES_NOT_READ,
+                f"{plan.unread} row(s) were not offered because their file's "
+                f"genre could not be read ({counted(plan.counts, rows.UNREAD)}); a "
+                f"volume that is not mounted reads as {rows.FILE_MISSING}",
+            )
         )
     # A ROW UNREAD ONLY BY A CATALOGUE NOBODY ASKED is said as that, with how to
     # have it asked, never as catalogues that could not be read (U244). A ROW
@@ -236,43 +230,37 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
             f"one: {searchers.DISCOGS_LOGIN_STEPS}"
         )
     if parts:
-        found.append({"code": CATALOGUE_UNREAD, "message": "; ".join(parts)})
+        found.append(warning(CATALOGUE_UNREAD, "; ".join(parts)))
     if plan.unmatched:
         found.append(
-            {
-                "code": UNMATCHED,
-                "message": (
-                    f"--leave or --set named {named(list(plan.unmatched))}, and no "
-                    f"row with no genre on the row or the file has that content "
-                    f"identifier, so nothing was held or picked for it"
-                ),
-            }
+            warning(
+                UNMATCHED,
+                f"--leave or --set named {named(list(plan.unmatched))}, and no "
+                f"row with no genre on the row or the file has that content "
+                f"identifier, so nothing was held or picked for it",
+            )
         )
     return found
 
 
 def _nothing(plan: suggest.SuggestPlan) -> dict[str, str]:
-    return {
-        "code": NOTHING_TO_WRITE,
-        "message": (
-            f"no genre is to be written: {len(plan.items)} of {plan.rows} row(s) "
-            f"carry no genre on the row or the file, and none has a suggestion at "
-            f"or above {plan.band}"
-        ),
-    }
+    return warning(
+        NOTHING_TO_WRITE,
+        f"no genre is to be written: {len(plan.items)} of {plan.rows} row(s) "
+        f"carry no genre on the row or the file, and none has a suggestion at "
+        f"or above {plan.band}",
+    )
 
 
 def _written(written: rows.Written) -> dict[str, str]:
-    return {
-        "code": GENRES_WRITTEN,
-        "message": (
-            f"{written.written} row(s) and their files now carry the suggested "
-            f"genre, and {written.read_back} read back from the database as "
-            f"written, the genre and no other column; a restore of session "
-            f"{written.session_id} undoes the rows and NOT the files, which keep "
-            f"the genre, so tag rows would write it back onto a restored row"
-        ),
-    }
+    return warning(
+        GENRES_WRITTEN,
+        f"{written.written} row(s) and their files now carry the suggested "
+        f"genre, and {written.read_back} read back from the database as "
+        f"written, the genre and no other column; a restore of session "
+        f"{written.session_id} undoes the rows and NOT the files, which keep "
+        f"the genre, so tag rows would write it back onto a restored row",
+    )
 
 
 def read_plan(
@@ -430,17 +418,7 @@ def tag_suggest(ctx) -> Envelope:
 
 
 __all__ = [
-    "CATALOGUE_UNREAD",
-    "CONFIRM_GATE",
-    "FILES_NOT_READ",
-    "FILE_AHEAD",
-    "GENRES_WRITTEN",
-    "NOTHING_TO_WRITE",
-    "ROWS_LEFT",
-    "UNMATCHED",
-    "apply_plan",
-    "build",
-    "picks",
-    "read_plan",
+    "CATALOGUE_UNREAD", "CONFIRM_GATE", "FILES_NOT_READ", "FILE_AHEAD", "GENRES_WRITTEN",
+    "NOTHING_TO_WRITE", "ROWS_LEFT", "UNMATCHED", "apply_plan", "build", "picks", "read_plan",
     "tag_suggest",
 ]

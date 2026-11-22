@@ -31,6 +31,11 @@ def named(values: Sequence[str]) -> str:
     return shown + (f" and {more} more" if more > 0 else "")
 
 
+def warning(code: str, message: str) -> dict[str, str]:
+    """One entry on an envelope's warnings channel."""
+    return {"code": code, "message": message}
+
+
 def counted(counts: Mapping[str, int], names: Sequence[str]) -> str:
     """Each named outcome that happened, with its count."""
     return ", ".join(f"{counts[name]} {name}" for name in names if counts[name])
@@ -110,4 +115,4 @@ def applied(
     return ctx.envelope(data=data, warnings=[said(written), *advisories(plan)])
 
 
-__all__ = ["NAMED", "applied", "counted", "kept", "named", "payload", "reading"]
+__all__ = ["NAMED", "applied", "counted", "kept", "named", "payload", "reading", "warning"]

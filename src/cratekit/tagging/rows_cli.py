@@ -35,24 +35,17 @@ from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session
 from cratekit.core.cause import Outcome
 from cratekit.tagging import plan_verbs, rows
-from cratekit.tagging.plan_verbs import counted
+from cratekit.tagging.plan_verbs import counted, warning
 
 #: The explicit gate a write is asked behind.
 CONFIRM_GATE = "tag.rows.confirm"
 
-#: Rows were left alone because their file's genre could not be learned.
+#: The warnings: a file's genre not learned, nothing to write, what was written
+#: and read back, differing rows left, and a ``--leave`` naming no differing row.
 FILES_NOT_READ = "rows-file-not-read"
-
-#: The plan writes nothing.
 NOTHING_TO_WRITE = "rows-nothing-to-write"
-
-#: What the apply wrote and read back.
 GENRES_WRITTEN = "rows-genre-written"
-
-#: Rows that differ from a file that was read, and were left alone.
 ROWS_LEFT = "rows-left-alone"
-
-#: An identifier given to ``--leave`` names no row that differs from its file.
 LEAVE_UNMATCHED = "rows-leave-unmatched"
 
 #: What the majority refusal says cannot be done until a prefix rule exists.
@@ -79,18 +72,12 @@ def build(parser, entry) -> None:
 
 
 def _payload(plan: rows.RowsPlan) -> dict[str, Any]:
-    return plan_verbs.payload(
-        plan, rows=plan.rows, outcomes=dict(plan.counts), pairs=plan.pairs()
-    )
+    return plan_verbs.payload(plan, rows=plan.rows, outcomes=dict(plan.counts), pairs=plan.pairs())
 
 
 def _facts(plan: rows.RowsPlan) -> dict[str, Any]:
     """What the gate puts in front of the items: the counts and the pairs."""
-    facts: dict[str, Any] = {
-        "rows": plan.rows,
-        "outcomes": dict(plan.counts),
-        "pairs": plan.pairs(),
-    }
+    facts: dict[str, Any] = {"rows": plan.rows, "outcomes": dict(plan.counts), "pairs": plan.pairs()}
     if plan.leave_unmatched:
         facts["leave_unmatched"] = list(plan.leave_unmatched)
     return facts
@@ -105,15 +92,13 @@ def _not_read(plan: rows.RowsPlan) -> list[dict[str, str]]:
     if not plan.unread:
         return []
     return [
-        {
-            "code": FILES_NOT_READ,
-            "message": (
-                f"{plan.unread} of {plan.rows} row(s) were left alone because "
-                f"their file's genre could not be read ({counted(plan.counts, rows.UNREAD)}); "
-                f"a volume that is not mounted reads as {rows.FILE_MISSING}, and "
-                f"nothing here says those rows agree with their files"
-            ),
-        }
+        warning(
+            FILES_NOT_READ,
+            f"{plan.unread} of {plan.rows} row(s) were left alone because "
+            f"their file's genre could not be read ({counted(plan.counts, rows.UNREAD)}); "
+            f"a volume that is not mounted reads as {rows.FILE_MISSING}, and "
+            f"nothing here says those rows agree with their files",
+        )
     ]
 
 
@@ -140,7 +125,7 @@ def _left(plan: rows.RowsPlan) -> list[dict[str, str]]:
             f"genre row and never makes one: give one track that genre in "
             f"rekordbox, which makes the row, then run this again"
         )
-    return [{"code": ROWS_LEFT, "message": message}]
+    return [warning(ROWS_LEFT, message)]
 
 
 def _unmatched(plan: rows.RowsPlan) -> list[dict[str, str]]:
@@ -148,14 +133,12 @@ def _unmatched(plan: rows.RowsPlan) -> list[dict[str, str]]:
     if not plan.leave_unmatched:
         return []
     return [
-        {
-            "code": LEAVE_UNMATCHED,
-            "message": (
-                f"--leave named {', '.join(plan.leave_unmatched)}, and no row "
-                f"with that content identifier differs from its file, so nothing "
-                f"was held for it; a mistyped identifier is a row this plan writes"
-            ),
-        }
+        warning(
+            LEAVE_UNMATCHED,
+            f"--leave named {', '.join(plan.leave_unmatched)}, and no row "
+            f"with that content identifier differs from its file, so nothing "
+            f"was held for it; a mistyped identifier is a row this plan writes",
+        )
     ]
 
 
@@ -164,28 +147,24 @@ def _advisories(plan: rows.RowsPlan) -> list[dict[str, str]]:
 
 
 def _nothing(plan: rows.RowsPlan) -> dict[str, str]:
-    return {
-        "code": NOTHING_TO_WRITE,
-        "message": (
-            f"no row's genre is to be written: {plan.counts[rows.AGREE]} of "
-            f"{plan.rows} row(s) agree with their file"
-        ),
-    }
+    return warning(
+        NOTHING_TO_WRITE,
+        f"no row's genre is to be written: {plan.counts[rows.AGREE]} of "
+        f"{plan.rows} row(s) agree with their file",
+    )
 
 
 def _written(plan: rows.RowsPlan, written: rows.Written) -> dict[str, str]:
     pairs = "; ".join(
         f"{_word(pair['row'])} to {_word(pair['file'])}, {pair['rows']}" for pair in plan.pairs()
     )
-    return {
-        "code": GENRES_WRITTEN,
-        "message": (
-            f"{written.written} row(s) now carry their file's genre and "
-            f"{written.read_back} read back from the database as written, the "
-            f"genre and no other column; the most common: {pairs}; undo with a "
-            f"restore of session {written.session_id}"
-        ),
-    }
+    return warning(
+        GENRES_WRITTEN,
+        f"{written.written} row(s) now carry their file's genre and "
+        f"{written.read_back} read back from the database as written, the "
+        f"genre and no other column; the most common: {pairs}; undo with a "
+        f"restore of session {written.session_id}",
+    )
 
 
 def read_plan(cfg: config.Config, declared, leave: list[str]) -> rows.RowsPlan:
@@ -230,14 +209,6 @@ def tag_rows(ctx) -> Envelope:
 
 
 __all__ = [
-    "CONFIRM_GATE",
-    "FILES_NOT_READ",
-    "GENRES_WRITTEN",
-    "LEAVE_UNMATCHED",
-    "NOTHING_TO_WRITE",
-    "ROWS_LEFT",
-    "apply_plan",
-    "build",
-    "read_plan",
-    "tag_rows",
+    "CONFIRM_GATE", "FILES_NOT_READ", "GENRES_WRITTEN", "LEAVE_UNMATCHED", "NOTHING_TO_WRITE",
+    "ROWS_LEFT", "apply_plan", "build", "read_plan", "tag_rows",
 ]

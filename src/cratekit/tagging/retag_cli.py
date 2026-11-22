@@ -430,16 +430,6 @@ def handle(job, item, cfg) -> jobs.Produced:
 
 
 __all__ = [
-    "FOLDER_KEY",
-    "ITEMS_KEY",
-    "LIBRARY_ROW_STALE",
-    "REASONS",
-    "build",
-    "digest_for",
-    "handle",
-    "library_row_warning",
-    "plan_for",
-    "retag_argv",
-    "retag_genres",
-    "with_reload_step",
+    "FOLDER_KEY", "ITEMS_KEY", "LIBRARY_ROW_STALE", "REASONS", "build", "digest_for", "handle",
+    "library_row_warning", "plan_for", "retag_argv", "retag_genres", "with_reload_step",
 ]

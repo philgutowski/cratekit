@@ -29,7 +29,7 @@ from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import active_taxonomy, config, rb_writer, taxonomy, taxonomy_word
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.tagging import guess, suggest
-from cratekit.tagging.plan_verbs import named
+from cratekit.tagging.plan_verbs import named, warning
 
 #: The files that carry no genre and that nothing voted for.
 NO_VOTES_LEFT = "tag-guess-no-votes"
@@ -186,80 +186,68 @@ def _advisories(found: guess.GuessPlan, declared: taxonomy.Taxonomy | None = Non
     }
     if by[guess.NO_VOTES]:
         warnings.append(
-            {
-                "code": NO_VOTES_LEFT,
-                "message": (
-                    f"{len(by[guess.NO_VOTES])} file(s) carry no genre and nothing "
-                    f"voted for one, no track by the artist and no playlist it came "
-                    f"from carrying a genre the taxonomy declares: "
-                    f"{named(by[guess.NO_VOTES])}; they need a genre by hand"
-                ),
-            }
+            warning(
+                NO_VOTES_LEFT,
+                f"{len(by[guess.NO_VOTES])} file(s) carry no genre and nothing "
+                f"voted for one, no track by the artist and no playlist it came "
+                f"from carrying a genre the taxonomy declares: "
+                f"{named(by[guess.NO_VOTES])}; they need a genre by hand",
+            )
         )
     split = [item for item in found.guesses if item.band == suggest.SPLIT]
     if split:
         warnings.append(
-            {
-                "code": SPLIT_WRITTEN,
-                "message": (
-                    f"{len(split)} guess(es) were a tie at the top, "
-                    f"{'would be' if found.report else 'each'} written as the "
-                    f"genre the artist's tracks weigh most and then the first by "
-                    f"name: "
-                    + named([f"{item.relative} as {item.genre}" for item in split])
-                ),
-            }
+            warning(
+                SPLIT_WRITTEN,
+                f"{len(split)} guess(es) were a tie at the top, "
+                f"{'would be' if found.report else 'each'} written as the "
+                f"genre the artist's tracks weigh most and then the first by "
+                f"name: "
+                + named([f"{item.relative} as {item.genre}" for item in split]),
+            )
         )
     unwritten = [item for item in found.items if item.outcome == guess.UNWRITTEN]
     if unwritten:
         warnings.append(
-            {
-                "code": FILES_UNWRITTEN,
-                "message": (
-                    f"{len(unwritten)} file(s) did not take their guessed genre and "
-                    f"carry none: "
-                    + named([f"{item.relative} ({item.note})" for item in unwritten])
-                    + "; check each can be written, then run tag guess again"
-                ),
-            }
+            warning(
+                FILES_UNWRITTEN,
+                f"{len(unwritten)} file(s) did not take their guessed genre and "
+                f"carry none: "
+                + named([f"{item.relative} ({item.note})" for item in unwritten])
+                + "; check each can be written, then run tag guess again",
+            )
         )
     if by[guess.FILE_UNREADABLE]:
         warnings.append(
-            {
-                "code": FILES_NOT_READ,
-                "message": (
-                    f"{len(by[guess.FILE_UNREADABLE])} file(s) could not be read, so "
-                    f"whether they carry a genre is unknown and none was guessed: "
-                    f"{named(by[guess.FILE_UNREADABLE])}"
-                ),
-            }
+            warning(
+                FILES_NOT_READ,
+                f"{len(by[guess.FILE_UNREADABLE])} file(s) could not be read, so "
+                f"whether they carry a genre is unknown and none was guessed: "
+                f"{named(by[guess.FILE_UNREADABLE])}",
+            )
         )
     if found.signals.library_unread:
         warnings.append(
-            {
-                "code": LIBRARY_UNREAD,
-                "message": (
-                    f"the library could not be read, so no track of the artist's in "
-                    f"it voted: {found.signals.library_unread}"
-                ),
-            }
+            warning(
+                LIBRARY_UNREAD,
+                f"the library could not be read, so no track of the artist's in "
+                f"it voted: {found.signals.library_unread}",
+            )
         )
     if found.signals.playlists_unread:
         warnings.append(
-            {
-                "code": PASS_UNREAD,
-                "message": (
-                    f"the playlists of pass {found.signals.pass_name} could not be "
-                    f"read, so no playlist voted: {found.signals.playlists_unread}"
-                ),
-            }
+            warning(
+                PASS_UNREAD,
+                f"the playlists of pass {found.signals.pass_name} could not be "
+                f"read, so no playlist voted: {found.signals.playlists_unread}",
+            )
         )
     if found.off_taxonomy:
         words = [f"{word!r} on {named(list(paths))}" for word, paths in found.off_taxonomy.items()]
         warnings.append(
-            {
-                "code": OFF_TAXONOMY,
-                "message": (
+            warning(
+                OFF_TAXONOMY,
+                (
                     f"{len(found.off_taxonomy)} genre(s) on these files have no place "
                     f"of their own in the taxonomy: {'; '.join(words)}. For each, "
                     f"either save it as an alias of one of your genres and retag "
@@ -267,7 +255,7 @@ def _advisories(found: guess.GuessPlan, declared: taxonomy.Taxonomy | None = Non
                     f"it a genre folder of its own, with {taxonomy_word.FOLDER_VERB} WORD"
                     + taxonomy_word.own_names(declared, found.off_taxonomy)
                 ),
-            }
+            )
         )
     return warnings
 
@@ -305,14 +293,6 @@ def tag_guess(ctx) -> Envelope:
 
 
 __all__ = [
-    "FILES_NOT_READ",
-    "FILES_UNWRITTEN",
-    "LIBRARY_UNREAD",
-    "NO_VOTES_LEFT",
-    "OFF_TAXONOMY",
-    "PASS_UNREAD",
-    "SPLIT_WRITTEN",
-    "build",
-    "signals",
-    "tag_guess",
+    "FILES_NOT_READ", "FILES_UNWRITTEN", "LIBRARY_UNREAD", "NO_VOTES_LEFT", "OFF_TAXONOMY",
+    "PASS_UNREAD", "SPLIT_WRITTEN", "build", "signals", "tag_guess",
 ]

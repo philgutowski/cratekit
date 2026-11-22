@@ -34,7 +34,7 @@ from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy
 from cratekit.core.cause import Outcome, refuse
 from cratekit.tagging import plan_verbs, remap
-from cratekit.tagging.plan_verbs import counted, named
+from cratekit.tagging.plan_verbs import counted, named, warning
 
 #: The explicit gate a rewrite is asked behind.
 CONFIRM_GATE = "tag.remap.confirm"
@@ -95,17 +95,15 @@ def _left(plan: remap.RemapPlan) -> list[dict[str, str]]:
     if not count:
         return []
     return [
-        {
-            "code": FILES_LEFT,
-            "message": (
-                f"{count} file(s) do not carry the genre the taxonomy now gives "
-                f"their word and were left alone ({counted(plan.counts, remap.LEFT)}), "
-                f"each listed with its reason: {remap.CHANGED_SINCE} is a genre no "
-                f"tagging job recorded writing, {remap.WORD_DECLINED} a word the "
-                f"taxonomy has no folder for, and {remap.AMBIGUOUS_RECORD} a genre "
-                f"two records explain differently"
-            ),
-        }
+        warning(
+            FILES_LEFT,
+            f"{count} file(s) do not carry the genre the taxonomy now gives "
+            f"their word and were left alone ({counted(plan.counts, remap.LEFT)}), "
+            f"each listed with its reason: {remap.CHANGED_SINCE} is a genre no "
+            f"tagging job recorded writing, {remap.WORD_DECLINED} a word the "
+            f"taxonomy has no folder for, and {remap.AMBIGUOUS_RECORD} a genre "
+            f"two records explain differently",
+        )
     ]
 
 
@@ -115,16 +113,14 @@ def _not_read(plan: remap.RemapPlan) -> list[dict[str, str]]:
     if not count:
         return []
     return [
-        {
-            "code": FILES_NOT_READ,
-            "message": (
-                f"{count} of {plan.files} file(s) a tagging job wrote a genre from "
-                f"{remap.SOURCE} onto could not be read ({counted(plan.counts, remap.UNREAD)}), "
-                f"each listed; a file that has moved since, and a volume that is "
-                f"not mounted, both read as {remap.FILE_MISSING}, and nothing here "
-                f"says those files are correct"
-            ),
-        }
+        warning(
+            FILES_NOT_READ,
+            f"{count} of {plan.files} file(s) a tagging job wrote a genre from "
+            f"{remap.SOURCE} onto could not be read ({counted(plan.counts, remap.UNREAD)}), "
+            f"each listed; a file that has moved since, and a volume that is "
+            f"not mounted, both read as {remap.FILE_MISSING}, and nothing here "
+            f"says those files are correct",
+        )
     ]
 
 
@@ -134,16 +130,14 @@ def _outside(plan: remap.RemapPlan) -> list[dict[str, str]]:
     if not count:
         return []
     return [
-        {
-            "code": FILES_OUTSIDE,
-            "message": (
-                f"{count} of {plan.files} file(s) a tagging job wrote a genre from "
-                f"{remap.SOURCE} onto are not under this library's root and were "
-                f"not opened: a folder tagged before it was landed, or another "
-                f"library's; a file is followed only where it was tagged, so one "
-                f"landed since is not among the files this plan looked at"
-            ),
-        }
+        warning(
+            FILES_OUTSIDE,
+            f"{count} of {plan.files} file(s) a tagging job wrote a genre from "
+            f"{remap.SOURCE} onto are not under this library's root and were "
+            f"not opened: a folder tagged before it was landed, or another "
+            f"library's; a file is followed only where it was tagged, so one "
+            f"landed since is not among the files this plan looked at",
+        )
     ]
 
 
@@ -152,19 +146,17 @@ def _no_vocabulary(plan: remap.RemapPlan) -> list[dict[str, str]]:
     if plan.declared:
         return []
     return [
-        {
-            "code": NO_VOCABULARY,
-            "message": (
-                f"the active taxonomy declares no vocabulary for {remap.SOURCE}, so "
-                f"its words are still resolved by the buckets' aliases and this "
-                f"plan compares each file with that; give the library's copy the "
-                f"[vocabulary.{remap.SOURCE}] table the shipped template carries, "
-                f"together with every routing alias and sub_by_source map row that "
-                f"template declares for the table's tags, since a tag that names "
-                f"no folder is refused and the copy would not load, then run this "
-                f"again"
-            ),
-        }
+        warning(
+            NO_VOCABULARY,
+            f"the active taxonomy declares no vocabulary for {remap.SOURCE}, so "
+            f"its words are still resolved by the buckets' aliases and this "
+            f"plan compares each file with that; give the library's copy the "
+            f"[vocabulary.{remap.SOURCE}] table the shipped template carries, "
+            f"together with every routing alias and sub_by_source map row that "
+            f"template declares for the table's tags, since a tag that names "
+            f"no folder is refused and the copy would not load, then run this "
+            f"again",
+        )
     ]
 
 
@@ -172,14 +164,12 @@ def _records_unread(plan: remap.RemapPlan) -> list[dict[str, str]]:
     if not plan.records_unread:
         return []
     return [
-        {
-            "code": RECORDS_UNREAD,
-            "message": (
-                f"{plan.records_unread} committed tagging record(s) could not be "
-                f"parsed and were not read, so a file one of them names was not "
-                f"looked at"
-            ),
-        }
+        warning(
+            RECORDS_UNREAD,
+            f"{plan.records_unread} committed tagging record(s) could not be "
+            f"parsed and were not read, so a file one of them names was not "
+            f"looked at",
+        )
     ]
 
 
@@ -194,14 +184,12 @@ def _advisories(plan: remap.RemapPlan) -> list[dict[str, str]]:
 
 
 def _nothing(plan: remap.RemapPlan) -> dict[str, str]:
-    return {
-        "code": NOTHING_TO_WRITE,
-        "message": (
-            f"no file's genre is to be rewritten: {plan.counts[remap.AGREE]} of "
-            f"{plan.files} file(s) a tagging job wrote a genre from {remap.SOURCE} "
-            f"onto carry the genre the taxonomy gives their word"
-        ),
-    }
+    return warning(
+        NOTHING_TO_WRITE,
+        f"no file's genre is to be rewritten: {plan.counts[remap.AGREE]} of "
+        f"{plan.files} file(s) a tagging job wrote a genre from {remap.SOURCE} "
+        f"onto carry the genre the taxonomy gives their word",
+    )
 
 
 #: What a run that rewrote a file owes its rows, on a clean run's envelope and
@@ -218,15 +206,13 @@ def _written(plan: remap.RemapPlan, written: remap.Written) -> dict[str, str]:
     pairs = "; ".join(
         f"{pair['from']!r} to {pair['to']!r}, {pair['files']}" for pair in plan.pairs()
     )
-    return {
-        "code": GENRES_WRITTEN,
-        "message": (
-            f"{written.written} file(s) now carry the genre the taxonomy gives "
-            f"their word and {written.read_back} read back as written: {pairs}; "
-            f"the items list each file with the genre it carried, which is the "
-            f"undo; {ROWS_FOLLOW}"
-        ),
-    }
+    return warning(
+        GENRES_WRITTEN,
+        f"{written.written} file(s) now carry the genre the taxonomy gives "
+        f"their word and {written.read_back} read back as written: {pairs}; "
+        f"the items list each file with the genre it carried, which is the "
+        f"undo; {ROWS_FOLLOW}",
+    )
 
 
 def assert_written(written: remap.Written) -> None:
@@ -316,16 +302,7 @@ def tag_remap(ctx) -> Envelope:
 
 
 __all__ = [
-    "CONFIRM_GATE",
-    "FILES_LEFT",
-    "FILES_NOT_READ",
-    "FILES_OUTSIDE",
-    "GENRES_WRITTEN",
-    "NOTHING_TO_WRITE",
-    "NO_VOCABULARY",
-    "RECORDS_UNREAD",
-    "ROWS_FOLLOW",
-    "assert_written",
-    "build",
+    "CONFIRM_GATE", "FILES_LEFT", "FILES_NOT_READ", "FILES_OUTSIDE", "GENRES_WRITTEN",
+    "NOTHING_TO_WRITE", "NO_VOCABULARY", "RECORDS_UNREAD", "ROWS_FOLLOW", "assert_written", "build",
     "tag_remap",
 ]
