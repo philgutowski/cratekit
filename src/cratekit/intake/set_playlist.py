@@ -345,7 +345,9 @@ def playlist_name(words: SetWords, *, on: date | None = None) -> str:
     ``on`` is the posted day from :func:`naming_day`; omitted, the landing day.
     """
     made = on or today()
-    return batch_name.set_playlist_form(made, dj=words.dj, name=words.name, month=words.month)
+    return batch_name.set_playlist_form(
+        made, dj=words.dj, name=words.name, month=words.month
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -564,11 +566,7 @@ def folder_for(db: Any, declared: taxonomy.Taxonomy) -> tuple[str, taxonomy.Node
             ),
             origin=_ORIGIN,
         )
-    live = [
-        row
-        for row in rb_writer.top_level_folders(db, node.display)
-        if not rb_writer.node_removed(row)
-    ]
+    live = [row for row in rb_writer.top_level_folders(db, node.display) if not rb_writer.node_removed(row)]
     if len(live) > 1:
         raise refuse(
             FOLDER_UNDECLARED,
@@ -686,9 +684,7 @@ def recorded_names(cfg: config.Config, job_id: str) -> tuple[str, ...]:
     the playlist is still there.
     """
     return tuple(
-        dict.fromkeys(
-            name for kept in _landed(cfg, job_id) if (name := str(kept.get("name") or ""))
-        )
+        dict.fromkeys(name for kept in _landed(cfg, job_id) if (name := str(kept.get("name") or "")))
     )
 
 
@@ -993,7 +989,9 @@ def plan_for_backfill(
 
 def payload(plan: SetPlaylistPlan) -> dict[str, Any]:
     """The plan as a gate shows it: one item per member, then one per left row."""
-    items: list[dict[str, Any]] = [{"action": "add", **one.identity()} for one in plan.members]
+    items: list[dict[str, Any]] = [
+        {"action": "add", **one.identity()} for one in plan.members
+    ]
     items.extend({"action": "leave", **one.identity()} for one in plan.left)
     return {
         "digest": plan.digest,
@@ -1048,7 +1046,9 @@ def left_warning(left: Sequence[Left]) -> list[dict[str, str]]:
     """The one warning naming every track the playlist does not hold."""
     if not left:
         return []
-    named = "; ".join(f"{one.position}. {one.artist} - {one.title} ({one.why})" for one in left)
+    named = "; ".join(
+        f"{one.position}. {one.artist} - {one.title} ({one.why})" for one in left
+    )
     return [
         {
             "code": LEFT_OUT,

@@ -145,7 +145,9 @@ def _recording(
             origin=("intake.cli",),
         ) from exc
     try:
-        with fetch.fetched(address, Path(cfg.library.root), found, progress=progress) as got:
+        with fetch.fetched(
+            address, Path(cfg.library.root), found, progress=progress
+        ) as got:
             held = SetRecording(
                 path=got.path,
                 ref=address,
@@ -259,7 +261,9 @@ def _coverage_or_refuse(
     )
 
 
-def _parts_notes(result: pipeline.IdentifyResult, *, queued: bool) -> tuple[dict[str, str], ...]:
+def _parts_notes(
+    result: pipeline.IdentifyResult, *, queued: bool
+) -> tuple[dict[str, str], ...]:
     """Said when the recording was identified in more than one run.
 
     The bound is not quoted: the identifier's budget is the one place that knows it.
@@ -467,7 +471,9 @@ def intake_identify(ctx) -> Envelope:
             written = _tracklist_written(out, held, result)
     warnings += _fetch_notes(held)
     if written is None:
-        return ctx.envelope(data=match.MatchResult(matches=()).payload(), warnings=warnings)
+        return ctx.envelope(
+            data=match.MatchResult(matches=()).payload(), warnings=warnings
+        )
     resolved = match_cli.resolve_list(
         cfg, result.rows, handler_key=ctx.entry.handler_key, run_id=ctx.run.run_id
     )

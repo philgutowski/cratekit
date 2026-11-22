@@ -164,9 +164,7 @@ class Claimed:
         }
         if self.owned:
             identity["members"] = [
-                one.file.name
-                if one.file is not None
-                else {"paths": list(one.paths), "row": one.row}
+                one.file.name if one.file is not None else {"paths": list(one.paths), "row": one.row}
                 for one in self.members
             ]
         if self.left:
@@ -382,7 +380,9 @@ def playlist_jobs(cfg: config.Config, pass_name: str) -> tuple[tuple[jobs.Job, s
     In the order the sweep queued them, so the refill (U134) can refuse a
     playlist before the account's tracks are read.
     """
-    queued = sorted(batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id))
+    queued = sorted(
+        batch_name.pass_jobs(cfg, pass_name), key=lambda job: (job.created, job.job_id)
+    )
     return tuple((job, name) for job in queued if (name := _named(job)) is not None)
 
 
@@ -430,7 +430,9 @@ def mirrored(cfg: config.Config, pass_name: str) -> frozenset[str]:
         for record in records
         if record.workflow == ingest.INTAKE_WORKFLOW and record.state in standing
         for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ()
-        if isinstance(entry, dict) and entry.get(ACCOUNT_KEY) and entry.get(PASS_KEY) == pass_name
+        if isinstance(entry, dict)
+        and entry.get(ACCOUNT_KEY)
+        and entry.get(PASS_KEY) == pass_name
     )
 
 

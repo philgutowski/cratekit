@@ -58,11 +58,7 @@ FOLDER = DECLARED.inspiration.display
 WORDS = ["--dj", "Probe DJ", "--set-name", "Live at Probe", "--set-date", "2026-05"]
 NAME = "10_09_26 Probe DJ Live at Probe 5-26"
 POSTED_NAME = "5_03_26 Probe DJ Live at Probe 5-26"
-PAGE = {
-    "title": "Probe DJ - Live at Probe 05.03.26",
-    "uploader": "Probe DJ",
-    "upload_date": "20260503",
-}
+PAGE = {"title": "Probe DJ - Live at Probe 05.03.26", "uploader": "Probe DJ", "upload_date": "20260503"}
 APPROVE = inspiration_cli.APPROVE_GATE
 
 
@@ -87,7 +83,7 @@ def machine(library, monkeypatch):
     adopt_fixtures.build(resolved, ())
     _seed_binding_rows(resolved)
     monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: lambda _path: resolved.library.volume_id
+        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
     )
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     return resolved
@@ -123,9 +119,7 @@ def _stage(cfg: config.Config, silence: Path, title: str) -> Path:
 
 def _owned(cfg: config.Config, silence: Path, title: str, *, content_id: str) -> Path:
     """A file the library holds under its own folder, with the collection row rekordbox gave it."""
-    path = _tagged(
-        Path(cfg.library.root) / cfg.library.music_dir / "Owned" / f"{title}.flac", silence, title
-    )
+    path = _tagged(Path(cfg.library.root) / cfg.library.music_dir / "Owned" / f"{title}.flac", silence, title)
     conn = sqlite3.connect(cfg.library.db_path)
     conn.execute(
         "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
@@ -290,27 +284,17 @@ def test_the_name_is_the_source_systems_form_to_the_character():
         == "10_09_26 Public Service NYC Live at Vonking 5-26"
     )
     # The folder's own examples: month without a leading zero, day with one.
-    assert (
-        set_playlist.playlist_name(
-            set_playlist.SetWords("oshe", "GOATCHELLA Radio Mix", date(2026, 4, 1)),
-            on=date(2026, 5, 28),
-        )
-        == "5_28_26 oshe GOATCHELLA Radio Mix 4-26"
-    )
-    assert (
-        set_playlist.playlist_name(
-            set_playlist.SetWords("Pepofit", "PEPOFIT LIB JUNKYARD", date(2026, 5, 1)),
-            on=date(2026, 6, 16),
-        )
-        == "6_16_26 Pepofit PEPOFIT LIB JUNKYARD 5-26"
-    )
+    assert set_playlist.playlist_name(
+        set_playlist.SetWords("oshe", "GOATCHELLA Radio Mix", date(2026, 4, 1)), on=date(2026, 5, 28)
+    ) == "5_28_26 oshe GOATCHELLA Radio Mix 4-26"
+    assert set_playlist.playlist_name(
+        set_playlist.SetWords("Pepofit", "PEPOFIT LIB JUNKYARD", date(2026, 5, 1)),
+        on=date(2026, 6, 16),
+    ) == "6_16_26 Pepofit PEPOFIT LIB JUNKYARD 5-26"
     # December and a two digit month in the set's half.
-    assert (
-        set_playlist.playlist_name(
-            set_playlist.SetWords("A", "B", date(2025, 12, 1)), on=date(2026, 1, 3)
-        )
-        == "1_03_26 A B 12-25"
-    )
+    assert set_playlist.playlist_name(
+        set_playlist.SetWords("A", "B", date(2025, 12, 1)), on=date(2026, 1, 3)
+    ) == "1_03_26 A B 12-25"
 
 
 def _job_with(page: dict) -> jobs.Job:
@@ -331,10 +315,7 @@ def test_the_words_come_from_the_page_with_the_uploader_taken_off_the_title():
     words = set_playlist.words_for(_job_with(PAGE))
     assert words == set_playlist.SetWords("Probe DJ", "Live at Probe 05.03.26", date(2026, 5, 1))
     # A title not led by the uploader is kept whole, and so is one that is only the uploader.
-    assert (
-        set_playlist.words_for(_job_with({**PAGE, "title": "Live at Probe"})).name
-        == "Live at Probe"
-    )
+    assert set_playlist.words_for(_job_with({**PAGE, "title": "Live at Probe"})).name == "Live at Probe"
     assert set_playlist.words_for(_job_with({**PAGE, "title": "Probe DJ"})).name == "Probe DJ"
     assert set_playlist.words_for(_job_with({**PAGE, "title": "probe dj | Set"})).name == "Set"
 
@@ -531,7 +512,9 @@ def test_posted_on_a_frozen_job_names_another_day_and_the_frozen_name_wins_with_
     _freeze_name(job_id, NAME)
     _stage(cfg, silence, "One")
 
-    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS, "--posted", "2026-05-03"))
+    code, acted, refused = _two_acts(
+        _land("--set", job_id, *WORDS, "--posted", "2026-05-03")
+    )
 
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
@@ -556,7 +539,9 @@ def test_posted_equal_to_landing_day_on_a_pageless_job_is_not_decision_stale(
     cfg = _with_folder(native_library)
     _owned(cfg, silence, "Three", content_id="held-3")
     job_id = set_job(cfg, ("Three",))
-    code, acted, refused = _two_acts_approve(_inspiration(job_id, *WORDS, "--posted", "2026-10-09"))
+    code, acted, refused = _two_acts_approve(
+        _inspiration(job_id, *WORDS, "--posted", "2026-10-09")
+    )
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] != "error"
     assert refused["cause"]["detail"]["shown"]["set playlist"] == NAME
@@ -688,13 +673,7 @@ def test_a_row_neither_owned_nor_landed_is_counted_and_named_and_not_added(nativ
     assert "2. Probe - Four" in left["message"] and set_playlist.NOT_RESOLVED in left["message"]
     item = _set_item(acted)
     assert item["left"] == [
-        {
-            "position": 2,
-            "artist": "Probe",
-            "title": "Four",
-            "state": "missing",
-            "why": set_playlist.NOT_RESOLVED,
-        }
+        {"position": 2, "artist": "Probe", "title": "Four", "state": "missing", "why": set_playlist.NOT_RESOLVED}
     ]
 
 
@@ -752,9 +731,7 @@ def test_no_beat_grid_tempo_or_rating_is_written_for_the_set_playlist(native_lib
     assert after["held-3"] == before["held-3"]
     assert set(after) - set(before) == {_row_ids_by_name(cfg)["One"]}
     for table in ("djmdBeatGrid", "djmdCue", "djmdHotCueBanklist"):
-        found = _query(
-            cfg, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", table
-        )
+        found = _query(cfg, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", table)
         if found:
             assert _query(cfg, f"SELECT COUNT(*) FROM {table}") == [(0,)]
 
@@ -849,10 +826,7 @@ def test_the_backfill_refuses_a_job_that_is_not_a_set_and_an_unfinished_one(nati
         queued = jobs.enqueue(
             store,
             handler_key=set_playlist.SET_KEY,
-            payload={
-                intake_cli.SOURCE: "x",
-                intake_cli.TRACKS: {"rc_a": {"artist": "P", "title": "A"}},
-            },
+            payload={intake_cli.SOURCE: "x", intake_cli.TRACKS: {"rc_a": {"artist": "P", "title": "A"}}},
             cfg=cfg,
             item_ids=("rc_a",),
         )
@@ -941,9 +915,7 @@ def test_a_landing_whose_folder_went_between_the_two_acts_moves_nothing(native_l
     assert "has since changed" in acted["cause"]["message"]
     assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
     assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
-    assert _query(
-        cfg, "SELECT COUNT(*) FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%"
-    ) == [(0,)]
+    assert _query(cfg, "SELECT COUNT(*) FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%") == [(0,)]
 
 
 # ---------------------------------------------------------------------------
@@ -979,9 +951,7 @@ def test_a_track_accepted_at_review_as_a_library_file_joins_the_playlist_at_a_la
     _owned(cfg, silence, "One (Extended Mix)", content_id="held-1x")
     job_id = set_job(cfg, ("One", "Two"))
     item_id, option = _offered_item(cfg, job_id, "One")
-    code, answered = drive(
-        ["review", "resolve", item_id, "--verdict", "accepted", "--option", option]
-    )
+    code, answered = drive(["review", "resolve", item_id, "--verdict", "accepted", "--option", option])
     assert code == int(ExitCode.OK), answered
     _stage(cfg, silence, "Two")
 
@@ -1162,9 +1132,7 @@ def _make_playlist(cfg: config.Config, name: str, *, under: str) -> str:
         rb_writer.close_db(handle)
 
 
-def test_two_landings_of_one_set_on_two_days_make_one_playlist(
-    native_library, silence, monkeypatch
-):
+def test_two_landings_of_one_set_on_two_days_make_one_playlist(native_library, silence, monkeypatch):
     """The second landing reads the first's session record, adds to the playlist
     it made and keeps its name, so a set landed in two parts is one playlist."""
     cfg, root_id = native_library
@@ -1214,9 +1182,7 @@ def test_a_recorded_playlist_that_was_removed_is_not_added_to_and_a_live_one_is_
     ((live_id, *_r),) = live
     assert str(live_id) != str(removed_id)
     assert _members(cfg, str(live_id)) == [_row_ids_by_name(cfg)["One"]]
-    assert _members(cfg, str(removed_id)) == [_row_ids_by_name(cfg)["One"]], (
-        "the removed one kept its own"
-    )
+    assert _members(cfg, str(removed_id)) == [_row_ids_by_name(cfg)["One"]], "the removed one kept its own"
 
 
 def test_a_removed_namesake_under_the_folder_is_not_written_into(native_library, silence):
@@ -1282,12 +1248,7 @@ def test_two_rows_of_the_set_resolving_to_one_track_are_one_member(native_librar
     cfg = _with_folder(native_library)
     _owned(cfg, silence, "Three", content_id="held-3")
     tracks = {
-        "rc_a": {
-            "artist": "Probe",
-            "title": "Three",
-            "origin": match.TEXT,
-            "spelled": "Probe - Three",
-        },
+        "rc_a": {"artist": "Probe", "title": "Three", "origin": match.TEXT, "spelled": "Probe - Three"},
         "rc_b": {
             "artist": "Probe",
             "title": "Three",
@@ -1464,9 +1425,7 @@ def test_a_landing_archive_failure_is_a_warning_on_the_envelope(
 
     assert code == int(ExitCode.OK), acted
     assert any(w["code"] == land_cli.LAND_ARCHIVE_FAILED for w in acted["warnings"])
-    assert any(
-        "could not finish after the landing wrote" in w["message"] for w in acted["warnings"]
-    )
+    assert any("could not finish after the landing wrote" in w["message"] for w in acted["warnings"])
     assert held.renamed == []
 
 

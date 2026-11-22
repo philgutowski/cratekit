@@ -125,7 +125,8 @@ _SOURCE_HELP = (
 )
 #: One ``--out`` help, because ``intake set`` writes the tracklist ``intake identify`` does.
 _OUT_HELP = (
-    "folder the tracklist is written into; defaults to a tracklists folder under download staging"
+    "folder the tracklist is written into; defaults to a tracklists "
+    "folder under download staging"
 )
 
 
@@ -318,13 +319,17 @@ def _set_playlist_name(
     from cratekit.intake import set_playlist
 
     try:
-        words = set_playlist.words_from_page(page, dj=dj, set_name=set_name, set_date=set_date)
+        words = set_playlist.words_from_page(
+            page, dj=dj, set_name=set_name, set_date=set_date
+        )
     except CratekitError as exc:
         if exc.cause.reason != set_playlist.UNNAMED:
             raise
         page = page if isinstance(page, Mapping) else {}
         asked = (
-            bool(page) or from_url or any(v is not None for v in (dj, set_name, set_date, posted))
+            bool(page)
+            or from_url
+            or any(v is not None for v in (dj, set_name, set_date, posted))
         )
         if not asked:
             return _PlaylistName()

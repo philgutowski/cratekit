@@ -59,7 +59,9 @@ def planned(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
     try:
-        return set_playlist.plan_for_backfill(cfg, db, declared, job, words, reports, posted=posted)
+        return set_playlist.plan_for_backfill(
+            cfg, db, declared, job, words, reports, posted=posted
+        )
     finally:
         rb_writer.close_db(db)
 
