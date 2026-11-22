@@ -75,11 +75,8 @@ def test_download_reaches_no_provider_and_no_network(configured, monkeypatch):  
         raise AssertionError("the shell reached an acquisition engine")
 
     for module, name in (
-        (download, "acquire_paced"),
-        (download, "acquire_concurrently"),
-        (adapter, "acquire_with_source"),
-        (adapter, "acquire_one"),
-        (adapter, "dispatch"),
+        (download, "acquire_paced"), (download, "acquire_concurrently"),
+        (adapter, "acquire_with_source"), (adapter, "acquire_one"), (adapter, "dispatch"),
     ):
         monkeypatch.setattr(module, name, boom)
 
@@ -121,9 +118,7 @@ def test_download_argv_is_the_builder_the_registry_names(configured):  # noqa: F
 
 
 def test_download_on_an_absent_job_refuses_with_a_vocabulary_code(configured):  # noqa: F811
-    code, out, _ = drive(
-        ["--output", "json", "acquire", "download", "x", "--job", "no-such-job"]
-    )
+    code, out, _ = drive(["--output", "json", "acquire", "download", "x", "--job", "no-such-job"])
     assert code in {int(c) for c in ExitCode}
     assert code != int(ExitCode.OK)
     assert code != int(ExitCode.USAGE)
@@ -153,11 +148,7 @@ def test_audit_over_an_empty_library_is_a_well_formed_empty_review_set(configure
     envelope = json.loads(out)
     assert output.envelope_problems(envelope) == [], envelope
     assert envelope["verb"] == "acquire.audit"
-    assert envelope["data"] == {
-        "queue": acquire_cli.AUDIT_QUEUE,
-        "items": [],
-        "unresolved": 0,
-    }
+    assert envelope["data"] == {"queue": acquire_cli.AUDIT_QUEUE, "items": [], "unresolved": 0}
 
 
 def _kinds(root, *, policy, marker="[MP3]"):
@@ -177,8 +168,7 @@ def test_strict_policy_reports_every_lossy_file_marked_or_not(tmp_path):
 
     found = _kinds(root, policy=LosslessPolicy.STRICT)
     assert found == {
-        "plain.mp3": "lossy-under-strict",
-        "Artist - Title [MP3].mp3": "lossy-under-strict",
+        "plain.mp3": "lossy-under-strict", "Artist - Title [MP3].mp3": "lossy-under-strict",
     }
 
 
@@ -271,10 +261,7 @@ def test_a_directory_it_cannot_list_is_reported(tmp_path):
     finally:
         os.chmod(locked, stat.S_IRWXU)
 
-    assert found == {
-        "open/a.mp3": "lossy-under-strict",
-        "locked": "path-unreadable",
-    }
+    assert found == {"open/a.mp3": "lossy-under-strict", "locked": "path-unreadable"}
 
 
 def test_the_unreadable_row_counts_toward_the_outstanding_total(configured, tmp_path):  # noqa: F811
@@ -325,13 +312,11 @@ def test_the_audit_reads_the_policy_the_configuration_actually_holds(configured)
         {
             "schema_version": config.CURRENT_SCHEMA_VERSION,
             "library": {
-                "root": str(configured.library.root),
-                "volume_id": configured.library.volume_id,
+                "root": str(configured.library.root), "volume_id": configured.library.volume_id,
                 "db_path": str(configured.library.db_path),
             },
             "paths": {"download_staging": str(configured.paths.download_staging)},
-            "profile": {"name": "full"},
-            "acquisition": {"lossless_policy": "allow_lossy_marked"},
+            "profile": {"name": "full"}, "acquisition": {"lossless_policy": "allow_lossy_marked"},
         }
     )
     config.save(relaxed)
@@ -340,7 +325,5 @@ def test_the_audit_reads_the_policy_the_configuration_actually_holds(configured)
     code, out, _ = drive(["--output", "json", "acquire", "audit"])
     assert code == int(ExitCode.OK), out
     assert json.loads(out)["data"] == {
-        "queue": acquire_cli.AUDIT_QUEUE,
-        "items": [],
-        "unresolved": 0,
+        "queue": acquire_cli.AUDIT_QUEUE, "items": [], "unresolved": 0,
     }, "the permissive policy admits a MARKED lossy file"

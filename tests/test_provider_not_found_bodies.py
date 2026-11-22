@@ -41,17 +41,14 @@ from tests.test_provider_rejection_bodies import cyclic
 
 #: A provider saying it has nothing, with a body the client can and cannot read.
 NOT_FOUND = [
-    pytest.param(404, HTML, id="404-html"),
-    pytest.param(404, b"", id="404-empty"),
+    pytest.param(404, HTML, id="404-html"), pytest.param(404, b"", id="404-empty"),
     pytest.param(404, NOT_FOUND_BODY, id="404-json"),
 ]
 
 #: Answers that say nothing about the thing asked for, whatever their body.
 UNAVAILABLE = [
-    pytest.param(503, HTML, id="503-html"),
-    pytest.param(502, HTML, id="502-html"),
-    pytest.param(503, b"", id="503-empty"),
-    pytest.param(500, NOT_FOUND_BODY, id="500-json"),
+    pytest.param(503, HTML, id="503-html"), pytest.param(502, HTML, id="502-html"),
+    pytest.param(503, b"", id="503-empty"), pytest.param(500, NOT_FOUND_BODY, id="500-json"),
 ]
 
 
@@ -61,10 +58,8 @@ def classified(exc: BaseException) -> bool:
 
 #: Each reader of a not found, as the question "is this failure a not found?"
 READERS: dict[str, Callable[[BaseException], bool]] = {
-    "classify_unavailable": classified,
-    "account": tidal_account._not_found,
-    "isrc_cache": isrc_cache.said_not_found,
-    "catalogue": tidal_catalogue._gone,
+    "classify_unavailable": classified, "account": tidal_account._not_found,
+    "isrc_cache": isrc_cache.said_not_found, "catalogue": tidal_catalogue._gone,
 }
 
 READER_IDS = list(READERS)
@@ -185,9 +180,7 @@ def test_off_the_declared_chain_a_links_cause_is_nearer_than_what_it_was_handlin
     later = a_wrapper_of_a_404_raised_while_handling_a_503()
 
     assert cause.nearest_status(later) == 404
-    assert {name: reader(later) for name, reader in READERS.items()} == dict.fromkeys(
-        READERS, True
-    )
+    assert {name: reader(later) for name, reader in READERS.items()} == dict.fromkeys(READERS, True)
 
 
 def test_a_name_reached_only_as_context_is_not_a_not_found():

@@ -335,11 +335,7 @@ def test_a_failure_in_the_body_never_reaches_the_tolerance(monkeypatch):
     record()
     seen: list[BaseException] = []
 
-    for raised in (
-        secrets.CredentialBackendUnavailable("x"),
-        OSError("x"),
-        AdapterAuthFailed("x"),
-    ):
+    for raised in (secrets.CredentialBackendUnavailable("x"), OSError("x"), AdapterAuthFailed("x")):
         with pytest.raises(type(raised)):
             with provider_session.materialised_session(unstored=seen.append):
                 raise raised

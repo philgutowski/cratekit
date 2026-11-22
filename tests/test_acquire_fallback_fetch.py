@@ -38,9 +38,7 @@ MARKER = "[LOSSY]"
 def _configure(library: Path, policy: str, marker: str | None = MARKER) -> config.Config:
     built = config.from_dict(
         valid_data(
-            library,
-            profile={"name": "full"},
-            acquisition={"lossless_policy": policy},
+            library, profile={"name": "full"}, acquisition={"lossless_policy": policy},
             naming={"lossy_marker": marker},
         )
     )
@@ -235,9 +233,7 @@ def test_this_verb_sweeps_the_staging_tree_it_shares_with_the_download_verb(
     assert not (tree / first).exists(), "the queue path never reclaimed the staging"
 
 
-def test_a_strict_policy_refuses_that_item_before_anything_downloads(
-    strict, tmp_path, monkeypatch
-):
+def test_a_strict_policy_refuses_that_item_before_anything_downloads(strict, tmp_path, monkeypatch):
     accepted(strict)
     fake = bind(monkeypatch, FakeFetcher())
     job_id = queued(tracklist(tmp_path, BOOT))
@@ -421,15 +417,11 @@ def test_a_row_with_a_provider_route_is_not_fetched_lossy(permissive, tmp_path):
     wanted = match.read_text_lines(TIDE)[0]
     with review.open_store(permissive) as items:
         review.offer(
-            items,
-            queue=candidates.QUEUE,
-            kind=candidates.KIND,
-            identity=candidates.identity(wanted),
-            payload={},
+            items, queue=candidates.QUEUE, kind=candidates.KIND,
+            identity=candidates.identity(wanted), payload={},
             options=[
                 review.Option(
-                    option_id="7001",
-                    summary="one",
+                    option_id="7001", summary="one",
                     detail={
                         "track": intake_cli.frozen(
                             dataclasses.replace(wanted, ref="7001", origin=match.TIDAL)
@@ -564,21 +556,17 @@ def test_an_accepted_option_that_is_not_a_web_address_is_never_handed_to_the_too
     assert fake.calls == []
 
 
-def test_a_row_naming_no_artist_and_no_title_is_refused_before_a_download(
-    permissive, monkeypatch
-):
+def test_a_row_naming_no_artist_and_no_title_is_refused_before_a_download(permissive, monkeypatch):
     """Queued by hand: the worker never commits a nameless file."""
     fake = bind(monkeypatch, FakeFetcher())
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store,
-            handler_key="acquire.fallback-fetch",
+            store, handler_key="acquire.fallback-fetch",
             payload={
                 fallback_cli.LIST: "/nowhere/unlisted.txt",
                 fallback_cli.ROWS: {"nameless": {"artist": " ", "title": "", "url": UPLOAD}},
             },
-            cfg=permissive,
-            item_ids=("nameless",),
+            cfg=permissive, item_ids=("nameless",),
         )
 
     run(job.job_id)
@@ -629,11 +617,8 @@ def test_the_shipped_fetcher_extracts_mp3_drops_upload_metadata_and_ends_on_the_
 @pytest.mark.parametrize(
     "runner",
     [
-        Runner(returncode=1),
-        Runner(lands=()),
-        Runner(lands=("fetched.mp3", "other.mp3")),
-        Runner(lands=("fetched.webm",)),
-        Runner(raises=subprocess.TimeoutExpired("yt-dlp", 1)),
+        Runner(returncode=1), Runner(lands=()), Runner(lands=("fetched.mp3", "other.mp3")),
+        Runner(lands=("fetched.webm",)), Runner(raises=subprocess.TimeoutExpired("yt-dlp", 1)),
         Runner(raises=OSError("no such file")),
     ],
     ids=["nonzero", "nothing", "two", "not-mp3", "timeout", "unstartable"],

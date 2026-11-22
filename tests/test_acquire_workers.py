@@ -50,9 +50,7 @@ from tests.test_config import valid_data
 def _configure(library: Path, **acquisition) -> config.Config:
     settings = {"adapter": FAKE_ADAPTER, "pacing_delay_s": 0.0}
     settings.update(acquisition)
-    built = config.from_dict(
-        valid_data(library, profile={"name": "full"}, acquisition=settings)
-    )
+    built = config.from_dict(valid_data(library, profile={"name": "full"}, acquisition=settings))
     config.save(built)
     config.reset_cache()
     return built
@@ -174,9 +172,7 @@ def test_every_queued_download_job_has_as_many_items_as_the_list_has_tracks(cfg,
         assert len(items_of(job_id)) == len(rows)
 
 
-def test_a_pasted_tracklist_is_refused_at_the_queue_rather_than_queued_unacquirable(
-    cfg, library
-):
+def test_a_pasted_tracklist_is_refused_at_the_queue_rather_than_queued_unacquirable(cfg, library):
     """No provider identifier, no request the adapter contract can make."""
     pasted = library / "pasted.txt"
     pasted.write_text(text_list(["Artist - Title", "Other - Song"]))
@@ -261,9 +257,7 @@ def test_the_landing_is_staged_per_item_and_committed_rather_than_written_in_pla
     assert script.constructed[0].download_staging == per_item
 
 
-def test_a_partial_file_left_in_staging_does_not_poison_the_next_attempt(
-    cfg, script, library
-):
+def test_a_partial_file_left_in_staging_does_not_poison_the_next_attempt(cfg, script, library):
     """THE TOOL SKIPS RATHER THAN OVERWRITES, which makes the clear a guard, not a tidy up.
 
     The wrapped tool reports a skip as a successful call carrying the path already there,
@@ -290,9 +284,7 @@ def staging_tree(cfg: config.Config) -> Path:
     return Path(cfg.paths.download_staging) / acquire_cli.ACQUIRE_STAGING_DIRNAME
 
 
-def test_the_emptied_staging_of_a_finished_job_is_reclaimed_by_the_next_run(
-    cfg, script, library
-):
+def test_the_emptied_staging_of_a_finished_job_is_reclaimed_by_the_next_run(cfg, script, library):
     """R-291's cost: one directory per item of every job, kept for good. The sweep is at
     the HEAD of the verb, so the first job's tree is still there when that job returns."""
     script.landings = landings("1", "2")
@@ -339,9 +331,7 @@ def test_the_refused_landing_left_as_evidence_survives_the_sweep(cfg, script, li
     assert (staging_tree(cfg) / failed).is_dir()
 
 
-def test_a_directory_naming_a_job_this_queue_does_not_hold_is_left_alone(
-    cfg, script, library
-):
+def test_a_directory_naming_a_job_this_queue_does_not_hold_is_left_alone(cfg, script, library):
     """No code path deletes a job row, so an unresolvable name is another store's: removing
     it as "the job is gone" is the one mistake here that would cost somebody a file."""
     stranger = staging_tree(cfg) / "job-from-somewhere-else" / "0"
@@ -431,9 +421,7 @@ def test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetch
     assert code != int(ExitCode.OK), envelope
     assert envelope["outcome"] == "failed", envelope
     assert states(job_id) == {
-        "1": jobs.ItemState.DONE,
-        "2": jobs.ItemState.FAILED,
-        "3": jobs.ItemState.DONE,
+        "1": jobs.ItemState.DONE, "2": jobs.ItemState.FAILED, "3": jobs.ItemState.DONE,
     }
     assert causes(job_id) == {"2": "adapter-broken"}
     failed = next(i for i in items_of(job_id) if i.item_id == "2")
@@ -458,9 +446,7 @@ def test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetch
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "adapter-broken"
     assert states(job_id) == {
-        "1": jobs.ItemState.DONE,
-        "2": jobs.ItemState.FAILED,
-        "3": jobs.ItemState.DONE,
+        "1": jobs.ItemState.DONE, "2": jobs.ItemState.FAILED, "3": jobs.ItemState.DONE,
     }
     assert script.fetched[fetched_before:] == []
 
@@ -486,9 +472,7 @@ def test_an_authentication_failure_parks_the_run_and_names_the_replacement_path(
     assert cause["remediation"]["remedy"] == Remedy.REAUTHENTICATE_PROVIDER
     assert "streamrip" in cause["message"]
     assert states(job_id) == {
-        "1": jobs.ItemState.PENDING,
-        "2": jobs.ItemState.PENDING,
-        "3": jobs.ItemState.PENDING,
+        "1": jobs.ItemState.PENDING, "2": jobs.ItemState.PENDING, "3": jobs.ItemState.PENDING,
     }
     assert script.fetched == [], "a fetch was attempted with a dead session"
 
@@ -522,9 +506,7 @@ def test_a_broken_adapter_fails_the_item_and_does_not_park_the_run(cfg, script, 
     assert states(job_id) == {"1": jobs.ItemState.FAILED, "2": jobs.ItemState.FAILED}
 
 
-def test_a_provider_block_parks_the_job_and_makes_no_further_request(
-    cfg, script, library
-):
+def test_a_provider_block_parks_the_job_and_makes_no_further_request(cfg, script, library):
     """A forbidden response is about the CLIENT: the pool stops, the engine parks the job
     with the item released, and the third track is never asked for."""
     script.landings = landings("1", "2", "3")
@@ -539,9 +521,7 @@ def test_a_provider_block_parks_the_job_and_makes_no_further_request(
     assert envelope["cause"]["reason"] == "provider-blocked"
     assert envelope["cause"]["retryable"] is False
     assert states(job_id) == {
-        "1": jobs.ItemState.DONE,
-        "2": jobs.ItemState.PENDING,
-        "3": jobs.ItemState.PENDING,
+        "1": jobs.ItemState.DONE, "2": jobs.ItemState.PENDING, "3": jobs.ItemState.PENDING,
     }
     assert [r.key for r in script.offered] == ["1", "2"], "a request followed the block"
     assert [r.key for r in script.fetched] == ["1", "2"]
@@ -561,9 +541,7 @@ def test_a_rate_limit_is_retried_under_backoff_and_then_lands(cfg, script, libra
     assert [r.key for r in script.fetched] == ["1", "1", "1"]
 
 
-def test_a_rate_limit_that_never_clears_fails_the_item_as_transient(
-    cfg, script, library, slept
-):
+def test_a_rate_limit_that_never_clears_fails_the_item_as_transient(cfg, script, library, slept):
     script.landings = landings("1")
     script.landings["1"].fetch_raises = RuntimeError("429 too many requests")
     job_id = queued(listed(library, [("1", "A", "T")]))
@@ -671,9 +649,7 @@ def test_three_landed_and_one_refused_by_policy_ends_ok_with_a_warning_naming_it
     assert envelope["outcome"] == "ok"
     assert job_of(job_id).state is jobs.JobState.SUCCEEDED
     assert states(job_id) == {
-        "1": jobs.ItemState.SKIPPED,
-        "2": jobs.ItemState.DONE,
-        "3": jobs.ItemState.DONE,
+        "1": jobs.ItemState.SKIPPED, "2": jobs.ItemState.DONE, "3": jobs.ItemState.DONE,
         "4": jobs.ItemState.DONE,
     }
     (warning,) = [w for w in envelope["warnings"] if w["code"] == acquire_cli.DECLINED_WARNING]
@@ -681,9 +657,7 @@ def test_three_landed_and_one_refused_by_policy_ends_ok_with_a_warning_naming_it
     assert "lossy-refused" in warning["message"]
 
 
-def test_the_warning_is_the_same_when_the_finished_job_is_asked_about_again(
-    cfg, script, library
-):
+def test_the_warning_is_the_same_when_the_finished_job_is_asked_about_again(cfg, script, library):
     script.landings = landings("2", "3", "4")
     script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
     job_id = queued(listed(library, FOUR))
@@ -755,9 +729,7 @@ def test_a_track_the_provider_no_longer_has_is_declined_as_well(cfg, script, lib
     assert states(job_id)["1"] is jobs.ItemState.SKIPPED
 
 
-def test_the_declined_warnings_name_skipped_tracks_and_never_a_failed_one(
-    cfg, script, library
-):
+def test_the_declined_warnings_name_skipped_tracks_and_never_a_failed_one(cfg, script, library):
     """Read at the function, because a job holding a failed item refuses before the verb
     returns its warnings, so no envelope can show the difference."""
     script.landings = landings("2", "3", "4")
@@ -797,9 +769,7 @@ def test_a_lossy_offer_under_strict_policy_is_refused_before_anything_is_fetched
     assert script.fetched == [], "a lossy offer was fetched under strict policy"
 
 
-def test_a_lossy_landing_under_the_permissive_policy_is_committed_marked(
-    library, script
-):
+def test_a_lossy_landing_under_the_permissive_policy_is_committed_marked(library, script):
     """R21: lossy is permitted only WITH the marker, and config owns its text."""
     cfg = _configure(library, lossless_policy="allow_lossy_marked")
     script.landings = landings("1", kind="lossy", offer_lossless=False)
@@ -815,9 +785,7 @@ def test_a_lossy_landing_under_the_permissive_policy_is_committed_marked(
     assert Path(item.artifact).is_file()
 
 
-def test_a_lying_offer_under_the_permissive_policy_is_still_committed_marked(
-    library, script
-):
+def test_a_lying_offer_under_the_permissive_policy_is_still_committed_marked(library, script):
     """R21's forbidden state, reached through the offer: ``requires_lossy_marker`` is
     derived from the OFFER and the landing's codec check is strict policy's only, so the
     marker is decided by the file instead."""
@@ -846,9 +814,7 @@ def test_a_lossless_landing_under_the_permissive_policy_is_not_marked(library, s
     assert Path(item.artifact).name == "1.wav"
 
 
-def test_a_lossy_landing_with_no_marker_text_is_refused_rather_than_committed_unmarked(
-    tmp_path,
-):
+def test_a_lossy_landing_with_no_marker_text_is_refused_rather_than_committed_unmarked(tmp_path):
     """An unmarked lossy file is the single state the audit exists to find."""
     landed = tmp_path / "1.mp3"
     with pytest.raises(CratekitError) as caught:
@@ -858,9 +824,7 @@ def test_a_lossy_landing_with_no_marker_text_is_refused_rather_than_committed_un
     assert acquire_cli.marked_name(landed, "[MP3]", required=True) == "1 [MP3].mp3"
 
 
-def test_an_unreadable_landing_is_transient_and_not_a_policy_refusal(
-    cfg, script, library
-):
+def test_an_unreadable_landing_is_transient_and_not_a_policy_refusal(cfg, script, library):
     """A file nothing could parse is a truncated download; advising a relaxed policy
     would make the product accept it."""
     script.landings = landings("1", kind="unreadable")
@@ -930,9 +894,7 @@ def test_the_frozen_policy_reaches_the_worker_not_the_live_one(library, script):
 
 
 
-def test_an_existing_file_at_the_destination_refuses_rather_than_replacing_it(
-    cfg, script, library
-):
+def test_an_existing_file_at_the_destination_refuses_rather_than_replacing_it(cfg, script, library):
     script.landings = landings("1")
     kept = Path(cfg.paths.download_staging) / "1.wav"
     kept.parent.mkdir(parents=True, exist_ok=True)
@@ -967,8 +929,7 @@ def test_the_shipped_adapter_is_constructed_through_build_and_refuses_with_a_nam
     assert cause is not None
     assert cause.reason in {"auth-failed", "adapter-broken"}
     assert cause.remediation.remedy in {
-        Remedy.REAUTHENTICATE_PROVIDER,
-        Remedy.REPAIR_CREDENTIAL_STORE,
+        Remedy.REAUTHENTICATE_PROVIDER, Remedy.REPAIR_CREDENTIAL_STORE,
     }
     assert "streamrip" in cause.message
     assert (cause.reason == "auth-failed") is parked
@@ -1008,10 +969,7 @@ def test_an_open_job_with_no_items_refuses_rather_than_reporting_success(cfg, li
     path = listed(library, [("1", "A", "T")])
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store,
-            handler_key="acquire.download",
-            payload={acquire_cli.LIST: str(path)},
-            cfg=cfg,
+            store, handler_key="acquire.download", payload={acquire_cli.LIST: str(path)}, cfg=cfg,
         )
 
     code, envelope = drive(resume_argv(job.job_id))
@@ -1235,9 +1193,7 @@ def test_a_list_under_a_home_that_cannot_be_expanded_is_refused_by_name(cfg, lib
     """``expanduser`` raises for an unknown user; the resume answers with the list refusal."""
     job_id = queued(listed(library, [("1", "A", "T")]))
 
-    code, envelope = drive(
-        ["acquire", "download", "~no-such-user-r668/list.json", "--job", job_id]
-    )
+    code, envelope = drive(["acquire", "download", "~no-such-user-r668/list.json", "--job", job_id])
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "intake-list-unusable"

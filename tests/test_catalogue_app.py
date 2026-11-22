@@ -77,9 +77,7 @@ def resource(track_id: str, title: str, *, artists=("a1",), album="r1", version=
     if availability is not None:
         attributes["availability"] = list(availability)
     return {
-        "id": track_id,
-        "type": "tracks",
-        "attributes": attributes,
+        "id": track_id, "type": "tracks", "attributes": attributes,
         "relationships": {
             "artists": {"data": [{"id": one, "type": "artists"} for one in artists]},
             "albums": {"data": [{"id": album, "type": "albums"}] if album else []},
@@ -195,9 +193,7 @@ def gate(tmp_path: Path, clock: Clock) -> Gate:
     return Gate(
         GateSettings(min_interval_s=0.0, cooldown_s=900.0),
         path=tmp_path / "gate" / "provider_gate.json",
-        lock_path=tmp_path / "gate" / "provider_gate.lock",
-        clock=clock,
-        sleep=clock.sleep,
+        lock_path=tmp_path / "gate" / "provider_gate.lock", clock=clock, sleep=clock.sleep,
     )
 
 
@@ -258,8 +254,7 @@ def test_an_isrc_match_with_the_app_recorded_makes_no_account_call(monkeypatch, 
     spent = gate.spend()
     assert (spent.calls, spent.app_calls, spent.account_calls) == (2, 2, 0)
     assert on_disk(gate)["identities"] == {
-        "account": {"calls": 0, "rate_limited": 0},
-        "app": {"calls": 2, "rate_limited": 0},
+        "account": {"calls": 0, "rate_limited": 0}, "app": {"calls": 2, "rate_limited": 0},
     }
 
 
@@ -331,8 +326,7 @@ def test_a_token_with_no_readable_lifetime_serves_one_margin_and_is_asked_again(
 def test_the_answer_is_read_into_the_shape_the_choosing_logic_reads(monkeypatch, gate):
     record_app()
     account, app, transport = opened(
-        monkeypatch,
-        gate,
+        monkeypatch, gate,
         AppTransport([answer_with(
             resource("101", "Sun Path", artists=("a1", "a2"), version="Extended Mix"),
             resource("102", "Sun Path", album="r2", availability=("DJ",)),
@@ -378,8 +372,7 @@ def test_a_release_whose_artists_did_not_come_back_is_unreadable_and_chooses_not
 ):
     record_app()
     account, app, transport = opened(
-        monkeypatch,
-        gate,
+        monkeypatch, gate,
         AppTransport([answer_with(
             resource("101", "Sun Path"), resource("102", "Sun Path", artists=("missing",)),
         )]),
@@ -635,9 +628,7 @@ def test_a_rejected_app_token_climbs_the_ladder_then_refuses_naming_the_app(
     assert again.value.cause.remediation.remedy is Remedy.SET_CREDENTIAL
 
 
-def test_a_rejected_app_token_that_was_only_expired_is_answered_on_the_next_rung(
-    monkeypatch, gate
-):
+def test_a_rejected_app_token_that_was_only_expired_is_answered_on_the_next_rung(monkeypatch, gate):
     record_app()
     account, app, transport = opened(
         monkeypatch, gate, AppTransport([Answer(401, {}), answer_with(resource("101", "Sun Path"))])
@@ -768,9 +759,7 @@ def test_a_write_goes_to_the_account_and_never_to_the_app(monkeypatch, gate):
 
 def test_the_app_client_has_no_write_and_sends_only_reads_and_its_token_request():
     """It sends only a GET under the API root or a POST to the token service."""
-    public = sorted(
-        name for name in vars(catalogue_api.AppCatalogue) if not name.startswith("_")
-    )
+    public = sorted(name for name in vars(catalogue_api.AppCatalogue) if not name.startswith("_"))
     assert public == ["get_tracks_by_isrc", "isrcs_held", "track"]
     tree = ast.parse((SRC_ROOT / "cratekit/acquire/catalogue_api.py").read_text(encoding="utf-8"))
     sent = sorted(
@@ -815,8 +804,7 @@ def test_a_state_file_written_before_the_identities_loads_with_every_call_the_ac
 def test_an_app_share_larger_than_the_total_is_clamped_to_it(gate):
     gate.path.parent.mkdir(parents=True)
     gate.path.write_text(json.dumps({
-        "calls": 5, "rate_limited": 1,
-        "identities": {"app": {"calls": 50, "rate_limited": 9}},
+        "calls": 5, "rate_limited": 1, "identities": {"app": {"calls": 50, "rate_limited": 9}},
     }), encoding="utf-8")
 
     spent = gate.spend()

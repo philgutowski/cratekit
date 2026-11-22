@@ -167,13 +167,8 @@ def requests_for(*keys: str) -> tuple[TrackRequest, ...]:
 def run_pool(source, settings, *, pacing=None, sleep=None, **kw) -> DownloadRun:
     """Drive the pool with pacing off unless a test passes its own ``Pacing``."""
     return acquire_concurrently(
-        adapter="fake",
-        source=source,
-        settings=settings,
-        pacing=pacing or Pacing(base_delay_s=0.0),
-        sleep=sleep or Recorder(),
-        clock=lambda: FIXED_NOW,
-        **kw,
+        adapter="fake", source=source, settings=settings, pacing=pacing or Pacing(base_delay_s=0.0),
+        sleep=sleep or Recorder(), clock=lambda: FIXED_NOW, **kw,
     )
 
 
@@ -381,12 +376,10 @@ def _config_dict(tmp_path, **acquisition):
     return {
         "schema_version": config.CURRENT_SCHEMA_VERSION,
         "library": {
-            "root": str(library),
-            "volume_id": "F1E2-D3C4",
+            "root": str(library), "volume_id": "F1E2-D3C4",
             "db_path": str(library / "db" / "master.db"),
         },
-        "paths": {"download_staging": str(tmp_path / "staging")},
-        "profile": {"name": "slim"},
+        "paths": {"download_staging": str(tmp_path / "staging")}, "profile": {"name": "slim"},
         "acquisition": acquisition,
     }
 
@@ -418,11 +411,8 @@ def test_a_rate_limit_backs_off_and_eventually_succeeds(settings):
     sleeps = Recorder()
     source = Instrumented(script={"t": [rate_limited(), rate_limited()]})
     run = run_pool(
-        source,
-        settings,
-        requests=requests_for("t"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, backoff_base_s=1.0),
-        sleep=sleeps,
+        source, settings, requests=requests_for("t"),
+        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, backoff_base_s=1.0), sleep=sleeps,
     )
 
     assert run.ok
@@ -436,11 +426,8 @@ def test_the_providers_own_retry_hint_replaces_our_backoff(settings):
     sleeps = Recorder()
     source = Instrumented(script={"t": [rate_limited(headers={"Retry-After": "40"})]})
     run = run_pool(
-        source,
-        settings,
-        requests=requests_for("t"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, backoff_base_s=1.0),
-        sleep=sleeps,
+        source, settings, requests=requests_for("t"),
+        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, backoff_base_s=1.0), sleep=sleeps,
     )
     assert run.ok
     assert sleeps.slept == [40.0]
@@ -450,9 +437,7 @@ def test_exhausting_the_attempts_leaves_the_track_requeueable(settings):
     """A throttle that never lifts is transient: permanent feeds quarantine, never re-queued."""
     source = Instrumented(script={"t": [rate_limited()] * 10})
     run = run_pool(
-        source,
-        settings,
-        requests=requests_for("t"),
+        source, settings, requests=requests_for("t"),
         pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, max_attempts=3),
     )
     assert source.attempts == ["t", "t", "t"]
@@ -466,11 +451,8 @@ def test_a_pacing_delay_is_taken_before_every_acquisition_including_the_first(se
     sleeps = Recorder()
     paced = AdapterSettings(download_staging=settings.download_staging, concurrency=2)
     run_pool(
-        Instrumented(),
-        paced,
-        requests=requests_for("a", "b", "c"),
-        pacing=Pacing(base_delay_s=5.0, jitter_fraction=0.0),
-        sleep=sleeps,
+        Instrumented(), paced, requests=requests_for("a", "b", "c"),
+        pacing=Pacing(base_delay_s=5.0, jitter_fraction=0.0), sleep=sleeps,
     )
     assert sleeps.slept == [5.0, 5.0, 5.0]
 
@@ -480,11 +462,8 @@ def test_a_forbidden_response_stops_immediately_and_does_not_retry(settings):
     sleeps = Recorder()
     source = Instrumented(script={"t": [blocked()] * 10})
     run = run_pool(
-        source,
-        settings,
-        requests=requests_for("t"),
-        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, max_attempts=5),
-        sleep=sleeps,
+        source, settings, requests=requests_for("t"),
+        pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, max_attempts=5), sleep=sleeps,
     )
 
     assert source.attempts == ["t"], "a block was retried; that is the lockout"
@@ -500,9 +479,7 @@ def test_a_block_halts_the_tracks_that_had_not_started(settings):
     source = Instrumented(script={"a": [blocked()]})
     keys = tuple(f"k{i}" for i in range(40))
     run = run_pool(
-        source,
-        settings,
-        requests=(TrackRequest(key="a"), *requests_for(*keys)),
+        source, settings, requests=(TrackRequest(key="a"), *requests_for(*keys)),
         pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0),
     )
     assert run.parked is not None
@@ -513,9 +490,7 @@ def test_a_blocked_run_never_advances_a_watermark_and_never_quarantines(settings
     """The three behaviours a block requires, asserted on the shipped result."""
     source = Instrumented(script={"a": [blocked()]})
     run = run_pool(
-        source,
-        settings,
-        requests=requests_for("a", "b"),
+        source, settings, requests=requests_for("a", "b"),
         pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0),
     )
     assert run.invocation.advances_watermark is False
@@ -527,13 +502,9 @@ def test_a_blocked_run_never_advances_a_watermark_and_never_quarantines(settings
 def test_a_permanent_verdict_reached_before_a_block_is_softened(settings):
     """A bot wall answers with any status, so a track called delisted before a block stays
     re-queueable."""
-    source = Instrumented(
-        script={"gone": [ProviderError("404 not found")], "wall": [blocked()]}
-    )
+    source = Instrumented(script={"gone": [ProviderError("404 not found")], "wall": [blocked()]})
     run = run_pool(
-        source,
-        settings,
-        requests=requests_for("gone", "wall"),
+        source, settings, requests=requests_for("gone", "wall"),
         pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0),
     )
     assert run.parked is not None
@@ -547,9 +518,7 @@ def test_a_retry_hint_longer_than_the_ceiling_is_a_refusal_wearing_a_wait(settin
     sleeps = Recorder()
     source = Instrumented(script={"t": [rate_limited(headers={"Retry-After": "86400"})] * 5})
     run = run_pool(
-        source,
-        settings,
-        requests=requests_for("t"),
+        source, settings, requests=requests_for("t"),
         pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0, retry_hint_ceiling_s=900.0),
         sleep=sleeps,
     )
@@ -593,14 +562,11 @@ def test_a_parked_run_cannot_report_a_clean_invocation():
 
 def test_a_parked_run_cannot_carry_a_retryable_cause():
     broken = InvocationResult(
-        adapter="fake",
-        outcome=InvocationOutcome.ADAPTER_BROKEN,
-        requested=("t",),
+        adapter="fake", outcome=InvocationOutcome.ADAPTER_BROKEN, requested=("t",),
         remedy=Remedy.PAUSE_AND_CHECK_ACCOUNT,
     )
     retryable = Cause(
-        reason="provider-blocked",
-        message="x",
+        reason="provider-blocked", message="x",
         remediation=blocked_cause(
             adapter="f", key="t", signal=ProviderSignal.BLOCKED, detail="d", attempts=1
         ).remediation,
@@ -615,12 +581,10 @@ def test_two_concurrent_runs_draw_distinct_schedules(settings):
     """Each run gets its own generator; the jitter width prevents a retry storm."""
     keys = requests_for(*[f"t{i}" for i in range(12)])
     first = run_pool(
-        Instrumented(), settings, requests=keys,
-        pacing=Pacing(base_delay_s=DEFAULT_BASE_DELAY_S),
+        Instrumented(), settings, requests=keys, pacing=Pacing(base_delay_s=DEFAULT_BASE_DELAY_S),
     )
     second = run_pool(
-        Instrumented(), settings, requests=keys,
-        pacing=Pacing(base_delay_s=DEFAULT_BASE_DELAY_S),
+        Instrumented(), settings, requests=keys, pacing=Pacing(base_delay_s=DEFAULT_BASE_DELAY_S),
     )
 
     assert len(first.schedule) == len(second.schedule) == len(keys)
@@ -633,8 +597,7 @@ def test_two_runs_backing_off_from_the_same_limit_do_not_wake_together(settings)
     schedules = []
     for _ in range(2):
         run = run_pool(
-            Instrumented(script={f"t{i}": [rate_limited()] for i in range(8)}),
-            settings,
+            Instrumented(script={f"t{i}": [rate_limited()] for i in range(8)}), settings,
             requests=requests_for(*[f"t{i}" for i in range(8)]),
             pacing=Pacing(base_delay_s=0.0, backoff_base_s=10.0),
         )
@@ -655,9 +618,7 @@ def test_a_seeded_generator_makes_a_run_reproducible(settings):
 def test_a_dead_session_at_authentication_reports_auth_failure_not_missing_tracks(settings):
     """AE9. The report that made the source system's outage look like an empty catalogue."""
     source = Instrumented(auth_error=AdapterAuthFailed("session rejected"))
-    run = run_pool(
-        source, settings, requests=requests_for("a", "b"), alternatives=("other",)
-    )
+    run = run_pool(source, settings, requests=requests_for("a", "b"), alternatives=("other",))
     assert run.invocation.outcome is InvocationOutcome.AUTH_FAILED
     assert run.invocation.advances_watermark is False
     assert set(run.invocation.requeue_keys()) == {"a", "b"}
@@ -668,10 +629,7 @@ def test_a_dead_session_at_authentication_reports_auth_failure_not_missing_track
 def test_a_session_that_dies_mid_run_stops_the_pool_and_keeps_what_landed(settings):
     source = Instrumented(script={"b": [AdapterAuthFailed("expired")]})
     run = run_pool(
-        source,
-        settings,
-        requests=requests_for("a", "b", "c"),
-        alternatives=("other",),
+        source, settings, requests=requests_for("a", "b", "c"), alternatives=("other",),
         pacing=Pacing(base_delay_s=0.0, jitter_fraction=0.0),
     )
     assert run.invocation.outcome is InvocationOutcome.AUTH_FAILED

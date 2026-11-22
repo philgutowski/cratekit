@@ -54,8 +54,7 @@ class Answer:
 
 def track(track_id: str, isrc: Any, title: str = "Sun Path") -> dict:
     return {
-        "id": track_id,
-        "type": "tracks",
+        "id": track_id, "type": "tracks",
         "attributes": {"title": title, "isrc": isrc, "availability": ["STREAM"]},
         "relationships": {
             "artists": {"data": [{"id": "a1", "type": "artists"}]},
@@ -128,8 +127,7 @@ def gate(tmp_path: Path) -> Gate:
     return Gate(
         GateSettings(min_interval_s=0.0, cooldown_s=900.0),
         path=tmp_path / "gate" / "provider_gate.json",
-        lock_path=tmp_path / "gate" / "provider_gate.lock",
-        sleep=lambda seconds: None,
+        lock_path=tmp_path / "gate" / "provider_gate.lock", sleep=lambda seconds: None,
     )
 
 
@@ -401,8 +399,7 @@ def test_the_gates_own_park_passes_through_the_screen(gate):
         {"data": [track("1", None)], "included": []},
         {"data": [track("1", "not an isrc")], "included": []},
         {"data": [track("1", code(7))], "included": []},
-        {"data": [], "links": {"next": "/tracks?page[cursor]=abc"}},
-        {"data": ["not a resource"]},
+        {"data": [], "links": {"next": "/tracks?page[cursor]=abc"}}, {"data": ["not a resource"]},
         {"data": "not a list"},
     ],
     ids=["no-isrc", "unreadable-isrc", "a-code-not-asked", "paged", "not-a-resource", "no-list"],
@@ -506,11 +503,8 @@ def test_the_mirror_screens_only_the_rows_it_would_ask_the_provider_about():
         return mirror.Identity(isrc=one.isrc or (code(9) if one.content_id == "c5" else ""))
 
     matcher = mirror.Matcher(
-        account,
-        {"c1": ("r1", code(1))},
-        identify,
-        misses={"c3": ("no match", (code(3), "Title 3", "Artist 3", "", ""))},
-        known={"c2": "r2"},
+        account, {"c1": ("r1", code(1))}, identify,
+        misses={"c3": ("no match", (code(3), "Title 3", "Artist 3", "", ""))}, known={"c2": "r2"},
         seen={"c6": ("r6", code(6), "")},
     )
     rows = [

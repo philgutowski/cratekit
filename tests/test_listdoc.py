@@ -40,9 +40,7 @@ def test_the_list_round_trips_through_the_real_reader_and_the_download_freeze(tm
     wanted = read_list(written.list_path)
     assert [w.ref for w in wanted] == ["101", "202", "303"]
     assert [(w.artist, w.title) for w in wanted] == [
-        ("Aurora Bloom", "Sun Path"),
-        ("Nova Reef", "Tide Line"),
-        ("Mira Vale", "Low Orbit"),
+        ("Aurora Bloom", "Sun Path"), ("Nova Reef", "Tide Line"), ("Mira Vale", "Low Orbit"),
     ]
     assert [w.key for w in wanted] == ["8A", None, None]
     assert [w.version_key for w in wanted] == ["", "nightwave remix", "extended mix"]
@@ -89,8 +87,7 @@ def test_an_id_is_compared_stripped_because_the_reader_strips_it(tmp_path):
     ("title", "version", "token"),
     [
         ("Tide Line - Nightwave Remix", "", "nightwave remix"),
-        ("Tide Line (Extended Mix)", "", "extended mix"),
-        ("Tide Line", "Dub", "dub"),
+        ("Tide Line (Extended Mix)", "", "extended mix"), ("Tide Line", "Dub", "dub"),
     ],
 )
 def test_a_version_re_reads_to_the_same_token(tmp_path, title, version, token):
@@ -163,8 +160,7 @@ def test_the_reader_does_refuse_the_whole_list_over_that_row(tmp_path):
     path.write_text(
         json.dumps(
             {
-                "list": 1,
-                "origin": "tidal",
+                "list": 1, "origin": "tidal",
                 "tracks": [
                     {"id": "101", "title": "Sun Path", "artist": "Aurora Bloom"},
                     {"id": "404", "title": "Sun Path", "artist": ""},
@@ -196,16 +192,9 @@ def test_the_manifest_records_each_ids_provenance(tmp_path):
     assert doc["list"] == "set.list.json"
     assert list(doc["rows"]) == ["101", "202", "303"]
     assert doc["rows"]["101"] == {
-        "source": "labels",
-        "source_ref": None,
-        "label_id": "L1",
-        "label_name": "Tidewater",
-        "year": 2023,
-        "release_id": "R7",
-        "artist": "Aurora Bloom",
-        "title": "Sun Path",
-        "version": "",
-        "isrc": "GBAAA2400001",
+        "source": "labels", "source_ref": None, "label_id": "L1", "label_name": "Tidewater",
+        "year": 2023, "release_id": "R7", "artist": "Aurora Bloom", "title": "Sun Path",
+        "version": "", "isrc": "GBAAA2400001",
     }
     assert doc["rows"]["303"]["version"] == "Extended Mix"
     assert "source_refs" not in doc["rows"]["202"]
@@ -267,8 +256,7 @@ def test_a_read_track_keeps_its_featured_credit_through_the_round_trip(tmp_path)
 
 
 @pytest.mark.parametrize(
-    "raw",
-    ["Sun Path (Extended)", "Sun Path (feat. Mira) (Extended)"],
+    "raw", ["Sun Path (Extended)", "Sun Path (feat. Mira) (Extended)"],
 )
 def test_a_declared_version_beside_an_embedded_one_round_trips_whole(tmp_path, raw):
     # The raw title and the declared version are written, so they re-read to the same title.
@@ -296,8 +284,7 @@ def test_a_frozen_mapping_carries_no_version_so_none_is_written(tmp_path):
 def test_a_track_from_another_service_is_unlisted_not_written_as_a_provider_id(tmp_path):
     other = match.read_row(
         {"id": "sp-77", "name": "Sun Path", "artists": [{"name": "Aurora Bloom"}]},
-        origin=match.SPOTIFY,
-        position=1,
+        origin=match.SPOTIFY, position=1,
     )
     written = _write(tmp_path, rows=listdoc.rows_of([_tidal(id="101", title="Sun Path", artist="A"), other]))
     assert written.listed == ("101",)
@@ -347,8 +334,7 @@ def test_a_manifest_row_reads_as_the_wanted_track_its_list_row_reads_as(tmp_path
 @pytest.mark.parametrize(
     "body, said",
     [
-        (b"\xff\xfe", "not JSON"),
-        (b"[]", "not a manifest"),
+        (b"\xff\xfe", "not JSON"), (b"[]", "not a manifest"),
         (b'{"list": 1, "origin": "tidal", "tracks": []}', "not a manifest"),
         (b'{"manifest": 2, "rows": {}}', "version 2"),
         (b'{"manifest": true, "rows": {}}', "version True"),
@@ -413,19 +399,15 @@ def test_rows_handed_on_are_a_text_list_the_reader_reads_back(tmp_path):
     assert written.unlisted_path == tmp_path / "set.unlisted.json"
     raw = json.loads(written.unlisted_path.read_text())
     assert raw == {
-        "list": 1,
-        "origin": "text",
+        "list": 1, "origin": "text",
         "tracks": [
-            "# no ISRC",
-            "Kite Shore - Unlisted",
-            "# several tracks",
+            "# no ISRC", "Kite Shore - Unlisted", "# several tracks",
             "Lumen Drift - Salt Road (Extended Mix)",
         ],
     }
     read = read_list(written.unlisted_path)
     assert [(one.artist, one.title, one.version) for one in read] == [
-        ("Kite Shore", "Unlisted", ""),
-        ("Lumen Drift", "Salt Road", "Extended Mix"),
+        ("Kite Shore", "Unlisted", ""), ("Lumen Drift", "Salt Road", "Extended Mix"),
     ]
 
 
@@ -443,9 +425,7 @@ def test_the_same_line_twice_is_written_once_under_its_first_reason(tmp_path):
 
 
 def test_a_reason_carrying_a_line_break_stays_one_row(tmp_path):
-    raw = listdoc.text_document(
-        [listdoc.HandedOn(HANDED[0].row, "first\nsecond")]
-    )
+    raw = listdoc.text_document([listdoc.HandedOn(HANDED[0].row, "first\nsecond")])
     assert raw["tracks"][0] == "# first second"
     read_back = match.read_text_rows(raw["tracks"])
     assert len(read_back) == 1

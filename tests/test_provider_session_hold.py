@@ -29,9 +29,7 @@ from tests.test_config import valid_data
 SESSION = secrets.Credential.PROVIDER_SESSION
 
 STORED = {
-    "token_type": "Bearer",
-    "access_token": "FAKE-value-1",
-    "refresh_token": "FAKE-value-2",
+    "token_type": "Bearer", "access_token": "FAKE-value-1", "refresh_token": "FAKE-value-2",
     "expiry_time": 946684800.0,
 }
 
@@ -324,9 +322,7 @@ def test_a_lost_app_value_is_noted_on_every_resolve_that_falls_back(cfg, monkeyp
 def test_other_gate_settings_open_a_session_of_their_own(cfg, tmp_path, monkeypatch):
     factory = use(monkeypatch, Factory())
     record()
-    slower = config.from_dict(
-        valid_data(tmp_path / "library", provider={"min_interval_s": 0.002})
-    )
+    slower = config.from_dict(valid_data(tmp_path / "library", provider={"min_interval_s": 0.002}))
 
     catalogue.resolve(cfg)
     found = catalogue.resolve(slower)
@@ -456,9 +452,7 @@ def test_a_keychain_that_cannot_be_read_on_a_reuse_says_repair_it(cfg, monkeypat
     assert refused_with(excinfo) == ("credential-missing", Remedy.REPAIR_CREDENTIAL_STORE)
 
 
-def test_a_session_replaced_after_an_open_is_logged_in_afresh_from_the_new_value(
-    cfg, monkeypatch
-):
+def test_a_session_replaced_after_an_open_is_logged_in_afresh_from_the_new_value(cfg, monkeypatch):
     factory = use(monkeypatch, Factory())
     record()
     catalogue.resolve(cfg)
@@ -470,9 +464,7 @@ def test_a_session_replaced_after_an_open_is_logged_in_afresh_from_the_new_value
     assert found._session.logged_in_with == "FAKE-value-7"
 
 
-def test_a_replaced_session_the_provider_rejects_leaves_no_seam_the_old_client(
-    cfg, monkeypatch
-):
+def test_a_replaced_session_the_provider_rejects_leaves_no_seam_the_old_client(cfg, monkeypatch):
     """A session recorded afresh whose login fails leaves no adapter over the replaced one."""
     factory = use(monkeypatch, Factory())
     record()
@@ -489,9 +481,7 @@ def test_a_replaced_session_the_provider_rejects_leaves_no_seam_the_old_client(
     assert len(factory.built) == 3
 
 
-def test_an_old_clients_refusal_on_the_account_keeps_the_session_logged_in_since(
-    cfg, monkeypatch
-):
+def test_an_old_clients_refusal_on_the_account_keeps_the_session_logged_in_since(cfg, monkeypatch):
     """A 401 to the account's adapter over a replaced session keeps the newer session held."""
     factory = use(monkeypatch, Factory())
     record()
@@ -548,8 +538,7 @@ def test_a_reuse_inside_a_cooldown_refuses_without_a_call(cfg, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("status", "reason"),
-    [(401, "credential-missing"), (503, "unavailable-transient")],
+    ("status", "reason"), [(401, "credential-missing"), (503, "unavailable-transient")],
     ids=["rejected", "unreachable"],
 )
 def test_a_login_that_failed_holds_nothing_and_is_asked_again(cfg, monkeypatch, status, reason):

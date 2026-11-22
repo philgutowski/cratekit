@@ -337,9 +337,7 @@ def test_a_file_with_a_new_size_is_read_again(tmp_path, monkeypatch, template_fl
     assert _titles(match.index_library(music)) == {"C"}
 
 
-def test_a_file_with_a_new_modification_time_is_read_again(
-    tmp_path, monkeypatch, template_flac
-):
+def test_a_file_with_a_new_modification_time_is_read_again(tmp_path, monkeypatch, template_flac):
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B")
     held = path.stat()

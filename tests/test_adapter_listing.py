@@ -97,10 +97,7 @@ def test_a_runaway_offset_raises_rather_than_returning_what_it_collected():
 
     with pytest.raises(listing.ListingTruncated) as raised:
         listing.paginate(
-            ignores_the_offset,
-            page_size=100,
-            stop=listing.StopRule.EMPTY_PAGE,
-            max_pages=3,
+            ignores_the_offset, page_size=100, stop=listing.StopRule.EMPTY_PAGE, max_pages=3,
             shape="favorite_tracks",
         )
     message = str(raised.value)
@@ -117,10 +114,7 @@ def test_the_budget_is_spent_on_requests_and_the_walk_is_not_restarted():
 
     with pytest.raises(listing.ListingTruncated) as raised:
         listing.paginate(
-            ignores_the_offset,
-            page_size=10,
-            stop=listing.StopRule.EMPTY_PAGE,
-            max_pages=4,
+            ignores_the_offset, page_size=10, stop=listing.StopRule.EMPTY_PAGE, max_pages=4,
         )
     assert "40 item(s)" in str(raised.value)
 
@@ -129,10 +123,8 @@ def test_the_short_page_rule_still_stops_short_when_a_caller_declares_it():
     """The rule no shape uses is still offered, and an untested policy branch does not work."""
     playlist = Paged(corpus(150), 100)
     got = listing.paginate(
-        lambda limit, offset: playlist.tracks(limit=limit, offset=offset),
-        page_size=100,
-        stop=listing.StopRule.SHORT_PAGE,
-        max_pages=10,
+        lambda limit, offset: playlist.tracks(limit=limit, offset=offset), page_size=100,
+        stop=listing.StopRule.SHORT_PAGE, max_pages=10,
     )
     assert len(got) == 150
     assert playlist.calls == [(100, 0), (100, 100)]
@@ -323,9 +315,7 @@ def test_a_refusal_that_declares_itself_retryable_still_climbs_the_ladder():
     slept: list[float] = []
 
     def walled(limit: int, offset: int) -> list:
-        raise refuse(
-            "credential-missing", "try again shortly", retryable=True, origin=("tests",)
-        )
+        raise refuse("credential-missing", "try again shortly", retryable=True, origin=("tests",))
 
     with pytest.raises(CratekitError):
         listing.fetch_with_retry(walled, limit=10, offset=0, sleep=slept.append)
@@ -366,12 +356,7 @@ def test_the_backoff_is_capped_rather_than_doubling_forever():
 
     with pytest.raises(RuntimeError):
         listing.fetch_with_retry(
-            always_fails,
-            limit=100,
-            offset=0,
-            max_retries=8,
-            base_delay=4.0,
-            max_delay=10.0,
+            always_fails, limit=100, offset=0, max_retries=8, base_delay=4.0, max_delay=10.0,
             sleep=slept.append,
         )
     assert max(slept) == 10.0
@@ -573,10 +558,7 @@ def direct_listing_calls(source: str, module: str) -> list[str]:
 
 PLANTED_PAGINATION_METHODS = frozenset(
     {
-        "tracks",
-        "playlist_and_favorite_playlists",
-        "get_albums",
-        "get_ep_singles",
+        "tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles",
         "playlist_folders",
     }
 )
@@ -615,8 +597,7 @@ def test_the_guard_catches_the_call_that_never_pages_at_all():
 @pytest.mark.parametrize(
     "source",
     [
-        "count = len(playlist.tracks)\n",
-        "for track in album.tracks():\n    pass\n",
+        "count = len(playlist.tracks)\n", "for track in album.tracks():\n    pass\n",
         "rows = report.tracks(genre=genre)\n",
     ],
 )
@@ -674,11 +655,7 @@ def test_each_wrapper_docstring_names_the_rule_its_table_declares():
 @pytest.mark.parametrize("missing", ["stop", "max_pages"])
 def test_paginate_refuses_to_be_called_without_a_declared_rule_or_budget(missing):
     """A default would rebuild R-383's one silent rule, so both arguments are required."""
-    arguments = {
-        "page_size": 100,
-        "stop": listing.StopRule.EMPTY_PAGE,
-        "max_pages": 5,
-    }
+    arguments = {"page_size": 100, "stop": listing.StopRule.EMPTY_PAGE, "max_pages": 5}
     del arguments[missing]
     with pytest.raises(TypeError) as raised:
         listing.paginate(lambda limit, offset: [], **arguments)
@@ -752,15 +729,11 @@ class _Answer:
 def _raw_folder(index: int) -> dict:
     """One root item as the endpoint serves it, in the shape ``parse_folder`` reads."""
     return {
-        "trn": f"trn:folder:f{index}",
-        "itemType": "FOLDER",
-        "name": f"Label {index:02d}",
+        "trn": f"trn:folder:f{index}", "itemType": "FOLDER", "name": f"Label {index:02d}",
         "addedAt": "2026-01-01T00:00:00Z",
         "data": {
-            "id": f"f{index}",
-            "createdAt": "2026-01-01T00:00:00Z",
-            "lastModifiedAt": "2026-01-01T00:00:00Z",
-            "totalNumberOfItems": 0,
+            "id": f"f{index}", "createdAt": "2026-01-01T00:00:00Z",
+            "lastModifiedAt": "2026-01-01T00:00:00Z", "totalNumberOfItems": 0,
         },
     }
 
@@ -768,21 +741,11 @@ def _raw_folder(index: int) -> dict:
 def _raw_playlist(index: int) -> dict:
     """One folder item as the endpoint serves it, its ``data`` a playlist."""
     return {
-        "trn": f"trn:playlist:p{index}",
-        "itemType": "PLAYLIST",
-        "name": f"Kompakt {2000 + index}",
+        "trn": f"trn:playlist:p{index}", "itemType": "PLAYLIST", "name": f"Kompakt {2000 + index}",
         "data": {
-            "uuid": f"p{index}",
-            "title": f"Kompakt {2000 + index}",
-            "type": "USER",
-            "numberOfTracks": 0,
-            "numberOfVideos": 0,
-            "description": "",
-            "duration": 0,
-            "image": None,
-            "squareImage": None,
-            "promotedArtists": [],
-            "creator": None,
+            "uuid": f"p{index}", "title": f"Kompakt {2000 + index}", "type": "USER",
+            "numberOfTracks": 0, "numberOfVideos": 0, "description": "", "duration": 0,
+            "image": None, "squareImage": None, "promotedArtists": [], "creator": None,
         },
     }
 
@@ -858,12 +821,9 @@ def test_the_folder_request_is_the_one_the_client_sends_with_a_cursor_and_no_off
 
     first, second = endpoint.sent
     assert first == {
-        "method": "GET",
-        "path": "my-collection/playlists/folders",
-        "base_url": session.config.api_v2_location,
-        "folderId": "root",
-        "limit": listing.PAGE_SIZES["account_folders"],
-        "order": "NAME",
+        "method": "GET", "path": "my-collection/playlists/folders",
+        "base_url": session.config.api_v2_location, "folderId": "root",
+        "limit": listing.PAGE_SIZES["account_folders"], "order": "NAME",
     }
     assert second == {**first, "cursor": "after-10"}
 
@@ -928,8 +888,7 @@ def test_a_response_with_no_cursor_ends_the_walk():
 
 def test_an_empty_page_ends_the_walk_even_when_it_carries_a_cursor():
     pages = iter([
-        {"items": [_raw_folder(0)], "cursor": "a"},
-        {"items": [], "cursor": "b"},
+        {"items": [_raw_folder(0)], "cursor": "a"}, {"items": [], "cursor": "b"},
         {"items": [_raw_folder(1)], "cursor": None},
     ])
     sent: list[str | None] = []
@@ -961,8 +920,7 @@ def test_the_latest_declared_count_is_the_one_checked():
         {"items": [_raw_folder(2)], "totalNumberOfItems": 3},
     ])
     got = listing.paginate_cursor(
-        lambda limit, cursor: next(pages),
-        parse=lambda raw: raw["data"]["id"],
+        lambda limit, cursor: next(pages), parse=lambda raw: raw["data"]["id"],
         **listing._shape("account_folders"),
     )
     assert got == ["f0", "f1", "f2"]
@@ -1030,8 +988,7 @@ def test_paginate_refuses_a_shape_that_walks_by_cursor():
 def test_paginate_cursor_refuses_a_shape_that_walks_by_offset():
     with pytest.raises(ValueError, match="paginate"):
         listing.paginate_cursor(
-            lambda limit, cursor: pytest.fail("requested"),
-            parse=lambda raw: raw,
+            lambda limit, cursor: pytest.fail("requested"), parse=lambda raw: raw,
             **listing._shape("account_playlists"),
         )
 
@@ -1063,8 +1020,7 @@ def test_a_parse_that_fails_transiently_is_retried_alone_without_refetching_the_
 
 
 @pytest.mark.parametrize(
-    "answer",
-    [{"error": "upstream"}, {"items": None}, ["not", "a", "page"], None],
+    "answer", [{"error": "upstream"}, {"items": None}, ["not", "a", "page"], None],
     ids=["no-items-no-count", "items-null", "a-list", "nothing"],
 )
 def test_a_response_that_is_not_a_page_is_refused_not_read_as_an_empty_listing(answer):
@@ -1078,8 +1034,7 @@ def test_a_response_that_is_not_a_page_is_refused_not_read_as_an_empty_listing(a
 
     with pytest.raises(ValueError, match="neither a list of items nor a count"):
         listing.paginate_cursor(
-            fetch, parse=lambda raw: raw, sleep=slept.append,
-            **listing._shape("account_folders"),
+            fetch, parse=lambda raw: raw, sleep=slept.append, **listing._shape("account_folders"),
         )
     assert len(calls) == listing.DEFAULT_MAX_RETRIES + 1
     assert len(slept) == listing.DEFAULT_MAX_RETRIES
@@ -1088,8 +1043,7 @@ def test_a_response_that_is_not_a_page_is_refused_not_read_as_an_empty_listing(a
 def test_a_response_with_a_count_and_no_items_is_an_empty_listing():
     """The other half: a folder the provider declares empty is empty."""
     got = listing.paginate_cursor(
-        lambda limit, cursor: {"totalNumberOfItems": 0},
-        parse=lambda raw: raw,
+        lambda limit, cursor: {"totalNumberOfItems": 0}, parse=lambda raw: raw,
         **listing._shape("folder_playlists"),
     )
     assert got == []
@@ -1141,17 +1095,9 @@ class _Response:
 def _owned_playlist(index: int, owner: int = OWNER) -> dict:
     """One playlist's data as the provider serves it, created by ``owner``."""
     return {
-        "uuid": f"pl{index}",
-        "title": f"List {index:03d}",
-        "type": "USER",
-        "numberOfTracks": index % 7,
-        "numberOfVideos": 0,
-        "description": "",
-        "duration": 0,
-        "image": None,
-        "squareImage": None,
-        "promotedArtists": [],
-        "creator": {"id": owner},
+        "uuid": f"pl{index}", "title": f"List {index:03d}", "type": "USER",
+        "numberOfTracks": index % 7, "numberOfVideos": 0, "description": "", "duration": 0,
+        "image": None, "squareImage": None, "promotedArtists": [], "creator": {"id": owner},
     }
 
 
@@ -1329,8 +1275,7 @@ def test_a_listing_of_624_playlists_is_paced_in_seconds_not_minutes(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "answer",
-    [{"status": 500, "userMessage": "upstream"}, {"items": None}, ["not", "a", "page"]],
+    "answer", [{"status": 500, "userMessage": "upstream"}, {"items": None}, ["not", "a", "page"]],
     ids=["an-error-body", "items-null", "a-list"],
 )
 def test_an_account_answer_that_is_not_a_page_is_refused_not_read_as_the_end(answer):

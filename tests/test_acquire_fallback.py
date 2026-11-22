@@ -105,9 +105,7 @@ def checks(envelope: dict) -> dict[str, dict]:
 
 def items_of(cfg: config.Config) -> list[review.Item]:
     with review.open_store(cfg) as store:
-        return list(
-            review.list_items(store, queue=fallback.QUEUE, include_resolved=True).items
-        )
+        return list(review.list_items(store, queue=fallback.QUEUE, include_resolved=True).items)
 
 
 def resolve(item_id: str, verdict: str, *extra: str) -> None:
@@ -147,9 +145,7 @@ def test_ranked_candidates_are_offered_on_one_item(cfg, library, tmp_path, monke
     assert fake.calls == [(SC, BOOT_Q, fallback.SEARCH_LIMIT), (YT, BOOT_Q, fallback.SEARCH_LIMIT)]
     [item] = items_of(cfg)
     assert (item.queue, item.kind, item.handler_key) == (
-        "fallback-source",
-        fallback.KIND,
-        "acquire.fallback",
+        "fallback-source", fallback.KIND, "acquire.fallback",
     )
     urls = [one.option_id for one in item.options]
     assert urls[0] == "https://soundcloud.example/2", urls
@@ -217,9 +213,7 @@ def test_an_acceptance_naming_no_upload_of_several_stalls(cfg, library, tmp_path
     wanted = match.read_text_lines(BOOT)[0]
     with review.open_store(cfg) as items:
         held = fallback.propose(
-            items,
-            wanted,
-            fallback.Answer(hits=(hit(SC, 1, "a", "b"), hit(SC, 2, "c", "d"))),
+            items, wanted, fallback.Answer(hits=(hit(SC, 1, "a", "b"), hit(SC, 2, "c", "d"))),
             handler_key="suite",
         )
         review.resolve(items, held.item_id, review.Verdict.ACCEPTED, actor="suite")
@@ -424,15 +418,11 @@ def _provider_question(cfg, line: str, verdict: review.Verdict | None) -> None:
     wanted = match.read_text_lines(line)[0]
     with review.open_store(cfg) as items:
         held = review.offer(
-            items,
-            queue=candidates.QUEUE,
-            kind=candidates.KIND,
-            identity=candidates.identity(wanted),
-            payload={},
+            items, queue=candidates.QUEUE, kind=candidates.KIND,
+            identity=candidates.identity(wanted), payload={},
             options=[
                 review.Option(
-                    option_id="7001",
-                    summary="one",
+                    option_id="7001", summary="one",
                     detail={
                         "track": intake_cli.frozen(
                             dataclasses.replace(wanted, ref="7001", origin=match.TIDAL)
@@ -597,8 +587,7 @@ def test_a_nonzero_exit_is_unavailable_never_empty():
 
 
 @pytest.mark.parametrize(
-    "raised",
-    [subprocess.TimeoutExpired(cmd="yt-dlp", timeout=1), FileNotFoundError("gone")],
+    "raised", [subprocess.TimeoutExpired(cmd="yt-dlp", timeout=1), FileNotFoundError("gone")],
 )
 def test_a_timeout_or_a_program_that_cannot_start_is_unavailable(raised):
     with pytest.raises(fallback.FallbackUnavailable):
@@ -619,13 +608,9 @@ def test_a_row_the_provider_names_by_id_is_not_searched(cfg, library, tmp_path, 
     """A list document written from a provider list carries the provider's id on every row."""
     from cratekit.acquire import listdoc
 
-    named = dataclasses.replace(
-        match.read_text_lines(TIDE)[0], ref="7010", origin=match.TIDAL
-    )
+    named = dataclasses.replace(match.read_text_lines(TIDE)[0], ref="7010", origin=match.TIDAL)
     written = listdoc.write(
-        tmp_path,
-        "provider",
-        listdoc.rows_of([named]),
+        tmp_path, "provider", listdoc.rows_of([named]),
         listdoc.Provenance(source="list", source_ref="suite"),
     )
     fake = bind(monkeypatch, FakeSearcher({}))

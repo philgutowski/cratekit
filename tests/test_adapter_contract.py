@@ -53,9 +53,7 @@ ACQUIRE_ROOT = REPO_ROOT / "src" / "cratekit" / "acquire"
 # A session blob shaped like the real one and marked so the secret scan reads it as an
 # illustration.
 FAKE_SESSION = {
-    "token_type": "Bearer",
-    "access_token": "FAKE-value-1",
-    "refresh_token": "FAKE-value-2",
+    "token_type": "Bearer", "access_token": "FAKE-value-1", "refresh_token": "FAKE-value-2",
     "expiry_time": "2000-01-01T00:00:00",
 }
 
@@ -123,18 +121,14 @@ def four_outcome_source() -> Scripted:
     """One script that produces every per-track outcome in a single run."""
     return Scripted(
         plan={
-            "acquired": Offer(lossless=True),
-            "delisted": NotFoundError("track not found"),
-            "flaky": RuntimeError("503 Service Unavailable"),
-            "lossy-only": Offer(lossless=False),
+            "acquired": Offer(lossless=True), "delisted": NotFoundError("track not found"),
+            "flaky": RuntimeError("503 Service Unavailable"), "lossy-only": Offer(lossless=False),
         }
     )
 
 
 FOUR_OUTCOME_REQUESTS = (
-    TrackRequest(key="acquired"),
-    TrackRequest(key="delisted"),
-    TrackRequest(key="flaky"),
+    TrackRequest(key="acquired"), TrackRequest(key="delisted"), TrackRequest(key="flaky"),
     TrackRequest(key="lossy-only"),
 )
 
@@ -167,9 +161,7 @@ def watched_scopes(monkeypatch) -> list[ScopeRecord]:
         with real(*args, **kwargs) as scope:
             records.append(
                 ScopeRecord(
-                    directory=scope.directory,
-                    path=scope.path,
-                    existed=scope.path.exists(),
+                    directory=scope.directory, path=scope.path, existed=scope.path.exists(),
                     file_mode=stat.S_IMODE(scope.path.stat().st_mode),
                     dir_mode=stat.S_IMODE(scope.directory.stat().st_mode),
                 )
@@ -236,16 +228,12 @@ def test_one_run_produces_all_four_per_track_outcomes(adapter_name, settings, st
 
     assert result.outcome is InvocationOutcome.OK
     assert {r.key: r.outcome for r in result.results} == {
-        "acquired": TrackOutcome.ACQUIRED,
-        "delisted": TrackOutcome.UNAVAILABLE_PERMANENT,
-        "flaky": TrackOutcome.UNAVAILABLE_TRANSIENT,
-        "lossy-only": TrackOutcome.REFUSED_BY_POLICY,
+        "acquired": TrackOutcome.ACQUIRED, "delisted": TrackOutcome.UNAVAILABLE_PERMANENT,
+        "flaky": TrackOutcome.UNAVAILABLE_TRANSIENT, "lossy-only": TrackOutcome.REFUSED_BY_POLICY,
     }
     assert result.counts() == {
-        TrackOutcome.ACQUIRED: 1,
-        TrackOutcome.UNAVAILABLE_PERMANENT: 1,
-        TrackOutcome.UNAVAILABLE_TRANSIENT: 1,
-        TrackOutcome.REFUSED_BY_POLICY: 1,
+        TrackOutcome.ACQUIRED: 1, TrackOutcome.UNAVAILABLE_PERMANENT: 1,
+        TrackOutcome.UNAVAILABLE_TRANSIENT: 1, TrackOutcome.REFUSED_BY_POLICY: 1,
     }
 
 
@@ -256,12 +244,10 @@ def test_each_outcome_reaches_its_own_handler(adapter_name, settings, stored_ses
 
     seen: dict[TrackOutcome, list[str]] = {outcome: [] for outcome in TrackOutcome}
     dispatch(
-        result,
-        {outcome: (lambda r, o=outcome: seen[o].append(r.key)) for outcome in TrackOutcome},
+        result, {outcome: (lambda r, o=outcome: seen[o].append(r.key)) for outcome in TrackOutcome},
     )
     assert seen == {
-        TrackOutcome.ACQUIRED: ["acquired"],
-        TrackOutcome.UNAVAILABLE_PERMANENT: ["delisted"],
+        TrackOutcome.ACQUIRED: ["acquired"], TrackOutcome.UNAVAILABLE_PERMANENT: ["delisted"],
         TrackOutcome.UNAVAILABLE_TRANSIENT: ["flaky"],
         TrackOutcome.REFUSED_BY_POLICY: ["lossy-only"],
     }
@@ -322,8 +308,7 @@ def test_an_auth_failure_mid_run_keeps_what_landed_and_still_fails_the_invocatio
     """Reporting OK would advance a watermark past items a dead session never saw."""
     source = Scripted(
         plan={
-            "first": Offer(lossless=True),
-            "second": AdapterAuthFailed("401 the session expired"),
+            "first": Offer(lossless=True), "second": AdapterAuthFailed("401 the session expired"),
             "third": Offer(lossless=True),
         }
     )
@@ -342,11 +327,9 @@ def test_a_failed_invocation_cannot_carry_a_permanent_unavailability():
     """Quarantine is forever, so a broken adapter must not be able to feed it."""
     with pytest.raises(ValueError, match="permanently unavailable"):
         InvocationResult(
-            adapter="fake",
-            outcome=InvocationOutcome.ADAPTER_BROKEN,
+            adapter="fake", outcome=InvocationOutcome.ADAPTER_BROKEN,
             results=(TrackResult(key="x", outcome=TrackOutcome.UNAVAILABLE_PERMANENT),),
-            remedy=Remedy.SWITCH_ADAPTER,
-            alternatives=("other",),
+            remedy=Remedy.SWITCH_ADAPTER, alternatives=("other",),
         )
 
 
@@ -361,8 +344,7 @@ def test_an_auth_failure_with_nowhere_to_go_cannot_be_constructed():
     """AE9 is a reporting requirement, so it is enforced where the report is built."""
     with pytest.raises(ValueError, match="replacement path"):
         InvocationResult(
-            adapter="fake",
-            outcome=InvocationOutcome.AUTH_FAILED,
+            adapter="fake", outcome=InvocationOutcome.AUTH_FAILED,
             remedy=Remedy.REAUTHENTICATE_PROVIDER,
         )
 
@@ -371,8 +353,7 @@ def test_a_result_cannot_report_a_track_nobody_asked_for():
     """An identity mix-up here becomes a file filed under the wrong track later."""
     with pytest.raises(ValueError, match="nobody asked for"):
         InvocationResult(
-            adapter="fake",
-            outcome=InvocationOutcome.OK,
+            adapter="fake", outcome=InvocationOutcome.OK,
             results=(TrackResult(key="stranger", outcome=TrackOutcome.UNAVAILABLE_TRANSIENT),),
             requested=("asked-for",),
         )
@@ -419,12 +400,9 @@ def test_a_keychain_with_no_backend_is_a_broken_adapter_not_a_stale_session(
 @pytest.mark.parametrize(
     "exc",
     [
-        RuntimeError("503 Service Unavailable"),
-        RuntimeError("Service Unavailable"),
-        RuntimeError("upstream server error"),
-        RuntimeError("5xx from the edge"),
-        TimeoutError("read timed out"),
-        RuntimeError("429 Too Many Requests"),
+        RuntimeError("503 Service Unavailable"), RuntimeError("Service Unavailable"),
+        RuntimeError("upstream server error"), RuntimeError("5xx from the edge"),
+        TimeoutError("read timed out"), RuntimeError("429 Too Many Requests"),
         RuntimeError("401 Unauthorized"),
     ],
 )
@@ -455,9 +433,7 @@ class _HttpError(Exception):
 @pytest.mark.parametrize(
     "exc",
     [
-        NotFoundError("gone"),
-        RuntimeError("404"),
-        RuntimeError("the track was not found"),
+        NotFoundError("gone"), RuntimeError("404"), RuntimeError("the track was not found"),
         _HttpError(_Response(404)),
     ],
 )
@@ -495,8 +471,7 @@ def test_a_download_that_fails_classifies_the_same_way_as_a_lookup(settings, sto
         [TrackRequest(key="a"), TrackRequest(key="b")]
     )
     assert {r.key: r.outcome for r in result.results} == {
-        "a": TrackOutcome.UNAVAILABLE_TRANSIENT,
-        "b": TrackOutcome.UNAVAILABLE_PERMANENT,
+        "a": TrackOutcome.UNAVAILABLE_TRANSIENT, "b": TrackOutcome.UNAVAILABLE_PERMANENT,
     }
 
 
@@ -564,10 +539,7 @@ def test_a_lossy_acquisition_that_forgot_the_marker_cannot_be_constructed():
     """The invariant lives on the type, so no branch anywhere can produce it."""
     with pytest.raises(ValueError, match="R21"):
         TrackResult(
-            key="x",
-            outcome=TrackOutcome.ACQUIRED,
-            path=Path("x.m4a"),
-            lossless=False,
+            key="x", outcome=TrackOutcome.ACQUIRED, path=Path("x.m4a"), lossless=False,
             requires_lossy_marker=False,
         )
 
@@ -581,9 +553,7 @@ def test_an_acquired_result_must_name_a_file_and_state_its_losslessness():
 
 def test_a_non_acquired_result_may_not_carry_a_file():
     with pytest.raises(ValueError, match="partial download"):
-        TrackResult(
-            key="x", outcome=TrackOutcome.UNAVAILABLE_TRANSIENT, path=Path("half.flac")
-        )
+        TrackResult(key="x", outcome=TrackOutcome.UNAVAILABLE_TRANSIENT, path=Path("half.flac"))
 
 
 def test_a_policy_refusal_must_say_what_would_change_the_answer():
@@ -609,12 +579,10 @@ def test_settings_come_from_configuration_by_name(tmp_path, monkeypatch):
         {
             "schema_version": config.CURRENT_SCHEMA_VERSION,
             "library": {
-                "root": str(library),
-                "volume_id": "F1E2-D3C4",
+                "root": str(library), "volume_id": "F1E2-D3C4",
                 "db_path": str(library / "db" / "master.db"),
             },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "slim"},
+            "paths": {"download_staging": str(tmp_path / "staging")}, "profile": {"name": "slim"},
             "acquisition": {"lossless_policy": "allow_lossy_marked", "pacing_delay_s": 2.5},
         }
     )
@@ -635,12 +603,10 @@ def test_the_configured_adapter_name_resolves_through_the_registry(tmp_path, mon
         {
             "schema_version": config.CURRENT_SCHEMA_VERSION,
             "library": {
-                "root": str(library),
-                "volume_id": "F1E2-D3C4",
+                "root": str(library), "volume_id": "F1E2-D3C4",
                 "db_path": str(library / "db" / "master.db"),
             },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "slim"},
+            "paths": {"download_staging": str(tmp_path / "staging")}, "profile": {"name": "slim"},
         }
     )
     assert cfg.acquisition.adapter in registry.ADAPTERS
@@ -684,11 +650,7 @@ def test_the_vendored_settings_translation_names_every_key_that_reverted(setting
     """The set of reverted keys is asserted, since R-195 was a key missing from an uncounted map."""
     pushed = vendored.tool_settings(settings, resolve=_ffmpeg_at("/opt/x/ffmpeg"))
     assert set(pushed) == {
-        "quality_audio",
-        "download_base_path",
-        "format_track",
-        "path_binary_ffmpeg",
-        "extract_flac",
+        "quality_audio", "download_base_path", "format_track", "path_binary_ffmpeg", "extract_flac",
     }
     assert pushed["quality_audio"] == "LOSSLESS"
     assert pushed["download_base_path"] == str(settings.download_staging)
@@ -788,11 +750,8 @@ class _Tool:
     def __init__(self, **initial: object) -> None:
         self.data = _ToolSettings(
             **{
-                "quality_audio": "HIGH",
-                "download_base_path": "~/download",
-                "format_track": "",
-                "path_binary_ffmpeg": "",
-                **initial,
+                "quality_audio": "HIGH", "download_base_path": "~/download", "format_track": "",
+                "path_binary_ffmpeg": "", **initial,
             }
         )
 
@@ -855,9 +814,7 @@ def test_the_alternative_translates_quality_into_its_own_vocabulary():
     """Proof that the settings seam is a translation, not a shared literal."""
     staging = Path("/tmp")
     assert streamrip.quality_tier(AdapterSettings(download_staging=staging)) == 2
-    assert (
-        streamrip.quality_tier(AdapterSettings(download_staging=staging, quality="lossy")) == 1
-    )
+    assert (streamrip.quality_tier(AdapterSettings(download_staging=staging, quality="lossy")) == 1)
     assert streamrip.offer_from_tier(1).lossless is False
     assert streamrip.offer_from_tier(2).lossless is True
     assert streamrip.offer_from_tier(4).lossless is True, (
@@ -947,10 +904,8 @@ def test_the_alternatives_own_api_translates_into_all_four_outcomes(
 
     assert result.outcome is InvocationOutcome.OK
     assert {r.key: r.outcome for r in result.results} == {
-        "acquired": TrackOutcome.ACQUIRED,
-        "delisted": TrackOutcome.UNAVAILABLE_PERMANENT,
-        "flaky": TrackOutcome.UNAVAILABLE_TRANSIENT,
-        "lossy-only": TrackOutcome.REFUSED_BY_POLICY,
+        "acquired": TrackOutcome.ACQUIRED, "delisted": TrackOutcome.UNAVAILABLE_PERMANENT,
+        "flaky": TrackOutcome.UNAVAILABLE_TRANSIENT, "lossy-only": TrackOutcome.REFUSED_BY_POLICY,
     }
     client = installed_streamrip.instances[-1]
     assert client.logged_in
@@ -1032,11 +987,7 @@ class _ToolTrack:
 @pytest.mark.parametrize(
     "reported, lossless",
     [
-        ("LOSSLESS", True),
-        ("HI_RES_LOSSLESS", True),
-        ("HIGH", False),
-        ("LOW", False),
-        ("", False),
+        ("LOSSLESS", True), ("HI_RES_LOSSLESS", True), ("HIGH", False), ("LOW", False), ("", False),
     ],
 )
 def test_the_vendored_source_reads_the_clients_quality_vocabulary(
@@ -1049,9 +1000,7 @@ def test_the_vendored_source_reads_the_clients_quality_vocabulary(
     assert source.offer(TrackRequest(key="x")).lossless is lossless
 
 
-def test_the_vendored_source_escalates_a_dead_session_but_not_a_dead_track(
-    settings, tmp_path
-):
+def test_the_vendored_source_escalates_a_dead_session_but_not_a_dead_track(settings, tmp_path):
     """A per-track message mentioning "token" must not abort the run."""
     session = _ToolSession(
         {
@@ -1154,8 +1103,7 @@ def test_the_persisted_flag_never_goes_through_the_bool_coercing_setter(tmp_path
     ("stored", "had", "refused"),
     [
         (types.SimpleNamespace(is_pkce=True), True, False),
-        (types.SimpleNamespace(is_pkce=False), True, True),
-        (types.SimpleNamespace(), True, True),
+        (types.SimpleNamespace(is_pkce=False), True, True), (types.SimpleNamespace(), True, True),
         (types.SimpleNamespace(is_pkce=True), False, True),
     ],
 )
@@ -1217,10 +1165,7 @@ def _fetch_with_fake(settings, tmp_path, landed=None):
     if landed is None:
         landed = (True, str(synth_container(tmp_path, ".flac")))
     source = vendored._VendoredSource(
-        settings,
-        tmp_path / "token.json",
-        session=_ToolSession({}),
-        downloader=_landing(landed),
+        settings, tmp_path / "token.json", session=_ToolSession({}), downloader=_landing(landed),
     )
     return source, _FakeDownload
 
@@ -1371,8 +1316,7 @@ def test_a_defect_the_tool_swallowed_breaks_the_adapter(settings, tmp_path, monk
 
 
 @pytest.mark.parametrize(
-    "carried",
-    ["Forbidden Fruit. File is corrupt!", "403 Client Error", "Retry-After: 900", "429"],
+    "carried", ["Forbidden Fruit. File is corrupt!", "403 Client Error", "Retry-After: 900", "429"],
 )
 def test_the_paced_pool_reads_no_pacing_signal_off_the_carried_words(carried):
     """The words are for a person. One "forbidden" in a title must not stop a run."""
@@ -1549,14 +1493,7 @@ def test_the_codec_table_answers_for_every_container_it_declares():
     assert vendored.LOSSLESS_BY_CONTAINER["OggOpus"] is False
     assert vendored.LOSSLESS_BY_CONTAINER["AAC"] is False
     assert set(vendored.LOSSLESS_BY_CONTAINER) == {
-        "FLAC",
-        "WAVE",
-        "AIFF",
-        "OggFLAC",
-        "MP3",
-        "OggVorbis",
-        "OggOpus",
-        "AAC",
+        "FLAC", "WAVE", "AIFF", "OggFLAC", "MP3", "OggVorbis", "OggOpus", "AAC",
     }, "a container was added to the table without a decision recorded here"
     assert "alac" in vendored.MP4_LOSSLESS_CODECS
     # MP4 is not in the container table: a .m4a holds AAC or ALAC, so only the codec string says.
@@ -1638,8 +1575,7 @@ def test_a_lossy_landing_refuses_the_track_and_lets_the_run_continue(
     result = vendored.VendoredAdapter(
         settings,
         source=vendored._VendoredSource(
-            settings,
-            tmp_path / "token.json",
+            settings, tmp_path / "token.json",
             session=_ToolSession({"1234": _ToolTrack("LOSSLESS")}),
             downloader=_landing((True, str(aac))),
         ),
@@ -1663,8 +1599,7 @@ def test_a_lossy_landing_after_a_delisted_track_still_returns_a_contract_result(
     aac = synth_container(tmp_path, ".m4a")
 
     source = vendored._VendoredSource(
-        settings,
-        tmp_path / "token.json",
+        settings, tmp_path / "token.json",
         session=_ToolSession(
             {"gone": NotFoundError("404 not found"), "1234": _ToolTrack("LOSSLESS")}
         ),
@@ -1915,8 +1850,7 @@ def test_a_defect_raised_during_a_download_breaks_the_adapter_the_same_way(
 ):
     """The fetch half of the same rule; two rules is how the source system disagreed."""
     source = Scripted(
-        plan={"a": Offer(lossless=True)},
-        fetch_failures={"a": AttributeError(FIRST_REAL_DEFECT)},
+        plan={"a": Offer(lossless=True)}, fetch_failures={"a": AttributeError(FIRST_REAL_DEFECT)},
     )
     result = vendored.VendoredAdapter(settings, source=source).acquire([TrackRequest(key="a")])
 
@@ -1929,16 +1863,11 @@ def test_a_defect_stops_the_paced_pool_rather_than_being_retried(settings):
     from cratekit.acquire.download import Pacing, acquire_concurrently
 
     source = Scripted(
-        plan={"a": Offer(lossless=True)},
-        fetch_failures={"a": AttributeError(FIRST_REAL_DEFECT)},
+        plan={"a": Offer(lossless=True)}, fetch_failures={"a": AttributeError(FIRST_REAL_DEFECT)},
     )
     run = acquire_concurrently(
-        adapter="fake",
-        source=source,
-        requests=[TrackRequest(key="a")],
-        settings=settings,
-        pacing=Pacing(base_delay_s=0.0),
-        sleep=lambda _s: None,
+        adapter="fake", source=source, requests=[TrackRequest(key="a")], settings=settings,
+        pacing=Pacing(base_delay_s=0.0), sleep=lambda _s: None,
     )
 
     assert run.invocation.outcome is InvocationOutcome.ADAPTER_BROKEN

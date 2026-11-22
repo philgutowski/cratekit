@@ -48,12 +48,8 @@ class Track:
     """A provider track in the client's own shape."""
 
     def __init__(
-        self,
-        track_id: str,
-        name: str = "",
-        version: str | None = None,
-        artists: tuple[str, ...] = (),
-        album: str = "",
+        self, track_id: str, name: str = "", version: str | None = None,
+        artists: tuple[str, ...] = (), album: str = "",
     ) -> None:
         self.id = int(track_id)
         self.name = name
@@ -332,8 +328,7 @@ def test_zero_days_asks_every_time_and_writes_nothing(clock, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "failure",
-    [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
+    "failure", [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
     ids=["outage", "rejected-session", "rate-limit"],
 )
 def test_a_failed_lookup_is_never_kept_and_the_next_one_asks(clock, failure):
@@ -373,8 +368,7 @@ def test_an_invalid_isrc_on_the_catalogue_is_raised_and_never_kept(clock, monkey
 
 
 @pytest.mark.parametrize(
-    "failure",
-    [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
+    "failure", [HTTPFailure(500), HTTPFailure(401), TooManyRequests("slow down")],
     ids=["outage", "rejected-session", "rate-limit"],
 )
 def test_the_catalogue_never_keeps_a_failure(clock, monkeypatch, failure):
@@ -504,10 +498,7 @@ def test_two_writer_processes_leave_one_readable_file_holding_both(tmp_path):
     children = [
         subprocess.Popen(
             [sys.executable, str(script), str(path), str(lock), str(first), "40"],
-            env={**os.environ, **env},
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            env={**os.environ, **env}, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         for first in (1, 101)
     ]
@@ -524,22 +515,14 @@ def _client_track(**fields) -> tidalapi.media.Track:
     """A real client track built offline, since constructing a ``Session`` makes no request."""
     session = tidalapi.Session()
     payload = {
-        "id": 9001,
-        "title": "Sun Path",
-        "duration": 300,
-        "allowStreaming": True,
-        "streamReady": True,
-        "isrc": ONE,
-        "version": "Extended Mix",
-        "trackNumber": 1,
-        "volumeNumber": 1,
-        "artist": {"id": 1, "name": "Aurora Bloom", "type": "MAIN"},
+        "id": 9001, "title": "Sun Path", "duration": 300, "allowStreaming": True,
+        "streamReady": True, "isrc": ONE, "version": "Extended Mix", "trackNumber": 1,
+        "volumeNumber": 1, "artist": {"id": 1, "name": "Aurora Bloom", "type": "MAIN"},
         "artists": [
             {"id": 1, "name": "Aurora Bloom", "type": "MAIN"},
             {"id": 2, "name": "Nova Reef", "type": "FEATURED"},
         ],
-        "album": {"id": 77, "title": "Sun Path EP", "cover": None, "videoCover": None},
-        **fields,
+        "album": {"id": 77, "title": "Sun Path EP", "cover": None, "videoCover": None}, **fields,
     }
 
     class Missing(dict):
@@ -577,8 +560,7 @@ def test_the_setting_reaches_the_cache_both_openers_build(tmp_path, monkeypatch)
     built = config.from_dict(valid_data(root, provider={"isrc_cache_days": 4}))
     # U261: both openers take the held session, so the stand in has no app client.
     monkeypatch.setattr(
-        provider_session,
-        "session_for",
+        provider_session, "session_for",
         lambda cfg=None: SimpleNamespace(client=Client({}), app=None),
     )
 
@@ -683,11 +665,8 @@ def test_a_rehearsal_keeps_the_live_isrc_cache_and_restores_the_environment(tmp_
 
     live = config.state_path(isrc_cache.STATE_KEY)
     area = rehearsal.Area(
-        run_id="r1",
-        volume=tmp_path / "volume",
-        local=tmp_path / "local",
-        database=tmp_path / "volume" / "db" / "master.db",
-        cfg=None,
+        run_id="r1", volume=tmp_path / "volume", local=tmp_path / "local",
+        database=tmp_path / "volume" / "db" / "master.db", cfg=None,
     )
     assert config.ENV_ISRC_CACHE_DIR not in os.environ
 

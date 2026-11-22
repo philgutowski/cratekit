@@ -39,11 +39,8 @@ from tests.test_config import valid_data
 
 #: The stored session: PKCE, and obviously not a real one.
 STORED = {
-    "token_type": "Bearer",
-    "access_token": "FAKE-value-1",
-    "refresh_token": "FAKE-value-2",
-    "expiry_time": 1700000000,
-    "is_pkce": True,
+    "token_type": "Bearer", "access_token": "FAKE-value-1", "refresh_token": "FAKE-value-2",
+    "expiry_time": 1700000000, "is_pkce": True,
 }
 
 BASE = "https://api.invalid/v1/"
@@ -188,11 +185,8 @@ class Tool:
             def login_token(self, do_pkce: bool = False) -> bool:
                 try:
                     return self.session.load_oauth_session(
-                        self.data.token_type,
-                        self.data.access_token,
-                        self.data.refresh_token,
-                        self.data.expiry_time,
-                        is_pkce=do_pkce,
+                        self.data.token_type, self.data.access_token, self.data.refresh_token,
+                        self.data.expiry_time, is_pkce=do_pkce,
                     )
                 except Exception:  # noqa: BLE001 - the tool's own shape
                     Path(self.file_path).unlink(missing_ok=True)
@@ -277,8 +271,7 @@ def cfg(library, temporary, tmp_path, monkeypatch) -> config.Config:
     monkeypatch.setenv(binaries.env_var("ffmpeg"), str(ffmpeg))
     built = config.from_dict(
         valid_data(
-            library,
-            profile={"name": "full"},
+            library, profile={"name": "full"},
             acquisition={"adapter": "vendored", "pacing_delay_s": 3.0},
             provider={"min_interval_s": 0.001},
         )
@@ -371,10 +364,7 @@ def test_a_ten_track_job_logs_in_once_and_spends_four_calls_a_track(
     assert provider.count("users/") == 1
     for key in tracks:
         assert provider.per_track(key) == [
-            f"tracks/{key}",
-            f"tracks/{key}",
-            f"albums/a{key}",
-            f"tracks/{key}/playbackinfo",
+            f"tracks/{key}", f"tracks/{key}", f"albums/a{key}", f"tracks/{key}/playbackinfo",
         ], key
     assert len(provider.asked) == 2 + 4 * len(tracks)
 
@@ -491,10 +481,7 @@ def test_a_session_withdrawn_mid_drive_parks_and_a_resume_lands_the_rest(
     assert envelope["cause"]["reason"] == "auth-failed", envelope
     assert job_of(job_id).state is jobs.JobState.BLOCKED
     assert [states(job_id)[key] for key in tracks] == [
-        jobs.ItemState.DONE,
-        jobs.ItemState.DONE,
-        jobs.ItemState.PENDING,
-        jobs.ItemState.PENDING,
+        jobs.ItemState.DONE, jobs.ItemState.DONE, jobs.ItemState.PENDING, jobs.ItemState.PENDING,
         jobs.ItemState.PENDING,
     ]
     assert provider.count("sessions") == 1, "the drive logged in again over a refused session"
@@ -717,8 +704,7 @@ def test_a_broken_item_fails_alone_and_the_job_stays_resumable(
     assert job_of(job_id).state is jobs.JobState.FAILED
     assert job_of(job_id).cause.reason == "adapter-broken"
     assert states(job_id) == {
-        tracks[0]: jobs.ItemState.DONE,
-        tracks[1]: jobs.ItemState.FAILED,
+        tracks[0]: jobs.ItemState.DONE, tracks[1]: jobs.ItemState.FAILED,
         tracks[2]: jobs.ItemState.DONE,
     }
     assert provider.count("sessions") == 1
@@ -758,9 +744,7 @@ def test_a_drive_that_is_not_callable_is_refused():
     assert caught.value.cause.reason == "internal-error"
 
 
-def test_the_engine_opens_a_workers_drive_once_and_closes_it_on_a_park(
-    cfg, library, monkeypatch
-):
+def test_the_engine_opens_a_workers_drive_once_and_closes_it_on_a_park(cfg, library, monkeypatch):
     """One open and one close, and the close runs when the drive ends in a park."""
     opened: list[str] = []
     claimed: list[str] = []
@@ -778,12 +762,8 @@ def test_the_engine_opens_a_workers_drive_once_and_closes_it_on_a_park(
         if item.item_id == "2":
             raise jobs.Parked(
                 download.blocked_cause(
-                    adapter="vendored",
-                    key="2",
-                    signal=download.ProviderSignal.BLOCKED,
-                    detail="403 Forbidden",
-                    attempts=1,
-                    retry_hint_s=None,
+                    adapter="vendored", key="2", signal=download.ProviderSignal.BLOCKED,
+                    detail="403 Forbidden", attempts=1, retry_hint_s=None,
                 )
             )
         return None
@@ -824,9 +804,7 @@ def no_keychain(monkeypatch) -> None:
     from keyring.backends import fail
 
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
-    monkeypatch.setenv(
-        secrets.ENV_CREDENTIAL_PREFIX + "PROVIDER_SESSION", json.dumps(STORED)
-    )
+    monkeypatch.setenv(secrets.ENV_CREDENTIAL_PREFIX + "PROVIDER_SESSION", json.dumps(STORED))
     backend = fail.Keyring()
     monkeypatch.setattr(keyring, "set_password", backend.set_password)
     monkeypatch.setattr(keyring, "get_password", backend.get_password)
@@ -894,9 +872,7 @@ def test_a_defect_at_the_close_of_a_finished_drive_is_raised(
     assert token_directories(temporary) == []
 
 
-def test_a_session_left_in_the_atmos_client_is_not_stored(
-    cfg, library, tool, provider, keychain
-):
+def test_a_session_left_in_the_atmos_client_is_not_stored(cfg, library, tool, provider, keychain):
     tracks = keys(2)
     tool.session.refresh_at = tracks[0]
     tool.during[tracks[1]] = lambda: setattr(tool.tidal, "is_atmos_session", True)
