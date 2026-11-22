@@ -1,17 +1,14 @@
 """The gate layer shows a digested plan's items whenever one is passed (R-693).
 
-R-670 and R-686 each closed one verb whose gate carried the question and not
-the plan, and the review that closed R-686 swept every ``gate.require`` call in
-``src`` and found seven more passing a digest and nothing to show. The class is
-closed here once: :func:`cratekit.cli.gates.shown_plan` is the one body a
-digest bound gate shows through, :meth:`Gates.require` calls it for any plan it
-is handed, and the sweep that found the seven is a guard below rather than a
-grep somebody has to remember to run.
+:func:`cratekit.cli.gates.shown_plan` is the one body a digest bound gate shows
+through, :meth:`Gates.require` calls it for any plan it is handed, and a sweep
+of every ``gate.require`` call in ``src`` guards the class below.
 """
 
 from __future__ import annotations
 
 import ast
+import functools
 from pathlib import Path
 
 import pytest
@@ -23,12 +20,13 @@ SRC = Path(__file__).resolve().parent.parent / "src" / "cratekit"
 
 def _spec(*, explicit: bool = False) -> registry.GateSpec:
     return registry.GateSpec(
-        name="shown.probe",
-        options=("apply", "abort"),
-        prompt="Apply this plan?",
-        explicit=explicit,
-        digest_source="plan",
+        name="shown.probe", options=("apply", "abort"), prompt="Apply this plan?",
+        explicit=explicit, digest_source="plan",
     )
+
+
+def _state() -> gates.RunState:
+    return gates.RunState(run_id="r", verb="probe", created="now")
 
 
 def _plan(*items: dict) -> dict:
@@ -36,24 +34,21 @@ def _plan(*items: dict) -> dict:
 
 
 def _refused(**kwargs) -> dict:
-    state = gates.RunState(run_id="r", verb="probe", created="now")
+    state = _state()
     with pytest.raises(gates.DecisionRequired) as raised:
         gates.Gates(state=state).require(_spec(), **kwargs)
     return raised.value.cause.detail
 
 
-# ---------------------------------------------------------------------------
 # The helper
-# ---------------------------------------------------------------------------
 
 
 def test_shown_plan_carries_the_facts_then_the_digest_the_count_and_every_item():
     shown = gates.shown_plan(_plan({"a": 1}, {"a": 2}), {"folder": "/music"})
-    assert list(shown) == ["folder", "digest", "count", "items"]
-    assert shown["folder"] == "/music"
-    assert shown["digest"] == "sha256:abc"
-    assert shown["count"] == 2
-    assert shown["items"] == [{"a": 1}, {"a": 2}]
+    assert list(shown.items()) == [
+        ("folder", "/music"), ("digest", "sha256:abc"), ("count", 2),
+        ("items", [{"a": 1}, {"a": 2}]),
+    ]
 
 
 def test_shown_plan_counts_the_items_and_not_a_narrower_total():
@@ -91,9 +86,7 @@ def test_shown_plan_says_none_for_an_empty_plan_rather_than_nothing():
     assert "  items: none" in screen
 
 
-# ---------------------------------------------------------------------------
 # require() with a plan
-# ---------------------------------------------------------------------------
 
 
 def test_require_shows_the_plan_it_binds_the_decision_to():
@@ -108,7 +101,7 @@ def test_require_shows_the_plan_it_binds_the_decision_to():
 
 def test_require_records_the_offer_off_the_plan_it_showed():
     """The digest the answer is judged against is the one on the screen."""
-    state = gates.RunState(run_id="r", verb="probe", created="now")
+    state = _state()
     with pytest.raises(gates.DecisionRequired):
         gates.Gates(state=state).require(_spec(), plan=_plan())
     assert state.offers["shown.probe"] == "sha256:abc"
@@ -117,7 +110,7 @@ def test_require_records_the_offer_off_the_plan_it_showed():
 def test_require_shows_the_plan_on_the_explicit_refusal_as_well():
     """Both refusals carry it, so what a person sees does not depend on
     whether they typed a flag."""
-    state = gates.RunState(run_id="r", verb="probe", created="now")
+    state = _state()
     resolver = gates.Gates(state=state, supplied={"shown.probe": "apply"})
     with pytest.raises(gates.DecisionRequired) as raised:
         resolver.require(_spec(explicit=True), plan=_plan({"n": 1}))
@@ -126,13 +119,13 @@ def test_require_shows_the_plan_on_the_explicit_refusal_as_well():
 
 def test_require_refuses_a_digest_beside_a_plan():
     """Two sources of the digest is how the screen and the binding disagree."""
-    state = gates.RunState(run_id="r", verb="probe", created="now")
+    state = _state()
     with pytest.raises(TypeError):
         gates.Gates(state=state).require(_spec(), digest="other", plan=_plan())
 
 
 def test_require_answers_from_the_plan_and_records_its_digest():
-    state = gates.RunState(run_id="r", verb="probe", created="now")
+    state = _state()
     resolver = gates.Gates(state=state, supplied={"shown.probe": "apply"})
     assert resolver.require(_spec(), plan=_plan()) == "apply"
     assert state.decisions["shown.probe"].digest == "sha256:abc"
@@ -155,7 +148,7 @@ def test_the_screen_prints_the_plan_in_the_default_mode():
 
 def _cause(detail: dict):
     """The refusal's cause, rebuilt so the renderer is driven as the CLI drives it."""
-    state = gates.RunState(run_id="r", verb="probe", created="now")
+    state = _state()
     try:
         gates.Gates(state=state).require(_spec(), digest="unused")
     except gates.DecisionRequired as raised:
@@ -165,14 +158,17 @@ def _cause(detail: dict):
     return cause
 
 
-# ---------------------------------------------------------------------------
 # The sweep that found the seven, as a guard
-# ---------------------------------------------------------------------------
 
 
-def _require_calls():
+@functools.cache
+def _require_calls() -> tuple[tuple[Path, int, set[str]], ...]:
     """Every ``<something>.gate.require(...)`` call in the package, with its
-    keyword names and where it is."""
+    keyword names and where it is, read once for the three guards below."""
+    return tuple(_calls())
+
+
+def _calls():
     for path in sorted(SRC.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):

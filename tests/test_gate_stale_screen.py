@@ -1,16 +1,8 @@
 """A stale answer's refusal shows the plan an answer recorded after it applies (R-1334).
 
-``Gates.require`` records the digest it is offered on the run before it
-compares a recorded answer, and ``crate run decide`` binds the next answer to
-that offer. So after a ``decision-stale`` refusal, an answer recorded on the
-run is taken over the MOVED plan, and the resume applies it. The refusal used
-to carry the two digests and nothing else, so the plan applied was one no
-screen had shown: the review of U222 drove a playlist made between the acts
-onto the account that way. The refusal now carries the moved plan exactly as
-an open gate shows it, so the screen a person answers is the plan applied.
-
-The same shape one place over, an unknown option inside ``require`` after the
-offer was recorded, shows its plan the same way. D1 applies.
+An answer recorded after a ``decision-stale`` refusal is taken over the MOVED
+plan, so the refusal carries that plan exactly as an open gate shows it, and so
+does an unknown option inside ``require`` after the offer was recorded. D1 applies.
 """
 
 from __future__ import annotations
@@ -34,12 +26,13 @@ MOVED = "sha256:moved"
 
 def _spec(*, explicit: bool = True) -> registry.GateSpec:
     return registry.GateSpec(
-        name="stale.probe",
-        options=("apply", "abort"),
-        prompt="Apply this plan?",
-        explicit=explicit,
-        digest_source="plan",
+        name="stale.probe", options=("apply", "abort"), prompt="Apply this plan?",
+        explicit=explicit, digest_source="plan",
     )
+
+
+def _state() -> gates.RunState:
+    return gates.RunState(run_id="r", verb="probe", created="now")
 
 
 def _plan(digest: str, *names: str) -> dict:
@@ -49,7 +42,7 @@ def _plan(digest: str, *names: str) -> dict:
 def _answered(spec: registry.GateSpec | None = None) -> gates.RunState:
     """The first act and the decide: the gate shown over one playlist, answered apply."""
     spec = spec or _spec()
-    state = gates.RunState(run_id="r", verb="probe", created="now")
+    state = _state()
     with pytest.raises(gates.DecisionRequired):
         gates.Gates(state=state).require(spec, plan=_plan(SHOWN, "One"), context={"area": "a"})
     gates.record(state, spec, "apply", actor="a-person")
@@ -62,17 +55,13 @@ def _stale(state: gates.RunState, plan: dict, **kwargs) -> dict:
     return raised.value.cause.detail
 
 
-# ---------------------------------------------------------------------------
 # The gate layer
-# ---------------------------------------------------------------------------
 
 
 def test_a_stale_refusal_carries_the_moved_plan_as_an_open_gate_shows_it():
     state = _answered()
     moved = _plan(MOVED, "One", "Made Between The Acts")
-
     detail = _stale(state, moved, context={"area": "a"})
-
     assert detail["shown"] == gates.shown_plan(moved, {"area": "a"})
     assert detail["shown"]["digest"] == detail["actual"] == MOVED
     assert detail["expected"] == SHOWN
@@ -86,9 +75,7 @@ def test_the_answer_recorded_after_a_stale_refusal_binds_the_plan_it_showed():
     state = _answered()
     moved = _plan(MOVED, "One", "Made Between The Acts")
     detail = _stale(state, moved)
-
     gates.record(state, _spec(), "apply", actor="a-person")
-
     assert state.decisions["stale.probe"].digest == detail["shown"]["digest"]
     assert gates.Gates(state=state).require(_spec(), plan=moved) == "apply"
 
@@ -98,9 +85,7 @@ def test_a_plan_that_moves_again_after_the_second_answer_is_stale_and_shows_the_
     _stale(state, _plan(MOVED, "One", "Two"))
     gates.record(state, _spec(), "apply", actor="a-person")
     newer = _plan("sha256:newer", "One", "Two", "Three")
-
     detail = _stale(state, newer)
-
     assert detail["expected"] == MOVED
     assert detail["shown"]["items"] == newer["items"]
 
@@ -111,7 +96,6 @@ def test_a_stale_refusal_and_its_message_are_otherwise_the_gates_own():
     with pytest.raises(gates.DecisionStale) as raised:
         gates.Gates(state=state).require(_spec(), plan=_plan(MOVED, "Two"))
     cause = raised.value.cause
-
     assert cause.code is ExitCode.DECISION_STALE
     assert cause.reason == "decision-stale"
     assert str(cause.remediation.remedy) == "replan-then-decide"
@@ -124,13 +108,12 @@ def test_a_stale_refusal_and_its_message_are_otherwise_the_gates_own():
 
 def test_a_digest_gate_with_nothing_to_show_says_so_as_its_open_gate_does():
     """No context and no plan: absent stays absent, and the options still reach the screen."""
-    state = gates.RunState(run_id="r", verb="probe", created="now")
+    state = _state()
     with pytest.raises(gates.DecisionRequired) as opened:
         gates.Gates(state=state).require(_spec(), digest=SHOWN)
     gates.record(state, _spec(), "apply", actor="a-person")
     with pytest.raises(gates.DecisionStale) as raised:
         gates.Gates(state=state).require(_spec(), digest=MOVED)
-
     assert "shown" not in opened.value.cause.detail
     assert "shown" not in raised.value.cause.detail
     assert raised.value.cause.detail["options"] == ["apply", "abort"]
@@ -144,13 +127,11 @@ def test_a_stale_a_verb_raises_itself_keeps_the_detail_it_had():
 
 def test_a_pinned_stale_keeps_the_detail_it_had():
     """U161's stale moves no digest, so it binds nothing new and is left as it was."""
-    state = gates.RunState(run_id="r", verb="probe", created="now")
+    state = _state()
     with pytest.raises(gates.DecisionRequired):
         gates.Gates(state=state).require(_spec(), plan=_plan(SHOWN, "One"), pinned={"database": "a"})
     gates.record(state, _spec(), "apply", actor="a-person")
-
     detail = _stale(state, _plan(SHOWN, "One"), pinned={"database": "b"})
-
     assert detail["pinned"] == "database"
     assert "shown" not in detail and "options" not in detail
 
@@ -158,11 +139,10 @@ def test_a_pinned_stale_keeps_the_detail_it_had():
 def test_an_unknown_inline_option_shows_the_plan_its_offer_recorded():
     """The same shape one place over: the offer is recorded, and the screen invites a decide."""
     spec = _spec(explicit=False)
-    state = gates.RunState(run_id="r", verb="probe", created="now")
+    state = _state()
     plan = _plan(SHOWN, "One")
     with pytest.raises(gates.UnknownOption) as raised:
         gates.Gates(state=state, supplied={spec.name: "bogus"}).require(spec, plan=plan)
-
     detail = raised.value.cause.detail
     assert detail["shown"] == gates.shown_plan(plan)
     assert state.offers[spec.name] == detail["shown"]["digest"]
@@ -176,9 +156,7 @@ def test_an_unknown_option_raised_outside_require_keeps_the_detail_it_had():
     assert cause.detail == {"gate": "stale.probe", "options": ["apply", "abort"]}
 
 
-# ---------------------------------------------------------------------------
 # The screen a person reads
-# ---------------------------------------------------------------------------
 
 
 def test_the_stale_screen_shows_the_moved_plan_and_the_answer_it_takes():
@@ -187,9 +165,7 @@ def test_the_stale_screen_shows_the_moved_plan_and_the_answer_it_takes():
         gates.Gates(state=state).require(
             _spec(explicit=False), plan=_plan(MOVED, "One", "Made Between The Acts")
         )
-
     screen = render.render_gate(raised.value.cause)
-
     assert screen.splitlines()[0] == (
         "The plan moved since this gate was answered. This is the plan this run "
         "reads now, and an answer recorded on the run now is taken over it:"
@@ -204,7 +180,7 @@ def test_the_stale_screen_shows_the_moved_plan_and_the_answer_it_takes():
 def test_the_open_gates_screen_is_unchanged():
     spec = _spec(explicit=False)
     with pytest.raises(gates.DecisionRequired) as raised:
-        gates.Gates(state=gates.RunState(run_id="r", verb="probe", created="now")).require(spec)
+        gates.Gates(state=_state()).require(spec)
     assert render.render_gate(raised.value.cause).splitlines() == [
         "Apply this plan?",
         "",
@@ -217,9 +193,7 @@ def test_the_open_gates_screen_is_unchanged():
     ]
 
 
-# ---------------------------------------------------------------------------
 # Through the dispatcher
-# ---------------------------------------------------------------------------
 
 
 def _drive(argv: list[str]) -> tuple[int, str, str]:
@@ -243,9 +217,7 @@ def test_through_the_dispatcher_the_stale_refusal_shows_the_moved_plan_and_a_dec
     run_id = json.loads(out)["run_id"]
     assert _drive(["run", "decide", run_id, "profile.set.apply", "apply"])[0] == 0
     _switch_off_by_hand("analysis")
-
     code, out, _ = _drive(["--output", "json", "--run", run_id, "profile", "set", "slim"])
-
     assert code == int(ExitCode.DECISION_STALE)
     detail = json.loads(out)["cause"]["detail"]
     assert detail["shown"]["digest"] == detail["actual"]
@@ -255,28 +227,21 @@ def test_through_the_dispatcher_the_stale_refusal_shows_the_moved_plan_and_a_dec
     assert "The plan moved since this gate was answered" in err
     assert f"digest: {detail['actual']}" in err
     assert f"answer:  crate run decide {run_id} profile.set.apply <option>" in err
-
     assert _drive(["run", "decide", run_id, "profile.set.apply", "apply"])[0] == 0
     assert gates.load(run_id).decisions["profile.set.apply"].digest == detail["shown"]["digest"]
     code, out, _ = _drive(["--output", "json", "--run", run_id, "profile", "set", "slim"])
-
     assert code == int(ExitCode.OK), out
     config.reset_cache()
     assert config.load().profile.name == "slim"
 
 
 def test_only_the_gates_own_stale_prints_a_gate_screen():
-    """A stale a verb raises on its write handle carries no options, so no screen is printed.
-
-    Without the options test, such a refusal would print the moved plan's
-    header over an empty options line and no plan.
-    """
+    """A stale a verb raises on its write handle carries no options, so no screen is printed."""
     state = _answered()
     with pytest.raises(gates.DecisionStale) as offered:
         gates.Gates(state=state).require(_spec(), plan=_plan(MOVED, "Two"))
     with pytest.raises(gates.DecisionRequired) as opened:
-        gates.Gates(state=gates.RunState(run_id="r", verb="probe", created="now")).require(_spec())
-
+        gates.Gates(state=_state()).require(_spec())
     assert render.is_gate_screen(offered.value.cause)
     assert render.is_gate_screen(opened.value.cause)
     assert not render.is_gate_screen(gates.DecisionStale(_spec(), "r", SHOWN, MOVED).cause)

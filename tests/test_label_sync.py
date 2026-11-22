@@ -1,14 +1,8 @@
 """U107: ``crate label sync`` asks, label by label, about what is new, and records each answer.
 
-The guided label sync's asking half, cut from the author's brainstorm of
-2026-10-02. Every scenario the brief names is driven here through the real
-dispatcher with a fake provider, a fake general catalogue where the gate is in
-play, and a scripted prompter where the question is put at a terminal.
-
-NOTHING HERE DOWNLOADS. A taken release is an accepted review item and a line
-in the sync record, and that is all this unit produces.
-
-NOTHING HERE REACHES A NETWORK. The root fixtures fail any test that does.
+Driven through the real dispatcher with a fake provider, a fake general catalogue
+where the gate is in play, and a scripted prompter at a terminal. Nothing here
+downloads or reaches a network.
 """
 
 from __future__ import annotations
@@ -19,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from cratekit import cli
 from cratekit.cli import prompt, registry
 from cratekit.core import config, review, tombstone
 from cratekit.core.cause import Cause, Remediation
@@ -41,9 +36,23 @@ SLUG = "tide-works"
 QUEUE = str(Queue.LABEL_RELEASE)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fixtures and fakes
-# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture(autouse=True)
+def one_parser(monkeypatch):
+    """One command tree per test and membership, built as every drive builds it.
+
+    Building the whole tree is half of every drive's time here, and argparse
+    keeps no state between parses, so a test's drives share the one it built.
+    """
+    real, built = cli.build_parser, {}
+    def build_parser():
+        membership = cli._membership()
+        if membership not in built:
+            built[membership] = real(membership=membership)
+        return built[membership]
+    monkeypatch.setattr(cli, "build_parser", build_parser)
 
 
 @pytest.fixture
@@ -61,12 +70,8 @@ def installed(tmp_path, monkeypatch):
 
 
 class Track:
-    """A provider row the provider reader reads, with a duration and no ISRC.
-
-    No ISRC on purpose: the genre gate then asks the general catalogue
-    nothing, which is the shape most of these scenarios want. The gate
-    scenario gives its rows an ISRC and binds a lookup.
-    """
+    """A provider row with a duration and, unless given, no ISRC, so the genre gate
+    asks the general catalogue nothing."""
 
     def __init__(
         self, track_id: str, artist: str, name: str, *, duration: int = 360, isrc: str = ""
@@ -174,9 +179,22 @@ def sync(*argv: str) -> tuple[int, dict]:
     return drive(["label", "sync", *argv])
 
 
-def next_question() -> dict | None:
-    code, envelope = sync("--next")
+def next_ok(*argv: str) -> dict:
+    code, envelope = sync("--next", *argv)
     assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
+def asked_three(monkeypatch) -> Provider:
+    """Tide Works followed with three new releases, and its question asked."""
+    register()
+    fake = three_new(monkeypatch)
+    next_question()
+    return fake
+
+
+def next_question() -> dict | None:
+    envelope = next_ok()
     return envelope["data"]["summary"]["question"]
 
 
@@ -238,12 +256,8 @@ def checks(envelope: dict, prefix: str) -> list[dict]:
 
 
 def walked() -> list[str]:
-    """A walk that answered every label, which ends at U108's one gate.
-
-    Returns the lines the walk said about each label, which the refusal
-    carries in front of the summary, so a test reads what the walk did from
-    exactly what a person deciding is shown.
-    """
+    """A walk that answered every label, ending at U108's one gate: the lines it
+    said about each label, as the refusal shows them to a person deciding."""
     code, envelope = sync()
     assert code == int(ExitCode.DECISION_REQUIRED), envelope
     detail = envelope["cause"]["detail"]
@@ -256,17 +270,13 @@ def line_for(lines: list[str], name: str) -> str:
     return found
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The brief's scenarios, through the structured path
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_label_with_three_new_releases_is_asked_once(installed, monkeypatch):
     register()
     fake = three_new(monkeypatch)
-
     question = next_question()
-
     assert question is not None
     assert question["label_id"] == SLUG and question["label_name"] == LABEL
     assert [one["identity"] for one in question["releases"]] == ["r3", "r2", "r1"]
@@ -275,9 +285,7 @@ def test_a_label_with_three_new_releases_is_asked_once(installed, monkeypatch):
     assert question["size"] == 7 * 360 * sync_cli.BYTES_PER_SECOND
     assert question["answers"] == ["all", "pick", "not-now", "stop"]
     assert fake.asked_for == [SLUG]
-
     answered = answer(SLUG, "all")
-
     assert answered["taken"] == ["r3", "r2", "r1"]
     assert answered["tracks"] == 7
     held = record(installed)["labels"][SLUG]
@@ -288,7 +296,6 @@ def test_a_label_with_three_new_releases_is_asked_once(installed, monkeypatch):
         rid: review.Verdict.ACCEPTED for rid in ("r1", "r2", "r3")
     }
     assert all(filed[rid].actor == sync_cli.ACTOR for rid in ("r1", "r2", "r3"))
-
     # A SECOND RUN ASKS NOTHING ABOUT THOSE THREE, and lists the label to know.
     assert next_question() is None
     assert fake.asked_for == [SLUG, SLUG]
@@ -298,12 +305,8 @@ def test_a_label_with_three_new_releases_is_asked_once(installed, monkeypatch):
 def test_after_any_answer_a_second_run_asks_nothing_about_those_releases(
     installed, monkeypatch, word
 ):
-    register()
-    three_new(monkeypatch)
-    next_question()
-
+    asked_three(monkeypatch)
     answer(SLUG, word, *(["r2"] if word == "pick" else []))
-
     if word == "stop":
         code, envelope = sync("--next")
         assert code == int(ExitCode.PRECONDITION), envelope
@@ -316,17 +319,12 @@ def test_after_any_answer_a_second_run_asks_nothing_about_those_releases(
 def test_not_now_moves_the_marker_and_a_release_published_after_is_asked_next_run(
     installed, monkeypatch
 ):
-    register()
-    three_new(monkeypatch)
-    next_question()
+    asked_three(monkeypatch)
     answered = answer(SLUG, "not-now")
     assert answered["taken"] == [] and answered["offered"] == 3
     assert items(installed) == {}
-
     bind(monkeypatch, {SLUG: [("r4", "2027", 3), ("r3", "2026", 4), ("r2", "2025", 2), ("r1", "2024", 1)]})
-
     question = next_question()
-
     assert question is not None
     assert [one["identity"] for one in question["releases"]] == ["r4"]
     answer(SLUG, "all")
@@ -341,21 +339,11 @@ def sweep_labels() -> None:
 
 
 def test_a_release_answered_not_now_is_not_filed_by_the_labels_sweep(installed, monkeypatch):
-    """The asked marker holds for the old sweep too, or a no comes back as catch up.
-
-    Until U109 takes labels out of ``sync all``, ``sync labels`` still sweeps.
-    A sweep that did not read the marker filed every release answered not now
-    into review, and the next ``label sync`` asked about them again as open
-    items, so a no did not stay a no.
-    """
-    register()
-    three_new(monkeypatch)
-    next_question()
+    """The asked marker holds for the old sweep too, or a no comes back as catch up."""
+    asked_three(monkeypatch)
     answer(SLUG, "not-now")
     bind(monkeypatch, {SLUG: [("r4", "2027", 3), ("r3", "2026", 4), ("r2", "2025", 2), ("r1", "2024", 1)]})
-
     sweep_labels()
-
     assert sorted(items(installed)) == ["r4"]
     question = next_question()
     assert [one["identity"] for one in question["releases"]] == ["r4"]
@@ -364,19 +352,11 @@ def test_a_release_answered_not_now_is_not_filed_by_the_labels_sweep(installed, 
 def test_a_release_the_sweep_filed_while_its_question_waited_is_settled_by_the_answer(
     installed, monkeypatch
 ):
-    """A question saved by ``--next`` holds its releases under pending, not asked.
-
-    A sweep that ran before the answer filed them, and a not now that settled
-    only the items the question knew of left them open for the next catch up.
-    """
-    register()
-    three_new(monkeypatch)
-    next_question()
+    """A sweep that filed a waiting question's releases leaves none open after a not now."""
+    asked_three(monkeypatch)
     sweep_labels()
     assert sorted(items(installed)) == ["r1", "r2", "r3"]
-
     answer(SLUG, "not-now")
-
     assert open_items(installed) == []
     assert {item.verdict for item in items(installed).values()} == {review.Verdict.SUPERSEDED}
     assert tombstones(installed) == 0
@@ -387,10 +367,7 @@ def test_a_walk_whose_gate_took_back_every_open_item_is_not_a_no_op(installed, m
     register()
     bind(monkeypatch, {SLUG: []})
     offered(installed, "r-old-hymn", published_genres=["Christian"])
-
-    code, envelope = sync("--next")
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok()
     assert envelope["outcome"] == "ok"
     (label_line,) = checks(envelope, f"label.{SLUG}")
     assert "1 open item(s) taken back by the genre gate" in label_line["detail"]
@@ -405,22 +382,16 @@ def test_the_labels_sweep_refuses_an_unreadable_record_before_any_login(installe
     path = config.state_path("label_sync", installed)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{not json")
-
     job_id = queued_sweep()
     code, refused = drive(["sync", "labels", "--job", job_id])
-
     assert "label-sync-unusable" in json.dumps(refused)
     assert resolved == []
     assert items(installed) == {}
 
 
 def test_pick_records_exactly_the_chosen_releases_and_no_others(installed, monkeypatch):
-    register()
-    three_new(monkeypatch)
-    next_question()
-
+    asked_three(monkeypatch)
     answered = answer(SLUG, "pick", "r3", "r1")
-
     assert answered["taken"] == ["r3", "r1"]
     filed = items(installed)
     assert set(filed) == {"r3", "r1"}
@@ -435,12 +406,8 @@ def test_pick_records_exactly_the_chosen_releases_and_no_others(installed, monke
 
 
 def test_stop_following_removes_the_label_and_records_no_download(installed, monkeypatch):
-    register()
-    three_new(monkeypatch)
-    next_question()
-
+    asked_three(monkeypatch)
     answered = answer(SLUG, "stop")
-
     assert answered["removed"] is True and answered["taken"] == []
     assert labels.RegistryStore().load().labels == {}
     assert items(installed) == {}
@@ -454,10 +421,7 @@ def test_a_label_with_nothing_new_is_not_asked_and_a_run_with_nothing_to_ask_say
 ):
     register()
     bind(monkeypatch, {SLUG: []})
-
-    code, envelope = sync("--next")
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok()
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["summary"]["question"] is None
     (label_line,) = checks(envelope, f"label.{SLUG}")
@@ -466,7 +430,6 @@ def test_a_label_with_nothing_new_is_not_asked_and_a_run_with_nothing_to_ask_say
     (said,) = checks(envelope, "question")
     assert "no label has anything new to ask about" in said["detail"]
     assert record(installed)["labels"] == {}
-
     code, text = drive_human(["label", "sync", "--next"])
     assert code == int(ExitCode.OK)
     assert "nothing new" in text
@@ -477,9 +440,7 @@ def test_a_newly_followed_label_is_offered_at_most_its_offer_per_sweep_newest(
 ):
     register()
     bind(monkeypatch, {SLUG: [(f"r{year}", str(year), 1) for year in range(2026, 1976, -1)]})
-
     question = next_question()
-
     assert question is not None
     assert [one["identity"] for one in question["releases"]] == [
         f"r{year}" for year in range(2026, 2016, -1)
@@ -548,9 +509,7 @@ def test_a_question_counts_only_the_labels_own_releases_past_its_window(
     """U238, measured live: Atipic said 414 more for about 27 of its own."""
     register(LABEL, "--offer", "3")
     bind_mixed(monkeypatch)
-
     question = next_question()
-
     assert [one["identity"] for one in question["releases"]] == [
         "own2026",
         "own2024",
@@ -571,9 +530,7 @@ def test_an_unread_listing_still_says_so_beside_the_count_past_the_window(
 ):
     register(LABEL, "--offer", "3")
     bind_mixed(monkeypatch, UnreadArtist)
-
     question = next_question()
-
     assert question["unread"] == 1
     (line,) = checks(drive(["label", "sync", "--next"])[1], "question")
     assert "7 more of the label's release(s) past this run's window" in line["detail"]
@@ -633,10 +590,7 @@ def test_nothing_new_after_an_answer_says_the_count_past_the_window(installed, m
     bind_mixed(monkeypatch)
     next_question()
     answer(SLUG, "not-now")
-
-    code, envelope = sync("--next")
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok()
     (label_line,) = checks(envelope, f"label.{SLUG}")
     assert label_line["detail"] == (
         f"{LABEL}: nothing new since it was last asked; 7 more of the label's "
@@ -659,15 +613,11 @@ def test_nothing_new_says_the_count_past_the_window_the_same_way(installed):
 def test_a_labels_own_offer_bounds_a_first_question(installed, monkeypatch):
     register(LABEL, "--offer", "3")
     bind(monkeypatch, {SLUG: [(f"r{year}", str(year), 1) for year in range(2026, 2016, -1)]})
-
     question = next_question()
-
     assert [one["identity"] for one in question["releases"]] == ["r2026", "r2025", "r2024"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The genre gate, before a label is asked
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_release_the_genre_gate_holds_never_appears_in_a_question(installed, monkeypatch):
@@ -676,21 +626,15 @@ def test_a_release_the_genre_gate_holds_never_appears_in_a_question(installed, m
     fake.releases["r-dance"] = ([Track("t1", "Label Act", "Floor", isrc="ZZTST2600001")], 2026)
     fake.releases["r-hymn"] = ([Track("t2", "Label Act", "Psalm", isrc="ZZTST2600002")], 2025)
     table = {"ZZTST2600001": ("Dance",), "ZZTST2600002": ("Christian",)}
-
     def lookup(value):
         return published.Published(published.SOURCE, "matched", genres=table[str(value)])
-
     monkeypatch.setattr(published, "for_lookup", lambda: lookup)
-
     question = next_question()
-
     assert [one["identity"] for one in question["releases"]] == ["r-dance"]
     code, held = drive(["label", "held"])
     assert code == int(ExitCode.OK), held
     assert [one["release_id"] for one in held["data"]["summary"]["releases"]] == ["r-hymn"]
-
     answer(SLUG, "all")
-
     # THE HOLD STANDS, and the held release is not in the asked set either:
     # it was never offered, so a kind change can still bring it to a question.
     assert record(installed)["labels"][SLUG]["asked"] == ["r-dance"]
@@ -706,9 +650,7 @@ def test_an_open_item_the_gate_would_now_hold_is_taken_back_before_the_question(
     offered(installed, "r-old-hymn", published_genres=["Christian"])
     offered(installed, "r-old-dance", published_genres=["Dance"])
     offered(installed, "r-old-unjudged")
-
     question = next_question()
-
     assert sorted(one["identity"] for one in question["releases"]) == [
         "r-old-dance",
         "r-old-unjudged",
@@ -720,9 +662,7 @@ def test_an_open_item_the_gate_would_now_hold_is_taken_back_before_the_question(
     assert tombstones(installed) == 0
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The first run's catch up
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_open_review_items_are_offered_once_and_settled_by_the_answer(installed, monkeypatch):
@@ -731,18 +671,14 @@ def test_open_review_items_are_offered_once_and_settled_by_the_answer(installed,
     kept = offered(installed, "r-old-1")
     dropped = offered(installed, "r-old-2")
     assert len(open_items(installed)) == 2
-
     question = next_question()
-
     assert sorted(one["identity"] for one in question["releases"]) == [
         "r-old-1", "r-old-2", "r1", "r2", "r3"
     ]
     waiting = {one["identity"]: one["item_id"] for one in question["releases"]}
     assert waiting["r-old-1"] == kept and waiting["r-old-2"] == dropped
     assert waiting["r3"] is None
-
     answered = answer(SLUG, "pick", "r-old-1", "r3")
-
     assert answered["taken"] == ["r3", "r-old-1"]
     filed = items(installed)
     assert filed["r-old-1"].verdict is review.Verdict.ACCEPTED
@@ -753,7 +689,6 @@ def test_open_review_items_are_offered_once_and_settled_by_the_answer(installed,
     assert open_items(installed) == []
     assert tombstones(installed) == 0
     assert not any(item.verdict is review.Verdict.REJECTED for item in filed.values())
-
     # AFTER THE FIRST RUN THE QUEUE HOLDS NO LABEL RELEASE FROM THIS PATH,
     # and the next run has nothing to ask.
     assert next_question() is None
@@ -767,9 +702,7 @@ def test_a_superseded_item_is_not_counted_as_waiting_by_label_approved(installed
     offered(installed, "r-old-2")
     next_question()
     answer(SLUG, "pick", "r-old-1")
-
     code, envelope = drive(["label", "approved"])
-
     assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert (summary["accepted"], summary["rejected"], summary["open"]) == (1, 0, 0)
@@ -790,16 +723,12 @@ def test_an_item_filed_under_a_labels_old_identifier_is_offered_under_the_label(
     document = json.loads(path.read_text())
     document["renamed"] = {"voll-schon": "voll-schoen"}
     path.write_text(json.dumps(document))
-
     question = next_question()
-
     assert question["label_id"] == "voll-schoen"
     assert [one["identity"] for one in question["releases"]] == ["r-moved"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The interactive path
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def five_labels(monkeypatch) -> Provider:
@@ -818,9 +747,7 @@ def five_labels(monkeypatch) -> Provider:
 def test_stopping_after_two_of_five_labels_resumes_at_the_third(installed, monkeypatch):
     fake = five_labels(monkeypatch)
     terminal = script(monkeypatch, "all", "not-now", "quit")
-
     code, envelope = sync()
-
     assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert [one["answer"] for one in summary["answered"]] == ["all", "not-now"]
@@ -835,10 +762,8 @@ def test_stopping_after_two_of_five_labels_resumes_at_the_third(installed, monke
     assert "answer" not in held["gamma-works"] and held["gamma-works"]["pending"]
     assert "delta-works" not in held and "epsilon-works" not in held
     assert sorted(items(installed)) == ["alpha-works-r0", "alpha-works-r1"]
-
     terminal = script(monkeypatch, "pick", "2", "stop", "all")
     lines = walked()
-
     answered = record(installed)["answers"][2:]
     assert [(one["label_id"], one["answer"]) for one in answered] == [
         ("gamma-works", "pick"),
@@ -875,9 +800,7 @@ def test_the_structured_path_asks_the_same_question_and_takes_the_same_answer(
     assert shown["label_id"] == "alpha-works"
     answer("alpha-works", "pick", "a2")
     terminal = script(monkeypatch, "pick", "2")
-
     lines = walked()
-
     assert "nothing new" in line_for(lines, "Alpha Works")
     assert line_for(lines, "Beta Works").startswith("Beta Works: pick")
     assert "Beta Works: 3 new release(s), 7 track(s), about 277 MB" in terminal.shown
@@ -906,9 +829,7 @@ def test_an_empty_line_never_moves_a_marker_and_a_prompt_nobody_answers_refuses(
     register()
     three_new(monkeypatch)
     terminal = script(monkeypatch, "", "", "")
-
     code, envelope = sync()
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-sync-unanswerable"
     assert envelope["cause"]["detail"] == {"label": SLUG, "answered": []}
@@ -924,9 +845,7 @@ def test_a_word_outside_the_set_is_asked_again_and_the_answers_before_it_are_sav
 ):
     five_labels(monkeypatch)
     terminal = script(monkeypatch, "all", "download", "yes", "maybe")
-
     code, envelope = sync()
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-sync-unanswerable"
     assert envelope["cause"]["detail"]["answered"] == ["alpha-works"]
@@ -939,9 +858,7 @@ def test_a_pick_outside_the_numbers_is_asked_again(installed, monkeypatch):
     register()
     three_new(monkeypatch)
     terminal = script(monkeypatch, "pick", "9", "1 3")
-
     walked()
-
     assert "9 is not a release number between 1 and 3" in terminal.shown
     assert record(installed)["answers"][0]["taken"] == ["r3", "r1"]
 
@@ -951,9 +868,7 @@ def test_a_pick_of_a_digit_that_is_not_a_number_is_asked_again(installed, monkey
     register()
     three_new(monkeypatch)
     terminal = script(monkeypatch, "pick", "\u00b2", "2")
-
     walked()
-
     assert "\u00b2 is not a release number between 1 and 3" in terminal.shown
     assert record(installed)["answers"][0]["taken"] == ["r2"]
 
@@ -975,9 +890,7 @@ def test_the_prompt_goes_through_the_one_allowlisted_reader_and_the_verb_reads_n
     assert sync_cli.PROMPTER is prompt.Prompter
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The provider, and what a refusal leaves
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_provider_refusal_mid_run_parks_it_with_the_remaining_labels_unasked(
@@ -986,9 +899,7 @@ def test_a_provider_refusal_mid_run_parks_it_with_the_remaining_labels_unasked(
     fake = five_labels(monkeypatch)
     fake.parked.add("gamma-works")
     script(monkeypatch, "all", "not-now", "all", "all", "all")
-
     code, envelope = sync()
-
     assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
     assert envelope["cause"]["reason"] == "provider-cooldown"
     assert fake.asked_for == ["alpha-works", "beta-works", "gamma-works"]
@@ -1005,9 +916,7 @@ def test_a_label_whose_catalogue_cannot_be_listed_fails_its_line_and_the_walk_go
     five_labels(monkeypatch)
     fake = bind(monkeypatch, {"alpha-works": [("a-r0", "2026", 1)], "gamma-works": [("g-r0", "2026", 1)]})
     script(monkeypatch, "all", "all")
-
     lines = walked()
-
     assert line_for(lines, "Alpha Works").startswith("Alpha Works: all")
     assert line_for(lines, "Gamma Works").startswith("Gamma Works: all")
     for name in ("Beta Works", "Delta Works", "Epsilon Works"):
@@ -1021,9 +930,7 @@ def test_a_catalogue_that_confirms_nothing_is_not_a_label_with_nothing_new(
 ):
     register()
     bind(monkeypatch, {SLUG: [("r3", "2026", 1), ("r2", "2025", 1)]}, confirmed=set())
-
     code, envelope = sync("--next")
-
     # R-1114: the one label followed could not be read, so the run is not a
     # run with nothing to ask, and it refuses with the label's line kept.
     assert code == int(ExitCode.PRECONDITION), envelope
@@ -1042,9 +949,7 @@ def test_a_release_whose_tracks_cannot_be_read_is_counted_as_unread_not_as_empty
     register()
     fake = three_new(monkeypatch)
     del fake.releases["r2"]
-
     question = next_question()
-
     assert question["tracks"] == 5
     assert question["unknown"] == 1
     by_id = {one["identity"]: one for one in question["releases"]}
@@ -1058,16 +963,12 @@ def test_a_saved_question_is_printed_again_with_no_provider_call(installed, monk
     register()
     fake = three_new(monkeypatch)
     first = next_question()
-
     again = next_question()
-
     assert again == first
     assert fake.asked_for == [SLUG]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. Refusals of the command line, each with nothing recorded
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -1088,9 +989,7 @@ def test_a_half_shaped_invocation_is_refused_and_records_nothing(installed, monk
     three_new(monkeypatch)
     if "--release" in argv and "pick" not in argv:
         next_question()
-
     code, envelope = sync(*argv)
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "review-selection-invalid"
     assert said in envelope["cause"]["message"]
@@ -1101,9 +1000,7 @@ def test_a_half_shaped_invocation_is_refused_and_records_nothing(installed, monk
 def test_an_answer_with_no_question_waiting_is_refused(installed, monkeypatch):
     register()
     three_new(monkeypatch)
-
     code, envelope = sync("--answer", "all", "--label", SLUG)
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "review-selection-invalid"
     assert "no question is waiting" in envelope["cause"]["message"]
@@ -1114,9 +1011,7 @@ def test_stop_with_no_question_waiting_names_the_registry_remove(installed, monk
     """A label with nothing new is never asked, so ``--next`` is no remedy for stop."""
     register()
     bind(monkeypatch, {SLUG: []})
-
     code, envelope = sync("--answer", "stop", "--label", SLUG)
-
     assert code == int(ExitCode.PRECONDITION), envelope
     steps = json.dumps(envelope["cause"])
     assert f"crate label registry remove {SLUG}" in steps
@@ -1129,9 +1024,7 @@ def test_a_later_answer_files_its_releases_under_the_run_that_asked(installed, m
     three_new(monkeypatch)
     code, asked = sync("--next")
     assert code == int(ExitCode.OK), asked
-
     answer(SLUG, "all")
-
     filed = items(installed)
     assert {filed[rid].payload[sweep.SWEEP_RUN] for rid in ("r1", "r2", "r3")} == {
         asked["run_id"]
@@ -1144,21 +1037,15 @@ def test_a_walk_left_unanswered_after_its_question_was_saved_is_not_a_no_op(
     register()
     three_new(monkeypatch)
     script(monkeypatch, "quit")
-
     code, envelope = sync()
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
     assert record(installed)["labels"][SLUG]["pending"]
 
 
 def test_a_pick_naming_a_release_the_question_did_not_offer_is_refused(installed, monkeypatch):
-    register()
-    three_new(monkeypatch)
-    next_question()
-
+    asked_three(monkeypatch)
     code, envelope = sync("--answer", "pick", "--label", SLUG, "--release", "r3", "--release", "r9")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "review-selection-invalid"
     assert envelope["cause"]["detail"]["unknown"] == ["r9"]
@@ -1169,18 +1056,14 @@ def test_a_pick_naming_a_release_the_question_did_not_offer_is_refused(installed
 def test_an_answer_for_a_label_nobody_follows_is_refused(installed, monkeypatch):
     register()
     three_new(monkeypatch)
-
     code, envelope = sync("--answer", "all", "--label", "Nobody Works")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-unknown"
 
 
 def test_an_empty_registry_is_refused_before_any_provider_is_resolved(installed, monkeypatch):
     fake = bind(monkeypatch, {})
-
     code, envelope = sync("--next")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-registry-empty"
     assert fake.asked_for == []
@@ -1194,9 +1077,7 @@ def test_a_record_that_cannot_be_read_refuses_rather_than_asking_everything_agai
     path = config.state_path("label_sync", installed)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{not json")
-
     code, envelope = sync("--next")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-sync-unusable"
     assert fake.asked_for == []
@@ -1211,9 +1092,7 @@ def test_a_record_of_another_version_refuses_rather_than_being_read_as_this_buil
     path = config.state_path("label_sync", installed)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"version": 2, "labels": {}, "answers": []}))
-
     code, envelope = sync("--next")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-sync-unusable"
     assert "version 2" in envelope["cause"]["message"]
@@ -1231,9 +1110,7 @@ def test_an_item_decided_between_the_question_and_the_answer_is_left_as_decided(
     next_question()
     with review.open_store(installed) as store:
         review.resolve(store, decided, review.Verdict.REJECTED, actor="a person")
-
     answered = answer(SLUG, "all")
-
     assert answered["taken"] == ["r-old-2"]
     assert answered["left"] == ["r-old-1"]
     filed = items(installed)
@@ -1248,7 +1125,6 @@ def test_a_provider_refusal_while_counting_a_catch_up_release_parks_the_run(
     register()
     fake = bind(monkeypatch, {SLUG: []})
     offered(installed, "r-old-1")
-
     def refused(release_id):
         raise Parked(
             Cause(
@@ -1258,19 +1134,14 @@ def test_a_provider_refusal_while_counting_a_catch_up_release_parks_the_run(
                 origin=("provider_gate",),
             )
         )
-
     monkeypatch.setattr(fake, "release_tracks", refused)
-
     code, envelope = sync("--next")
-
     assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
     assert envelope["cause"]["reason"] == "provider-cooldown"
     assert record(installed)["labels"] == {}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. What the verb and its record declare
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_verb_declares_what_it_is():
@@ -1295,9 +1166,7 @@ def test_the_record_is_library_state_coupled_with_the_review_queue(installed, mo
     assert held.snapshot is config.SnapshotRole.COUPLED
     assert held.rollback_effects == (config.RollbackEffect.NONE,)
     assert config.state_file("label_sync_lock").snapshot is config.SnapshotRole.NEVER_RESTORED
-    register()
-    three_new(monkeypatch)
-    next_question()
+    asked_three(monkeypatch)
     answer(SLUG, "all")
     path = config.state_path("label_sync", installed)
     assert path.is_file()
@@ -1308,18 +1177,14 @@ def test_the_record_is_library_state_coupled_with_the_review_queue(installed, mo
 def test_the_default_human_output_names_the_question_and_each_release(installed, monkeypatch):
     register()
     three_new(monkeypatch)
-
     code, text = drive_human(["label", "sync", "--next"])
-
     assert code == int(ExitCode.OK)
     assert "Tide Works: 3 new release(s), 7 track(s), about 277 MB" in text
     assert "Release r3 (2026), 4 track(s)" in text
     assert "crate label sync --answer all --label tide-works" in text
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U189: --next --label asks about one followed label alone
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def two_labels(monkeypatch, *, second: list[tuple[str, str, int]] | None = None) -> Provider:
@@ -1343,10 +1208,7 @@ def test_next_label_asks_the_named_label_and_leaves_the_one_above_it_unlisted(
     installed, monkeypatch
 ):
     fake = two_labels(monkeypatch)
-
-    code, envelope = next_for("Beta Works")
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok("--label", "Beta Works")
     assert envelope["outcome"] == "ok"
     question = envelope["data"]["summary"]["question"]
     assert question["label_id"] == "beta-works"
@@ -1371,10 +1233,7 @@ def test_next_label_leaves_another_labels_saved_question_exactly_as_it_was(
     assert first["label_id"] == "alpha-works"
     path = config.state_path("label_sync", installed)
     before = json.loads(path.read_text(encoding="utf-8"))["labels"]["alpha-works"]
-
-    code, envelope = next_for("beta-works")
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok("--label", "beta-works")
     assert envelope["data"]["summary"]["question"]["label_id"] == "beta-works"
     after = json.loads(path.read_text(encoding="utf-8"))["labels"]
     assert after["alpha-works"] == before
@@ -1388,13 +1247,9 @@ def test_next_label_prints_a_saved_question_again_with_no_catalogue_call(
     installed, monkeypatch
 ):
     fake = two_labels(monkeypatch)
-    code, shown = next_for("Beta Works")
-    assert code == int(ExitCode.OK), shown
+    shown = next_ok("--label", "Beta Works")
     listed = (list(fake.asked_for), list(fake.releases_asked_for))
-
-    code, again = next_for("Beta Works")
-
-    assert code == int(ExitCode.OK), again
+    again = next_ok("--label", "Beta Works")
     assert again["data"]["summary"]["question"] == shown["data"]["summary"]["question"]
     assert (fake.asked_for, fake.releases_asked_for) == listed
     assert fake.asked_for == ["beta-works"]
@@ -1406,20 +1261,14 @@ def test_next_label_prints_a_question_the_plain_next_saved_with_no_catalogue_cal
     fake = two_labels(monkeypatch)
     first = next_question()
     listed = (list(fake.asked_for), list(fake.releases_asked_for))
-
-    code, envelope = next_for("Alpha Works")
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok("--label", "Alpha Works")
     assert envelope["data"]["summary"]["question"] == first
     assert (fake.asked_for, fake.releases_asked_for) == listed
 
 
 def test_next_label_with_nothing_new_says_so_in_one_check(installed, monkeypatch):
     fake = two_labels(monkeypatch, second=[])
-
-    code, envelope = next_for("Beta Works")
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok("--label", "Beta Works")
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["summary"]["question"] is None
     (line,) = envelope["data"]["checks"]
@@ -1436,9 +1285,7 @@ def test_next_label_whose_listing_fails_reports_the_failure_in_one_check(
     register("Alpha Works")
     register("Beta Works")
     fake = bind(monkeypatch, {"alpha-works": [("a-r1", "2026", 2)]})
-
     code, envelope = next_for("Beta Works")
-
     # R-1114: the one label asked about could not be listed, which is not
     # nothing new, so the single label form refuses as the walk over every
     # label does: its own line, then what to do, and no other label's.
@@ -1461,9 +1308,7 @@ def test_next_label_whose_listing_fails_reports_the_failure_in_one_check(
 @pytest.mark.parametrize("name", ["", "   "])
 def test_next_label_with_an_empty_name_is_refused_as_no_name_given(installed, monkeypatch, name):
     fake = two_labels(monkeypatch)
-
     code, envelope = next_for(name)
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "review-selection-invalid"
     assert "an empty name names none" in envelope["cause"]["message"]
@@ -1476,9 +1321,7 @@ def test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing(
     installed, monkeypatch, name
 ):
     fake = two_labels(monkeypatch)
-
     code, envelope = next_for(name)
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-unknown"
     assert f"no favourite label is named {name!r}" in envelope["cause"]["message"]
@@ -1490,9 +1333,7 @@ def test_next_label_for_a_label_nobody_follows_is_refused_before_any_listing(
 def test_label_or_release_alone_refuses_and_names_next_label(installed, monkeypatch, argv):
     register()
     fake = three_new(monkeypatch)
-
     code, envelope = sync(*argv)
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "review-selection-invalid"
     assert "--label with --next" in envelope["cause"]["message"]
@@ -1504,14 +1345,10 @@ def test_label_or_release_alone_refuses_and_names_next_label(installed, monkeypa
 
 def test_next_label_then_answer_then_next_label_says_nothing_new(installed, monkeypatch):
     fake = two_labels(monkeypatch)
-    code, envelope = next_for("Beta Works")
-    assert code == int(ExitCode.OK), envelope
-
+    envelope = next_ok("--label", "Beta Works")
     answered = answer("beta-works", "all")
-
     assert sorted(answered["taken"]) == ["b-r1", "b-r2"]
-    code, envelope = next_for("Beta Works")
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok("--label", "Beta Works")
     assert envelope["outcome"] == "no_op"
     (line,) = envelope["data"]["checks"]
     assert "nothing new since it was last asked" in line["detail"]
@@ -1524,14 +1361,11 @@ def test_an_answer_with_nothing_waiting_names_next_label_and_following_it_reache
 ):
     """The remedy names the label refused, so following it never walks the labels above."""
     fake = two_labels(monkeypatch)
-
     code, envelope = sync("--answer", "all", "--label", "beta-works")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     steps = envelope["cause"]["remediation"]["steps"]
     assert steps == ["ask it first with: crate label sync --next --label beta-works"]
-    code, asked = next_for("beta-works")
-    assert code == int(ExitCode.OK), asked
+    asked = next_ok("--label", "beta-works")
     assert asked["data"]["summary"]["question"]["label_id"] == "beta-works"
     assert sorted(answer("beta-works", "all")["taken"]) == ["b-r1", "b-r2"]
     assert fake.asked_for == ["beta-works"]
@@ -1542,9 +1376,7 @@ def test_a_pick_outside_the_question_names_next_label_for_its_identifiers(
 ):
     two_labels(monkeypatch)
     next_for("beta-works")
-
     code, envelope = sync("--answer", "pick", "--label", "beta-works", "--release", "b-r9")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["remediation"]["steps"] == [
         "take the identifiers from: crate label sync --next --label beta-works"
@@ -1560,9 +1392,7 @@ def test_a_pick_with_no_release_names_next_label_for_the_label_it_named(
 ):
     """The name is quoted, so a name with a space or an apostrophe pastes as one word."""
     two_labels(monkeypatch)
-
     code, envelope = sync("--answer", "pick", "--label", name)
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["remediation"]["steps"] == [
         f"pass --release RELEASE_ID for each release, from: crate label sync --next "
@@ -1575,9 +1405,7 @@ def test_a_walk_nobody_can_answer_names_next_label_for_the_label_it_stopped_at(
 ):
     two_labels(monkeypatch)
     script(monkeypatch)
-
     code, envelope = sync()
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-sync-unanswerable"
     (step,) = envelope["cause"]["remediation"]["steps"]
@@ -1587,18 +1415,14 @@ def test_a_walk_nobody_can_answer_names_next_label_for_the_label_it_stopped_at(
 
 def test_next_label_human_output_names_the_one_label(installed, monkeypatch):
     two_labels(monkeypatch)
-
     code, text = drive_human(["label", "sync", "--next", "--label", "Beta Works"])
-
     assert code == int(ExitCode.OK)
     assert "Beta Works: 2 new release(s), 4 track(s)" in text
     assert "crate label sync --answer all --label beta-works" in text
     assert "Alpha Works" not in text
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-515: a release the provider lists short of its declared count
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_short_release_is_counted_over_its_rows_and_the_question_says_the_shortfall(
@@ -1608,16 +1432,13 @@ def test_a_short_release_is_counted_over_its_rows_and_the_question_says_the_shor
     fake = three_new(monkeypatch)
     rows, year = fake.releases["r3"]
     fake.releases["r3"] = (rows, year, 6)
-
     question = next_question()
-
     (short,) = [one for one in question["releases"] if one["identity"] == "r3"]
     assert short["tracks"] == 4
     assert short["shortfall"] == {"declared": 6, "listed": 4, "withheld": 2}
     assert all(one["shortfall"] is None for one in question["releases"] if one is not short)
     assert question["provider_withheld"] == 2
-    code, envelope = sync("--next")
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok()
     (asked,) = checks(envelope, "question")
     assert "2 track(s) withheld by the provider on 1 release(s)" in asked["detail"]
     (line,) = checks(envelope, "release.r3")
@@ -1635,11 +1456,7 @@ def test_full_releases_say_nothing_of_a_shortfall(installed, monkeypatch):
 def test_a_saved_shortfall_that_withheld_nothing_reads_back_as_no_shortfall(
     installed, monkeypatch
 ):
-    """A shortfall block of withheld 0 is not a shortfall when a question is read back.
-
-    Without this, ``_short_of`` could keep a zero-withheld block and the release
-    line and counts would name a shortfall that withheld nothing (R-515 S8).
-    """
+    """A shortfall block of withheld 0 is not a shortfall when read back (R-515 S8)."""
     register()
     three_new(monkeypatch)
     first = next_question()
@@ -1652,9 +1469,7 @@ def test_a_saved_shortfall_that_withheld_nothing_reads_back_as_no_shortfall(
         "withheld": 0,
     }
     path.write_text(json.dumps(document), encoding="utf-8")
-
-    code, envelope = sync("--next")
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok()
     question = envelope["data"]["summary"]["question"]
     (one,) = [release for release in question["releases"] if release["identity"] == identity]
     assert one["shortfall"] is None
@@ -1665,9 +1480,7 @@ def test_a_saved_shortfall_that_withheld_nothing_reads_back_as_no_shortfall(
     assert "withheld by the provider" not in line["detail"]
 
 
-# ---------------------------------------------------------------------------
 # R-1114: a label that could not be read is not a label with nothing new
-# ---------------------------------------------------------------------------
 
 
 def test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_neither(
@@ -1676,9 +1489,7 @@ def test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_n
     register("Alpha Works")
     register("Beta Works")
     fake = bind(monkeypatch, {})
-
     code, envelope = sync("--next")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["outcome"] == "failed"
     cause = envelope["cause"]
@@ -1707,7 +1518,6 @@ def test_next_over_two_labels_neither_listable_refuses_and_says_nothing_new_of_n
     assert not [one for one in envelope["data"]["checks"] if "nothing new" in one["detail"]]
     assert fake.asked_for == ["alpha-works", "beta-works"]
     assert record(installed)["labels"] == {}
-
     code, text = drive_human(["label", "sync", "--next"])
     assert code == int(ExitCode.PRECONDITION)
     assert "no label has anything new" not in text
@@ -1721,10 +1531,7 @@ def test_next_closing_line_names_only_the_label_that_was_listed(installed, monke
     register("Alpha Works")
     register("Beta Works")
     fake = bind(monkeypatch, {"alpha-works": []})
-
-    code, envelope = sync("--next")
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok()
     assert envelope["outcome"] == "no_op"
     assert envelope["cause"] is None
     (alpha,) = checks(envelope, "label.alpha-works")
@@ -1745,10 +1552,7 @@ def test_next_over_two_labels_both_listed_with_nothing_new_is_unchanged(installe
     register("Alpha Works")
     register("Beta Works")
     bind(monkeypatch, {"alpha-works": [], "beta-works": []})
-
-    code, envelope = sync("--next")
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok()
     assert envelope["outcome"] == "no_op"
     (said,) = checks(envelope, "question")
     assert said["detail"] == "no label has anything new to ask about"
@@ -1763,10 +1567,7 @@ def test_next_with_one_label_skipped_and_the_next_asked_still_asks(installed, mo
     register("Alpha Works")
     register("Beta Works")
     bind(monkeypatch, {"beta-works": [("b-r1", "2026", 2)]})
-
-    code, envelope = sync("--next")
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = next_ok()
     assert envelope["outcome"] == "ok"
     assert envelope["data"]["summary"]["question"]["label_id"] == "beta-works"
     (alpha,) = checks(envelope, "label.alpha-works")

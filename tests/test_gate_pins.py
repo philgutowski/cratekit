@@ -1,11 +1,8 @@
 """A gate's answer binds to the facts it pins outside the digest (U161).
 
-The native landing's digest names the library and not the database file, so a
-copy rehearsal can digest as the live plan (R-922). The review of U161 drove
-what that cost on its own: an answer given over one file was honoured by a
-continuation whose config named another, and the rows went there. The file is
-therefore pinned on the run beside the digest, recorded while the gate is
-open and compared when the recorded answer is used.
+The native landing's digest names the library and not the database file, so the
+file is pinned on the run beside the digest when the gate opens and compared
+when the recorded answer is used.
 """
 
 from __future__ import annotations
@@ -22,11 +19,8 @@ COPY = "/library/rehearsal/master.db"
 
 def _spec() -> registry.GateSpec:
     return registry.GateSpec(
-        name="pinned.probe",
-        options=("apply", "abort"),
-        prompt="Apply this plan?",
-        explicit=True,
-        digest_source="plan",
+        name="pinned.probe", options=("apply", "abort"), prompt="Apply this plan?",
+        explicit=True, digest_source="plan",
     )
 
 
