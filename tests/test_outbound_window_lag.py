@@ -1,16 +1,11 @@
 """U226: an account playlist read after a write reads it as it stands, not the window that lags it.
 
-Sitting 84 measured the client's unpaged read (``playlist.tracks()`` with no
-window) returning a playlist's new order at once after a move, while the window
-read every listing walks (``acquire.listing.playlist_tracks``) returned the old
-one for minutes. Driven against the U220 stand in with ``window_only`` set: the
-read judged is the unpaged one when it holds the whole playlist, so a move or a
-removal is taken as done with nothing sent twice; an unpaged first page that
-disagrees with the window is a lag, read again and then refused. R-1360 walks
-the unpaged read past a capped first page, and ``walk_lags`` makes the walk's
-later pages lag as the window does.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+Sitting 84 measured the client's unpaged read (``playlist.tracks()``) showing a
+move at once while the window read (``acquire.listing.playlist_tracks``) lagged
+for minutes. Driven against the U220 stand in with ``window_only`` set: an
+unpaged read holding the whole playlist is the one judged; an unpaged first page
+that disagrees with the window is a lag, read again and then refused. R-1360
+walks the unpaged read past a capped first page. D1 applies.
 """
 
 from __future__ import annotations
@@ -20,9 +15,9 @@ from types import SimpleNamespace
 import pytest
 
 from cratekit.acquire import listing
-from cratekit.core.cause import CratekitError
 from cratekit.modules.outbound import tidal_account
-from tests.test_outbound_order import Provider, _adapter
+from tests.test_outbound_order import Provider, _adapter, _lands, _refused
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
 from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture
 
 
@@ -51,12 +46,6 @@ def _moved_by_a_person(now: list[str], before: list[str], lagging: int, **window
 
 #: An unpaged read of a two track first page whose later pages lag as the window does.
 FIRST_PAGE = {"unpaged": 2, "walk_lags": True}
-
-
-def _refused(call):
-    with pytest.raises(CratekitError) as refused:
-        call()
-    return refused.value.cause
 
 
 # ── the judge ───────────────────────────────────────────────────────────────
@@ -128,9 +117,7 @@ def test_a_move_whose_window_lags_and_unpaged_read_does_not_is_taken_as_done(ins
     """The measured refusal: every move landed, the window read the old order."""
     provider = _window_lagging(["a", "b", "c", "d"], 99)
     slept: list[float] = []
-    after = _adapter(installed, provider, slept).order_tracks("mine", ("d", "c", "a", "b"))
-    assert after == ("d", "c", "a", "b")
-    assert provider.members == ["d", "c", "a", "b"]
+    _lands(_adapter(installed, provider, slept), ("d", "c", "a", "b"), provider)
     assert len(provider.moves) == 2, "a move was sent twice"
     assert provider.refused == 0
     assert slept == [], "a read back the unpaged read settled was waited on"
@@ -146,8 +133,7 @@ def test_each_move_carries_the_tag_the_unpaged_read_came_with(installed):
 def test_an_order_planned_after_a_lagging_window_is_planned_from_the_unpaged_read(installed):
     """A person's move the window has not caught up with: the moves start where tracks stand."""
     provider = _moved_by_a_person(["c", "a", "b"], ["a", "b", "c"], 99)
-    assert _adapter(installed, provider).order_tracks("mine", ("a", "c", "b")) == ("a", "c", "b")
-    assert provider.members == ["a", "c", "b"]
+    _lands(_adapter(installed, provider), ("a", "c", "b"), provider)
 
 
 def test_a_window_that_lags_beside_a_first_page_is_not_read_back_between_moves(installed):
@@ -174,8 +160,7 @@ def test_a_window_that_catches_up_beside_a_first_page_settles_as_done(installed)
 def test_a_first_reading_whose_window_lags_is_read_again_before_any_move(installed):
     provider = _moved_by_a_person(["c", "a", "b", "d"], ["a", "b", "c", "d"], 1, **FIRST_PAGE)
     slept: list[float] = []
-    after = _adapter(installed, provider, slept).order_tracks("mine", ("a", "c", "b", "d"))
-    assert after == ("a", "c", "b", "d")
+    _lands(_adapter(installed, provider, slept), ("a", "c", "b", "d"))
     assert slept == [tidal_account.ORDER_PAUSES[0]]
 
 
@@ -437,8 +422,7 @@ def test_an_order_past_the_first_hundred_moves_the_track_where_it_stands(install
     """On main the stale window put t130 at 130, where t129 stands: the wrong track was moved."""
     provider = _long_lagging()
     asked = _t130_first(provider)
-    assert _adapter(installed, provider).order_tracks("mine", asked) == asked
-    assert provider.members == list(asked)
+    _lands(_adapter(installed, provider), asked, provider)
     assert [indices for indices, _to, _tag in provider.moves] == [(131,)]
 
 
