@@ -26,7 +26,7 @@ from cratekit.core import config, drift, rb_writer, session, tags
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import land_cli, native
 from tests.cli_drive import drive
-from tests.test_intake_land_native import _land, _music, _query, _stage, _two_acts
+from tests.test_intake_land_native import _land, _query, _stage, _two_acts
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_intake_land_native import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
@@ -36,7 +36,7 @@ from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
 from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
-from tests.test_rb_writer_db import _row
+from tests.test_intake_land_vox_native import _add_rows, _added, _content_id, _my_tag, _plan
 
 #: A category any library holds once a person made one My Tag, which the writer
 #: copies the Analysis category's shape from.
@@ -48,62 +48,16 @@ DYN_ID = "9101"
 
 def _seed_category(cfg: config.Config) -> None:
     """One My Tag category of the person's own, so the writer has a shape to copy."""
-    from pyrekordbox.db6 import tables
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
-    engine = create_engine(f"sqlite:///{cfg.library.db_path}")
-    with Session(engine) as db_session:
-        db_session.add(
-            _row(
-                tables.DjmdMyTag,
-                ID=MOOD_ID,
-                Name="Mood",
-                Attribute=1,
-                ParentID="root",
-                Seq=0,
-                UUID="mood",
-                rb_local_deleted=0,
-            )
-        )
-        db_session.commit()
-    engine.dispose()
+    _add_rows(cfg, _my_tag(MOOD_ID, "Mood", "root", "mood"))
 
 
 def _seed_removed_dyn(cfg: config.Config) -> None:
     """The Analysis category holding a dyn value rekordbox removed."""
-    from pyrekordbox.db6 import tables
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
-    engine = create_engine(f"sqlite:///{cfg.library.db_path}")
-    with Session(engine) as db_session:
-        db_session.add(
-            _row(
-                tables.DjmdMyTag,
-                ID=ANALYSIS_ID,
-                Name=native.DYN_CATEGORY,
-                Attribute=1,
-                ParentID="root",
-                Seq=1,
-                UUID="analysis-category",
-                rb_local_deleted=0,
-            )
-        )
-        db_session.add(
-            _row(
-                tables.DjmdMyTag,
-                ID=DYN_ID,
-                Name=native.DYN_VALUE,
-                Attribute=0,
-                ParentID=ANALYSIS_ID,
-                Seq=0,
-                UUID="dyn-value",
-                rb_local_deleted=1,
-            )
-        )
-        db_session.commit()
-    engine.dispose()
+    _add_rows(
+        cfg,
+        _my_tag(ANALYSIS_ID, native.DYN_CATEGORY, "root", "analysis-category", seq=1),
+        _my_tag(DYN_ID, native.DYN_VALUE, ANALYSIS_ID, "dyn-value", removed=1),
+    )
 
 
 def _read(cfg: config.Config, silence: Path, name: str, level: str | None, verdict: str | None):
@@ -113,13 +67,6 @@ def _read(cfg: config.Config, silence: Path, name: str, level: str | None, verdi
     if any(value is not None for value in fields.values()):
         assert tags.write_tags(path, fields)
     return path
-
-
-def _content_id(cfg: config.Config, name: str) -> str:
-    ((content_id,),) = _query(
-        cfg, "SELECT ID FROM djmdContent WHERE FolderPath = ?", str(_music(cfg) / name)
-    )
-    return str(content_id)
 
 
 def _marked(cfg: config.Config) -> frozenset[str]:
@@ -416,40 +363,6 @@ def test_the_digest_and_the_answer_move_with_the_cut(writable, silence):
     assert _added_item(_shown(second), "One.flac")["drift_verdict"] == drift.STEADY
     assert _added_item(_shown(second), "One.flac")["dyn"] is False
     assert _shown(first)["digest"] != _shown(second)["digest"]
-
-
-def _plan(rows: tuple[native.RowPlan, ...], **fields) -> native.NativePlan:
-    """A plan of these rows and nothing else, for the engine's pure answers."""
-    return native.NativePlan(
-        tree_id="intake",
-        root_id="root",
-        root_name="INBOX",
-        playlist="batch",
-        database=Path("/db"),
-        device_id="d",
-        master_db_id="1",
-        base_drive=None,
-        current_drive=None,
-        rows=rows,
-        link=None,
-        digest="",
-        **fields,
-    )
-
-
-def _added(name: str, **fields) -> native.RowPlan:
-    return native.RowPlan(
-        source=Path(f"/staging/{name}"),
-        target=Path(f"/music/{name}"),
-        action=native.ADD,
-        title=name,
-        folder_path=f"/music/{name}",
-        file_name=name,
-        file_size=1,
-        file_type=1,
-        content_link=None,
-        **fields,
-    )
 
 
 def test_the_engine_digest_covers_each_rows_drift_verdict_and_answer():
