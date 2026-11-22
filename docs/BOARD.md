@@ -9,7 +9,9 @@ Issues live on `philgutowski/cratekit`. Milestones are the seven plan phases, A 
 ## What is on it
 
 **The board is the BUILD. `docs/residual-findings.md` is the LEDGER.** Two
-registers answering two questions, and they are not mirrors of each other.
+registers answering two questions, and they are not mirrors of each other. The
+ledger's older entries are archived by number range in `docs/ledger/`, no file
+over 5000 lines (U314).
 
 | Kind | On the board | Why |
 |---|---|---|
@@ -33,7 +35,7 @@ checks is a claim with no expiry. Ask the repository instead:
 
     gh issue list --repo philgutowski/cratekit --state all --limit 5000 \
       --json number,title --jq '.[].title' | cut -c1-3 | sort | uniq -c
-    grep -c '^## R-' docs/residual-findings.md
+    cat docs/ledger/*.md docs/residual-findings.md | grep -c '^## R-'
 
 **An issue number usually matches its unit number and is not guaranteed to.** U8
 is issue #8 and U37 is issue #37, but U38 is issue #51, because #38 onward were
@@ -73,7 +75,7 @@ numbered one.
 | `board.py sync` | make the board match the repository, idempotent |
 | `board.py audit` | report drift and contradictions, exit 1 or 2 |
 | `board.py closing` | refuse a `Closes` trailer while a register still owes that unit |
-| `board.py residuals` | list the residual files waiting for a number; `--land` numbers them on `main`, `--search` finds ledger headings |
+| `board.py residuals` | list the residual files waiting for a number; `--land` numbers them on `main`, `--search` finds ledger headings in every ledger file, `--archive` moves the working file's oldest entries to `docs/ledger/` while it is over the limit, `--check` refuses a duplicated heading or a bad archive (`--against REV` adds a removed heading, `--unchanged` a changed entry) |
 | `board.py cloud` | the cloud lane's queue, read from the cards' comments over REST |
 | `board.py local` | the attended cards only Phillip's Mac can do |
 

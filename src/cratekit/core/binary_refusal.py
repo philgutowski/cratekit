@@ -1,15 +1,7 @@
 """A missing ``yt-dlp`` as the calling verb's refusal, the install hint and all.
 
-ONE SPELLING, TWO VERB FAMILIES. ``acquire fallback`` searches and downloads
-through ``yt-dlp`` (U80) and ``intake set`` fetches a mix through it (U104). The
-refusal lived in the first one's command line module, and the second could only
-reach it by importing that module from inside a function, because that module
-imports ``intake.missing_cli`` and that imports ``intake.cli``. It uses nothing
-but :mod:`core.binaries`, :mod:`core.cause` and the remedy vocabulary, so it
-belongs here, below both.
-
-``said`` AND ``origin`` ARE REQUIRED. They are the caller's, and a default
-would report one verb's sentence under another verb's name.
+One spelling for ``acquire fallback`` (U80) and ``intake set`` (U104), kept
+below both. ``said`` and ``origin`` are required: they are the caller's.
 """
 
 from __future__ import annotations
@@ -22,17 +14,11 @@ from cratekit.core.exit_codes import Remedy
 
 
 def yt_dlp_missing(
-    exc: binaries.BinaryNotFound,
-    subject: dict[str, Any],
-    *,
-    said: str,
-    origin: tuple[str, ...],
+    exc: binaries.BinaryNotFound, subject: dict[str, Any], *, said: str, origin: tuple[str, ...]
 ) -> CratekitError:
     """The ``yt-dlp-missing`` refusal for one :class:`binaries.BinaryNotFound`.
 
-    The binaries module already decided which of its situations this is, so
-    the remedy IS its token: install, install from source, or fix the override.
-    The hint travels as data for the command line layer to render (D2).
+    The remedy is the exception's own token; the hint travels as data (D2).
     """
     hint = exc.hint
     return refuse(

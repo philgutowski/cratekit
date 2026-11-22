@@ -1,14 +1,9 @@
 """U155: a sub chosen by genre inside a bucket that splits by energy.
 
-Phillip tags every PULS release ``Rominimal`` and wants those tracks in a place
-of their own under Minimal / Deep Tech, beside the bucket's energy bands and
-not instead of them. A genre sub is that place. It is ADDITIVE: a Rominimal
-track files into its band exactly as before and into the genre sub as well,
-and a Minimal track never reaches the sub.
-
-Every expected value here is spelled from the brief or read from a second
-taxonomy built WITHOUT the genre sub, never from the code under test, so a
-comparison cannot reduce to the derivation agreeing with itself.
+A genre sub is additive: a Rominimal track files into its band exactly as
+before and into the sub as well; a Minimal track never reaches it. Expected
+values are spelled from the brief or read from a second taxonomy built without
+the genre sub, never from the code under test.
 """
 
 from __future__ import annotations
@@ -67,7 +62,6 @@ def _problems(raw: dict, mutate) -> tuple[str, ...]:
 @pytest.fixture(scope="module")
 def without(default_raw):
     """The shipped template as it was before U155: no genre sub, no Rominimal alias."""
-
     def strip(data):
         bucket = _bucket(data, BUCKET)
         del bucket["genre_sub"]
@@ -86,16 +80,13 @@ def _derive(declared, truth):
     return placements, gaps
 
 
-# ---------------------------------------------------------------------------
 # The brief's routing scenarios
-# ---------------------------------------------------------------------------
 
 
 def test_a_rominimal_track_at_energy_3_lands_in_its_band_and_in_rominimal(default):
     placements, gaps = _derive(default, [_truth(GENRE, 3)])
     assert sorted((p.bucket, p.sub) for p in placements) == [(BUCKET, "low"), (BUCKET, SUB)]
-    # The vocal dimension is the only gap with no calibration; the genre sub
-    # is read off the same genre as the bucket and is never one.
+    # The vocal dimension is the only gap; the genre sub is never one.
     assert gaps == (rebuild.VOCAL_DIMENSION,)
     assert routing.resolve_bucket(default, GENRE).match is routing.Match.EXACT
     assert routing_pass.destination(default, BUCKET, "low") == (FOLDER, "Low Energy")
@@ -158,19 +149,14 @@ def test_every_other_bucket_routes_exactly_as_before(default, without):
 
 
 def test_route_resort_moves_the_96_puls_tracks_additively(default, without):
-    """The 96 PULS tracks landed on 2026-10-27, across every energy and none.
-
-    Measured against the same readings derived without the genre sub: every
-    placement that derivation makes is still made, and the only addition is
-    each Rominimal track in the genre sub, once.
-    """
+    """96 tracks across every energy and none, against the same readings without
+    the sub: every placement is still made, the only addition each track in the sub once."""
     levels = [None, *range(1, default.energy.scale_max + 1)]
     puls = [_truth(GENRE, levels[i % len(levels)], f"puls-{i:03d}.flac") for i in range(96)]
     others = [_truth("Minimal", 4, "minimal.flac"), _truth("Deep House", 8, "deep.flac")]
     after, _ = _derive(default, puls + others)
     as_minimal = [_truth("Minimal", t.energy, t.location.rsplit("/", 1)[1]) for t in puls]
     before, _ = _derive(without, as_minimal + others)
-
     added = set(after) - set(before)
     assert set(before) <= set(after)
     assert len(added) == 96
@@ -178,9 +164,7 @@ def test_route_resort_moves_the_96_puls_tracks_additively(default, without):
     assert {p.location for p in added} == {t.location for t in puls}
 
 
-# ---------------------------------------------------------------------------
 # The tagger keeps the word that names the sub
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("seen", ["Rominimal", "rominimal", "ROMINIMAL"])
@@ -209,9 +193,7 @@ def test_the_tagger_writes_the_source_it_matched_when_a_sub_has_two(default_raw)
     assert routing.genre_sub(declared, BUCKET, "Romanian Minimal").id == SUB
 
 
-# ---------------------------------------------------------------------------
 # One list of what a folder can hold
-# ---------------------------------------------------------------------------
 
 
 def test_live_places_names_the_genre_sub(default):
@@ -236,9 +218,7 @@ def test_the_adoption_plans_vocal_sub_is_unchanged(default, without):
         assert adopt_plan.vocal_sub(default, bucket.id) == adopt_plan.vocal_sub(without, bucket.id)
 
 
-# ---------------------------------------------------------------------------
 # The loader refuses a genre sub that is not a place of its own, by name
-# ---------------------------------------------------------------------------
 
 
 def _genre(data: dict) -> dict:
@@ -275,61 +255,79 @@ def test_a_band_display_that_is_not_this_buckets_label_is_free(default_raw):
     assert routing.genre_sub(declared, BUCKET, GENRE).display == "Low"
 
 
-def test_two_genre_subs_of_one_name_are_refused(default_raw):
-    def twice(data):
-        bucket = _bucket(data, BUCKET)
-        bucket["aliases"].append("Romanian Minimal")
-        bucket["genre_sub"].append(
-            {"id": "romanian", "display": "Rominimal", "sources": ["Romanian Minimal"]}
-        )
-
-    assert any("display 'Rominimal' is already the name" in p for p in _problems(default_raw, twice))
-
-
-def test_two_genre_subs_of_one_identifier_are_refused_by_that_name(default_raw):
-    """Loaded, the second would resolve to the first's playlist and its
-    source's tracks would file there."""
-
-    def twice(data):
-        bucket = _bucket(data, BUCKET)
-        bucket["aliases"].append("Romanian Minimal")
-        bucket["genre_sub"].append(
-            {"id": SUB, "display": "Romanian", "sources": ["Romanian Minimal"]}
-        )
-
-    assert any(
-        "id 'rominimal' is already another genre sub of this bucket" in p
-        for p in _problems(default_raw, twice)
+def _second_named(data):
+    bucket = _bucket(data, BUCKET)
+    bucket["aliases"].append("Romanian Minimal")
+    bucket["genre_sub"].append(
+        {"id": "romanian", "display": "Rominimal", "sources": ["Romanian Minimal"]}
     )
 
 
-def test_one_source_in_two_genre_subs_is_refused(default_raw):
-    def twice(data):
-        _bucket(data, BUCKET)["genre_sub"].append(
-            {"id": "again", "display": "Again", "sources": [GENRE]}
-        )
-
-    assert any(
-        "source 'Rominimal' already names the genre sub 'rominimal'" in p
-        for p in _problems(default_raw, twice)
-    )
+def _second_identified(data):
+    # Loaded, it would resolve to the first's playlist and file its tracks there.
+    bucket = _bucket(data, BUCKET)
+    bucket["aliases"].append("Romanian Minimal")
+    bucket["genre_sub"].append({"id": SUB, "display": "Romanian", "sources": ["Romanian Minimal"]})
 
 
-def test_a_source_that_is_not_an_exact_alias_of_the_bucket_is_refused(default_raw):
-    def unaliased(data):
-        bucket = _bucket(data, BUCKET)
-        bucket["aliases"] = [alias for alias in bucket["aliases"] if alias != GENRE]
-
-    problems = _problems(default_raw, unaliased)
-    assert any("source 'Rominimal' is not an exact alias of this bucket" in p for p in problems)
+def _source_twice(data):
+    _bucket(data, BUCKET)["genre_sub"].append({"id": "again", "display": "Again", "sources": [GENRE]})
 
 
-def test_a_source_another_bucket_routes_is_refused(default_raw):
-    def elsewhere(data):
-        _genre(data)["sources"] = ["Deep House"]
+def _unaliased(data):
+    bucket = _bucket(data, BUCKET)
+    bucket["aliases"] = [alias for alias in bucket["aliases"] if alias != GENRE]
 
-    problems = _problems(default_raw, elsewhere)
-    assert any("source 'Deep House' is not an exact alias of this bucket" in p for p in problems)
+
+def _on_source_routed(data):
+    bucket = _bucket(data, "non_electronic")
+    bucket["aliases"].append("Romanian Folk")
+    bucket["genre_sub"] = [{"id": "folk", "display": "Folk", "sources": ["Romanian Folk"]}]
+
+
+def _on_single_sub(data):
+    bucket = _bucket(data, "chill_ambient")
+    bucket.setdefault("aliases", []).append("Ambient Dub")
+    bucket["genre_sub"] = [{"id": "dub", "display": "Dub", "sources": ["Ambient Dub"]}]
+
+
+@pytest.mark.parametrize(
+    "mutate,said",
+    [
+        (_second_named, ("display 'Rominimal' is already the name",)),
+        (_second_identified, ("id 'rominimal' is already another genre sub of this bucket",)),
+        (_source_twice, ("source 'Rominimal' already names the genre sub 'rominimal'",)),
+        (_unaliased, ("source 'Rominimal' is not an exact alias of this bucket",)),
+        (
+            lambda d: _genre(d).update(sources=["Deep House"]),
+            ("source 'Deep House' is not an exact alias of this bucket",),
+        ),
+        (lambda d: _genre(d).update(id="Rominimal"), ("id 'Rominimal' must match",)),
+        (
+            lambda d: _genre(d).update(display=""),
+            ("genre_sub", "display must be a non-empty string"),
+        ),
+        (
+            _on_source_routed,
+            ("non_electronic: declares a genre sub and does not split by energy",),
+        ),
+        (_on_single_sub, ("chill_ambient: declares a genre sub and does not split by energy",)),
+    ],
+    ids=[
+        "two-of-one-name",
+        "two-of-one-identifier",
+        "one-source-in-two",
+        "source-not-an-alias",
+        "source-another-bucket-routes",
+        "identifier-not-one",
+        "empty-display",
+        "bucket-routes-by-source",
+        "bucket-with-one-sub",
+    ],
+)
+def test_a_genre_sub_that_is_not_a_place_of_its_own_is_refused_by_name(default_raw, mutate, said):
+    problems = _problems(default_raw, mutate)
+    assert any(all(part in p for part in said) for p in problems), problems
 
 
 @pytest.mark.parametrize("sources", [[], "Rominimal", [1], None])
@@ -343,20 +341,9 @@ def test_sources_must_be_a_non_empty_list_of_words(default_raw, sources):
     assert any("sources must be a non-empty list" in p for p in _problems(default_raw, bad))
 
 
-def test_an_identifier_that_is_not_one_is_refused(default_raw):
-    problems = _problems(default_raw, lambda d: _genre(d).update(id="Rominimal"))
-    assert any("id 'Rominimal' must match" in p for p in problems)
-
-
-def test_an_empty_display_is_refused(default_raw):
-    problems = _problems(default_raw, lambda d: _genre(d).update(display=""))
-    assert any("genre_sub" in p and "display must be a non-empty string" in p for p in problems)
-
-
 @pytest.mark.parametrize("version", [1, 2, 3, 4])
 def test_a_genre_sub_under_an_older_schema_version_is_refused_by_name(default_raw, version):
-    """An older build reads the version and ignores the key, so it would file
-    the genre's tracks into their band alone and call the sub nobody's."""
+    """An older build would ignore the key and file the tracks into their band alone."""
 
     def older(data):
         data["schema_version"] = version
@@ -374,30 +361,6 @@ def test_a_genre_sub_under_an_older_schema_version_is_refused_by_name(default_ra
         f"declares a genre sub under schema_version {version}; write schema_version = 5" in p
         for p in problems
     ), problems
-
-
-def test_a_genre_sub_on_a_bucket_that_routes_by_source_genre_is_refused(default_raw):
-    def on_source(data):
-        bucket = _bucket(data, "non_electronic")
-        bucket["aliases"].append("Romanian Folk")
-        bucket["genre_sub"] = [{"id": "folk", "display": "Folk", "sources": ["Romanian Folk"]}]
-
-    problems = _problems(default_raw, on_source)
-    assert any(
-        "non_electronic: declares a genre sub and does not split by energy" in p for p in problems
-    )
-
-
-def test_a_genre_sub_on_a_bucket_with_one_sub_is_refused(default_raw):
-    def on_single(data):
-        bucket = _bucket(data, "chill_ambient")
-        bucket.setdefault("aliases", []).append("Ambient Dub")
-        bucket["genre_sub"] = [{"id": "dub", "display": "Dub", "sources": ["Ambient Dub"]}]
-
-    problems = _problems(default_raw, on_single)
-    assert any(
-        "chill_ambient: declares a genre sub and does not split by energy" in p for p in problems
-    )
 
 
 @pytest.mark.parametrize(

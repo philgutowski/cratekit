@@ -1,23 +1,15 @@
 """U241: the core count is read in one place, and used as a ceiling and nothing else.
 
-``cratekit.core.pool`` reads no core count, because sizing a pool from the
-cores is the kill it exists to prevent. U241 lets a caller whose workers are
-cheap pass a ceiling derived from the cores, which can only lower a plan.
-Three things keep that from becoming the old defect under a new name, and each
-is asserted here rather than intended:
-
-1. the count is read by ``cratekit.core.cores`` and by no other shipped module,
-   in any of the four spellings, as a name or as a string handed to ``getattr``;
-2. what that module answers reaches the planner as its ``ceiling`` argument and
-   reaches nothing else, checked on the syntax tree of every shipped module;
-3. the planner still decides underneath it: memory and both pressure gates
-   overrule any core count, which ``tests/test_analysis_ahead.py`` drives
-   through the verb and the last test here drives on the planner itself.
+Sizing a pool from the cores is the kill ``cratekit.core.pool`` prevents, so:
+the count is read by ``cratekit.core.cores`` alone, in every spelling; what it
+answers reaches only ``plan_pool``'s ``ceiling``, checked on every shipped
+module's syntax tree; and memory and both pressure gates still overrule it.
 """
 
 from __future__ import annotations
 
 import ast
+import functools
 import os
 from pathlib import Path
 
@@ -30,6 +22,18 @@ GIB = 1024**3
 CORES_PATH = PACKAGE_ROOT / "core" / "cores.py"
 
 
+@functools.lru_cache(maxsize=None)
+def _parse(source: str) -> ast.Module:
+    """One parse per source, shared by the two whole-tree walks; nothing mutates a tree."""
+    return ast.parse(source)
+
+
+@functools.lru_cache(maxsize=None)
+def _nodes(source: str) -> tuple[ast.AST, ...]:
+    """Every node of the source's tree in ``ast.walk`` order, walked once."""
+    return tuple(ast.walk(_parse(source)))
+
+
 def shipped_modules() -> list[Path]:
     return [
         path
@@ -39,9 +43,7 @@ def shipped_modules() -> list[Path]:
     ]
 
 
-# ---------------------------------------------------------------------------
 # The reading
-# ---------------------------------------------------------------------------
 
 
 def test_the_allowance_of_this_process_is_preferred_to_the_machines_count(monkeypatch):
@@ -64,24 +66,22 @@ def test_an_allowance_that_cannot_be_read_falls_through_to_the_machines_count(mo
     assert cores.usable_cores() == 11
 
 
-def test_a_platform_with_no_allowance_reads_the_machines_count(monkeypatch):
-    monkeypatch.delattr(os, "sched_getaffinity", raising=False)
-    monkeypatch.delattr(os, "process_cpu_count", raising=False)
-    monkeypatch.setattr(os, "cpu_count", lambda: 8)
-    assert cores.usable_cores() == 8
-
-
-@pytest.mark.parametrize("answer", [None, 0, -4, True, "8"])
-def test_a_count_that_is_not_a_count_is_unknown(monkeypatch, answer):
+@pytest.mark.parametrize(
+    "answer,expected", [(8, 8), (None, None), (0, None), (-4, None), (True, None), ("8", None)]
+)
+def test_with_no_allowance_the_machines_count_is_read_and_a_non_count_is_unknown(
+    monkeypatch, answer, expected
+):
     monkeypatch.delattr(os, "sched_getaffinity", raising=False)
     monkeypatch.delattr(os, "process_cpu_count", raising=False)
     monkeypatch.setattr(os, "cpu_count", lambda: answer)
-    assert cores.usable_cores() is None
+    if expected is None:
+        assert cores.usable_cores() is None
+    else:
+        assert cores.usable_cores() == expected
 
 
-# ---------------------------------------------------------------------------
 # The ceiling
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -117,15 +117,13 @@ def test_the_reader_is_looked_up_when_called_so_a_test_can_stand_in(monkeypatch)
     assert cores.worker_ceiling(reserved=2) == 8
 
 
-# ---------------------------------------------------------------------------
 # The count is read here and nowhere else
-# ---------------------------------------------------------------------------
 
 
 def core_count_reads(source: str) -> list[str]:
     """Every way this source names a core count: as a name, or as a string for ``getattr``."""
     found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in _nodes(source):
         if isinstance(node, ast.Attribute) and node.attr in CORE_COUNT_SPELLINGS:
             found.append(f"line {node.lineno}: .{node.attr}")
         elif isinstance(node, ast.Name) and node.id in CORE_COUNT_SPELLINGS:
@@ -156,15 +154,17 @@ def test_the_walk_sees_a_core_count_read_in_every_spelling(source):
     assert core_count_reads(source) != []
 
 
+ACCEPTED = (
+    "from cratekit.core import cores, pool\n"
+    "def plan(cost, items):\n"
+    "    return pool.plan_pool(worker_bytes=cost, items=items,\n"
+    "                          ceiling=cores.worker_ceiling(reserved=2))\n"
+)
+
+
 def test_the_walk_is_silent_on_prose_and_on_the_one_reader_being_called():
-    source = (
-        '"""The source system sized its pool as cpu_count() less two."""\n'
-        "from cratekit.core import cores, pool\n"
-        "def plan(cost, items):\n"
-        "    return pool.plan_pool(worker_bytes=cost, items=items,\n"
-        "                          ceiling=cores.worker_ceiling(reserved=2))\n"
-    )
-    assert core_count_reads(source) == []
+    prose = '"""The source system sized its pool as cpu_count() less two."""\n'
+    assert core_count_reads(prose + ACCEPTED) == []
 
 
 def test_no_shipped_module_but_the_one_reader_reads_a_core_count():
@@ -180,9 +180,7 @@ def test_no_shipped_module_but_the_one_reader_reads_a_core_count():
     assert core_count_reads(CORES_PATH.read_text()), "the one reader reads no core count"
 
 
-# ---------------------------------------------------------------------------
 # What the reader answers reaches the planner's ceiling and nothing else
-# ---------------------------------------------------------------------------
 
 
 def _parents(tree: ast.AST) -> dict[ast.AST, ast.AST]:
@@ -204,22 +202,19 @@ def _called(node: ast.AST) -> str | None:
 def ceilings_used_as_anything_else(source: str) -> list[str]:
     """Every ``worker_ceiling`` or ``usable_cores`` use that is not the planner's ceiling.
 
-    The one accepted shape is the call written directly as the ``ceiling``
-    keyword of a ``plan_pool`` call. A count bound to a name first could then
-    be multiplied, compared or handed to a pool as its width, which is the
-    source system's defect, so that is refused too rather than traced.
+    Only the call written directly as ``plan_pool``'s ``ceiling`` keyword is
+    accepted; a count bound to a name first is refused rather than traced.
     """
-    tree = ast.parse(source)
-    parents = _parents(tree)
-    found: list[str] = []
-    for node in ast.walk(tree):
-        named = None
+    tree = _parse(source)
+    uses = []
+    for node in _nodes(source):
         if isinstance(node, ast.Attribute) and node.attr in ("worker_ceiling", "usable_cores"):
-            named = node.attr
+            uses.append((node, node.attr))
         elif isinstance(node, ast.Name) and node.id in ("worker_ceiling", "usable_cores"):
-            named = node.id
-        if named is None:
-            continue
+            uses.append((node, node.id))
+    parents = _parents(tree) if uses else {}
+    found: list[str] = []
+    for node, named in uses:
         call = parents.get(node)
         keyword = parents.get(call) if call is not None else None
         planner = parents.get(keyword) if keyword is not None else None
@@ -261,13 +256,7 @@ def test_a_ceiling_used_as_anything_but_the_planners_ceiling_is_seen(source):
 
 
 def test_the_accepted_shape_is_silent():
-    source = (
-        "from cratekit.core import cores, pool\n"
-        "def plan(cost, items):\n"
-        "    return pool.plan_pool(worker_bytes=cost, items=items,\n"
-        "                          ceiling=cores.worker_ceiling(reserved=2))\n"
-    )
-    assert ceilings_used_as_anything_else(source) == []
+    assert ceilings_used_as_anything_else(ACCEPTED) == []
 
 
 def test_every_shipped_use_of_the_core_ceiling_is_the_planners_ceiling():
@@ -284,9 +273,7 @@ def test_every_shipped_use_of_the_core_ceiling_is_the_planners_ceiling():
     assert "worker_ceiling" in light, "the light pass no longer takes its ceiling from the cores"
 
 
-# ---------------------------------------------------------------------------
 # And the planner still decides underneath it
-# ---------------------------------------------------------------------------
 
 
 def _calm() -> pool.Pressure:
@@ -304,7 +291,7 @@ def test_a_ceiling_from_many_cores_never_widens_what_memory_affords():
         read_available=lambda: 8 * GIB,
         read_pressure=_calm,
     )
-    # (8 less the 2 reserved) at half is 3 gibibytes: three workers, not sixty two.
+    # (8 less the 2 reserved) at half is three workers, not sixty two.
     assert afforded.workers == 3 and afforded.bound is pool.Bound.AVAILABLE_MEMORY
     refused = pool.plan_pool(
         worker_bytes=GIB,

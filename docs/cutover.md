@@ -2837,6 +2837,37 @@ The first sitting the `attended-orchestrator` skill drove (A187, #888), started 
 
 **Continued from 21:42 UTC at Phillip's word, "finish the attended tasks", on the development checkout at `5ea06d6a`, no rekordbox visit.** **Met and closed:** A199 (#918), A189 (#896), A193 (#904), A196 (#910), A188 (#894), A191 (#900), A198 (#916), A182 (#876), A195 (#908). **Filed:** U324 (#919), the name fold for ø, æ and ß. **Progress only, left open:** A194 (#906) on U324; A197 (#912) on U320 (#889), since `sync removed` is partial on this account as A179 found; A192 (#902), three of its six steps not exercised; A183 (#879), its battery now green, the night still owed. **Decided by the session under Phillip's instruction of 2026-11-21**, each on its card: A197's track drawn at random from the 26 that carry no My Tag, no history and one downloaded playlist, Lisa's playlists left out, and put back at its place once the run was partial; A195 rehearsed on a copy that clones the music files, its root redirected by one prefix rule, and the live library's files checked by size and time before and after; the live `tag backlog --catalogue` run before the live campaign, since the kept answers are library state; the resort's path only digest difference approved and recorded; the empty third resort aborted; the sweep copies made off the volume while a backup mirrored it; no sync pass tonight, so the night A183 installed lands the account's new music and that landing serves A183, A190 and A141 at the next sitting; U29 not read again the same day.
 
+## Sitting 103, 2026-11-22, attended, seven sets by one DJ on v0.18.0, with rekordbox opened once on the Auto Analysis path
+
+A typed tracklist from a video's description, then six mixes from a SoundCloud
+playlist that carry none. The visit took Phillip's grant about five hours
+after it was asked for. Backups were 0 days old; the acknowledgment was minted
+by the session at 16:03Z.
+
+| Step | Ran | Observed |
+|---|---|---|
+| The typed set, 22 tracks | `match run`, `intake missing --list`, 15 review verdicts as `session`, a hand list of 18 | 1 owned, 18 downloaded, 2 lossy only on the provider and left (Carib's Leap, Mozalounge dub), 1 not found (Radicals). A multi artist line with every remixer credited searched to nothing; the first artist alone found it |
+| The six mixes | `intake set`, `intake.set.account.confirm` answered `abort`, then the job | 1,080 recognition calls, 161 tracks with repeats, cut by the session to one pick a song |
+| Private account playlists | `export set` over a list in set order, seven gates answered `apply` as `session` after Phillip said every set always gets one | 21, 13, 18, 20, 13, 26 and 16 tracks, nothing left out. The six set landings then filed theirs in `Downloaded Sets 2026` and recorded them taken |
+| The downloads | two jobs | 18 of 18 and 82 of 82, 404 calls, no rate limit |
+| The landings | seven, rehearsed and approved on equal digests: `b6a9482200f0b50a`, `b7e9faebfe895c54`, `3c8a37f74742a2d1`, `3c1f03cc6bb5fa50`, `4e3c4cea73001aba`, `86aa0da9e2afc3cd`, `863c13fdc9768d6f` | 100 rows, 53 filed, 47 with no genre. Three rehearsals refused first and were answered `abort`; the residual on a track landed since the set's job |
+| The visit, preflight | `analyze check` | exit 12, scope `analyze`, 100 not analysed, 8 `dyn` |
+| The visit, the launch dialog | Auto Analysis is on. Fields shown: BPM / Grid on (dimmed), High precision off, Analysis Mode Normal, BPM Range 78-155, KEY on, Phrase on, Vocal off, CUE(Manual) off. All equal, so OK | 100 analysis files in about three minutes, "Analyzing: 96 Tracks" ten seconds in |
+| The second run | the 8 `dyn` rows by Command click, Analyze Tracks, Dynamic by the held press, every other field read back | 8 of 8 |
+| The playlists by hand | the typed set's INSPIRATION playlist, 19 in set order, and 6 tracks the set landings could not tie, through the row menu's Add To Playlist | read back on a copy: 19, 12, 18, 20, 13, 27 and 16. One drag scrolled the tree and dropped a track in `Crossfader DJ Course - Global Influence`; it was removed from that playlist at once, which reads 10 again. A drag onto the tree is not safe; the menu is |
+| The quit | rekordbox's menu | both processes gone |
+| The check | `analyze check` | **exit 27, suspect**: 100 analysed, 92 constant and 8 variable on `dyn` rows, Key filled on 100, title keys equal on 33, below the 37.9% floor; 18 one step, 49 far. Dead Letter 2 of 15, Bossa Nova 8 of 15. Nothing cleared: INBOX / Analyze still holds the 100 |
+
+Ten title heads carry a tempo off by a ratio of rekordbox's: The Curse 85 for
+128, Hostile Takeover 84 for 126, Don't Go 100 for 125, Think of Me 100 for
+125, Pause 80 for 120, SPEED 107 for 80, Feminine Energy 100 for 150, OMG 107
+for 80, Magic Flute 92 for 138, Burn Da Roof 100 for 150.
+
+The night pass of 2026-11-21 died mid run; its downloads sit in staging, the
+residual on the schedule and the checkout. Owed: a few far keys compared by
+ear, then the clear; a genre on the 47; the night pass's files landed.
+
+
 ## Next sitting
 
 **Later the same night, on `d6e7597f`, after U320, R-1037 and U324 landed.** **Met and closed:** A201 (#924), A194 (#906), A179 (#842), A197 (#912), A200 (#922). **Filed:** R-1830's card (#925), R-1844's card (#926). **Progress only, left open:** A190 (#897), Auto Analysis on, the visit waiting for a landing; A129 (#711), a removal of a track landed after `f3dc078`, so the next landing's; A183 (#879), the night. **Decided by the session under Phillip's instruction of 2026-11-21**, each on its card: `--retire` answered at its gate rather than waiting a day for the second sighting, since it writes only Cratekit's record; the first offer of two tracks aborted so A197 takes one; the budget's hour waited out rather than raised; `delete review` run from the session and its offered set read through the planner before `trash`; Cotonete, Parribean Disco left in the Trash and off its TIDAL playlist, since trashing it was the card's proof (put back from the volume's Trash and re-added on TIDAL if wanted); Auto Analysis turned on at this visit, last, so the throwaways were not analysed.
