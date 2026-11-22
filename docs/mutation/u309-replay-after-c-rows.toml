@@ -1098,67 +1098,232 @@ tests = ["tests/test_u242_taken.py", "tests/test_organize_root.py", "tests/test_
 old = '        if entry.held and entry.dated:'
 new = '        if entry.held:'
 
-[[dropped]]
+[[rows]]
 id = "r835-a.L3_recorded_year_never_created_again"
+source = { table = "r835-a.json", id = "L3_recorded_year_never_created_again" }
 description = "ledger.reserve_label_year: a year already recorded is created again, so a resumed build makes a second playlist for it"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/ledger.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/ledger_reserve.py"
+surface = "user"
+moved = "the already recorded check was in ledger.reserve_label_year and is now in ledger_reserve._reserve, which reserve_label_year calls with the year table, so the record is read as held rather than years; same check reverted"
+tests = ["tests/test_label_playlists.py"]
+old = '''
+        recorded = str((held.get(key) or {}).get("remote_id") or "")
+        if recorded:
+            return recorded, False'''
+new = '''
+        recorded = str((held.get(key) or {}).get("remote_id") or "")
+        if False:
+            return recorded, False'''
 
-[[dropped]]
+[[rows]]
 id = "u214.M10_detail_names"
+source = { table = "u214.json", id = "M10_detail_names" }
 description = "_detail: never name the unmirrored nodes on the step's line, so the report shows only a count"
-reason = "unplaced: the text is gone in src/cratekit/organize/account_mirror.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+moved = "the guard stays in account_mirror._detail, whose folder argument is now required, so the not None half of the condition is gone; same guard reverted"
+tests = ["tests/test_inbox_unmirrored.py"]
+old = '''
+    if folder.unmirrored:
+'''
+new = '''
+    if False:
+'''
 
-[[dropped]]
+[[rows]]
 id = "r835-a.F5_unplaced_recorded_year_is_moved"
+source = { table = "r835-a.json", id = "F5_unplaced_recorded_year_is_moved" }
 description = "folders.plan: a recorded year playlist that is not in the folder is never moved into it, so a build stopped after its create leaves it at the root"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/folders.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/folders.py"
+surface = "user"
+moved = "the reused year step in folders.plan is now built through a partial of YearStep, so the same keyword sits four spaces shallower; same keyword reverted"
+tests = ["tests/test_label_playlists.py"]
+old = '''
+                move=not placed,
+'''
+new = '''
+                move=False,
+'''
 
-[[dropped]]
+[[rows]]
 id = "u236.M17_ledger_settle_keeps_placement"
+source = { table = "u236.json", id = "M17_ledger_settle_keeps_placement" }
 description = "ledger settle: a settled track keeps its placement on that title"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/ledger.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/ledger_settle.py"
+surface = "user"
+moved = "settle_mirror_tracks moved from ledger.py to ledger_settle.py and the kept placements are now named before the _place call; same check reverted"
+tests = ["tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u236.py"]
+old = '''
+                if str(track) in before:
+                    kept = {one: at for one, at in before.items() if one != str(track)}
+                    _place(record, name, kept)
+                    wrote = True'''
+new = '''
+                if False:
+                    kept = {one: at for one, at in before.items() if one != str(track)}
+                    _place(record, name, kept)
+                    wrote = True'''
 
-[[dropped]]
+[[rows]]
 id = "u201-composites.C1_two_bands_composite"
+source = { table = "u201-composites.json", id = "C1_two_bands_composite" }
 description = "E2 with the guard after it: neither the two bands guard nor the still in two bands guard, so a track added to two bands at once is moved to one"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/mirror_edits.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+moved = "both guards stay in mirror_edits._intent, whose held answers are now written as one tuple and name places through _named, so the text around the two conditions differs; both conditions reverted as before"
+tests = ["tests/test_mirror_edits.py"]
+old = '''
+    if len(added) > 1:
+        return HELD, None, (
+            f"added on the account to {len(added)} band playlists at once "
+            f"({_named(added)}), so which one it belongs in is not something the account says"
+        )
+    if removed and len(now) == 1:
+        (place,) = now
+        return MOVE, place, f"taken off {_named(removed)} on the account, left in {place.title}"
+    if removed and len(now) > 1:
+        return HELD, None, ('''
+new = '''
+    if False:
+        return HELD, None, (
+            f"added on the account to {len(added)} band playlists at once "
+            f"({_named(added)}), so which one it belongs in is not something the account says"
+        )
+    if removed and len(now) == 1:
+        (place,) = now
+        return MOVE, place, f"taken off {_named(removed)} on the account, left in {place.title}"
+    if False:
+        return HELD, None, ('''
 
-[[dropped]]
+[[rows]]
 id = "r1289.M16_mirror_why"
+source = { table = "r1289.json", id = "M16_mirror_why" }
 description = "mirror_downloads.plan: the unread track's why reworded so it does not carry the reader's words"
-reason = "unplaced: the text is gone in src/cratekit/organize/mirror_downloads.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+moved = "the unread track's line stays in mirror_downloads.plan, whose named entry is now written on fewer lines, so the same words sit eight spaces shallower; same rewording"
+tests = ["tests/test_organize_mirror_edits_u204.py"]
+old = '''
+                    f"added on the account, but {unread[track].why}, so the "'''
+new = '''
+                    f"added on the account, but it could not be read, so the "'''
 
-[[dropped]]
+[[rows]]
 id = "r1308.M22_retryable"
+source = { table = "r1308.json", id = "M22_retryable" }
 description = "_removal_read_back: the refusal as provider_failure, retryable, whose remedy is to run again"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+moved = "the read back refusal stays in TidalAccount._removal_read_back but is now raised through the shared _refused helper rather than refuse with its slug; the same retryable failure is raised ahead of it"
+tests = ["tests/test_outbound_remove_lag.py", "tests/test_prune.py"]
+old = '''
+        raise _refused(
+            (
+                f"the playlist {identifier} {shown'''
+new = '''
+        raise account.provider_failure(RuntimeError('lag'), 'remove')
+        raise _refused(
+            (
+                f"the playlist {identifier} {shown'''
 
-[[dropped]]
+[[rows]]
 id = "r356-b.B4_heart_candidate_carries_no_artist"
+source = { table = "r356-b.json", id = "B4_heart_candidate_carries_no_artist" }
 description = "A favourite reaches the account with a title and no artist, which chooses nothing"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/source.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+moved = "heart_candidates now reads each row through the shared source._identified, so the release title arrives as title rather than a release_title call; the artist keyword is dropped as before"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+            release_title=title,
+            artist=entry.artist,
+'''
+new = '''
+            release_title=title,
+'''
 
-[[dropped]]
+[[rows]]
 id = "u208.M19_adapter_never_records_tie"
+source = { table = "u208.json", id = "M19_adapter_never_records_tie" }
 description = "match_track: never record a broken tie"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_reads.py"
+surface = "user"
+moved = "match_track moved from tidal_account.py into the Reads mixin in tidal_reads.py and its ISRC lookup lost a level of nesting; same branch reverted"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
+old = '''
+                elif tied:
+                    self._ties.add(key)'''
+new = '''
+                elif False:
+                    self._ties.add(key)'''
 
-[[dropped]]
+[[rows]]
 id = "u97-c.C1_outbound_refusal_removed"
+source = { table = "u97-c.json", id = "C1_outbound_refusal_removed" }
 description = "composite for B4: remove the outbound account's missing session refusal entirely, so the seam opens a client with no credential. Shows what the guard holds when its remedy holds nothing"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+moved = "the missing session refusal stays in account.resolve but is now built by the shared _credential_missing helper rather than refuse; same condition reverted"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''
+    if not secrets.exists(str(secrets.Credential.PROVIDER_SESSION)):
+        raise _credential_missing('''
+new = '''
+    if False:
+        raise _credential_missing('''
 
-[[dropped]]
+[[rows]]
 id = "r358.A1_empty_title_refusal"
+source = { table = "r358.json", id = "A1_empty_title_refusal" }
 description = "Drop the empty-title refusal, so a blank title reaches the client"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+moved = "the empty title refusal stays in TidalAccount.rename_playlist, with its comment shortened and its keywords joined on one line; the whole refusal is removed as before"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''
+        if not wanted.strip():
+            # NOT ``provider_failure``, whose remedy, resume to retry, cannot work.
+            raise refuse(
+                "internal-error",
+                f"a rename of the playlist {playlist_id} was asked for with no "
+                f"title; the client reads a falsy title as keep the current one "
+                f"and answers that it succeeded, so nothing was sent",
+                scope=Scope.SOURCE, origin=("outbound", "account"),
+                detail={"playlist_id": str(playlist_id)},
+            )
+'''
+new = '''
+'''
 
-[[dropped]]
+[[rows]]
 id = "u226.M17_removal_positions_unsettled"
+source = { table = "u226.json", id = "M17_removal_positions_unsettled" }
 description = "remove_tracks: the positions read once with no reread of a lag, as before round one's fix"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+moved = "remove_tracks now reads its positions in one conditional expression instead of an if block, so the settled read is replaced by the single positions read under the same wanted condition"
+tests = ["tests/test_outbound_window_lag.py"]
+old = '''
+        playlist, before = (
+            self._settled(
+                identifier, None, after="removal positions", kept="nothing was taken off it"
+            )
+            if wanted
+            else (None, [])
+        )'''
+new = '''
+        playlist = self._playlist(identifier) if wanted else None
+        before = self._positions(identifier, playlist) if wanted else []'''
 
-[[dropped]]
+[[rows]]
 id = "u216.M24_read_unvalidated"
+source = { table = "u216.json", id = "M24_read_unvalidated" }
 description = "_folders: what a folder held is read without checking it is playlist ids"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/pairs.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+moved = "the held check stays in PairStore._folders but now calls the shared pairs._ids helper the other id checks use; same condition reverted"
+tests = ["tests/test_sync_pair_adopted.py"]
+old = '''
+            if held is not None and not _ids(held):'''
+new = '''
+            if False:'''
