@@ -34,9 +34,7 @@ def _url(name: str) -> str:
     return locations.location_url(Path("/Music") / f"{name}.flac")
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+# ── Fixtures ──
 
 
 @pytest.fixture(autouse=True)
@@ -152,9 +150,7 @@ class _Row:
         self.rb_local_deleted = deleted
 
 
-# ---------------------------------------------------------------------------
-# The derivation, with no database at all
-# ---------------------------------------------------------------------------
+# ── The derivation, with no database at all ──
 
 
 def test_every_field_comes_off_the_row_it_belongs_to():
@@ -200,9 +196,7 @@ def test_a_row_that_cannot_report_the_marker_refuses_rather_than_defaulting():
     assert excinfo.value.cause.reason == "soft-delete-marker-unreadable"
 
 
-# ---------------------------------------------------------------------------
-# Against a real database
-# ---------------------------------------------------------------------------
+# ── Against a real database ──
 
 
 def test_the_reader_yields_the_rows_the_database_holds(cfg, synthetic):
@@ -291,9 +285,7 @@ def test_a_configured_library_with_no_database_is_a_named_refusal(cfg):
     assert excinfo.value.cause.reason == "library-database-missing"
 
 
-# ---------------------------------------------------------------------------
-# The property that is not a behaviour
-# ---------------------------------------------------------------------------
+# ── The property that is not a behaviour ──
 
 
 def test_this_module_holds_no_write_path_at_all():

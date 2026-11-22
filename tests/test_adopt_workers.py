@@ -1,16 +1,8 @@
-"""U55: both adopt verbs driving their own queued work, end to end.
+"""U55: both adopt verbs driving their own queued work, end to end, item by item.
 
-``test_adopt_apply_cli.py`` drives the queueing path and the session and
-``test_adopt_collection.py`` the read; neither runs an ITEM. This file is where
-"a queued adoption actually happens" is asserted.
-
-THE APPLY'S HAPPY PATH NEEDS A CUT-OVER LIBRARY: ``write_tree_membership``
-refuses a tree not recorded as database native with a root the library has, so
-the fixture records one the way ``tests/test_tree_writer.py`` does.
-
-SHARED SETUP, ONE DRIVE: where several properties are read off one approved
-apply, they are asserted in one test over one drive rather than driving the same
-apply once per property.
+The apply's happy path needs a cut-over library, so the fixture records one as
+``tests/test_tree_writer.py`` does. Properties read off one approved apply are
+asserted over one drive rather than one drive per property.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
@@ -49,9 +41,7 @@ APPLY = ["adopt", "apply"]
 GATE = "adopt.apply.approve"
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+# ── Fixtures ──
 
 
 @pytest.fixture(autouse=True)
@@ -70,12 +60,8 @@ def _release_process_locks():
 
 @pytest.fixture(autouse=True)
 def _platform_seams(monkeypatch):
-    """Everything about THIS machine a temporary library cannot speak for.
-
-    The process probes and the cloud-sync marker, patched where the guards
-    resolve them; that each guard refuses is proved in
-    ``tests/test_rb_writer_db.py``.
-    """
+    """What THIS machine cannot speak for on behalf of a temporary library; that
+    each guard refuses is proved in ``tests/test_rb_writer_db.py``."""
     from pyrekordbox.db6 import database as binding
 
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
@@ -125,10 +111,8 @@ def _configured(root: Path, **library: object) -> config.Config:
 
 @pytest.fixture
 def machine(library, monkeypatch):
-    """A set-up machine with a library the adopt verbs can act on.
-
-    Saved to disk, because the real dispatcher loads configuration for itself.
-    """
+    """A set-up machine with a library the adopt verbs can act on, saved to disk
+    because the real dispatcher loads configuration for itself."""
     resolved = _configured(library)
     config.save(resolved)
     config.reset_cache()
@@ -154,11 +138,8 @@ def _record_cutover(cfg: config.Config, root_id: str, on: date = date(2026, 9, 2
 
 @pytest.fixture
 def cut_over(machine):
-    """A library whose taxonomy tree the registry records as database native.
-
-    The only way the apply's write is reachable: an unrecorded tree is on the
-    bridge, and no verb records a cutover.
-    """
+    """A library whose taxonomy tree the registry records as database native, the
+    only way the apply's write is reachable."""
     handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
     try:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
@@ -223,9 +204,7 @@ def _memberships(cfg: config.Config) -> dict[str, list[str]]:
         rb_writer.close_db(handle)
 
 
-# ---------------------------------------------------------------------------
-# Both keys are bound
-# ---------------------------------------------------------------------------
+# ── Both keys are bound ──
 
 
 def test_both_adopt_keys_resolve_to_a_worker():
@@ -237,21 +216,33 @@ def test_both_adopt_keys_resolve_to_a_worker():
         assert callable(handlers.resolve(key))
 
 
-# ---------------------------------------------------------------------------
-# The scan
-# ---------------------------------------------------------------------------
+# ── The scan ──
 
 
-def test_a_scan_queues_one_item_per_live_row_and_drives_them_all(machine):
-    """Pending to done through the real resume argv, and the artifact read back.
+def test_a_scan_queues_one_item_per_live_row_and_drives_them_all(machine, monkeypatch):
+    """Pending to done through the real resume argv, and the artifacts read back:
+    only they say the missing row is missing, and the counts come from them.
 
-    The missing row is the one worth reading: a worker reporting every row
-    readable would still drive to done, and only the artifact says otherwise.
-    The reported counts come from the artifacts, not from the queue.
+    The worker gets the FROZEN configuration (KTD9), read on the artifact root,
+    which no environment variable overrides, and the active taxonomy is parsed
+    ONCE however many rows the census drives (U247).
     """
+    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    _active_copy(machine, text)
+    parses = counted(monkeypatch)
+    seen: list[str] = []
+    real = artifacts.produced
+
+    def recording(cfg, job, item, report):
+        seen.append(str(jobs.store_dir(cfg)))
+        return real(cfg, job, item, report)
+
+    monkeypatch.setattr(scan_cli.artifacts, "produced", recording)
+
     code, queued = drive(["adopt", "scan"])
     assert code == int(ExitCode.OK), queued
     job = _scan_job()
+    frozen_root = str(jobs.store_dir(jobs.frozen_config(job)))
     with jobs.open_store() as store:
         assert {item.item_id for item in jobs.items(store, job.job_id)} == {
             "r-one",
@@ -283,6 +274,12 @@ def test_a_scan_queues_one_item_per_live_row_and_drives_them_all(machine):
     assert counted_rows == len(artifacts.committed(machine, job.job_id))
     assert counted_rows == resumed["data"]["progress"]["total"]
 
+    assert seen and set(seen) == {frozen_root}
+    assert counted_rows >= 3
+    assert parses.of(text) == 1, (
+        f"{counted_rows} rows parsed the active copy {parses.of(text)} times"
+    )
+
 
 @pytest.mark.parametrize("tombstones", [False, True])
 def test_an_empty_library_queues_nothing_and_says_so(machine, tombstones):
@@ -307,12 +304,8 @@ def test_an_empty_library_queues_nothing_and_says_so(machine, tombstones):
 @pytest.mark.parametrize("edit", ["deleted", "tombstoned"])
 def test_a_row_removed_between_queueing_and_driving_fails_only_its_own_item(machine, edit):
     """The collection is re-read at drive time, so a row deleted or soft deleted
-    in rekordbox since the queueing fails its own item with its own slug.
-
-    The tombstone shape once raised ``ValueError`` out of the worker as a defect:
-    the reader carries a deleted row, the absence guard passed it, and
-    ``scan_rows`` skipped it.
-    """
+    since the queueing fails its own item with its own slug; the tombstone once
+    raised ``ValueError`` out of the worker as a defect."""
     drive(["adopt", "scan"])
     job = _scan_job()
 
@@ -360,35 +353,10 @@ def test_a_job_queued_with_no_items_refuses_rather_than_reporting_success(machin
     assert "no items" in envelope["cause"]["message"]
 
 
-def test_the_configuration_reaching_the_scan_worker_is_the_frozen_one(machine):
-    """KTD9, driven on a key no environment variable overrides: the artifact root
-    is resolved from the handed configuration, so moving the queue's own
-    directory makes the difference visible."""
-    seen: list[str] = []
-    real = artifacts.produced
-
-    def recording(cfg, job, item, report):
-        seen.append(str(jobs.store_dir(cfg)))
-        return real(cfg, job, item, report)
-
-    drive(["adopt", "scan"])
-    job = _scan_job()
-    frozen_root = str(jobs.store_dir(jobs.frozen_config(job)))
-
-    import unittest.mock
-
-    with unittest.mock.patch.object(scan_cli.artifacts, "produced", recording):
-        drive(["adopt", "scan", "--job", job.job_id])
-    assert seen and set(seen) == {frozen_root}
-
-
 def test_a_configured_volume_rewrite_reaches_the_census(machine, tmp_path):
-    """S1's prefix map, driven through the census rather than assumed.
-
-    Every other fixture records its locations under the configured root, so
-    dropping ``prefix_map`` from ``census`` once killed no test. The older root is
-    under the test's own temporary directory, never a volume path (R1).
-    """
+    """S1's prefix map, driven through the census: every other fixture records under
+    the configured root, so dropping it once killed no test. The older root is a
+    temporary directory, never a volume path (R1)."""
     older = str(tmp_path / "an-older-root")
     adopt_fixtures.build(machine, ())
     _empty_the_collection(machine)
@@ -410,29 +378,18 @@ def test_a_configured_volume_rewrite_reaches_the_census(machine, tmp_path):
     assert resolved["r-elsewhere"].disposition is adopt_scan.Disposition.ROUTE
 
 
-# ---------------------------------------------------------------------------
-# The apply
-# ---------------------------------------------------------------------------
+# ── The apply ──
 
 
 def test_an_apply_over_a_cut_over_library_writes_the_memberships(cut_over, monkeypatch):
-    """The happy path, read back from the database rather than from the report.
+    """The happy path, READ BACK from the database rather than from the report.
 
-    THE READ BACK IS THE ASSERTION: the seam defect this unit fixed produced a
-    report naming a session that ran over a write that landed nothing. On the
-    same drive: no tag is written and every file keeps its bytes (R16), the
-    approving actor travels in the payload because the worker has no run (R34),
-    and the whole job takes one capture, not one per entry (KTD6).
-
-    THE MEMBERSHIP WRITE NEEDS LOCATIONS, measured first: ``membership_plan``
-    groups content identifiers and ``write_tree_membership`` decodes every value
-    as a recorded location, so one handed to the other matches nothing.
-
-    A SECOND DRIVE ADDS NO SECOND ROW, which makes the crash between the two
-    writes survivable. The worker is run again directly, since ``jobs.retry``
-    refuses a SUCCEEDED job, and the STAGED report is read, since nothing drove
-    the commit. Then once more over a taxonomy with no favourites class: the
-    Favorites step is named on every drive with the refusal's code (U132).
+    First, the membership write needs locations: ``membership_plan`` groups
+    content identifiers, which ``write_tree_membership`` matches to nothing. On
+    the drive: no tag and every file's bytes kept (R16), the actor in the payload
+    (R34), one capture per job (KTD6). A second worker run adds no row, read off
+    its STAGED report, and one over a taxonomy with no favourites class names
+    the Favorites step's refusal code (U132).
     """
     from cratekit.core import active_taxonomy
     from cratekit.write import genre_favorites, trees
@@ -511,9 +468,8 @@ def test_an_apply_over_a_cut_over_library_writes_the_memberships(cut_over, monke
 
 
 def test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run(cut_over):
-    """The crash-repair property, driven: a ledger already holding every entry
-    makes the loop gather nothing, which is what a kill between the two writes
-    leaves, and the memberships still land because they come from the plan."""
+    """The crash repair: a ledger already holding every entry, as a kill between
+    the two writes leaves it, still gets its memberships, from the plan."""
     plan = apply_cli.current_plan(cut_over, DECLARED)
     for entry in plan.applicable():
         adopt_apply.mark_applied(
@@ -589,13 +545,9 @@ def test_a_plan_with_nothing_applicable_queues_nothing(machine):
 
 
 def test_a_collection_that_moved_after_approval_refuses_rather_than_applying(cut_over):
-    """R34 held at the WORKER as well as at the gate, so a job frozen yesterday
-    cannot apply a write set nobody has seen.
-
-    First, over the unmoved collection: ``require_approval`` runs inside the
-    loop, AFTER the tree write, so the approval is minted up front and an
-    unattributed payload writes no row.
-    """
+    """R34 held at the WORKER as well as at the gate. First, over the unmoved
+    collection, an unattributed payload writes no row, since the approval is
+    minted before the tree write."""
     _run_id, job_id = approve_and_queue(APPLY, GATE)
 
     def unauthorised(job):
@@ -662,12 +614,9 @@ def test_a_parked_adoption_leaves_blocked_and_non_zero(machine, monkeypatch):
 
 
 def test_an_apply_whose_entries_failed_raises_rather_than_reporting_success(cut_over, monkeypatch):
-    """``apply_plan`` RETURNS its failures and ``jobs.drive`` fails only on a raise.
-
-    The report is substituted: no input to this build fails an entry without
-    also failing the write, and what is under test is the worker turning a
-    returned failure into a raised one, with the artifact committed first.
-    """
+    """``apply_plan`` RETURNS its failures and ``jobs.drive`` fails only on a raise,
+    so the worker raises, after committing the artifact. The report is
+    substituted: no input fails an entry without failing the write."""
     real = apply_cli.apply_outstanding
 
     def failing(cfg, plan, declared, **kwargs):
@@ -738,9 +687,7 @@ def test_a_track_the_tree_write_could_not_place_is_never_marked_applied(cut_over
     )
 
 
-# ---------------------------------------------------------------------------
-# Library surgery the tests above need
-# ---------------------------------------------------------------------------
+# ── Library surgery the tests above need ──
 
 
 def _sql(cfg: config.Config, statement: str, parameters: tuple = ()) -> None:
@@ -804,9 +751,7 @@ def _record_decision(verb: list[str], gate: str) -> str:
     return run_id
 
 
-# ---------------------------------------------------------------------------
-# R-731: a track that already holds a competing place is withheld, not doubled
-# ---------------------------------------------------------------------------
+# ── R-731: a track that already holds a competing place is withheld, not doubled ──
 
 
 def _energy_bucket() -> taxonomy.Bucket:
@@ -877,12 +822,8 @@ def _file_into(handle, root, bucket_id: str, sub_id: str, content_id: str):
 
 @pytest.fixture
 def placed(machine, silence):
-    """A cut over library whose tree already files tracks, some of them elsewhere.
-
-    REAL CONTAINERS WITH REAL TAGS, since the defect is a file's energy tag
-    disagreeing with its track's sub. The tree is seeded through the guarded
-    writer's own find or create under the declared display names.
-    """
+    """A cut over library whose tree already files tracks, some elsewhere, with
+    REAL CONTAINERS AND TAGS, seeded under the declared display names."""
     import shutil
 
     from cratekit.core import tags
@@ -974,8 +915,9 @@ def test_an_approved_apply_leaves_a_withheld_track_where_it_sat(placed):
     withheld by kind and lists every one, to the person reading it too. An
     approved apply leaves each withheld track where it sat, adds the rest and
     removes nothing; a second apply over the same tree shows the same screen and
-    digest, adds nothing and withholds the same, and a track moved after a third
-    approval is a stale decision."""
+    digest, adds nothing and withholds the same. Then a planned sub renamed in
+    rekordbox withholds rather than doubles, and a track moved after an approval
+    is a stale decision."""
     plan = apply_cli.current_plan(placed, DECLARED)
     assert plan.placements.read is True
     withheld = {entry.content_id: entry for entry in plan.held_elsewhere()}
@@ -1037,6 +979,26 @@ def test_an_approved_apply_leaves_a_withheld_track_where_it_sat(placed):
     assert (report["added"], report["already_present"]) == (0, len(_ADDED) + 1)
     assert _filed(placed) == after
 
+    # A TRACK IN THE PLANNED SUB UNDER ANOTHER NAME IS WITHHELD, NOT DOUBLED. The
+    # writer finds a playlist by its declared name; a renamed playlist is still
+    # the sub its recorded node says, and the writer would file the track twice.
+    _rename_recorded(placed, _energy_bucket().id, _band(5), "Middle of the night")
+    before = _filed(placed)
+
+    shown = _shown(APPLY)
+    listed = {row["content_id"]: row for row in shown["held_elsewhere"]}
+    assert "p-same" in listed
+    assert listed["p-same"]["holds"] == [_band(5)]
+    assert listed["p-same"]["planned"] == _band(5)
+    assert listed["p-same"]["holds_under_another_name"] == [_band(5)]
+    assert listed["p-med-reads-high"]["holds_under_another_name"] == [_band(5)]
+    assert "p-same" not in {item["content_id"] for item in shown["items"]}
+
+    _applied()
+    after = _filed(placed)
+    assert after["p-same"] == before["p-same"]
+    assert after["p-med-reads-high"] == before["p-med-reads-high"]
+
     # A TRACK MOVED AFTER THE APPROVAL IS A STALE DECISION: the digest covers what
     # a withheld track holds. The worker is run directly, as the resume's gate
     # would answer first.
@@ -1079,27 +1041,6 @@ def _rename_recorded(cfg: config.Config, bucket_id: str, sub_id: str, to: str) -
     finally:
         rb_writer.close_db(handle)
     convergence.record_nodes(cfg, DECLARED.tree.id, [node])
-
-
-def test_a_track_in_the_planned_sub_under_another_name_is_withheld_not_doubled(placed):
-    """The writer finds a playlist by its declared name. A renamed playlist is still
-    the sub its recorded node says, and the writer would file the track twice."""
-    _rename_recorded(placed, _energy_bucket().id, _band(5), "Middle of the night")
-    before = _filed(placed)
-
-    shown = _shown(APPLY)
-    listed = {row["content_id"]: row for row in shown["held_elsewhere"]}
-    assert "p-same" in listed
-    assert listed["p-same"]["holds"] == [_band(5)]
-    assert listed["p-same"]["planned"] == _band(5)
-    assert listed["p-same"]["holds_under_another_name"] == [_band(5)]
-    assert listed["p-med-reads-high"]["holds_under_another_name"] == [_band(5)]
-    assert "p-same" not in {item["content_id"] for item in shown["items"]}
-
-    _applied()
-    after = _filed(placed)
-    assert after["p-same"] == before["p-same"]
-    assert after["p-med-reads-high"] == before["p-med-reads-high"]
 
 
 # ── R-788: a vox tagged track is filed under its bucket's vocal sub ─────────
@@ -1274,8 +1215,9 @@ def test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else(voxe
     gate names the vocal count and lists every membership. An approved apply
     adds the vocal sub beside the band, leaves what is already there, gains a
     withheld track nothing, never adds an untagged track and removes nothing.
-    The plan it approved is the plan it rebuilds to, so a stopped run resumes,
-    and a track tagged after an approval is a stale decision."""
+    The plan it approved is the plan it rebuilds to, so a stopped run resumes.
+    Then a track tagged after an approval is a stale decision, and a renamed
+    vocal playlist gains no second one."""
     plan = apply_cli.current_plan(voxed, DECLARED)
     bucket = _energy_bucket().id
     assert plan.vocals.state == "read"
@@ -1354,17 +1296,14 @@ def test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else(voxe
     assert raised.value.cause.reason == "decision-stale"
     assert _filed(voxed) == before
 
-
-def test_a_renamed_vocal_playlist_gains_no_second_one_beside_it(voxed):
-    """With the bucket's vocal sub renamed in rekordbox the writer would make a
-    second one for the tracks the plan adds, so the plan adds none there and
-    says why: every tagged track of the bucket is under another name."""
+    # A RENAMED VOCAL PLAYLIST GAINS NO SECOND ONE BESIDE IT: the writer would
+    # make one of the declared name, so the plan adds none and every tagged
+    # track of the bucket, the one tagged just now included, is under another name.
     _rename_recorded(voxed, _energy_bucket().id, VOX, "Singers")
-    vocal = _vocal_place()
 
     shown = _shown(APPLY)
     assert shown["vocal"]["add"] == 0
-    assert shown["vocal"]["under-another-name"] == len(_VOX_TAGGED)
+    assert shown["vocal"]["under-another-name"] == len(_VOX_TAGGED | {"p-candy-only"})
     assert shown["vocal_memberships"] == []
 
     _applied()
@@ -1373,9 +1312,7 @@ def test_a_renamed_vocal_playlist_gains_no_second_one_beside_it(voxed):
     assert (vocal[0], "Singers") in after["p-vox-only"]
 
 
-# ---------------------------------------------------------------------------
-# The active taxonomy, parsed once a run (U247)
-# ---------------------------------------------------------------------------
+# ── The active taxonomy, parsed once a run (U247) ──
 
 
 def _active_copy(cfg: config.Config, text: str) -> Path:
@@ -1383,31 +1320,6 @@ def _active_copy(cfg: config.Config, text: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path
-
-
-def _scanned_to_success() -> list:
-    code, queued = drive(["adopt", "scan"])
-    assert code == int(ExitCode.OK), queued
-    job = _scan_job()
-    code, resumed = drive(["adopt", "scan", "--job", job.job_id])
-    assert code == int(ExitCode.OK), resumed
-    with jobs.open_store() as store:
-        assert jobs.get(store, job.job_id).state is jobs.JobState.SUCCEEDED
-        return list(jobs.items(store, job.job_id))
-
-
-def test_a_scan_parses_the_active_taxonomy_once_however_many_rows_it_drives(machine, monkeypatch):
-    """The handler asked for it once a row and parsed it each time. The item count
-    is read, so a census shrunk to one row could not pass by having one to parse."""
-    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
-    _active_copy(machine, text)
-    parses = counted(monkeypatch)
-
-    driven = _scanned_to_success()
-    assert len(driven) >= 3 and all(item.state is jobs.ItemState.DONE for item in driven)
-    assert parses.of(text) == 1, (
-        f"{len(driven)} rows parsed the active copy {parses.of(text)} times"
-    )
 
 
 def test_a_copy_edited_during_a_scan_judges_every_row_after_the_edit(machine, monkeypatch):
@@ -1428,7 +1340,10 @@ def test_a_copy_edited_during_a_scan_judges_every_row_after_the_edit(machine, mo
 
     monkeypatch.setattr(adopt_scan, "scan_rows", watching)
 
-    _scanned_to_success()
+    code, queued = drive(["adopt", "scan"])
+    assert code == int(ExitCode.OK), queued
+    code, resumed = drive(["adopt", "scan", "--job", _scan_job().job_id])
+    assert code == int(ExitCode.OK), resumed
     assert len(judged_by) >= 3
     assert judged_by[0] == taxonomy.load_taxonomy(before)
     assert judged_by[0].buckets[0].display == display

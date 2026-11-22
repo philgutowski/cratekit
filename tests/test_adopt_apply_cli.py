@@ -1,14 +1,11 @@
 """U27: the ``adopt apply`` command line, and the one session it opens.
 
-The conformance suite drives only this verb's QUEUEING path, over a plan that is
-empty, so the session would ship undriven without this file. The residual it
-closes said ``apply_plan`` rewrote a user's file with nothing asserting the
-volume identity, the backup acknowledgment or the whole-run lock.
-:func:`apply_outstanding` opens ONE session around the loop, and the session
-tests below measure it from inside the loop and against the file's own bytes.
+The conformance suite drives only the QUEUEING path, over an empty plan, so the
+session is driven here: :func:`apply_outstanding` opens ONE session around the
+loop, asserting the volume identity, the backup acknowledgment and the whole-run
+lock, measured from inside the loop and against the file's own bytes.
 
-D1 APPLIES TO EVERY NAME HERE. Nothing below names a real volume, a real person,
-or a real track.
+D1 APPLIES. Nothing below names a real volume, a real person, or a real track.
 """
 
 from __future__ import annotations
@@ -154,20 +151,14 @@ def _apply(cfg_value, plan, declared_taxonomy, **overrides):
     return apply_cli.apply_outstanding(cfg_value, plan, declared_taxonomy, **arguments)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The session. This is the unit.
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The session. This is the unit. ──
 
 
 def test_the_whole_loop_runs_with_the_library_lock_actually_held(acknowledged, declared, silence):
-    """The lock is observed FROM INSIDE the loop, in ``tag_value``, the middle of
-    the pass: a measurement of the disk, not a claim about the call order.
-
-    On the same pass: the lock is RELEASED afterwards, measured by taking it
-    again; the memberships come back as the mapping the tree writer takes, for
-    the entries PLACED, valued with locations and never content identifiers
-    (U55); the collector writes nothing to the database, since sessions do not
-    nest; and the ledger records whoever answered the gate (R34).
+    """The lock is observed FROM INSIDE the loop, in ``tag_value``, and RELEASED
+    after it. The memberships come back for the entries PLACED, valued with
+    locations, never content identifiers (U55); the collector writes nothing to
+    the database, since sessions do not nest; the ledger names the approver (R34).
     """
     plan, path = _one_track_plan(acknowledged, declared, silence)
     db = Path(acknowledged.library.db_path)
@@ -337,9 +328,7 @@ def test_a_nested_session_is_refused_rather_than_deadlocking(acknowledged, decla
             nesting(plan.applicable()[0], "folder", "sub")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The approval, the gate, and the shell
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The approval, the gate, and the shell ──
 
 
 def test_the_approval_gate_is_found_by_digest_source_not_by_position():
@@ -381,16 +370,20 @@ def test_the_resume_names_the_job_and_carries_the_run_that_holds_the_approval():
     assert apply_cli.adopt_apply_argv(_Older()) == ["adopt", "apply", "--job", "job-7"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The census over the person's own collection
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The census over the person's own collection ──
 
 
 def test_the_census_is_the_library_and_every_row_of_it_is_carried(seeded, declared):
     """Every live row comes back classified, the tombstone is skipped, and the one
     row on disk with a routable genre is the only one the plan can act on. Two
     builds of the unchanged library give one digest, across a cleared cache, or
-    every approval would be stale on its first resume."""
+    every approval would be stale on its first resume.
+
+    The tree comes off the DECLARED taxonomy, never a flag (R19), and the census
+    classifies against the taxonomy its caller passed, so one plan entry is never
+    built from two: a MODIFIED taxonomy moves the tree, and one calling the
+    fixture's genre too coarse stops it routing.
+    """
     scanned = apply_cli.census(seeded, declared)
     by_id = {track.content_id: track for track in scanned}
 
@@ -411,6 +404,18 @@ def test_the_census_is_the_library_and_every_row_of_it_is_carried(seeded, declar
     collection.reset_cache()
     assert apply_cli.current_plan(seeded, declared).digest() == plan.digest()
     assert plan.digest()
+
+    moved = replace(declared, tree=replace(declared.tree, id=TREE_ID))
+    assert apply_cli.current_plan(seeded, moved).tree == TREE_ID
+    _bucket, genre = _bucket_and_genre(declared)
+    coarse = (*declared.fallback.too_coarse_as_source, genre)
+    narrowed = replace(declared, fallback=replace(declared.fallback, too_coarse_as_source=coarse))
+    collection.reset_cache()
+    starved = apply_cli.census(seeded, narrowed)
+    assert not any(track.disposition is adopt_scan.Disposition.ROUTE for track in starved), (
+        "the census routed against a taxonomy its caller did not pass, so an "
+        "entry can be built from two taxonomies at once"
+    )
 
 
 def test_a_library_of_tombstones_and_an_empty_one_both_census_to_nothing(cfg, declared):
@@ -434,52 +439,13 @@ def test_a_library_of_tombstones_and_an_empty_one_both_census_to_nothing(cfg, de
     )
 
 
-def test_the_tree_comes_off_the_declared_taxonomy_rather_than_a_flag(seeded):
-    """R19, driven against a MODIFIED taxonomy so the value is resolved and not
-    merely equal to the shipped constant."""
-    declared = taxonomy.default_taxonomy()
-    moved = replace(declared, tree=replace(declared.tree, id=TREE_ID))
-    assert apply_cli.current_plan(seeded, moved).tree == TREE_ID
-
-
-def test_the_census_classifies_against_the_taxonomy_its_caller_resolved(seeded):
-    """``declared`` is a PARAMETER: handed a taxonomy that calls the fixture's genre
-    too coarse, the census must stop routing it, or one plan entry could be built
-    from two taxonomies at once."""
-    declared = taxonomy.default_taxonomy()
-    routed = apply_cli.census(seeded, declared)
-    assert any(track.disposition is adopt_scan.Disposition.ROUTE for track in routed)
-
-    _bucket, genre = _bucket_and_genre(declared)
-    narrowed = replace(
-        declared,
-        fallback=replace(
-            declared.fallback,
-            too_coarse_as_source=(*declared.fallback.too_coarse_as_source, genre),
-        ),
-    )
-    collection.reset_cache()
-    starved = apply_cli.census(seeded, narrowed)
-    assert not any(track.disposition is adopt_scan.Disposition.ROUTE for track in starved), (
-        "the census routed against a taxonomy its caller did not pass, so an "
-        "entry can be built from two taxonomies at once"
-    )
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# The shell, driven through the real dispatcher
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The shell, driven through the real dispatcher ──
 
 
 @pytest.fixture
 def installed(library, monkeypatch):
-    """A machine the real ``cli.run`` can load, set up rather than half set up.
-
-    The dispatcher loads configuration for itself, so the file is saved. The
-    library has something applicable, or every test would take the no-op path,
-    and the volume and acknowledgment are answered, or every resume would stop
-    on the gate rather than on the thing it asks about.
-    """
+    """A machine the real ``cli.run`` can load, set up rather than half set up,
+    with something applicable in its library."""
     resolved = config.from_dict(
         valid_data(
             library,
@@ -630,9 +596,7 @@ def test_a_resume_reconciles_a_claim_a_dead_driver_left_behind(installed):
         assert [item.state for item in jobs.items(store, job_id)] == [jobs.ItemState.FAILED]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# R-693: the approval gate shows the plan it asks about
-# ═══════════════════════════════════════════════════════════════════════════
+# ── R-693: the approval gate shows the plan it asks about ──
 
 
 def _shown_matches(shown: dict, document: dict) -> None:
