@@ -1,31 +1,9 @@
-"""U27: the two restore verbs, and the ONE session that spans them.
+"""U27: the restore verbs, and the ONE session that spans both halves of a restore.
 
-WHY THIS FILE EXISTS SEPARATELY FROM THE CONFORMANCE SUITE. THREE of the nine
-conformance properties actually arm against these verbs, not nine, and the
-difference is worth stating because the shorter claim was made here first and an
-independent review measured it: six identifiers mention ``[restore.list]`` and
-seven mention ``[restore.run]``, which is properties 1, 2 and 3 plus one gate
-walk. The others are AST sweeps over the package or are parametrized over a
-population these entries are not in.
-
-Every one of those three drives the EMPTY path: a library with no session log, no
-capture, and nothing to roll back to. None of them reaches the destructive
-session, because a restore that would perform nothing deliberately does not open
-one. So the thing the unit exists for would ship undriven if this file did not
-exist.
-
-WHAT THE UNIT EXISTS FOR. ``tests/_pending.py`` registered two obligations
-against ``cratekit.session.restore_cli``: a command-line surface for the two
-verbs the registry has declared since U32, and the ONE wiring call that hands the
-already-open session's guard to the off-machine restore, so that a restore is one
-acquisition of the library lock rather than two with a window in it. Both are
-driven below, and the second is driven through the real
-``backup.plan_restore``/``backup.run_restore`` rather than through a recorded
-call, because taking the lock a second time in this process RAISES, which makes
-the composition measurable rather than arguable.
-
-D1 APPLIES TO EVERY NAME HERE. Nothing below names a real volume, a real person,
-or a real track.
+The conformance drives reach only the empty path, so the destructive session is
+driven here, through the real ``backup.plan_restore`` and ``backup.run_restore``:
+taking the lock a second time in this process raises, which makes one
+acquisition measurable. No name here is a real volume, person or track (D1).
 """
 
 from __future__ import annotations
@@ -52,30 +30,17 @@ from cratekit.session import restore_cli
 from tests import test_restore as restore_suite
 from tests.test_restore import acknowledge, completed_session, gate_seams
 
-#: The configured, SAVED library fixture, taken from the restore engine's own
-#: suite by assignment rather than by ``from ... import``. A fixture imported by
-#: name is shadowed by every test parameter that uses it, which the linter reads
-#: as a redefinition; an attribute assignment registers it here exactly the same
-#: way and says out loud that this is one fixture rather than a second copy of
-#: one. A second copy is what would drift: this file's properties are about a
-#: library whose configuration is on disk, because the dispatcher resolves it
-#: from there.
+#: The configured, saved library fixture, by assignment so a test parameter of
+#: the same name does not shadow an import.
 cfg = restore_suite.cfg
 
-#: The confirmation gate's declared name, spelled once so the drives below cannot
-#: drift from the registry entry they are answering.
+#: The confirmation gate's declared name, spelled once.
 CONFIRM = "restore.run.confirm"
 
 
 @pytest.fixture(autouse=True)
 def _release_process_locks():
-    """No test may leave this process believing it still holds a session lock.
-
-    Copied from ``tests/test_restore.py`` rather than imported, because an autouse
-    fixture applies to the module that DECLARES it: importing the helper names
-    from that file brings its helpers and not its autouse guards, and a session
-    lock leaking across tests here would be attributed to whichever test ran next.
-    """
+    """No test may leave this process believing it still holds a session lock."""
     yield
     session._HELD.clear()
 
@@ -88,16 +53,7 @@ def _nothing_is_running(monkeypatch):
 
 @pytest.fixture
 def installed(cfg, monkeypatch):
-    """The same library, with the two PLATFORM seams answered for this machine.
-
-    THE SEAMS ARE INJECTED AND THE GATES ARE NOT. Every test that drives a verb
-    through the dispatcher gets its arguments from a command line, so there is no
-    place to hand a provider in; without this the volume identity check compares
-    the fixture's recorded identifier against the boot disk's, which is a
-    property of the laptop rather than of the verb. What is replaced is only the
-    answer to "which volume is this path on", exactly as the conformance suite's
-    own fixture replaces it, and every gate this unit is about still runs.
-    """
+    """The same library, with the two PLATFORM seams answered for this machine."""
     monkeypatch.setattr(
         preflight,
         "default_identity_provider",
@@ -110,13 +66,7 @@ def installed(cfg, monkeypatch):
 
 
 def _drive(argv: list[str]) -> tuple[int, dict]:
-    """Run the REAL dispatcher and return the status with the parsed envelope.
-
-    Through ``cli.run`` rather than by calling the handler, because the handler
-    takes a context the dispatcher builds, and every property below about gates,
-    runs and exit codes is a property of that assembly rather than of the
-    function.
-    """
+    """Run the REAL dispatcher and return the status with the parsed envelope."""
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
     return code, json.loads(out.getvalue())
@@ -124,22 +74,21 @@ def _drive(argv: list[str]) -> tuple[int, dict]:
 
 def _answer(run_id: str, option: str) -> None:
     """R34's second act: the decision, recorded against the run, with its actor."""
-    code, envelope = _drive(
-        ["run", "decide", run_id, CONFIRM, option, "--actor", "a-person"]
-    )
+    code, envelope = _drive(["run", "decide", run_id, CONFIRM, option, "--actor", "a-person"])
     assert code == int(ExitCode.OK), envelope
 
 
-def _offered_digest(refused: dict) -> str:
-    """The digest the run RECORDED as offered, read off the run rather than the message.
+def _two_acts(argv: list[str], option: str = "restore") -> tuple[int, dict, dict]:
+    """Drive ARGV, answer its gate with OPTION, and drive it again under the run."""
+    code, refused = _drive(argv)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _answer(refused["run_id"], option)
+    code, envelope = _drive(["--run", refused["run_id"], *argv])
+    return code, refused, envelope
 
-    Through ``cli.gates`` because that is the value a later decision is compared
-    against. The refusal envelope carries the gate and its options; the digest
-    lives on the run, which is the whole point of it, so reading it from the
-    envelope would measure a message and not the thing that makes an answer go
-    stale. Non-empty is asserted here so a handler that offered nothing at all
-    fails as a missing digest rather than as two equal absences.
-    """
+
+def _offered_digest(refused: dict) -> str:
+    """The digest the run RECORDED as offered, read off the run rather than the message."""
     from cratekit.cli import gates as cli_gates  # noqa: PLC0415
 
     offered = cli_gates.load(refused["run_id"]).offers.get(CONFIRM, "")
@@ -156,27 +105,7 @@ STAMP = "2026-08-01T000000Z"
 
 
 def _fake_rclone(cfg_value, monkeypatch, *, snapshots=(STAMP,), marker=OWN) -> Path:
-    """Put a stand-in for rclone on the ONE seam the product ships for it.
-
-    ``CRATEKIT_BIN_RCLONE`` is ``core.binaries``'s per binary override, read
-    before PATH, so what is replaced here is the external PROGRAM and nothing
-    else: the argument parser, the gate flow, the session, the plan and the
-    transfer construction are all the real ones. Patching a runner attribute
-    cannot do this from a command line drive, because ``plan_restore`` binds its
-    default runner at definition time and no flag reaches it.
-
-    It answers the three listings a restore makes, exits 0 on everything else,
-    and appends each invocation to a log the caller reads. The log is what the
-    assertions are taken over, so what is measured is the program's own view of
-    what it was asked to do.
-
-    THE THREE LISTINGS ARE TOLD APART, which the first version of this did not
-    do: it answered every ``lsf`` with one dated folder, and that was enough
-    while nothing read a snapshot's identity. The dated folders and the identity
-    markers are read from two files ``_remote_holds`` rewrites, so a test can
-    move the remote BETWEEN the two acts of one restore, which is the only way
-    to drive what a backup landing in that window does.
-    """
+    """Put a stand-in for rclone on the ONE seam the product ships for it."""
     home = Path(config.installation_state_dir())
     home.mkdir(parents=True, exist_ok=True)
     log = home / "rclone-invocations.log"
@@ -200,13 +129,7 @@ def _fake_rclone(cfg_value, monkeypatch, *, snapshots=(STAMP,), marker=OWN) -> P
 
 
 def _remote_holds(snapshots, *, marker=OWN, cfg_value=None) -> None:
-    """Say what the fake remote lists from now on. Callable between two acts.
-
-    ONE MARKER FOR EVERY SNAPSHOT, because the fake program does not read which
-    dated folder it was asked about. That is enough for every test here and it
-    is a limit worth stating: no test in this file can hold one marked and one
-    unmarked snapshot at once, and the engine's own suite is where that is driven.
-    """
+    """Say what the fake remote lists from now on. Callable between two acts."""
     home = Path(config.installation_state_dir())
     (home / REMOTE_SNAPSHOTS).write_text("".join(f"{name}/\n" for name in snapshots))
     if marker is OWN:
@@ -216,12 +139,7 @@ def _remote_holds(snapshots, *, marker=OWN, cfg_value=None) -> None:
 
 
 def _lock_taken_in_another_process(path: Path) -> int:
-    """Try to take the library lock in a REAL second interpreter. Zero means it succeeded.
-
-    A thread would share this interpreter's open file descriptions, and an
-    advisory lock is held per description, so a thread can only ever prove what
-    this process already believes.
-    """
+    """Try to take the library lock in a REAL second interpreter. Zero means it succeeded."""
     script = (
         "import fcntl, sys\n"
         "handle = open(sys.argv[1], 'a+')\n"
@@ -242,21 +160,7 @@ def _lock_taken_in_another_process(path: Path) -> int:
 
 
 def test_both_halves_of_a_restore_run_inside_one_acquisition_of_the_lock(cfg, tmp_path):
-    """The wiring call U32 proved at the seam and could not make.
-
-    DRIVEN THROUGH THE REAL BACKUP FUNCTIONS, not through recorded calls, and
-    that is what makes this a measurement. Both of them default to taking the
-    library lock themselves, and ``core.session.session_lock`` RAISES
-    ``SessionComposition`` when one is opened inside another in the same process,
-    because the second acquisition can never succeed. So a verb that forgot to
-    hand the guard down does not merely take the lock twice here: it fails, and
-    the failure names the composition.
-
-    THE FOREIGN PROBE RUNS FROM INSIDE THE OFF-MACHINE HALF, in the injected
-    runner, because that is the only moment at which "the lock is held while the
-    mirror is being pulled" is a fact about the world rather than about the call
-    order. A probe after the call would pass over a verb that took no lock at all.
-    """
+    """The wiring call U32 proved at the seam and could not make."""
     acknowledge(cfg)
     record, _captured = completed_session(cfg)
     (tmp_path / "recovered").mkdir()
@@ -293,17 +197,7 @@ def test_both_halves_of_a_restore_run_inside_one_acquisition_of_the_lock(cfg, tm
 def test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened(
     cfg, tmp_path
 ):
-    """The half that ran is named, and the half that did not is ``None``.
-
-    THIS IS A DEFECT THE FIRST SHAPE OF THIS FUNCTION HAD. It returned only the
-    capture outcome, so a run that pulled a whole mirror and named no session
-    returned ``None`` and the verb reported zero steps performed: hundreds of
-    gigabytes moved, and the output said nothing had happened.
-
-    A fabricated ``RestoreOutcome`` is still refused for the other direction: it
-    would report ``converged`` over state nothing looked at, which is the one
-    question this unit answers conservatively everywhere else.
-    """
+    """The half that ran is named, and the half that did not is ``None``."""
     acknowledge(cfg)
     (tmp_path / "recovered").mkdir()
     database = config.state_path("rekordbox_db", cfg).name
@@ -328,17 +222,8 @@ def test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened(
         **gate_seams(cfg),
     )
 
-    # DERIVED FROM THE STATE INVENTORY INTERSECTED WITH THE SNAPSHOT, NOT FROM
-    # THE REPORT. Both of these assertions used to take their expected value from
-    # ``report.pulled``, which made them X equals X: an independent reviewer's
-    # mutation deduplicating the transfer labels killed nothing, because both
-    # sides moved together. The inventory is the same declaration ``plan_restore``
-    # reads to decide which companions MAY come back, and the listing is what
-    # this snapshot actually holds, so together they are the honest independent
-    # source for how many transfers a database restore is made of: the database
-    # itself, plus one per sidecar the schema marks as restored AND the snapshot
-    # holds. This listing holds every restored sidecar so the inventory is still
-    # what moves the count.
+    # Expected from the state inventory and the listing, never from the report
+    # itself: the database plus one per restored sidecar the snapshot holds.
     expected = 1 + len(restored)
     assert expected > 1, "the inventory restores no sidecar, so this pins nothing"
 
@@ -358,18 +243,7 @@ def test_a_mirror_pull_with_no_session_named_is_reported_as_work_that_happened(
 def test_an_off_machine_refusal_arrives_as_a_cause_and_not_as_a_bare_exception(
     installed, tmp_path, monkeypatch
 ):
-    """KTD25 at the boundary this unit created.
-
-    ``backup.Refusal`` is the backup module's own diagnosis set and nothing
-    downstream can classify it. Before this verb existed no caller carried one
-    out to a person, so an escaping ``BackupRefused`` would have arrived as an
-    internal error telling somebody to report a defect for an unconfigured
-    remote.
-
-    THE SLUG SURVIVES, and that is the assertion rather than the exit code alone.
-    Nine diagnoses folded into one nearby reason would tell a person to mount a
-    volume when what is missing is a program.
-    """
+    """KTD25 at the boundary this unit created."""
     acknowledge(installed)
     unconfigured = _without_remote(installed)
     with pytest.raises(CratekitError) as excinfo:
@@ -390,12 +264,7 @@ def test_an_off_machine_refusal_arrives_as_a_cause_and_not_as_a_bare_exception(
 
 
 def _without_remote(cfg_value):
-    """The same configuration with the off-machine destinations removed.
-
-    Built by REPLACING the field rather than by writing a second configuration
-    dictionary, so the library half stays byte for byte the one every other test
-    here uses and the only difference is the one under test.
-    """
+    """The same configuration with the off-machine destinations removed."""
     return replace(
         cfg_value,
         backup=replace(
@@ -426,12 +295,7 @@ def test_the_listing_shows_a_session_with_its_timestamp_workflow_and_per_tree_co
 
 
 def test_a_session_whose_capture_is_gone_is_listed_and_says_why(installed):
-    """Reported rather than filtered, which is ``Restorable``'s decision carried out.
-
-    The session whose capture somebody deleted by hand is exactly the one a
-    person is about to go looking for, and dropping it from the list answers
-    their question with silence.
-    """
+    """Reported rather than filtered, which is ``Restorable``'s decision carried out."""
     record, captured = completed_session(installed)
     for path in sorted(captured.root.rglob("*"), reverse=True):
         path.unlink() if path.is_file() else path.rmdir()
@@ -447,12 +311,7 @@ def test_a_session_whose_capture_is_gone_is_listed_and_says_why(installed):
 
 
 def test_the_listing_answers_on_a_library_that_has_never_acknowledged_a_backup(installed):
-    """Read only, so it is outside the gates, and this is what proves it.
-
-    The destructive-session gates refuse a library with no acknowledgment. A
-    listing that entered them would be unanswerable on precisely the machine
-    where the question a person is asking is whether they have a backup at all.
-    """
+    """Read only, so it is outside the gates, and this is what proves it."""
     completed_session(installed)
 
     code, envelope = _drive(["restore", "list"])
@@ -467,14 +326,7 @@ def test_the_listing_answers_on_a_library_that_has_never_acknowledged_a_backup(i
 
 
 def test_the_confirmation_is_two_acts_and_then_the_database_comes_back(installed, monkeypatch):
-    """AE18's second half, end to end, through the real dispatcher.
-
-    R34's shape: the first invocation discovers the gate and exits resumable, the
-    decision is recorded against that run by a named actor, and the resume
-    continues the SAME run. The measurement is the database's bytes, not the exit
-    code: a verb that reported OK and restored nothing would pass every
-    assertion about status anybody writes.
-    """
+    """AE18's second half, end to end, through the real dispatcher."""
     acknowledge(installed)
     record, _captured = completed_session(installed)
     database = config.state_path("rekordbox_db", installed)
@@ -496,22 +348,13 @@ def test_the_confirmation_is_two_acts_and_then_the_database_comes_back(installed
 
 
 def test_an_aborted_confirmation_restores_nothing(installed, monkeypatch):
-    """Abort is a real answer, and the measurement is the disk rather than the word.
-
-    A verb that reported NO_OP and restored anyway would read correctly in every
-    envelope anybody looks at.
-    """
+    """Abort is a real answer, and the measurement is the disk rather than the word."""
     acknowledge(installed)
     record, _captured = completed_session(installed)
     database = config.state_path("rekordbox_db", installed)
     database.write_bytes(b"database, generation two")
 
-    code, refused = _drive(["restore", "run", record.session_id])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    _answer(run_id, "abort")
-
-    code, envelope = _drive(["--run", run_id, "restore", "run", record.session_id])
+    code, refused, envelope = _two_acts(["restore", "run", record.session_id], "abort")
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert database.read_bytes() == b"database, generation two", (
@@ -522,18 +365,7 @@ def test_an_aborted_confirmation_restores_nothing(installed, monkeypatch):
 def test_a_decision_recorded_against_an_offer_the_world_has_moved_past_is_refused(
     installed, monkeypatch
 ):
-    """The digest is what makes a stale answer visible, and this is what puts it there.
-
-    ``digest_source="plan"`` on this gate is worth nothing unless the handler
-    OFFERS the digest, and no other assertion in this file can see whether it
-    did: every other path computes the same value on both drives, so it matches
-    whether or not the gate was ever told.
-
-    THE OFFER IS MOVED BY COMMITTING A LATER SESSION, which is the shape a real
-    library moves by and is exactly the change a person needs their approval
-    withdrawn for: they approved rolling back to a point, and since then somebody
-    did more work that the same restore would now destroy.
-    """
+    """The digest is what makes a stale answer visible, and this is what puts it there."""
     acknowledge(installed)
     record, _captured = completed_session(installed)
 
@@ -554,20 +386,8 @@ def test_a_decision_recorded_against_an_offer_the_world_has_moved_past_is_refuse
 
 
 def test_nothing_to_restore_is_an_outcome_and_opens_no_session(installed):
-    """The empty path, and the proof that it takes no destructive session.
-
-    NO ACKNOWLEDGMENT IS RECORDED HERE, deliberately. The destructive gates
-    refuse a library that has never answered the backup question, so reaching OK
-    at all is the measurement: a verb that opened the session to decide there was
-    nothing to do would exit ACK_REQUIRED on every fresh install, which is every
-    machine a person first types this on.
-    """
-    code, refused = _drive(["restore", "run"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    _answer(run_id, "restore")
-
-    code, envelope = _drive(["--run", run_id, "restore", "run"])
+    """The empty path, and the proof that it takes no destructive session."""
+    code, refused, envelope = _two_acts(["restore", "run"])
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == str(Outcome.NO_OP)
@@ -575,29 +395,11 @@ def test_nothing_to_restore_is_an_outcome_and_opens_no_session(installed):
 
 
 def test_a_confirmed_restore_queues_no_job_at_all(installed):
-    """Why the payload defect ``adopt.apply`` shipped cannot exist here, MEASURED.
-
-    That defect is specific to a long-running verb: the child a job driver spawns
-    is a fresh process, so an argv naming only the job mints a NEW run, meets the
-    explicit gate with nothing recorded against it, and exits DECISION_REQUIRED
-    for ever. Its precondition is a queued job. ``restore.run`` declares no
-    ``argv_builder`` and is not long running, so it has no frozen payload and
-    nothing to respawn, which is what puts it outside the population
-    ``tests/test_queued_resume_contract.py`` guards.
-
-    ASSERTED AGAINST THE QUEUE RATHER THAN ARGUED FROM THE REGISTRY. "It declares
-    no builder" is a fact about a table; "it enqueued nothing" is a fact about
-    what the verb did, and only the second one fails if somebody adds a queueing
-    branch without adding the flag.
-    """
+    """Why the payload defect ``adopt.apply`` shipped cannot exist here, MEASURED."""
     acknowledge(installed)
     record, _captured = completed_session(installed)
 
-    _code, refused = _drive(["restore", "run", record.session_id])
-    _answer(refused["run_id"], "restore")
-    code, envelope = _drive(
-        ["--run", refused["run_id"], "restore", "run", record.session_id]
-    )
+    code, refused, envelope = _two_acts(["restore", "run", record.session_id])
     assert code == int(ExitCode.OK), envelope
 
     with jobs.open_store() as store:
@@ -608,18 +410,7 @@ def test_a_confirmed_restore_queues_no_job_at_all(installed):
 
 
 def test_a_session_identifier_nothing_recorded_is_refused_by_name(installed):
-    """A typo gets a sentence about the identifier, not a traceback and not silence.
-
-    RECORDED AGAINST A LIBRARY THAT HAS A SESSION, which is the whole measurement
-    and which the first version of this test did not do. Over an EMPTY log the
-    refusal is unavoidable: there is no other session to fall through to, so a
-    handler that silently restored the newest one instead of refusing the named
-    one would pass. Measured on the author's own table, row
-    N2_an_unknown_identifier_is_not_refused: falling through to the newest
-    session killed ZERO tests across the whole suite before this line existed,
-    which is a person typing one character wrong and having a different session
-    restored over their library.
-    """
+    """A typo gets a sentence about the identifier, not a traceback and not silence."""
     recorded, _captured = completed_session(installed)
 
     code, envelope = _drive(["restore", "run", "no-such-session"])
@@ -633,15 +424,7 @@ def test_a_session_identifier_nothing_recorded_is_refused_by_name(installed):
 
 
 def test_a_rehearsal_neutralizes_the_mirror_transfers_too(cfg, tmp_path):
-    """The dry run reaches BOTH halves, measured on the argv the runner is handed.
-
-    Measured on the author's own table, row
-    S7_a_rehearsal_performs_the_mirror_pull: hard coding the off-machine half to
-    ``dry_run=False`` killed ZERO tests across the whole suite. The dry run test
-    that existed drove only the capture half, so a rehearsal that transferred
-    hundreds of gigabytes for real would have passed every assertion in this
-    file.
-    """
+    """The dry run reaches BOTH halves, measured on the argv the runner is handed."""
     acknowledge(cfg)
     (tmp_path / "recovered").mkdir()
     seen: list[tuple[str, ...]] = []
@@ -671,23 +454,7 @@ def test_a_rehearsal_neutralizes_the_mirror_transfers_too(cfg, tmp_path):
 
 
 def test_the_mirror_is_pulled_before_the_capture_is_spent(cfg):
-    """The order is the reason the two halves compose, and it is not asserted elsewhere.
-
-    Measured on the author's own table, row S5_the_off_machine_half_runs_second:
-    performing the capture restore FIRST killed ZERO tests. That order overwrites
-    the session a person just restored with whatever the remote happened to hold,
-    which is the failure the composition exists to avoid rather than a cosmetic
-    sequencing choice.
-
-    THE FIRST VERSION OF THIS TEST MEASURED THE END STATE AND STILL DIED AT ZERO.
-    It stamped the database from inside the runner and compared the bytes
-    afterwards, which a mutation that ran the capture restore BOTH before and
-    after the pull satisfies exactly, because the last write is the capture
-    either way. An end state cannot see an order. What is measured now is the
-    world AS THE MIRROR RUNS: at that moment the database must still hold the
-    live bytes, because the capture restore has not happened yet. Re-measured
-    after the change and the row kills.
-    """
+    """The order is the reason the two halves compose, and it is not asserted elsewhere."""
     acknowledge(cfg)
     record, _captured = completed_session(cfg)
     database = config.state_path("rekordbox_db", cfg)
@@ -720,19 +487,7 @@ def test_the_mirror_is_pulled_before_the_capture_is_spent(cfg):
 
 
 def test_the_session_watches_the_whole_library_and_not_a_folder_inside_it(cfg):
-    """The analysis watch names the library root, driven rather than read.
-
-    Measured on the author's own table, rows S3 and S4: arming the watch on no
-    roots at all, and arming it on the Music folder alone, each killed ZERO
-    tests. A restore replaces the database and everything coupled to it, so
-    anything under the library can move, and a watch that names nothing watches
-    nothing while still reporting a clean session, which is worse than an absent
-    guard because the report reads the same either way.
-
-    THE COMPOSITE IS THE SECOND ASSERTION. The first says which root was armed;
-    the second mutates the world the guard is over, by writing under the library
-    but outside Music, and shows the armed watch is wide enough to be over it.
-    """
+    """The analysis watch names the library root, driven rather than read."""
     acknowledge(cfg)
     armed: list[tuple] = []
     real = restore.recovery_session
@@ -763,12 +518,7 @@ def test_the_session_watches_the_whole_library_and_not_a_folder_inside_it(cfg):
 
 
 def test_a_bare_run_takes_the_newest_spendable_capture_and_not_merely_the_newest(cfg):
-    """The default has to skip an unusable row, or it refuses on every library that has one.
-
-    A capture somebody deleted by hand is LISTED on purpose. Choosing it as the
-    default because it happens to be newest would turn an informative row into a
-    refusal for everybody who has ever tidied a snapshot directory.
-    """
+    """The default has to skip an unusable row, or it refuses on every library that has one."""
     older, _first = completed_session(cfg, started="2026-08-01T00:00:00+00:00", stamp="a")
     newer, wrecked = completed_session(cfg, started="2026-08-02T00:00:00+00:00", stamp="b")
     for path in sorted(wrecked.root.rglob("*"), reverse=True):
@@ -790,12 +540,7 @@ def test_a_dry_run_walks_every_step_and_performs_none_of_them(installed, monkeyp
     database = config.state_path("rekordbox_db", installed)
     database.write_bytes(b"database, generation two")
 
-    code, refused = _drive(["restore", "run", record.session_id, "--dry-run"])
-    run_id = refused["run_id"]
-    _answer(run_id, "restore")
-    code, envelope = _drive(
-        ["--run", run_id, "restore", "run", record.session_id, "--dry-run"]
-    )
+    code, refused, envelope = _two_acts(["restore", "run", record.session_id, "--dry-run"])
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["dry_run"] is True
@@ -806,14 +551,7 @@ def test_a_dry_run_walks_every_step_and_performs_none_of_them(installed, monkeyp
 
 
 def test_the_discard_override_reaches_the_engine_as_identifiers(installed, monkeypatch):
-    """R30's override, driven from the command line in both directions.
-
-    Unnamed, the restore is refused because it would destroy a later session that
-    committed. Named, the same restore proceeds. A boolean flag could not tell
-    those apart, which is why the engine takes identifiers and why this asserts
-    the refusal FIRST: a test that only drove the accepting half would pass over
-    a handler that ignored the flag entirely.
-    """
+    """R30's override, driven from the command line in both directions."""
     acknowledge(installed)
     target, _captured = completed_session(installed, started="2026-08-01T00:00:00+00:00", stamp="a")
     later, _second = completed_session(installed, started="2026-08-02T00:00:00+00:00", stamp="b")
@@ -840,16 +578,7 @@ def test_the_discard_override_reaches_the_engine_as_identifiers(installed, monke
 
 
 def test_the_digest_moves_when_the_discard_set_moves(installed):
-    """A wider destruction is a different decision, and the digest has to say so.
-
-    Measured on the author's own table, row
-    O2_the_discard_set_leaves_the_digest: dropping the discard list out of the
-    digested offer killed ZERO tests. The cost is specific. A person approves
-    restoring to a session while naming one later session they accept losing;
-    with the list outside the digest, a second invocation naming three more
-    sessions matches the recorded decision exactly and destroys work the person
-    never agreed to lose.
-    """
+    """A wider destruction is a different decision, and the digest has to say so."""
     target, _captured = completed_session(installed, started="2026-08-01T00:00:00+00:00", stamp="a")
     later, _second = completed_session(installed, started="2026-08-02T00:00:00+00:00", stamp="b")
 
@@ -865,15 +594,7 @@ def test_the_digest_moves_when_the_discard_set_moves(installed):
 
 
 def test_the_digest_moves_when_the_mirror_half_is_added(installed, monkeypatch):
-    """Approving one session must not also authorise pulling a mirror off the network.
-
-    Measured on the author's own table, row
-    O3_the_off_machine_half_leaves_the_digest: dropping the off-machine item out
-    of the digested offer killed ZERO tests. The two halves have very different
-    costs, the mirror being hundreds of gigabytes over somebody's connection, and
-    a digest that cannot tell them apart lets a decision made about the cheap one
-    be honoured against the expensive one.
-    """
+    """Approving one session must not also authorise pulling a mirror off the network."""
     record, _captured = completed_session(installed)
     # The offer now asks the remote which snapshot it is offering, so the
     # off-machine half needs a remote to ask.
@@ -888,18 +609,7 @@ def test_the_digest_moves_when_the_mirror_half_is_added(installed, monkeypatch):
 
 
 def test_the_confirmation_gate_is_found_by_digest_source_and_not_by_position(installed):
-    """The handler asks the gate the entry DIGESTS, whichever order they are written in.
-
-    Measured on the author's own table, row G1_gate_found_by_position: taking
-    ``gates[0]`` killed ZERO tests, and the reason is that the two declared gates
-    happen to be written confirm-first today. That makes the guard true by
-    coincidence, and the day somebody reorders the declaration the handler asks
-    the cloud-sync question against a restore digest and the confirmation is
-    never asked at all.
-
-    DRIVEN OVER A REVERSED ENTRY rather than argued, so what is measured is the
-    handler's selection and not the registry's current spelling.
-    """
+    """The handler asks the gate the entry DIGESTS, whichever order they are written in."""
     entry = registry.entry("restore.run")
     reversed_entry = replace(entry, gates=tuple(reversed(entry.gates)))
     assert [spec.name for spec in reversed_entry.gates] != [
@@ -919,15 +629,7 @@ def test_the_confirmation_gate_is_found_by_digest_source_and_not_by_position(ins
 def test_an_off_machine_refusal_carries_the_reserved_remediation_and_not_the_class_default(
     cfg, tmp_path
 ):
-    """The per-slug answer survives, which is the whole reason the table holds one.
-
-    Measured on the author's own table, row
-    R2_the_reserved_remediation_is_replaced_by_the_class_default: swapping the
-    reserved remediation for ``report-defect`` killed ZERO tests. The cost is a
-    person with an unconfigured remote being told to file a bug, and a person
-    with no snapshot on the remote being told the same thing, when the
-    reservation table already holds a different and correct sentence for each.
-    """
+    """The per-slug answer survives, which is the whole reason the table holds one."""
     acknowledge(cfg)
     unconfigured = _without_remote(cfg)
     with pytest.raises(CratekitError) as excinfo:
@@ -952,12 +654,7 @@ def test_an_off_machine_refusal_carries_the_reserved_remediation_and_not_the_cla
 
 
 def test_the_report_keeps_the_digest_the_decision_was_recorded_against(installed, monkeypatch):
-    """The reported digest identifies the AUTHORISATION, never the work.
-
-    Recomputing it over the performed steps would print a value that does not
-    appear on the run record, and a person comparing the two would be looking at
-    evidence that the approval did not cover this restore.
-    """
+    """The reported digest identifies the AUTHORISATION, never the work."""
     acknowledge(installed)
     record, _captured = completed_session(installed)
 
@@ -984,21 +681,7 @@ def test_the_report_keeps_the_digest_the_decision_was_recorded_against(installed
 
 
 def test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happen(cfg):
-    """BLOCKING finding 1, driven, and the measurement is what a person was told.
-
-    ``backup.run_restore`` returned its results unread. The verb then built its
-    report from the PLAN's command labels, so a restore whose every copy failed
-    came back as two completed transfers and exit OK. That is not a cosmetic
-    misreport: the live companion files are cleared BEFORE the first command, and
-    the write-ahead log holds transactions committed since the last checkpoint,
-    which are in no capture by construction. Measured before the fix: the log was
-    deleted, the database was unchanged, and the person was told the restore had
-    happened.
-
-    THE RUNNER FAILS THE COPY AND NOT THE LISTING, which is the shape of the real
-    condition: the remote is reachable enough to plan against, then the transfer
-    fails on an expired token or a dropped connection.
-    """
+    """BLOCKING finding 1, driven, and the measurement is what a person was told."""
     acknowledge(cfg)
     database = config.state_path("rekordbox_db", cfg)
     wal = database.with_name(database.name + "-wal")
@@ -1031,27 +714,13 @@ def test_a_failed_transfer_refuses_and_never_reports_a_restore_that_did_not_happ
     assert cause.remediation.steps, (
         "the person is told the restore failed and not what to do about it"
     )
-    # THE STATE THE REFUSAL LEAVES, ASSERTED RATHER THAN ASSUMED. The clearing is
-    # the safety property the ordering exists for and is not undone, so what the
-    # message promises about the world has to be true of the world.
+    # The companions were cleared and stay cleared, as the message says.
     assert not wal.exists()
     assert str(wal.name) in cause.message or "companion" in cause.message
 
 
 def test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass(cfg):
-    """The same defect, one branch over, found by asking what else had the shape.
-
-    ``run_restore``'s dry run branch returned its results unread exactly as the
-    real branch did. It is not the lesser case: that function's own docstring
-    argues a rehearsal is worth running because "a rehearsal that passes is then
-    evidence the real run will reach its work", and that claim is false the
-    moment a failing preview reports as a passing one. A person rehearses
-    precisely to find out whether the remote is reachable.
-
-    NOTHING IS CLEARED ON THIS PATH, which the refusal must not claim otherwise.
-    A dry run performs nothing at all, including the clearing, so the live
-    companions are still there.
-    """
+    """The same defect, one branch over, found by asking what else had the shape."""
     acknowledge(cfg)
     database = config.state_path("rekordbox_db", cfg)
     wal = database.with_name(database.name + "-wal")
@@ -1079,11 +748,7 @@ def test_a_rehearsal_whose_preview_fails_refuses_rather_than_reading_as_a_pass(c
 
 
 def test_a_transfer_that_succeeds_is_still_reported(cfg):
-    """The other direction, so the refusal above is not simply a verb that refuses.
-
-    A guard that fires on every run is indistinguishable from a broken verb, and
-    a test that only drove the failure could not tell those apart.
-    """
+    """The other direction, so the refusal above is not simply a verb that refuses."""
     acknowledge(cfg)
 
     report = restore_cli.restore_under_one_session(
@@ -1100,12 +765,7 @@ def test_a_transfer_that_succeeds_is_still_reported(cfg):
 
 
 def test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar(cfg, tmp_path):
-    """The report a person reads names the sidecar the snapshot did not hold.
-
-    The snapshot this product takes holds ``master.db`` alone. The restore used
-    to copy the write ahead log anyway, rclone exited 3, and the verb reported
-    failure after the database had already landed.
-    """
+    """The report a person reads names the sidecar the snapshot did not hold."""
     acknowledge(cfg)
     (tmp_path / "recovered").mkdir()
     database = config.state_path("rekordbox_db", cfg).name
@@ -1141,11 +801,7 @@ def test_a_restore_from_a_database_only_snapshot_names_the_absent_sidecar(cfg, t
 def test_a_restore_in_the_outside_layout_says_whether_the_share_came_back(
     cfg, tmp_path, listing, pulled, word
 ):
-    """R-338 at the report a person reads: the grids arrived, or it says they did not.
-
-    A backup taken before the share was carried holds no mirror of it. Rows
-    restored from one look fine and have no analysis, so the totals name it.
-    """
+    """R-338 at the report a person reads: the grids arrived, or it says they did not."""
     home = tmp_path / "home" / "rekordbox"
     home.mkdir(parents=True)
     (home / "master.db").write_bytes(b"live")
@@ -1184,14 +840,7 @@ def test_a_restore_in_the_outside_layout_says_whether_the_share_came_back(
 def test_a_live_restore_in_the_outside_layout_withholds_the_share_and_closes_clean(
     cfg, tmp_path
 ):
-    """Driven against the REAL analysis watch, with a runner that really writes.
-
-    The first version of this pulled the share on every outside restore. On the
-    live path that put analysis files under the watched library root, and the
-    session closed refused as moved analysis files after the database had
-    already been replaced. The runner below writes a grid wherever a share
-    transfer is aimed, so a pull that came back would fail this the same way.
-    """
+    """Driven against the REAL analysis watch, with a runner that really writes."""
     home = tmp_path / "home" / "rekordbox"
     home.mkdir(parents=True)
     (home / "master.db").write_bytes(b"live")
@@ -1229,19 +878,7 @@ def test_a_live_restore_in_the_outside_layout_withholds_the_share_and_closes_cle
 
 
 def test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect(installed):
-    """BLOCKING finding 2, with its producer DRIVEN rather than hand mutated.
-
-    THE PRODUCER IS THIS PRODUCT'S OWN RETENTION. ``restore.prune`` deletes a
-    capture directory while the session record stays in the log, which is the
-    ordinary end state of every library that keeps history bounded. Before the
-    fix, ``restore list`` explained that state correctly in a sentence and
-    ``restore run`` on the same session exited 1 with ``internal-error`` and
-    ``report-defect`` carrying a raw errno: a person told to file a bug about a
-    directory the tool removed on purpose.
-
-    THE TWO SURFACES NOW SAY THE SAME SENTENCE, because it is computed once, in
-    ``Restorable.unusable``, and both read it rather than each inventing one.
-    """
+    """BLOCKING finding 2, with its producer DRIVEN rather than hand mutated."""
     acknowledge(installed)
     record, captured = completed_session(installed)
     removed = restore.prune(
@@ -1270,13 +907,7 @@ def test_a_capture_this_product_pruned_is_refused_by_name_and_not_as_a_defect(in
 
 
 def test_an_unusable_capture_is_refused_before_the_mirror_moves_a_byte(cfg):
-    """The half of finding 2 that costs something, and it is the ordering.
-
-    With ``--from-backup`` the off machine half runs FIRST, so a refusal deferred
-    to the plan let every transfer complete and the live companion files be
-    cleared before anything asked whether the capture could be spent at all. The
-    refusal now happens before any session opens, so the runner is never reached.
-    """
+    """The half of finding 2 that costs something, and it is the ordering."""
     acknowledge(cfg)
     record, captured = completed_session(cfg)
     restore.prune(cfg, policy=restore.RetentionPolicy(keep=0, max_age=timedelta(0)))
@@ -1302,20 +933,11 @@ def test_an_unusable_capture_is_refused_before_the_mirror_moves_a_byte(cfg):
 def test_the_from_backup_flag_reaches_the_off_machine_half_through_the_dispatcher(
     installed, monkeypatch
 ):
-    """``--from-backup``, driven end to end, which nothing did before.
-
-    Eleven of the independent review's twenty one user facing zero rows were
-    this: the three off machine flags appeared in no test, so the wiring could be
-    changed freely with the suite green. The seam replaced here is the external
-    program and nothing else, so the argument parser, the gate flow, the session
-    and the plan are all the real ones.
-    """
+    """``--from-backup``, driven end to end, which nothing did before."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch)
 
-    _code, refused = _drive(["restore", "run", "--from-backup"])
-    _answer(refused["run_id"], "restore")
-    code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
+    code, refused, envelope = _two_acts(["restore", "run", "--from-backup"])
 
     assert code == int(ExitCode.OK), envelope
     invoked = log.read_text().splitlines() if log.exists() else []
@@ -1329,18 +951,11 @@ def test_the_from_backup_flag_reaches_the_off_machine_half_through_the_dispatche
 
 
 def test_without_the_flag_no_transfer_is_attempted_at_all(installed, monkeypatch):
-    """The other direction, so the test above is not passing on a verb that always pulls.
-
-    Measured on the review's own row: forcing the off machine half on for every
-    run killed nothing, because no test ever established that a plain restore
-    does not touch the network.
-    """
+    """The other direction, so the test above is not passing on a verb that always pulls."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch)
 
-    _code, refused = _drive(["restore", "run"])
-    _answer(refused["run_id"], "restore")
-    code, envelope = _drive(["--run", refused["run_id"], "restore", "run"])
+    code, refused, envelope = _two_acts(["restore", "run"])
 
     assert code == int(ExitCode.OK), envelope
     invoked = log.read_text().splitlines() if log.exists() else []
@@ -1348,12 +963,7 @@ def test_without_the_flag_no_transfer_is_attempted_at_all(installed, monkeypatch
 
 
 def test_include_mirror_adds_the_file_half_and_its_absence_leaves_it_out(cfg):
-    """The flag that decides whether hundreds of gigabytes move, pinned both ways.
-
-    Measured on the review's own row: forcing the mirror on for every run killed
-    nothing. The two directions are asserted together because either one alone
-    passes over a flag that is ignored.
-    """
+    """The flag that decides whether hundreds of gigabytes move, pinned both ways."""
     acknowledge(cfg)
     captured: dict[bool, list[str]] = {}
 
@@ -1383,12 +993,7 @@ def test_include_mirror_adds_the_file_half_and_its_absence_leaves_it_out(cfg):
 
 
 def test_the_snapshot_flag_chooses_which_dated_snapshot_is_pulled(cfg):
-    """``--snapshot``, pinned on the argv the transfer is actually given.
-
-    Measured on the review's own row: ignoring the flag and always taking the
-    newest killed nothing, because no test ever read the path a transfer was
-    handed.
-    """
+    """``--snapshot``, pinned on the argv the transfer is actually given."""
     acknowledge(cfg)
     seen: list[tuple[str, ...]] = []
 
@@ -1417,15 +1022,7 @@ def test_the_snapshot_flag_chooses_which_dated_snapshot_is_pulled(cfg):
 
 
 def test_the_default_takes_the_newest_of_several_spendable_captures(cfg):
-    """Newest FIRST, pinned where reversing the order can actually be seen.
-
-    The independent review's strongest zero: reversing this module's walk over
-    the listing killed nothing, and so did reversing ``list_sessions``'s own
-    ordering one layer down. Both rows were inert because the only spendable
-    session in the fixture the older test built was ALSO the oldest, so newest
-    and oldest were the same row. Two spendable sessions is the smallest fixture
-    in which the two answers differ.
-    """
+    """Newest FIRST, pinned where reversing the order can actually be seen."""
     older, _first = completed_session(cfg, started="2026-08-01T00:00:00+00:00", stamp="a")
     newer, _second = completed_session(cfg, started="2026-08-02T00:00:00+00:00", stamp="b")
     assert older.session_id != newer.session_id
@@ -1440,13 +1037,7 @@ def test_the_default_takes_the_newest_of_several_spendable_captures(cfg):
 
 
 def test_a_capture_that_exists_but_is_unverified_is_not_spendable(cfg):
-    """The VERIFIED half of spendable, which nothing pinned at either layer.
-
-    A capture whose manifest is present and whose integrity check never passed is
-    exactly the capture a restore must not reach for by default: the files are
-    there and nothing has established they are the files. Measured on the
-    review's own rows, widening ``restorable`` to drop this half killed nothing.
-    """
+    """The VERIFIED half of spendable, which nothing pinned at either layer."""
     record, captured = completed_session(cfg)
     only = restore_cli._newest_restorable(cfg)
     assert only is not None and only.session_id == record.session_id, (
@@ -1469,23 +1060,12 @@ def test_a_capture_that_exists_but_is_unverified_is_not_spendable(cfg):
 
 # ── R-368: a restore into a directory that is not the live library ────────────
 #
-# The verb could restore to exactly one place, the live library root, so the
-# rehearsal a person runs BEFORE they need a restore was a session's script
-# calling the engine with its ``target`` seam set. The flag below is that seam
-# made reachable, and every property here is about the two things that made it
-# unsafe to expose: a target that is the live library by another name, and a
-# target beside a capture rollback, which can only ever be performed on the live
-# library and would put the two halves of one restore on two volumes.
+# Every property is one of the two hazards of the flag: a target that is the
+# live library by another name, and a target beside a capture rollback.
 
 
 def _sidecars_beside(path: Path) -> tuple[Path, ...]:
-    """The live companion files, written so a run that clears them can be seen.
-
-    The suffixes come from the state inventory rather than from a literal here,
-    which is the same declaration ``plan_restore`` reads to decide what a restore
-    clears. A literal pair would keep passing on the day the inventory grows a
-    third.
-    """
+    """The live companion files, written so a run that clears them can be seen."""
     written = []
     for sidecar in config.state_file("rekordbox_db").sidecars:
         beside = path.with_name(path.name + sidecar.suffix)
@@ -1504,18 +1084,7 @@ def _copy_destinations(log: Path) -> list[str]:
 def test_a_target_restores_the_database_into_the_directory_it_names(
     installed, tmp_path, monkeypatch
 ):
-    """The close condition, driven through the dispatcher onto a scratch directory.
-
-    TWO MEASUREMENTS, because either alone passes over a flag that is read and
-    then dropped. The first is where the transfer was pointed, taken off the
-    program's own invocation log. The second is the live companion files, which
-    are the cost of getting this wrong: ``run_restore`` clears the companions
-    beside the database it is about to replace, so a rehearsal whose target was
-    ignored deletes the live write-ahead log, and that log holds transactions
-    committed since the last checkpoint, which are in no capture by construction.
-    A rehearsal that destroys the one thing no backup holds is worse than no
-    rehearsal.
-    """
+    """The close condition, driven through the dispatcher onto a scratch directory."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch)
     scratch = tmp_path / "rehearsal"
@@ -1523,11 +1092,7 @@ def test_a_target_restores_the_database_into_the_directory_it_names(
     live = config.state_path("rekordbox_db", installed)
     companions = _sidecars_beside(live)
 
-    _code, refused = _drive(["restore", "run", "--from-backup", "--target", str(scratch)])
-    _answer(refused["run_id"], "restore")
-    code, envelope = _drive(
-        ["--run", refused["run_id"], "restore", "run", "--from-backup", "--target", str(scratch)]
-    )
+    code, refused, envelope = _two_acts(["restore", "run", "--from-backup", "--target", str(scratch)])
 
     assert code == int(ExitCode.OK), envelope
     destinations = _copy_destinations(log)
@@ -1543,14 +1108,7 @@ def test_a_target_restores_the_database_into_the_directory_it_names(
 
 
 def test_a_target_that_is_the_library_root_is_refused(installed, monkeypatch):
-    """The first destination check, over the spelling a person reaches for first.
-
-    ``--target`` pointed at the library is not a rehearsal, it is the live
-    restore with extra typing, and the two have different gates ahead of them in
-    every direction this unit could grow. Refused rather than quietly accepted as
-    a synonym, because a synonym is what makes the next check, the one below
-    about where the database lands, look redundant.
-    """
+    """The first destination check, over the spelling a person reaches for first."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch)
 
@@ -1573,14 +1131,7 @@ def test_a_target_that_is_the_library_root_is_refused(installed, monkeypatch):
 def test_a_target_that_holds_the_library_or_sits_in_it_is_refused(
     installed, where, why
 ):
-    """The rest of the containment check, which equality alone does not cover.
-
-    A target INSIDE the library restores a database onto the volume the whole
-    rehearsal exists to leave alone, and one ABOVE it is the library's own parent,
-    where ``--include-mirror`` would copy the mirror back over the live tree. Both
-    are the live library under a different name, which is why they share the
-    slug the exact root gets.
-    """
+    """The rest of the containment check, which equality alone does not cover."""
     acknowledge(installed)
     root = Path(installed.library.root)
     named = root / "beneath" if where == "inside" else root.parent
@@ -1597,19 +1148,7 @@ def test_a_target_that_holds_the_library_or_sits_in_it_is_refused(
 def test_a_target_whose_database_lands_on_the_live_one_is_refused(
     installed, tmp_path, monkeypatch
 ):
-    """The check the containment one cannot make, in the layout rekordbox ships.
-
-    ``database_target_for`` rebases the CONFIGURED database onto the target, and
-    a database that sits outside the library root has no position relative to it,
-    so the honest answer is its own name at the top of the target. That makes the
-    parent directory of a live database a target which is not the library root,
-    is neither above nor below it, and still restores ``master.db`` over the live
-    file in place.
-
-    THE LAYOUT IS THE ACKNOWLEDGED ONE, not an invented configuration. It is what
-    ``library.db_outside_root_acknowledged_on`` exists for and it is rekordbox's
-    own default, so this is the common installation rather than the exotic one.
-    """
+    """The check the containment one cannot make, in the layout rekordbox ships."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch)
     home = tmp_path / "home" / "rekordbox"
@@ -1639,24 +1178,13 @@ def test_a_target_whose_database_lands_on_the_live_one_is_refused(
     assert envelope["cause"]["reason"] == "restore-target-is-live-root"
     assert envelope["cause"]["detail"]["check"] == "destination"
     assert not log.exists(), "the remote was reached by a run that is refused"
-    # THE SENTENCE, not only the slug. Measured on the author's own table, row
-    # R1_the_live_root_refusal_is_reworded: rewriting this message killed
-    # nothing. A person who named their database's own directory sees the
-    # message and not the slug, and what it has to tell them is WHERE the file
-    # would go, because the directory they typed is not the path that moves.
+    # The sentence names where the database would land, not only the slug.
     assert str(home / "master.db") in envelope["cause"]["message"], envelope
     assert "live database" in envelope["cause"]["message"], envelope
 
 
 def test_a_target_with_no_off_machine_pull_is_refused(installed):
-    """The flag names where a PULLED database goes, so it needs the pull.
-
-    Accepted silently it would be inert, which is the shape ``--snapshot`` and
-    ``--include-mirror`` still have one line up: a flag a person typed, that the
-    verb read, and that changed nothing about what it did. Here that inertness
-    is dangerous rather than merely untidy, because the run it silently becomes
-    is a rollback of the live library.
-    """
+    """The flag names where a PULLED database goes, so it needs the pull."""
     acknowledge(installed)
 
     code, envelope = _drive(["restore", "run", "--target", "/somewhere/else"])
@@ -1667,19 +1195,7 @@ def test_a_target_with_no_off_machine_pull_is_refused(installed):
 
 @pytest.mark.parametrize("extra", [["--discard", "s-1"], []])
 def test_a_target_beside_a_capture_rollback_is_refused(installed, extra):
-    """Both halves on two volumes is the composition this refuses outright.
-
-    The capture half resolves every path it writes from ``cfg.library.root`` and
-    the plan refuses a session that does not authorise that root, so a run that
-    took a target AND a session would put the database from the remote in the
-    scratch directory and roll the live library's coupled state back at the same
-    time. Nobody would ask for that, and before this refusal existed it was the
-    natural spelling of "rehearse the restore of this session".
-
-    ``--discard`` IS THE SAME REFUSAL, because it is a capture-half argument as
-    well: it names sessions whose committed work a rollback destroys, and there
-    is no rollback here to destroy them.
-    """
+    """Both halves on two volumes is the composition this refuses outright."""
     acknowledge(installed)
     record, _captured = completed_session(installed)
     named = [record.session_id] if not extra else []
@@ -1693,14 +1209,7 @@ def test_a_target_beside_a_capture_rollback_is_refused(installed, extra):
 
 
 def test_a_target_run_rolls_no_session_back_even_by_default(installed, tmp_path, monkeypatch):
-    """The OTHER way a capture reaches a run, which the refusal above cannot see.
-
-    A bare ``restore run`` means the newest spendable capture, so a library with
-    a restorable session and a person asking only for a rehearsal would have
-    rolled that session back on the live library without naming it. The refusal
-    above covers the session somebody TYPED. This covers the one the verb would
-    have chosen for them.
-    """
+    """The OTHER way a capture reaches a run, which the refusal above cannot see."""
     acknowledge(installed)
     _fake_rclone(installed, monkeypatch)
     record, _captured = completed_session(installed)
@@ -1711,11 +1220,7 @@ def test_a_target_run_rolls_no_session_back_even_by_default(installed, tmp_path,
     scratch = tmp_path / "rehearsal"
     scratch.mkdir()
 
-    _code, refused = _drive(["restore", "run", "--from-backup", "--target", str(scratch)])
-    _answer(refused["run_id"], "restore")
-    code, envelope = _drive(
-        ["--run", refused["run_id"], "restore", "run", "--from-backup", "--target", str(scratch)]
-    )
+    code, refused, envelope = _two_acts(["restore", "run", "--from-backup", "--target", str(scratch)])
 
     assert code == int(ExitCode.OK), envelope
     assert all(item["half"] == "off-machine" for item in envelope["data"]["items"])
@@ -1731,14 +1236,7 @@ def test_a_target_run_rolls_no_session_back_even_by_default(installed, tmp_path,
 def test_the_digest_moves_when_the_restore_is_pointed_somewhere_else(
     installed, tmp_path, monkeypatch
 ):
-    """A decision about a rehearsal must not be honoured against the live restore.
-
-    The digest is the identity of what a person approved, and where the database
-    lands is most of what they are approving. Without the target in it, an
-    answer recorded against ``--from-backup --target /some/scratch`` matches a
-    later ``--from-backup`` exactly, and the recorded decision authorises a
-    restore over the live library that nobody agreed to.
-    """
+    """A decision about a rehearsal must not be honoured against the live restore."""
     acknowledge(installed)
     _fake_rclone(installed, monkeypatch)
     scratch = tmp_path / "rehearsal"
@@ -1758,23 +1256,12 @@ def test_the_digest_moves_when_the_restore_is_pointed_somewhere_else(
 def test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal(
     installed, tmp_path, monkeypatch
 ):
-    """The existing refusal, reached through the new flag rather than restated.
-
-    ``plan_restore`` already refuses a target that is not a directory, with its
-    own reserved slug and its own remediation, so the verb deliberately does not
-    ask the question a second time: a guard covered by another guard is a guard
-    nothing covers. What this measures is that the flag reaches that refusal
-    rather than inventing a second sentence for the same fact.
-    """
+    """The existing refusal, reached through the new flag rather than restated."""
     acknowledge(installed)
     _fake_rclone(installed, monkeypatch)
     missing = tmp_path / "not-mounted"
 
-    _code, refused = _drive(["restore", "run", "--from-backup", "--target", str(missing)])
-    _answer(refused["run_id"], "restore")
-    code, envelope = _drive(
-        ["--run", refused["run_id"], "restore", "run", "--from-backup", "--target", str(missing)]
-    )
+    code, refused, envelope = _two_acts(["restore", "run", "--from-backup", "--target", str(missing)])
 
     assert code == int(ExitCode.LIBRARY_UNAVAILABLE), envelope
     assert envelope["cause"]["reason"] == str(backup.Refusal.RESTORE_TARGET_ABSENT)
@@ -1783,15 +1270,7 @@ def test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal(
 def test_a_rehearsal_is_still_refused_while_rekordbox_is_running(
     installed, tmp_path, monkeypatch
 ):
-    """Today's live gates stay, which is half of what this unit promised.
-
-    A restore into a scratch directory touches nothing rekordbox holds open, so
-    this refusal is conservative rather than necessary, and it is kept on purpose:
-    the gates are the ones the live restore passes, unchanged, and loosening them
-    for a target is a decision with its own blast radius. That the rehearsal still
-    takes the library lock and still needs rekordbox closed is recorded as a
-    finding rather than claimed as the finished shape.
-    """
+    """Today's live gates stay, which is half of what this unit promised."""
     acknowledge(installed)
     _fake_rclone(installed, monkeypatch)
     scratch = tmp_path / "rehearsal"
@@ -1811,15 +1290,7 @@ def test_a_rehearsal_is_still_refused_while_rekordbox_is_running(
 
 
 def test_a_relative_target_is_compared_as_the_place_it_names(installed, monkeypatch):
-    """The resolution, measured where leaving it out actually costs something.
-
-    A relative path compares equal to nothing: ``Path("library")`` is neither the
-    configured root nor inside it, whatever directory the person is standing in.
-    So a guard over the raw argument passes a target that IS the library root,
-    typed from the directory above it, and the restore lands on the live
-    database. The comparison is between two places on the disk, not two
-    spellings.
-    """
+    """The resolution, measured where leaving it out actually costs something."""
     acknowledge(installed)
     root = Path(installed.library.root)
     monkeypatch.chdir(root.parent)
@@ -1828,26 +1299,12 @@ def test_a_relative_target_is_compared_as_the_place_it_names(installed, monkeypa
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "restore-target-is-live-root"
-    # WHAT THE RESOLUTION ITSELF IS FOR, now that the filesystem answers the
-    # comparison. Measured on the author's own table, row G7_target_not_resolved:
-    # dropping the resolution killed nothing, because ``samefile`` stats a
-    # relative path against the working directory and answers correctly without
-    # it. What is left is the REPORT, and it is not nothing: a refusal that
-    # echoes back the word somebody typed tells them their target is the library
-    # without saying which directory that resolved to, which is the one fact
-    # they do not already have.
+    # The refusal reports the resolved directory, not the word that was typed.
     assert envelope["cause"]["detail"]["target"] == str(root), envelope
 
 
 def _case_folds(where: Path) -> bool:
-    """Whether this filesystem reads two spellings of one name as one directory.
-
-    ASKED OF THE DIRECTORY THE TEST WILL USE, not of the platform. macOS ships
-    APFS case insensitive and can be formatted case sensitive, and an external
-    drive holding a library is frequently exFAT, so a check keyed on
-    ``sys.platform`` would answer for the wrong volume on the machine it most
-    matters on.
-    """
+    """Whether this filesystem reads two spellings of one name as one directory."""
     probe = where / "Case_Probe"
     probe.mkdir()
     try:
@@ -1859,25 +1316,7 @@ def _case_folds(where: Path) -> bool:
 def test_a_differently_cased_library_root_is_still_the_library(
     installed, tmp_path, monkeypatch
 ):
-    """The guard's own defect, found by this unit's review and driven here.
-
-    ``Path.resolve`` followed by ``==`` or ``is_relative_to`` compares STRINGS.
-    On a case insensitive filesystem, which is APFS as macOS ships it and exFAT
-    on the external drive a DJ library normally lives on, the library root typed
-    in another case is the same directory and both of those answer that the two
-    paths are unrelated. Measured before the fix, through the real dispatcher:
-    exit 0, the transfer pointed at the live database's own directory, and the
-    live write-ahead log unlinked. The rehearsal destroyed the one thing no
-    capture holds.
-
-    BOTH FILESYSTEMS ARE ASSERTED rather than one being skipped, and neither is
-    faked. Whether two spellings are one directory is a fact about the volume the
-    test is running on, so a monkeypatched ``samefile`` would measure the stub;
-    and a skip would make this whole property invisible on a machine where it
-    happens not to hold, which is how a guard rots. Where the names are two
-    places the refusal would be WRONG, so the expectation flips with the
-    filesystem and the run says which branch it took.
-    """
+    """The guard's own defect, found by this unit's review and driven here."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch)
     root = Path(installed.library.root)
@@ -1906,14 +1345,7 @@ def test_a_differently_cased_library_root_is_still_the_library(
 def test_a_differently_cased_database_directory_is_still_the_live_database(
     installed, tmp_path, monkeypatch
 ):
-    """The same fold, on the destination check rather than on containment.
-
-    The two checks compare different pairs of paths, so a fix on one of them is
-    not a fix on the other. This is the acknowledged layout again, where the
-    target is the live database's own directory and only the spelling differs.
-
-    BOTH FILESYSTEMS AGAIN, for the reason the test above gives at length.
-    """
+    """The same fold, on the destination check rather than on containment."""
     acknowledge(installed)
     home = tmp_path / "home" / "Rekordbox"
     home.mkdir(parents=True)
@@ -1945,15 +1377,7 @@ def test_a_differently_cased_database_directory_is_still_the_live_database(
 
 
 def test_the_digest_moves_when_the_rehearsal_flag_does(installed):
-    """The hole one flag over, found by this unit's review of the target.
-
-    ``--dry-run`` walks every step and performs none, so it is the cheapest thing
-    a person can be asked to approve. With it outside the digest, the decision
-    recorded against a preview matched a later invocation without the flag
-    exactly, and authorised a real restore over the live database. Driven before
-    the fix: the answer given to the rehearsal was honoured, the run exited OK,
-    one real copy landed on the live database and the live log was gone.
-    """
+    """The hole one flag over, found by this unit's review of the target."""
     record, _captured = completed_session(installed)
 
     _code, preview = _drive(["restore", "run", record.session_id, "--dry-run"])
@@ -1968,15 +1392,7 @@ def test_the_digest_moves_when_the_rehearsal_flag_does(installed):
 def test_a_differently_cased_ancestor_still_puts_the_target_inside_the_library(
     installed, tmp_path
 ):
-    """The ancestor WALK, measured where the candidate itself is not the root.
-
-    Measured on the author's own table, row G6_ancestors_not_walked: asking
-    ``samefile`` of the candidate alone killed nothing, because every case folded
-    drive above named the root itself, where one question is enough. A directory
-    three levels inside a library whose ROOT was typed in another case is the
-    shape that needs the walk, and it is the one a person produces by pasting a
-    path from somewhere that shouted it.
-    """
+    """The ancestor WALK, measured where the candidate itself is not the root."""
     acknowledge(installed)
     root = Path(installed.library.root)
     (root / "beneath").mkdir()
@@ -2002,18 +1418,7 @@ def test_a_differently_cased_ancestor_still_puts_the_target_inside_the_library(
 def test_a_database_that_is_not_on_disk_yet_is_still_the_live_database(
     installed, tmp_path
 ):
-    """The half of the destination check that ``samefile`` alone cannot make.
-
-    Measured on the author's own table, row
-    G14_the_destination_check_is_equality_only: dropping the name and parent
-    half killed nothing, because every drive of it had the live database sitting
-    on disk, where one stat answers the question. A database the configuration
-    names and the disk does not hold is not an exotic state, it is the state a
-    person is restoring FROM: the file is gone, which is why they are here. With
-    the file absent there is nothing to stat, so a case folded spelling of its
-    own directory passes the first half and lands ``master.db`` exactly where the
-    live one belongs.
-    """
+    """The half of the destination check that ``samefile`` alone cannot make."""
     acknowledge(installed)
     home = tmp_path / "home" / "rekordbox"
     home.mkdir(parents=True)
@@ -2066,13 +1471,7 @@ def _copied_from(log: Path) -> list[str]:
 
 
 def test_a_backup_landing_between_the_two_acts_moves_the_digest(installed, monkeypatch):
-    """The ledger's measurement, driven: offer and answer, then a second snapshot.
-
-    The word for "whichever is newest" was what entered the digest, so the
-    resumed drive kept its digest and pulled the snapshot that had appeared
-    since. Now the answer is refused as stale and nothing is copied, and the
-    offer that replaces it names the snapshot a person would really get.
-    """
+    """The ledger's measurement, driven: offer and answer, then a second snapshot."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch)
 
@@ -2110,12 +1509,7 @@ def test_what_is_offered_is_what_is_pulled(installed, monkeypatch):
 
 
 def test_the_ledgers_traversal_value_is_refused_at_the_verb(installed, monkeypatch):
-    """Through the dispatcher, with the value the finding was measured with.
-
-    Before the gate is asked, so a person is never invited to approve it, and
-    with nothing but the refusal in the program's own log: the value never
-    reached an argument list.
-    """
+    """Through the dispatcher, with the value the finding was measured with."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch)
 
@@ -2149,12 +1543,7 @@ def test_another_librarys_snapshot_is_refused_at_the_verb_and_names_both_volumes
 
 
 def test_the_replaced_drive_flag_reaches_the_engine_and_the_digest(installed, monkeypatch):
-    """``--snapshot-volume``, driven end to end, and held to what it names.
-
-    In the digest because it is most of what is being approved when a snapshot
-    is not plainly this library's own: an answer given to a restore of this
-    library's snapshot must not be honoured against one that names another.
-    """
+    """``--snapshot-volume``, driven end to end, and held to what it names."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch, marker="0000-AAAA")
     named = ["restore", "run", "--from-backup", "--snapshot", STAMP]
@@ -2185,11 +1574,7 @@ def test_the_replaced_drive_flag_reaches_the_engine_and_the_digest(installed, mo
 def test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled(
     installed, monkeypatch
 ):
-    """Every snapshot that exists on the day this lands is unmarked.
-
-    The refusal has to work with no new backup, because a person whose drive
-    just died cannot take one, so it names the stamp and naming it is enough.
-    """
+    """Every snapshot that exists on the day this lands is unmarked."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch, marker=None)
 
@@ -2212,12 +1597,7 @@ def test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled(
 def test_a_restore_that_pulls_nothing_off_the_machine_still_asks_the_remote_nothing(
     installed, monkeypatch
 ):
-    """The early listing is paid only by the half that needs it.
-
-    The reason the stamp was left out of the digest in the first place was that
-    resolving it reaches the network before the gate. That is now true of
-    ``--from-backup`` and must stay false of everything else.
-    """
+    """The early listing is paid only by the half that needs it."""
     record, _captured = completed_session(installed)
     log = _fake_rclone(installed, monkeypatch)
 
@@ -2227,12 +1607,7 @@ def test_a_restore_that_pulls_nothing_off_the_machine_still_asks_the_remote_noth
 
 
 def test_the_digest_moves_when_the_expected_volume_is_stated(installed, monkeypatch):
-    """The flag is part of what is approved, measured where it changes nothing else.
-
-    Stating this library's own identity resolves exactly as saying nothing does,
-    so the two offers differ in the flag and in no other field, and an answer
-    given to one must still not be honoured against the other.
-    """
+    """The flag is part of what is approved, measured where it changes nothing else."""
     acknowledge(installed)
     _fake_rclone(installed, monkeypatch)
 
@@ -2255,12 +1630,7 @@ def test_the_digest_moves_when_the_expected_volume_is_stated(installed, monkeypa
     ],
 )
 def test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for(installed, flags):
-    """They were dropped in silence, ahead of a rollback nobody meant.
-
-    A person typing the expected volume believes they authorised a replaced
-    drive's snapshot, and with the pull flag forgotten the verb went on to offer
-    a capture rollback of the live library without a word about the flag.
-    """
+    """They were dropped in silence, ahead of a rollback nobody meant."""
     record, _captured = completed_session(installed)
 
     code, envelope = _drive(["restore", "run", record.session_id, *flags])
@@ -2275,9 +1645,7 @@ def test_the_report_names_the_snapshot_that_arrived(installed, monkeypatch):
     acknowledge(installed)
     _fake_rclone(installed, monkeypatch, snapshots=(STAMP, LATER))
 
-    _code, refused = _drive(["restore", "run", "--from-backup"])
-    _answer(refused["run_id"], "restore")
-    code, envelope = _drive(["--run", refused["run_id"], "restore", "run", "--from-backup"])
+    code, refused, envelope = _two_acts(["restore", "run", "--from-backup"])
 
     assert code == int(ExitCode.OK), envelope
     totals = envelope["data"]["totals"]
@@ -2290,14 +1658,7 @@ def test_the_report_names_the_snapshot_that_arrived(installed, monkeypatch):
 def test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled(
     installed, monkeypatch
 ):
-    """The window INSIDE the second act, which the digest cannot see.
-
-    The answer is checked against an offer built from one listing, and the
-    engine plans a moment later. Were it handed the flag rather than the stamp
-    that was offered, it would resolve the newest snapshot again, after the
-    approval, and pull whatever had landed in between. The fake remote changes
-    its answer after the first listing of the second act to stand in for that.
-    """
+    """The window INSIDE the second act, which the digest cannot see."""
     acknowledge(installed)
     log = _fake_rclone(installed, monkeypatch)
     home = Path(config.installation_state_dir())
@@ -2467,15 +1828,7 @@ def test_every_transfer_is_pointed_under_the_target_and_nowhere_else(cfg, tmp_pa
 
 
 def _mounted(cfg_value, tmp_path):
-    """A library that is present and is the recorded volume, and NOTHING ELSE WRONG.
-
-    The mount probe answers yes on purpose. The replacement directory sits beside
-    the configured root, which is the second shape the stub check refuses, and
-    that refusal's sentence contains the word "unmounted". Without the probe, a
-    test asserting on "mounted" is held up by the stub check alone, and the
-    identity gate, the one that keeps the two restores apart, can be deleted
-    with the suite green. Measured: that is what the mutation table's row found.
-    """
+    """A library that is present and is the recorded volume, and NOTHING ELSE WRONG."""
     return _replacement(tmp_path), {
         **gate_seams(cfg_value),
         "terminal": lambda: True,
@@ -2530,11 +1883,7 @@ def test_a_refusal_before_the_lock_leaves_the_disk_untouched(cfg, tmp_path, case
 def test_a_target_that_already_holds_a_database_is_refused_with_no_way_to_name_it(
     cfg, tmp_path
 ):
-    """The verb never passes ``replacing_existing``, and has no flag that could.
-
-    Somebody's library whose database sits where this one's lands, which is the
-    only layout a recovery would replace (R-592).
-    """
+    """The verb never passes ``replacing_existing``, and has no flag that could."""
     target = _replacement(tmp_path)
     (target / "db").mkdir(parents=True)
     (target / "db" / "master.db").write_bytes(b"somebody's library")
@@ -2773,13 +2122,7 @@ def test_a_recovery_whose_mirror_was_cut_off_reruns_with_nothing_removed(cfg, tm
 
 
 def test_a_mirror_still_carrying_the_database_does_not_land_it(cfg, tmp_path):
-    """A mirror taken before the backup excluded the database may still hold it.
-
-    Landed by the mirror half, it would sit where the database half writes, and a
-    mirror cut off after it arrived would leave a rerun refused with no step
-    saying what to remove. The restore mirror excludes the fileset the backup
-    mirror does, so it never arrives that way, and the rerun needs nothing.
-    """
+    """A mirror taken before the backup excluded the database may still hold it."""
     target = _replacement(tmp_path)
     seams = _gone(cfg)
     stale = (*CARRIED, "db/master.db", "db/master.db-wal")
@@ -2803,13 +2146,7 @@ def test_a_mirror_still_carrying_the_database_does_not_land_it(cfg, tmp_path):
 def test_a_database_half_that_landed_part_of_the_fileset_is_refused_until_the_step(
     cfg, tmp_path
 ):
-    """WHAT R-592 STILL LEAVES, driven. The database arrived and its log did not.
-
-    A database at the path this library's lands is indistinguishable, from the
-    target alone, from somebody else's library there, so the rerun is refused and
-    the step names that fileset and nothing else. Followed exactly, the rerun
-    completes and the state directory's databases were never touched.
-    """
+    """WHAT R-592 STILL LEAVES, driven. The database arrived and its log did not."""
     target = _replacement(tmp_path)
     seams = _gone(cfg)
     first = _Remote(cfg, mirrored=CARRIED, failing_files={"master.db-wal"})
@@ -2893,11 +2230,8 @@ def test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_
 
     assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
     assert not (target / "master.db").exists()
-    # THE SHARE RIDES THE DATABASE HALF (R-338). It was beside the database, so
-    # it was never on the lost volume either, and the remote holding a mirror of
-    # it is not a reason to pour gigabytes of it onto the replacement.
-    # Withheld before the remote is asked, so a listing that fails cannot
-    # refuse a recovery of the music over a share it was never going to pull.
+    # The share rides the database half and is withheld before the remote is
+    # asked about it (R-338).
     assert [c.label for c in remote.calls if c.label == backup.LIST_SHARE] == []
     assert not (target / "share").exists()
     assert (home / "master.db").read_bytes() == b"alive, and never on the lost volume"
@@ -2911,13 +2245,7 @@ def test_a_database_that_was_never_on_the_lost_volume_is_not_recovered_onto_the_
 
 @pytest.fixture
 def lost(cfg, monkeypatch):
-    """A machine whose library volume is gone, with the PLATFORM seams answered.
-
-    The dispatcher takes its arguments from a command line, so there is nowhere
-    to hand a probe in. What is replaced is what ``installed`` replaces and for
-    its reason, plus the two answers a temporary directory cannot give: that a
-    person is at a terminal, and that the target is a mount point.
-    """
+    """A machine whose library volume is gone, with the PLATFORM seams answered."""
     shutil.rmtree(cfg.library.root)
     monkeypatch.setattr(
         preflight, "default_identity_provider", lambda: (lambda _path: "0000-not-this-disk")
@@ -3015,11 +2343,7 @@ def test_a_recovery_with_no_rclone_installed_refuses_by_name_and_writes_nothing(
 def test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left(
     cfg, tmp_path, monkeypatch
 ):
-    """U211. The scan's refusal, named, with the half it stopped at and the rerun step.
-
-    rclone is the product's own stand in on its one seam, so the test reads the
-    same on a machine without rclone; the transfers are the fake remote's.
-    """
+    """U211. The scan's refusal, named, with the half it stopped at and the rerun step."""
     _fake_rclone(cfg, monkeypatch)
     target = _replacement(tmp_path)
     remote = _Remote(cfg)
