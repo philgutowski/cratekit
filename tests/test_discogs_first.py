@@ -381,7 +381,7 @@ class Images:
         from tests.test_tagging_engine import _jpeg
 
         self.asked.append(url)
-        return _jpeg(1000, 1000)
+        return _jpeg(400, 400)
 
 
 def test_a_file_discogs_tagged_with_no_picture_gets_beatport_s_cover(tmp_path, silence):
