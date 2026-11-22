@@ -270,10 +270,7 @@ def test_two_waiting_runs_are_settled_independently(cfg, silence, export, tmp_pa
     code, result = _drive(["intake", "imported", "--export", str(after_first)])
     assert code == int(ExitCode.PENDING_HUMAN), result
     actions = {Path(item["intake_file"]).name: item["action"] for item in result["data"]["items"]}
-    assert actions == {
-        "first_inboxed.xml": imported_cli.IMPORTED,
-        "second_inboxed.xml": imported_cli.NOT_IMPORTED,
-    }
+    assert actions == {"first_inboxed.xml": imported_cli.IMPORTED, "second_inboxed.xml": imported_cli.NOT_IMPORTED}
     assert not _intake_file(cfg, "first").exists()
     assert _intake_file(cfg, "second").is_file()
     assert result["pending_human_action"]["artifact"] == str(_intake_file(cfg, "second"))
@@ -342,10 +339,8 @@ def test_a_refusal_after_the_session_opens_abandons_it_and_removes_the_file(
     shutil.copyfile(silence, path)
     assert tags.write_tags(path, {"title": "One", "genre": "Deep House", "energylevel": 7})
     destination = Path(cfg.library.root) / "refused_inboxed.xml"
-
     def refusing(*args, **kwargs):
         raise refuse("internal-error", "the ledger could not be written")
-
     monkeypatch.setattr(routing_pass, "record_intents", refusing)
     with pytest.raises(CratekitError):
         ingest.place_files([path], cfg=cfg, export=export, destination=destination)
@@ -568,11 +563,7 @@ def test_the_pipeline_result_carries_the_session_the_action_is_on(cfg, silence, 
 
 @pytest.mark.parametrize(
     "name",
-    [
-        "RUN_synced_inboxed.xml",
-        "RUN_synced_inboxed.xml.imported",
-        "RUN_synced_inboxed.xml.imported-2",
-    ],
+    ["RUN_synced_inboxed.xml", "RUN_synced_inboxed.xml.imported", "RUN_synced_inboxed.xml.imported-2"],
 )
 def test_sync_mark_reads_the_same_pass_off_a_retired_intake_file(name):
     """``sync mark`` finds its pass from the intake file's name, and a person who
@@ -696,10 +687,8 @@ def test_a_failed_call_leaves_an_earlier_runs_intake_file_alone(cfg, silence, ex
     assert tags.write_tags(path, {"title": "One", "genre": "Deep House", "energylevel": 7})
     destination = music / "One_inboxed.xml"
     ingest.place_files([path], cfg=cfg, export=export, destination=destination)
-
     def refusing(*args, **kwargs):
         raise refuse("internal-error", "the ledger could not be written")
-
     monkeypatch.setattr(routing_pass, "record_intents", refusing)
     with pytest.raises(CratekitError):
         ingest.place_files([path], cfg=cfg, export=export, destination=destination)
@@ -718,16 +707,13 @@ def test_a_failed_call_records_no_track_the_ledger_cannot_withdraw(
     path = music / "One.flac"
     shutil.copyfile(silence, path)
     assert tags.write_tags(path, {"title": "One", "genre": "Deep House", "energylevel": 7})
-
     def failing(*args, **kwargs):
         raise refuse("internal-error", "the session log could not be written")
-
     monkeypatch.setattr(session, "mark_awaiting_import", failing)
     with pytest.raises(CratekitError):
         ingest.place_files(
             [path], cfg=cfg, export=export, destination=music / "One_inboxed.xml"
         )
-
     assert routing_pass.read(cfg).intents == ()
     (record,) = session.records(cfg)
     assert record.state is session.SessionState.ABANDONED
@@ -738,10 +724,8 @@ def test_a_retire_that_cannot_rename_is_a_refusal_and_changes_nothing(
 ):
     _land(cfg, silence, export)
     after = _export_after_import(tmp_path, _intake_file(cfg))
-
     def denied(*args, **kwargs):
         raise PermissionError(13, "Permission denied")
-
     monkeypatch.setattr(imported_cli.os, "replace", denied)
     _, result = _drive(["intake", "imported", "--export", str(after)])
     assert result["cause"]["reason"] == "path-permission-denied", result
@@ -753,7 +737,6 @@ def test_a_retire_that_cannot_rename_is_a_refusal_and_changes_nothing(
 
 def test_doctor_reads_a_proven_run_as_proven_and_not_as_in_progress(cfg):
     from cratekit.cli import doctor
-
     proven = _verified(cfg)
     in_flight = session.open_session(cfg, workflow=ingest.INTAKE_WORKFLOW)
     assert "import proven" in doctor._open_state(session.read_record(proven.session_id, cfg))

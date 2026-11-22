@@ -449,13 +449,11 @@ def test_a_failure_on_the_second_row_leaves_the_first_row_unoffered(
     cfg, library, tmp_path, monkeypatch
 ):
     """Every answer is in hand before any offer, so a partial pass offers nothing."""
-
     class SecondFails(FakeCatalogue):
         def search_tracks(self, artist: str, title: str):
             if (artist, title) == TIDE:
                 raise RuntimeError("the provider stopped answering")
             return super().search_tracks(artist, title)
-
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path", "Nova Reef - Tide")
     bind(monkeypatch, SecondFails(searches=near_miss().searches))
     code, envelope = found(path)
@@ -484,10 +482,8 @@ def test_a_list_the_library_holds_entirely_is_a_no_op_that_spends_no_login(
 ):
     owned(library, "Aurora Bloom - Sun Path.flac")
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-
     def unreachable(_cfg):
         raise AssertionError("the catalogue was resolved with nothing to search for")
-
     monkeypatch.setattr(catalogue, "resolve", unreachable)
     envelope = ok(path)[0]
     assert envelope["outcome"] == "no_op"
@@ -572,10 +568,8 @@ def test_a_folder_that_cannot_be_written_is_a_refusal_and_not_an_internal_error(
 def test_a_disk_that_refuses_the_write_is_this_verbs_refusal(cfg, library, tmp_path, monkeypatch):
     path = tracklist(tmp_path, "Nova Reef - Tide")
     bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)]}))
-
     def full(*_args, **_kwargs):
         raise OSError(28, "No space left on device", str(tmp_path / "x.list.json"))
-
     monkeypatch.setattr(listdoc, "write", full)
     envelope = refused(path)
     assert envelope["cause"]["reason"] == "intake-list-unusable"
@@ -752,11 +746,9 @@ def test_rows_asked_by_isrc_and_rows_searched_for_share_one_catalogue(
         isrcs={"QZAAA2600001": [Hit("7010", *TIDE)]}, searches={SUN: [Hit("7001", *SUN)]}
     )
     resolved: list[object] = []
-
     def resolve_once(cfg_):
         resolved.append(cfg_)
         return fake
-
     monkeypatch.setattr(catalogue, "resolve", resolve_once)
     envelope = ok(path)[0]
     assert len(resolved) == 1, "one run restored the provider session twice"
@@ -851,10 +843,8 @@ def test_the_identity_is_the_folded_row_and_not_its_spelling():
 
 def test_a_store_that_cannot_be_read_is_not_read_as_nobody_was_asked(cfg, monkeypatch):
     wanted = match.read_text_lines("Aurora Bloom - Sun Path")[0]
-
     def broken(_store, _item_id):
         raise refuse("unavailable-transient", "the queue could not be read", origin=("review",))
-
     monkeypatch.setattr(review, "get", broken)
     with review.open_store(cfg) as items, pytest.raises(CratekitError) as caught:
         candidates.settled(items, wanted)
@@ -906,6 +896,4 @@ def test_a_search_question_about_one_emoji_title_is_not_another_ones():
     wave = match.read_text_lines("Aurora Bloom - \U0001f30a")[0]
     assert candidates.item_id(drop) != candidates.item_id(wave)
     plain = match.read_text_lines("Aurora Bloom - Sun Path (Extended Mix)")[0]
-    assert candidates.identity(plain) == {
-        "artist": "aurora bloom", "title": "sun path", "version": "extended mix",
-    }
+    assert candidates.identity(plain) == {"artist": "aurora bloom", "title": "sun path", "version": "extended mix"}

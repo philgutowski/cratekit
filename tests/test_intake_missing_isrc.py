@@ -106,7 +106,6 @@ def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
     listed, the rest handed on to a text list that reads back, and a second run the same."""
     from cratekit.core.cause import refuse
     from cratekit.core.exit_codes import Remedy
-
     class Expired(FakeCatalogue):
         def tracks_for_isrc(self, isrc):
             raise refuse(
@@ -115,7 +114,6 @@ def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
                 remedy=Remedy.REAUTHENTICATE_PROVIDER,
                 origin=("test",),
             )
-
     job_id = finished_set(library, recognised, monkeypatch, *three())
     # NO STORED SESSION: the real ``resolve``, over an isolated keychain holding none.
     code, envelope = missing(job_id)
@@ -186,7 +184,6 @@ def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
     # U206: the SHIPPED catalogue keeps an ISRC answer, so a later run asks nothing.
     from cratekit.cli import ISRC_LOOKUPS
     from cratekit.label import tidal_catalogue
-
     client = _CountingClient(
         {ONE: [_ProviderTrack("9001")], TWO: [_ProviderTrack("9002"), _ProviderTrack("9003")]}
     )
@@ -253,10 +250,8 @@ def test_a_set_with_no_isrc_resolves_no_catalogue_and_spends_no_login(cfg, libra
     job_id = finished_set(
         library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide")
     )
-
     def never(cfg):
         raise AssertionError("the catalogue was resolved with nothing to ask it")
-
     monkeypatch.setattr(catalogue, "resolve", never)
     code, envelope = missing(job_id)
     assert code == int(ExitCode.OK), envelope
@@ -339,7 +334,6 @@ class _CountingClient:
 
     def get_tracks_by_isrc(self, code: str) -> list[_ProviderTrack]:
         from tidalapi.exceptions import ObjectNotFound
-
         self.asked.append(code)
         if code not in self.answers:
             raise ObjectNotFound()

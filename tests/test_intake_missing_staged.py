@@ -62,10 +62,7 @@ def check(envelope: dict, key: str) -> dict:
 def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_listed(
     cfg, library, tmp_path, monkeypatch
 ):
-    staged(
-        tmp_path, library, "Lumen Drift - Salt Road.flac",
-        artist="Lumen Drift", title="Salt Road", isrc=SALT,
-    )
+    staged(tmp_path, library, "Lumen Drift - Salt Road.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
     job_id = finished(monkeypatch, rows())
     code, envelope = missing(job_id)
     assert code == int(ExitCode.OK), envelope
@@ -176,10 +173,8 @@ def test_a_staging_folder_that_cannot_be_read_is_said_never_read_as_nothing_stag
 ):
     staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
     job_id = finished(monkeypatch, rows())
-
     def refused(folder: Path):
         raise PermissionError(13, "Permission denied", str(folder))
-
     monkeypatch.setattr(landing, "listing", refused)
     code, envelope = missing(job_id)
     assert code == int(ExitCode.OK), envelope
@@ -201,7 +196,6 @@ def test_a_staged_file_counts_under_its_provider_name_or_its_given_name(
 
 def _wanted(ref: str, isrc: str):
     from cratekit.acquire import match
-
     return match.read_row(
         {"id": ref, "artist": "Lumen Drift", "title": "Salt Road", "isrc": isrc},
         origin=match.TIDAL,
@@ -228,7 +222,6 @@ def test_each_half_of_the_own_rows_rule_keeps_a_row_alone(cfg, library, tmp_path
     """Review round one, F5: the earlier copy claims a row by its provider id, or by its ISRC when
     the ids differ (a set row named by ISRC), and a copy naming neither claims nothing."""
     from cratekit.intake import missing_cli
-
     staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
     out = lists_dir(library)
     _earlier(out, "own", earlier)

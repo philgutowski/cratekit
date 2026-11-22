@@ -172,10 +172,7 @@ def tombstone(cfg: config.Config, artist: str, title: str) -> None:
     """A deletion recorded by the REAL recorder, not an imitation of it."""
     stores.record_tombstone(
         cfg,
-        RemovedRow(
-            content_id="9001", recorded="2026-09-18", sequence=1, size=None,
-            artist=artist, title=title,
-        ),
+        RemovedRow(content_id="9001", recorded="2026-09-18", sequence=1, size=None, artist=artist, title=title),
         actor="deletion",
     )
 
@@ -536,11 +533,7 @@ def test_a_short_hearts_listing_is_queued_and_says_by_how_much(cfg, library, mon
     code, envelope = drive(["intake", "playlist", "favorites"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
-    assert envelope["data"]["progress"]["shortfall"] == {
-        "declared": 7,
-        "listed": 5,
-        "withheld": 2,
-    }
+    assert envelope["data"]["progress"]["shortfall"] == {"declared": 7, "listed": 5, "withheld": 2}
     (warning,) = withheld(envelope)
     assert "7 declared, 5 listed, 2 withheld by the provider" in warning["message"]
     with jobs.open_store() as store:
@@ -576,11 +569,7 @@ def test_hearts_all_withheld_are_not_read_as_an_account_with_none(cfg, library, 
     code, envelope = drive(["intake", "playlist", "favorites"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["progress"]["shortfall"] == {
-        "declared": 3,
-        "listed": 0,
-        "withheld": 3,
-    }
+    assert envelope["data"]["progress"]["shortfall"] == {"declared": 3, "listed": 0, "withheld": 3}
     (warning,) = withheld(envelope)
     assert "3 declared, 0 listed, 3 withheld by the provider" in warning["message"]
     with jobs.open_store() as store:
@@ -645,14 +634,7 @@ def test_fewer_readable_reports_than_items_refuses_rather_than_listing_a_subset(
     assert "[FAIL] intake.missing.unlisted: 1 missing track(s)" in text
     _code, envelope = missing(job_id)
     assert envelope["data"]["summary"]["unlisted_tracks"] == [
-        {
-            "artist": "Kite Harbor",
-            "title": "Low Tide Signal",
-            "isrc": None,
-            "why": missing_cli.NO_ISRC,
-            "reason": "it carries no ISRC, so the provider cannot be asked for it exactly",
-            "in_file": True,
-        }
+        {"artist": "Kite Harbor", "title": "Low Tide Signal", "isrc": None, "why": missing_cli.NO_ISRC, "reason": "it carries no ISRC, so the provider cannot be asked for it exactly", "in_file": True}
     ]
 
 
@@ -724,7 +706,6 @@ def test_a_deleted_track_whose_row_kept_a_credit_is_suppressed_and_not_listed(
     """R-431: a deletion whose row kept a featured credit still suppresses the heart."""
     tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
     job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path", version="Nightwave Remix")])
-
     _code, envelope = missing(job_id)
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["suppressed"]) == (0, 1)
@@ -735,7 +716,6 @@ def test_a_deleted_track_whose_row_kept_a_credit_is_suppressed_and_not_listed(
 def test_a_billed_guest_survives_the_freeze_the_worker_resolves_from():
     """THE WORKER DECIDES SUPPRESSED FROM THE THAWED TRACK, not from the row the reader saw."""
     from cratekit.acquire import match
-
     solo, billed = match.read_tidal_tracks(
         [
             {"id": "1", "title": "Sun Path", "version": "Nightwave Remix",
@@ -757,7 +737,6 @@ def test_a_deleted_credited_row_never_withholds_another_remix_of_the_recording(
     same recording is still missing and still listed, because nobody deleted it."""
     tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
     job_id = finished(monkeypatch, [Track("202", "Aurora Bloom", "Sun Path", version="Daybreak Remix")])
-
     _code, envelope = missing(job_id)
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["suppressed"]) == (1, 0)
@@ -781,10 +760,7 @@ def in_run(cfg, reference: str, rows: list[Track], *, run_id: str = RUN) -> str:
         FakeCatalogue(playlists={reference: FakePagedPlaylist(rows)}), reference
     )
     with jobs.open_store() as store:
-        job = intake_cli.queue_playlist(
-            store, cfg, handler_key="intake.playlist", reference=reference,
-            tracks=tracks, run_id=run_id, source_id="playlists",
-        )
+        job = intake_cli.queue_playlist(store, cfg, handler_key="intake.playlist", reference=reference, tracks=tracks, run_id=run_id, source_id="playlists")
     return job.job_id
 
 
@@ -1018,29 +994,21 @@ def test_a_playlist_declaring_ten_with_two_withheld_queues_eight_and_warns(
     with jobs.open_store() as store:
         items = jobs.items(store, envelope["data"]["job_id"])
     assert len(items) == 8
-    assert envelope["data"]["progress"]["shortfall"] == {
-        "declared": 10,
-        "listed": 8,
-        "withheld": 2,
-    }
+    assert envelope["data"]["progress"]["shortfall"] == {"declared": 10, "listed": 8, "withheld": 2}
     (warning,) = playlist_withheld(envelope)
     assert "10 declared, 8 listed, 2 withheld by the provider" in warning["message"]
     assert repr(SHORT) in warning["message"]
 
 
-def test_a_full_playlist_listing_warns_nothing(cfg, library, monkeypatch):
-    bind_playlist(monkeypatch, eight(), declared=8)
+@pytest.mark.parametrize("declared", [8, None])
+def test_a_full_playlist_listing_or_one_with_no_declared_count_warns_nothing(
+    cfg, library, monkeypatch, declared
+):
+    bind_playlist(monkeypatch, eight(), declared=declared)
     code, envelope = drive(["intake", "playlist", SHORT])
     assert code == int(ExitCode.OK), envelope
     assert playlist_withheld(envelope) == []
     assert "shortfall" not in envelope["data"]["progress"]
-
-
-def test_a_playlist_with_no_declared_count_warns_nothing(cfg, library, monkeypatch):
-    bind_playlist(monkeypatch, eight(), declared=None)
-    code, envelope = drive(["intake", "playlist", SHORT])
-    assert code == int(ExitCode.OK), envelope
-    assert playlist_withheld(envelope) == []
 
 
 def test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op(
@@ -1050,11 +1018,7 @@ def test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op(
     code, envelope = drive(["intake", "playlist", SHORT])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["progress"]["shortfall"] == {
-        "declared": 3,
-        "listed": 0,
-        "withheld": 3,
-    }
+    assert envelope["data"]["progress"]["shortfall"] == {"declared": 3, "listed": 0, "withheld": 3}
     assert len(playlist_withheld(envelope)) == 1
 
 
