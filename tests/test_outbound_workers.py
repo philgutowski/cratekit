@@ -443,11 +443,6 @@ def test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(qu
     assert states["1"] == str(jobs.ItemState.DONE)
     assert states["2"] == str(jobs.ItemState.FAILED)
     assert states["3"] == str(jobs.ItemState.DONE)
-    # RE-ARMED IN PROCESS RATHER THAN THROUGH ``crate job resume``, which spawns
-    # a DETACHED child. That child is a fresh process and inherits no
-    # monkeypatch, so it would meet the real provider seam and fail every item.
-    # ``jobs.retry`` is the same re-arming that verb performs, and the claim
-    # under test is the driver's, not the spawner's.
     account.fail_on = frozenset()
     assert _retried(job_id)[0] == int(ExitCode.OK)
     after = {item.item_id: str(item.state) for item in _items(job_id)}
@@ -500,16 +495,13 @@ def test_a_refused_request_fails_every_item_it_carried_and_the_resume_adds_each_
 def test_the_resume_of_a_half_failed_export_does_not_exit_ok(queue):
     """R-225, pinned where the branch was written rather than inherited."""
     account = fake(1, 2, 3, fail_on={"armed"})
-    # ONE TRACK'S OWN DEFECT, met while its batch is planned (U270), so the
-    # other two are written and the job is half failed.
+    # One track's own defect, met while its batch is planned (U270).
     _match_fails_for(account, "2", transient=False)
     code, resumed = _resume(queue(account))
     assert code != int(ExitCode.OK)
     assert sorted(one for _pl, one in account.added) == ["tid-1", "tid-3"]
     assert resumed["cause"] is not None
-    # The fake raises RuntimeError, which the item records as internal-error.
-    # The job used to wrap that as unavailable-transient. It now reports the
-    # item's own cause, which is not retryable (R-380).
+    # The item's own cause, a RuntimeError, not retryable (R-380).
     assert resumed["cause"]["reason"] == "internal-error"
     assert resumed["cause"]["retryable"] is False
     assert resumed["data"] is None or resumed["data"].get("state") != str(jobs.JobState.SUCCEEDED)
@@ -835,9 +827,7 @@ def test_a_job_driven_with_no_adapter_fails_rather_than_reporting_success(queue)
     job_id = queue()
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK)
-    # ``no-evidence`` is the engine's verdict when every item failed, and the
-    # provider seam's own cause rides on the ITEMS. Asserted at both altitudes,
-    # because a person reads the first and a maintainer needs the second.
+    # The job's verdict for a person, the seam's cause on the items for a maintainer.
     assert resumed["cause"]["reason"] == "no-evidence"
     assert _job(job_id).state is jobs.JobState.FAILED
     reasons = {item.cause.reason for item in _items(job_id) if item.cause is not None}
@@ -890,9 +880,7 @@ def test_the_handler_runs_against_the_frozen_configuration_not_the_current_one(
     invocation = export_verb(exported) if verb == "export" else favorites_verb(exported)
     _run, job_id = approve_and_queue(invocation, gate)
     current = config.load()
-    # BOTH BANDS MOVE, because config validation refuses a stale day count above
-    # the expired one: the bands would overlap and a grouping would be reported
-    # as both. A test that edited one is a test that never reached the handler.
+    # BOTH BANDS MOVE, since validation refuses a stale count above the expired one.
     moved = replace(
         current,
         reports=replace(
@@ -1106,8 +1094,7 @@ def test_the_queued_envelope_names_a_missing_and_a_repeated_track(
     assert "playlist-track-missing" in warnings
     assert "99" in warnings["playlist-track-missing"]
     assert "playlist-track-repeated" in warnings
-    # ONE track repeated, however many times it repeats. The count and the named
-    # list must describe distinct tracks or the sentence contradicts itself.
+    # ONE track repeated, however many times: the count and the list name distinct tracks.
     assert warnings["playlist-track-repeated"].startswith("1 track(s)")
     assert warnings["playlist-track-repeated"].count("'1'") <= 1
 
@@ -1300,8 +1287,7 @@ def test_a_month_old_export_is_called_old_in_the_plan_the_gate_shows(
     assert shown["age_days"] == 30
     assert shown["stale_after_days"] == 7
     assert shown["freshness"] == "stale"
-    # THE SENTENCE IS AT THE GATE, not only on the envelope that follows the
-    # answer. Advice to export again is no use to somebody who already confirmed.
+    # THE SENTENCE IS AT THE GATE, before anybody has confirmed.
     assert "Export the collection again" in shown["warning"]
     assert written.astimezone().date().isoformat() in shown["warning"]
 
@@ -1563,12 +1549,10 @@ def test_the_gate_and_the_envelope_both_say_which_playlist_is_adopted(installed,
     assert shown["remote_id"] == "pl-1"
     assert shown["recorded_as"] == outbound_fakes.CRATE
     assert "--new-playlist" in shown["warning"]
-    # THE EVIDENCE NAMES BOTH SIDES, the record's size and the crate's, because
-    # three of three reads very differently against a crate of three thousand.
+    # THE EVIDENCE NAMES BOTH SIDES, the record's size and the crate's.
     assert "from 3 track(s), 3 of them among the 3 this playlist holds" in shown["warning"]
     run_id, _job = approve_and_queue(export_verb(moved, _MOVED), _GATE)
-    # THE SAME RUN AGAIN, which the recorded decision still answers, so the
-    # queueing envelope can be read here rather than inside the helper.
+    # THE SAME RUN AGAIN, which the recorded decision still answers.
     code, queued = drive(["--run", run_id, *export_verb(moved, _MOVED)])
     assert code == int(ExitCode.OK), queued
     codes = [warning["code"] for warning in queued["warnings"]]
@@ -1692,8 +1676,7 @@ def test_a_half_driven_job_resumed_after_its_crate_moved_creates_nothing(install
     _done(new_job)
     assert list(_ledger_playlists(installed)) == [_MOVED]
     account.catalog.update(catalog(3))
-    # THE OLD JOB READS ITS OWN FROZEN DOCUMENT PATH, which now holds the moved
-    # crate, so put the document it was queued against back first.
+    # The old job reads its frozen document path, so its document goes back first.
     _reorganised(installed)
     _done(old_job)
     assert account.created == [outbound_fakes.CRATE]
@@ -1744,8 +1727,7 @@ def test_the_resume_gate_shows_the_frozen_tracks_the_digest_covers(exported, que
     assert shown[shell_module.PLAYLIST] == payload[shell_module.PLAYLIST] == outbound_fakes.CRATE
     assert shown[shell_module.EXPORT_PATH] == payload[shell_module.EXPORT] == str(exported)
     assert shown["adopts"] == str(payload.get(export_cli.ADOPTS) or "")
-    # THE EXPORTS FOLDER DECISION IS FROZEN AND SHOWN (U131), and the digest
-    # covers it.
+    # THE EXPORTS FOLDER DECISION IS FROZEN, SHOWN AND DIGESTED (U131).
     assert shown[export_cli.FILING] == payload[export_cli.FILING] == "Exports:create:"
     assert shown["digest"] == export_cli.confirm_digest(
         shown[shell_module.PLAYLIST],
@@ -1853,9 +1835,7 @@ def test_local_tracks_carries_the_files_album_to_the_export_plan(installed, tmp_
 
 
 
-# ---------------------------------------------------------------------------
 # U131: a playlist export playlist creates is filed in Exports, on its gate
-# ---------------------------------------------------------------------------
 
 
 def test_a_created_playlist_is_filed_in_exports_as_its_gate_showed(queue):
