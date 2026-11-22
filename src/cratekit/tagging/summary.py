@@ -16,10 +16,8 @@ from cratekit.core.cause import Cause
 from cratekit.tagging import artifacts, published, refused, searchers
 from cratekit.tagging import tag as tag_engine
 
-#: The three ways a file can leave a sweep, as the per file report says (U240):
-#: its genre written from its registered label, written from a catalogue, or
-#: not written at all, whether it already had one, nothing answered, or its
-#: item failed before a report was kept.
+#: The three ways a file can leave a sweep (U240): its genre written from its
+#: registered label, from a catalogue, or not at all.
 WAY_LABEL = "label"
 WAY_CATALOGUE = "catalogue"
 WAY_NONE = "none"
@@ -31,82 +29,17 @@ def _summary(
 ) -> dict:
     """What this job's committed artifacts say happened to the folder.
 
-    DERIVED FROM WHAT RAN, never from what was queued. A sweep that tagged three
-    files of five and is continued tomorrow has five reports on disk and the
-    person asking what happened means all five, which is why this reads the
-    artifacts back rather than accumulating counts in memory.
-
-    ZEROES INCLUDED for the skip reasons, on the rule
-    :func:`cratekit.adopt.scan.categories` states: a summary listing only the
-    reasons it happened to see makes "nothing here was already tagged" and "this
-    build does not count that" the same output.
-
-    THE UNRESOLVED STRINGS ARE NOT ZERO FILLED, and that is the opposite rule
-    rather than an inconsistency. The skip reasons are a closed set this build
-    declares, so their absence is a fact worth stating; a source genre is a word
-    a catalogue chose, so there is no set to fill and every key present is one a
-    person can go and add an alias for (R24).
-
-    ``off_taxonomy`` IS THE THIRD DISPOSITION AND IS COUNTED APART FROM BOTH. A
-    file whose genre came from the catalogue's own word was written, so it is
-    still in ``tagged``, and it is not a clean tag, so its string is listed here
-    the way a decline's is listed in ``unresolved``. The two maps are never
-    merged: a decline left the file askable and this one is already on disk,
-    which are different jobs for the person reading them. Same not zero filled
-    rule, for the same reason, and keyed on the SOURCE string rather than the
-    written one, because the alias a person would add is written against what
-    the catalogue said (R-650).
-
-    ``art_repair`` COUNTS EVERY STATUS THE REPAIR CAN REPORT, zero filled on the
-    first rule, because it is a closed set this build declares. A report
-    committed before the repair existed carries no status and is counted under
-    none of them, since which status it would have had is not known.
-    ``art_fetch`` is the same rule over new art, so ``unavailable`` stands next
-    to ``embedded`` as a count a person can see was zero.
-
-    ``answers`` COUNTS FILES BY WHAT EACH CATALOGUE ANSWERED, zero filled over
-    every source and every answer, so "Bandcamp was blocked on all 66" and
-    "Bandcamp matched none of 66" are two different lines rather than one silence
-    (R-791). A report committed before the answers were recorded counts under
-    none of them, for the art repair's reason.
-
-    ``challenged`` AND ``not_sent`` COUNT A RECORD SHOP'S REFUSALS TWO MORE
-    WAYS (U281), zero filled over every source: the ``blocked`` answers whose
-    note names a Cloudflare challenge, and those the catalogue was never sent
-    because it had already refused this client in the run, read off the
-    searcher's own :data:`cratekit.tagging.searchers.NOT_SENT` head. Both are
-    counted within ``blocked``, never apart from it.
-
-    THE GENERAL CATALOGUE IS COUNTED BESIDE THE THREE, over its own answers
-    (R-796). Its set is the record shops' and ``no-isrc``, the one answer only a
-    catalogue asked by ISRC can give, so the three do not gain a count that can
-    never be anything but zero.
-
-    ``tagged_by`` COUNTS THE FILES WRITTEN PER SOURCE, zero filled, so how many
-    genres the general catalogue supplied is a number in the summary rather
-    than a subtraction. A file tagged by a searcher that names no source, or by
-    one this build does not declare, is in ``tagged`` and in none of these.
-
-    ``label_genres`` COUNTS THE FILES EACH REGISTERED LABEL TAGGED (U178), and
-    ``tagged_by`` carries them under :data:`cratekit.tagging.tag.LABEL_GENRE`,
-    zero filled, so a label genre is counted apart from every catalogue's and
-    never as an off taxonomy word. ``label_tags`` counts the files whose own
-    label tag named no label with a genre, by the tag's text, so a spelling the
-    registry does not know is a line a person can act on. The labels are not zero filled, on the
-    unresolved strings' rule: they are names a person registered, not a set
-    this build declares.
-
-    ``ways`` COUNTS EVERY FILE BY THE WAY IT LEFT THE SWEEP (U240), zero
-    filled over :data:`WAYS`, and ``files`` lists each one, sorted by item,
-    with its way, the label whose genre it took, how that label was named, and
-    the reason its item failed. Derived from fields every report has carried
-    since U178, so a report committed before U240 is still placed, with no
-    ``named_by``. ``causes`` holds every item of the job with its cause, so a
-    file whose item failed, and so kept no report, is listed as tagged not at
-    all with its reason rather than left out (U240's review).
-    ``copyright_ambiguous`` counts the files whose copyright line named more
-    than one registered label, keyed by the labels it named, read off a failed
-    file's cause when it kept no report.
+    Read back from what ran, so a resumed sweep counts every file. A closed set
+    this build declares is zero filled (skip reasons, art statuses, every
+    source's answers, ``tagged_by``, ``ways``), so a zero reads as a zero; a
+    word a catalogue chose or a label a person named is not (``unresolved``,
+    ``off_taxonomy``, ``label_genres``, ``label_tags``), each key one a person
+    can act on (R24). ``off_taxonomy`` is written and still in ``tagged``,
+    keyed on the source string the alias would be written against (R-650).
+    ``challenged`` and ``not_sent`` count within ``blocked`` (U281); the
+    general catalogue's answers add ``no-isrc`` (R-796). ``files`` lists each
+    file by item with its way (U240), and ``causes`` puts a failed item that
+    kept no report there too, with its reason (U240's review).
     """
     skipped = dict.fromkeys(tag_engine.SKIP_REASONS, 0)
     answer_values = (*(answer.value for answer in searchers.Answer), searchers.NOT_ASKED)
@@ -180,10 +113,8 @@ def _summary(
             word = str(said.get("answer") or "")
             if counted is not None and word in counted:
                 counted[word] += 1
-            # A REFUSAL IS COUNTED BY WHAT REFUSED AND WHETHER IT WAS SENT
-            # (U281), off the note words the searcher wrote it with, so the
-            # warning names a Cloudflare challenge and the files a catalogue
-            # was not asked about after it refused this client.
+            # A refusal by what refused and whether it was sent (U281), off the
+            # note words the searcher wrote.
             source = str(said.get("source") or "")
             if word == searchers.Answer.BLOCKED.value and source in challenged:
                 note = str(said.get("note") or "")
@@ -191,9 +122,8 @@ def _summary(
                     challenged[source] += 1
                 if note.startswith(searchers.NOT_SENT):
                     not_sent[source] += 1
-            # A FILE SEARCHED ONLY FOR ITS PICTURE is not one Discogs' genre was
-            # owed to, so it is not counted (U244's review): it already has one,
-            # its own or its label's (U282's review).
+            # A file searched only for its picture was owed no genre (U244's
+            # and U282's reviews).
             owed = (
                 reason != tag_engine.HAS_GENRE
                 and str(report.get("source") or "") != tag_engine.LABEL_GENRE
@@ -205,9 +135,8 @@ def _summary(
                 and said.get("note") in searchers.DISCOGS_UNASKED_NOTES
             ):
                 discogs_without_token += 1
-            # A REFUSED TOKEN IS COUNTED ON EVERY FILE IT CAME UP ON, owed a
-            # genre or not (U282's review): the walk goes on to Beatport past
-            # it, so this count is the only place the refusal reaches.
+            # A refused token on every file, owed a genre or not (U282's
+            # review): this count is the only place the refusal reaches.
             if (
                 said.get("source") == searchers.DISCOGS
                 and word == searchers.NOT_ASKED
@@ -259,13 +188,9 @@ def _summary(
 def _refused_out(report: Mapping, reason: str) -> tuple[str, ...]:
     """The record shops that refused a file Discogs read and could not tag, or none (U284).
 
-    THE FILE OPTION 3 CARRIES ON PAST: no genre written, Discogs ASKED AND
-    ANSWERED (a miss, or a match whose styles name no folder), and every other
-    catalogue of the walk that was sent the file refused this client. A file
-    Discogs was not asked about never reaches here settled, since its refusal
-    by every catalogue asked fails the item. An outage or a parse break beside
-    a refusal is not a refusal: such a file is unread for another reason and is
-    not named under this one.
+    No genre written, Discogs asked and answered, and every other catalogue
+    sent the file refused this client; an outage or parse break beside a
+    refusal is not one.
     """
     if reason not in (tag_engine.SOURCES_UNREAD, tag_engine.UNMAPPED_GENRE):
         return ()
@@ -289,9 +214,8 @@ def _refused_out(report: Mapping, reason: str) -> tuple[str, ...]:
 def _refused_report(files: list[str], catalogues: tuple[str, ...]) -> dict | None:
     """The files a sweep settled untagged because every other catalogue refused, said once.
 
-    None when there are none, so a reader tells "nothing refused" from an empty
-    list it must interpret. ``catalogues`` carries the date each began refusing,
-    off :mod:`cratekit.tagging.refused`, empty where none is recorded.
+    None when there are none. ``catalogues`` carries the date each began
+    refusing, off :mod:`cratekit.tagging.refused`.
     """
     if not files:
         return None
@@ -323,11 +247,8 @@ _DISCOGS_UNREAD_WORDS = {
 def _refusal_stop(stopped: Mapping[str, Cause]) -> dict | None:
     """The files whose item failed because every catalogue asked refused, said once (U284).
 
-    THE STOP PHILLIP'S OPTION 3 KEEPS. With no token, or Discogs refusing too,
-    a file every catalogue refused fails as before; what changes is that the
-    sweep, and the pass that ran it, say which catalogues refused and since
-    when, and, when Discogs went unasked, that recording a token lets a sweep
-    carry on. None when no item failed that way.
+    Says which catalogues refused and since when, and, when Discogs went
+    unasked, that a token lets a sweep carry on. None when none failed so.
     """
     if not stopped:
         return None
@@ -363,8 +284,7 @@ def _refusal_stop(stopped: Mapping[str, Cause]) -> dict | None:
             "file, so nothing is landed until a catalogue answers this client"
         )
     if unasked != searchers.DISCOGS_TOKEN_REFUSED:
-        # NOT FOR A TOKEN DISCOGS REFUSED (round one): those files failed for
-        # good, and waiting mends nothing until a working token is recorded.
+        # NOT FOR A TOKEN DISCOGS REFUSED (round one): waiting mends nothing.
         steps.append(
             "run the pass or the sweep again later; the job resumes at the files it stopped on"
         )
@@ -381,8 +301,7 @@ def _count_ambiguous(ambiguous: dict[str, int], named: object) -> None:
     """Count one file under the labels its copyright line named, when it named two or more."""
     if not isinstance(named, (list, tuple)):
         return
-    # NOT DEDUPLICATED: two labels may share a display name after a rename, and
-    # a line naming both is still two labels (U240's review, round two).
+    # NOT DEDUPLICATED: two labels may share a display name (U240's review).
     names = sorted(str(name) for name in named if name)
     if len(names) > 1:
         key = ", ".join(names)
@@ -392,8 +311,7 @@ def _count_ambiguous(ambiguous: dict[str, int], named: object) -> None:
 def _way(report: Mapping, reason: str) -> str:
     """The way one reported file left the sweep, by label, by catalogue or not at all.
 
-    A file counts as tagged only where :func:`_summary` counts it so: written,
-    and not under a skip reason. Its source decides which of the two.
+    Tagged only where :func:`_summary` counts it so: written, under no skip reason.
     """
     if reason in tag_engine.SKIP_REASONS or not report.get("genre_written"):
         return WAY_NONE
