@@ -28,9 +28,7 @@ START = ("a", "b", "c", "d", "e")
 TARGET = ("d", "a", "e", "b", "c")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The front rule, held to the adapter's
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("before", list(itertools.permutations("abcd")))
@@ -49,9 +47,7 @@ def test_the_front_rule_passes_over_a_track_held_twice_or_not_held():
     assert "a" not in pair_stopped.front_moves(before, ("c", "a", "b"))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The orders a stopped write can have left
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_order_the_moves_pass_through_ends_at_the_target():
@@ -96,9 +92,7 @@ def test_finishing_from_part_way_lands_on_the_target_with_an_addition_where_it_s
     assert pair_stopped.finished(START, TARGET) == TARGET
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The record of a write, read back
-# ═══════════════════════════════════════════════════════════════════════════
 
 _WHEN = datetime(2026, 11, 5, 17, 42, 49, tzinfo=UTC)
 
@@ -264,9 +258,7 @@ def test_a_record_from_before_u225_reads_as_no_write_at_all():
     assert _read(early, untimed)["pl-1"][1].run_id == "run-1"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Every run's steps, read by a later plan
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_kept_runs_steps_are_read_and_an_unreadable_one_is_named(cfg):
@@ -299,9 +291,7 @@ def test_a_record_older_than_a_held_plan_is_kept_is_none(cfg):
     assert held_plan.recorded_steps() == ([], [])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1372: a pair's steps carried past its run
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _age(where, days: int = 31) -> None:
@@ -512,9 +502,7 @@ def test_a_carried_copy_gives_way_to_its_own_runs_steps_kept_under_the_same_plan
     assert stopped["pl-1"][1].run_id == "run-1"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1394: how far a pending write's moves can have got
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_positions_counts_the_moves_that_leave_each_order_on_the_path():
@@ -629,9 +617,7 @@ def test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one():
     assert _read_moving(pending, sending)["pl-1"][1].run_id == "run-3"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U234. A reading kept after a stop, and what shows a reorder against it
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_reading_in_another_order_is_a_reorder():

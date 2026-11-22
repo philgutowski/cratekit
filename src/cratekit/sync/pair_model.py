@@ -21,9 +21,8 @@ ACCOUNT_GATE = "sync.pair.account"
 APPLY = "apply"
 
 
-#: The handler key an acquisition is queued under: the ``intake playlist`` job,
-#: which resolves each track to owned, offered or missing for ``acquire`` to
-#: download and ``intake land`` to land, exactly as a playlist run by hand.
+#: The handler key an acquisition is queued under, the ``intake playlist`` job,
+#: so it is acquired and landed exactly as a playlist run by hand.
 INTAKE_HANDLER = "intake.playlist"
 
 
@@ -43,9 +42,8 @@ ROW = "c:"
 NO_MATCH = "the account has no track this row's ISRC names"
 
 
-#: What a row with no ISRC anywhere is said to be. The account is not asked:
-#: the seam matches on a code or on an exact provider reference, and a row with
-#: neither has nothing it could match on.
+#: What a row with no ISRC anywhere is said to be; the account is not asked,
+#: since the row has nothing it could match on.
 NO_ISRC = "the row carries no ISRC, in the database or in its file"
 
 
@@ -70,9 +68,8 @@ NOTHING = "sync-pair-nothing"
 LEFT_OUT = "sync-pair-left-out"
 
 
-#: U226. The refusal of a pair whose account playlist the provider serves out
-#: of step: its window read disagrees with its unpaged read, which is not the
-#: whole playlist, so neither is the playlist as it stands.
+#: U226. The refusal of a pair whose account window read disagrees with its
+#: partial unpaged read, so neither is the playlist as it stands.
 LAGGING = "sync-pair-account-lagging"
 
 
@@ -109,8 +106,8 @@ FINISHING = "sync-pair-finishing"
 STOPPED_UNREAD = "sync-pair-stopped-unread"
 
 
-#: R-1383. Account tracks the library lacks that a landing record the session
-#: log cannot read may have brought in, held and never queued until it reads.
+#: R-1383. Account tracks the library lacks that an unreadable landing record
+#: may have brought in, held and never queued until it reads.
 LANDING_UNREAD = "sync-pair-landing-unread"
 
 
@@ -118,15 +115,12 @@ LANDING_UNREAD = "sync-pair-landing-unread"
 ON_HOLD_ACTION = "on-hold"
 
 
-#: R-1383. The gate's item for a track a landing record the log cannot read
-#: may have brought in.
+#: R-1383. The gate's item for one of them.
 LANDING_UNREAD_ACTION = "landing-unread"
 
 
-#: The refusals that are about one pair's own playlists, which a sync of every
-#: pair names and passes over rather than stopping at. R-1264: and an account
-#: listing the reader cannot use at all, a row carrying no provider id, since
-#: a track it merely cannot read is unread, below, and never refuses.
+#: The refusals about one pair's own playlists, which a sync of every pair
+#: names and passes over. An unusable account listing is one (R-1264).
 PER_PAIR_REASONS = frozenset(
     {
         "sync-pair-unknown",
@@ -207,8 +201,7 @@ class Target:
     account_id: str
     rekordbox_id: str
     marked: bool
-    #: U198. For a rekordbox playlist a sync of every pair found, whose
-    #: account side is still to be made: its root folder and its title.
+    #: U198. A discovered pair's account root folder and title, while
     #: ``account_id`` is empty until the account gate makes it.
     folder: str = ""
     title: str = ""
@@ -240,11 +233,8 @@ def _unknown(message: str, *, steps: Sequence[str], **detail: Any) -> CratekitEr
 def _lagging(account_id: str, name: str) -> CratekitError:
     """The pair held whole for this run, its account side served out of step (U226).
 
-    HELD WHOLE, NOT ITS ORDER ALONE: a window that lags a write shows the
-    playlist's old membership as well as its old order, so a track just
-    taken off the account would read as added there and be put back in
-    rekordbox. Nothing is written for the pair; a run a few minutes later
-    reads it again.
+    HELD WHOLE, NOT ITS ORDER ALONE, since a lagging window shows old
+    membership too and a track just taken off would be put back.
     """
     return refuse(
         LAGGING,
@@ -272,14 +262,10 @@ def _settling(
 ) -> CratekitError:
     """The pair held whole for this run, its account order sent and not yet read as landed (U231).
 
-    HELD WHOLE, as a lagging pair is (U226): a reading that lags the moves
-    may lag a membership change as well, and an order read from it and
-    written into rekordbox, or moved again on the account, is the scramble
-    Sitting 86's orders would have left. ``lag`` says the readings agree on
-    an order on the moves' way short of where they can have left it: ``at``
-    moves from ``write``'s start leave it, and the message names why that is
-    short (R-1394): every move accepted, a stop after more moves landed, a
-    move whose landing is not known, or a write that recorded no count.
+    HELD WHOLE, as a lagging pair is, since a reading that lags the moves may
+    lag membership too. ``lag`` says the readings agree on an order ``at``
+    moves along ``write``'s way, short of where the moves leave it, and the
+    message names why (R-1394).
     """
     after = (
         "a read that lags them serves that, and so would a reorder by hand back onto "
@@ -450,22 +436,20 @@ class PairPlan:
     unmatched: tuple[Named, ...] = ()
     #: Account tracks the library lacks, by remote id, as the intake job freezes them.
     acquire: dict[str, dict[str, Any]] = field(default_factory=dict)
-    #: Account tracks an earlier sync of this pair already queued, or, named
-    #: with the pair, another pair's job or an earlier pair of this plan (R-1385).
+    #: Account tracks already queued by this pair, another pair's job or an
+    #: earlier pair of this plan (R-1385).
     awaiting: tuple[Named, ...] = ()
-    #: U221. Account tracks the library lacks that a twin holds for the
-    #: author's choice, named and never queued until ``sync release``.
+    #: U221. Missing tracks a twin holds for the author's choice, never queued
+    #: until ``sync release``.
     on_hold: tuple[Named, ...] = ()
-    #: R-1383. Account tracks the library lacks that carry an ISRC, held and
-    #: never queued while a landing record the session log cannot read may
-    #: have brought them in.
+    #: R-1383. Missing tracks with an ISRC, held while an unreadable landing
+    #: record may have brought them in.
     landing_unread: tuple[Named, ...] = ()
     #: Account tracks two live library rows carry, so no row is chosen.
     ambiguous: tuple[Named, ...] = ()
     #: U208. Rekordbox rows matched as one of several releases that all agree.
     tied: tuple[Named, ...] = ()
-    #: U208. Account tracks read as another release's key, by remote id, so
-    #: each is named on the screen by its own words.
+    #: U208. Account tracks read as another release's key, by remote id.
     siblings: dict[str, Named] = field(default_factory=dict)
     #: Links this plan made, remote id to content id.
     links: dict[str, str] = field(default_factory=dict)
@@ -475,47 +459,39 @@ class PairPlan:
     content_of: dict[str, str] = field(default_factory=dict)
     #: ``ListingShortfall.block()`` when the account listing was short.
     withheld: dict[str, int] | None = None
-    #: R-1264. Account tracks the reader would not read, by id in the
-    #: listing's order, each named with what it lacks.
+    #: R-1264. Unread account tracks in listing order, named with what they lack.
     unread: tuple[Named, ...] = ()
     #: U198. Where the account side is made, for a pair whose account side is new.
     place: Place | None = None
-    #: U202. Where the rekordbox side is made, for a pair whose rekordbox side
-    #: is new, a ``pair_discover.Home``.
+    #: U202. Where a new rekordbox side is made, a ``pair_discover.Home``.
     home: Any = None
-    #: U202. When the account says each listed track was added, ISO text by
-    #: remote id, recorded with the snapshot.
+    #: U202. Each listed track's account added date, ISO text by remote id.
     account_dates: dict[str, str] = field(default_factory=dict)
-    #: U225. Every id the account listed, in order, when the plan orders it:
-    #: what the write's removals and additions start from.
+    #: U225. Every id the account listed, in order, which the write starts from.
     account_before: tuple[str, ...] = ()
-    #: U225. The run whose write on this pair stopped part way through its
-    #: order and that this plan finishes, or empty; and whether the account
-    #: stood where that write's moves left it, so its order was finished.
+    #: U225. The run whose stopped order this plan finishes, or empty; and
+    #: whether the account stood where its moves left it, so the order was finished.
     finishing: str = ""
     finishing_order: bool = False
-    #: U234. Whether the account stood off that write's moves' path when its
-    #: order was finished, read as the provider's partial state, or was
-    #: reordered since settled readings kept after the stop, so it leads; and
-    #: whether the plan merged against what that write left (``folded``).
+    #: U234. Whether the account stood off that write's path, read as the
+    #: provider's partial state; whether settled readings since show it
+    #: reordered, so it leads; and whether the plan merged against what the
+    #: write left.
     finishing_off_path: bool = False
     reordered_since_stop: bool = False
     finishing_folded: bool = False
-    #: U234. Whether that write is known to have sent no move, so the
-    #: account's order off its path was read as the person's.
+    #: U234. Whether that write sent no move, so an order off its path is the person's.
     stop_moved_nothing: bool = False
-    #: R-1446. Whether only tracks the account lists unreadably moved since
-    #: that write stopped, so its order was finished and each moved one kept
-    #: where the person put it rather than where the write was taking it.
+    #: R-1446. Whether only unread tracks moved since the stop, so the order
+    #: was finished with each moved one kept where the person put it.
     stop_unread_moved: bool = False
-    #: R-1446. Whether, on that finish, an unread track nobody moved is still
-    #: placed by the write's target.
+    #: R-1446. Whether an unread track nobody moved is placed by the write's target.
     stop_unread_others: bool = False
-    #: R-1446. Whether that write had sent no move, so the account was read
-    #: against where it began rather than against a settled reading.
+    #: R-1446. Whether that write sent no move, so the account was read against
+    #: where it began.
     stop_unread_unsent: bool = False
-    #: U231. Whether the merge asked the account a new order that this pair
-    #: does not keep, since its rekordbox playlist is outside GIG READY.
+    #: U231. Whether a new account order goes unkept, its rekordbox playlist
+    #: being outside GIG READY.
     order_unkept: bool = False
 
     @property
@@ -545,8 +521,7 @@ class PairPlan:
             **({"place": self.place.identity()} if self.place is not None else {}),
             # U202, the same for a pair whose rekordbox side is new.
             **({"home": self.home.identity()} if self.home is not None else {}),
-            # R-1264, ONLY WHEN ANY, so a pair the account serves whole
-            # digests as it did.
+            # R-1264, ONLY WHEN ANY, so a pair served whole digests as it did.
             **(
                 {"unread": [named.remote_id for named in self.unread]} if self.unread else {}
             ),
@@ -556,8 +531,7 @@ class PairPlan:
                 if self.on_hold
                 else {}
             ),
-            # R-1383, ONLY WHEN ANY, so a plan reading every landing record
-            # digests as it did.
+            # R-1383, ONLY WHEN ANY, so a plan reading every record digests as it did.
             **(
                 {"landing_unread": sorted(named.remote_id for named in self.landing_unread)}
                 if self.landing_unread
@@ -582,10 +556,8 @@ class Place:
     folder_id: str = ""
     #: A recorded folder read as gone, so a new one is made in its place.
     stale: str = ""
-    #: U216. The account playlists the plan listed in a folder it adopts, which
-    #: the adoption records as held before, so no sync brings them to rekordbox.
-    #: None when the plan did not say, a plan held by a build before U216, and
-    #: the folder is then recorded as one whose record does not say.
+    #: U216. The playlists an adopted folder already held, recorded so none
+    #: comes to rekordbox; None when the plan did not say.
     held: frozenset[str] | None = None
 
     def identity(self) -> dict[str, str]:
@@ -722,10 +694,9 @@ STEP_ORDERING = "ordering"
 STEP_ORDER_REFUSED = "order-refused"
 
 
-#: U231. The order's moves are about to be sent with no read back between
-#: them: when, the reading they were planned from and the order they leave
-#: (``pair_stopped.moving_step``), marked and carried before the first is sent,
-#: so no command of any run sends them again. And when every one was accepted.
+#: U231. The order's moves are about to be sent, recorded with their reading
+#: and target (``pair_stopped.moving_step``) before the first goes, so no
+#: command sends them again; then every one was accepted.
 STEP_MOVING = "moving"
 
 STEP_MOVED = "moved"
@@ -733,15 +704,14 @@ STEP_MOVED = "moved"
 STEP_DONE = "done"
 
 
-#: U231. The rekordbox top folder whose pairs keep the account's order, the one
-#: played from, unless ``outbound.pair_order_every_pair`` keeps every pair's.
+#: U231. The rekordbox top folder whose pairs keep the account's order, unless
+#: ``outbound.pair_order_every_pair`` keeps every pair's.
 ORDER_FOLDER = "GIG READY"
 
 
-#: U220. The refusals an account order may end in that stop that pair alone:
-#: a read back or a reading the adapter would not trust, and the provider
-#: failing a move or a read. A park, a rejected session and anything else
-#: still stop the whole write, since every later pair would meet it too.
+#: U220. Account order refusals that stop that pair alone, an untrusted read
+#: or a provider failure; anything else stops the whole write, since every
+#: later pair would meet it too.
 ORDER_REFUSALS = frozenset({"outbound-remove-refused", "unavailable-transient"})
 
 

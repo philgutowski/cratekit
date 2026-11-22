@@ -2,36 +2,21 @@
 
 TWO LISTS IN ONE LOCKED DOCUMENT, ``sync_marks.json``.
 
-THE TAKEN LEDGER (U242). The ``DOWNLOADED `` prefix is retired, decided by
-Phillip on 2026-11-11: a playlist Cratekit has finished with, or found
-already finished, is recorded here by its identifier, and no verb writes the
-prefix on the account again. One entry per playlist: the title it had when it
-was taken, less any prefix, who took it (a pass, ``label mark``, ``export
-archive``, or the migration), how, and when, and a released stamp once ``sync
-unmark`` lets it go. :func:`cratekit.sync.playlists.is_taken` is the one
-question every reader asks of it, and it still answers yes for a legacy
-prefixed title until ``crate sync strip`` takes the prefix off, so no state
-exists in which a playlist taken today reads as new.
+THE TAKEN LEDGER (U242). One entry per playlist Cratekit finished with, by
+identifier: its title less any prefix, who took it, how, when, and a released
+stamp once ``sync unmark`` lets it go. No verb writes the prefix again.
+:func:`cratekit.sync.playlists.is_taken` is the one question readers ask.
 
-THE MARKS. What ``sync mark`` retitled with the prefix before U242, by pass,
-and what ``crate sync strip`` retitled to take it off, under its own pass
-name. Each with the title before and the title written, so ``sync unmark``
-puts a title back by the one rule it always had: only while the account still
-carries the title the record says was written. The title alone cannot say who
-wrote a prefix, since the source system wrote the same one and a person can
-type it.
+THE MARKS. Each title a pass retitled (the legacy prefix, or ``sync strip``
+taking it off), before and after, so ``sync unmark`` puts a title back only
+while the account still carries the title written. A title alone cannot say
+who wrote a prefix.
 
-AN ENTRY IS NEVER DELETED. An unmark that puts a title back stamps its mark;
-a release stamps the taken entry it lets go, and the pass's legacy mark with
-it when one stands, since that mark is then undone with no title to put back.
-A second run finds them done and plans nothing.
+AN ENTRY IS NEVER DELETED, only stamped, so a second run plans nothing.
+VERSION 1 READS AS A RECORD WITH NOTHING TAKEN and is rewritten as version 2.
 
-VERSION 1 READS AS A RECORD WITH NOTHING TAKEN, so a record written before
-U242 is never refused for its age; the first write rewrites it as version 2.
-
-NEVER RESTORED, declared on the state entry. A rename it records does not roll
-back with a database restore, and a playlist taken stays taken, so a record
-rolled back with the database would offer a finished playlist as new.
+NEVER RESTORED with the database, since a rename does not roll back and a
+rolled back record would offer a finished playlist as new.
 """
 
 from __future__ import annotations
@@ -48,26 +33,22 @@ from cratekit.core.cause import CratekitError, Scope, refuse
 
 RECORD_VERSION = 2
 
-#: The retired prefix, spelled as ``sync.playlists`` spells it. Repeated here
-#: rather than imported, since ``sync.playlists`` reads this record.
+#: The retired prefix, repeated rather than imported since ``sync.playlists`` reads this record.
 SWEPT_PREFIX = "DOWNLOADED "
 
-#: Every version this build reads. Version 1 is the record before U242,
-#: marks and no taken list.
+#: Every version this build reads. Version 1 has marks and no taken list.
 READS = frozenset({1, RECORD_VERSION})
 
 _ORIGIN = ("sync.mark_record",)
 
-#: How a playlist came to be taken (U242).
-#: A sync pass finished it, by ``sync mark`` or ``organize --only marks``, or
-#: a mark of the prefix this record held from before U242. Its stamp is when.
+#: How a playlist came to be taken. A sync pass finished it, or a legacy
+#: prefix mark; its stamp is when.
 BY_PASS = "pass"
 #: ``label mark`` took a landed batch's year playlist.
 BY_LABEL = "label"
 #: ``export archive``, or a set landing's archive, filed a downloaded set.
 BY_SET = "set"
-#: The migration found the legacy prefix on it, with no mark saying when, so
-#: its stamp is when it was found and says nothing of when it was downloaded.
+#: The migration found the legacy prefix; its stamp says nothing of when it was downloaded.
 FOUND_PREFIXED = "found-prefixed"
 HOW = frozenset({BY_PASS, BY_LABEL, BY_SET, FOUND_PREFIXED})
 
@@ -86,19 +67,15 @@ class Marked:
     #: The title the mark wrote, which is what an unmark expects to find.
     to: str
     marked: str
-    #: When an unmark put the title back, or let the playlist go with no title
-    #: of the mark's left to put back (U242), or ``""`` while the mark stands.
+    #: When an unmark put the title back or let it go, or ``""`` while the mark stands.
     unmarked: str = ""
 
     @property
     def of_the_prefix(self) -> bool:
         """Whether this mark wrote the retired prefix, and is not one ``sync strip`` wrote.
 
-        THE MARKS LIST HOLDS TWO KINDS SINCE U242 (round one of its review): a
-        prefix a pass wrote before it, and a title the strip wrote taking a
-        prefix off, recorded so ``sync unmark`` can put it back. Only the first
-        says a pass finished the playlist, so every reader asking that asks
-        this.
+        Only a prefix mark says a pass finished the playlist, so every reader
+        asking that asks this.
         """
         return self.to.startswith(SWEPT_PREFIX)
 
@@ -282,9 +259,7 @@ class MarkRecord:
     def ready(self) -> tuple[Marked, ...]:
         """Every mark, read UNDER THE LOCK, or the refusal a write would raise.
 
-        Asked before a gate that leads to a write, so a record that cannot be
-        read or locked refuses while nothing has changed yet, rather than
-        after a write it then cannot record.
+        Asked before a gate, so an unusable record refuses before anything changes.
         """
         with self._locked():
             return tuple(self._load())
@@ -346,10 +321,8 @@ class MarkRecord:
     def take(self, entries: Sequence[Taken]) -> tuple[str, ...]:
         """Hold each entry's playlist as taken. Returns the identifiers newly held.
 
-        IDEMPOTENT. A playlist already held keeps the entry that holds it, so
-        the first taker, and its stamp, stand, and a second migration records
-        nothing. A released one is taken afresh by the new entry. NOTHING NEW
-        WRITES NOTHING.
+        IDEMPOTENT. A held playlist keeps its first taker and stamp; a released
+        one is taken afresh. NOTHING NEW WRITES NOTHING.
         """
         if not entries:
             return ()

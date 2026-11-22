@@ -1,11 +1,9 @@
-"""U221, a twin's missing tracks are held for Phillip's choice per playlist, on a disposable database.
+"""U221: a twin's missing tracks are held for Phillip's choice per playlist.
 
-Decided by Phillip on 2026-11-05 at sitting 63's A66: hold the downloads and
-let him choose, per playlist. ``crate sync twins`` records each twin's missing
-tracks as its pair's hold, ``crate sync pair`` names them and queues none, and
-``crate sync release`` lets one twin's go, or every twin's, at its own explicit
-gate. Driven end to end through the dispatcher on the world
-tests/test_sync_twins.py builds.
+``crate sync twins`` records each twin's missing tracks as its pair's hold,
+``crate sync pair`` names them and queues none, and ``crate sync release``
+lets one twin's or every twin's go at its own explicit gate. Driven through
+the dispatcher on the disposable world tests/test_sync_twins.py builds.
 """
 
 from __future__ import annotations
@@ -145,13 +143,13 @@ def test_a_track_added_later_on_the_account_is_queued_and_the_held_stay_held(wor
 def test_a_held_track_another_account_playlist_landed_is_added_and_the_rest_stay_held(
     world, cfg, tmp_path
 ):
-    """U229. A held track the library now holds is that row; one it does not hold stays held."""
+    """U229: a held track the library now holds is that row, one it lacks stays held."""
     from tests.test_sync_pair import _landed_for, _untagged_row
 
     _three_missing(world)
     assert backfill()[0] == int(ExitCode.OK)
-    # Another account playlist's landing brought t22 in as row nine, whose
-    # code is in its file only.
+    # Another playlist's landing brought t22 in as row nine, its code in its
+    # file only.
     _untagged_row(cfg, "9", tmp_path, file_isrc=LACKING["t22"])
     _landed_for(world, cfg, "acc-daily", ("9",), session_id="s-daily", name="Daily")
     code, envelope = sync_pair()
@@ -181,7 +179,7 @@ def _warmup(world, *, sync: bool) -> str:
 
 
 def test_a_twins_held_track_another_pairs_job_holds_is_still_held(world, cfg):
-    """R-1385. Another pair's job holding a twin's held track leaves it held, never awaiting."""
+    """R-1385: another pair's job holding a twin's held track leaves it held, never awaiting."""
     _three_missing(world)
     assert backfill()[0] == int(ExitCode.OK)
     _warmup(world, sync=True)
@@ -198,7 +196,7 @@ def test_a_twins_held_track_another_pairs_job_holds_is_still_held(world, cfg):
 
 
 def test_a_twins_held_track_a_plain_pair_lists_is_queued_once_and_still_held(world, cfg):
-    """R-1385. In one plan, the plain pair queues t22 once and the twin still holds it."""
+    """R-1385: in one plan the plain pair queues t22 once and the twin still holds it."""
     _warmup(world, sync=False)
     _three_missing(world)
     assert backfill()[0] == int(ExitCode.OK)
@@ -211,7 +209,7 @@ def test_a_twins_held_track_a_plain_pair_lists_is_queued_once_and_still_held(wor
 
 
 def test_a_twins_held_track_stays_on_hold_beside_an_unreadable_landing_record(world, cfg):
-    """R-1383, round one's finding 3: the twin's hold names its remedy, never the landing's."""
+    """R-1383: the twin's hold names its own remedy, never the landing's."""
     from cratekit.core import session
 
     _three_missing(world)
@@ -256,7 +254,7 @@ def test_release_all_lets_every_twin_go(world, cfg):
 
 
 def _as_before_u221(cfg) -> str:
-    """Drop every recorded hold, as a pairs document written before U221 reads. The mark."""
+    """Drop every recorded hold, as a pairs document from before U221 reads, and return the mark."""
     store = pairs.PairStore(cfg)
     raw = json.loads(store.path.read_text(encoding="utf-8"))
     for record in raw["pairs"].values():
@@ -271,8 +269,8 @@ def test_a_twin_paired_before_u221_holds_what_the_account_dates_before_its_mark(
     _three_missing(world)
     assert backfill()[0] == int(ExitCode.OK)
     marked = _as_before_u221(cfg)
-    # t20 undated, t21 dated before the mark, t22 dated after it: only t22
-    # reads as added by hand since the twin was made.
+    # t20 undated, t21 before the mark, t22 after it, so only t22 reads as
+    # added by hand since the twin was made.
     world.dates = {"t21": "2026-01-01T00:00:00+00:00", "t22": "2099-01-01T00:00:00+00:00"}
     assert marked < world.dates["t22"]
     code, envelope = sync_pair()
@@ -431,7 +429,7 @@ def test_a_pair_that_is_no_twin_never_holds(cfg):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# The review's round one
+# Late served tracks and stale links
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -470,7 +468,7 @@ def test_a_held_track_whose_linked_row_left_the_library_is_still_counted_and_rel
 
 
 def test_a_track_an_earlier_sync_queued_is_awaiting_not_on_hold(world, cfg):
-    """A twin read by time again, as a copy that drops the hold leaves it, names its queued track awaiting."""
+    """A twin read by time again, its hold dropped by a copy, names its queued track awaiting."""
     _three_missing(world)
     assert backfill()[0] == int(ExitCode.OK)
     assert release(PHIL)[0] == int(ExitCode.OK)

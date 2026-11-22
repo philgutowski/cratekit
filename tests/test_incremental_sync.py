@@ -1,16 +1,13 @@
-"""U22: incremental sync per source, watermark as audit, not as a date floor.
+"""U22: incremental sync per source, the watermark an audit, never a date floor.
 
-KTD11 is the load bearing rule. Scope is most-recent-N plus dedup against what
-is owned. A watermark records how far a clean source got and gates nothing on
-its own. The source system used the watermark as a date floor, a silent
-zero-scope run marked a playlist fully taken, and that is the defect this unit
-must not reintroduce.
+KTD11 is the load bearing rule: scope is most recent N deduped against what is
+owned, and a watermark gates nothing. Using it as a date floor let a silent
+zero scope run mark a playlist fully taken, the defect this must not bring back.
 
-R25 and R29 sit on top of that: each source is its own job, one failing does
-not block the others, a watermark advances only on clean completion, a total
-lookup failure raises rather than looking like an empty catalogue, crash debris
-is never next-run intake, and every source in one run accumulates into one
-importable file.
+R25 and R29: each source is its own job and one failing blocks no other, a
+watermark advances only on clean completion, a total lookup failure raises
+rather than reading as an empty catalogue, crash debris is never next run
+intake, and every source in one run goes into one importable file.
 """
 
 from __future__ import annotations
@@ -87,12 +84,9 @@ class FakeSource:
 class OfferingSource(FakeSource):
     """A source whose ``process`` offers for a decision rather than acquiring.
 
-    ``LabelSource`` is the real one: it calls ``review.offer``, which queues an
-    item and hands it back with a verdict of ``None``. Nothing has landed in the
-    library, so a run over this source must leave no intake file and no
-    watermark behind. Declared as a class attribute rather than set on an
-    instance because that is where the real source declares it, and a test that
-    patched it per instance would not prove the class carries it.
+    As ``LabelSource`` does through ``review.offer``, nothing lands, so a run
+    leaves no intake file and no watermark. Declared on the class, where the
+    real source declares it, so a per instance patch cannot be what proves it.
     """
 
     acquires = False
@@ -120,9 +114,8 @@ def test_an_offering_source_writes_no_intake_file(cfg):
 
     assert result.shortfall is None
     assert result.processed == ("r1", "r2", "r3")
-    # Asserted at the path the increment would have used, computed here from the
-    # same helper the increment calls. A directory that happens to be empty
-    # proves nothing about which file was skipped.
+    # Asserted at the path the increment would have used, from the same
+    # helper, since an empty directory proves nothing about what was skipped.
     target = run.intake_path(staging, "run-offer-1")
     assert not target.exists()
     assert registry.intake_eligible([target]) == []
@@ -256,10 +249,10 @@ def test_every_lookup_failing_raises_and_does_not_advance(cfg):
 
 
 def test_a_lookup_failure_is_permanent_unless_the_source_says_rate_limited(cfg):
-    """R-704. The source that caught the provider's error decides, the increment relays.
+    """R-704: the source that caught the provider's error decides, the increment relays.
 
-    The default keeps the permanent reading every lookup failure had, word for
-    word; a rate limit is retryable, names the resume, and says it was one.
+    The default keeps every lookup failure's permanent reading word for word;
+    a rate limit is retryable, names the resume and says it was one.
     """
 
     def refusal(failure: run.LookupFailure):
@@ -587,10 +580,11 @@ def test_the_playlist_exclusions_in_the_order_a_person_is_told():
 
 
 def test_the_label_batch_debris_is_excluded_by_the_source_systems_own_rule():
-    """R-361. `<label> LIBRARY` is what the source system's label batch leaves
-    on the account, one per run, and its own sweep drops any name ending
-    ` LIBRARY`, leading space, case sensitive. The five shapes the brief names,
-    plus the space, which is the difference between a suffix and a substring."""
+    """R-361: `<label> LIBRARY` is label batch debris, swept as any name ending ` LIBRARY`.
+
+    Leading space included and case sensitive: the brief's five shapes, plus
+    the space that makes it a suffix rather than a substring.
+    """
     from cratekit.label.catalogue import AccountPlaylist
     from cratekit.sync import playlists
 
@@ -605,17 +599,13 @@ def test_the_label_batch_debris_is_excluded_by_the_source_systems_own_rule():
     assert playlists.LIBRARY_PLAYLIST_SUFFIX == " LIBRARY"
     assert str(E.LABEL_DEBRIS) == "label-debris"
     assert decide("Colorize LIBRARY") is E.LABEL_DEBRIS
-    # Case exactly, because the batch never writes any other case and a person
-    # might.
+    # Case exactly, since the batch never writes another case and a person might.
     assert decide("Colorize Library") is None
     assert decide("Colorize library") is None
-    # The swept prefix is decided first, so a debris playlist the source system
-    # already swept is told the reason it was told before.
+    # The swept prefix is decided first, so already swept debris keeps its reason.
     assert decide(playlists.SWEPT_PREFIX + "Colorize LIBRARY") is E.SWEPT
     # THE ACCEPTED COLLISION. A playlist a person named this way is excluded
-    # too, exactly as the source system's sweep excludes it. Every debris name
-    # the fourth sitting listed was a label run, and the rule is copied rather
-    # than narrowed so the two systems keep agreeing about the same account.
+    # too, copied rather than narrowed so both systems agree about one account.
     assert decide("My Night LIBRARY") is E.LABEL_DEBRIS
     assert decide("Colorize 2026") is None
     # A suffix, not a substring: the leading space is part of the rule.

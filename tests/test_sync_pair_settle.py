@@ -58,9 +58,7 @@ def _agreeing_at_once(monkeypatch) -> None:
     monkeypatch.setattr(pair_plan, "AGREE_AFTER", timedelta(0))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The write sends its moves blind and reads the order once, after a window
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_order_the_provider_serves_at_once_finishes_in_the_one_run(world, owed, cfg):
@@ -261,9 +259,7 @@ def test_a_pending_pair_agreed_once_off_the_path_keeps_rekordboxs_order(
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A stop part way through the moves
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _stopping_after(
@@ -366,9 +362,7 @@ def test_a_stop_part_way_agreed_on_the_moves_path_is_finished_from_rekordbox(
     assert world.held(opener) == ["4", "3", "1", "2"], "rekordbox took the stopped order"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1394: a stopped write is finished only from a reading its moves could have left
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _three_moves(world, opener) -> None:
@@ -582,9 +576,7 @@ def test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order
     assert world.held(opener) == ["4", "3", "2", "1"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Which pairs keep the account's order
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_pair_outside_gig_ready_gets_no_order_write_and_its_membership_still_syncs(world, cfg):
@@ -619,9 +611,7 @@ def test_the_config_key_keeps_the_account_order_of_every_pair(world, cfg, monkey
     assert world.account.playlists[account_id] == _ids("3", "1", "2")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Round one's review
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_write_that_keeps_no_record_sends_no_order(world, owed, cfg, monkeypatch):
@@ -776,9 +766,7 @@ def test_a_pair_document_from_before_u231_reads_with_no_reading_kept(cfg):
     assert held is not None and held.seen is None and held.seen_at == ""
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Round two's review
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("damage", ["unreadable", "gone"])
@@ -852,9 +840,7 @@ def test_a_rekordbox_side_to_be_made_is_under_gig_ready_only_inside_the_folder(c
     assert pair_plan._keeps_order(cfg, made, named) is False
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1411: a finish that also adds a track is held to the agreed reading
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _adapter_reading(world, monkeypatch, playlist_id: str, reading: list[str]) -> list[object]:
@@ -1018,9 +1004,7 @@ def test_a_finish_that_also_removes_is_refused_on_a_reading_that_lags_the_stoppe
     assert world.held(opener) == ["4", "2", "1"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1411, round one's review: the agreed reading is the plan's, on every path
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _refused_finish(world, monkeypatch, account_id: str, lag: list[str]) -> tuple[list[object], str]:
@@ -1111,9 +1095,7 @@ def test_a_finish_planned_again_in_the_writing_command_is_held_to_its_own_readin
     assert world.held(opener) == ["4", "3", "2", "1", "5"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U234. A pending order agreed off its moves' path is the provider's state
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -1477,9 +1459,7 @@ def test_a_reorder_settled_readings_show_keeps_the_unread_track_where_the_person
     assert not any("where the stopped order was taking it" in one for one in shown), shown
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1446. A settled move of an unread track alone is no reorder of the readable ones
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _settled_then_moved(world, cfg, account_id: str, settled: list[str], moved: list[str]) -> None:
@@ -1827,9 +1807,7 @@ def test_a_finish_whose_plan_read_no_account_passes_no_agreed_reading():
     assert done.order_refused is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1432. Where a finish puts an unread track, read alone
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -2165,9 +2143,7 @@ def test_a_drag_to_the_top_after_a_write_that_sent_no_move_leads(world, owed, cf
     assert world.account.playlists[account_id] == [*_ids("4", "1", "2", "3"), *(["t9"] if unread else [])]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1446. Whether a reorder read after a stop moved a readable track, read alone
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _write_from(start: list[str], target: list[str]):

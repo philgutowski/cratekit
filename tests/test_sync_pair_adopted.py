@@ -1,13 +1,8 @@
 """U216, ``crate sync pair`` never brings into rekordbox a playlist an adopted account folder already held.
 
-At sitting 59 a rehearsal planned 18 rekordbox playlists, ``DOWNLOADED Techno``
-and its kind, out of the account's ``Genre Trivia!`` root folder, which U198
-had adopted with those playlists already inside. Driven here through the
-dispatcher on a disposable database and the fake account U198's tests built:
-a playlist an adopted folder held when it was adopted, and a ``DOWNLOADED ``
-copy of a playlist a pair in the same folder holds, are named on the gate and
-never made, and a playlist made on the account after the sync still comes in,
-in an adopted folder or a created one, as U202 built it.
+A playlist the folder held when adopted, and a ``DOWNLOADED `` copy of one a
+pair in the same folder holds, are named on the gate and never made; a playlist
+made on the account after the sync still comes in (U202).
 """
 
 from __future__ import annotations
@@ -44,9 +39,8 @@ def later(minutes: int) -> datetime:
 def trivia(world):
     """``Genre Trivia!`` on both sides, the account's holding two old DOWNLOADED copies.
 
-    The sync adopts the account's root folder and makes one account playlist
-    for each rekordbox playlist, as sitting 54 did on the live library.
-    Answers the rekordbox folder and the two copies' account identifiers.
+    Synced once, so the account folder is adopted. Answers the rekordbox folder
+    and the two copies' account identifiers.
     """
     folder_id = world.account.create_folder(FOLDER)
     copies = {}
@@ -80,9 +74,7 @@ def left(plan, kind: str) -> dict[str, dict]:
     return {item["name"]: item for item in _items(plan, "account-discovery", kind)}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # What an adopted folder held is never brought in
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_adoption_records_what_the_folder_held(world, cfg, trivia):
@@ -131,9 +123,7 @@ def test_a_playlist_made_in_a_created_folder_after_the_sync_comes_in(world, cfg)
     assert pairs.PairStore(cfg).get(closer).made
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A DOWNLOADED copy of a paired playlist, in any synced folder
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -161,7 +151,7 @@ def test_a_downloaded_playlist_no_pair_names_still_comes_in(world, trivia):
 
 
 def test_a_playlist_and_its_downloaded_copy_made_in_one_sync_bring_in_the_one(world, trivia):
-    """From the review: the copy check also reads what this sync brings in beside it."""
+    """The copy check also reads what this sync brings in beside it."""
     rekordbox, _copies = trivia
     plain = on_account(world, f"{FOLDER} Disco", FOLDER, "t5")
     copy = on_account(world, "DOWNLOADED Disco", FOLDER, "t5")
@@ -196,7 +186,7 @@ def test_a_downloaded_copy_of_a_playlist_no_pair_holds_comes_in(world, cfg, triv
 
 
 def test_every_reason_names_the_rekordbox_playlist_to_pair_by_hand(world, trivia):
-    """From the review: the step says the rekordbox side is the person's to make first."""
+    """The step says the rekordbox side is the person's to make first."""
     on_account(world, "DOWNLOADED Techno", FOLDER, "t1")
     plan = plan_only()
     for kind in (pair_discover.BEFORE, pair_discover.COPY):
@@ -216,15 +206,13 @@ def test_a_downloaded_copy_in_a_created_folder_is_named_a_copy(world):
     assert not _items(plan, "rekordbox", "create")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A folder adopted before U216, whose record says nothing of what it held
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_without_a_record_or_a_creation_time_every_unpaired_playlist_is_named(
     world, cfg, trivia
 ):
-    """The brief's last scenario: no readable creation time leaves the playlist out."""
+    """No readable creation time leaves the playlist out."""
     rekordbox, copies = trivia
     unrecorded(cfg)
     assert pairs.PairStore(cfg).folders()[FOLDER].held is None
@@ -298,9 +286,7 @@ def test_a_created_folder_without_a_record_still_brings_in(world, cfg):
     assert world.held(in_rekordbox(world, gig)["Closer"]) == ["4"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The rules alone
-# ═══════════════════════════════════════════════════════════════════════════
 
 ADOPTED = datetime(2026, 11, 4, 12, 0, tzinfo=timezone.utc)
 
@@ -349,9 +335,7 @@ def test_downloaded_copy_names_the_paired_title_it_copies():
     assert copy(FOLDER, "DOWNLOADEDTechno", paired) == ""
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The record, read and written
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _document(cfg, folders) -> None:
@@ -422,9 +406,7 @@ def test_a_place_held_by_an_earlier_build_reads_back_as_saying_nothing():
     assert held_plan.decode(encoded, registry).held is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The account's dated folder read
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_dated_folder_read_gives_each_playlists_creation_time_from_the_same_pages():

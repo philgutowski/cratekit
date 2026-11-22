@@ -434,9 +434,7 @@ def test_a_later_run_that_failed_before_its_order_began_does_not_hide_the_stoppe
     assert world.account.playlists[account_id] == _ids(*LED, "8")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1372: a stopped write is kept past the age a held plan is kept for
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _aged(run_id: str, days: int = 31) -> None:
@@ -596,9 +594,7 @@ def test_a_run_that_finished_the_pair_without_moving_its_snapshot_keeps_nothing_
     assert envelope["run_id"] != run_id
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1376: a pair released after a stopped order and paired again
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _released(world, intro: str, account_id: str, *, root: bool = False) -> str:
@@ -841,9 +837,7 @@ def test_a_released_pair_paired_again_over_a_pending_order_is_held_until_the_pro
     assert pair_cli.FINISHING in _codes(envelope)
     assert world.held(rebuilt) == ["4", "3", "1", "2"]
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
-# ═══════════════════════════════════════════════════════════════════════════
 # U234. An account the stop left off its moves' path is not read as a reorder
-# ═══════════════════════════════════════════════════════════════════════════
 
 #: Rekordbox's order for the off path pair, seven tracks reversed, so the
 #: adapter's moves are t2, t3, t4, t5, t6 and t7 to the front in turn.

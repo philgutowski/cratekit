@@ -1,35 +1,19 @@
 """``crate sync release``: let a twin's held tracks be queued, one twin playlist at a time (U221).
 
-Decided by Phillip on 2026-11-05, at sitting 63's A66: a custom playlist twin's
-missing tracks are held for his choice, per playlist, as a label's releases are,
-and never downloaded on their own. ``crate sync twins`` records the tracks each
-twin it makes lacks as that pair's hold, and ``crate sync pair`` names every
-held track and queues none of them (``sync/pair_cli.py``). This verb is the
-choice: it empties the hold of each twin named, or of every twin with
-``--all``, behind one explicit gate, so the next ``crate sync pair`` queues
-what that twin lacks through the intake path as it queues any pair's.
+A twin's missing tracks are held for the author's choice, never downloaded on
+their own, and ``crate sync pair`` names them and queues none. This verb is the
+choice: behind one gate it empties the hold of each twin named, or all with
+``--all``, so the next ``crate sync pair`` queues them.
 
-**WHAT A TWIN HOLDS.** A twin made since U221 from a whole listing holds
-exactly the tracks its backfill named missing; one the library has gained since
-is still counted, and the next sync adds it rather than queues it. A twin paired
-before U221, or made from a listing the account served short, recorded no
-hold, so ``sync
-pair`` reads it by time: a track the library lacks is held unless the account
-dates its addition after the pair was marked. This verb cannot count that one
-without listing the account, so it names it as holding what the account listed
-before the twin was made, and releasing it records an empty hold, after which
-every track the library lacks is queued as any pair's is.
+A twin with no recorded hold (paired before U221, or from a short listing) is
+read by time, which this verb cannot count without the account, so it is named
+as :data:`BY_TIME` and releasing it records an empty hold.
 
-**IT WRITES THE PAIRS DOCUMENT AND NOTHING ELSE.** No database row, nothing on
-the account, no job: the queue is ``sync pair``'s, at its own gate. The write
-reads each pair again under the document's lock and empties only a pair still
-paired with the rekordbox playlist the plan named, so a twin unpaired or paired
-again since the answer is named and left.
+IT WRITES THE PAIRS DOCUMENT AND NOTHING ELSE. Under the document's lock it
+empties only a pair still paired with the planned rekordbox playlist, so one
+re-paired since the answer is named and left.
 
-A NAME THAT IS NO TWIN IS REFUSED, before anything is planned: an account
-playlist no pair holds, or one whose pair is not a twin, holds nothing this verb
-could let go. A twin holding nothing is named and planned as nothing, and a
-plan of nothing asks nothing and ends NO_OP.
+A name that is no twin is refused before planning; a plan of nothing ends NO_OP.
 
 Layer: modules.
 """
@@ -161,10 +145,8 @@ def plan(cfg: config.Config, named: Sequence[str], *, every: bool) -> tuple[Plan
             account_id=one.account_id,
             rekordbox_id=one.rekordbox_id,
             name=one.name,
-            # EVERY RECORDED ID IS COUNTED, one the library has gained since
-            # included: a pair's links are not filtered by live rows here, so
-            # leaving a linked one out could hide a track whose row has since
-            # gone, which the next sync would queue (the review's round two).
+            # EVERY RECORDED ID IS COUNTED: links are not checked against live
+            # rows here, so dropping one could hide a track whose row has gone.
             held=None if one.on_hold is None else dict(one.on_hold),
         )
         for one in sorted(chosen, key=lambda pair: (pair.name, pair.account_id))

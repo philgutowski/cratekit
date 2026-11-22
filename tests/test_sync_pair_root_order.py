@@ -1,15 +1,12 @@
 """R-1404 and R-1416: a pair whose account order is not kept keeps rekordbox's order.
 
-Since U231 a pair whose rekordbox playlist is not under GIG READY never has
-its account order written, so once rekordbox leads a reorder the pair's
-snapshot holds rekordbox's new order and the account's old one. The merge let
-the account lead whenever neither side had changed order since that snapshot,
-so the sync after the reorder put the account's old order back into rekordbox
-with nothing said. Driven through the dispatcher on the disposable database:
-a pair made by hand of an account playlist and a rekordbox playlist at the
-root, with ``outbound.pair_order_every_pair`` off, as a DJ's library has it.
+Outside GIG READY the account order is never written (U231), so after a
+rekordbox reorder the snapshot holds rekordbox's new order and the account's
+old one, and letting the account lead would silently put the old order back.
+Driven through the dispatcher on the disposable database, with a hand pair at
+the rekordbox root and ``outbound.pair_order_every_pair`` off.
 
-D1 applies. Nothing here names a real account, a real person or a real track.
+D1 applies. Nothing here names a real account, person or track.
 """
 
 from __future__ import annotations
@@ -85,7 +82,7 @@ def test_an_account_reorder_still_leads_rekordbox_outside_gig_ready(world, monke
 
 
 def test_a_track_placed_in_rekordbox_outside_gig_ready_keeps_its_place(world, monkeypatch):
-    """A rekordbox addition put mid playlist goes to the account's end and must stay put in rekordbox."""
+    """A rekordbox addition put mid playlist goes to the account's end and stays put in rekordbox."""
     w = _at_the_root(world, monkeypatch, "1", "2", "3")
     w.rekordbox_add("4")
     w.rekordbox_order("1", "4", "2", "3")
@@ -113,7 +110,7 @@ def test_an_account_addition_outside_gig_ready_is_placed_in_rekordbox_s_order(wo
 def test_a_pair_whose_order_is_kept_later_takes_rekordbox_s_order_onto_the_account(
     world, monkeypatch
 ):
-    """A pair that diverged outside the scope and is then kept puts the account in rekordbox's order."""
+    """A pair that diverged outside the scope and is then kept takes rekordbox's order on the account."""
     w = _at_the_root(world, monkeypatch, "1", "2", "3")
     w.rekordbox_order("3", "1", "2")
     _again(w)
@@ -124,7 +121,7 @@ def test_a_pair_whose_order_is_kept_later_takes_rekordbox_s_order_onto_the_accou
 
 
 def test_a_pair_whose_order_is_kept_still_follows_a_rekordbox_reorder(world, monkeypatch):
-    """Inside the scope nothing changes: the account follows, and the next sync plans nothing."""
+    """Inside the scope the account follows, and the next sync plans nothing."""
     w = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
     assert sync(w.args())[0] == int(ExitCode.OK)
     w.rekordbox_order("3", "1", "2")
@@ -139,11 +136,9 @@ def test_a_pair_whose_order_is_kept_still_follows_a_rekordbox_reorder(world, mon
 # R-1416: a hand pair's first sync outside GIG READY keeps rekordbox's order
 # ═══════════════════════════════════════════════════════════════════════════
 #
-# Decided by Phillip on #608 (608-outside-order-2): outside GIG READY Tidal's
-# order is never written (U231), so a first sync that put rekordbox in Tidal's
-# order lost the DJ's arrangement for good. The first sync keeps the order
-# rekordbox stands in; a later Tidal reorder still brings Tidal's whole order
-# (608-outside-order-1).
+# Outside GIG READY Tidal's order is never written (U231), so taking it on the
+# first sync would lose the DJ's arrangement for good (608-outside-order-2). A
+# later Tidal reorder still brings Tidal's whole order (608-outside-order-1).
 
 
 def _paired(world, monkeypatch, *, account, rekordbox, every: bool = False):
@@ -206,7 +201,7 @@ def test_a_track_only_rekordbox_holds_is_appended_to_the_account_and_nothing_els
 
 
 def test_a_hand_pairs_first_sync_with_every_pairs_order_kept_follows_tidal(world, monkeypatch):
-    """With ``outbound.pair_order_every_pair`` on the first sync follows Tidal, as it always has."""
+    """With ``outbound.pair_order_every_pair`` on the first sync follows Tidal."""
     w = _paired(
         world, monkeypatch, account=("1", "2", "3"), rekordbox=("3", "1", "2"), every=True
     )
@@ -219,7 +214,7 @@ def test_a_hand_pairs_first_sync_with_every_pairs_order_kept_follows_tidal(world
 
 
 def test_an_empty_rekordbox_playlist_paired_by_hand_is_planned_as_before(world, monkeypatch):
-    """Nothing in rekordbox to keep: it takes Tidal's tracks in Tidal's order, the gate as before."""
+    """Nothing in rekordbox to keep, so it takes Tidal's tracks in Tidal's order."""
     w = _paired(world, monkeypatch, account=("3", "1", "2"), rekordbox=())
     line = _line(w)
     assert "order follows the account's" in line, line

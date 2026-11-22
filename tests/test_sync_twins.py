@@ -1,11 +1,10 @@
-"""U149, the custom playlist twins: ``crate sync twins`` and the twin pairs, on a disposable database.
+"""U149: ``crate sync twins`` and the twin pairs, on a disposable database.
 
-The account is a fake that the catalogue (which lists) and the account seam
-(which lists folders and writes) both read, so an edit on one is what the next
-listing serves. Every scenario the brief names for the backfill, the merge
-after it and the unpair is driven here end to end through the dispatcher, the
-explicit gates and their recorded answers included. The landing's twins are
-driven in tests/test_intake_land_twins.py.
+The catalogue (which lists) and the account seam (which lists folders and
+writes) read one fake, so an edit on one is what the next listing serves. The
+backfill, the merge after it and the unpair are driven through the dispatcher,
+explicit gates included. The landing's twins are in
+tests/test_intake_land_twins.py.
 """
 
 from __future__ import annotations
@@ -40,8 +39,8 @@ YEAR_FOLDER = "fold-2026"
 VERB = ["sync", "twins"]
 #: Content rows one through nine, each carrying the ISRC its account track has.
 ROWS = tuple(str(index) for index in range(1, 10))
-#: The seconds one reading of a playlist the provider cannot list waits, rung by
-#: rung, before the listing's retry ladder re-raises the provider's failure (U252).
+#: The waits of one reading of an unlistable playlist, rung by rung, before the
+#: listing's retry ladder re-raises the provider's failure (U252).
 LADDER = [1, 2, 4, 8, 16]
 
 
@@ -292,16 +291,11 @@ def world(cfg, gates_pass, db, monkeypatch) -> World:
 def ladder_waits(monkeypatch) -> list[float]:
     """The listing's real retry ladder, every rung climbed, none of it slept (U252).
 
-    A provider failure the product takes for transient climbs
-    ``listing.fetch_with_retry``'s ladder, which sleeps 1, 2, 4, 8 and 16 real
-    seconds before re-raising, 31 per reading, and its ``sleep`` is a keyword
-    default, so patching ``time.sleep`` does not reach it. The verb reads each
-    playlist through ``harvest.playlist_tracks``, which hands its keywords down
-    to the ladder, so only the sleep is bound here, the way
-    ``_ladder_without_waiting`` binds it for the label crawl in
-    tests/test_label_workers.py: the retry count, the pagination and the
-    re-raise all run as shipped. Returns every wait asked for, in order, so a
-    test proves the ladder was climbed rather than trusting that it was.
+    ``listing.fetch_with_retry`` sleeps 31 real seconds per reading through a
+    keyword default ``sleep``, which patching ``time.sleep`` does not reach,
+    so only that sleep is bound, as tests/test_label_workers.py does; the
+    retries, pagination and re-raise run as shipped. Returns every wait asked
+    for, so a test proves the ladder was climbed.
     """
     real = harvest.playlist_tracks
     waits: list[float] = []
@@ -394,8 +388,8 @@ def test_a_backfilled_pair_merges_both_ways_and_queues_the_added_track_once(worl
     assert len(queued) == 1
     with jobs.open_store() as store:
         job = jobs.get(store, queued[0])
-    # U221. t20, which the twin was made without, is held for a choice and
-    # named; t21, put on the account after the twin was made, is queued.
+    # U221. t20, missing when the twin was made, is held and named; t21, added
+    # to the account after, is queued.
     assert sorted((job.payload or {}).get("tracks") or {}) == ["t21"]
     assert envelope["data"]["totals"]["on_hold"] == 1
     code, again = sync_pair()
@@ -562,7 +556,7 @@ def test_the_mirrors_link_to_a_track_wins_and_a_link_to_a_removed_row_falls_thro
 
 
 def test_the_library_keeps_every_landed_account_playlists_source(world, cfg, monkeypatch):
-    """Finding 1 of the U149 review: a generator of account ids was spent by the first."""
+    """Every landed playlist's source is kept, not only the first a spent generator gave."""
     monkeypatch.setattr(
         pair_read,
         "landed_inbox_playlists",
@@ -615,7 +609,7 @@ BROKEN_NAME = "DOWNLOADED Broken 10-1-26"
 
 
 def test_a_title_written_wholly_in_brackets_reads_and_its_twin_is_made(world, cfg):
-    """The live case: Glass Animals' ``[Premade Sandwiches]`` refused the whole verb."""
+    """A title written wholly in brackets, as one refused the whole verb live, reads."""
     _phil(world)
     world.names["t1"] = "[Premade Sandwiches]"
     code, envelope = backfill()
@@ -642,8 +636,8 @@ def test_a_track_listed_with_no_title_is_named_in_its_twin_and_the_rest_are_plan
     assert missing[0]["why"] == (
         f"the account lists it with no title, {twins.UNREAD_NOT_FOUND}"
     ), missing
-    # THE UNTITLED TRACK THE LIBRARY HOLDS IS HELD, found by its ISRC, which
-    # never needed a title, and the snapshot is the whole listing.
+    # THE UNTITLED TRACK THE LIBRARY HOLDS IS HELD, found by its ISRC, and the
+    # snapshot is the whole listing.
     twin_id = world.twin("Phil 9-30-26")
     assert world.held(twin_id) == ["3", "1", "2"]
     held = pairs.PairStore(cfg).get(PHIL)
@@ -720,7 +714,7 @@ class Flaky(RuntimeError):
 def test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words(
     world, cfg, ladder_waits
 ):
-    """From the review: the provider's own words varied between the gate and the write."""
+    """The provider's words varied between the gate and the write, so the digest holds the refusal."""
     _phil(world)
     world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
     world.broken[BROKEN] = Flaky()

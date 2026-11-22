@@ -1,27 +1,17 @@
 """``sync.taken``: record every playlist already taken in Cratekit's own record (U242).
 
-The ``DOWNLOADED `` prefix is retired, decided by Phillip on 2026-11-11. Until
-now a playlist was known to be taken, finished with, by its title, and most of
-the account's prefixed playlists were marked by hand, so only their title says
-so. This verb is the migration that moves that knowledge into the record
-(:mod:`cratekit.sync.mark_record`'s taken ledger) before anything takes the
-prefix off, so no state exists in which a playlist taken today reads as new.
+The migration off the retired ``DOWNLOADED `` prefix: it moves what the titles
+say into the taken ledger before anything strips them, so a taken playlist
+never reads as new.
 
-WHAT IT RECORDS. Every account playlist whose title carries the prefix, and
-every mark of the prefix the record already holds that no unmark put back,
-under the pass that wrote it and its own time, which is what filing reads a
-year from. The cursor's playlists are COUNTED AND NOT COPIED: the cursor is
-already the product's own record and keeps every one of them out of a sync,
-and copying one whose pass still owes tracks would take it out of ``sync
-mark``'s plan as though it were finished.
+WHAT IT RECORDS. Every prefixed account playlist, and every standing prefix
+mark in the record, under its pass and time (filing reads a year from it).
+The cursor's playlists are COUNTED AND NOT COPIED, since copying one whose
+pass still owes tracks would drop it from ``sync mark``'s plan.
 
-IDEMPOTENT. A playlist already held keeps the entry that holds it, so a second
-run records nothing and says so. ``crate sync strip`` runs this same step
-first, inside its own apply, so a strip never depends on a person having run
-this one.
-
-THE PLAN IS SHOWN BEFORE ANYTHING IS RECORDED, the account listed once, and
-nothing is written to the account at all.
+IDEMPOTENT; ``crate sync strip`` runs the same step inside its own apply. The
+plan is shown before anything is recorded, and nothing is written to the
+account.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -55,10 +45,9 @@ def entries(
 ) -> list[mark_record.Taken]:
     """What the migration holds as taken: the record's standing prefix marks, then every prefixed title.
 
-    A MARK OF THE PREFIX is one whose written title carries it, so a strip's
-    own record, which writes the title without it, is never read as one. The
-    latest standing mark of a playlist is the one kept, with its pass and its
-    time. A prefixed title no mark covers is held as found, by the migration.
+    A prefix mark is one whose written title carries it, so a strip's record is
+    never read as one. The latest standing mark wins; an uncovered prefixed
+    title is held as found.
     """
     found: dict[str, mark_record.Taken] = {}
     for mark in sorted(marks, key=lambda one: (one.marked, one.pass_name)):
@@ -144,8 +133,7 @@ def _shown(payload: dict[str, Any]) -> dict[str, Any]:
 def sync_taken(ctx) -> Envelope:
     cfg = sync_cli._load()
     record = mark_record.MarkRecord(cfg)
-    # THE RECORD FIRST, read under its lock, so one that cannot be read or
-    # locked refuses before the account is listed or a credential asked for.
+    # THE RECORD FIRST, so an unreadable record refuses before the account is listed.
     marks = record.ready()
     from cratekit.label import catalogue
 

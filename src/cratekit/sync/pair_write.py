@@ -60,14 +60,11 @@ class Done:
     order_refused: Any = None
     #: U220. The pair's name, said when its order did not finish.
     name: str = ""
-    #: U226. The account adapter's record of each reading it judged this
-    #: pair's writes by: its readings, its wait and its window's lag.
+    #: U226. The adapter's record of each reading this pair's writes were judged by.
     read_backs: list[dict[str, Any]] = field(default_factory=list)
-    #: U231. The pair's order, sent and not yet read, which the write reads
-    #: once every pair is written; None once read, or for a pair with none.
+    #: U231. The pair's order sent and not yet read, read once every pair is written.
     settle: Settle | None = None
-    #: U231. Whether its order was read short of where its moves leave it,
-    #: so it is pending on the pair for a later sync.
+    #: U231. Whether its order read short of its moves, so it is pending for a later sync.
     pending: bool = False
 
     @property
@@ -107,26 +104,22 @@ def _record(
     rekordbox_after: Sequence[playlist_pair.Row] | None,
     account_after: Sequence[str] | None,
 ) -> bool:
-    """Record both sides' snapshots when the whole pair was written, else the links alone.
+    """Record both snapshots when the whole pair was written, else the links alone; whether it moved.
 
-    Returns whether the snapshot moved. Every live rekordbox membership is
-    recorded, a track held twice with both its rows, so a later sync can tell
-    a copy that was removed from a track that was taken out and put back.
+    A track held twice is recorded with both rows, so a later sync can tell
+    a removed copy from a track taken out and put back.
     """
     from cratekit.modules.outbound import pairs
 
-    # AN UNREAD TRACK DOES NOT HOLD THE SNAPSHOT BACK (R-1264, the review's
-    # round one): the account may list it that way for good, and a base that
-    # never moved would read every later removal as an addition. The account
-    # after the write names it in its place, and the next plan strips it from
-    # the base as it does now.
+    # AN UNREAD TRACK DOES NOT HOLD THE SNAPSHOT BACK (R-1264): the account may
+    # list it that way for good, and a base that never moved would read every
+    # later removal as an addition.
     whole = rekordbox_after is not None and account_after is not None and not one.withheld
     held_after = pair_merge.distinct(account_after or ())
     recorded = pairs.PairStore(cfg).record(
         one.target.account_id,
         account=list(held_after) if whole else None,
-        # U202. THE ADDED DATES THE PLAN LISTED, for the tracks the account
-        # holds after the write; a track this sync added is dated by the next.
+        # U202. The plan's added dates; a track this sync added is dated by the next.
         account_added=(
             {one_id: one.account_dates[one_id] for one_id in held_after if one_id in one.account_dates}
             if whole
@@ -149,9 +142,7 @@ def _record(
 def _let_go_passed(account_id: str, synced: str) -> None:
     """Let go of every carried record of this pair its new snapshot passed (R-1372).
 
-    A record that cannot be read or let go is left; the next plan reads one
-    the snapshot passed as no write, so leaving it costs a file, never a
-    write.
+    One that cannot be let go is left; the next plan reads it as no write.
     """
     from cratekit.core import held_plan
     from cratekit.favorites import placeholders
@@ -175,22 +166,16 @@ def _let_go_passed(account_id: str, synced: str) -> None:
 def _made(
     cfg: config.Config, one: PairPlan, *, resumed: bool = False
 ) -> tuple[PairPlan, bool]:
-    """Make a discovered playlist's account side in its root folder, and pair it (U198).
+    """Make a discovered playlist's account side in its root folder and pair it; whether this made it (U198).
 
-    The folder and the playlist are each reserved in the pairs document under
-    its lock before they are created, and the playlist is marked in the same
-    write, so an unwritable document refuses before anything is made and a
-    sync stopped part way leaves what it made recorded for the next one. The
-    playlist is moved into its folder only when this sync made it.
+    Folder and playlist are reserved in the pairs document under its lock
+    before they are created, so an unwritable document refuses before
+    anything is made and a stopped sync leaves what it made recorded.
 
-    ``resumed`` says an earlier command of this run began making it and
-    stopped (U210). The reservation then answers the playlist that command
-    made, and it is moved into its folder again, since the stop may have come
-    between the make and the move and the move asks for one fixed place; only
-    a pair the pairs document records as made for this rekordbox playlist in
-    this folder is moved, so a playlist the author paired by hand in between
-    is never moved into Cratekit's folder. Answers the pair and whether this
-    call made the playlist.
+    ``resumed`` (U210): an earlier command began making it. The playlist is
+    moved into its folder again, since the stop may have come before the
+    move, but only when recorded as made for this pair here, so one the
+    author paired by hand is never moved.
     """
     from dataclasses import replace
 
@@ -238,11 +223,10 @@ def _made_in_rekordbox(
 ) -> tuple[PairPlan, playlist_pair.Written | None]:
     """Make an account playlist's rekordbox side at its home, and pair it (U202).
 
-    The pairs lock is taken before the database is opened, so an unwritable
-    document refuses before anything is made, and the pair is marked as the
-    product's straight after the commit. An account playlist another sync
-    paired first makes nothing and answers None. The playlist is read back
-    after it is recorded, so a read back that refuses leaves it paired.
+    The pairs lock is taken before the database opens, so an unwritable
+    document refuses before anything is made. One another sync paired first
+    makes nothing and answers None. It is read back after it is recorded, so
+    a read back that refuses leaves it paired.
     """
     from dataclasses import replace
 
@@ -269,9 +253,8 @@ def _made_in_rekordbox(
                 on_commit=landed,
             )
         except BaseException as exc:
-            # A FAILURE AFTER THE COMMIT LANDED still pairs what landed (U202,
-            # from the review), so the playlist is never left in rekordbox
-            # unpaired; the failure is raised once the pair is recorded.
+            # A FAILURE AFTER THE COMMIT still pairs what landed, so the playlist
+            # is never left unpaired; it is raised once the pair is recorded.
             if not holder.get("landed"):
                 raise
             holder["failed"] = exc
@@ -317,11 +300,9 @@ def _queue(cfg: config.Config, one: PairPlan, store) -> str:
 
 
 
-#: U231. Seconds from an order's last move to the one reading that decides it.
-#: Spent on the other pairs' writes where there are any, and slept only for
-#: what is left. UNMEASURED as a fit: Sitting 86 read most moves back on the
-#: first reading, 18 on a second and 41 not after seven seconds, and some
-#: orders not after 28 minutes; what this window does not cover is pending.
+#: U231. Seconds from an order's last move to the one reading that decides it,
+#: spent on the other pairs' writes and slept only for what is left. Not a
+#: measured fit; an order this window does not cover is left pending.
 SETTLE_SECONDS = 30.0
 
 
@@ -330,9 +311,7 @@ class PairSteps:
     """One pair's steps in its run's record (U210), or no record at all.
 
     ``steps`` is the run's :class:`cratekit.core.held_plan.Steps`, or None for
-    a write that keeps no record, which marks nothing and has done nothing.
-    ``key`` is the pair as the gate names it, which the plan holds whatever
-    the write makes.
+    a write that keeps no record. ``key`` is the pair as the gate names it.
     """
 
     def __init__(self, steps: Any, key: str) -> None:
@@ -368,9 +347,8 @@ class PairSteps:
     def carried(self, step: str) -> Any:
         """One step of what this pair's steps carried past its run, or None (U231).
 
-        Read when the run's own steps do not hold it: a continue whose steps
-        file could not be read, or is gone, still finds the moves its order
-        sent in the record carried beside it, so it never sends them again.
+        Read when the run's own steps are unreadable or gone, so a continue
+        never sends its order's moves again.
         """
         if self.steps is None:
             return None
@@ -381,8 +359,7 @@ class PairSteps:
     def let_go(self) -> None:
         """Let go of what this pair's steps carried past its run, once the pair is done (R-1372).
 
-        A record that cannot be let go is left: the snapshot the pair's write
-        recorded is later than it, so a later plan reads it as no write.
+        One that cannot be let go is left; the later snapshot makes it no write.
         """
         if self.steps is None:
             return
@@ -451,8 +428,7 @@ def _with_rekordbox_id(one: PairPlan, rekordbox_id: str) -> PairPlan:
 def _queue_once(cfg: config.Config, one: PairPlan, store, steps: PairSteps) -> str:
     """Queue the pair's missing tracks unless an earlier command of the run did (U210).
 
-    The job id queued now, or ``""``: a job an earlier command queued is that
-    command's to report, and queueing it again would ask for every track twice.
+    The job id queued now, or ``""``; queueing again would ask for every track twice.
     """
     if steps.has(STEP_QUEUED):
         return ""
@@ -475,22 +451,14 @@ def apply_pair(
     """Write one pair: mark it, rekordbox and the queue, then the account, then its snapshot.
 
     ``account_listed`` is the account playlist as the check before the write
-    read it (U209), equal to what the plan read until this run's moves of
-    the pair's order begin. On a continue of an order whose moves never
-    began and that finishes no stopped write, it was read in order and is
-    handed to the adapter to agree with first (R-1420); once the moves
-    began it is checked for what it holds and not its order, and a finish
-    is held to the plan's own reading (R-1411). A pair with nothing to write
-    on the account records it as the side's snapshot rather than listing the
-    playlist again; a pair that writes there lists it after the write, as
-    every pair did before.
+    read it (U209). An unbegun continue hands it to the adapter to agree with
+    first (R-1420); a finish is held to the plan's own reading (R-1411). A
+    pair with nothing to write on the account takes it as that side's
+    snapshot rather than listing the playlist again.
 
     ``steps`` is this pair's record in its run (U210). Each step is recorded
-    the moment it lands, and a step a stopped command of the same run already
-    recorded is not done again: a made side is not made again, a rekordbox
-    commit that landed is read back rather than written, and a queued job is
-    not queued twice. The account writes are begun again whole, since each of
-    them skips what the playlist already holds as asked.
+    as it lands and a recorded step is not done again; the account writes
+    are begun again whole, since each skips what the playlist already holds.
     """
     from cratekit.modules.outbound import pairs
 
@@ -501,9 +469,8 @@ def apply_pair(
     rekordbox_after: tuple[playlist_pair.Row, ...] | None = None
     account_after: tuple[str, ...] | None = None
     if one.target.rekordbox_new:
-        # U202. THE REKORDBOX SIDE IS MADE ONLY ON REKORDBOX'S GATE, and with
-        # nothing made there is nothing to pair, so an account side approved
-        # alone writes nothing; the next sync finds the playlist again.
+        # U202. THE REKORDBOX SIDE IS MADE ONLY ON REKORDBOX'S GATE; with nothing
+        # made there is nothing to pair, and the next sync finds it again.
         if not rekordbox:
             return done
         landed = steps.get(STEP_REKORDBOX)
@@ -524,9 +491,8 @@ def apply_pair(
         # Nothing further on rekordbox: the playlist was made holding the plan.
         rekordbox = False
     elif one.target.new:
-        # U198. THE ACCOUNT SIDE IS MADE ONLY ON THE ACCOUNT'S GATE, and with
-        # nothing made there is nothing to pair, so a rekordbox side approved
-        # alone writes nothing; the next sync finds the playlist again.
+        # U198. THE ACCOUNT SIDE IS MADE ONLY ON THE ACCOUNT'S GATE; with nothing
+        # made there is nothing to pair, and the next sync finds it again.
         if not account:
             return done
         made = steps.get(STEP_MADE)
@@ -550,8 +516,7 @@ def apply_pair(
     if rekordbox:
         landed = steps.get(STEP_REKORDBOX)
         if isinstance(landed, dict):
-            # U210. THE COMMIT LANDED IN AN EARLIER COMMAND OF THIS RUN, and the
-            # check before the write found the playlist as that commit left it.
+            # U210. THE COMMIT LANDED IN AN EARLIER COMMAND OF THIS RUN, so it is read back.
             rekordbox_after = _members(cfg, one.target.rekordbox_id)
         else:
             db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
@@ -577,14 +542,12 @@ def apply_pair(
     if account:
         from cratekit.modules.outbound import account as outbound_account
 
-        # BEFORE THE FIRST ACCOUNT CALL (U210), so a continue knows this
-        # playlist may hold part of this write and reads it that way, and
-        # WHEN (U225), so a later plan knows which write was the latest.
+        # BEFORE THE FIRST ACCOUNT CALL (U210), so a continue reads the playlist
+        # as part written, and WHEN (U225), so a later plan knows the latest write.
         steps.mark(STEP_ACCOUNT, timestamp())
         remote = outbound_account.resolve(cfg)
         playlist_id = one.target.account_id
-        # U226. WHAT THE ADAPTER RECORDS FROM HERE IS THIS PAIR'S: the
-        # readings its writes were judged by, read off whatever way they end.
+        # U226. What the adapter records from here is this pair's, however it ends.
         first = len(remote.read_backs())
         try:
             account_after = _write_account(
@@ -625,8 +588,7 @@ def _write_account(
 ) -> tuple[str, ...] | None:
     """The account side of one pair's write, and the playlist after it, or None when its order stopped (U220).
 
-    Split out of :func:`apply_pair` by U226, so what the adapter records of
-    the pair's readings is read whether the write finishes, stops or raises.
+    Apart from :func:`apply_pair` so the adapter's readings are kept however it ends (U226).
     """
     from cratekit.favorites import placeholders
     account_after: tuple[str, ...]
@@ -641,15 +603,13 @@ def _write_account(
     if one.account_order:
         moving = steps.get(STEP_MOVING)
         if not isinstance(moving, Mapping):
-            # ROUND TWO'S REVIEW: the run's steps unreadable or gone, the
-            # record carried beside them still says the moves went.
+            # The run's steps unreadable or gone, the carried record still says the moves went.
             moving = steps.carried(STEP_MOVING)
         if isinstance(moving, Mapping):
-            # U231. AN EARLIER COMMAND OF THIS RUN BEGAN SENDING THESE MOVES,
-            # and how many reached the provider before it stopped is not
-            # known: sent again from a reading, a move lands on whatever now
-            # stands at its position. So none is sent; the order is read once
-            # the other pairs are written, and pending if it has not landed.
+            # U231. AN EARLIER COMMAND BEGAN SENDING THESE MOVES, and how many
+            # landed is not known: sent again, a move lands on whatever now stands
+            # at its position. So none is sent; the order is read after the other
+            # pairs, and pending if it has not landed.
             end = moving.get(pair_stopped.TARGET)
             began = placeholders.parse_hearted(moving.get(pair_stopped.AT))
             done.settle = Settle(
@@ -662,10 +622,9 @@ def _write_account(
             return None
         if steps.steps is None:
             # U231, ROUND ONE'S REVIEW. MOVES SENT WITH NO READ BACK MUST BE
-            # RECORDED, or nothing tells a later sync they were sent, and it
-            # sends them again by position from a reading that lags them. A
-            # write that keeps no record sends no order; this pair alone
-            # stops, its additions and removals landed.
+            # RECORDED, or a later sync sends them again by position from a
+            # reading that lags them. A write that keeps no record sends no
+            # order; this pair alone stops.
             done.order_refused = refuse(
                 STEPS_UNWRITTEN,
                 f"the account order of {one.name or playlist_id} was not sent: this "
@@ -681,23 +640,15 @@ def _write_account(
             ).cause
             done.name = one.name
             return None
-        # R-1420, ROUND ONE'S REVIEW. WHETHER AN EARLIER COMMAND OF THIS RUN
-        # BEGAN THIS ORDER, read before this one marks it: with no move sent
-        # (the branch above returned otherwise), it was refused, parked or
-        # stopped with the whole write, and its continue agrees first. A
-        # finish keeps what R-1411 holds it to. ROUND TWO'S REVIEW: the run's
-        # steps unreadable or gone, the record carried beside them still
-        # says the order began, as it says the moves went.
+        # R-1420. WHETHER AN EARLIER COMMAND BEGAN THIS ORDER, read before this
+        # one marks it: one begun with no move sent stopped before any, so its
+        # continue agrees first. The carried record counts when the steps are gone.
         continued = steps.has(STEP_ORDERING) or steps.carried(STEP_ORDERING) is not None
-        # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
-        # U225. AND WHAT THE ORDER IS DOING, so a later fresh plan that finds
-        # it stopped reads its moves as this write's: the order it starts
-        # from, the order it asks, the side that led, and rekordbox as it
-        # stands, committed by this write or as the plan read it. THE START IS
-        # WHAT THE ADAPTER ANSWERED, not what was asked: it leaves out of its
-        # answer a track the provider would not add, and a plan that took the
-        # asked additions as landed would read that track as taken off the
-        # account and take it out of rekordbox.
+        # BEFORE THE FIRST MOVE (U210), and what the order is doing (U225), so a
+        # later plan that finds it stopped reads its moves as this write's. THE
+        # START IS WHAT THE ADAPTER ANSWERED, not what was asked: a track the
+        # provider would not add would otherwise read as taken off the account
+        # and be taken out of rekordbox.
         steps.mark(
             STEP_ORDERING,
             pair_stopped.ordering_step(
@@ -716,26 +667,18 @@ def _write_account(
                 links=one.links,
             ),
         )
-        # R-1372. AND KEPT PAST THE RUN, before the first move: the run's
-        # steps are released when it ends and pruned once older than a held
-        # plan is kept, and a pair left part ordered is part ordered for as
-        # long as nothing writes over it, so a later plan reads this record
+        # R-1372. AND KEPT PAST THE RUN, before the first move: the run's steps are
+        # pruned, but a part ordered pair stays so, and a later plan reads this
         # whatever its age until the pair's snapshot passes it.
         steps.carry()
-        # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
-        # the adapter's reading agrees with the check's own listing of it.
-        # R-1420. AND ONE AN EARLIER COMMAND BEGAN AND STOPPED BEFORE ANY
-        # MOVE, whatever stopped it, not only a refusal (round one's review).
-        # That listing was judged in order by the check where this is no
-        # finish, so a person's reorder before the check stopped the write
-        # before here (`_ordered_by_this_run`), and one after it is refused
-        # by the adapter's agreement with it.
-        # R-1394. NOR DOES ONE THAT FINISHES A STOPPED ORDER: the plan read
-        # the playlist where that order's moves left it, at or past what was
-        # sent, and a reading the adapter takes seconds later may still lag
-        # them, which its own check of what the playlist holds cannot see.
-        # Where this write also adds or removes, the listing no longer is
-        # the playlist, and the adapter's check of what it holds stands.
+        # U220. AN ORDER THIS RUN SAW REFUSED moves nothing until the adapter's
+        # reading agrees with the check's listing. R-1420: nor one an earlier
+        # command began and stopped before any move, whatever stopped it; a
+        # reorder after the check is refused by that agreement.
+        # R-1394. NOR ONE THAT FINISHES A STOPPED ORDER: the adapter's reading
+        # may still lag the sent moves, which its check of what the playlist
+        # holds cannot see. Where this write also adds or removes, the listing
+        # is no longer the playlist, and the adapter's check stands.
         expect = (
             tuple(account_listed)
             if account_listed is not None
@@ -746,21 +689,13 @@ def _write_account(
             )
             else None
         )
-        # R-1411. AND HELD TO THE ORDER THE PLAN AGREED ON, whatever else this
-        # write does: a reading that holds every track the additions and
-        # removals left, in the order from before the stopped moves, passes
-        # the check of what it holds, and moves sent by position from it
-        # scramble the playlist. Every track of the plan's reading the
-        # adapter's still holds must stand in that order; one added may stand
-        # anywhere. THE PLAN'S READING, the one its stopped write was judged
-        # from and carried in the held plan, NOT THE CHECK'S LISTING (round
-        # one's review): a continue's check reads what the playlist holds and
-        # not its order, and a plan made again in this command has no check
-        # at all. Passed only when set, so a stand in for the adapter that
-        # does not take it is asked what it always was. R-1418: and only when
-        # the plan read the account, since an empty reading agrees on no
-        # order. No plan reaches here with one: with nothing listed the
-        # additions go in the merged order, so the plan asks no order.
+        # R-1411. AND HELD TO THE ORDER THE PLAN AGREED ON: a reading in the
+        # order from before the stopped moves passes the check of what it holds,
+        # and moves sent by position from it scramble the playlist. THE PLAN'S
+        # READING, NOT THE CHECK'S LISTING, which a continue reads for what it
+        # holds and not its order. Passed only when set, so a stand in adapter
+        # that does not take it is asked as before. R-1418: only when the plan
+        # read the account, since an empty reading agrees on no order.
         agreed = (
             {"agreed": tuple(one.account_before)}
             if one.finishing_order and one.account_before
@@ -772,19 +707,17 @@ def _write_account(
         def begun(
             start: tuple[str, ...], end: tuple[str, ...]
         ) -> Callable[[int, int], None]:
-            # U231. RECORDED AND CARRIED BEFORE THE FIRST MOVE IS SENT, so a
-            # continue or a later plan knows the moves went blind and never
-            # sends them again from a reading that may lag them.
+            # U231. RECORDED AND CARRIED BEFORE THE FIRST MOVE, so the moves are
+            # never sent again from a reading that may lag them.
             at = timestamp()
             steps.mark(STEP_MOVING, pair_stopped.moving_step(at=at, start=start, end=end))
             steps.carry()
             moves_sent.append(end)
 
             def sending(sent: int, landed: int) -> None:
-                # R-1394. AND HOW FAR THEY CAN HAVE GOT, before each move is
-                # sent, so a later plan never finishes the order from a reading
-                # before the moves the provider accepted: one that cannot be
-                # recorded sends no further move.
+                # R-1394. AND HOW FAR THEY CAN HAVE GOT, before each move, so a
+                # later plan never finishes from a reading before them; one that
+                # cannot be recorded sends no further move.
                 steps.mark(
                     STEP_MOVING,
                     pair_stopped.moving_step(
@@ -806,17 +739,14 @@ def _write_account(
         except CratekitError as exc:
             if exc.cause.reason not in ORDER_REFUSALS:
                 raise
-            # U220. THIS PAIR ALONE STOPS. Its adds and removals landed and
-            # its rekordbox side is written; it is left unfinished, its
-            # snapshot unmoved, for a continue of the run to put in order,
-            # and the write goes on to every other pair.
+            # U220. THIS PAIR ALONE STOPS, its snapshot unmoved for a continue to
+            # put in order, and the write goes on to every other pair.
             steps.mark(STEP_ORDER_REFUSED, exc.cause.message)
             done.order_refused = exc.cause
             done.name = one.name
             return None
         if not moves_sent:
-            # NOTHING MOVED: the adapter's one judged reading already stood
-            # in the asked order, so it is the playlist as it stands.
+            # NOTHING MOVED: the adapter's judged reading is the playlist as it stands.
             return sent
         steps.mark(STEP_MOVED, timestamp())
         steps.carry()
@@ -836,14 +766,11 @@ def _write_account(
 def _settle(cfg: config.Config, done: Sequence[Done]) -> None:
     """Read each order sent this command once, after its window, and finish or leave it pending (U231).
 
-    RUN ONCE EVERY PAIR IS WRITTEN, so each order's window from its last
-    move is spent on the other pairs' writes and only what is left of it is
-    slept, earliest first. One judged reading each (``settled_order``).
-    Read as the moves leave it: the pair's snapshot is recorded and the pair
-    is done, as a pair whose writes all read back always was. Anything else,
-    a lag, another order or a reading refused: the pair is left pending, its
-    snapshot unmoved, its reading kept on the pair for the next plan to agree
-    with, and its carried record (R-1372) keeps the moves it sent.
+    RUN ONCE EVERY PAIR IS WRITTEN, so each window is spent on the other
+    pairs' writes and only what is left is slept, earliest first. A reading
+    as the moves leave it records the snapshot. Anything else leaves the
+    pair pending, its snapshot unmoved, its reading kept for the next plan,
+    and its carried record (R-1372) keeps the moves it sent.
     """
     from cratekit.modules.outbound import account as outbound_account
     from cratekit.modules.outbound import pairs

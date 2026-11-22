@@ -1,12 +1,11 @@
-"""U210: the calls a sync pair write is expected to make, held to the real account adapter.
+"""U210: a sync pair write's expected calls, held to the real account adapter.
 
-``sync/pair_calls.py`` estimates a write's provider calls from the account
-adapter's shape, for the gate's forecast and for the ``--calls`` a stopped
-run's continue is named. This drives the shipped adapter,
-``modules/outbound/tidal_account.TidalAccount``, over a fake client that
-counts every request it is asked for, and holds each estimate to the count.
+``sync/pair_calls.py`` estimates provider calls from the adapter's shape, for
+the gate's forecast and a stopped run's ``--calls``. The shipped
+``TidalAccount`` runs over a fake client that counts every request, and each
+estimate is held to the count.
 
-D1 applies. Nothing here names a real account, a real person or a real track.
+D1 applies. Nothing here names a real account, person or track.
 """
 
 from __future__ import annotations
@@ -28,17 +27,13 @@ class Counter:
         self.requests = 0
 
 
-#: U231. The client reads a playlist again after every write it sends, for the
-#: next version tag (``UserPlaylist._reparse``), a request of its own.
+#: U231. The client rereads a playlist after every write for the next version
+#: tag (``UserPlaylist._reparse``), a request of its own.
 REPARSE = 1
 
 
 class Playlist:
-    """One opened playlist over the account's live members: every request counted.
-
-    Each write counts the request it sends and the client's hidden read after
-    it (:data:`REPARSE`), as the installed client makes them.
-    """
+    """One opened playlist over live members, counting each write and the client's read after it."""
 
     num_videos = 0
 
@@ -215,7 +210,7 @@ def test_an_order_costs_its_reading_its_moves_and_one_settle_reading(client, bef
 
 
 def test_a_300_track_order_with_adds_and_removals_stays_inside_its_forecast(client):
-    """U231: Sitting 86 made 5,794 calls against a forecast of 4,142; the forecast counts what is sent."""
+    """U231: the forecast counts every request sent, the reads after each move included."""
     before = ids(1, 300)
     client.members["acc"] = list(before)
     account = adapter(client)
@@ -248,8 +243,8 @@ def test_the_named_calls_carry_a_margin_round_up_and_never_fall_below_the_line()
     [
         # U246: an add the playlist already holds sends nothing, so it costs no add.
         ((), ("1",)),
-        # U246: a track taken off and added back is lacking once the removal ran,
-        # so the add is counted against what the removals left, not what was held.
+        # U246: an add is counted against what the removals left, so a track
+        # taken off and added back costs an add.
         (("1",), ("1",)),
     ],
 )

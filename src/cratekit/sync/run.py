@@ -1,9 +1,8 @@
 """One source increment: scope, process, one shared intake file, then audit.
 
-The watermark advances only when every listed item that was in scope completed
-without error. A source whose every lookup failed raises. Two sources in one
-run share one ``{run_id}_synced.xml`` so incremental sync never multiplies the
-hand-import (R29).
+The watermark advances only when every scoped item completed without error; a
+source whose every lookup failed raises. Sources in one run share one
+``{run_id}_synced.xml`` so the hand import never multiplies (R29).
 """
 
 from __future__ import annotations
@@ -18,19 +17,15 @@ from cratekit.core.exit_codes import Remedy
 from cratekit.sync import artifacts, scope
 from cratekit.sync.watermarks import WatermarkStore
 
-#: Newest-N default. Above the reserved exit-code range on purpose: a count
-#: sitting inside 10 to 59 looks like a status to the reserved-cause walk.
+#: Newest-N default, above 10 to 59 so the reserved-cause walk never reads it as a status.
 DEFAULT_LIMIT = 100
 
 
 class LookupFailure(Exception):
     """Every listing call for this source failed. Distinct from a verified empty.
 
-    ``rate_limited`` says the provider refused the listing for spending its
-    allowance too fast, and the source that caught the provider's error is the
-    one that knows (R-704). A rate limit clears on its own, so the refusal
-    :func:`increment` raises over one is retryable; every other failure keeps
-    the permanent reading this refusal always had.
+    ``rate_limited`` makes the refusal retryable, since a rate limit clears on
+    its own (R-704); every other failure stays permanent.
     """
 
     def __init__(self, message: str = "", *, rate_limited: bool = False) -> None:
@@ -48,24 +43,14 @@ class Candidate:
 
 
 class Source(Protocol):
-    """What an increment needs from a source. Later units fill the real ones in."""
+    """What an increment needs from a source."""
 
     id: str
 
-    #: Whether a completed :meth:`process` call means the item LANDED in the
-    #: library, or means it was OFFERED for a decision somebody has yet to make.
-    #: The two are not interchangeable and only the first may be recorded.
-    #:
-    #: The distinction is a property of the source rather than of the call site,
-    #: which is why it is declared here rather than passed to :func:`increment`.
-    #: A labels sweep offers releases into the review queue through
-    #: ``review.offer``, whose verdict is ``None`` until a person decides; a
-    #: playlists sweep downloads files. Both complete without raising, so a
-    #: process call that did not raise cannot tell them apart.
-    #:
-    #: :func:`increment` reads it with a default of ``True``, so a source written
-    #: before this attribute existed still means acquisition, which is what every
-    #: one of them did. R-140 is the defect it closes.
+    #: Whether a completed :meth:`process` means the item LANDED, or was only
+    #: OFFERED for a decision; only the first may be recorded (R-140). It is a
+    #: property of the source since both complete without raising.
+    #: :func:`increment` defaults it to ``True``.
     acquires: bool
 
     def list_recent(self, n: int) -> Sequence[Candidate]: ...
@@ -82,18 +67,10 @@ class Source(Protocol):
 class IncrementResult:
     """What one source did, including a shortfall that blocked the watermark.
 
-    **A CALLER OBLIGATION THIS TYPE CANNOT DISCHARGE, STATED WHERE A READER MEETS
-    IT.** Since ``Source.acquires`` exists, a non-empty ``processed`` with
-    ``shortfall`` of ``None`` no longer implies the run's ``{run_id}_synced.xml``
-    holds those identities, and it no longer implies the source watermark moved.
-    An offering source completes exactly this way and writes neither. This type
-    carries no field a caller could ask, and it is deliberately not widened here:
-    R-136 records that widening as a contract change of its own, and
-    :func:`run_independent` hands back a mixed dictionary with no per-source
-    signal either. A caller that needs the distinction must read
-    ``source.acquires`` off the source it passed in. ``sync.all`` does not call
-    this engine: since U61 it queues each source under that source's own worker,
-    and the worker is the caller.
+    **A CALLER OBLIGATION.** A non-empty ``processed`` with no ``shortfall``
+    does not imply an intake row or a moved watermark, since an offering source
+    completes the same way. A caller that needs the distinction reads
+    ``source.acquires``; widening this type is a contract change (R-136).
     """
 
     source_id: str
@@ -147,10 +124,8 @@ def increment(
 ) -> IncrementResult:
     """Run one source. The watermark moves only if ``shortfall`` is None.
 
-    And only if the source ACQUIRES. A source that offers rather than acquires
-    records nothing at all: no intake row, no artifact, no cursor. See
-    ``Source.acquires`` for why the declaration lives on the source, and
-    :class:`IncrementResult` for the obligation that leaves on a caller.
+    And only if the source ACQUIRES; an offering source records no intake row,
+    no artifact and no cursor.
     """
     ctx = boundary(source.id) if boundary is not None else nullcontext()
     with ctx:
@@ -158,11 +133,8 @@ def increment(
             listed = list(source.list_recent(limit))
         except LookupFailure as exc:
             if exc.rate_limited:
-                # R-704. The sitting's sweep recorded twenty rate limited labels
-                # as permanent, told the person resuming could not succeed, and
-                # the same lookups answered ten minutes later. The item is the
-                # retry unit, so the item cause carries the flag and the job's
-                # verdict and ``jobs.retry`` follow it.
+                # R-704. A rate limit clears on its own, so the item cause is
+                # retryable and the job's verdict and ``jobs.retry`` follow it.
                 raise refuse(
                     "sync-source-lookups-failed",
                     f"the provider rate limited a lookup {source.id} needed "
@@ -209,12 +181,8 @@ def increment(
             )
 
         if not getattr(source, "acquires", True):
-            # Every item was offered, none was acquired, and the run succeeded.
-            # Returning here rather than guarding the three writes one by one is
-            # the point: the intake row, the artifact record and the watermark
-            # are three statements of the same claim, and a fourth writer added
-            # later belongs below this return, where an offering source will
-            # never reach it. Three separate guards is how one gets forgotten.
+            # Offered, not acquired. One return rather than a guard per write, so
+            # any later writer below it is never reached by an offering source.
             return IncrementResult(
                 source_id=source.id,
                 processed=tuple(item.identity for item in processed),

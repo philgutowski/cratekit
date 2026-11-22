@@ -262,9 +262,7 @@ def _items(plan, side: str, action: str) -> list[dict]:
     return [item for item in plan["items"] if item["side"] == side and item["action"] == action]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Discovery and the account side made
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_gig_ready_playlist_is_made_on_the_account_in_its_folder_and_filled(world, cfg):
@@ -463,9 +461,7 @@ def test_a_made_playlist_is_never_offered_by_sync_all(world, cfg):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Both ways, after the pair is made
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _made_pair(world) -> tuple[str, str]:
@@ -565,9 +561,7 @@ def test_a_short_account_listing_removes_nothing(world, monkeypatch):
     assert pair_cli.WITHHELD in _codes(envelope)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A rekordbox track the account cannot carry, skipped and remembered (R-988)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_rows_the_account_cannot_carry_are_counted_skipped_and_never_asked_again(world, cfg):
@@ -665,9 +659,7 @@ def test_an_unreadable_candidate_is_never_remembered(world, cfg):
     assert "3" not in pairs.PairStore(cfg).misses()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The document, organize, and the configuration
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_write_of_the_pairs_alone_keeps_the_folders_misses_and_released(world, cfg):
@@ -751,9 +743,7 @@ def test_title_of_names_each_place():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The review's findings, round one
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_made_pair_moved_into_archive_is_let_go_and_never_written_again(world, cfg):
@@ -842,9 +832,7 @@ def test_a_version_one_document_is_read_and_written_as_version_two(world, cfg):
     assert json.loads(path.read_text())["version"] == pairs.PAIRS_VERSION == 2
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The review's findings, round two
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("where", ["foreign", "favorites"])

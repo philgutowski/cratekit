@@ -1,35 +1,22 @@
 """``sync.strip``: take the retired ``DOWNLOADED `` prefix off every account playlist (U242).
 
-Decided by Phillip on 2026-11-11: the prefix dates from downloading playlists
-by hand, Cratekit now records what it took in its own record, and the prefix
-is to go everywhere. This is the one time verb that takes it off.
-
 THE RECORD HOLDS A PLAYLIST BEFORE ITS TITLE CHANGES. The apply runs the
-migration (:mod:`cratekit.sync.taken_cli`) first, holding every prefixed
-playlist as taken, and then confirms from the record itself that it holds each
-planned playlist before that playlist's rename. A playlist the record does not
-hold is never renamed, so a stripped playlist is never offered as new.
+migration (:mod:`cratekit.sync.taken_cli`) first and confirms from the record
+that it holds each planned playlist, so a stripped playlist is never offered
+as new.
 
-ONE RENAME PER PREFIXED PLAYLIST, to its title less the prefix (every copy of
-it, and the spaces around what is left). Refused, per playlist and named, when
-what is left is empty, or names, ignoring case, another playlist the account
-lists or another title this strip would write: two playlists of one title are
-two a person cannot tell apart. A refused one keeps its prefix and stays taken.
+ONE RENAME PER PREFIXED PLAYLIST, to its title less every copy of the prefix.
+Refused, per playlist, when nothing is left or the result matches, ignoring
+case, another listed title or another title this strip would write, since two
+playlists of one title cannot be told apart. A refused one keeps its prefix.
 
-THE PLAN IS SHOWN BEFORE ANYTHING IS RENAMED, every rename and every refusal on
-the gate, and the run that carries out the answer lists the account again and
-renames only a playlist whose title is still the one shown.
+The plan is shown first, and the apply lists the account again and renames only
+a title still as shown. Every rename goes through the account seam, so the
+provider gate paces it; a stop part way names what was stripped and a rerun
+plans only what still carries the prefix.
 
-PACED BY THE PROVIDER GATE AND RESUMABLE. Every rename goes through the account
-seam, so the gate's interval, cooldown and call ceiling apply. A stop part way,
-the ceiling's included, keeps its own reason and remedy and names what was
-stripped, and a run started again plans only what still carries the prefix.
-
-EVERY OLD TITLE CAN BE PUT BACK. Each rename is recorded in the mark record
-under the pass :data:`PASS` before it is made, the old title and the new, so
-``crate sync unmark --pass prefix-strip`` restores the old title by the rule
-it restores any mark by: only while the account still carries the title the
-record says was written.
+EVERY OLD TITLE CAN BE PUT BACK. Each rename is recorded under :data:`PASS`
+before it is made, so ``crate sync unmark --pass prefix-strip`` restores it.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -192,11 +179,10 @@ def _shown(payload: dict[str, Any]) -> dict[str, Any]:
 def _failed_part_way(
     exc: Exception, landed: list[str], titles: dict[str, str], planned: list[str]
 ) -> CratekitError:
-    """The failure, with what was already stripped named in it.
+    """The failure, naming what was already stripped.
 
-    ``sync unmark``'s rule: a refusal the account raised, the provider gate's
-    call ceiling among them, keeps its reason, its remedy and its steps, and
-    anything else is this build's own defect and says so.
+    An account refusal (the call ceiling included) keeps its reason, remedy and
+    steps; anything else is this build's own defect.
     """
     done = [titles.get(identity, identity) for identity in landed]
     said = (
@@ -239,8 +225,7 @@ def _failed_part_way(
 def sync_strip(ctx) -> Envelope:
     cfg = sync_cli._load()
     record = mark_record.MarkRecord(cfg)
-    # THE RECORD FIRST, read under its lock, so one that cannot be read or
-    # locked refuses before the account is listed or a credential asked for.
+    # THE RECORD FIRST, so an unreadable record refuses before the account is listed.
     record.ready()
     from cratekit.label import catalogue
 
@@ -260,10 +245,8 @@ def sync_strip(ctx) -> Envelope:
     if option != "apply" or not planned:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
 
-    # THE LEDGER BEFORE ANY TITLE CHANGES. Every prefixed playlist the account
-    # lists is held as taken, the refused ones too, and the record is read
-    # back: a planned playlist it does not hold refuses the whole strip here,
-    # while every title is still prefixed.
+    # THE LEDGER BEFORE ANY TITLE CHANGES. A planned playlist the record does
+    # not hold after the migration refuses the whole strip while nothing is renamed.
     taken_cli.migrate(cfg, listed)
     held = record.taken_ids()
     unheld = [identity for identity in planned if identity not in held]
@@ -290,9 +273,7 @@ def sync_strip(ctx) -> Envelope:
             if now.get(identity) != item["name"]:
                 changed.append(identity)
                 continue
-            # RECORDED BEFORE THE RENAME, so a rename that lands is always one
-            # the unmark can put back. One recorded and never made reads to
-            # the unmark as a title already put back, which it is.
+            # RECORDED BEFORE THE RENAME, so every landed rename can be put back.
             record.record_marked(PASS, {identity: (item["name"], item["to"])})
             remote.rename_playlist(identity, item["to"])
             landed.append(identity)

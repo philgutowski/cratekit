@@ -80,9 +80,7 @@ def gig(world):
     return folder
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # An account playlist in a synced folder comes to rekordbox
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_playlist_made_on_the_account_in_gig_ready_lands_in_its_folder_and_is_paired(
@@ -243,9 +241,7 @@ def pair_cli_verb() -> list[str]:
     return ["sync", "pair"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Where it goes: home_of, read on the database itself
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _home(world, folder: str, title: str, **kwargs):
@@ -322,9 +318,7 @@ def test_the_write_refuses_a_name_taken_since_the_plan(world, cfg, gig):
     assert caught.value.cause.reason == "decision-stale"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The later change wins
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _rekordbox_removed(world, playlist_id: str, content_id: str, when: datetime | None) -> None:
@@ -436,9 +430,7 @@ def test_a_track_put_back_in_rekordbox_after_the_account_took_it_out_stays_and_i
     assert call["added_on"] == "rekordbox" and call["added_at"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # From the review, round one
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_failure_after_the_commit_still_pairs_the_playlist_made(world, cfg, gig, monkeypatch):
@@ -594,9 +586,7 @@ def test_a_commit_that_lands_and_then_raises_still_pairs_the_playlist(world, cfg
     assert not _items(envelope["data"], "discovery", pair_discover.TAKEN)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # From the mutation table: what no earlier test reached
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_set_playlist_sharing_a_name_does_not_stop_the_authors_own(world, gig, monkeypatch):

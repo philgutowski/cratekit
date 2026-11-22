@@ -1,19 +1,12 @@
 """R-1264, a paired account playlist listing a track it cannot read, on a disposable database.
 
-``crate sync pair`` read each pair's account side through the reader that
-refuses the whole playlist for one row naming no title or no artist, so a twin
-``crate sync twins`` made over such a playlist (U213) stopped every pair at the
-next sync. The account side is now read row by row, as the backfill reads it:
-a track the reader refuses is unread, kept by its id, never added to either
-side and never read as taken off the account. Unlike a withheld track it may
-stay that way for good, so the pair still syncs whole: removals land on both
-sides, the snapshot moves with the unread id recorded in its place, and a
-reorder is written to the account whole, each unread track kept behind the
-one listed before it. A listing the reader cannot use at all
-leaves its pair out of a sync of every pair, named, and the others sync.
-
-Driven end to end through the dispatcher on the twins suite's world, the
-residual's own driver.
+A track with no title or no artist is unread, kept by its id, never added to
+either side and never read as taken off. It may stay unread for good, so the
+pair still syncs whole: removals land on both sides, the snapshot keeps the
+unread id in its place, and a reorder goes to the account whole with each
+unread track behind the one listed before it. A listing the reader cannot use
+at all leaves its pair out, named, and the others sync. Driven through the
+dispatcher on the twins suite's world.
 """
 
 from __future__ import annotations
@@ -58,7 +51,7 @@ def _unread(envelope) -> list[tuple[str, str, str, str]]:
 
 @pytest.fixture
 def every_order(cfg, monkeypatch):
-    """U231: a twin sits outside GIG READY, so these orders are kept by the key that keeps every pair's."""
+    """A twin sits outside GIG READY, so its order needs the every pair key (U231)."""
     every = replace(cfg, outbound=replace(cfg.outbound, pair_order_every_pair=True))
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: every)
     return every
@@ -119,8 +112,7 @@ def test_an_unread_track_the_twin_holds_is_never_removed_or_added_again(world, c
 
 
 def test_a_first_sync_never_offers_the_account_an_unread_track_it_already_lists(world, cfg):
-    # A twin made off a short listing is held with no snapshot, so its next
-    # sync is a first sync with no base to strip the unread track from.
+    # A twin made off a short listing has no snapshot, so no base to strip from.
     _phil(world)
     world.short.add(PHIL)
     assert backfill()[0] == int(ExitCode.OK)
@@ -159,7 +151,7 @@ def test_while_a_track_is_unread_a_rekordbox_removal_still_lands_on_the_account(
 
 
 def test_a_track_synced_across_and_then_removed_in_rekordbox_is_not_put_back(world, cfg):
-    """From the review's round one: a snapshot held back replayed the addition."""
+    """The snapshot moves, so the addition is not replayed over the removal."""
     twin_id = _backfilled(world, untitled="t20")
     world.account.playlists[PHIL].append("t4")
     assert sync_pair()[0] == int(ExitCode.OK)
@@ -275,7 +267,7 @@ def test_a_plan_whose_unread_tracks_differ_digests_differently(world, cfg):
 
 
 def test_unread_tracks_trading_places_after_the_plan_is_not_stale(world, cfg):
-    """From the review's round one: the same set in other places moved nothing written."""
+    """The same unread set in other places moves nothing written."""
     _backfilled(world, untitled="t20")
     world.names["t2"] = ""
     world.account.playlists[PHIL].append("t4")
@@ -314,7 +306,7 @@ def _rekordbox_move_last(world, twin_id: str, content_id: str) -> None:
 def test_a_rekordbox_reorder_while_a_track_is_unread_reaches_the_account_and_stands(
     world, cfg, every_order
 ):
-    """From the review's round two: a withheld account order let the next sync undo it."""
+    """The account order is written, so the next sync cannot undo the reorder."""
     twin_id = _backfilled(world, untitled="t20")
     _rekordbox_move_last(world, twin_id, "1")
     assert world.held(twin_id) == ["3", "2", "1"]
@@ -352,7 +344,7 @@ def _siblings(world, listing: list[str]) -> str:
 def test_a_release_turning_unread_beside_a_readable_one_moves_nothing(
     world, cfg, every_order, listing, unread
 ):
-    """From the review's round two: the row's key sat at the readable release's place."""
+    """The row keeps the readable release's place, so nothing moves."""
     twin_id = _siblings(world, listing)
     held = world.held(twin_id)
     account = list(world.account.playlists[PHIL])
@@ -371,15 +363,9 @@ def test_a_release_turning_unread_beside_a_readable_one_moves_nothing(
         assert world.held(twin_id) == moved
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# R-1453: a row listed as an unread release and a readable one is readable
-# ═══════════════════════════════════════════════════════════════════════════
-#
-# R-1264's rule: the unread keys are the unread releases' keys LESS every key a
-# readable release carries, so a row held as two releases (U208), the first
-# listed with no title and the second read, is ordered by the merge, kept in
-# the base and read as taken off. Dropping that subtraction killed no test
-# (S4 of the R-1434 table), so each scenario below moves or removes that row.
+# R-1453: a row listed as an unread release and a readable one is readable.
+# The unread keys are the unread releases' keys LESS every key a readable
+# release carries (U208), so each scenario below moves or removes such a row.
 
 #: Row four held as t4 and t24, t4 listed first and with no title from then on.
 _HALF_READ = ["t3", "t4", "t1", "t20", "t2", "t24"]
@@ -406,8 +392,7 @@ def test_a_row_read_through_its_second_release_moves_on_the_account_with_rekordb
     for _ in range(2):
         code, envelope = sync_pair()
         assert code == int(ExitCode.OK), envelope
-        # THE ROW IS ORDERED BY THE MERGE: read as unread, it would be left
-        # behind t3, and the next sync would undo the person's reorder.
+        # THE ROW IS ORDERED BY THE MERGE, or the next sync undoes the reorder.
         assert world.held(twin_id) == ["3", "1", "2", "4"]
         assert world.account.playlists[PHIL] == ["t3", "t1", "t20", "t2", "t4", "t24"]
     after = pairs.PairStore(cfg).get(PHIL)
@@ -423,12 +408,10 @@ def test_a_row_read_through_its_second_release_removed_in_rekordbox_leaves_the_a
     for _ in range(2):
         code, envelope = sync_pair()
         assert code == int(ExitCode.OK), envelope
-        # THE ROW IS READ AS TAKEN OFF: read as unread, its removal would not
-        # be read, and the account would put it back into rekordbox.
+        # THE ROW IS READ AS TAKEN OFF, or the account puts it back into rekordbox.
         assert world.held(twin_id) == ["3", "1", "2"]
         assert "t24" not in world.account.playlists[PHIL]
-        # The unread release t4 is never taken off either side (R-1287), so it
-        # is left out of what this asserts.
+        # The unread t4 is never taken off either side (R-1287), so it is left out.
         assert [one for one in world.account.playlists[PHIL] if one != "t4"] == [
             "t3",
             "t1",
@@ -463,19 +446,16 @@ def test_a_row_held_only_as_an_unread_release_stays_where_the_account_lists_it(
 def test_a_row_whose_listed_release_is_its_unread_second_stays_in_rekordbox(
     world, cfg, every_order
 ):
-    """From the mutation table: the unread keys are read through the row's one key."""
+    """The unread keys are read through the row's one key."""
     twin_id = _siblings(world, _HALF_READ)
     assert world.held(twin_id) == ["3", "4", "1", "2"]
-    # The account drops t4, the row's first release, and lists t24 with no
-    # title: the row is still on the account, through a release it cannot read.
+    # The account drops t4 and lists t24 untitled, so the row is still on it, unread.
     world.account.playlists[PHIL].remove("t4")
     world.names["t24"] = ""
     for _ in range(2):
         code, envelope = sync_pair()
         assert code == int(ExitCode.OK), envelope
         assert [one[0] for one in _unread(envelope)] == ["t24"]
-        # READ BY ITS OWN KEY rather than the row's, t24 would never strip the
-        # row from the base, and the row would be read as taken off the account
-        # and removed from rekordbox.
+        # READ BY ITS OWN KEY, t24 would leave the row in the base, read as taken off.
         assert world.held(twin_id) == ["3", "4", "1", "2"]
         assert world.account.playlists[PHIL] == ["t3", "t1", "t20", "t2", "t24"]

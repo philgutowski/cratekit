@@ -254,9 +254,7 @@ def _pair(cfg) -> pairs.Pair:
     return held
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The brief's scenarios
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_first_sync_marks_the_pair_and_adds_only(world, cfg):
@@ -413,9 +411,7 @@ def test_an_account_track_found_by_isrc_is_linked_and_the_link_is_kept(world, cf
     assert _pair(cfg).links.get("t4") == "4"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The gates, the snapshot, and what a skipped side owes
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(world, cfg):
@@ -518,9 +514,7 @@ def test_a_rekordbox_change_between_the_gates_and_the_write_refuses_as_stale(wor
     assert w.on_account() == ["t1"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # What a pair may hold
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_hearts_are_not_a_pair(world):
@@ -603,9 +597,7 @@ def test_the_pairs_document_names_both_identifiers_and_no_path(world, cfg):
     assert str(cfg.library.root) not in json.dumps(document)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Where a match comes from when the row's own column is empty
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _untagged_row(cfg, content_id: str, tmp_path: Path, *, file_isrc: str) -> None:
@@ -1279,9 +1271,7 @@ def test_two_rows_carrying_one_isrc_add_neither_and_say_so(world, cfg):
     assert envelope["data"]["totals"]["queued_jobs"] == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The playlists sweep leaves a pair alone
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_sweep_excludes_a_paired_playlist():
@@ -1318,9 +1308,7 @@ def test_the_sync_pass_hands_the_pairs_to_the_sweep(world, cfg, monkeypatch):
     assert excluded[ACCOUNT]["reason"] == str(playlists.Excluded.PAIRED)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The review's findings, each driven
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_first_sync_with_a_side_skipped_records_no_snapshot_and_stays_first(world, cfg):
@@ -1469,9 +1457,7 @@ def test_skipping_the_only_side_with_changes_answers_no_op(world):
     assert w.held() == ["1"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U206: a rehearsal and its live run pay for their ISRC lookups once
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class _Named:
