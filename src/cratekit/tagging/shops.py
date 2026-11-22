@@ -106,7 +106,11 @@ def _web_url(value: object) -> str:
 
 
 def _beatport_art(track: dict[str, Any]) -> str:
-    """The row's release cover, resized, or empty when the row names none."""
+    """The row's release cover, resized, or empty when the row names none.
+
+    ``release.release_image_uri`` is the field the source system read. Whether
+    the payload this module parses still carries it is owed to an attended run.
+    """
     release = track.get("release")
     uri = _web_url(release.get("release_image_uri") if isinstance(release, dict) else "")
     edge = BEATPORT_IMAGE_EDGE

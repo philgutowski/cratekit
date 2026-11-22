@@ -63,7 +63,10 @@ def _in_item_order(paths: Iterable[Path]) -> list[Path]:
 def _reports(directory: Path) -> tuple[tuple[dict[str, Any], ...], int]:
     """One job directory's reports in item order, and how many could not be read.
 
-    Both readers below use this one loop, so they agree on what is a report.
+    ``every_committed`` reads through it because it counts the unread, which
+    the shared home does not; :func:`committed` reads through
+    ``jobs.Artifacts``. Both parse each file as JSON, keep only mappings and
+    sort by ``_item_order``, so they agree on what is a report.
     """
     found: list[dict[str, Any]] = []
     unread = 0

@@ -72,7 +72,7 @@ def place(folder: Path, silence: Path, name: str, genre: str | None) -> Path:
 def answering(table: dict[str, str]):
     """A searcher that answers by TITLE, and records what it was asked.
 
-    Two tests assert the searcher was not asked at all, and a searcher with no
+    Three tests assert the searcher was not asked at all, and a searcher with no
     memory cannot tell "asked and declined" from "never asked".
     """
     asked: list[tuple[str, str]] = []
