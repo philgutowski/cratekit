@@ -165,8 +165,7 @@ def _pattern(pattern: str) -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     anchored at the root by a leading slash, else matched at the path's end."""
     if any(char in _UNTRANSLATED for char in pattern):
         raise WalkRefused(
-            f"the exclude {pattern!r} uses a pattern this walk does not read the "
-            f"way rclone does"
+            f"the exclude {pattern!r} uses a pattern this walk does not read the way rclone does"
         )
     anchored = pattern.startswith("/")
     body = pattern[1:] if anchored else pattern

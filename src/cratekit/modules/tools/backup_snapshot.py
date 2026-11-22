@@ -1,4 +1,4 @@
-"""The restore plan: which snapshot is pulled, whose it is, and what a restore copies.
+"""The dated database snapshot: its capture plan, which snapshot a restore pulls, and the restore.
 
 :mod:`cratekit.modules.tools.backup` re-exports every name here and is the
 module to import, since this one reads its names and is loaded through it.
@@ -6,13 +6,18 @@ module to import, since this one reads its names and is loaded through it.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
-from cratekit.core import analysis_store, config, preflight
+from cratekit.core import analysis_store, backup_facts, config, preflight
+from cratekit.modules.tools import backup_record
 from cratekit.modules.tools.backup import (
+    ANALYSIS_SHARE_ABSENT,
     IDENTITY_MARKER_PREFIX,
+    KIND_SNAPSHOT,
+    KIND_UNCHANGED,
     LIST_SHARE,
     LIST_SNAPSHOT_CONTENTS,
     LIST_SNAPSHOT_IDENTITY,
@@ -21,10 +26,20 @@ from cratekit.modules.tools.backup import (
     RESTORE_DATABASE,
     RESTORE_MIRROR,
     RESTORE_SHARE,
+    SHARE_DEST_DIRNAME,
+    SHARE_UNRECORDED,
+    SNAPSHOT_DATABASE,
+    SNAPSHOT_IDENTITY,
+    SNAPSHOT_IDENTITY_NOT_WRITTEN,
+    SNAPSHOT_SETTINGS,
+    SNAPSHOT_SHARE,
     STAMP_EXAMPLE,
+    VOLUME_EXCLUDES,
+    AbsenceUnconfirmed,
     BackupRefused,
     Command,
     GateGuard,
+    PortionPlan,
     ProcessLister,
     Refusal,
     Runner,
@@ -33,11 +48,174 @@ from cratekit.modules.tools.backup import (
     _rclone,
     _require_destinations,
     _restore_gates,
+    _warning,
+    database_fileset,
+    identity_marker,
     is_snapshot_name,
     rekordbox_processes_running,
+    settings_directories,
     subprocess_runner,
 )
-from cratekit.modules.tools.backup_database import _outside_share, share_destination
+
+
+def _plan_database(
+    cfg: config.Config, *, rclone: str, stamp: str, process_lister: ProcessLister | None,
+    settings_dirs: Sequence[Path] | None, snapshot_anyway: bool = True,
+) -> PortionPlan:
+    """The database portion: a dated snapshot, or none when nothing changed.
+
+    The fingerprint reads the live database, so it is taken only below the
+    process check, with both rekordbox processes confirmed gone.
+    ``snapshot_anyway`` is a full check's: snapshot whether or not it changed.
+    """
+    uncovered = absent_analysis_share(cfg)
+    try:
+        running = rekordbox_processes_running(lister=process_lister)
+    except AbsenceUnconfirmed as exc:
+        return PortionPlan(
+            portion=backup_facts.Portion.DATABASE, refusal=Refusal.REKORDBOX_ABSENCE_UNCONFIRMED,
+            detail=(
+                f"{exc.cause.message}, so no snapshot of the database was taken. "
+                f"Previous dated snapshots remain the backstop."
+            ),
+            warnings=uncovered,
+        )
+    if running:
+        return PortionPlan(
+            portion=backup_facts.Portion.DATABASE, refusal=Refusal.REKORDBOX_RUNNING,
+            detail=(
+                f"{', '.join(running)} is running, so the database may be mid-write. A copy taken "
+                f"now opens cleanly and is silently missing whatever the agent was writing, which "
+                f"is worse than no copy at all. Previous dated snapshots remain the backstop."
+            ),
+            warnings=uncovered,
+        )
+    database = config.state_path("rekordbox_db", cfg)
+    if not database.is_file():
+        return PortionPlan(
+            portion=backup_facts.Portion.DATABASE, refusal=Refusal.DATABASE_ABSENT,
+            detail=f"no rekordbox database at the configured path {database}",
+            warnings=uncovered,
+        )
+
+    destination = f"{cfg.backup.db_dest_root}/{stamp}"
+    first = (rclone, "copy", str(database), f"{destination}/db/", "--transfers", "4")
+    commands = [Command(label=SNAPSHOT_DATABASE, argv=first)]
+    # Each present sidecar into the SAME folder under the database's label, the
+    # one the dry run translator and the executor branch on; a checkpointed
+    # database has none.
+    for sidecar in config.sidecar_paths("rekordbox_db", cfg):
+        if sidecar.is_file():
+            sent = (rclone, "copy", str(sidecar), f"{destination}/db/")
+            commands.append(Command(label=SNAPSHOT_DATABASE, argv=sent))
+    # THE MARKER FOLLOWS THE WHOLE DATABASE SET AND PRECEDES THE SETTINGS: it
+    # must not sit beside a copy that failed, and a snapshot whose settings
+    # failed still holds a usable database.
+    warnings = [*uncovered, *snapshot_identity_warning(cfg)]
+    marker = identity_marker(cfg.library.volume_id)
+    if marker is not None:
+        touch = (rclone, "touch", f"{destination}/{marker}")
+        commands.append(Command(label=SNAPSHOT_IDENTITY, argv=touch))
+    resolved_settings = settings_directories() if settings_dirs is None else tuple(settings_dirs)
+    share = _outside_share(cfg)
+    carried_share = share if share is not None and share.is_dir() else None
+    fileset = database_fileset(cfg)
+    folders = (*resolved_settings, *((carried_share,) if carried_share is not None else ()))
+    key = backup_record.fingerprint_key(cfg, marker)
+    fingerprint = backup_record.database_fingerprint(fileset, folders)
+    if not snapshot_anyway and fingerprint is not None:
+        held = backup_record.read_fingerprint()
+        if (
+            held is not None
+            and held.get("fingerprint") == fingerprint
+            and all(held.get(name) == value for name, value in key.items())
+        ):
+            return PortionPlan(
+                portion=backup_facts.Portion.DATABASE, kind=KIND_UNCHANGED,
+                detail=(
+                    "the database, its settings and its analysis share are what "
+                    "the last completed snapshot copied, so no new one is taken"
+                ),
+                warnings=tuple(warnings),
+            )
+    basis = None if fingerprint is None else (key, fingerprint, fileset, folders, process_lister)
+    for directory in resolved_settings:
+        commands.append(Command(
+            label=SNAPSHOT_SETTINGS,
+            argv=(
+                rclone, "copy", str(directory), f"{destination}/{directory.name}",
+                "--transfers", "8", "--checkers", "16",
+            ),
+        ))
+    # THE SHARE GOES LAST, AND IN THIS PORTION: rekordbox writes it while it
+    # analyses, so it needs this portion's gate, and it is gigabytes, so a
+    # failure costs the settings nothing. It still fails the portion.
+    if carried_share is not None:
+        share = carried_share
+        kept = share_destination(cfg, identity=cfg.library.volume_id)
+        commands.append(
+            Command(
+                label=SNAPSHOT_SHARE,
+                argv=(
+                    rclone, "sync", str(share), f"{kept}/current",
+                    *_exclude_args(VOLUME_EXCLUDES),
+                    # What this sync would overwrite or delete moves to a dated
+                    # folder first, so an emptied share never empties its copy.
+                    "--backup-dir", f"{kept}/archive/{stamp}",
+                    "--transfers", "8", "--checkers", "16",
+                ),
+            )
+        )
+    return PortionPlan(
+        portion=backup_facts.Portion.DATABASE, kind=KIND_SNAPSHOT, commands=tuple(commands),
+        warnings=tuple(warnings), basis=basis,
+    )
+
+
+def snapshot_identity_warning(cfg: config.Config) -> tuple[Mapping[str, str], ...]:
+    """A warning when this configuration's snapshots cannot say whose they are.
+    Asked of the configuration, since a queued backup's plan reaches nobody."""
+    if identity_marker(cfg.library.volume_id) is not None:
+        return ()
+    why = "not recorded" if cfg.library.volume_id is None else "not a plain name"
+    return (_warning(
+        SNAPSHOT_IDENTITY_NOT_WRITTEN,
+        f"this snapshot will not say which library it was taken from, because "
+        f"{config.VOLUME_IDENTITY_KEY} is {why}. A restore will pull it only when its stamp "
+        f"is named",
+    ),)
+
+
+def _outside_share(cfg: config.Config) -> Path | None:
+    """The analysis share when the mirror does NOT reach it, else None, asked of
+    ``analysis_store`` so the backup and the analysis watch agree."""
+    if analysis_store.watch_roots(cfg) == (Path(cfg.library.root),):
+        return None
+    return analysis_store.share_root(cfg)
+
+
+def share_destination(cfg: config.Config, *, identity: str | None) -> str:
+    """Where one library's outside share is mirrored on the remote, keyed by the
+    volume identity through :func:`identity_marker`, so two libraries under one
+    root never sync over each other."""
+    marker = identity_marker(identity)
+    key = SHARE_UNRECORDED if marker is None else marker[len(IDENTITY_MARKER_PREFIX):]
+    return f"{cfg.backup.db_dest_root}/{SHARE_DEST_DIRNAME}/{key}"
+
+
+def absent_analysis_share(cfg: config.Config) -> tuple[Mapping[str, str], ...]:
+    """A warning when an outside analysis share is not there to be carried, which
+    is normal before any analysis and also what a wrong ``db_path`` looks like.
+    Asked of the configuration, since a queued backup's plan reaches nobody."""
+    share = _outside_share(cfg)
+    if share is None or share.is_dir():
+        return ()
+    return (_warning(
+        ANALYSIS_SHARE_ABSENT,
+        f"the analysis share {share} sits outside the library root {cfg.library.root} and is not a "
+        f"directory, so this backup carries no beat grids or analysis. That is expected only for a "
+        f"library rekordbox has not analysed yet",
+    ),)
 
 
 class ShareRestore(StrEnum):
@@ -104,12 +282,10 @@ def _snapshot_names(cfg: config.Config, *, runner: Runner) -> tuple[str, ...] | 
     Only names a backup could have written, so a hand made folder is never
     offered as the newest. None (no answer) and empty are different answers.
     """
-    result = runner(
-        Command(
-            label=LIST_SNAPSHOTS,
-            argv=(_rclone(), "lsf", f"{cfg.backup.db_dest_root}/", "--dirs-only"),
-        )
-    )
+    result = runner(Command(
+        label=LIST_SNAPSHOTS,
+        argv=(_rclone(), "lsf", f"{cfg.backup.db_dest_root}/", "--dirs-only"),
+    ))
     if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
         # A root no backup has written yet is an empty root, not a remote that
         # did not answer, and its answer is to take a backup.
@@ -141,18 +317,14 @@ class ResolvedSnapshot:
     named: bool
 
 
-def snapshot_identities(
-    cfg: config.Config, snapshot: str, *, runner: Runner
-) -> tuple[str, ...]:
+def snapshot_identities(cfg: config.Config, snapshot: str, *, runner: Runner) -> tuple[str, ...]:
     """Every identity a dated snapshot's markers record, normalized and sorted;
     empty means listed with no marker, and an empty marker is the empty identity.
     A failed listing raises, never passing as an unmarked snapshot."""
-    result = runner(
-        Command(
-            label=LIST_SNAPSHOT_IDENTITY,
-            argv=(_rclone(), "lsf", f"{cfg.backup.db_dest_root}/{snapshot}/", "--files-only"),
-        )
-    )
+    result = runner(Command(
+        label=LIST_SNAPSHOT_IDENTITY,
+        argv=(_rclone(), "lsf", f"{cfg.backup.db_dest_root}/{snapshot}/", "--files-only"),
+    ))
     if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
         # A mistyped or pruned stamp. The folder is absent, so the remote and
         # its credential are not what a person should go and check.
@@ -176,12 +348,8 @@ def snapshot_identities(
 
 
 def resolve_snapshot(
-    cfg: config.Config,
-    *,
-    snapshot: str | None = None,
-    snapshot_volume: str | None = None,
-    accept_unrecorded: bool | None = None,
-    runner: Runner = subprocess_runner,
+    cfg: config.Config, *, snapshot: str | None = None, snapshot_volume: str | None = None,
+    accept_unrecorded: bool | None = None, runner: Runner = subprocess_runner,
 ) -> ResolvedSnapshot:
     """Decide which snapshot is pulled, and refuse one that is not this library's.
 
@@ -209,9 +377,8 @@ def resolve_snapshot(
         if not is_snapshot_name(snapshot):
             raise BackupRefused(
                 Refusal.SNAPSHOT_NAME_INVALID,
-                f"{snapshot!r} is not a snapshot stamp. A stamp is the dated folder "
-                f"name a backup wrote, like {STAMP_EXAMPLE}, "
-                f"and nothing else is put into a path on the remote.",
+                f"{snapshot!r} is not a snapshot stamp. A stamp is the dated folder name a backup "
+                f"wrote, like {STAMP_EXAMPLE}, and nothing else is put into a path on the remote.",
             )
         recorded = snapshot_identities(cfg, snapshot, runner=runner)
         if recorded == (expected,):
@@ -266,17 +433,15 @@ def _not_this_librarys(
         if stated:
             return BackupRefused(
                 Refusal.SNAPSHOT_LIBRARY_MISMATCH,
-                f"{looked} does not say which library it was taken from, and "
-                f"{whose}. An expected identity cannot be confirmed against a "
-                f"snapshot that records none.",
+                f"{looked} does not say which library it was taken from, and {whose}. An expected "
+                f"identity cannot be confirmed against a snapshot that records none.",
             )
         return BackupRefused(
             Refusal.SNAPSHOT_IDENTITY_UNRECORDED,
-            f"{looked} does not say which library it was taken from. That is true "
-            f"of every snapshot taken before identities were recorded, and also of "
-            f"one whose backup did not finish, so check it holds a whole database "
-            f"before pulling it. It is pulled only when it is named: "
-            f"--snapshot {stamp}",
+            f"{looked} does not say which library it was taken from. That is true of every "
+            f"snapshot taken before identities were recorded, and also of one whose backup did not "
+            f"finish, so check it holds a whole database before pulling it. It is pulled only when "
+            f"it is named: --snapshot {stamp}",
         )
     if len(recorded) > 1:
         return BackupRefused(
@@ -288,23 +453,19 @@ def _not_this_librarys(
         )
     return BackupRefused(
         Refusal.SNAPSHOT_LIBRARY_MISMATCH,
-        f"{looked} says it was taken from the library on volume "
-        f"{recorded[0] or '(empty)'}, and {whose}. Restoring it would put another "
-        f"library's database here.",
+        f"{looked} says it was taken from the library on volume {recorded[0] or '(empty)'}, and "
+        f"{whose}. Restoring it would put another library's database here.",
     )
 
 
-def snapshot_filenames(
-    cfg: config.Config, snapshot: str, *, runner: Runner
-) -> frozenset[str]:
+def snapshot_filenames(cfg: config.Config, snapshot: str, *, runner: Runner) -> frozenset[str]:
     """The filenames a dated database snapshot holds. A failed listing refuses,
     since read as no sidecars it would report a restore the remote never saw."""
     result = runner(
         Command(
             label=LIST_SNAPSHOT_CONTENTS,
             argv=(
-                _rclone(),
-                "lsf",
+                _rclone(), "lsf",
                 f"{cfg.backup.db_dest_root}/{snapshot}/db/",
                 "--files-only",
             ),
@@ -334,12 +495,10 @@ def share_is_held(cfg: config.Config, *, identity: str | None, runner: Runner) -
     """Whether the remote holds a mirror of this library's outside share. An
     empty or missing directory is a backup from before the share was carried;
     any other failed listing refuses rather than reading as "no share"."""
-    result = runner(
-        Command(
-            label=LIST_SHARE,
-            argv=(_rclone(), "lsf", f"{share_destination(cfg, identity=identity)}/current/"),
-        )
-    )
+    result = runner(Command(
+        label=LIST_SHARE,
+        argv=(_rclone(), "lsf", f"{share_destination(cfg, identity=identity)}/current/"),
+    ))
     if result.returncode == RCLONE_DIRECTORY_NOT_FOUND:
         return False
     if result.returncode != 0:
@@ -354,18 +513,10 @@ def share_is_held(cfg: config.Config, *, identity: str | None, runner: Runner) -
 
 
 def plan_restore(
-    cfg: config.Config,
-    *,
-    target: Path | str,
-    confirmed: bool,
-    snapshot: str | None = None,
-    snapshot_volume: str | None = None,
-    accept_unrecorded: bool | None = None,
-    include_mirror: bool = False,
-    pull_share: bool = True,
-    runner: Runner = subprocess_runner,
-    process_lister: ProcessLister | None = None,
-    gates: GateGuard | None = None,
+    cfg: config.Config, *, target: Path | str, confirmed: bool, snapshot: str | None = None,
+    snapshot_volume: str | None = None, accept_unrecorded: bool | None = None,
+    include_mirror: bool = False, pull_share: bool = True, runner: Runner = subprocess_runner,
+    process_lister: ProcessLister | None = None, gates: GateGuard | None = None,
 ) -> RestorePlan:
     """Decide a restore behind the gates; ``confirmed`` is a named decision, never
     a prompt. ``include_mirror`` adds the file half, a copy and never a sync, which
@@ -382,17 +533,9 @@ def plan_restore(
 
 
 def _plan_restore_inside_the_gates(
-    cfg: config.Config,
-    *,
-    target: Path,
-    confirmed: bool,
-    snapshot: str | None,
-    snapshot_volume: str | None,
-    accept_unrecorded: bool | None,
-    include_mirror: bool,
-    pull_share: bool,
-    runner: Runner,
-    process_lister: ProcessLister | None,
+    cfg: config.Config, *, target: Path, confirmed: bool, snapshot: str | None,
+    snapshot_volume: str | None, accept_unrecorded: bool | None, include_mirror: bool,
+    pull_share: bool, runner: Runner, process_lister: ProcessLister | None,
 ) -> RestorePlan:
     """The planning body, which the gate wraps as one block."""
     if not confirmed:
@@ -445,12 +588,10 @@ def _plan_restore_inside_the_gates(
                 ),
             )
         )
-    commands.append(
-        Command(
-            label=RESTORE_DATABASE,
-            argv=(rclone, "copy", f"{base}/{database_target.name}", f"{database_target.parent}/"),
-        )
-    )
+    into = f"{database_target.parent}/"
+    commands.append(Command(
+        label=RESTORE_DATABASE, argv=(rclone, "copy", f"{base}/{database_target.name}", into)
+    ))
     # Only the sidecars the inventory writes back, and only those the snapshot
     # holds: a stale index beside a fresh log disagrees with it, and the
     # snapshot copies a sidecar only when present.
@@ -464,15 +605,7 @@ def _plan_restore_inside_the_gates(
             absent.append(sidecar.suffix)
             continue
         commands.append(
-            Command(
-                label=RESTORE_DATABASE,
-                argv=(
-                    rclone,
-                    "copy",
-                    f"{base}/{name}",
-                    f"{database_target.parent}/",
-                ),
-            )
+            Command(label=RESTORE_DATABASE, argv=(rclone, "copy", f"{base}/{name}", into))
         )
     # THE SHARE COMES BACK LAST, WITH A COPY, AND ONLY FROM A LISTING, since the
     # sidecars are already cleared when a missing mirror would fail. A landing
