@@ -1,0 +1,117 @@
+name = "u326"
+pass_kind = "light"
+
+[[rows]]
+id = "R1_roots_inside_base_temp"
+description = "_fresh_root: make each isolation root in the system temporary directory, outside the base temp R-926's write root names"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_isolation_survives_undo.py"]
+old = '''    return Path(tempfile.mkdtemp(prefix=prefix, dir=base))'''
+new = '''    return Path(tempfile.mkdtemp(prefix=prefix))'''
+
+[[rows]]
+id = "R2_state_root_per_test"
+description = "_isolate_state_roots: hand every test in a worker the one shared isolation directory as its state root"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_isolation_survives_undo.py", "tests/test_config_test_root.py"]
+old = '''    root = _fresh_root(_isolation_base, "state_roots")'''
+new = '''    root = _isolation_base'''
+
+[[rows]]
+id = "R3_library_root_redirected"
+description = "_block_real_library_paths: leave CRATEKIT_LIBRARY_ROOT as the process found it, the no real library path detonator"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_isolation_survives_undo.py", "tests/test_outbound_workers.py", "tests/test_label_workers.py"]
+old = '''        monkeypatch.setenv("CRATEKIT_LIBRARY_ROOT", str(library))'''
+new = '''        pass'''
+
+[[rows]]
+id = "R4_live_provider_refused"
+description = "_no_live_provider_client: leave the shipped provider client factory in place, the no live provider detonator"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_isolation_survives_undo.py", "tests/test_provider_session_hold.py", "tests/test_label_tidal_catalogue.py", "tests/test_catalogue_app.py"]
+old = '''        monkeypatch.setattr(provider_session, "CLIENT_FACTORY", refused)'''
+new = '''        pass'''
+
+[[rows]]
+id = "R5_discogs_teardown"
+description = "_no_live_discogs: never fail the test over a Discogs address the guarded getter recorded"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_setup_discogs.py"]
+old = '''    if reached:
+        pytest.fail(
+            f"a test reached the live Discogs API, {reached}; hand the step or the "'''
+new = '''    if False:
+        pytest.fail(
+            f"a test reached the live Discogs API, {reached}; hand the step or the "'''
+
+[[rows]]
+id = "R6_cyanite_refused"
+description = "_no_live_cyanite: leave the shipped Cyanite send in place, so a forgotten fake uploads to the paid service"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        monkeypatch.setattr(cyanite, "_requests_send", refused)'''
+new = '''        pass'''
+
+[[rows]]
+id = "R7_launchctl_refused"
+description = "_no_live_launchd: leave the shipped launchctl seam in place, so a verb on a platform read as the Mac reaches launchd"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_schedule.py", "tests/test_cli_contract.py"]
+old = '''        monkeypatch.setattr(schedule, "launchctl", refused)'''
+new = '''        pass'''
+
+[[rows]]
+id = "R8_general_catalogue_refused"
+description = "_no_live_general_catalogue: leave the process wide genre lookup as shipped, so an ISRC asks the real catalogue"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_published_genre.py"]
+old = '''        monkeypatch.setattr(published, "_shared", [guarded])'''
+new = '''        pass'''
+
+[[rows]]
+id = "R9_host_process_tripwire"
+description = "_no_host_process_table: leave psutil.process_iter real, so pyrekordbox's walk reads the host's process table"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py", "tests/test_process_scan.py"]
+old = '''        monkeypatch.setattr(psutil, "process_iter", tripwire("process_iter"))'''
+new = '''        pass'''
+
+[[rows]]
+id = "W1_children_reads_lists"
+description = "_children: skip a list field's nodes, so a walk never enters a body, an argument list or a target list"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_cli_contract.py"]
+old = '''            found.extend([item for item in value if isinstance(item, _AST)])'''
+new = '''            pass'''
+
+[[rows]]
+id = "W2_cache_by_identity"
+description = "_walk: hand back the held walk for any module once one is held, so a second module is answered from the first"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_cli_contract.py"]
+old = '''    if not (_LAST_MODULE_WALK and _LAST_MODULE_WALK[0] is node):'''
+new = '''    if not _LAST_MODULE_WALK:'''
+
+[[rows]]
+id = "W3_u59_g2_local_names_targets"
+description = "u59 G2 re-anchored on the new walk: _local_names binds a bare Name target only, so unpacked, with and except bindings stop shadowing"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_reserved_causes.py", "tests/test_review_queue.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_pool_sizing.py", "tests/modules/test_reports.py"]
+old = '''        for node in _walk(target):
+            if isinstance(node, ast.Name):
+                found.add(node.id)'''
+new = '''        if isinstance(target, ast.Name):
+            found.add(target.id)'''
