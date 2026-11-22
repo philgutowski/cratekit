@@ -3,9 +3,10 @@
 Each scenario runs one test of the pair suites as written, with every command
 it drives routed through the stage by ``tests/behaviour/sync.borrowed``, so
 the capture holds each envelope, the gate it asked, and the database, the pairs
-record and the held plans the verb left. The states the card names: a first
-sync, a merge both ways, a reorder, a refusal on a moved list, a held plan
-continued, a skipped side finished. Then the plan as a person reads it.
+record and the held plans the verb left: a first sync, a removal and a reorder
+carried across, a track queued, a skipped side finished, a short listing, a
+refusal before the gate, one on a moved list and one of a label playlist, and
+a held plan continued. Then the plan as a person reads it.
 
 No tie and no ceiling stop: the ISRC cache and the provider gate stamp what
 they write with a clock bound as a default argument, which the stage's pin
@@ -33,16 +34,6 @@ def test_the_first_sync_marks_the_pair_and_adds_only(stage, monkeypatch, world, 
     stage.crate(*("sync", "pair"))
 
 
-def test_a_track_removed_on_the_account_leaves_the_playlist_and_stays_in_the_collection(
-    stage, monkeypatch, world, cfg
-):
-    borrowed(stage, monkeypatch)
-    test_sync_pair.test_a_track_removed_on_the_account_leaves_the_playlist_and_stays_in_the_collection(
-        world, cfg
-    )
-    stage.crate(*("sync", "pair"))
-
-
 def test_a_track_removed_in_rekordbox_is_taken_off_the_account(stage, monkeypatch, world):
     borrowed(stage, monkeypatch)
     test_sync_pair.test_a_track_removed_in_rekordbox_is_taken_off_the_account(world)
@@ -52,12 +43,6 @@ def test_a_track_removed_in_rekordbox_is_taken_off_the_account(stage, monkeypatc
 def test_when_rekordbox_alone_reorders_the_account_follows(stage, monkeypatch, world):
     borrowed(stage, monkeypatch)
     test_sync_pair.test_when_rekordbox_alone_reorders_the_account_follows(world)
-    stage.crate(*("sync", "pair"))
-
-
-def test_an_unmatched_rekordbox_track_is_named_and_stays_in_rekordbox(stage, monkeypatch, world):
-    borrowed(stage, monkeypatch)
-    test_sync_pair.test_an_unmatched_rekordbox_track_is_named_and_stays_in_rekordbox(world)
     stage.crate(*("sync", "pair"))
 
 
@@ -83,12 +68,6 @@ def test_a_skipped_account_side_is_finished_by_the_next_sync(stage, monkeypatch,
     stage.crate(*("sync", "pair"))
 
 
-def test_both_sides_skipped_writes_nothing_and_marks_nothing(stage, monkeypatch, world, cfg):
-    borrowed(stage, monkeypatch)
-    test_sync_pair.test_both_sides_skipped_writes_nothing_and_marks_nothing(world, cfg)
-    stage.crate(*("sync", "pair"))
-
-
 def test_a_short_account_listing_reads_nothing_as_removed(stage, monkeypatch, world):
     borrowed(stage, monkeypatch)
     test_sync_pair.test_a_short_account_listing_reads_nothing_as_removed(world)
@@ -111,42 +90,6 @@ def test_a_label_playlist_is_not_a_pair(stage, monkeypatch, world, cfg):
     stage.crate(*("sync", "pair"))
 
 
-def test_a_folder_is_not_a_pair(stage, monkeypatch, world):
-    borrowed(stage, monkeypatch)
-    test_sync_pair.test_a_folder_is_not_a_pair(world)
-    stage.crate(*("sync", "pair"))
-
-
-def test_a_second_rekordbox_playlist_for_a_paired_account_playlist_is_refused(
-    stage, monkeypatch, world
-):
-    borrowed(stage, monkeypatch)
-    test_sync_pair.test_a_second_rekordbox_playlist_for_a_paired_account_playlist_is_refused(world)
-    stage.crate(*("sync", "pair"))
-
-
-def test_with_no_argument_every_marked_pair_is_synced(stage, monkeypatch, world):
-    borrowed(stage, monkeypatch)
-    test_sync_pair.test_with_no_argument_every_marked_pair_is_synced(world)
-    stage.crate(*("sync", "pair"))
-
-
-def test_two_rows_carrying_one_isrc_add_neither_and_say_so(stage, monkeypatch, world, cfg):
-    borrowed(stage, monkeypatch)
-    test_sync_pair.test_two_rows_carrying_one_isrc_add_neither_and_say_so(world, cfg)
-    stage.crate(*("sync", "pair"))
-
-
-def test_a_track_another_account_playlist_landed_is_added_and_never_queued(
-    stage, monkeypatch, world, cfg, tmp_path
-):
-    borrowed(stage, monkeypatch)
-    test_sync_pair.test_a_track_another_account_playlist_landed_is_added_and_never_queued(
-        world, cfg, tmp_path
-    )
-    stage.crate(*("sync", "pair"))
-
-
 def test_answers_continued_in_later_commands_ask_nothing_when_nothing_moved(
     stage, monkeypatch, world, counted
 ):
@@ -154,26 +97,4 @@ def test_answers_continued_in_later_commands_ask_nothing_when_nothing_moved(
     test_sync_pair_hold.test_answers_continued_in_later_commands_ask_nothing_when_nothing_moved(
         world, counted
     )
-    stage.crate(*("sync", "pair"))
-
-
-def test_an_account_list_changed_before_the_write_refuses_stale_and_names_it(
-    stage, monkeypatch, world
-):
-    borrowed(stage, monkeypatch)
-    test_sync_pair_hold.test_an_account_list_changed_before_the_write_refuses_stale_and_names_it(
-        world
-    )
-    stage.crate(*("sync", "pair"))
-
-
-def test_a_replanned_run_whose_list_moved_is_refused_by_the_gate(stage, monkeypatch, world):
-    borrowed(stage, monkeypatch)
-    test_sync_pair_hold.test_a_replanned_run_whose_list_moved_is_refused_by_the_gate(world)
-    stage.crate(*("sync", "pair"))
-
-
-def test_a_withheld_count_changed_before_the_write_refuses_stale(stage, monkeypatch, world):
-    borrowed(stage, monkeypatch)
-    test_sync_pair_hold.test_a_withheld_count_changed_before_the_write_refuses_stale(world)
     stage.crate(*("sync", "pair"))

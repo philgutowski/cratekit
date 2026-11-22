@@ -1598,6 +1598,33 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "intake/rehearsal_and_the_gate_it_feeds",
         "label/registry_document_written_read_back_and_refused",
         "sync/collection_removal",
+        "sync_marks/a_collision_is_refused_and_named_and_the_rest_strip",
+        "sync_marks/a_missing_intake_file_refuses_the_verb_before_anything_is_listed",
+        "sync_marks/a_pass_that_marked_three_plans_three_renames_back_and_applies_them",
+        "sync_marks/a_playlist_renamed_after_the_plan_was_shown_is_skipped_and_said",
+        "sync_marks/the_migration_records_every_prefix_and_standing_mark_once_and_says_how_many",
+        "sync_pair/a_label_playlist_is_not_a_pair",
+        "sync_pair/a_rekordbox_change_between_the_gates_and_the_write_refuses_as_stale",
+        "sync_pair/a_short_account_listing_reads_nothing_as_removed",
+        "sync_pair/a_skipped_account_side_is_finished_by_the_next_sync",
+        "sync_pair/a_track_removed_in_rekordbox_is_taken_off_the_account",
+        "sync_pair/an_account_track_the_library_lacks_is_queued_once_and_never_written_as_a_row",
+        "sync_pair/answers_continued_in_later_commands_ask_nothing_when_nothing_moved",
+        "sync_pair/the_first_sync_marks_the_pair_and_adds_only",
+        "sync_pair/when_rekordbox_alone_reorders_the_account_follows",
+        "sync_pair/with_no_acknowledgment_the_verb_refuses_before_the_gate",
+        "sync_pair_every/a_gig_ready_playlist_is_made_on_the_account_in_its_folder_and_filled",
+        "sync_pair_every/a_late_order_finishes_in_the_next_run_with_no_rekordbox_write_between",
+        "sync_pair_every/a_made_pair_whose_rekordbox_playlist_is_deleted_releases_its_account_playlist",
+        "sync_pair_every/a_named_pair_whose_window_lags_refuses_as_itself",
+        "sync_pair_every/a_stop_part_way_then_a_continue_sends_no_move_again",
+        "sync_pair_every/the_adoption_records_what_the_folder_held",
+        "sync_pair_every/two_playlists_taking_one_title_refuse_that_title_only",
+        "sync_twins/a_name_that_is_no_twin_is_refused_and_nothing_is_planned",
+        "sync_twins/an_abort_writes_nothing_and_pairs_nothing",
+        "sync_twins/an_untitled_track_never_stops_its_pair_and_the_rest_syncs_both_ways",
+        "sync_twins/releasing_the_twin_queues_its_three_at_the_next_sync",
+        "sync_twins/the_backfill_makes_the_folder_and_twin_in_the_accounts_order_and_pairs_it",
         "tagging/tag_write_to_an_audio_file",
         "tagging_rows/row_genres_written_from_their_files",
         "write/guarded_tree_write",
@@ -1610,7 +1637,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "12 scenarios" in summary and "no difference" in summary
+    assert "39 scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())
