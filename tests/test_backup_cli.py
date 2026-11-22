@@ -318,6 +318,8 @@ def test_a_run_that_succeeded_publishes_an_age_the_session_reads_back(cfg, rclon
 
     assert report["ok"] is True and report["dry_run"] is False, report
     assert [row["state"] for row in report["ages"]] == ["known", "known"], report
+    # The companion of the stopped rotation below: a completed one warns of nothing.
+    assert _warnings_by_portion(report) == {"files": [], "database": []}, report
 
 
 def test_a_run_whose_every_transfer_failed_publishes_no_age_at_all(cfg, rclone):
@@ -400,15 +402,6 @@ def test_a_backup_whose_rotation_stopped_reports_it_and_is_still_a_backup(
         "a failed listing purged something, which is how a prune removes the "
         f"only archive there is: {invoked}"
     )
-
-
-def test_a_backup_whose_rotation_completed_warns_about_nothing(cfg, rclone):
-    """The companion drive, without which the guard above proves less than it looks."""
-    report = backup_cli.perform_backup({}, now=MOMENT)
-
-    assert report["ok"] is True, report
-    assert _warnings_by_portion(report) == {"files": [], "database": []}, report
-    assert [row["state"] for row in report["ages"]] == ["known", "known"], report
 
 
 def test_a_rehearsal_reports_the_rotation_it_already_knows_it_cannot_run(
@@ -894,12 +887,11 @@ def _item_states(job_id: str) -> dict[str, str]:
         return {item.item_id: str(item.state) for item in jobs.items(store, job_id)}
 
 
-def test_a_backup_job_carries_one_item_per_declared_portion(cfg):
-    """THE ZERO ITEM RULE, which is the hazard binding a worker would otherwise create."""
+def test_a_backup_job_carries_one_item_per_declared_portion_and_a_bound_worker(cfg):
+    """The zero item rule, and ``job show`` reporting the job can run (R14)."""
     code, envelope = _drive(["backup", "run"])
     assert code == int(ExitCode.OK), envelope
     states = _item_states(envelope["data"]["job_id"])
-
     assert states, (
         "the backup was queued with no items at all, so driving it would report "
         "SUCCEEDED over a library nothing copied"
@@ -908,6 +900,15 @@ def test_a_backup_job_carries_one_item_per_declared_portion(cfg):
         f"the queued items are {sorted(states)}, which is not the set of portions "
         f"{[str(p) for p in backup_facts.Portion]} a backup is made of"
     )
+
+    code, shown = _drive(["job", "show", envelope["data"]["job_id"]])
+    assert code == int(ExitCode.OK), shown
+    reported = shown["data"]["progress"]
+    assert reported["worker"] == "bound", (
+        f"a queued backup still reports {reported.get('worker')!r}, so the "
+        f"surface that tells a person whether their job can run says it cannot"
+    )
+    assert reported["worker_reason"] is None, reported
 
 
 def test_queueing_still_needs_nothing_from_the_machine(cfg, no_rclone, monkeypatch):
@@ -995,25 +996,29 @@ def test_a_library_whose_identity_cannot_be_a_marker_is_told_so(cfg, rclone):
     assert len(_identity_warnings(resumed)) == 1, resumed
 
 
-def test_a_contained_share_and_a_plain_identity_draw_neither_warning(cfg, rclone):
-    """The companions, so neither warning raised unconditionally passes the drives above."""
-    queued, resumed = _queued_and_resumed()
-    for envelope in (queued, resumed):
-        assert _share_warnings(envelope) == [], envelope
-        assert _identity_warnings(envelope) == [], envelope
+def test_a_queued_real_backup_runs_every_portion_and_reports_what_it_did(cfg, rclone):
+    """One queued real backup, driven through the real resume end to end (R-198).
 
-
-def test_a_queued_backup_runs_every_portion_through_the_real_resume(cfg, rclone):
-    """R-198's whole claim, closed for this verb and driven end to end."""
+    Every portion runs, the engine publishes each age and the shell reports it
+    (R9, R15), ``job show`` names the argv rclone ran (R-349), and the envelopes
+    carry no rehearsal word, share warning or identity warning, which the
+    drives of those warnings rely on as their companion.
+    """
     code, queued = _drive(["backup", "run"])
     assert code == int(ExitCode.OK), queued
     job_id = queued["data"]["job_id"]
     assert set(_item_states(job_id).values()) == {"pending"}
+    assert queued["data"]["progress"]["dry_run"] is False, queued["data"]
 
     code, resumed = _drive(["backup", "run", "--job", job_id])
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == "succeeded", resumed["data"]
-    assert set(_item_states(job_id).values()) == {"done"}, _item_states(job_id)
+    assert _item_states(job_id) == {"files": "done", "database": "done"}
+    assert resumed["data"]["progress"]["dry_run"] is False, resumed["data"]
+    for envelope in (queued, resumed):
+        assert _rehearsal_said(envelope) == [], envelope
+        assert _share_warnings(envelope) == [], envelope
+        assert _identity_warnings(envelope) == [], envelope
 
     invoked = rclone.read_text()
     assert "remote:mirror" in invoked and "remote:database-snapshots" in invoked, (
@@ -1021,29 +1026,31 @@ def test_a_queued_backup_runs_every_portion_through_the_real_resume(cfg, rclone)
         "the backup the person asked for"
     )
 
-
-def test_the_age_a_driven_run_publishes_is_the_engine_s_and_reaches_the_envelope(
-    cfg, rclone
-):
-    """R9 and R15 together: the engine publishes it, and the shell reports it."""
-    _, queued = _drive(["backup", "run"])
-    job_id = queued["data"]["job_id"]
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
-
-    published = {
-        str(entry.portion): entry for entry in backup_facts.ages(cfg)
-    }
+    published = {str(entry.portion): entry for entry in backup_facts.ages(cfg)}
+    reported = {entry["portion"]: entry for entry in resumed["data"]["ages"]}
+    assert set(reported) == {str(p) for p in backup_facts.Portion}, reported
     for portion in backup_facts.Portion:
         assert published[str(portion)].state is backup_facts.AgeState.KNOWN, (
             f"the {portion} portion ran and published no age, so a destructive "
             f"session sees a library that has never been backed up"
         )
-
-    reported = {entry["portion"]: entry for entry in resumed["data"]["ages"]}
-    assert set(reported) == {str(p) for p in backup_facts.Portion}, reported
-    for portion in backup_facts.Portion:
         assert reported[str(portion)]["state"] == str(backup_facts.AgeState.KNOWN)
+
+    shown = _shown_outcomes(job_id)
+    assert shown is not None and set(shown) == {"files", "database"}, shown
+    recorded = [line for item in shown.values() for line in _argv_lines(item)]
+    assert sorted(" ".join(line.split()[1:]) for line in recorded) == sorted(
+        invoked.splitlines()
+    ), "job show does not name the commands rclone actually ran"
+    assert all(
+        command["returncode"] == 0
+        for item in shown.values()
+        for portion in item["portions"]
+        for command in portion["commands"]
+    )
+    assert resumed["data"]["progress"][backup_cli.OUTCOMES] == shown, (
+        "the --job envelope and job show describe the same items differently"
+    )
 
 
 def test_a_failed_portion_leaves_the_job_resumable_and_redoes_only_that_portion(
@@ -1116,19 +1123,6 @@ def test_the_configuration_the_worker_runs_against_is_the_frozen_one(cfg, rclone
         f"the run used the frozen configuration and did not say so: "
         f"{resumed.get('warnings')}"
     )
-
-
-def test_a_queued_backup_reports_a_bound_worker(cfg):
-    """R14, asked the way a person asks it rather than of the table."""
-    _, queued = _drive(["backup", "run"])
-    code, shown = _drive(["job", "show", queued["data"]["job_id"]])
-    assert code == int(ExitCode.OK), shown
-    reported = shown["data"]["progress"]
-    assert reported["worker"] == "bound", (
-        f"a queued backup still reports {reported.get('worker')!r}, so the "
-        f"surface that tells a person whether their job can run says it cannot"
-    )
-    assert reported["worker_reason"] is None, reported
 
 
 def test_the_item_list_is_derived_from_the_portions_rather_than_written_out(
@@ -1398,8 +1392,8 @@ def _job_count() -> int:
 
 
 def test_asking_for_a_backup_twice_reports_the_open_job_rather_than_a_second(cfg):
-    """R-223's closing condition. The verb prints an identifier and appears to
-    have done nothing, which is the shape that invites typing it again."""
+    """R-223: the second ask is handed the open job, and a real twin is not told it
+    copies nothing."""
     code, first = _drive(["backup", "run"])
     assert code == int(ExitCode.OK), first
     assert backup_cli.ALREADY_QUEUED not in _codes(first), first
@@ -1411,6 +1405,8 @@ def test_asking_for_a_backup_twice_reports_the_open_job_rather_than_a_second(cfg
     assert _codes(second).count(backup_cli.ALREADY_QUEUED) == 1, second
     said = next(w for w in second["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED)
     assert first["data"]["job_id"] in said["message"], said
+    assert _rehearsal_said(second) == [], second
+    assert second["data"]["progress"]["dry_run"] is False, second["data"]
 
 
 def test_a_rehearsal_and_a_real_run_are_two_jobs(cfg):
@@ -1475,30 +1471,21 @@ def test_a_backup_that_is_over_does_not_stand_in_for_a_new_one(cfg, ending):
     assert backup_cli.ALREADY_QUEUED not in _codes(second), second
 
 
-def test_a_job_that_can_never_run_does_not_stand_in_for_a_backup(cfg):
-    """The itemless job a previous build queued refuses when driven, so reporting
-    it would answer a request for a backup with one that cannot happen."""
+@pytest.mark.parametrize("stranger", ["itemless", "another-verb", "another-library"])
+def test_an_open_job_that_is_not_this_backup_does_not_stand_in_for_it(cfg, stranger):
+    """An itemless job a previous build queued can never run, another verb's job is
+    not a backup, and another library's backup is not this library's."""
+    enqueued = {
+        "handler_key": "master.run" if stranger == "another-verb" else "backup.run",
+        "payload": backup_cli.frozen_payload(False),
+        "cfg": cfg,
+    }
+    if stranger != "itemless":
+        enqueued["item_ids"] = backup_cli.backup_items()
+    if stranger == "another-library":
+        enqueued["cfg"] = replace(cfg, library=replace(cfg.library, volume_id="0A0B-0C0D"))
     with jobs.open_store() as store:
-        jobs.enqueue(
-            store,
-            handler_key="backup.run",
-            payload=backup_cli.frozen_payload(False),
-            cfg=cfg,
-        )
-    _, queued = _drive(["backup", "run"])
-    assert backup_cli.ALREADY_QUEUED not in _codes(queued), queued
-    assert _job_count() == 2
-
-
-def test_another_verb_s_open_job_is_not_a_backup(cfg):
-    with jobs.open_store() as store:
-        jobs.enqueue(
-            store,
-            handler_key="master.run",
-            payload=backup_cli.frozen_payload(False),
-            item_ids=backup_cli.backup_items(),
-            cfg=cfg,
-        )
+        jobs.enqueue(store, **enqueued)
     _, queued = _drive(["backup", "run"])
     assert backup_cli.ALREADY_QUEUED not in _codes(queued), queued
     assert _job_count() == 2
@@ -1557,22 +1544,6 @@ def test_a_payload_key_this_build_does_not_read_does_not_make_a_stranger(cfg):
     assert _job_count() == 1
 
 
-def test_another_library_s_open_backup_is_not_this_library_s(cfg):
-    """The envelope says "this is your backup", and a job copying another library
-    is not, whatever destination the two were pointed at."""
-    with jobs.open_store() as store:
-        jobs.enqueue(
-            store,
-            handler_key="backup.run",
-            payload=backup_cli.frozen_payload(False),
-            item_ids=backup_cli.backup_items(),
-            cfg=replace(cfg, library=replace(cfg.library, volume_id="0A0B-0C0D")),
-        )
-    _, queued = _drive(["backup", "run"])
-    assert backup_cli.ALREADY_QUEUED not in _codes(queued), queued
-    assert _job_count() == 2
-
-
 def test_the_warnings_beside_a_reported_job_describe_that_job(cfg, tmp_path):
     """The open job was frozen with its analysis share off the volume, and the
     configuration on disk has since moved it back. The job reported will still run
@@ -1610,53 +1581,42 @@ def _rehearsal_said(envelope: dict) -> list[dict]:
 
 
 def test_a_queued_rehearsal_resumes_to_succeeded_and_says_nothing_was_copied(cfg, rclone):
-    """R-221's named cost, driven through the dispatcher on both of its exits."""
+    """R-221's named cost on both exits, on the declared surface, and in its record.
+
+    The flag rides under ``progress`` on both envelopes, the resume says it
+    copied nothing, and the persisted outcome is flagged and names the
+    neutralized transfer (R-349).
+    """
     code, queued = _drive(["backup", "run", "--dry-run"])
     assert code == int(ExitCode.OK), queued
     job_id = queued["data"]["job_id"]
-
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
-    assert resumed["data"]["state"] == "succeeded", resumed["data"]
-    assert set(_item_states(job_id).values()) == {"done"}, _item_states(job_id)
-
-    assert resumed["data"]["progress"]["dry_run"] is True, resumed["data"]
-    said = _rehearsal_said(resumed)
-    assert len(said) == 1, resumed
-    assert "copies nothing" in said[0]["message"], said
-
-
-def test_the_new_key_rides_under_progress_and_the_surface_gains_nothing_else(
-    cfg, rclone
-):
-    """THE DECLARED SURFACE, ASKED OF BOTH ENVELOPES AND NOT ONLY THE FIRST."""
-    _, queued = _drive(["backup", "run", "--dry-run"])
     assert output.envelope_problems(queued) == [], queued
     assert "dry_run" not in queued["data"], (
         "the detail sat beside the declared fields, so a consumer generated from "
         "the committed schema rejects this envelope"
     )
 
-    _, resumed = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
+    code, resumed = _drive(["backup", "run", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == "succeeded", resumed["data"]
+    assert set(_item_states(job_id).values()) == {"done"}, _item_states(job_id)
     assert output.envelope_problems(resumed) == ["undeclared field 'ages'"], (
         "the resume envelope's undeclared fields moved. `ages` is the one this "
         "verb already shipped; anything else joining it is this branch's"
     )
+    assert resumed["data"]["progress"]["dry_run"] is True, resumed["data"]
+    said = _rehearsal_said(resumed)
+    assert len(said) == 1, resumed
+    assert "copies nothing" in said[0]["message"], said
 
-
-def test_a_queued_real_backup_carries_no_rehearsal_word(cfg, rclone):
-    """The companion, so a warning raised unconditionally cannot pass the drive
-    above. A real run copied something and published an age for it, and telling
-    a person it copied nothing is the same defect pointing the other way."""
-    code, queued = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), queued
-    assert _rehearsal_said(queued) == [], queued
-    assert queued["data"]["progress"]["dry_run"] is False, queued["data"]
-
-    code, resumed = _drive(["backup", "run", "--job", queued["data"]["job_id"]])
-    assert code == int(ExitCode.OK), resumed
-    assert _rehearsal_said(resumed) == [], resumed
-    assert resumed["data"]["progress"]["dry_run"] is False, resumed["data"]
+    shown = _shown_outcomes(job_id)
+    assert shown is not None and set(shown) == {"files", "database"}, shown
+    for item in shown.values():
+        assert item["dry_run"] is True, item
+    assert any("--dry-run" in line for line in _argv_lines(shown["files"])), (
+        "the record names the real transfer rather than the neutralized one the "
+        "rehearsal ran"
+    )
 
 
 def test_the_rehearsal_is_said_at_queue_time_and_when_the_open_job_is_reported(cfg):
@@ -1673,24 +1633,6 @@ def test_the_rehearsal_is_said_at_queue_time_and_when_the_open_job_is_reported(c
     assert backup_cli.ALREADY_QUEUED in _codes(second), second
     assert len(_rehearsal_said(second)) == 1, second
     assert second["data"]["progress"]["dry_run"] is True, second["data"]
-
-
-def test_a_second_ask_for_a_real_backup_is_not_told_the_open_job_copies_nothing(cfg):
-    """The companion for the twin branch, WRITTEN BECAUSE THE MUTATION TABLE
-    found nothing holding it. Making that branch carry the word unconditionally
-    killed zero tests: the existing twin cases assert the already-queued code is
-    present, and the rehearsal twin case asserts this one is, and neither asks
-    what a real twin is NOT told. A person asking twice for a real backup would
-    have been told the job they are being handed copies nothing."""
-    code, first = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), first
-
-    code, second = _drive(["backup", "run"])
-    assert code == int(ExitCode.OK), second
-    assert second["data"]["job_id"] == first["data"]["job_id"], second
-    assert backup_cli.ALREADY_QUEUED in _codes(second), second
-    assert _rehearsal_said(second) == [], second
-    assert second["data"]["progress"]["dry_run"] is False, second["data"]
 
 
 def test_the_ages_a_rehearsal_reports_are_the_previous_real_runs_and_it_says_so(
@@ -1962,49 +1904,6 @@ def _argv_lines(outcome: dict) -> list[str]:
         for portion in outcome["portions"]
         for command in portion["commands"]
     ]
-
-
-def test_a_queued_backup_names_every_command_it_ran_in_job_show(cfg, rclone):
-    """R-349's first scenario: the item is DONE and ``job show`` names its argv."""
-    _, queued = _drive(["backup", "run"])
-    job_id = queued["data"]["job_id"]
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
-    assert _item_states(job_id) == {"files": "done", "database": "done"}
-
-    shown = _shown_outcomes(job_id)
-    assert shown is not None and set(shown) == {"files", "database"}, shown
-    recorded = [line for item in shown.values() for line in _argv_lines(item)]
-    invoked = rclone.read_text().splitlines()
-    assert sorted(" ".join(line.split()[1:]) for line in recorded) == sorted(invoked), (
-        "job show does not name the commands rclone actually ran"
-    )
-    assert all(
-        command["returncode"] == 0
-        for item in shown.values()
-        for portion in item["portions"]
-        for command in portion["commands"]
-    )
-    assert resumed["data"]["progress"][backup_cli.OUTCOMES] == shown, (
-        "the --job envelope and job show describe the same items differently"
-    )
-
-
-def test_a_rehearsal_s_outcome_is_recorded_and_says_it_was_one(cfg, rclone):
-    """R-349's second scenario: a dry run is persisted and flagged ``dry_run``."""
-    _, queued = _drive(["backup", "run", "--dry-run"])
-    job_id = queued["data"]["job_id"]
-    code, resumed = _drive(["backup", "run", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
-
-    shown = _shown_outcomes(job_id)
-    assert shown is not None and set(shown) == {"files", "database"}, shown
-    for item in shown.values():
-        assert item["dry_run"] is True, item
-    assert any("--dry-run" in line for line in _argv_lines(shown["files"])), (
-        "the record names the real transfer rather than the neutralized one the "
-        "rehearsal ran"
-    )
 
 
 def test_a_failed_transfer_leaves_the_item_failed_and_job_show_names_its_argv(

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -100,9 +101,7 @@ RECORDED_REMOVALS_KEY = "collection_removed"
 def _listed(entry: restore.Restorable) -> dict[str, Any]:
     """One session as a listing row; an unusable one is reported, never filtered."""
     listed: dict[str, Any] = {
-        "session_id": entry.session_id,
-        "started": entry.started,
-        "workflow": entry.workflow,
+        "session_id": entry.session_id, "started": entry.started, "workflow": entry.workflow,
         "restorable": entry.restorable,
         "unusable": entry.unusable,
         "change": [tree.to_json() for tree in entry.change.trees],
@@ -111,12 +110,7 @@ def _listed(entry: restore.Restorable) -> dict[str, Any]:
     recorded = entry.record.detail.get(RECORDED_REMOVALS_KEY)
     if isinstance(recorded, dict):
         listed["removed"] = [
-            {
-                "content_id": str(row.get("content_id", "")),
-                "artist": str(row.get("artist", "")),
-                "title": str(row.get("title", "")),
-                "file": str(row.get("file", "")),
-            }
+            {key: str(row.get(key, "")) for key in ("content_id", "artist", "title", "file")}
             for row in recorded.get("rows") or ()
             if isinstance(row, dict)
         ]
@@ -174,22 +168,17 @@ def build_run(parser, entry) -> None:
             "the refusal listed"
         ),
     )
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="walk every step and perform none of them, under the same gates",
-    )
-    parser.add_argument(
-        "--from-backup", action="store_true", dest="from_backup",
-        help=(
-            "pull the database back from the off-machine mirror first, for the "
-            "case where the volume itself was replaced and no local capture "
-            "survived"
-        ),
-    )
-    parser.add_argument(
-        "--snapshot", default=None, metavar="STAMP",
-        help="which dated off-machine snapshot to pull; the newest by default",
-    )
+    parser.add_argument("--dry-run", action="store_true", help=(
+        "walk every step and perform none of them, under the same gates"
+    ))
+    parser.add_argument("--from-backup", action="store_true", dest="from_backup", help=(
+        "pull the database back from the off-machine mirror first, for the "
+        "case where the volume itself was replaced and no local capture "
+        "survived"
+    ))
+    parser.add_argument("--snapshot", default=None, metavar="STAMP", help=(
+        "which dated off-machine snapshot to pull; the newest by default"
+    ))
     parser.add_argument(
         "--snapshot-volume", default=None, dest="snapshot_volume", metavar="IDENTITY",
         help=(
@@ -198,52 +187,34 @@ def build_run(parser, entry) -> None:
             "checked against the snapshot, used once and never recorded"
         ),
     )
-    parser.add_argument(
-        "--include-mirror", action="store_true", dest="include_mirror",
-        help=(
-            "pull the music and everything else the mirror carried, not only the "
-            "database; hundreds of gigabytes, so it is off by default"
-        ),
-    )
-    parser.add_argument(
-        "--target", default=None, metavar="DIRECTORY",
-        help=(
-            "restore the database into this directory instead of the live "
-            "library, which is how a restore is rehearsed; needs the off-machine "
-            "pull, and rolls no session back"
-        ),
-    )
+    parser.add_argument("--include-mirror", action="store_true", dest="include_mirror", help=(
+        "pull the music and everything else the mirror carried, not only the "
+        "database; hundreds of gigabytes, so it is off by default"
+    ))
+    parser.add_argument("--target", default=None, metavar="DIRECTORY", help=(
+        "restore the database into this directory instead of the live "
+        "library, which is how a restore is rehearsed; needs the off-machine "
+        "pull, and rolls no session back"
+    ))
     parser.set_defaults(_handler=perform_restore)
 
 
-def _target_invalid(message: str, **detail: Any) -> CratekitError:
-    """The invocation, not the directory, is what this refuses.
+#: The invocation, not the directory, is what this refuses: a target without
+#: the pull and a target beside a capture rollback both misread ``--target``.
+_target_invalid = partial(_verb_refusal, "restore-target-invalid", step=(
+    "a restore target takes the database from the off-machine "
+    "snapshot and rolls no write session back; ask for the "
+    "off-machine pull, and name either a session to roll back or "
+    "a target, never both"
+))
 
-    One slug for a target without the pull and a target beside a capture
-    rollback: both misread ``--target`` as a second place for the live restore.
-    """
-    return _verb_refusal(
-        "restore-target-invalid",
-        message,
-        "a restore target takes the database from the off-machine "
-        "snapshot and rolls no write session back; ask for the "
-        "off-machine pull, and name either a session to roll back or "
-        "a target, never both",
-        **detail,
-    )
-
-
-def _target_is_live(message: str, **detail: Any) -> CratekitError:
-    """A destination that is the live library, by either check; ``detail`` says which."""
-    return _verb_refusal(
-        "restore-target-is-live-root",
-        message,
-        "name a directory the live library is not inside and does "
-        "not contain, and check where the database itself would land "
-        "when the database sits outside the library root; restoring "
-        "onto the live library is this verb with no target named",
-        **detail,
-    )
+#: A destination that is the live library, by either check; ``detail`` says which.
+_target_is_live = partial(_verb_refusal, "restore-target-is-live-root", step=(
+    "name a directory the live library is not inside and does "
+    "not contain, and check where the database itself would land "
+    "when the database sits outside the library root; restoring "
+    "onto the live library is this verb with no target named"
+))
 
 
 def _same_place(one: Path, other: Path) -> bool:
@@ -296,9 +267,7 @@ def _restore_target(cfg: config.Config, args) -> Path | None:
             "database and nothing else; rolling a write session back moves state "
             "coupled to the live library and cannot be pointed elsewhere, so name "
             "a session or a target and not both",
-            target=str(raw),
-            session_id=args.session_id,
-            discard=list(args.discard),
+            target=str(raw), session_id=args.session_id, discard=list(args.discard),
         )
     resolved = Path(raw).expanduser().resolve()
     root = Path(cfg.library.root).resolve()
@@ -322,9 +291,7 @@ def _restore_target(cfg: config.Config, args) -> Path | None:
             f"the database would land on {landing}, which is this library's live "
             f"database; the target is outside the library root and the database "
             f"is too, so naming its directory restores over it in place",
-            target=str(resolved),
-            database_target=str(landing),
-            live_database=str(live),
+            target=str(resolved), database_target=str(landing), live_database=str(live),
             check="destination",
         )
     return resolved
@@ -354,8 +321,7 @@ def _named(cfg: config.Config, session_id: str) -> restore.Restorable:
                 f"session {session_id} cannot be restored: {entry.unusable}",
                 "run the restore listing and choose a session whose "
                 "capture is still spendable",
-                session_id=session_id,
-                unusable=entry.unusable,
+                session_id=session_id, unusable=entry.unusable,
             )
         return entry
     raise CratekitError(
@@ -404,9 +370,7 @@ def _offer(
     if chosen is not None:
         items.append(
             {
-                "half": "capture",
-                "session_id": chosen.session_id,
-                "started": chosen.started,
+                "half": "capture", "session_id": chosen.session_id, "started": chosen.started,
                 "workflow": chosen.workflow,
                 "change": [tree.to_json() for tree in chosen.change.trees],
                 "discarding": list(discarding),
@@ -416,9 +380,7 @@ def _offer(
         "digest": digest_of(
             {"kind": "restore.run", "items": items, "dry_run": dry_run}
         ),
-        "items": items,
-        "totals": {"halves": len(items), "dry_run": dry_run},
-        "chunk": None,
+        "items": items, "totals": {"halves": len(items), "dry_run": dry_run}, "chunk": None,
     }
 
 
@@ -535,23 +497,19 @@ def restore_under_one_session(
             where = Path(target) if target is not None else Path(cfg.library.root)
             try:
                 pulled = backup.plan_restore(
-                    cfg,
-                    target=where,
+                    cfg, target=where,
                     confirmed=True,
-                    snapshot=snapshot,
-                    snapshot_volume=snapshot_volume,
+                    snapshot=snapshot, snapshot_volume=snapshot_volume,
                     accept_unrecorded=accept_unrecorded,
                     include_mirror=include_mirror,
                     gates=held.guard,
-                    **_seam("runner", runner),
-                    **_seam("process_lister", process_lister),
+                    **_seam("runner", runner), **_seam("process_lister", process_lister),
                 )
                 ran = backup.run_restore(
                     pulled,
                     cfg,
                     dry_run=dry_run,
-                    gates=held.guard,
-                    **_seam("runner", runner),
+                    gates=held.guard, **_seam("runner", runner),
                 )
             except backup.BackupRefused as exc:
                 raise _refused(exc) from exc
@@ -587,9 +545,7 @@ def restore_under_one_session(
                 dry_run=dry_run,
                 process_lister=process_lister,
             ),
-            dry_run=dry_run,
-            absent=missing,
-            **arrived,
+            dry_run=dry_run, absent=missing, **arrived,
         )
 
 
@@ -614,18 +570,15 @@ def _performed(report: RestoreReport, offered: dict[str, Any]) -> dict[str, Any]
     ]
     items += [
         {
-            "half": "capture",
-            "act": str(step.act),
-            "target": str(step.target) if step.target else None,
-            "detail": step.detail,
+            "half": "capture", "act": str(step.act),
+            "target": str(step.target) if step.target else None, "detail": step.detail,
         }
         for step in (outcome.performed if outcome is not None else ())
     ]
     totals: dict[str, Any] = {
         "transfers": len(report.pulled),
         "steps": len(outcome.performed) if outcome is not None else 0,
-        "dry_run": report.dry_run,
-        "absent_sidecars": list(report.absent),
+        "dry_run": report.dry_run, "absent_sidecars": list(report.absent),
     }
     if report.pulled:
         totals["snapshot"] = report.snapshot
@@ -649,7 +602,6 @@ def perform_restore(ctx) -> Envelope:
     target = _restore_target(cfg, ctx.args)
     _refuse_pull_flags_without_the_pull(ctx.args)
     requested = ctx.args.session_id
-    chosen: restore.Restorable | None = None
     if target is not None:
         chosen = None
     elif requested is None:

@@ -56,10 +56,9 @@ def build_bare_metal(parser, entry) -> None:
             "without it, and refused with it when nobody is at a terminal"
         ),
     )
-    parser.add_argument(
-        "--snapshot", default=None, metavar="STAMP",
-        help="which dated off-machine snapshot to pull; the newest by default",
-    )
+    parser.add_argument("--snapshot", default=None, metavar="STAMP", help=(
+        "which dated off-machine snapshot to pull; the newest by default"
+    ))
     parser.add_argument(
         "--snapshot-volume", default=None, dest="snapshot_volume", metavar="IDENTITY",
         help=(
@@ -67,10 +66,9 @@ def build_bare_metal(parser, entry) -> None:
             "not the one this installation remembers; used once, never recorded"
         ),
     )
-    parser.add_argument(
-        "--dry-run", action="store_true",
-        help="rehearse both halves and transfer nothing, under the same gates",
-    )
+    parser.add_argument("--dry-run", action="store_true", help=(
+        "rehearse both halves and transfer nothing, under the same gates"
+    ))
     parser.set_defaults(_handler=perform_bare_metal)
 
 
@@ -158,10 +156,8 @@ def _absence_unconfirmed(
             f"and the database half was not attempted"
         ),
         detail={
-            **dict(declared.detail or {}),
-            "half": DATABASE_HALF,
-            "completed_halves": list(completed),
-            "target": str(decided.target),
+            **dict(declared.detail or {}), "half": DATABASE_HALF,
+            "completed_halves": list(completed), "target": str(decided.target),
         },
     )
     return processes.AbsenceUnconfirmed(cause, exc.read)
@@ -182,12 +178,8 @@ def _half_failed(
 
     slug = str(exc.refusal)
     detail: dict[str, Any] = {
-        "refusal": slug,
-        "half": half,
-        "completed_halves": list(completed),
-        "target": str(decided.target),
-        "dry_run": dry_run,
-        "engine": exc.detail,
+        "refusal": slug, "half": half, "completed_halves": list(completed),
+        "target": str(decided.target), "dry_run": dry_run, "engine": exc.detail,
     }
     if exc.refusal is backup.Refusal.REKORDBOX_RUNNING:
         message = (
@@ -259,28 +251,21 @@ def recover_under_bare_metal_session(
     from cratekit.session.restore_cli import _refused, _seam
 
     with restore.bare_metal_session(
-        cfg,
-        target=target,
+        cfg, target=target,
         acknowledged=accepted,
-        terminal=terminal,
-        identity_provider=identity_provider,
-        mount_enumerator=mount_enumerator,
-        mount_probe=mount_probe,
+        terminal=terminal, identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator, mount_probe=mount_probe,
     ) as held:
         try:
             decided = backup.plan_restore(
-                cfg,
-                target=held.authorises,
-                confirmed=True,
-                snapshot=snapshot,
-                snapshot_volume=snapshot_volume,
+                cfg, target=held.authorises, confirmed=True,
+                snapshot=snapshot, snapshot_volume=snapshot_volume,
                 include_mirror=True,
                 # An outside share rides the database half, which is skipped
                 # exactly when the share is outside (R-338).
                 pull_share=False,
                 gates=held.guard,
-                **_seam("runner", runner),
-                **_seam("process_lister", process_lister),
+                **_seam("runner", runner), **_seam("process_lister", process_lister),
             )
         except backup.BackupRefused as exc:
             raise _refused(exc) from exc
@@ -322,14 +307,10 @@ def recover_under_bare_metal_session(
             )
             completed.append(half)
         return BareMetalReport(
-            target=decided.target,
-            database_target=decided.database_target,
-            mirror=ran_labels[MIRROR_HALF],
-            database=ran_labels[DATABASE_HALF],
-            dry_run=dry_run,
+            target=decided.target, database_target=decided.database_target,
+            mirror=ran_labels[MIRROR_HALF], database=ran_labels[DATABASE_HALF], dry_run=dry_run,
             absent=decided.absent_sidecars if elsewhere is None else (),
-            snapshot=decided.snapshot,
-            recorded_volume=decided.recorded_volume,
+            snapshot=decided.snapshot, recorded_volume=decided.recorded_volume,
             database_elsewhere=elsewhere,
         )
 
@@ -344,23 +325,16 @@ def _recovered(report: BareMetalReport) -> dict[str, Any]:
     ]
     items += [{"half": DATABASE_HALF, "transfer": label} for label in report.database]
     return {
-        "digest": digest_of(
-            {
-                "kind": "restore.bare-metal",
-                "target": str(report.target),
-                "snapshot": report.snapshot,
-                "recorded_volume": report.recorded_volume,
-                "dry_run": report.dry_run,
-            }
-        ),
+        "digest": digest_of({
+            "kind": "restore.bare-metal", "target": str(report.target),
+            "snapshot": report.snapshot, "recorded_volume": report.recorded_volume,
+            "dry_run": report.dry_run,
+        }),
         "items": items,
         "totals": {
-            "mirror_transfers": len(report.mirror),
-            "database_transfers": len(report.database),
-            "dry_run": report.dry_run,
-            "absent_sidecars": list(report.absent),
-            "snapshot": report.snapshot,
-            "recorded_volume": report.recorded_volume,
+            "mirror_transfers": len(report.mirror), "database_transfers": len(report.database),
+            "dry_run": report.dry_run, "absent_sidecars": list(report.absent),
+            "snapshot": report.snapshot, "recorded_volume": report.recorded_volume,
             "target": str(report.target),
             # Where the database is, whichever half put it there.
             "database_target": str(report.database_elsewhere or report.database_target),
@@ -379,11 +353,9 @@ def perform_bare_metal(ctx) -> Envelope:
     """
     cfg = load_config(("session.restore_cli",))
     report = recover_under_bare_metal_session(
-        cfg,
-        target=Path(ctx.args.target).expanduser().absolute(),
+        cfg, target=Path(ctx.args.target).expanduser().absolute(),
         accepted=ctx.args.accept_replacement,
-        dry_run=ctx.args.dry_run,
-        snapshot=ctx.args.snapshot,
+        dry_run=ctx.args.dry_run, snapshot=ctx.args.snapshot,
         snapshot_volume=ctx.args.snapshot_volume,
     )
     return ctx.envelope(data=_recovered(report))

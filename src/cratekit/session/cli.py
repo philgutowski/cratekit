@@ -61,11 +61,9 @@ def build_ack(parser, entry) -> None:
     """
     del entry
     parser.add_argument(
-        "--as",
-        dest="as_actor",
+        "--as", dest="as_actor",
         choices=(session.SESSION_ACTOR,),
-        default=None,
-        help=(
+        default=None, help=(
             "mint as the session in one command, with no gate: the backup ages "
             "are read and the acknowledgment is recorded only while both are "
             "under five days old"
@@ -94,8 +92,7 @@ def _rendered_ages(cfg: config.Config, now: datetime) -> list[dict[str, Any]]:
         ) from exc
     return [
         {
-            "portion": str(entry.portion),
-            "state": str(entry.state),
+            "portion": str(entry.portion), "state": str(entry.state),
             "age_seconds": entry.age.total_seconds() if entry.age is not None else None,
             "completed_at": (
                 entry.completed_at.isoformat() if entry.completed_at is not None else None
@@ -118,10 +115,8 @@ def _on_record(cfg: config.Config, now: datetime) -> dict[str, Any] | None:
     if recorded is None:
         return None
     return {
-        "actor": recorded.actor,
-        "recorded_at": recorded.recorded_at.isoformat(),
-        "expires_at": recorded.expires_at.isoformat(),
-        "valid": recorded.valid_at(now),
+        "actor": recorded.actor, "recorded_at": recorded.recorded_at.isoformat(),
+        "expires_at": recorded.expires_at.isoformat(), "valid": recorded.valid_at(now),
     }
 
 
@@ -169,15 +164,7 @@ def record_ack(ctx) -> Envelope:
                 }
                 for entry in recorded_ages
             ],
-            "summary": {
-                "recorded": True,
-                "actor": acknowledgment.actor,
-                "rule": acknowledgment.rule,
-                "decided_by": acknowledgment.decided_by,
-                "recorded_at": acknowledgment.recorded_at.isoformat(),
-                "expires_at": acknowledgment.expires_at.isoformat(),
-                "shown": recorded_ages,
-            },
+            "summary": {"recorded": True, **_described(acknowledgment)},
         }
     )
 
@@ -195,17 +182,24 @@ def _expiry_row(acknowledgment: session.Acknowledgment, *, minted: bool) -> dict
     }
 
 
-def _summary(acknowledgment: session.Acknowledgment, *, minted: bool) -> dict[str, Any]:
-    """What ``--as session`` reports, minted now or found on record."""
+def _described(acknowledgment: session.Acknowledgment) -> dict[str, Any]:
+    """An acknowledgment as both mints report it, read off the record written."""
     return {
-        "recorded": minted,
-        "already_valid": not minted,
         "actor": acknowledgment.actor,
         "rule": acknowledgment.rule,
         "decided_by": acknowledgment.decided_by,
         "recorded_at": acknowledgment.recorded_at.isoformat(),
         "expires_at": acknowledgment.expires_at.isoformat(),
         "shown": [entry.to_json() for entry in acknowledgment.shown],
+    }
+
+
+def _summary(acknowledgment: session.Acknowledgment, *, minted: bool) -> dict[str, Any]:
+    """What ``--as session`` reports, minted now or found on record."""
+    return {
+        "recorded": minted,
+        "already_valid": not minted,
+        **_described(acknowledgment),
     }
 
 
@@ -304,36 +298,24 @@ def release_lock(ctx) -> Envelope:
         {"key": "session.record", "status": "ok", "detail": f"abandoned {sid}, its holder is gone"}
         for sid in abandoned
     ]
+    records = {"abandoned": abandoned, "kept": kept}
     if cleared is None:
         return ctx.envelope(
             data={
                 "checks": checks,
                 "summary": {
-                    "released": False,
-                    "recorded": False,
-                    "unreadable": unreadable,
-                    "abandoned": abandoned,
-                    "kept": kept,
+                    "released": False, "recorded": False, "unreadable": unreadable, **records
                 },
             },
             outcome=Outcome.OK if abandoned else Outcome.NO_OP,
         )
+    lock = {"key": "session.lock", "status": "ok", "detail": cleared.describe()}
     return ctx.envelope(
         data={
-            "checks": [
-                {"key": "session.lock", "status": "ok", "detail": cleared.describe()},
-                *checks,
-            ],
-            "summary": {
-                "released": True,
-                "holder": cleared.to_json(),
-                "abandoned": abandoned,
-                "kept": kept,
-            },
+            "checks": [lock, *checks],
+            "summary": {"released": True, "holder": cleared.to_json(), **records},
         }
     )
 
 
-__all__ = [
-    "build_ack", "build_release", "record_ack", "release_lock",
-]
+__all__ = ["build_ack", "build_release", "record_ack", "release_lock"]
