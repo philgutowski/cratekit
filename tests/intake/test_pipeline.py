@@ -61,7 +61,6 @@ def test_identification_only_downloads_nothing_and_writes_a_tracklist(tmp_path, 
     with pytest.raises(CratekitError) as excinfo:
         pipeline.identify_only(source, identifier=fake_identifier)
     assert excinfo.value.cause.reason == "intake-recognition-unready"
-
     monkeypatch.setattr(recognize.secrets, "exists", lambda name: True)
     # BOTH binaries, because the gate names both: a build that could carve
     # but not measure would spend before it knew how much.
