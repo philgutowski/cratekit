@@ -11,8 +11,6 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 from cratekit.cli.output import digest_of
 from cratekit.core import config, drift, locations, rb_writer, session, tags, tree_registry
 from cratekit.core.cause import CratekitError, Remedy, refuse
-from cratekit.favorites import colour as colour_mod
-from cratekit.favorites import placement
 from cratekit.intake import ingest, label_filing, native, set_playlist
 from cratekit.intake.native import (
     _ORIGIN,
@@ -42,6 +40,7 @@ from cratekit.intake.native import (
 from cratekit.write import metadata, metadata_cli, routing_pass, row_link, trees
 
 if TYPE_CHECKING:
+    from cratekit.favorites import colour as colour_mod
     from cratekit.intake.account_playlists import Left
 
 
@@ -487,6 +486,9 @@ def _favorites_plan(
     taken out by hand and still hearted joins again, since dropping a
     favourite takes both hand steps.
     """
+    from cratekit.favorites import colour as colour_mod  # noqa: PLC0415 - favorites is toggleable
+    from cratekit.favorites import placement  # noqa: PLC0415 - favorites is toggleable
+
     writable = {str(row.target) for row in rows if row.action != UNSUPPORTED}
     kept = tuple(item for item in hearts if str(item.target) in writable)
     if not (kept or owned) or not source:

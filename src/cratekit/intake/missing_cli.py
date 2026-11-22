@@ -50,7 +50,7 @@ import shlex
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cratekit.acquire import listdoc, match, match_cli
 from cratekit.cli.output import Envelope
@@ -59,7 +59,9 @@ from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import candidates, land_cli, landing
 from cratekit.intake import cli as intake_cli
-from cratekit.label import catalogue
+
+if TYPE_CHECKING:
+    from cratekit.label import catalogue
 
 #: The payload key ``crate sync all`` stamps each job it queues with.
 RUN_ID = "run_id"
@@ -362,6 +364,8 @@ def _catalogue_once(cfg=None) -> Callable[[], catalogue.Catalogue]:
 
     def get() -> catalogue.Catalogue:
         if not held:
+            from cratekit.label import catalogue  # noqa: PLC0415 - labels is toggleable
+
             held.append(catalogue.resolve(cfg if cfg is not None else intake_cli._load()))
         return held[0]
 

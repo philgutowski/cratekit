@@ -28,12 +28,13 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 from cratekit.adopt import placements as adopt_placements
 from cratekit.core import config, convergence, drift, rb_writer, session, tree_registry
 from cratekit.core.cause import CratekitError, Remedy, refuse
-from cratekit.favorites import colour as colour_mod
-from cratekit.favorites import placement
 from cratekit.intake import ingest, label_filing, set_playlist
 from cratekit.write import metadata_cli, row_link, trees
 
 if TYPE_CHECKING:
+    from cratekit.favorites import colour as colour_mod
+    from cratekit.favorites import placement
+
     # Annotation only: the module that defines them reaches this one.
     from cratekit.intake.account_playlists import Left, Member
 
@@ -336,6 +337,7 @@ class FavoritesPlan:
         return tuple(month for month in self.months if month not in self.present)
 
     def home(self) -> placement.Home:
+        from cratekit.favorites import placement  # noqa: PLC0415 - favorites is toggleable
         return placement.Home(
             source_name=self.source_name, source_id=self.source_id,
             folder_id=self.folder_id, folder_name=self.folder_name, present={},
@@ -872,6 +874,7 @@ def apply_rows(
                 to_colour = [content_id for content_id, _month in pairs]
                 pairs.extend((one.content_id, one.month) for one in plan.favorites.owned)
                 to_colour.extend(plan.favorites.colour)
+                from cratekit.favorites import placement  # noqa: PLC0415 - favorites is toggleable
                 placed = placement.place(
                     db, plan.favorites.home(), pairs, pink=plan.favorites.pink,
                     to_colour=to_colour, held=plan.favorites.held,
@@ -1029,6 +1032,7 @@ def _record_landing_commit(
         record.detail[label_filing.PROVIDER_KEY] = dict(labels_written.provider)
     # THE HEARTS UNDER THEIR OWN KEY (U120): the Favorites folder is nobody's
     # registered tree, so a restore sees them apart from the memberships.
+    from cratekit.favorites import placement  # noqa: PLC0415 - favorites is toggleable
     if placed is not None and (hearts > 0 or coloured > 0):
         record.detail[placement.PLACED_KEY] = placed.to_json()
     changes = []
