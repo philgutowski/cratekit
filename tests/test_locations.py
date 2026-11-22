@@ -1,31 +1,15 @@
 """The Location primitives: the composition-form rule and the KTD27 emitter invariant.
 
-Two properties are under test and they fail in opposite directions.
-
 The COMPARISON rule fails by reporting a present file as absent, which is how 144
-still-referenced accented files were deleted. Every test here that compares two
-spellings of one name is guarding that.
+still-referenced accented files were deleted. The EMITTER rule (KTD27) fails by
+making rekordbox create a second collection row: an emitted ``Location`` one byte
+off its own output is enough, so the character table pins every printable ASCII
+character as literal or encoded.
 
-The EMITTER rule (KTD27) fails by reporting an absent file as present, or rather
-by making rekordbox create a second collection row instead of matching the
-existing one. An emitted ``Location`` that differs from rekordbox's own output by
-a single byte is enough. So the character-class table below is exhaustive rather
-than illustrative: it pins every printable ASCII character as literal or encoded,
-so that widening or narrowing the safe set fails loudly instead of producing
-duplicate rows in somebody's library six months later.
-
-ON FIXTURES. Nothing here is copied from a real library. The plan forbids
-shipping a real export string or a real catalog identifier even in a test, and
-the property under test is the encoding RULE rather than any particular string.
-The synthetic names below are built to exercise exactly the character classes
-that matter: a space, a literal exclamation mark, an ampersand, an apostrophe,
-and an accented character in both composition forms.
-
-The rule these fixtures stand in for WAS verified against real output. The
-encoder reproduces all 10,070 ``Location`` values in a live rekordbox export
-byte for byte, and that measurement is what corrected two defects in the ported
-encoder: uppercase percent escapes where rekordbox writes lowercase, and ``#``
-encoded where rekordbox writes it literally.
+Nothing here is copied from a real library; the synthetic names exercise the
+classes that matter. The rule WAS verified against all 10,070 ``Location``
+values of a live export byte for byte, which corrected lowercase escapes and a
+literal ``#`` in the ported encoder.
 """
 
 from __future__ import annotations
@@ -54,20 +38,14 @@ from tests.test_config import parsed
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 
-# Third-party source, vendored because its upstream was deleted (KTD4). Excluded
-# from the one-decoder guard below and from nothing else. See the comment at the
-# exclusion for why that asymmetry is deliberate rather than convenient.
+# Vendored third-party source (KTD4), excluded from the one-decoder guard only.
 _VENDOR_ROOT = SRC_ROOT / "cratekit" / "_vendor"
 
-# One synthetic filename spelled two ways.
-#   composed:   LATIN SMALL LETTER E WITH ACUTE, U+00E9
-#   decomposed: LATIN SMALL LETTER E, U+0065, then COMBINING ACUTE ACCENT, U+0301
-# Same name to a human, same file on disk, different codepoint sequences to ==.
+# One synthetic filename spelled two ways: U+00E9, and U+0065 then U+0301.
 NFC_STEM = "Caf\u00e9 Session"
 NFD_STEM = "Cafe\u0301 Session"
 
-# The character-class golden. Every class that has ever mattered, in one name:
-# a space, an apostrophe, an ampersand, a literal exclamation mark, an accent.
+# Space, apostrophe, ampersand, literal exclamation mark and accent, in one name.
 GOLDEN_STEM = "It's Set 01 - Caf\u00e9 & Friends!"
 GOLDEN_ROOT = "/Volumes/Library/Music"
 GOLDEN_LOCATION = (
@@ -76,18 +54,11 @@ GOLDEN_LOCATION = (
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The composition-form rule
-# ═══════════════════════════════════════════════════════════════════════════
+# The composition-form rule.
 
 
 def test_the_two_spellings_are_not_equal_without_normalization():
-    """The premise. If this ever passes, nothing else in this file is needed.
-
-    Asserted explicitly because the bug is invisible in a terminal: the two
-    strings PRINT identically. Somebody debugging the orphan sweep looked at
-    both, saw the same name twice, and concluded the comparison was fine.
-    """
+    """The premise, asserted because the two strings PRINT identically."""
     assert NFD_STEM != NFC_STEM
     assert len(NFD_STEM) == len(NFC_STEM) + 1
 
@@ -108,11 +79,7 @@ def test_normalization_is_idempotent():
 
 
 def test_a_path_differing_only_by_composition_form_compares_equal():
-    """The plan's test scenario, stated as the set-membership operation that failed.
-
-    A set is what the orphan sweep actually used. Equality is the same question
-    with a friendlier failure mode.
-    """
+    """Stated as the set membership the orphan sweep actually used."""
     on_disk = f"{GOLDEN_ROOT}/{NFD_STEM}.flac"
     from_export = f"{GOLDEN_ROOT}/{NFC_STEM}.flac"
     assert norm_for_compare(on_disk) == norm_for_compare(from_export)
@@ -120,26 +87,14 @@ def test_a_path_differing_only_by_composition_form_compares_equal():
 
 
 def test_a_path_differing_by_content_does_not_compare_equal():
-    """The other half, and the half that makes the guard worth having.
-
-    A normalizer that made everything equal would also pass the test above. This
-    is what stops somebody "fixing" a future failure by loosening the rule until
-    two genuinely different files match, which would move the damage from
-    deleting a present file to deleting the wrong one.
-    """
+    """A normalizer making everything equal would pass the test above."""
     one = norm_for_compare(f"{GOLDEN_ROOT}/{NFC_STEM}.flac")
     other = norm_for_compare(f"{GOLDEN_ROOT}/{NFC_STEM} (Remix).flac")
     assert one != other
 
 
 def test_case_only_differences_are_not_normalized_away():
-    """A documented NON-property, asserted so nobody assumes it.
-
-    Two names differing only in case are a real collision on a case-insensitive
-    volume, and this function will not report them equal. That case is covered
-    by the device-and-inode proof that gates a deletion. An implementer who
-    assumes the normalizer handles it ships a guard that silently passes.
-    """
+    """A documented NON-property: the device-and-inode proof covers case."""
     assert norm_for_compare("Track.flac") != norm_for_compare("track.flac")
 
 
@@ -157,14 +112,7 @@ def test_encode_then_decode_converges_across_forms():
 
 
 def test_the_encoder_emits_one_location_for_both_composition_forms():
-    """The KTD27 defect the ported encoder carried, made executable.
-
-    The source encoder percent-encoded whatever form it was handed, so a
-    decomposed on-disk name produced ``Cafe%cc%81`` while rekordbox's own export
-    of that same file said ``Caf%c3%a9``. One file, two Location strings, and by
-    KTD27 a byte mismatch is what makes rekordbox create a duplicate row instead
-    of matching the existing one.
-    """
+    """The ported encoder wrote ``Cafe%cc%81`` where rekordbox writes ``Caf%c3%a9``."""
     nfd = location_url(Path(f"{GOLDEN_ROOT}/{NFD_STEM}.flac"))
     nfc = location_url(Path(f"{GOLDEN_ROOT}/{NFC_STEM}.flac"))
     assert nfd == nfc
@@ -172,9 +120,7 @@ def test_the_encoder_emits_one_location_for_both_composition_forms():
     assert "%c3%a9" in nfd
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# KTD27: the emitted Location is byte-identical to rekordbox's own
-# ═══════════════════════════════════════════════════════════════════════════
+# KTD27: the emitted Location is byte-identical to rekordbox's own.
 
 
 def test_the_character_class_golden_round_trips_byte_for_byte():
@@ -185,12 +131,7 @@ def test_the_character_class_golden_round_trips_byte_for_byte():
 
 
 def test_an_emitted_location_is_pure_ascii():
-    """Non-ASCII must arrive as percent-encoded UTF-8 bytes, never raw.
-
-    A raw multibyte character in the attribute would still be valid XML, so
-    nothing downstream would complain. It would simply not match the row
-    rekordbox wrote, which is the failure this whole section exists to prevent.
-    """
+    """Raw multibyte text is valid XML and silently matches no rekordbox row."""
     emitted = location_url(Path(f"{GOLDEN_ROOT}/{NFD_STEM}.flac"))
     assert emitted.isascii()
     emitted.encode("ascii")  # raises rather than asserting, if the above regresses
@@ -219,23 +160,13 @@ def test_an_emitted_location_is_pure_ascii():
     ],
 )
 def test_every_printable_ascii_character_is_pinned_literal_or_encoded(character, expected):
-    """The exhaustive table. An edit to the safe set fails HERE, not in a library.
-
-    Two entries carry most of the weight. The space must encode and the ``!``
-    must not, which is the pair KTD27 names and the pair that separates
-    rekordbox's rule from every off-the-shelf URL quoter. The lowercase hex is
-    the second: rekordbox writes ``%3c``, Python's ``quote`` writes ``%3C``, and
-    that difference alone failed 711 of 10,070 real rows.
-    """
+    """An edit to the safe set fails HERE. Space encodes and ``!`` does not (KTD27);
+    the hex is lowercase, which alone failed 711 of 10,070 real rows."""
     assert location_url("/" + character) == "file://localhost/" + expected
 
 
 def test_the_printable_ascii_table_is_exhaustive():
-    """A character with no row above is a character nobody decided about.
-
-    Without this, adding a character to the safe set and forgetting to add its
-    row leaves it silently unpinned, which is the same as not having the table.
-    """
+    """A character with no row above is a character nobody decided about."""
     covered = set(string.ascii_letters + string.digits + REKORDBOX_SAFE_CHARS)
     covered |= set(" \"%&'<>?[\\]^`{|}")
     printable = set(string.printable) - set("\t\n\r\x0b\x0c")
@@ -250,60 +181,39 @@ def test_percent_escapes_are_lowercase():
 
 
 def test_the_hash_character_stays_literal():
-    """rekordbox writes ``#`` raw. The ported encoder wrote ``%23`` and was wrong.
-
-    Nineteen real rows failed on this alone, all of them tracks whose title
-    carries a numbering like ``Untitled #2``.
-    """
+    """rekordbox writes ``#`` raw; ``%23`` failed nineteen real rows."""
     assert location_url("/x/Untitled #2.flac") == "file://localhost/x/Untitled%20#2.flac"
 
 
 def test_a_literal_percent_in_a_filename_survives_the_round_trip():
-    """The escape-lowercasing pass must not reach into ordinary filename text.
-
-    A name containing the text ``%C3`` encodes its ``%`` to ``%25`` and leaves
-    ``C3`` as ordinary characters. Lowercasing those would rename the file.
-    """
+    """The escape-lowercasing pass must not reach into ordinary filename text."""
     path = "/x/100%C3 Mix.flac"
     assert location_to_path(location_url(path)) == path
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Decoding: the shapes rekordbox has actually written
-# ═══════════════════════════════════════════════════════════════════════════
+# Decoding: the shapes rekordbox has actually written.
 
 
-def test_both_url_spellings_decode():
-    """rekordbox has shipped both. A decoder that knows one silently drops the other."""
-    assert location_to_path("file://localhost/x/a%20b.flac") == "/x/a b.flac"
-    assert location_to_path("file:///x/a%20b.flac") == "/x/a b.flac"
-
-
-def test_a_plain_path_containing_percent_twenty_is_not_decoded():
-    """The trap in the ported decoder's fallback branch.
-
-    ``/x/50%20off.flac`` is a real filename a real person has. Percent-decoding
-    it produces ``/x/50 off.flac``, a path that does not exist, and the caller
-    reports a present file as missing. The source system patched this in ONE
-    caller; here it lives in the primitive, because the caller that forgets is
-    the one that causes the incident.
-    """
-    assert location_to_path("/x/50%20off.flac") == "/x/50%20off.flac"
-
-
-def test_a_streaming_pseudo_location_passes_through_untouched():
-    """Not every Location is a path. A collection holds streamed rows too."""
-    assert location_to_path("/v4/catalog/tracks/17477108/") == "/v4/catalog/tracks/17477108/"
+@pytest.mark.parametrize(
+    "location,expected",
+    [
+        # rekordbox has shipped both URL spellings.
+        ("file://localhost/x/a%20b.flac", "/x/a b.flac"),
+        ("file:///x/a%20b.flac", "/x/a b.flac"),
+        # A real filename; decoding it would report a present file as missing.
+        ("/x/50%20off.flac", "/x/50%20off.flac"),
+        # Not every Location is a path: a collection holds streamed rows too.
+        ("/v4/catalog/tracks/17477108/", "/v4/catalog/tracks/17477108/"),
+    ],
+    ids=["localhost-url", "empty-authority-url", "plain-path-with-percent-twenty-untouched",
+         "streaming-pseudo-location-untouched"],
+)
+def test_location_to_path(location, expected):
+    assert location_to_path(location) == expected
 
 
 def test_a_non_localhost_authority_is_refused_rather_than_mangled():
-    """Refusing beats guessing.
-
-    The ported decoder fell through and returned ``file://host/x.flac`` as if it
-    were a filesystem path. The caller then failed an existence check and
-    reported a missing FILE, so the cause and the symptom had nothing to do with
-    each other and the real cause was invisible.
-    """
+    """The ported decoder returned it as a path, so a caller reported a missing FILE."""
     with pytest.raises(LocationDecodeError, match="not this machine"):
         location_to_path("file://otherhost/x/a%20b.flac")
 
@@ -313,34 +223,21 @@ def test_looks_like_location_separates_a_url_from_a_path():
     assert not looks_like_location("/x/50%20off.flac")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The Windows seam (R1)
-# ═══════════════════════════════════════════════════════════════════════════
+# The Windows seam (R1).
 
 
 def test_a_backslash_on_posix_is_a_filename_character_and_is_encoded():
-    """The two platforms disagree about what a backslash MEANS, so it is a seam.
-
-    On POSIX a backslash is an ordinary character in a filename and must survive
-    as ``%5c``. Silently converting it to a separator would rewrite the path.
-    """
+    """On POSIX a backslash is a filename character and must survive as ``%5c``."""
     assert location_url("/x/a\\b.flac", separator="/") == "file://localhost/x/a%5cb.flac"
 
 
 def test_the_windows_separator_becomes_a_url_separator():
-    """The other half of the same seam, exercised from a POSIX machine.
-
-    Adding Windows should be a new argument to this function, not a rewrite of
-    the encoder. Passing the separator explicitly is what proves that, before
-    anybody actually runs this on Windows.
-    """
+    """The other half of the seam: Windows is an argument, not a rewrite."""
     emitted = location_url("C:\\Music\\Set 01.flac", separator="\\")
     assert emitted == "file://localhost/C:/Music/Set%2001.flac"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The volume prefix map
-# ═══════════════════════════════════════════════════════════════════════════
+# The volume prefix map.
 
 CURRENT_ROOT = "/Volumes/Library"
 LEGACY_ROOT = "/Volumes/MyLibrary"
@@ -353,7 +250,7 @@ def test_a_path_already_under_the_root_resolves_as_itself():
 
 
 def test_a_configured_prefix_resolves_a_legacy_volume_path():
-    """The plan's scenario. Without the map, most of a real library resolves to nothing."""
+    """Without the map, most of a real library resolves to nothing."""
     rules = [PrefixRule(LEGACY_ROOT, CURRENT_ROOT)]
     result = resolve_recorded_path(f"{LEGACY_ROOT}/Music/t.flac", root=CURRENT_ROOT,
                                    prefix_map=rules)
@@ -363,13 +260,7 @@ def test_a_configured_prefix_resolves_a_legacy_volume_path():
 
 
 def test_an_unmapped_prefix_is_reported_and_never_guessed():
-    """The other half of the plan's scenario, and the half with teeth.
-
-    No path comes back at all, so a caller cannot accidentally treat an
-    unresolved row as a resolved one. The prefix DOES come back, because the
-    doctor check groups rows by it and shows the user "these rows record this
-    prefix" instead of one failure per row.
-    """
+    """No path comes back; the prefix does, for doctor to group rows by."""
     result = resolve_recorded_path("/Volumes/MusicLibrary/x/t.flac", root=CURRENT_ROOT)
     assert result.resolution is Resolution.UNMAPPED
     assert result.path is None
@@ -377,12 +268,7 @@ def test_an_unmapped_prefix_is_reported_and_never_guessed():
 
 
 def test_the_rewrite_is_anchored_and_not_a_substring_replace():
-    """The ported implementation used ``str.replace``, which is neither.
-
-    ``str.replace`` rewrites EVERY occurrence anywhere in the string, so a path
-    holding the old volume name deeper down comes back corrupted while reporting
-    success. Corrupted-but-confident is worse than unresolved.
-    """
+    """``str.replace`` rewrote every occurrence, corrupting a path while reporting success."""
     rules = [PrefixRule(LEGACY_ROOT, CURRENT_ROOT)]
     nested = f"{CURRENT_ROOT}/Music/Archive{LEGACY_ROOT}/t.flac"
     result = resolve_recorded_path(nested, root=CURRENT_ROOT, prefix_map=rules)
@@ -391,12 +277,7 @@ def test_the_rewrite_is_anchored_and_not_a_substring_replace():
 
 
 def test_a_sibling_sharing_a_string_prefix_does_not_match():
-    """A rule for one volume must not swallow another whose name extends it.
-
-    A drive and a drive whose name is that name plus a suffix are two different
-    volumes that happen to share leading characters. Rewriting the second on the
-    first's rule produces a path pointing at nothing while reporting success.
-    """
+    """A rule for one volume must not swallow another whose name extends it."""
     rules = [PrefixRule(LEGACY_ROOT, CURRENT_ROOT)]
     result = resolve_recorded_path(f"{LEGACY_ROOT}Archive/t.flac", root=CURRENT_ROOT,
                                    prefix_map=rules)
@@ -404,11 +285,7 @@ def test_a_sibling_sharing_a_string_prefix_does_not_match():
 
 
 def test_the_map_is_ordered_and_the_first_match_wins():
-    """Order is load-bearing because one prefix can be another's prefix.
-
-    An unordered mapping resolves this pair differently depending on iteration
-    order, which is a bug that appears and disappears between runs.
-    """
+    """Order is load-bearing because one prefix can be another's prefix."""
     rules = [
         PrefixRule(f"{LEGACY_ROOT}/Music", f"{CURRENT_ROOT}/Audio"),
         PrefixRule(LEGACY_ROOT, CURRENT_ROOT),
@@ -420,11 +297,7 @@ def test_the_map_is_ordered_and_the_first_match_wins():
 
 
 def test_a_rule_matches_a_prefix_written_in_either_composition_form():
-    """A volume named with an accent is ordinary, and the user types one form.
-
-    Normalizing both the rule and the path removes the question of whether the
-    rewrite happens before or after normalization: the answer stops mattering.
-    """
+    """A volume named with an accent is ordinary, and the user types one form."""
     legacy_nfd = "/Volumes/" + NFD_STEM
     legacy_nfc = "/Volumes/" + NFC_STEM
     rules = [PrefixRule(legacy_nfd, CURRENT_ROOT)]
@@ -435,12 +308,7 @@ def test_a_rule_matches_a_prefix_written_in_either_composition_form():
 
 
 def test_resolution_does_not_check_existence():
-    """Kept apart on purpose, because deletion needs the two categories separate.
-
-    The ported resolver returned None for BOTH "no rule maps this prefix" and
-    "the file is gone". One is a configuration error and one may be a file the
-    user is about to be asked to move to the Trash.
-    """
+    """An unmapped prefix and a gone file are separate categories for deletion."""
     result = resolve_recorded_path(f"{CURRENT_ROOT}/nothing/here.flac", root=CURRENT_ROOT)
     assert result.resolution is Resolution.UNDER_ROOT
     assert result.path == f"{CURRENT_ROOT}/nothing/here.flac"
@@ -460,74 +328,48 @@ def test_leading_prefix_names_no_platform_mount_root():
     assert leading_prefix("relative/x.flac") is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The drift guard: exactly one decoder in the package
-# ═══════════════════════════════════════════════════════════════════════════
+# The drift guard: exactly one decoder in the package.
 
 #: The four call names that encode or decode a Location, by name alone.
 _LOCATION_CODEC_CALLS = frozenset({"unquote", "unquote_plus", "quote", "quote_plus"})
 
-#: The one call in our own tree that wears this shape and is not this shape,
-#: as (module, function). Narrow on BOTH axes on purpose, so the day
-#: ``searchers.py`` decodes something it is still reported.
-#:
-#: U56's catalogue searcher builds a SEARCH QUERY STRING for three public
-#: record catalogues, ``?q=artist+title``. It is the same distinction this
-#: guard's vendored-tree paragraph below already draws, now arriving in code
-#: we wrote: that module never sees a rekordbox Location, has no concept of
-#: one, and cannot reach the code that does. What makes the exemption safe to
-#: state this narrowly rather than merely plausible is the function itself.
-#: ``quote_plus`` encodes a space as ``+``, which is a query-string
-#: convention and is WRONG for a path: a Location encoder written with it
-#: would corrupt every file whose name has a space, which is most of a music
-#: library. So this call cannot be the seventh copy of the decoder even by
-#: accident. The four-name scan cannot see that, and widening it to reason
-#: about intent would make it a thing nobody trusts.
-#:
-#: The alternative, spelling the same encoding as ``urlencode`` so the scan
-#: does not match the name, is what P7 calls training people to route around
-#: a guard. Stating the exemption where it can be read is the honest form.
+#: The one call that wears this shape and is not it, as (module, function),
+#: narrow on both axes. U56's searcher builds a ``?q=artist+title`` query string
+#: for public catalogues and never sees a Location; ``quote_plus`` encodes a space
+#: as ``+``, which is wrong for a path, so it cannot be a seventh decoder even by
+#: accident. Spelling it as ``urlencode`` to dodge the scan is what P7 calls
+#: routing around a guard; stating the exemption is the honest form.
 _PERMITTED_CODEC_CALLS = frozenset({("cratekit/tagging/searchers.py", "quote_plus")})
 
 
 def _location_codec_offenders(root: Path) -> list[str]:
     """Every call outside the one decoder that encodes or decodes a Location.
 
-    One line per offending call, ``<path relative to root> calls <name>()``,
-    in sorted file order and walk order within a file. ``root`` is ``SRC_ROOT``
-    for the guard and a planted tree for the tests that prove it still bites.
+    One line per call, ``<path relative to root> calls <name>()``, in sorted
+    file order and walk order. The relative path is computed once per file
+    (U253): once per node it cost about forty seconds of a suite run.
 
-    The path relative to ``root`` is computed once per file, before the walk
-    over its nodes (U253). Computed once per node, as it was, the guard spent
-    most of about forty seconds of a suite run in ``pathlib`` producing the
-    same string hundreds of thousands of times (measured at ``a7fcc9f4``).
+    A file whose text, read as Python reads identifiers (NFKC), never spells
+    ``quote`` cannot call any of the four names, so it is not parsed. That
+    skips most of the tree and finds exactly what a full parse would.
     """
     vendor_root = root / "cratekit" / "_vendor"
     offenders: list[str] = []
     for path in sorted(root.rglob("*.py")):
         if path.name == "locations.py":
             continue
-        # The vendored tree is out of scope for this guard, and only for this
-        # guard. It is third-party source we did not author and do not restyle,
-        # and the rule here is about OUR architectural discipline: one decoder,
-        # so a seventh copy cannot drift away from the composition-form
-        # handling. The vendored downloader does call unquote, twice, but on an
-        # HTTP download URL to derive a filename. It never sees a rekordbox
-        # Location, has no concept of one, and cannot reach the code that does.
-        #
-        # This distinction is the point, so it is worth stating plainly: a
-        # guard about how WE choose to organize code stops at code we wrote,
-        # while a guard about SAFETY or about what ships must cover everything,
-        # vendored trees included. The beatgrid guard, the secret scan, and the
-        # personal-literal scan all deliberately reach in here, and the vendored
-        # downloader is exactly why: it arrived writing a tempo tag in three
-        # containers and carrying live third-party credentials. Adding this
-        # exclusion to one of those would undo the reason they exist.
+        # The vendored tree is out of scope for this guard alone: it is about
+        # how WE organize code, and the vendored downloader's two unquote calls
+        # derive a filename from an HTTP URL. A SAFETY guard (beatgrid, secret
+        # scan, personal literals) must reach in here; that tree arrived writing
+        # tempo tags and carrying live credentials.
         if vendor_root in path.parents:
             continue
         relative = path.relative_to(root).as_posix()
-        tree = parsed(path.read_text())
-        for node in ast.walk(tree):
+        text = path.read_text()
+        if "quote" not in unicodedata.normalize("NFKC", text):
+            continue
+        for node in ast.walk(parsed(text)):
             called = None
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
@@ -540,13 +382,8 @@ def _location_codec_offenders(root: Path) -> list[str]:
 
 
 def test_no_module_outside_this_one_decodes_a_location_itself():
-    """Six copies of this decoder drifted apart once. This is what stops a seventh.
-
-    The consolidation in the source system was real but incomplete: two hand
-    rolled decoders survived it, and one of them omitted the composition-form
-    normalization entirely, which is the exact shape that cost 144 files. A
-    reviewer will not catch the eighth copy. A test will.
-    """
+    """Six copies of this decoder drifted apart once, one without the
+    composition-form step that cost 144 files. This stops a seventh."""
     offenders = _location_codec_offenders(SRC_ROOT)
     assert not offenders, (
         "Location encoding and decoding live in cratekit.core.locations and "
@@ -576,12 +413,7 @@ def test_the_sweep_still_reports_a_planted_decoder_by_its_relative_path(tmp_path
 
 
 def test_the_guard_itself_fails_naming_a_decoder_planted_under_its_root(tmp_path, monkeypatch):
-    """The guard, not only its sweep, bites: its root is the whole tree it is given.
-
-    Pointed at a planted source root, the guard fails and its message names the
-    planted module by its path under that root, so a guard narrowed to a corner
-    of the tree, or one that stops asserting on what the sweep found, fails here.
-    """
+    """The guard, not only its sweep, fails on a planted root and names the module."""
     _plant(
         tmp_path,
         "cratekit/library/planted.py",
@@ -602,12 +434,7 @@ def test_the_guard_itself_fails_naming_a_decoder_planted_under_its_root(tmp_path
 @pytest.mark.parametrize("shape", ["bare", "attribute"])
 @pytest.mark.parametrize("name", ["unquote", "unquote_plus", "quote", "quote_plus"])
 def test_the_sweep_reports_each_name_called_bare_or_as_an_attribute(tmp_path, name, shape):
-    """Each of the four names is reported in both call shapes, eight cells.
-
-    Spelled as a literal list rather than read from ``_LOCATION_CODEC_CALLS``,
-    so a name dropped from the constant is a failure here rather than a cell
-    that quietly disappears with it.
-    """
+    """A literal list, not ``_LOCATION_CODEC_CALLS``, so a dropped name fails here."""
     if shape == "bare":
         source = f"from urllib.parse import {name}\n\n{name}('a%20b')\n"
     else:
@@ -665,14 +492,8 @@ def test_the_permitted_quote_plus_is_excused_and_nothing_else_is(tmp_path):
 
 
 def test_the_sweep_skips_the_decoder_and_the_vendored_tree(tmp_path):
-    """The decoder's module and the vendored tree are skipped, and these lookalikes are not.
-
-    The vendored skip is the one directory, ``cratekit/_vendor`` under the root,
-    so a ``_vendor`` elsewhere or a sibling named like it is swept. The decoder's
-    skip is by file name, as it was before U253, so a module named
-    ``locations.py`` in any package is skipped too; only a differently named
-    neighbour is pinned here as swept.
-    """
+    """Only ``cratekit/_vendor`` under the root and files named ``locations.py``
+    are skipped; lookalikes are swept."""
     call = "from urllib.parse import unquote\n\ndef f(v):\n    return unquote(v)\n"
     _plant(tmp_path, "cratekit/core/locations.py", call)
     _plant(tmp_path, "cratekit/_vendor/downloader/fetch.py", call)
@@ -689,13 +510,8 @@ def test_the_sweep_skips_the_decoder_and_the_vendored_tree(tmp_path):
 
 
 def test_the_sweep_computes_each_relative_path_once_per_file(tmp_path, monkeypatch):
-    """U253's proof is a count: one ``relative_to`` per file swept, not per node.
-
-    Computed per node, as the brief measured it at ``a7fcc9f4``, the guard made
-    834,825 calls for 311 files and took about forty seconds of a suite run.
-    The files planted here have hundreds of nodes each, so a per node
-    computation is read as hundreds of calls.
-    """
+    """U253's proof is a count: one ``relative_to`` per file swept, not per node
+    (834,825 calls for 311 files at ``a7fcc9f4``)."""
     body = "".join(f"x{n} = [{n}, {n} + 1, ({n},)]\n" for n in range(100))
     for name in ("one", "two", "three"):
         _plant(tmp_path, f"cratekit/{name}.py", body)
@@ -719,16 +535,8 @@ def test_the_sweep_computes_each_relative_path_once_per_file(tmp_path, monkeypat
 
 
 def test_the_one_permitted_call_is_still_there_and_is_still_a_query_string():
-    """An exemption for a call nobody makes is an exemption nobody maintains.
-
-    The guard above names one permitted pair. If the searcher stops calling
-    ``quote_plus``, or the file moves, the exemption silently starts covering
-    nothing while still reading as a live carve-out, and the next author who
-    needs one adds a second beside it. So the pair is asserted to still match
-    something, and the call is asserted to still be what the exemption says it
-    is: a query string, built against a URL that names a public catalogue, and
-    never a path under the library.
-    """
+    """An exemption for a call nobody makes is an exemption nobody maintains, so
+    the pair still matches a call, and it still builds a catalogue query string."""
     source = (SRC_ROOT / "cratekit" / "tagging" / "searchers.py").read_text()
     calls = [
         node
@@ -749,21 +557,9 @@ def test_the_one_permitted_call_is_still_there_and_is_still_a_query_string():
 
 
 def test_the_vendor_exclusion_is_not_copied_into_the_safety_guards():
-    """The guard above skips the vendored tree. The safety guards must not.
-
-    This exists because the exclusion above is the tempting thing to copy. It
-    looks like boilerplate, it silences a failure, and applying it to the
-    beatgrid guard or the secret scan would silence those too, in the one place
-    where they have already earned their keep.
-
-    Concretely, on the day it was vendored, that tree wrote a tempo tag in
-    three containers and carried live third-party credentials in two files. The
-    beatgrid rule is not a style preference and the credential rule is not
-    ours to waive on someone else's code, so both must reach in there.
-
-    Asserted by construction rather than by reading: the beatgrid guard is
-    handed a real vendored module path and must still enumerate it.
-    """
+    """The guard above skips the vendored tree; the safety guards must not, since
+    that tree arrived writing tempo tags and carrying live credentials. Asserted
+    by construction: the beatgrid guard must still enumerate a vendored module."""
     from tests.test_no_beatgrid_ever import _package_modules
 
     assert _VENDOR_ROOT.is_dir(), "vendored tree missing; this guard has nothing to prove"
