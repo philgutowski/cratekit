@@ -34,6 +34,7 @@ from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import default_taxonomy
 from cratekit.tagging import cli as tag_cli
 from cratekit.tagging import published, searchers, tag
+from cratekit.tagging.discogs import _discogs_name, _remaining
 from tests._containers import synth_container
 from tests.test_catalogue_searcher import (
     ARTIST,
@@ -1059,9 +1060,9 @@ def test_the_general_catalogue_waits_for_a_discogs_that_was_asked_and_unread():
 
 def test_discogs_names_are_read_as_a_tag_spells_them():
     """R4. "Prodigy, The" is one artist, so The Orb does not match it."""
-    assert searchers._discogs_name("Prodigy, The") == "The Prodigy"
-    assert searchers._discogs_name("Moodymann (2)") == "Moodymann"
-    assert searchers._discogs_name("Theo Parrish*") == "Theo Parrish"
+    assert _discogs_name("Prodigy, The") == "The Prodigy"
+    assert _discogs_name("Moodymann (2)") == "Moodymann"
+    assert _discogs_name("Theo Parrish*") == "Theo Parrish"
     tracks = [{"position": "1", "type_": "track", "title": "Higher", "artists": [{"name": "Prodigy, The"}]}]
     fetch = routed(search=results(34), releases={34: release(34, artist="Various", tracks=tracks)})
     assert discogs_answer(searcher(fetch)("The Orb", "Higher")).answer == "miss"
@@ -1116,9 +1117,9 @@ def test_the_token_is_not_in_the_askers_repr():
 
 
 def test_a_remaining_count_that_is_not_ascii_digits_is_no_count():
-    assert searchers._remaining({searchers.DISCOGS_REMAINING_HEADER: "²"}) is None
-    assert searchers._remaining({searchers.DISCOGS_REMAINING_HEADER: " 7 "}) == 7
-    assert searchers._remaining({}) is None
+    assert _remaining({searchers.DISCOGS_REMAINING_HEADER: "²"}) is None
+    assert _remaining({searchers.DISCOGS_REMAINING_HEADER: " 7 "}) == 7
+    assert _remaining({}) is None
 
 
 def test_a_search_answering_404_is_unreachable_not_a_miss():

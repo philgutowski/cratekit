@@ -42,7 +42,7 @@ from cratekit.core import routing
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import default_taxonomy, load_taxonomy
-from cratekit.tagging import searchers
+from cratekit.tagging import catalogues, discogs, searchers, shops
 
 TAXONOMY = default_taxonomy()
 
@@ -826,13 +826,11 @@ def test_the_binder_hands_back_a_searcher_without_touching_the_network(monkeypat
     assert callable(bound)
 
 
-def test_the_module_names_no_declared_genre_display():
-    """R19, asserted over the source rather than trusted. This module is the most
-    tempted place in the repository to paste a vendor to folder map, because the
-    system it replaces has one, and a map pasted here works for one library and
-    quietly does nothing in the next.
-    """
-    source = Path(searchers.__file__).read_text(encoding="utf-8")
+@pytest.mark.parametrize("module", [searchers, catalogues, discogs, shops])
+def test_the_module_names_no_declared_genre_display(module):
+    """R19 over the source: a vendor to folder map pasted here works for one
+    library and quietly does nothing in the next."""
+    source = Path(module.__file__).read_text(encoding="utf-8")
     literals = {
         node.value
         for node in ast.walk(ast.parse(source))

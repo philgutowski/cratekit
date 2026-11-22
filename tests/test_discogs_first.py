@@ -30,7 +30,7 @@ from cratekit.core import routing, secrets, tags
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import default_taxonomy
-from cratekit.tagging import searchers, tag
+from cratekit.tagging import searchers, shops, tag
 from cratekit.tagging.tag import SearchHit, SourceAnswer
 from tests._containers import synth_container
 from tests.test_catalogue_searcher import (
@@ -214,7 +214,7 @@ def test_two_declines_keep_discogs_word_and_beatport_s_picture():
 
 
 def beatport_row_art() -> str:
-    return searchers._beatport_art({"release": {"release_image_uri": COVER}})
+    return shops._beatport_art({"release": {"release_image_uri": COVER}})
 
 
 def test_with_no_token_beatport_decides_exactly_as_before():
