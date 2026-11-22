@@ -21,7 +21,7 @@ from cratekit.core import config
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_cli, pair_discover
+from cratekit.sync import pair_check, pair_cli, pair_discover
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
@@ -415,7 +415,7 @@ def test_an_adoption_whose_plan_did_not_say_what_it_held_is_recorded_as_unknown(
 def test_a_place_held_by_an_earlier_build_reads_back_as_saying_nothing():
     from cratekit.core import held_plan
 
-    registry = pair_cli._held_classes()
+    registry = pair_check._held_classes()
     place = pair_cli.Place(FOLDER, f"{FOLDER} Techno", pair_cli.FOLDER_ADOPT, "f1")
     encoded = held_plan.encode(place, registry)
     encoded[held_plan.VALUE].pop("held")

@@ -17,7 +17,7 @@ import pytest
 from cratekit.core import held_plan, jobs
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_cli
+from cratekit.sync import pair_cli, pair_plan
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
@@ -281,7 +281,7 @@ def test_a_stop_in_the_middle_of_an_order_sends_no_move_again_and_a_later_sync_f
     assert pair_cli.PENDING in {w["code"] for w in done["warnings"]}
     # The continue's reading is kept on the pair; a later one that agrees
     # with it, read at least AGREE_AFTER on, finishes the order.
-    monkeypatch.setattr(pair_cli, "AGREE_AFTER", timedelta(0))
+    monkeypatch.setattr(pair_plan, "AGREE_AFTER", timedelta(0))
     code, finished = sync(args)
     assert code == int(ExitCode.OK), finished
     assert made.on_account() == ["t3", "t2", "t1"]

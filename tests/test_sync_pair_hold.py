@@ -19,7 +19,7 @@ import pytest
 from cratekit.core import held_plan
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
-from cratekit.sync import pair_cli, pair_merge
+from cratekit.sync import pair_check, pair_cli, pair_merge
 from cratekit.write import playlist_pair
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -49,7 +49,7 @@ class Counted:
             self.listings += 1
             return real(found, reference, **kwargs)
 
-        monkeypatch.setattr(pair_cli.intake_cli, "list_playlist_readable", listing)
+        monkeypatch.setattr(intake_cli, "list_playlist_readable", listing)
         tracks = w.account.playlist_tracks
 
         def read(playlist_id):
@@ -410,7 +410,7 @@ def _store(w):
 def test_a_real_plan_reads_back_equal_with_its_digest(world):
     w = world(account=("1", "3"), rekordbox=("1", "2"))
     planned = _a_plan(w)
-    registry = pair_cli._held_classes()
+    registry = pair_check._held_classes()
     back = held_plan.decode(json.loads(json.dumps(held_plan.encode(planned, registry))), registry)
     assert back == planned
     assert back.digest == planned.digest
@@ -420,7 +420,7 @@ def test_a_real_plan_reads_back_equal_with_its_digest(world):
 def test_a_merge_call_with_its_moments_reads_back_equal():
     from datetime import datetime, timezone
 
-    registry = pair_cli._held_classes()
+    registry = pair_check._held_classes()
     merged = pair_merge.Merged(
         order=("r:1",),
         leader=pair_merge.ACCOUNT,
@@ -435,7 +435,7 @@ def test_a_merge_call_with_its_moments_reads_back_equal():
 
 
 def test_a_class_the_registry_does_not_name_is_refused_both_ways():
-    registry = pair_cli._held_classes()
+    registry = pair_check._held_classes()
     stranger = pair_cli.Done(account_id="x")
     with pytest.raises(held_plan.Unheld, match="not a class this plan may hold"):
         held_plan.encode(stranger, registry)
@@ -455,7 +455,7 @@ def test_a_value_the_codec_cannot_carry_is_not_held(cfg):
 
 
 def test_a_held_plan_of_another_kind_or_run_is_no_plan(cfg):
-    registry = pair_cli._held_classes()
+    registry = pair_check._held_classes()
     plan = pair_cli.Plan()
     assert held_plan.hold("run-a", "sync.pair", plan, registry=registry, digest=plan.digest) == ""
     found, digest, _extra, why = held_plan.load(
@@ -479,7 +479,7 @@ def test_old_held_plans_are_pruned_and_the_new_one_kept(cfg):
     import os
     import time
 
-    registry = pair_cli._held_classes()
+    registry = pair_check._held_classes()
     plan = pair_cli.Plan()
     assert held_plan.hold("run-old", "sync.pair", plan, registry=registry, digest=plan.digest) == ""
     assert held_plan.hold("run-young", "sync.pair", plan, registry=registry, digest=plan.digest) == ""

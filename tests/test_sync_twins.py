@@ -22,7 +22,7 @@ from cratekit.label import catalogue, harvest
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_cli, twins, twins_cli
+from cratekit.sync import pair_cli, pair_model, pair_read, twins, twins_cli
 from cratekit.write import playlist_pair
 from tests import outbound_fakes
 from tests.cli_drive import drive
@@ -564,7 +564,7 @@ def test_the_mirrors_link_to_a_track_wins_and_a_link_to_a_removed_row_falls_thro
 def test_the_library_keeps_every_landed_account_playlists_source(world, cfg, monkeypatch):
     """Finding 1 of the U149 review: a generator of account ids was spent by the first."""
     monkeypatch.setattr(
-        pair_cli,
+        pair_read,
         "landed_inbox_playlists",
         lambda _cfg: (
             {"A": frozenset({"pa"}), "B": frozenset({"pb"}), "C": frozenset({"pc"})},
@@ -572,7 +572,7 @@ def test_the_library_keeps_every_landed_account_playlists_source(world, cfg, mon
         ),
     )
     monkeypatch.setattr(
-        pair_cli, "landed_isrcs", lambda _cfg, _db, ids: {"USZZZ2600099": tuple(sorted(ids))}
+        pair_read, "landed_isrcs", lambda _cfg, _db, ids: {"USZZZ2600099": tuple(sorted(ids))}
     )
     handle = world.open()
     try:
@@ -787,7 +787,7 @@ def test_the_pair_rule_still_refuses_a_playlist_under_cratekits_own_trees(top):
         playlist_id="p1", name="x", attribute=0, removed=False, ancestors=(("f1", top),)
     )
     with pytest.raises(CratekitError) as refused:
-        pair_cli._scope_rekordbox("p1", found, tops)
+        pair_model._scope_rekordbox("p1", found, tops)
     assert refused.value.cause.reason == "sync-pair-out-of-scope"
 
 
@@ -800,7 +800,7 @@ def test_the_pair_rule_lets_a_twin_pair():
         removed=False,
         ancestors=(("f1", twins.folder_name("2026")),),
     )
-    assert pair_cli._scope_rekordbox("p1", found, tops) is found
+    assert pair_model._scope_rekordbox("p1", found, tops) is found
 
 
 @pytest.mark.parametrize(

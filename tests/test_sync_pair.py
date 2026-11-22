@@ -21,7 +21,7 @@ from cratekit.label import catalogue
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import ledger, pairs
-from cratekit.sync import pair_cli
+from cratekit.sync import pair_cli, pair_read
 from tests import outbound_fakes
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, catalogue_factory
@@ -1081,7 +1081,7 @@ def test_each_landed_file_is_read_once_per_plan(world, cfg, tmp_path, monkeypatc
         read.append(recorded)
         return real(config_read, recorded)
 
-    monkeypatch.setattr(pair_cli, "file_identity", counted)
+    monkeypatch.setattr(pair_read, "file_identity", counted)
     code, envelope = drive([*VERB, ACCOUNT])
     assert code == int(ExitCode.DECISION_REQUIRED), envelope
     assert [one for one in read if one.endswith("/8.flac")] == [

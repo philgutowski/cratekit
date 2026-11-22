@@ -20,7 +20,7 @@ import pytest
 
 from cratekit.core import held_plan
 from cratekit.modules.outbound import tidal_account
-from cratekit.sync import pair_cli, pair_stopped
+from cratekit.sync import pair_cli, pair_plan, pair_read, pair_stopped
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
 
@@ -440,7 +440,7 @@ def test_a_stop_from_before_the_pair_was_marked_again_is_not_its_stop():
 
     def read(marked: str, synced: str = ""):
         held = SimpleNamespace(marked=marked, synced=synced)
-        return pair_cli._Reader.stopped_write(reader, "pl-1", held)
+        return pair_read._Reader.stopped_write(reader, "pl-1", held)
 
     assert read((_WHEN + timedelta(seconds=1)).isoformat()) is None
     assert read((_WHEN - timedelta(seconds=1)).isoformat()).run_id == "run-1"
@@ -459,13 +459,13 @@ def test_a_first_sync_reads_the_stop_on_its_account_playlist_whatever_the_mark()
 
     write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
     reader = SimpleNamespace(stopped=(write, ()))
-    assert pair_cli._Reader.first_stop(reader, "pl-1").run_id == "run-1"
-    assert pair_cli._Reader.first_stop(reader, "pl-9") is None
+    assert pair_read._Reader.first_stop(reader, "pl-1").run_id == "run-1"
+    assert pair_read._Reader.first_stop(reader, "pl-9") is None
     # An account side still to be made has no playlist to have stopped on.
-    assert pair_cli._Reader.first_stop(reader, "") is None
+    assert pair_read._Reader.first_stop(reader, "") is None
     # The pair's own rule still keeps it from a pair marked after it.
     held = SimpleNamespace(marked=(_WHEN + timedelta(seconds=1)).isoformat(), synced="")
-    assert pair_cli._Reader.stopped_write(reader, "pl-1", held) is None
+    assert pair_read._Reader.stopped_write(reader, "pl-1", held) is None
 
 
 def test_a_carried_record_naming_another_run_is_named(cfg):
@@ -503,12 +503,12 @@ def test_a_carried_copy_gives_way_to_its_own_runs_steps_kept_under_the_same_plan
     began = {"account": _WHEN.isoformat(), "ordering": _ordering()}
     held_plan.Steps("run-1", "d1", {"pl-1": {**began, "done": "pl-1"}}).begin()
     held_plan.carry(held_plan.Steps("run-1", "d1", {"pl-1": dict(began)}), "pl-1")
-    stopped, unread = pair_cli._Reader.stopped.func(None)
+    stopped, unread = pair_read._Reader.stopped.func(None)
     assert unread == ()
     assert stopped == {}, "a pair its own run finished is read as stopped from its copy"
     # Steps under another plan of the same run are not the copy's run as it wrote.
     held_plan.Steps("run-1", "d2", {"pl-1": {**began, "done": "pl-1"}}).begin()
-    stopped, _unread = pair_cli._Reader.stopped.func(None)
+    stopped, _unread = pair_read._Reader.stopped.func(None)
     assert stopped["pl-1"][1].run_id == "run-1"
 
 
@@ -746,14 +746,14 @@ def test_a_kept_reading_counts_only_for_its_run_at_or_after_its_moves():
         return SimpleNamespace(stop_seen=pairs.StopReading(run, ("t1", "t2"), at))
 
     write = _write()
-    found = pair_cli._kept_after(held("2026-11-07T10:00:00+00:00"), write)
+    found = pair_plan._kept_after(held("2026-11-07T10:00:00+00:00"), write)
     assert found is not None and found.order == ("t1", "t2")
-    assert pair_cli._kept_after(held("2026-11-07T09:59:59+00:00"), write) is None
-    assert pair_cli._kept_after(held("2026-11-07T11:00:00+00:00", "run-b"), write) is None
-    assert pair_cli._kept_after(held("not a moment"), write) is None
-    assert pair_cli._kept_after(None, write) is None
-    assert pair_cli._kept_after(SimpleNamespace(stop_seen=None), write) is None
+    assert pair_plan._kept_after(held("2026-11-07T09:59:59+00:00"), write) is None
+    assert pair_plan._kept_after(held("2026-11-07T11:00:00+00:00", "run-b"), write) is None
+    assert pair_plan._kept_after(held("not a moment"), write) is None
+    assert pair_plan._kept_after(None, write) is None
+    assert pair_plan._kept_after(SimpleNamespace(stop_seen=None), write) is None
     # A write that sent its moves blind is read after they began, not its order step.
     blind = _write(moving_at=datetime(2026, 11, 7, 12, tzinfo=UTC))
-    assert pair_cli._kept_after(held("2026-11-07T11:00:00+00:00"), blind) is None
-    assert pair_cli._kept_after(held("2026-11-07T12:00:00+00:00"), blind) is not None
+    assert pair_plan._kept_after(held("2026-11-07T11:00:00+00:00"), blind) is None
+    assert pair_plan._kept_after(held("2026-11-07T12:00:00+00:00"), blind) is not None

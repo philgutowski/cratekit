@@ -25,7 +25,7 @@ from cratekit.core import config, held_plan
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs, tidal_account
-from cratekit.sync import pair_cli
+from cratekit.sync import pair_cli, pair_model, pair_plan, pair_write
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -55,7 +55,7 @@ def owed(world):
 
 def _agreeing_at_once(monkeypatch) -> None:
     """Two readings agree however close together, as if minutes had passed between runs."""
-    monkeypatch.setattr(pair_cli, "AGREE_AFTER", timedelta(0))
+    monkeypatch.setattr(pair_plan, "AGREE_AFTER", timedelta(0))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -667,7 +667,7 @@ def test_two_readings_agree_only_once_minutes_apart(world, owed, cfg, monkeypatc
     from datetime import UTC, datetime
 
     later = pair_cli.AGREE_AFTER + timedelta(seconds=1)
-    monkeypatch.setattr(pair_cli, "_now", lambda: datetime.now(UTC) + later)
+    monkeypatch.setattr(pair_model, "_now", lambda: datetime.now(UTC) + later)
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2"), (
@@ -697,7 +697,7 @@ def test_the_settle_window_counts_the_time_spent_on_other_writes(world, owed, cf
 
     start = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
     ticks = iter(range(0, 10_000, 20))
-    monkeypatch.setattr(pair_cli, "_now", lambda: start + timedelta(seconds=next(ticks)))
+    monkeypatch.setattr(pair_model, "_now", lambda: start + timedelta(seconds=next(ticks)))
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     assert world.account.settle_waits
@@ -832,7 +832,7 @@ def test_a_continues_settle_window_is_counted_from_when_the_moves_began(
     _stopping_after(world, monkeypatch, account_id, 1)
     code, stopped = sync()
     assert code != int(ExitCode.OK), stopped
-    monkeypatch.setattr(pair_cli, "_now", lambda: datetime.now(UTC) + timedelta(seconds=20))
+    monkeypatch.setattr(pair_model, "_now", lambda: datetime.now(UTC) + timedelta(seconds=20))
     code, done = drive(["--run", stopped["run_id"], *VERB])
     assert code == int(ExitCode.OK), done
     assert world.account.settle_waits[-1] <= pair_cli.SETTLE_SECONDS - 15
@@ -848,8 +848,8 @@ def test_a_rekordbox_side_to_be_made_is_under_gig_ready_only_inside_the_folder(c
     )
     inside = pair_discover.Home(folder="", name="Opener", parent_id="7", path=("GIG READY", "Opener"))
     named = pair_discover.Home(folder="", name="GIG READY", parent_id="", path=("GIG READY",))
-    assert pair_cli._keeps_order(cfg, made, inside) is True
-    assert pair_cli._keeps_order(cfg, made, named) is False
+    assert pair_plan._keeps_order(cfg, made, inside) is True
+    assert pair_plan._keeps_order(cfg, made, named) is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1819,7 +1819,7 @@ def test_a_finish_whose_plan_read_no_account_passes_no_agreed_reading():
             return tuple(remote_ids)
 
     done = pair_cli.Done(account_id="acct")
-    after = pair_cli._write_account(
+    after = pair_write._write_account(
         one, Before1411(), "acct", done, _InMemorySteps(), account_listed=None
     )
     assert asked == [("acct", ("t6", "t5"), None)]
@@ -1845,8 +1845,8 @@ def test_with_no_stopped_write_an_unread_track_follows_the_one_listed_before_it(
     ordered, listed, expected
 ):
     """R-1264's rule, unchanged where no write stopped: behind the track listed before it."""
-    assert pair_cli._with_unread_placed(ordered, listed) == expected
-    assert pair_cli._with_unread_placed(ordered, listed, ()) == expected
+    assert pair_plan._with_unread_placed(ordered, listed) == expected
+    assert pair_plan._with_unread_placed(ordered, listed, ()) == expected
 
 
 @pytest.mark.parametrize(
@@ -1897,7 +1897,7 @@ def test_at_a_finish_an_unread_track_is_placed_by_the_stopped_writes_target(
     ordered, listed, target, expected
 ):
     """R-1432: each unread id the target names stands behind the track the target puts before it."""
-    assert pair_cli._with_unread_placed(ordered, listed, target) == expected
+    assert pair_plan._with_unread_placed(ordered, listed, target) == expected
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2210,16 +2210,16 @@ def test_a_settled_reorder_moved_a_readable_track_only_when_one_moved(kept, read
     """R-1446: the settled reading and now are compared with every unread id left out."""
     settled = pairs.StopReading("run-1", tuple(kept), "2026-11-07T00:00:00+00:00", settled=True)
     write = _write_from(START, TARGET)
-    assert pair_cli._readable_moved(write, settled, reading, unread, moved_nothing=False) is moved
+    assert pair_plan._readable_moved(write, settled, reading, unread, moved_nothing=False) is moved
 
 
 def test_with_no_settled_reading_a_reorder_stands_as_read():
     """R-1446: a reorder read with no settled reading kept to compare is left as it was read."""
     write = _write_from(START, TARGET)
     reading = ["t1", "t2", "t3", "t9", "t4"]
-    assert pair_cli._readable_moved(write, None, reading, {"t9"}, moved_nothing=False)
+    assert pair_plan._readable_moved(write, None, reading, {"t9"}, moved_nothing=False)
     unsettled = pairs.StopReading("run-1", tuple(reading), "2026-11-07T00:00:00+00:00")
-    assert pair_cli._readable_moved(write, unsettled, reading, {"t9"}, moved_nothing=False)
+    assert pair_plan._readable_moved(write, unsettled, reading, {"t9"}, moved_nothing=False)
 
 
 @pytest.mark.parametrize(
@@ -2239,20 +2239,20 @@ def test_after_a_write_that_sent_nothing_only_readable_tracks_off_its_path_are_a
 ):
     """R-1446: a write known to have sent no move is off its path only where a readable track is."""
     write = _write_from(START, TARGET)
-    assert pair_cli._readable_moved(write, None, reading, unread, moved_nothing=True) is moved
+    assert pair_plan._readable_moved(write, None, reading, unread, moved_nothing=True) is moved
 
 
 def test_the_unread_tracks_moved_since_the_stop_are_those_off_the_order_both_readings_share():
     """R-1446: the moved unread ids are those outside the longest run both orders share, readable ids held."""
     write = _write_from(START, TARGET)
     kept = pairs.StopReading("run-1", ("t9", "t1", "t8", "t2", "t3", "t4"), "2026-11-07T00:00:00+00:00", settled=True)
-    assert pair_cli._unread_moved(
+    assert pair_plan._unread_moved(
         write, kept, ["t9", "t1", "t2", "t8", "t3", "t4"], {"t8": None, "t9": None},
         moved_nothing=False,
     ) == {"t8"}
     # t9 moved behind t1 is the one moved, not t8, which only follows it
     # (the review's round two); a track added since moves none.
-    assert pair_cli._unread_moved(
+    assert pair_plan._unread_moved(
         write, kept, ["t1", "t9", "t8", "t2", "t3", "t4"], {"t8": None, "t9": None},
         moved_nothing=False,
     ) == {"t9"}
@@ -2262,7 +2262,7 @@ def test_the_unread_tracks_moved_since_the_stop_are_those_off_the_order_both_rea
         "run-1", ("t9", "t1", "t7", "t8", "t2", "t3", "t4"), "2026-11-07T00:00:00+00:00",
         settled=True,
     )
-    assert pair_cli._unread_moved(
+    assert pair_plan._unread_moved(
         write, block, ["t9", "t1", "t2", "t3", "t7", "t8", "t4"], three, moved_nothing=False
     ) == {"t7", "t8"}
     # One moved in front of another, or away from in front of it, moves only itself.
@@ -2270,27 +2270,27 @@ def test_the_unread_tracks_moved_since_the_stop_are_those_off_the_order_both_rea
         "run-1", ("t9", "t1", "t7", "t2", "t3", "t4", "t8"), "2026-11-07T00:00:00+00:00",
         settled=True,
     )
-    assert pair_cli._unread_moved(
+    assert pair_plan._unread_moved(
         write, ahead, ["t7", "t9", "t1", "t2", "t3", "t4", "t8"], three, moved_nothing=False
     ) == {"t7"}
     away = pairs.StopReading(
         "run-1", ("t7", "t9", "t1", "t2", "t3", "t4", "t8"), "2026-11-07T00:00:00+00:00",
         settled=True,
     )
-    assert pair_cli._unread_moved(
+    assert pair_plan._unread_moved(
         write, away, ["t9", "t1", "t2", "t7", "t3", "t4", "t8"], three, moved_nothing=False
     ) == {"t7"}
-    assert pair_cli._unread_moved(
+    assert pair_plan._unread_moved(
         write, kept, ["t9", "t5", "t1", "t8", "t2", "t3", "t4"], {"t8": None, "t9": None},
         moved_nothing=False,
     ) == set()
     # A write that sent nothing is read against where it began.
-    assert pair_cli._unread_moved(
+    assert pair_plan._unread_moved(
         write, None, ["t1", "t2", "t9", "t3", "t4"], {"t9": None}, moved_nothing=True
     ) == {"t9"}
     # With no settled reading there is nothing to compare.
     unsettled = pairs.StopReading("run-1", ("t1", "t9"), "2026-11-07T00:00:00+00:00", settled=False)
-    assert pair_cli._unread_moved(
+    assert pair_plan._unread_moved(
         write, unsettled, ["t9", "t1"], {"t9": None}, moved_nothing=False
     ) == set()
-    assert pair_cli._unread_moved(write, None, ["t9", "t1"], {"t9": None}, moved_nothing=False) == set()
+    assert pair_plan._unread_moved(write, None, ["t9", "t1"], {"t9": None}, moved_nothing=False) == set()

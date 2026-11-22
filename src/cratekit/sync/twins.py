@@ -302,7 +302,7 @@ def _grouped(pairs: Iterable[tuple[str, str]], live: Iterable[str]) -> dict[str,
 def read_library(cfg: config.Config, db: Any, account_ids: Iterable[str]) -> Library:
     """The library's answers for the account playlists named, read on ``db``."""
     from cratekit.modules.outbound import ledger
-    from cratekit.sync import pair_cli
+    from cratekit.sync import pair_read
 
     # MATERIALIZED ONCE: a generator read inside the comprehension below is
     # spent by its first account, and every later one would lose its source.
@@ -314,9 +314,9 @@ def read_library(cfg: config.Config, db: Any, account_ids: Iterable[str]) -> Lib
     # its write refuses at the session gate on any entry the log cannot read,
     # so an unread record never reaches a download; the gate before that
     # write shows its misses with no word of the record (a residual).
-    mirrors, _unread = pair_cli.landed_inbox_playlists(cfg)
+    mirrors, _unread = pair_read.landed_inbox_playlists(cfg)
     landed = {
-        account_id: pair_cli.landed_isrcs(cfg, db, playlist_ids)
+        account_id: pair_read.landed_isrcs(cfg, db, playlist_ids)
         for account_id, playlist_ids in mirrors.items()
         if account_id in wanted
     }

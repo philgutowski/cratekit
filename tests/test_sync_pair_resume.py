@@ -19,7 +19,7 @@ import pytest
 from cratekit.core import held_plan, provider_gate
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_calls, pair_cli
+from cratekit.sync import pair_calls, pair_cli, pair_write
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -337,11 +337,11 @@ def test_made_here_reads_only_a_pair_made_for_this_playlist_in_this_folder():
         fields.update(changed)
         return Pair(**fields)
 
-    assert pair_cli._made_here(pair(), one)
-    assert not pair_cli._made_here(None, one)
-    assert not pair_cli._made_here(pair(made=False), one), "a pair made by hand was read as made"
-    assert not pair_cli._made_here(pair(rekordbox_id="rb-2"), one)
-    assert not pair_cli._made_here(pair(folder="ARCHIVE"), one)
+    assert pair_write._made_here(pair(), one)
+    assert not pair_write._made_here(None, one)
+    assert not pair_write._made_here(pair(made=False), one), "a pair made by hand was read as made"
+    assert not pair_write._made_here(pair(rekordbox_id="rb-2"), one)
+    assert not pair_write._made_here(pair(folder="ARCHIVE"), one)
 
 
 def test_the_forecast_on_a_continue_counts_only_what_is_left(made_world):

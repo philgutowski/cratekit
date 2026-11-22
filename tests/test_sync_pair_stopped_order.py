@@ -27,7 +27,7 @@ import pytest
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs, tidal_account
-from cratekit.sync import pair_cli, pair_stopped
+from cratekit.sync import pair_cli, pair_plan, pair_stopped
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -126,7 +126,7 @@ def _ids(*content_ids: str) -> list[str]:
 
 def _agreeing_at_once(monkeypatch) -> None:
     """Two readings agree however close together, as if minutes had passed between runs (U234)."""
-    monkeypatch.setattr(pair_cli, "AGREE_AFTER", timedelta(0))
+    monkeypatch.setattr(pair_plan, "AGREE_AFTER", timedelta(0))
 
 
 def test_a_fresh_sync_orders_the_account_to_rekordbox_and_plans_no_rekordbox_order(
@@ -1107,7 +1107,7 @@ def test_a_differing_order_waits_the_agreement_window(world, strayed, monkeypatc
     assert held is not None and not held.stop_seen.settled, "settled inside the window"
     _agreeing_at_once(monkeypatch)
     plan_only()
-    monkeypatch.setattr(pair_cli, "AGREE_AFTER", timedelta(minutes=5))
+    monkeypatch.setattr(pair_plan, "AGREE_AFTER", timedelta(minutes=5))
     world.account.served[account_id] = _ids("6", "4", "1", "3", "2", "5", "7")
     for _ in range(2):
         code, envelope = sync()
