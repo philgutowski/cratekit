@@ -659,27 +659,3 @@ def summarize(record: review.Suppression) -> Mapping[str, Any]:
         "actor": record.actor,
         "revoked": record.revoked,
     }
-
-
-__all__ = [
-    "CREDITED_ID_FIELD",
-    "IDENTITY_SCHEME_FIELD",
-    "UNCREDITED_ID_FIELD",
-    "ambiguous_versions",
-    "decline_predicate",
-    "declines",
-    "identifiable",
-    "identity_scheme",
-    "list_tombstones",
-    "record_decline",
-    "record_tombstone",
-    "revoke_decline",
-    "revoke_tombstone",
-    "row_identity",
-    "summarize",
-    "suppressed_version",
-    "tombstone_predicate",
-    "tombstones",
-    "uncredited_version_of",
-    "version_of",
-]

@@ -23,6 +23,7 @@ run in a test on one machine.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import os
 import sys
@@ -304,10 +305,8 @@ def move_to_trash(path: Path | str, *, layout: TrashLayout) -> Path:
     except BaseException:
         # The placeholder is ours: created with O_EXCL, and nothing since writes
         # this name.
-        try:
+        with contextlib.suppress(OSError):
             target.unlink()
-        except OSError:  # pragma: no cover - the placeholder was already gone
-            pass
         raise
     return target
 
@@ -325,22 +324,3 @@ def recover(target: Path | str, original: Path | str) -> Path:
         )
     os.replace(Path(target), destination)
     return destination
-
-
-#: The probe signature doctor consumes (U27 owns the check).
-Probe = Callable[..., TrashStatus]
-
-
-__all__ = [
-    "MAX_NAME_ATTEMPTS",
-    "Probe",
-    "Stat",
-    "TrashLayout",
-    "TrashStatus",
-    "assert_usable",
-    "layout_for",
-    "move_to_trash",
-    "probe",
-    "recover",
-    "volume_root",
-]

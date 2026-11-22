@@ -139,8 +139,7 @@ def _assert_library_is_still(
     db: Any,
     *,
     rules: Sequence[locations.PrefixRule],
-    identity_provider: preflight.IdentityProvider | None = None,
-    mount_enumerator: preflight.MountEnumerator | None = None,
+    **seams: preflight.IdentityProvider | preflight.MountEnumerator | None,
 ) -> None:
     """Volume identity first, then rekordbox closed, then the cloud canary.
 
@@ -148,18 +147,14 @@ def _assert_library_is_still(
     the reference set reads there and the move writes there. ``rules`` is
     required, because an empty default reads a forgetful caller as no rules.
     """
-    session.assert_volume_identity(
-        cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
-    )
-    session.assert_mapped_volume_identities(
-        cfg, rules, identity_provider=identity_provider, mount_enumerator=mount_enumerator
-    )
+    session.assert_volume_identity(cfg, **seams)
+    session.assert_mapped_volume_identities(cfg, rules, **seams)
     rb_writer.assert_rekordbox_closed("reviewing tracks removed from the collection")
     rb_writer.canary(db)
 
 
-def _recorded_details(cfg: config.Config) -> tuple[session.SessionRecord, ...]:
-    """Each readable session record (U288's removals, R-1037's landed rows).
+def _recorded_details(cfg: config.Config) -> tuple[dict[str, Any], ...]:
+    """Each readable session record's detail (U288's removals, R-1037's landed rows).
 
     An unreadable record offers nothing, so its files stay; the pass says so.
     """
@@ -170,7 +165,7 @@ def _recorded_details(cfg: config.Config) -> tuple[session.SessionRecord, ...]:
             "collection, or a landed row removed in rekordbox, may not be offered this run",
             len(unreadable),
         )
-    return found
+    return tuple(one.detail for one in found)
 
 
 def _playlists_held(db: Any) -> Callable[[str], bool]:
@@ -178,14 +173,8 @@ def _playlists_held(db: Any) -> Callable[[str], bool]:
 
     Read once, and only when a landing record names a playlist.
     """
-    read: list[frozenset[str]] = []
-
-    def held(playlist_id: str) -> bool:
-        if not read:
-            read.append(library.playlist_ids(db.get_playlist()))
-        return playlist_id in read[0]
-
-    return held
+    ids = functools.cache(lambda: library.playlist_ids(db.get_playlist()))
+    return lambda playlist_id: playlist_id in ids()
 
 
 def plan(
@@ -207,9 +196,8 @@ def plan(
     back rather than made again (R-1037).
     """
     rules = _rules(cfg, prefix_map)
-    _assert_library_is_still(
-        cfg, db, rules=rules, identity_provider=identity_provider, mount_enumerator=mount_enumerator
-    )
+    seams = {"identity_provider": identity_provider, "mount_enumerator": mount_enumerator}
+    _assert_library_is_still(cfg, db, rules=rules, **seams)
     identity = library.database_identity(db)
     counter = library.current_sequence(db)
     marks = watermark_store.WatermarkStore(cfg)
@@ -219,16 +207,14 @@ def plan(
     seen = library.read_collection(db.get_content())
     # A row deleted outright carries no marker (R-1037, U288): the recorded
     # removals join the marked ones before the baseline and the watermark.
-    records = _recorded_details(cfg)
+    details = _recorded_details(cfg)
     held = {row.content_id for row in seen.active} | {row.content_id for row in seen.removed}
-    recorded = library.recorded_removals(
-        [one.detail for one in records], database_identity=identity, present=held
-    )
+    recorded = library.recorded_removals(details, database_identity=identity, present=held)
     # And a row a native landing made that the database no longer holds; one a
     # recorded removal names is that removal. Rolled back landings are counted
     # for the gate's screen (R-1844).
     landings = library.landed_absences(
-        [one.detail for one in records],
+        details,
         database_identity=identity,
         present=held | {row.content_id for row in recorded},
         uuids=seen.uuids,
@@ -315,34 +301,32 @@ def present(cfg: config.Config, found: Plan, *, handler_key: str = "") -> tuple[
     """
     if found.baselined:
         return ()
-    items: list[review.Item] = []
     with review.open_store(cfg) as store:
-        for item in found.deletable:
-            items.append(
-                review.offer(
-                    store,
-                    queue=review.Queue.DELETION,
-                    kind=REVIEW_KIND,
-                    identity=stores.row_identity(item.row),
-                    payload={
-                        "artist": item.row.artist,
-                        "title": item.row.title,
-                        "path": item.resolved or "",
-                        "size": item.observed_size,
-                        "sequence": item.row.sequence,
-                        "content_id": item.row.content_id,
-                    },
-                    options=(
-                        review.Option(
-                            option_id=TRASH_OPTION,
-                            summary="move this file to the system Trash",
-                            detail={"path": item.resolved or ""},
-                        ),
+        return tuple(
+            review.offer(
+                store,
+                queue=review.Queue.DELETION,
+                kind=REVIEW_KIND,
+                identity=stores.row_identity(item.row),
+                payload={
+                    "artist": item.row.artist,
+                    "title": item.row.title,
+                    "path": item.resolved or "",
+                    "size": item.observed_size,
+                    "sequence": item.row.sequence,
+                    "content_id": item.row.content_id,
+                },
+                options=(
+                    review.Option(
+                        option_id=TRASH_OPTION,
+                        summary="move this file to the system Trash",
+                        detail={"path": item.resolved or ""},
                     ),
-                    handler_key=handler_key,
-                )
+                ),
+                handler_key=handler_key,
             )
-    return tuple(items)
+            for item in found.deletable
+        )
 
 
 def _verdicts(cfg: config.Config) -> dict[str, review.Item]:
@@ -397,7 +381,6 @@ def _record_or_put_it_back(
                     f"move {target} back to {original} by hand, then run this "
                     f"again once the suppression store can be written",
                 ),
-                scope=Scope.RUN,
                 origin=("deletion.run",),
                 detail={"path": original, "trashed_to": str(target)},
                 inner=cause,
@@ -512,27 +495,11 @@ def _warn_that_an_unanswered_removal_is_being_retired(
     )
 
 
-def _reopen_for_the_path_it_now_resolves_to(
-    cfg: config.Config, item_id: str, *, actor: str
-) -> None:
-    """Withdraw a verdict made about a different file, so it is asked again.
-
-    ``review.offer`` leaves a resolved item's payload alone, so without this a
-    corrected prefix rule would compare the new path with the stale one and
-    refuse forever. Clearing it lets ``present`` re-offer the item under the
-    path the row resolves to now; the row is not handled, so nothing moves first.
-    """
-    with review.open_store(cfg) as store:
-        review.clear(store, item_id, actor=actor)
-
-
 def _assert_the_volume_this_file_is_on(
     cfg: config.Config,
     answered: Candidate,
     rules: Sequence[locations.PrefixRule],
-    *,
-    identity_provider: preflight.IdentityProvider | None = None,
-    mount_enumerator: preflight.MountEnumerator | None = None,
+    **seams: preflight.IdentityProvider | preflight.MountEnumerator | None,
 ) -> None:
     """Re-assert the volume under one answer before anything permanent rests on it.
 
@@ -549,14 +516,7 @@ def _assert_the_volume_this_file_is_on(
     )
     if resolved.rule_index is None:
         return
-    session.assert_mapped_file_volume(
-        cfg,
-        rules,
-        resolved.rule_index,
-        answered.resolved,
-        identity_provider=identity_provider,
-        mount_enumerator=mount_enumerator,
-    )
+    session.assert_mapped_file_volume(cfg, rules, resolved.rule_index, answered.resolved, **seams)
 
 
 def apply(
@@ -600,7 +560,6 @@ def apply(
                 "the plan carried no reference set, so nothing proves a candidate is "
                 "unreferenced; refusing rather than treating the absence of evidence as evidence",
                 remedy=Remedy.REPORT_DEFECT,
-                scope=Scope.RUN,
                 origin=("deletion.run",),
                 detail={},
             )
@@ -683,12 +642,16 @@ def apply(
             # The path the person was shown is part of what they answered, though
             # not of the item's identity: a changed prefix map would otherwise move
             # a DIFFERENT file. A decision that cannot be honoured is withdrawn so
-            # it is asked again under the new path.
+            # it is asked again under the new path: ``review.offer`` leaves a
+            # resolved item's payload alone, so without the clear a corrected
+            # prefix rule would compare the new path with the stale one and
+            # refuse forever. The row is not handled, so nothing moves first.
             shown = str(verdict.payload.get("path") or "")
             if shown and locations.norm_for_compare(shown) != locations.norm_for_compare(
                 fresh.resolved
             ):
-                _reopen_for_the_path_it_now_resolves_to(cfg, _item_id(item), actor=actor)
+                with review.open_store(cfg) as store:
+                    review.clear(store, _item_id(item), actor=actor)
                 logger.warning(
                     "confirmed removal %s was accepted for %s and now resolves to "
                     "%s, so nothing was moved: the decision was made about a "
@@ -726,7 +689,6 @@ def apply(
                     f"{fresh.resolved} could not be moved into the Trash at "
                     f"{layout.files} ({exc}); nothing further was attempted",
                     remedy=Remedy.RUN_DOCTOR,
-                    scope=Scope.RUN,
                     origin=("deletion.run",),
                     detail={"path": fresh.resolved, "trash": str(layout.files)},
                 ) from exc
@@ -838,17 +800,3 @@ def revoke(cfg: config.Config, suppression_id: str, *, actor: str) -> review.Sup
                 return stores.revoke_tombstone(cfg, suppression_id, actor=actor)
     # Neither store holds it: the store refuses, in one sentence however reached.
     return stores.revoke_tombstone(cfg, suppression_id, actor=actor)
-
-
-__all__ = [
-    "DELETION_WORKFLOW",
-    "REVIEW_KIND",
-    "TRASH_OPTION",
-    "Plan",
-    "Report",
-    "Trashed",
-    "apply",
-    "plan",
-    "present",
-    "revoke",
-]

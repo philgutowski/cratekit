@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
 
 from cratekit.core import locations
-from cratekit.core.cause import Scope, refuse
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.deletion.library import RemovedRow
 from cratekit.write import trees
@@ -279,11 +279,9 @@ class _Anchors:
     def present(self, anchor: str | None) -> bool:
         if anchor is None:
             return True
-        held = self._known.get(anchor)
-        if held is None:
-            held = self._ask(anchor)
-            self._known[anchor] = held
-        return held
+        if anchor not in self._known:
+            self._known[anchor] = self._ask(anchor)
+        return self._known[anchor]
 
     def changed(self) -> tuple[str, ...]:
         """Anchors whose answer, in either direction, is not the one the run was built on."""
@@ -407,7 +405,6 @@ def assert_complete(references: ReferenceSet) -> None:
                 "on, or report this with the recorded locations below, because "
                 "no volume prefix rule can spell a path this build cannot read",
             ),
-            scope=Scope.RUN,
             origin=("deletion.candidates",),
             detail={**references.counts, "unnameable_rows": list(references.unnameable[:20])},
         )
@@ -419,7 +416,6 @@ def assert_complete(references: ReferenceSet) -> None:
             "run and not for the rest, so the reference set was assembled against two different "
             "filesystems and proves nothing about either; nothing is offered this run",
             steps=(_REMOUNT_AND_RETRY,),
-            scope=Scope.RUN,
             origin=("deletion.candidates",),
             detail={**references.counts, "unstable_anchors": list(references.unstable_anchors)},
         )
@@ -459,7 +455,6 @@ def assert_complete(references: ReferenceSet) -> None:
             ),
         ),
         remedy=Remedy.RUN_DOCTOR,
-        scope=Scope.RUN,
         origin=("deletion.candidates",),
         detail={
             **references.counts,
@@ -528,11 +523,12 @@ def categorize(
     anchors = _Anchors(stat)
 
     def answer(row: RemovedRow) -> Candidate:
+        candidate = functools.partial(Candidate, row=row)
+        unresolved = functools.partial(candidate, category=Category.UNRESOLVED)
         # Identifiability BEFORE the decline, whose predicate derives an
         # identifier from the row.
         if not identifiable(row):
-            return Candidate(
-                row=row,
+            return candidate(
                 category=Category.UNIDENTIFIABLE,
                 problem=(
                     "the row cannot be identified: R36's tombstone needs an artist or a title to "
@@ -541,10 +537,9 @@ def categorize(
                 ),
             )
         if declined(row):
-            return Candidate(row=row, category=Category.DECLINED)
+            return candidate(category=Category.DECLINED)
         if ambiguous(row):
-            return Candidate(
-                row=row,
+            return candidate(
                 category=Category.AMBIGUOUS_VERSION,
                 problem=(
                     "another removed row produces the same version identity as this one and "
@@ -554,9 +549,7 @@ def categorize(
             )
         resolved = locations.resolve_recorded_path(row.recorded, root=root, prefix_map=rules)
         if resolved.path is None:
-            return Candidate(
-                row=row,
-                category=Category.UNRESOLVED,
+            return unresolved(
                 problem=(
                     "the recorded location is not a path this machine can name"
                     if resolved.resolution is locations.Resolution.NOT_A_PATH
@@ -568,12 +561,8 @@ def categorize(
         except FileNotFoundError:
             anchor = _anchor_of(resolved, root=root, prefix_map=rules)
             if anchors.present(anchor):
-                return Candidate(
-                    row=row, category=Category.GONE, resolved=resolved.path, anchor=anchor
-                )
-            return Candidate(
-                row=row,
-                category=Category.UNRESOLVED,
+                return candidate(category=Category.GONE, resolved=resolved.path, anchor=anchor)
+            return unresolved(
                 resolved=resolved.path,
                 anchor=anchor,
                 problem=(
@@ -583,26 +572,15 @@ def categorize(
                 ),
             )
         except OSError as exc:
-            return Candidate(
-                row=row,
-                category=Category.UNRESOLVED,
-                resolved=resolved.path,
-                problem=f"the file could not be inspected: {exc}",
+            return unresolved(
+                resolved=resolved.path, problem=f"the file could not be inspected: {exc}"
             )
         except ValueError as exc:
             # A NUL byte, see ``reference_set``.
-            return Candidate(
-                row=row,
-                category=Category.UNRESOLVED,
-                problem=f"the recorded location cannot be used as a path: {exc}",
-            )
+            return unresolved(problem=f"the recorded location cannot be used as a path: {exc}")
         identity = FileIdentity.of(stats)
         found = functools.partial(
-            Candidate,
-            row=row,
-            resolved=resolved.path,
-            identity=identity,
-            observed_size=stats.st_size,
+            candidate, resolved=resolved.path, identity=identity, observed_size=stats.st_size
         )
         claimed = references.by_identity.get(identity, ())
         if claimed:
@@ -638,7 +616,6 @@ def categorize(
             "deleted, which is finished business, and the watermark would retire it without "
             "anybody being asked",
             steps=(_REMOUNT_AND_RETRY,),
-            scope=Scope.RUN,
             origin=("deletion.candidates",),
             detail={"unstable_anchors": list(moved)},
         )
@@ -663,7 +640,7 @@ def recheck(
     row deletable, so neither could alter an answer. ``declined`` is a fresh
     store read and can.
     """
-    answered = categorize(
+    return categorize(
         [candidate.row],
         references,
         root=root,
@@ -671,19 +648,4 @@ def recheck(
         referenced=referenced,
         declined=declined,
         stat=stat,
-    )
-    return answered[0]
-
-
-__all__ = [
-    "HANDLED",
-    "Candidate",
-    "Category",
-    "FileIdentity",
-    "ReferenceSet",
-    "Stat",
-    "assert_complete",
-    "categorize",
-    "recheck",
-    "reference_set",
-]
+    )[0]
