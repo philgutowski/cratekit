@@ -7469,8 +7469,8 @@ _keyword_gate_passes: return False always, so the two alternations never scan an
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[client_secret]`
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[refreshToken]`
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[refresh_token]`
-  - `tests/test_portability.py::test_credential_shapes_are_caught[api_key = "aB3xQ7zK9mN2pR4tV6wY8cE1gJ5"-credential assignment]`
-  - `tests/test_portability.py::test_credential_shapes_are_caught[{"access_token": "aB3xQ7zK9mN2pR4tV6wY8cE1gJ5"}-OAuth token field]`
+  - `tests/test_portability.py::test_credential_shapes_are_caught[api_key = "<_A_TOKEN>"-credential assignment]`
+  - `tests/test_portability.py::test_credential_shapes_are_caught[{"access_token": "<_A_TOKEN>"}-OAuth token field]`
   - ... and 9 more, see the JSON sidecar
 
 Old text:
@@ -7539,8 +7539,8 @@ _keyword_gate_passes: do not step back over a quote after the keyword, so the JS
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[client_secret]`
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[refreshToken]`
   - `tests/test_portability.py::test_a_credential_key_is_caught_in_every_casing_and_separator[refresh_token]`
-  - `tests/test_portability.py::test_credential_shapes_are_caught[{"access_token": "aB3xQ7zK9mN2pR4tV6wY8cE1gJ5"}-OAuth token field]`
-  - `tests/test_portability.py::test_credential_shapes_are_caught[{"refresh_token": "aB3xQ7zK9mN2pR4tV6wY8cE1gJ5"}-OAuth token field]`
+  - `tests/test_portability.py::test_credential_shapes_are_caught[{"access_token": "<_A_TOKEN>"}-OAuth token field]`
+  - `tests/test_portability.py::test_credential_shapes_are_caught[{"refresh_token": "<_A_TOKEN>"}-OAuth token field]`
   - ... and 6 more, see the JSON sidecar
 
 Old text:
@@ -7567,7 +7567,7 @@ _keyword_gate_passes: do not walk back over whitespace, so key = "value" with a 
 - Collected: 116 against a baseline of 116
 - Kills: 4 (killed)
 - Killed:
-  - `tests/test_portability.py::test_credential_shapes_are_caught[api_key = "aB3xQ7zK9mN2pR4tV6wY8cE1gJ5"-credential assignment]`
+  - `tests/test_portability.py::test_credential_shapes_are_caught[api_key = "<_A_TOKEN>"-credential assignment]`
   - `tests/test_scan_secret_equality.py::test_one_planted_secret_per_pattern_is_still_reported`
   - `tests/test_scan_secret_equality.py::test_the_fast_scan_equals_the_reference_on_generated_texts`
   - `tests/test_scan_secret_equality.py::test_the_fast_scan_equals_the_reference_on_the_planted_corpus`
@@ -7736,9 +7736,9 @@ the portability scanner stops looking for a hardcoded volume path at all
 - Kills: 4 (killed)
 - Killed:
   - `tests/test_portability.py::test_any_volume_is_caught_not_just_one`
-  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[docs/install.md-Put the library at /Volumes/BigAudioDrive/Music\n]`
-  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[scripts/backup.sh-VOLUME=/Volumes/BigAudioDrive/Music\n]`
-  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[src/cratekit/core/config.py-ROOT = "/Volumes/BigAudioDrive/Music"\n]`
+  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[docs/install.md-Put the library at /Volumes/<_A_VOLUME>/Music\n]`
+  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[scripts/backup.sh-VOLUME=/Volumes/<_A_VOLUME>/Music\n]`
+  - `tests/test_portability.py::test_guard_covers_every_shipped_surface[src/cratekit/core/config.py-ROOT = "/Volumes/<_A_VOLUME>/Music"\n]`
 
 Old text:
 
