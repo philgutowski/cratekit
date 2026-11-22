@@ -3,14 +3,14 @@
   "pass_kind": "replay",
   "branch": "HEAD",
   "head": "539638eb",
-  "when": "2026-11-22 19:20 UTC",
+  "when": "2026-11-22 21:20 UTC",
   "valid": true,
   "invalid_reason": "in progress",
   "baseline_collected": 22663,
   "baseline_exit": 1,
-  "pytest_runs": 16,
+  "pytest_runs": 19,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
-  "reused_rows": 0,
+  "reused_rows": 8,
   "known_failures": 251,
   "known_source": ".cloud-battery/baseline.txt",
   "temp_place": "disk",
@@ -305,6 +305,436 @@
       "source": {
         "table": "r368-round-2.json",
         "id": "G14_the_destination_check_is_equality_only"
+      }
+    },
+    {
+      "id": "r368-round-2.G6_ancestors_not_walked",
+      "description": "re-measured: ask samefile of the candidate alone, so a differently cased ancestor is missed",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0dad096532562e46",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    return any(_same_place(ancestor, root) for ancestor in (place, *place.parents))\n",
+      "new": "    return _same_place(place, root)\n",
+      "source": {
+        "table": "r368-round-2.json",
+        "id": "G6_ancestors_not_walked"
+      }
+    },
+    {
+      "id": "r368-round-2.G7_composite",
+      "description": "what the resolution does hold now that samefile answers the comparison: report the word somebody typed rather than the directory it named",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "700ff21a10d3c32f",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_relative_target_is_compared_as_the_place_it_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            target=str(resolved),\n            library_root=str(root),\n",
+      "new": "            target=str(raw),\n            library_root=str(root),\n",
+      "source": {
+        "table": "r368-round-2.json",
+        "id": "G7_composite"
+      }
+    },
+    {
+      "id": "r368-round-2.G7_target_not_resolved",
+      "description": "re-measured: compare the raw argument, leaving samefile to answer for a relative spelling",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "837dbb51adb108c7",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_relative_target_is_compared_as_the_place_it_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    resolved = Path(raw).expanduser().resolve()\n",
+      "new": "    resolved = Path(raw).expanduser()\n",
+      "source": {
+        "table": "r368-round-2.json",
+        "id": "G7_target_not_resolved"
+      }
+    },
+    {
+      "id": "r368-round-2.R1_the_live_root_refusal_is_reworded",
+      "description": "re-measured: reword the destination refusal rather than appending to it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f802ec9ce1b8021b",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_whose_database_lands_on_the_live_one_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"the database would land on {landing}, which is this library's live \"\n            f\"database; the target is outside the library root and the database \"\n            f\"is too, so naming its directory restores over it in place\",\n",
+      "new": "            f\"the chosen folder resolves to somewhere this installation already \"\n            f\"reads from, so the copy would replace what is there\",\n",
+      "source": {
+        "table": "r368-round-2.json",
+        "id": "R1_the_live_root_refusal_is_reworded"
+      }
+    },
+    {
+      "id": "r368.A1_the_detail_check_is_one_value",
+      "description": "an existing guard in the sample: report both destination refusals under one detail, so the two cannot be told apart",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "a5750c525e9c18c9",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_whose_database_lands_on_the_live_one_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            check=\"destination\",\n",
+      "new": "            check=\"containment\",\n",
+      "source": {
+        "table": "r368.json",
+        "id": "A1_the_detail_check_is_one_value"
+      }
+    },
+    {
+      "id": "r368.G10_the_default_capture_survives_a_target",
+      "description": "let a rehearsal roll the newest spendable session back on the live library",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "511bd11ad4857542",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_run_rolls_no_session_back_even_by_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if target is not None:\n        chosen = None\n    elif requested is None:\n",
+      "new": "    if requested is None:\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G10_the_default_capture_survives_a_target"
+      }
+    },
+    {
+      "id": "r368.G11_the_target_is_dropped_before_the_engine",
+      "description": "read the flag, refuse on it, and then restore to the live root anyway",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c038f753a4cb3ee1",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal",
+        "tests/test_restore_cli.py::test_a_target_restores_the_database_into_the_directory_it_names"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        include_mirror=ctx.args.include_mirror,\n        target=target,\n    )\n    return ctx.envelope(data=_performed(report, offered))\n",
+      "new": "        include_mirror=ctx.args.include_mirror,\n    )\n    return ctx.envelope(data=_performed(report, offered))\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G11_the_target_is_dropped_before_the_engine"
+      }
+    },
+    {
+      "id": "r368.G12_the_target_leaves_the_digest",
+      "description": "a decision recorded against a rehearsal is honoured against the live restore",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9f718027e4f58f67",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_digest_moves_when_the_restore_is_pointed_somewhere_else"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"target\": str(target) if target is not None else \"library\",\n",
+      "new": "",
+      "source": {
+        "table": "r368.json",
+        "id": "G12_the_target_leaves_the_digest"
+      }
+    },
+    {
+      "id": "r368.G13_the_rehearsal_flag_leaves_the_digest",
+      "description": "the review's second finding, restored: an approved preview authorises the real run",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8e38d4452b522f2e",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_digest_moves_when_the_rehearsal_flag_does"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"digest\": digest_of(\n            {\"kind\": \"restore.run\", \"items\": items, \"dry_run\": dry_run}\n        ),\n",
+      "new": "        \"digest\": digest_of({\"kind\": \"restore.run\", \"items\": items}),\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G13_the_rehearsal_flag_leaves_the_digest"
+      }
+    },
+    {
+      "id": "r368.G1_no_live_database_destination_check",
+      "description": "the row the brief names: drop the check that the database would land on the live one",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "021c2d4a8bfb0bbc",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_whose_database_lands_on_the_live_one_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if _same_place(landing, live) or (\n        landing.name == live.name and _same_place(landing.parent, live.parent)\n    ):\n",
+      "new": "    if False:\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G1_no_live_database_destination_check"
+      }
+    },
+    {
+      "id": "r368.G2_no_containment_check",
+      "description": "drop the check that the target is the library root, holds it, or sits inside it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e3eb9c3bdb959243",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_that_holds_the_library_or_sits_in_it_is_refused[above-the directory the library root sits in]",
+        "tests/test_restore_cli.py::test_a_target_that_holds_the_library_or_sits_in_it_is_refused[inside-a directory underneath the library root]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if _holds_or_is(root, resolved) or _holds_or_is(resolved, root):\n",
+      "new": "    if False:\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G2_no_containment_check"
+      }
+    },
+    {
+      "id": "r368.G3_containment_one_direction_only",
+      "description": "keep the target inside the root and drop the root inside the target, the mirror over the library's parent",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "177fa120a9170d31",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_that_holds_the_library_or_sits_in_it_is_refused[above-the directory the library root sits in]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if _holds_or_is(root, resolved) or _holds_or_is(resolved, root):\n",
+      "new": "    if _holds_or_is(root, resolved):\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G3_containment_one_direction_only"
+      }
+    },
+    {
+      "id": "r368.G4_containment_is_equality_only",
+      "description": "refuse only the root itself, so a directory underneath it passes",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e64dc2d712d0cd62",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_that_holds_the_library_or_sits_in_it_is_refused[above-the directory the library root sits in]",
+        "tests/test_restore_cli.py::test_a_target_that_holds_the_library_or_sits_in_it_is_refused[inside-a directory underneath the library root]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if place == root or place.is_relative_to(root):\n        return True\n    return any(_same_place(ancestor, root) for ancestor in (place, *place.parents))\n",
+      "new": "    if place == root:\n        return True\n    return _same_place(place, root)\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G4_containment_is_equality_only"
       }
     }
   ],
