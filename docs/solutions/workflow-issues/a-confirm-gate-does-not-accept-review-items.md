@@ -62,7 +62,7 @@ The apply loop's `decide` at `src/cratekit/deletion/run.py:586` then does this, 
    refuse a move: the candidate is no longer deletable, the re-check fails,
    or the shown path no longer matches.
 
-`Verdict` at `src/cratekit/core/review.py:161` has two members, `ACCEPTED` and
+`Verdict` at `src/cratekit/core/review.py:174` has two members, `ACCEPTED` and
 `REJECTED`. After the two continues above, the remaining path is ACCEPTED. That
 is the whole of "apply only moves candidates whose review item already has
 `Verdict.ACCEPTED`."
@@ -122,7 +122,7 @@ After the gate returns the affirmative option, and only then:
 1. Walk the items `present` just returned, not a fresh listing. Those are the
    items the digest covered.
 2. Resolve each still-open item as `Verdict.ACCEPTED`. `review.resolve` at
-   `src/cratekit/core/review.py:1247` refuses an already resolved item rather
+   `src/cratekit/core/review.py:1951` refuses an already resolved item rather
    than overwriting it, so the filter `if item.verdict is None` is required,
    not polite.
 3. Leave a recorded `REJECTED` alone. `present` is idempotent and returns that
@@ -281,7 +281,7 @@ run.apply(cfg, handle, actor=ctx.args.actor)
 
 Still-open items become ACCEPTED. A recorded REJECTED stays REJECTED,
 because `resolve` is not called for it and would refuse if it were
-(`review.py:1267`). `apply` then sees those verdicts through `_verdicts`
+(`review.py:1985`). `apply` then sees those verdicts through `_verdicts`
 and moves only the accepted files.
 
 The pin that a first-run test cannot be, at
@@ -334,6 +334,6 @@ it too (U310).
   (`test_a_confirmed_file_is_trashed_and_leaves_a_tombstone`): the
   engine's correct use of the verdict contract. Companion, not
   substitute. They prove `apply`. They do not prove the shell.
-- `src/cratekit/core/review.py:1247` (`resolve`): a verdict is written
+- `src/cratekit/core/review.py:1951` (`resolve`): a verdict is written
   once. The shell's `if item.verdict is None` filter is what keeps a
   recorded reject from colliding with that rule when the gate says trash.
