@@ -22,7 +22,7 @@ from cratekit.core import review
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.review import Queue
-from cratekit.label import catalogue, kept_reads, sweep
+from cratekit.label import catalogue, sweep
 from cratekit.label import registry as labels
 from cratekit.modules.outbound import export as outbound_export
 from cratekit.modules.outbound import ledger, prune, tidal_account
@@ -76,11 +76,6 @@ def _catalogue(confirmed=CONFIRMED, listed=None, elsewhere=()) -> FakeCatalogue:
     )
 
 
-#: The first build's writes, restored for every later test: the build is the
-#: same every time and each test's state root starts empty.
-_BUILT: dict[str, object] = {}
-
-
 @pytest.fixture
 def built(installed, monkeypatch):
     """Kompakt followed, its three years built on a fake account, the build approved."""
@@ -89,17 +84,8 @@ def built(installed, monkeypatch):
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     account = outbound_fakes.StrictAccount()
     bind_account(monkeypatch, account)
-    reads = kept_reads.path_for(LABEL_ID)
-    if not _BUILT:
-        code, done = _two_acts(["label", "playlists", LABEL], BUILD)
-        assert code == OK, done
-        made = {"ledger": ledger._load(installed), "account": vars(account)}
-        _BUILT.update(copy.deepcopy(made), reads=reads.read_bytes())
-    else:
-        ledger._write(installed, copy.deepcopy(_BUILT["ledger"]))
-        reads.parent.mkdir(parents=True, exist_ok=True)
-        reads.write_bytes(_BUILT["reads"])
-        vars(account).update(copy.deepcopy(_BUILT["account"]))
+    code, done = _two_acts(["label", "playlists", LABEL], BUILD)
+    assert code == OK, done
     assert account.playlists == BUILT
     return SimpleNamespace(cfg=installed, fake=fake, account=account, monkeypatch=monkeypatch)
 
