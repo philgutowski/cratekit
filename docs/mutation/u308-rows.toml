@@ -1,0 +1,267 @@
+name = "u308"
+pass_kind = "light"
+
+# The card's own table over the shared code U308 wrote, 25 rows at the cap for a
+# unit that writes. The guards each shared helper took over from its copies are
+# also held by the kill set replay, u308-replay-after-*; these rows are the
+# helpers' own code, chosen where one helper now serves several verbs.
+
+[[rows]]
+id = "M1_gate_first_skipped"
+description = "spine.run: backfill and refresh no longer ask the gate first when nothing is to write"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_genre_favorites.py"]
+old = '    if not (gate_first or plan.writes):'
+new = '    if not plan.writes:'
+
+[[rows]]
+id = "M2_declined_gate_drops_warnings"
+description = "spine.run: a declined gate drops the warnings the plan carried"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_genre_favorites.py"]
+old = '''    if ctx.gate.require(spec, plan=data, context=engine.facts(plan)) != "approve":
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)'''
+new = '''    if ctx.gate.require(spec, plan=data, context=engine.facts(plan)) != "approve":
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=[])'''
+
+[[rows]]
+id = "M3_backup_ack_skipped"
+description = "spine.run: the four favourites verbs plan and ask without the backup acknowledgment"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_favorites_order.py", "tests/test_genre_favorites.py"]
+old = '''    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    session.assert_backup_acknowledged(cfg)'''
+new = '''    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    pass'''
+
+[[rows]]
+id = "M4_totals_not_merged"
+description = "spine.run: a write's totals are left out of the envelope"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_favorites_order.py", "tests/test_genre_favorites.py"]
+old = '''        data={**data, "totals": {**data["totals"], **totals}},'''
+new = '''        data={**data, "totals": data["totals"]},'''
+
+[[rows]]
+id = "M5_read_back_skipped"
+description = "spine.run: a write is reported without its read back"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_favorites_order.py", "tests/test_genre_favorites.py"]
+old = '''    result = written(plan)
+    engine.assert_read_back(result)'''
+new = '''    result = written(plan)'''
+
+[[rows]]
+id = "M6_write_handle_not_closed"
+description = "spine.handle: the write handle opens with rekordbox running"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '''    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=write, cfg=cfg, **extra)'''
+new = '''    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=False, cfg=cfg, **extra)'''
+
+[[rows]]
+id = "M7_empty_roots_admitted"
+description = "spine.watched: a writer watches no analysis root and reports itself clean"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '''    roots = [Path(root) for root in analysis_roots]
+    if not roots:'''
+new = '''    roots = [Path(root) for root in analysis_roots]
+    if False:'''
+
+[[rows]]
+id = "M8_restore_not_detected"
+description = "spine.prepared: a write records a fingerprint over a database recovered out of band"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '''    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
+    return roots, planned'''
+new = '''    return roots, planned'''
+
+[[rows]]
+id = "M9_landed_raise_unrecorded"
+description = "spine.witnessed: a commit that landed and then raised is never recorded"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '''            if witness.landed:
+                landed()'''
+new = '''            if False:
+                landed()'''
+
+[[rows]]
+id = "M10_commit_unrecorded"
+description = "spine.witnessed: a commit that landed cleanly is never recorded"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '''            raise
+    landed()'''
+new = '''            raise
+    pass'''
+
+[[rows]]
+id = "M11_confinement_off"
+description = "spine.confined: a write that reached what its plan did not name commits"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '''    violations = violations_of(rb_writer.node_tables(db))
+    if violations:'''
+new = '''    violations = violations_of(rb_writer.node_tables(db))
+    if False:'''
+
+[[rows]]
+id = "M12_content_change_admitted"
+description = "spine.drift: a content row changed by a playlist writer is admitted"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '    if before.content != after.content:'
+new = '    if False:'
+
+[[rows]]
+id = "M13_made_rows_refused"
+description = "spine.drift: the playlists a plan makes read as unplanned rows"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '    for key in sorted(set(after.playlists) - set(before.playlists) - set(made)):'
+new = '    for key in sorted(set(after.playlists) - set(before.playlists)):'
+
+[[rows]]
+id = "M14_bookkeeping_always_admitted"
+description = "spine.drift: a row the plan does not move may change its position and stamps"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '        moved -= BOOKKEEPING if moves(key) else frozenset()'
+new = '        moved -= BOOKKEEPING'
+
+[[rows]]
+id = "M15_unverified_answer_passed"
+description = "spine.verified: an answer the database does not hold is reported as written"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '''    if done.disagreements:
+        raise refuse(
+            "session-committed-unverified",'''
+new = '''    if False:
+        raise refuse(
+            "session-committed-unverified",'''
+
+[[rows]]
+id = "M16_root_reads_any_parent"
+description = "placement._sits_under: a month under a folder is found at the playlist root"
+file = "src/cratekit/favorites/placement.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_backfill.py", "tests/test_favorites_split.py"]
+old = '    return held in rb_writer.ROOT_PARENT_SENTINELS if at_root else held == parent_id'
+new = '    return held in rb_writer.ROOT_PARENT_SENTINELS or held == parent_id'
+
+[[rows]]
+id = "L1_record_lock_refusal_lost"
+description = "sync_cli.record_lock: a record that cannot be locked is recorded unlocked"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    try:
+        lock.__enter__()
+    except config.ConfigLockUnavailable as exc:
+        raise _refusal('''
+new = '''    try:
+        lock.__enter__()
+    except config.ConfigLockUnavailable as exc:
+        return
+        raise _refusal('''
+
+[[rows]]
+id = "L2_part_way_again_dropped"
+description = "dated.refused_part_way: a refusal that failed part way loses the step to run again"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_label_mark_native.py"]
+old = '            steps=(*cause.remediation.steps, again),'
+new = '            steps=tuple(cause.remediation.steps),'
+
+[[rows]]
+id = "L3_part_way_reason_lost"
+description = "dated.refused_part_way: a refusal that failed part way reads as this build's defect"
+file = "src/cratekit/label/dated.py"
+surface = "user"
+tests = ["tests/test_label_dated.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_label_mark_native.py"]
+old = '''    if isinstance(exc, CratekitError):
+        cause = exc.cause
+        return refuse('''
+new = '''    if False:
+        cause = exc.cause
+        return refuse('''
+
+[[rows]]
+id = "L4_translated_swallows_refusal"
+description = "catalogue.translated: an adapter's own refusal is translated into the boundary's failure"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_workers.py", "tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py", "tests/test_favorites_backfill.py"]
+old = '''    except passing:
+        raise
+    except Exception as exc:'''
+new = '''    except Exception as exc:'''
+
+[[rows]]
+id = "L5_extended_step_dropped"
+description = "review_common.extended: the step the review verbs add to a refusal is dropped"
+file = "src/cratekit/label/review_common.py"
+surface = "user"
+tests = ["tests/test_label_judge.py", "tests/test_label_artists.py", "tests/test_label_sync_go.py"]
+old = '    steps = (*cause.remediation.steps, step)'
+new = '    steps = tuple(cause.remediation.steps)'
+
+[[rows]]
+id = "L6_ended_outcome_ignored"
+description = "review_common.ended: every review verb ends OK whatever outcome it reached"
+file = "src/cratekit/label/review_common.py"
+surface = "user"
+tests = ["tests/test_label_approved.py", "tests/test_label_artists.py", "tests/test_label_genre_gate.py", "tests/test_label_sync_go.py"]
+old = '''        data={"checks": checks, "summary": summary}, outcome=outcome, warnings=warnings'''
+new = '''        data={"checks": checks, "summary": summary}, outcome=Outcome.OK, warnings=warnings'''
+
+[[rows]]
+id = "L7_clear_ignored"
+description = "registry._checked: a field set to default keeps what the registry held"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_genre.py"]
+old = '    changes.update((key, None) for key, clear in cleared.items() if clear)'
+new = '    pass'
+
+[[rows]]
+id = "L8_offer_unchecked"
+description = "registry._checked: an offer window out of range is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_offer_window.py"]
+old = '''    if offer is not None:
+        check_offer(offer)'''
+new = '''    if False:
+        check_offer(offer)'''
+
+[[rows]]
+id = "L9_store_flushes_nothing"
+description = "kept_reads._Store.flush: answers held are never written"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_playlists_kept.py", "tests/test_label_kept_listing.py", "tests/test_label_playlists.py"]
+old = '''        if self._unwritten:
+            self._write('''
+new = '''        if False:
+            self._write('''
