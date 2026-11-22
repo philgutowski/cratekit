@@ -1,17 +1,10 @@
 """``crate organize --report`` opens the library once (U267).
 
-Every step that reads the database used to open its own handle, so a report
-paid the whole open path five to seven times: the key derivation, the
-binding's configuration read, the process walk, the canary, the schema pin
-and the foreign tree read. The report now opens one read handle at its first
-read, hands it to every reader and closes it on every way out. The run that
-answers a gate is not changed: its plans read and its writes open as before.
-
-Every count here was measured on the base before the change: the ``world``
-report made seven opens and its applying run, both gates answered, 26,
-two of them the snapshot's integrity check on its copy.
-
-The database is always the suite's disposable fixture.
+The report opens one read handle at its first read, hands it to every reader and
+closes it on every way out, where each step used to open its own; the run that
+answers a gate opens as before. Every count was measured on the base: the
+``world`` report made seven opens and its applying run 26. The database is
+always the suite's disposable fixture.
 """
 
 from __future__ import annotations
@@ -40,6 +33,7 @@ from tests.test_organize import (
     _report,
     _steps,
 )
+from tests.test_organize import _less_work as _less_work  # noqa: PLC0414
 from tests.test_organize import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_organize import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
@@ -178,29 +172,13 @@ def test_a_failure_nobody_expected_still_closes_the_handle(world, monkeypatch):
 
 #: The applying run's opens on the base, both gates answered by their two
 #: acts and the run that writes, in order: who opened, and whether to write.
+#: The reads of one plan, in the order the run makes them.
+_PLAN = ("read_collection", "_read_tree", "planned", "reading", "read_library", "add_step", "_yours")
 APPLYING = (
-    *(
-        ("read_collection", False),
-        ("_read_tree", False),
-        ("planned", False),
-        ("reading", False),
-        ("read_library", False),
-        ("add_step", False),
-        ("_yours", False),
-    )
-    * 2,
-    ("read_collection", False),
-    ("_read_tree", False),
-    ("planned", False),
-    ("reading", False),
-    ("add_step", False),
-    ("_yours", False),
-    ("_read_tree", False),
-    ("_write_memberships", True),
-    ("integrity_ok", False),
-    ("refresh_additive", True),
-    ("written", True),
-    ("integrity_ok", False),
+    *((caller, False) for caller in _PLAN * 2),
+    *((caller, False) for caller in _PLAN if caller != "read_library"),
+    ("_read_tree", False), ("_write_memberships", True), ("integrity_ok", False),
+    ("refresh_additive", True), ("written", True), ("integrity_ok", False),
 )
 
 

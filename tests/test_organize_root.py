@@ -1,12 +1,9 @@
 """U143: organize keeps the account root to working custom playlists.
 
-Driven at the root step's own plan and apply over the recording fake account,
-with the filing plan it reads its candidates from, so each scenario reads what
-the account holds rather than the step's own report. Then the adapter's two
-root removals, over a stand in for the provider client, each refusal asserted
-with no removal sent. The verb level drive is in ``tests/test_organize.py``.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+The root step's plan and apply over the recording fake account, then the
+adapter's two root removals over a stand in for the client, each refusal sending
+no removal; the verb level drive is in ``tests/test_organize.py``. D1 applies:
+nothing here names a real account, person or track.
 """
 
 from __future__ import annotations
@@ -43,15 +40,8 @@ class World:
         self.account.folder_names[folder_id] = name
         return folder_id
 
-    def playlist(
-        self,
-        playlist_id: str,
-        name: str,
-        tracks=(),
-        *,
-        folder: str = "",
-        declared: int | None = -1,
-    ) -> str:
+    def playlist(self, playlist_id: str, name: str, tracks=(), *, folder="", declared=-1) -> str:
+        """A playlist on the account, listed with ``declared`` tracks, its own count if -1."""
         self.account.titles[playlist_id] = name
         self.account.playlists[playlist_id] = list(tracks)
         if folder:
@@ -94,6 +84,10 @@ def world() -> World:
 
 def _rows(planned: root.RootPlan) -> dict[str, root.RootRow]:
     return {row.target: row for row in planned.rows}
+
+
+def _taken(cfg, playlist_id: str, name: str, by: str, how: str, when="2026-11-12T00:00:00Z") -> None:
+    mark_record.MarkRecord(cfg).take([mark_record.Taken(playlist_id, name, by, how, when)])
 
 
 # 1. Label debris
@@ -161,17 +155,9 @@ def test_a_year_playlist_held_as_taken_with_no_prefix_proves_its_tracks_download
     world.playlist("year-1", f"{LABEL} {YEAR}", CATALOGUE, folder=folder)
     world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
     assert _rows(world.kept(installed))["debris-1"].action == root.LEFT
-    mark_record.MarkRecord(installed).take(
-        [mark_record.Taken("year-1", f"{LABEL} {YEAR}", "a-pass", mark_record.BY_LABEL, "2026-11-12T00:00:00Z")]
-    )
+    _taken(installed, "year-1", f"{LABEL} {YEAR}", "a-pass", mark_record.BY_LABEL)
     row = _rows(world.kept(installed))["debris-1"]
     assert (row.action, row.why) == (root.REMOVE, root.EVERY_TRACK_FILED)
-
-
-def _found(cfg, playlist_id: str, name: str) -> None:
-    mark_record.MarkRecord(cfg).take(
-        [mark_record.Taken(playlist_id, name, mark_record.MIGRATION, mark_record.FOUND_PREFIXED, "2026-11-12T00:00:00Z")]
-    )
 
 
 def test_filing_reads_a_stripped_hand_mark_as_it_read_the_prefixed_one(installed, world):
@@ -179,7 +165,7 @@ def test_filing_reads_a_stripped_hand_mark_as_it_read_the_prefixed_one(installed
     world.playlist("hand-p", "DOWNLOADED By Hand", ("t1",))
     world.playlist("hand-s", "Stripped By Hand", ("t2",))
     world.playlist("plain", "Working On It", ("t3",))
-    _found(installed, "hand-s", "Stripped By Hand")
+    _taken(installed, "hand-s", "Stripped By Hand", mark_record.MIGRATION, mark_record.FOUND_PREFIXED)
     rows = {row.playlist_id: row for row in world.plans(installed)[0].rows}
     for identity in ("hand-p", "hand-s"):
         assert (rows[identity].action, rows[identity].why) == (filing.MOVE, filing.PREFIXED_UNMARKED)
@@ -189,9 +175,7 @@ def test_filing_reads_a_stripped_hand_mark_as_it_read_the_prefixed_one(installed
 
 def test_filing_files_a_playlist_a_pass_took_by_the_year_it_was_taken(installed, world):
     world.playlist("pass-s", "Warmup", ("t1",))
-    mark_record.MarkRecord(installed).take(
-        [mark_record.Taken("pass-s", "Warmup", "a-pass", mark_record.BY_PASS, "2025-06-01T12:00:00+00:00")]
-    )
+    _taken(installed, "pass-s", "Warmup", "a-pass", mark_record.BY_PASS, "2025-06-01T12:00:00+00:00")
     (row,) = [row for row in world.plans(installed)[0].rows if row.playlist_id == "pass-s"]
     assert (row.action, row.year) == (filing.MOVE, "2025")
 
@@ -307,12 +291,15 @@ def test_a_legacy_folder_holding_a_folder_stays_and_its_folder_is_not_moved(inst
 
 
 def test_a_legacy_year_with_two_year_folders_leaves_its_playlists(installed, world):
+    """And the legacy folder says it waits on that year, not on a later run."""
     world.folder(YEAR)
     world.folder(YEAR)
     legacy = world.folder(LEGACY)
     world.playlist("old-1", "Custom 1", ("t1",), folder=legacy)
-    row = _rows(world.kept(installed))["old-1"]
-    assert row.action == root.LEFT and "2 root folders" in row.why
+    rows = _rows(world.kept(installed))
+    assert rows["old-1"].action == root.LEFT and "2 root folders" in rows["old-1"].why
+    assert "until the 2026 folder is decided" in rows[legacy].why
+    assert "later run" not in rows[legacy].why
 
 
 @pytest.mark.parametrize(
@@ -326,8 +313,6 @@ def test_a_legacy_year_with_two_year_folders_leaves_its_playlists(installed, wor
         (YEAR, ""),
     ],
 )
-
-
 def test_only_a_year_and_these_exact_words_name_a_legacy_folder(name, year):
     assert kinds.legacy_year(name) == year
 
@@ -354,9 +339,7 @@ def test_a_second_run_on_a_clean_root_plans_nothing(installed, world):
     world.forget_removed()
     filed, planned = world.plans(installed)
     assert planned.rows == () and not planned.writes
-    assert [(row.playlist_id, row.why) for row in filed.rows] == [
-        ("custom-1", filing.WORKING_CUSTOM)
-    ]
+    assert [(row.playlist_id, row.why) for row in filed.rows] == [("custom-1", filing.WORKING_CUSTOM)]
 
 
 def test_a_refusal_part_way_stops_and_names_what_was_removed(installed, world):
@@ -450,16 +433,13 @@ def _adapter(client: _Client, cfg) -> tidal_account.TidalAccount:
     return adapter
 
 
-def test_the_adapter_removes_a_debris_playlist_and_reads_it_back_gone(installed):
-    client = _Client({"pl-1": (DEBRIS, 3, 0)})
-    _adapter(client, installed).remove_root_playlist("pl-1", kinds.DEBRIS)
+@pytest.mark.parametrize(
+    ("served", "kind"), [((DEBRIS, 3, 0), kinds.DEBRIS), (("Untitled Playlist", 0, 0), kinds.EMPTY)]
+)
+def test_the_adapter_removes_a_root_playlist_of_its_kind_and_reads_it_back_gone(installed, served, kind):
+    client = _Client({"pl-1": served})
+    _adapter(client, installed).remove_root_playlist("pl-1", kind)
     assert client.deletes == ["pl-1"] and client.opened == ["pl-1", "pl-1"]
-
-
-def test_the_adapter_removes_an_empty_playlist(installed):
-    client = _Client({"pl-1": ("Untitled Playlist", 0, 0)})
-    _adapter(client, installed).remove_root_playlist("pl-1", kinds.EMPTY)
-    assert client.deletes == ["pl-1"]
 
 
 @pytest.mark.parametrize(
@@ -473,8 +453,6 @@ def test_the_adapter_removes_an_empty_playlist(installed):
         (("Untitled Playlist", None, 0), kinds.EMPTY),
     ],
 )
-
-
 def test_a_playlist_the_provider_serves_as_not_of_the_kind_is_refused_before_any_delete(
     installed, served, kind
 ):
@@ -537,11 +515,7 @@ def test_the_adapter_removes_an_empty_legacy_folder_and_reads_the_root_again(ins
         (LEGACY, 2, "not-empty"),
     ],
 )
-
-
-def test_a_folder_not_legacy_or_not_empty_is_refused_before_any_removal(
-    installed, name, inside, problem
-):
+def test_a_folder_not_legacy_or_not_empty_is_refused_before_any_removal(installed, name, inside, problem):
     client = _Client(root_folders={"f-1": name})
     client.inside["f-1"] = inside
     with pytest.raises(CratekitError) as caught:
@@ -659,15 +633,6 @@ def test_a_year_record_whose_folder_now_carries_a_legacy_name_is_not_reused(inst
     root.apply(installed, world.account, planned)
     assert world.account.placed["old-1"] != legacy
     assert world.account.folder_names[world.account.placed["old-1"]] == YEAR
-
-
-def test_a_legacy_folder_whose_year_is_undecided_says_so(installed, world):
-    world.folder(YEAR)
-    world.folder(YEAR)
-    legacy = world.folder(LEGACY)
-    world.playlist("old-1", "Custom 1", ("t1",), folder=legacy)
-    row = _rows(world.kept(installed))[legacy]
-    assert "until the 2026 folder is decided" in row.why and "later run" not in row.why
 
 
 def test_a_folder_removal_answered_not_found_is_read_back_rather_than_failed(installed):

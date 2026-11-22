@@ -1,9 +1,7 @@
 """U169: a ``--root`` is read against the library root, and a missing one refuses.
 
-``~`` is expanded, a relative path joined to the library root, the library
-root taken when omitted, and a folder that is not there refused naming the
-path tried. ``repair paths --apply`` takes the reading and not the refusal,
-since its root filters accepted proposals.
+``repair paths --apply`` takes the reading and not the refusal, since its root
+filters accepted proposals.
 """
 
 from __future__ import annotations
