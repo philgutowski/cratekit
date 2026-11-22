@@ -1595,8 +1595,26 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "cli/a_config_no_verb_can_use",
         "cli/help_of_every_verb",
         "favorites/favorites_put_in_order_behind_the_gate",
+        "favorites_backfill/backfill_refused_without_its_acknowledgment",
+        "favorites_backfill/owned_hearts_placed_behind_the_gate",
+        "favorites_refresh/genre_favorites_refreshed_behind_the_gate",
+        "favorites_split/quarters_split_into_months_behind_the_gate",
         "intake/rehearsal_and_the_gate_it_feeds",
+        "label/every_registry_action_and_its_refusals",
         "label/registry_document_written_read_back_and_refused",
+        "label_approved/accepted_releases_listed_for_download",
+        "label_artists/an_address_given_its_artist",
+        "label_genre_gate/a_sweep_holds_what_the_gate_judges_and_held_returns_it",
+        "label_genre_gate/judge_holds_a_waiting_release_of_another_kind",
+        "label_playlists/a_dated_playlist_heard_into_its_year",
+        "label_playlists/a_native_pass_marks_the_years_its_landing_filed",
+        "label_playlists/year_playlists_built_and_marked_from_a_landed_file",
+        "label_prune/held_and_unconfirmed_tracks_taken_off",
+        "label_sweep/a_sweep_offers_each_labels_releases",
+        "label_sweep/harvest_offers_the_labels_behind_a_playlist",
+        "label_sync/a_question_nobody_answers_and_an_empty_registry_refuse",
+        "label_sync/labels_in_each_state_asked_answered_and_refused",
+        "label_sync_go/answers_summarised_gated_and_downloaded",
         "sync/collection_removal",
         "tagging/tag_write_to_an_audio_file",
         "tagging_rows/row_genres_written_from_their_files",
@@ -1610,7 +1628,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "12 scenarios" in summary and "no difference" in summary
+    assert "30 scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())
