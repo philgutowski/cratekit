@@ -72,7 +72,6 @@ from cratekit.core import jobs, staging_lock
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import beside as staged
-from cratekit.label import go, sync_cli
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
@@ -89,6 +88,8 @@ NAMESPACE = "label.sync.go"
 
 def build_sync(parser, entry) -> None:
     """The verb's own arguments, with this module's handler in front of its own."""
+    from cratekit.label import sync_cli
+
     sync_cli.build_sync(parser, entry)
     parser.set_defaults(_handler=label_sync)
 
@@ -102,6 +103,8 @@ def _land_of(envelope: Envelope) -> Mapping[str, Any] | None:
 
 def _land_in(report: Any) -> Mapping[str, Any] | None:
     """The landing a go's report or refusal names under its key, or None."""
+    from cratekit.label import go
+
     land = report.get(go.LAND_KEY) if isinstance(report, Mapping) else None
     if not isinstance(land, Mapping):
         return None
@@ -186,6 +189,8 @@ def label_sync(ctx: Context) -> Envelope:
 
 
 def _label_sync(ctx: Context) -> Envelope:
+    from cratekit.label import sync_cli
+
     try:
         envelope = sync_cli.label_sync(ctx)
     except CratekitError as exc:
@@ -253,6 +258,8 @@ def _remember(
     verb returns; another run's is saved here, and one that cannot be read or
     saved is a warning naming the run, the job and why, never a refusal.
     """
+    from cratekit.label import go
+
     landed = (stop.cause.detail or {}).get("run_id")
     if not (stop.step == tail.LAND and stop.cause.reason == tail.GATE_STOP and landed):
         return []
@@ -366,6 +373,8 @@ def _kept(
     what arrived may have been renamed with the go's own, so a record kept
     then would read it as the go's own; the warning says it was not kept.
     """
+    from cratekit.label import go
+
     job = land.get("job")
     if not (isinstance(job, str) and job):
         return []

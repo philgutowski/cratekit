@@ -44,6 +44,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from cratekit.cli import registry
 from cratekit.cli.doctor import Finding, Status
@@ -52,8 +53,29 @@ from cratekit.core import active_taxonomy, config, review
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import NameTemplate
-from cratekit.modules.reports import aging, coverage, duplicates, export
-from cratekit.modules.reports import library as library_report
+
+if TYPE_CHECKING:  # pragma: no cover - typing only; the reports module is toggleable
+    from cratekit.modules.reports import export
+
+#: The report engines, read as attributes of this module and imported on that
+#: first read: the reports module is toggleable, so the shell imports none of
+#: them when it loads (U303).
+_ENGINES = {
+    "aging": "aging",
+    "coverage": "coverage",
+    "duplicates": "duplicates",
+    "export": "export",
+    "library_report": "library",
+}
+
+
+def __getattr__(name: str):
+    if name in _ENGINES:
+        import importlib
+
+        return importlib.import_module(f"cratekit.modules.reports.{_ENGINES[name]}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 #: How many uncovered tracks a coverage run lists before it says it stopped.
 #: A number rather than everything, because the diagnostic surface is one JSON
@@ -78,6 +100,8 @@ def _view(ctx) -> export.LibraryView:
     truncated one comes from ``export`` itself, so every verb here says the same
     sentence about the same file.
     """
+    from cratekit.modules.reports import export
+
     return export.read_export_file(Path(ctx.args.export))
 
 
@@ -147,6 +171,8 @@ def audit_coverage(ctx) -> Envelope:
     truncated list, which is the one arithmetic that would hide the truncation
     from a consumer reading only the summary.
     """
+    from cratekit.modules.reports import coverage
+
     cfg = load_config(("cli.reports",))
     declared = active_taxonomy.load(cfg)
     report = coverage.survey(_view(ctx), tree=declared.tree)
@@ -225,6 +251,8 @@ def audit_duplicates(ctx) -> Envelope:
     is the persistent ignore, and this verb keeps no state of its own to make it
     true.
     """
+    from cratekit.modules.reports import duplicates
+
     cfg = load_config(("cli.reports",))
     view = _view(ctx)
     with review.open_store(cfg) as store:
@@ -261,6 +289,8 @@ def report_library(ctx) -> Envelope:
     building, and a report that painted either red would be this module deciding
     what a person's library should look like.
     """
+    from cratekit.modules.reports import library as library_report
+
     cfg = load_config(("cli.reports",))
     declared = active_taxonomy.load(cfg)
     stats = library_report.statistics(
@@ -388,6 +418,8 @@ def report_intake_aging(ctx) -> Envelope:
     question the config file already answers, and it would be the copy nobody
     looks at.
     """
+    from cratekit.modules.reports import aging
+
     cfg = load_config(("cli.reports",))
     declared = active_taxonomy.load(cfg)
     report = aging.intake_aging(

@@ -5,20 +5,3 @@
 #   dangling TOGGLE MODULE an import that stops a verb building with TOGGLE off
 # Lines are only ever removed, by hand or with: scripts/refactor_measure.py prune cli
 # A line whose crossing is gone fails nothing.
-dangling analysis cratekit.analysis.vocals
-dangling deletion cratekit.deletion.trash
-dangling duplicates cratekit.modules.reports.duplicates
-dangling reports cratekit.modules.reports.aging
-dangling reports cratekit.modules.reports.coverage
-dangling reports cratekit.modules.reports.duplicates
-dangling reports cratekit.modules.reports.export
-dangling reports cratekit.modules.reports.library
-top-level cratekit.analysis.vocals
-top-level cratekit.deletion.trash
-top-level cratekit.label.go
-top-level cratekit.label.sync_cli
-top-level cratekit.modules.reports.aging
-top-level cratekit.modules.reports.coverage
-top-level cratekit.modules.reports.duplicates
-top-level cratekit.modules.reports.export
-top-level cratekit.modules.reports.library

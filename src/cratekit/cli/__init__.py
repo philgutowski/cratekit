@@ -849,39 +849,32 @@ def _gate_settings() -> provider_gate.GateSettings | None:
         return None
 
 
-def _without_calls(tokens: Sequence[str]) -> list[str]:
-    """The global options with any ``--calls`` and ``--calls-per-hour`` taken
-    out, so each is given once (U278: the continue names the hour it needs)."""
+def _without(tokens: Sequence[str], flags: tuple[str, ...]) -> list[str]:
+    """The tokens with each of ``flags`` taken out, given apart or with ``=``."""
     kept: list[str] = []
     skip = False
     for token in tokens:
         if skip:
             skip = False
             continue
-        if token in ("--calls", "--calls-per-hour"):
+        if token in flags:
             skip = True
             continue
-        if token.startswith(("--calls=", "--calls-per-hour=")):
+        if token.startswith(tuple(f"{flag}=" for flag in flags)):
             continue
         kept.append(token)
     return kept
+
+
+def _without_calls(tokens: Sequence[str]) -> list[str]:
+    """The global options with any ``--calls`` and ``--calls-per-hour`` taken
+    out, so each is given once (U278: the continue names the hour it needs)."""
+    return _without(tokens, ("--calls", "--calls-per-hour"))
 
 
 def _without_run(tokens: Sequence[str]) -> list[str]:
     """The command line with any ``--run`` taken out (U210)."""
-    kept: list[str] = []
-    skip = False
-    for token in tokens:
-        if skip:
-            skip = False
-            continue
-        if token == "--run":
-            skip = True
-            continue
-        if token.startswith("--run="):
-            continue
-        kept.append(token)
-    return kept
+    return _without(tokens, ("--run",))
 
 
 def continue_command(argv: Sequence[str], entry: Entry, cause: Cause) -> str:
