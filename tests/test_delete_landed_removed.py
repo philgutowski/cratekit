@@ -1091,13 +1091,110 @@ def test_only_a_landing_that_names_an_absent_row_and_shows_no_proof_is_counted()
             landed(("4", "u4"), ("5", "u5")),  # 5 held under another UUID: rolled back
             landed(("6", "u6"), playlists=["gone"]),  # its playlist gone: rolled back
             landed(("8", "u8"), playlists=["here"]),  # its playlist held: stands
-            landed(("9", "")),  # no UUID, no playlist: rolled back
+            landed(("9", ""), ("10", "")),  # 10 held with no UUID either: rolled back
+            landed(("11", "")),  # no proof, but every row held: nothing to list
         ],
         database_identity="db",
-        present={"1", "3", "5"},
-        uuids={"1": "u1", "3": "u3", "5": "another"},
+        present={"1", "3", "5", "10", "11"},
+        uuids={"1": "u1", "3": "u3", "5": "another", "10": "", "11": ""},
         playlist_held=lambda one: one == "here",
     )
 
     assert sorted(found.absent) == ["2", "8"]
-    assert found.rolled_back == 3
+    assert found.rolled_back == (frozenset({"4"}), frozenset({"6"}), frozenset({"9"}))
+    assert found.unasked(()) == 3
+    # A landing whose every absent row an earlier run numbered was asked about.
+    assert found.unasked({"4", "9"}) == 1
+
+
+def test_read_collection_keeps_each_rows_uuid_read_only():
+    class Row:
+        def __init__(self, content_id, uuid, deleted=0):
+            self.ID, self.UUID, self.rb_local_deleted = content_id, uuid, deleted
+            self.FolderPath, self.rb_local_usn, self.FileSize = f"/x/{content_id}.flac", 1, 1
+            self.ArtistName = self.Title = "A"
+
+    read = deletion_library.read_collection([Row("1", "u1"), Row("2", "u2", 1), Row("3", None)])
+
+    assert dict(read.uuids) == {"1": "u1", "2": "u2", "3": ""}
+    with pytest.raises(TypeError):
+        read.uuids["4"] = "u4"  # type: ignore[index]
+
+
+def test_a_handled_landing_whose_playlist_went_later_is_not_counted(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """Its one removal was offered and trashed; deleting its playlist afterwards asks nothing new."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    gone, music = _row(cfg, "One")
+    batch = _batch(cfg, gone)
+    _remove_outright(cfg, gone)
+    code, refused = _review()
+    assert _shown(refused)["offered"] == 1, _shown(refused)
+    _trash(refused)
+    assert not music.exists()
+    _delete_playlist_outright(cfg, batch)
+
+    assert _rolled_back() == 0
+
+
+def test_an_offer_withdrawn_when_the_landings_last_rows_go_is_counted(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """The first removal is offered on its siblings' proof; once they go, the landing is counted."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One", "Two", "Three")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    one, music = _row(cfg, "One")
+    two, _ = _row(cfg, "Two")
+    three, _ = _row(cfg, "Three")
+    _delete_playlist_outright(cfg, _batch(cfg, one))
+    _remove_outright(cfg, one)
+    assert _offered() == 1
+    _remove_outright(cfg, two)
+    _remove_outright(cfg, three)
+
+    assert not ({one, two, three} & set(_candidates(cfg)))
+    assert _rolled_back() == 1
+    assert music.exists()
+
+
+def test_a_landing_whose_rows_are_all_held_is_not_counted_whatever_its_playlist(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """No row absent, no question: an older record with its playlist gone is not a rollback to count."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    held, _music = _row(cfg, "One")
+
+    def older(landed: dict) -> None:
+        for entry in landed["rows"]:
+            entry.pop(native.LANDED_UUID_KEY)
+
+    _edit_landing(cfg, held, older)
+    _delete_playlist_outright(cfg, _batch(cfg, held))
+
+    assert _rolled_back() == 0
+
+
+def test_the_first_review_counts_a_landing_already_rolled_back(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """The run that baselines says it too: a landing rolled back before any review is counted."""
+    cfg, _root = native_library
+    before = Path(cfg.library.db_path).read_bytes()
+    _land(cfg, silence, "One", "Two")
+    Path(cfg.library.db_path).write_bytes(before)
+    _deletion_on(cfg, monkeypatch, tmp_path)
+
+    code, refused = _review()
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert _shown(refused)["baselined"] is True, _shown(refused)
+    assert _shown(refused)["landings read as rolled back"] == 1, _shown(refused)

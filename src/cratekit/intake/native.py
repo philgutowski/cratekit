@@ -162,8 +162,8 @@ PASS_KEY = "pass"
 
 #: The session record field naming every row a landing made (R-1037): the
 #: database by its identity, the update count the landing's commit left, the
-#: playlists it made, and each row's :data:`LANDED_COLUMNS` as the
-#: database holds them after the commit. rekordbox 7.2 deletes a row a person
+#: playlists it made, and each row's :data:`LANDED_COLUMNS` and its UUID
+#: (:data:`LANDED_UUID_KEY`) as the database holds them after the commit. rekordbox 7.2 deletes a row a person
 #: removes OUTRIGHT (A178, A185), so the deletion pass reads a landed row the
 #: database no longer holds as that removal, and this record is the only place
 #: the row's file and identity are written down. Read by ``deletion.library``,

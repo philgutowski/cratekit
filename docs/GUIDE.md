@@ -1373,7 +1373,8 @@ landing. Deleting the landing's playlist in rekordbox does not stop its later
 removals being offered while one of its tracks is still there. A landing whose
 every track is gone, and whose playlist you deleted or which landed into a
 batch playlist that was already there, reads as rolled back: its files are
-kept, and the gate counts such landings as `landings read as rolled back`.
+kept, and the gate counts such landings as `landings read as rolled back`
+while one holds a removal no review has offered yet.
 Landings made before landings recorded each track's identity are offered on
 their playlists alone. `crate
 sync removed` lists the downloaded tracks you took off their playlist on the

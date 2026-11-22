@@ -143,11 +143,12 @@ class Plan:
     #: recomputed because ``apply`` re-checks each candidate through the same
     #: categoriser and has to hand it the same answer the review was made under.
     ambiguous: frozenset[str] = frozenset()
-    #: The landings this run read as rolled back (R-1844): each names a row the
-    #: database no longer holds, and the database holds neither one of its
-    #: rows under its recorded UUID nor every playlist it made, so none of its
-    #: rows is offered. Said on the gate's screen, because a refusal nobody
-    #: sees reads as a library with nothing removed.
+    #: The landings this run read as rolled back (R-1844) that hold an absent
+    #: row no run has numbered: the database holds neither one of the
+    #: landing's rows under its recorded UUID nor every playlist it made, so
+    #: none of its rows is offered, and that row was never put to anyone. Said
+    #: on the gate's screen, because a refusal nobody sees reads as a library
+    #: with nothing removed.
     rolled_back: int = 0
 
     @property
@@ -376,7 +377,7 @@ def plan(
             watermark=mark,
             baselined=True,
             baselined_over=len(seen.removed),
-            rolled_back=landings.rolled_back,
+            rolled_back=landings.unasked(mark.absent),
         )
 
     # STRICTLY GREATER, AND THIS IS THE ONLY PLACE THE RULE IS APPLIED. The
@@ -440,7 +441,7 @@ def plan(
         candidates=answered,
         references=references,
         ambiguous=ambiguous,
-        rolled_back=landings.rolled_back,
+        rolled_back=landings.unasked(mark.absent),
     )
 
 

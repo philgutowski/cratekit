@@ -36,6 +36,7 @@ no verb.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping
 
 from cratekit.core.cause import CratekitError, Scope, refuse
@@ -105,11 +106,11 @@ class CollectionRead:
 
     active: tuple[trees.ContentRow, ...]
     removed: tuple[RemovedRow, ...]
-    #: Every row's UUID the walk read, live or marked, by content id, and only
-    #: the rows that carry one: what a landing's record is checked against
+    #: Every row's UUID the walk read, live or marked, by content id, empty
+    #: where the row holds none: what a landing's record is checked against
     #: (R-1844). Read in the same walk, since a second walk of a cursor
-    #: returns nothing.
-    uuids: Mapping[str, str] = field(default_factory=dict)
+    #: returns nothing, and read only, as the rest of the value is.
+    uuids: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def database_identity(db: Any) -> str:
@@ -351,9 +352,7 @@ def read_collection(rows: Iterable[Any]) -> CollectionRead:
     removed: list[RemovedRow] = []
     uuids: dict[str, str] = {}
     for row in rows:
-        uuid, content_id = _text(row, "UUID"), _identifier(row, "ID")
-        if uuid and content_id:
-            uuids[content_id] = uuid
+        uuids[_identifier(row, "ID")] = _text(row, "UUID")
         if not trees.soft_delete_marker(row):
             active.append(
                 trees.ContentRow(
@@ -378,7 +377,9 @@ def read_collection(rows: Iterable[Any]) -> CollectionRead:
                 version_unbelieved=unbelieved,
             )
         )
-    return CollectionRead(active=tuple(active), removed=tuple(removed), uuids=uuids)
+    return CollectionRead(
+        active=tuple(active), removed=tuple(removed), uuids=MappingProxyType(uuids)
+    )
 
 
 def _declared_membership_count(memberships: Any) -> int | None:
@@ -606,16 +607,29 @@ class LandedAbsence:
 
 @dataclass(frozen=True, slots=True)
 class LandedRead:
-    """What the landings' records offer, and how many of them were read as rolled back.
+    """What the landings' records offer, and the landings read as rolled back.
 
-    ``rolled_back`` counts the landings of this database that name a row the
-    database no longer holds and that nothing shows were not rolled back, so
-    the gate can say how many offered nothing (R-1844): a refusal nobody sees
-    is the shape that hid R-1844 itself.
+    ``rolled_back`` holds, for each landing of this database that names a row
+    the database no longer holds and that nothing shows was not rolled back,
+    the content ids of its absent rows, so the gate can say how many landings
+    offered nothing (R-1844): a refusal nobody sees is the shape that hid
+    R-1844 itself.
     """
 
     absent: Mapping[str, LandedAbsence]
-    rolled_back: int = 0
+    rolled_back: tuple[frozenset[str], ...] = ()
+
+    def unasked(self, numbered: Iterable[str]) -> int:
+        """How many rolled back landings hold an absent row no earlier run numbered.
+
+        A row an earlier run numbered was offered then, or taken as history,
+        while its landing stood, so its question was asked; a landing whose
+        every absent row is such a row is a batch already dealt with whose
+        playlist went later, and counting it would grow the screen's number
+        with every tidy up until it said nothing.
+        """
+        asked = {str(one) for one in numbered}
+        return sum(1 for rows in self.rolled_back if rows - asked)
 
 
 def _landing_stands(
@@ -635,6 +649,7 @@ def _landing_stands(
     proof, which keeps a landing of one row offered while its playlist stays.
     """
     if any(uuid and uuids.get(content_id) == uuid for content_id, _columns, uuid in rows):
+        # ``uuid and``: a row recorded with no UUID matches no row holding none.
         return True
     if not isinstance(playlists, (list, tuple)) or not playlists:
         return False
@@ -669,13 +684,13 @@ def landed_absences(
     A185); deleting a playlist in rekordbox's sidebar deletes its row outright
     (A200) and leaves the rows; Cratekit's rotation soft deletes a playlist.
     A landing whose every row is gone and whose playlists are not all held,
-    or that made none and names no UUID, offers nothing and is counted:
+    or that made none, offers nothing and is listed in ``rolled_back``:
     nothing tells its removal from its rollback, and keeping a file is the
     answer that costs nothing.
     """
     held = {str(one) for one in present}
     found: dict[str, LandedAbsence] = {}
-    rolled_back = 0
+    rolled_back: list[frozenset[str]] = []
     for detail in details:
         landed = detail.get(LANDED_ROWS_KEY) if isinstance(detail, Mapping) else None
         if not isinstance(landed, Mapping):
@@ -701,13 +716,15 @@ def landed_absences(
         if not _landing_stands(
             landed.get("playlists"), rows, uuids=uuids, playlist_held=playlist_held
         ):
-            rolled_back += 1
+            rolled_back.append(frozenset(content_id for content_id, _columns in absent))
             continue
         for content_id, columns in absent:
             seen = found.get(content_id)
             if seen is None or seen.landed < sequence:
                 found[content_id] = LandedAbsence(columns=dict(columns), landed=sequence)
-    return LandedRead(absent={key: found[key] for key in sorted(found)}, rolled_back=rolled_back)
+    return LandedRead(
+        absent={key: found[key] for key in sorted(found)}, rolled_back=tuple(rolled_back)
+    )
 
 
 def playlist_ids(playlists: Iterable[Any]) -> frozenset[str]:

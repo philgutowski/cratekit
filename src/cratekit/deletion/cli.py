@@ -129,10 +129,10 @@ def _shown(found: run.Plan) -> dict[str, Any]:
     ignored = found.references.ignored if found.references is not None else 0
     if ignored:
         shown["ignored, not local files"] = ignored
-    # AND THE LANDINGS READ AS ROLLED BACK (R-1844), whose absent rows are
-    # kept rather than offered: a landing whose playlist was deleted by hand
-    # and whose every row was then removed reads the same as one a restore
-    # took away, and the person approving sees how many there are.
+    # AND THE LANDINGS READ AS ROLLED BACK (R-1844) holding a removal no run
+    # ever offered, whose files are kept: a landing whose playlist was deleted
+    # by hand and whose every row was then removed reads the same as one a
+    # restore took away, and the person approving sees how many there are.
     if found.rolled_back:
         shown["landings read as rolled back"] = found.rolled_back
     return shown
