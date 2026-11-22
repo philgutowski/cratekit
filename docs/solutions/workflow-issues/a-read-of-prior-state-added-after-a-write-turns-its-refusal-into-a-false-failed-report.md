@@ -2,7 +2,7 @@
 title: "A read of prior state added after a write turns its refusal into a false failed report over a completed write"
 date: 2026-09-19
 category: workflow-issues
-module: "src/cratekit/analysis/cli.py"
+module: "src/cratekit/analysis/calibrate.py, src/cratekit/analysis/cli.py"
 problem_type: workflow_issue
 component: development_workflow
 severity: medium
