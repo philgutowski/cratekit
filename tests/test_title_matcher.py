@@ -1748,6 +1748,10 @@ def test_a_credit_spelled_with_a_letter_nfkd_leaves_is_the_artists(artist, title
         # "o" is not "oe": a fold reads a letter one way only.
         ("Trentemøller", "08A - 124 - Trentemoeller - Sun Path", "Sun Path"),
         ("Straße Bloom", "08A - 124 - Strase Bloom - Sun Path", "Sun Path"),
+        # An initial stands only for a word it opens: "Æ." is no initial of
+        # "Þórður", nor "C." of "Bernard" (the mutation table's F20).
+        ("Þórður Badie", "08A - 124 - Æ. Badie - Sun Path", "Sun Path"),
+        ("Bernard Badie", "08A - 124 - C. Badie - Sun Path", "Sun Path"),
         # A word outside the table that folds to two letters is no initial,
         # as on main: only the table's letters are read as written.
         ("Ijsbrand Badie", "08A - 124 - Ĳ. Badie - Sun Path", "Sun Path"),
