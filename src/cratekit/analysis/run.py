@@ -1,13 +1,7 @@
 """Folder-level two-pass: wide head, then capped vocal finalize.
 
-Resume is the Camelot-prefixed filename. A kill after a file is renamed
-leaves that name on disk, and the next run skips it. Files that have
-not been prefixed are the unfinished tail. That is the source system's
-marker, and it does not need a sidecar to be true.
-
-Finalize talks to the filesystem in bytes. A path is a Path, a write is
-os.replace of bytes already on disk, never a decoded XML copy held as
-one giant str.
+Resume is the Camelot-prefixed filename: a kill after a rename leaves the
+name on disk and the next run skips it, with no sidecar.
 """
 
 from __future__ import annotations
@@ -80,9 +74,7 @@ def run_batch(
 ) -> list[Result]:
     """Analyse paths in two pools. Prefixed names are the resume skip.
 
-    ``decode`` is the vocal pass's decoder seam, what turns a path into the
-    samples the model scores. None binds the shipped decoder, which reads the
-    file at the model's own rate behind the extra (U58).
+    ``decode`` is the vocal pass's decoder seam; None binds the shipped one (U58).
     """
     ordered = [Path(path) for path in paths]
     skipped = [path for path in ordered if already_analyzed(path)]
