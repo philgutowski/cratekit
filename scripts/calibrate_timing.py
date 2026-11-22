@@ -4,16 +4,10 @@ Usage::
 
     .venv/bin/python scripts/calibrate_timing.py [--repeats N]
 
-Runs the fixed reference workload the declared number of times and stores the
-spread in ``tests/fixtures/timing_calibration.json``, which is the baseline
-``tests._hardware.threshold_seconds`` expresses timing thresholds against.
-
-Calibrate on a QUIET machine, never while other agents or heavy jobs run: the
-baseline is meant to capture the machine, and a loaded machine writes a slow
-baseline that then quietly loosens every threshold derived from it. A spread
-over the limit REFUSES to write and exits nonzero; the refusal lives in
-write_calibration itself, and the flag that overrides it exists for a human
-who has read the spread and decided to keep it anyway.
+Stores the reference workload's spread in ``tests/fixtures/timing_calibration.json``,
+the baseline ``tests._hardware.threshold_seconds`` scales against. A loaded
+machine writes a slow baseline that loosens every threshold, so a spread over the
+limit REFUSES to write (in write_calibration) unless a human passes ``--force``.
 """
 
 from __future__ import annotations
@@ -28,14 +22,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--repeats",
-        type=int,
-        default=25,
+        "--repeats", type=int, default=25,
         help="how many times to run the reference workload (default 25)",
     )
     parser.add_argument(
-        "--force",
-        action="store_true",
+        "--force", action="store_true",
         help="write even when the spread says the machine was not quiet",
     )
     args = parser.parse_args(argv)
