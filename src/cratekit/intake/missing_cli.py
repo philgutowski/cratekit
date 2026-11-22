@@ -1,108 +1,43 @@
-"""``intake.missing``: the list document for a finished playlist intake.
+"""``intake.missing``: the list document for a finished playlist intake (R-400).
 
-R-400's verb half, for the intake entrance. ``intake playlist`` resolves every
-track to OWNED, OFFERED, SUPPRESSED or MISSING and stops, and ``acquire
-download`` reads a list document nothing in the product wrote. This verb reads
-the finished job's committed reports and hands the missing rows to the one
-emitter, :func:`cratekit.acquire.listdoc.write`, so a person gets a file the
-download verb accepts without retyping a track.
+``intake playlist`` resolves every track and stops; this verb reads the
+finished job's committed reports and hands the missing rows to the one emitter,
+:func:`cratekit.acquire.listdoc.write`, so a person gets a file ``acquire
+download`` accepts without retyping a track.
 
-ONLY MISSING IS LISTED. An owned track is held, an offered one is a question a
-person has not answered yet, and a suppressed one is a track somebody deleted
-on purpose. Listing any of those would spend a download on an answer nobody gave.
-
-MISSING WHEN THE JOB RAN IS ASKED AGAIN AT LISTING TIME (R-502). A report's
-state was fixed when the job ran, and the second listing of a job whose tracks
-were since downloaded and landed handed a person the same download again. Each
-missing row is asked of the library and the tombstone store once more, through
-the consult the worker used, against the library as it is now, and a row
-that is now held, deleted on purpose or a question for a person is counted
-under ``since`` and neither listed nor handed on. The reports are not
-rewritten. A rerun over a library that gained nothing writes the same bytes;
-one that gained every row writes nothing and names no download; one that gained
-some writes a shorter list, which the emitter refuses over the job's earlier
-list of the same name, and the refusal says so.
-
-AN OFFERED ROW IS LISTABLE ONCE IT IS ANSWERED (R-503). The offered check sends
-a person to ``crate review list``, and for as long as the listing read only the
-report, no answer given there ever reached it. Each offered row's review item is
-looked up by the identifier its report names, read only. An unanswered row stays
-offered and nothing more is asked. An answered one goes through the same consult
-as a missing row, so the answer decides it as the worker would: a rejection is
-missing and listed unless a tombstone stands, a yes bound to a copy still held
-is owned, and a yes about a copy that is gone stays a question. The counts say
-what each row is now, and ``answered_*`` says how many got there by an answer.
-A rejected row makes the job's list longer than an earlier copy of the same
-name, which the emitter refuses, and the refusal says so.
-
-A TRACK ALREADY STAGED IS NOT LISTED AGAIN (U212). Sitting 55 downloaded two
-tracks a pass five days earlier had downloaded, tagged and named in the staging
-folder, its landing gate never answered, and the copies stopped ``name apply``
-on names already taken. Each row still missing is asked of the files a landing
-would take from the staging folder, :func:`cratekit.intake.landing.listing`,
-by the ISRC the downloader writes on every file, read through the index reader
-the landing files a manifest by. A row a staged file carries is counted under
-``staged``, named with that file, and not listed; it lands with the download
-that staged it, since ``crate sync land`` lands only its own pass's tracks and
-refuses beside it (R-1499). A file whose ISRC is absent, malformed or unreadable matches nothing,
-and a row with no ISRC asks nothing, so the track stays listed. A row this
-list's own earlier copy already names is never subtracted, so a continued pass
-whose own downloads are now staged writes the same bytes again. A staging
-folder that cannot be read is said on a failing row, never read as empty.
+ONLY MISSING IS LISTED. An owned track is held, an offered one is a question
+nobody answered, and a suppressed one was deleted on purpose; listing any of
+those would spend a download on an answer nobody gave. A report's state was
+fixed when the job ran, so each row is asked of the library again at listing
+time (R-502), and an offered row a person has answered since is decided by that
+answer as the worker would (R-503). A row a download already staged, found by
+the ISRC the downloader writes, is not listed again and lands with the download
+that staged it (U212); a staging folder that cannot be read is said, never read
+as empty.
 
 A PARTIAL LIST THAT READS AS COMPLETE IS THE DEFECT THIS FILE IS SHAPED
-AGAINST. A job that is still open, failed or was cancelled has not resolved
-every track, so it is refused rather than listed. A succeeded job is listed only
-when every one of its items has exactly one readable report, compared by item
+AGAINST. A job still open, failed or cancelled is refused. A succeeded job is
+listed only when every item has exactly one readable report, compared by item
 identifier and not by count, because ``artifacts.committed`` skips a report it
-cannot parse and a count that happened to match would hide which one it
-skipped. A missing row the provider cannot name is written to the unlisted text
-list below and the report says how many, as a failing check rather than a quiet
-omission, so a job whose missing rows are ALL like that still writes a file and
-never reads as a job where everything was owned.
+cannot parse. A missing row the provider cannot name is handed on to a text
+list on a failing check, never dropped. A row with no provider identifier is
+named by its ISRC when exactly one identifier answers it (U78, R-401), and a
+provider that cannot answer refuses before anything is written.
 
-``--run RUN_ID`` is the same list for a whole ``crate sync all`` pass (U73). A
-pass queues one intake job per new playlist under one run, and R29 says a run
-ends in one intake file, so it ends in one list too, named for the run, which
-downloads and lands as one batch. The jobs are the intake jobs carrying the run
-AND queued for this library, because the queue is installation scoped and the
-run alone would merge two libraries' passes. Every rule above holds per job, and
-the run adds two: one open job refuses the whole run, since the list would read
-as the pass, and a failed or cancelled job is named and refused unless
-``--skip-failed`` says to leave it out, in which case it is reported as a failing
-check. A track two playlists share is one row, taken from the first job, and the
-manifest keeps every playlist it came from.
+``--run RUN_ID`` lists a whole ``crate sync all`` pass as one (U73): the intake
+jobs carrying the run AND queued for this library, since the queue is
+installation scoped. One open job refuses the run, a failed or cancelled one is
+refused unless ``--skip-failed`` leaves it out on a failing check, and a track
+two playlists share is one row whose manifest keeps both.
 
-A ROW WITH NO PROVIDER IDENTIFIER IS NAMED BY ITS ISRC OR HANDED ON, NEVER
-GUESSED (U78, R-401). A recognised set track carries no provider identifier, so
-before anything is written each such row is asked of the catalogue by ISRC, one
-question per distinct code, and only when there is such a row at all. Exactly
-one distinct identifier lists the row. No ISRC, a malformed one, an ISRC the
-provider files nothing under, and one it files several tracks under (R-356, the
-common case and not the rare one) all hand the row on to ``<name>.unlisted.json``,
-a text list ``match run`` reads, with the reason above each line. A provider
-that could not answer refuses the whole verb before any file is written, because
-a partial answer would hand on a row that could have been named.
+``--list PATH`` resolves a text list against the library first, names a row
+still missing by ISRC or by the one exact candidate a search holds, and offers
+the rest for review through :mod:`cratekit.intake.candidates`; nothing is ever
+listed from a fuzzy score (U79, R-302).
 
-``--list PATH`` IS THE ROUTE FOR A ROW NOTHING NAMES EXACTLY (U79, R-302). The
-input is the unlisted text list above, or any list ``match run`` reads: a typed
-tracklist, a transcribed screenshot. Every row is resolved against the library
-first, exactly as ``match run`` resolves it, so an owned track, a track held in
-another version and a track deleted on purpose are never searched for. A row
-that is still missing and carries no identifier is asked by ISRC when it has
-one, and otherwise handed to :mod:`cratekit.intake.candidates`, where a search
-is a proposal and never a pick: exactly one candidate matching under the
-product's own fold is listed, anything else is offered for review with its
-candidates, and an accepted candidate is listed by the next run. Nothing is
-ever listed from a fuzzy score. The list is named for the input, with
-``-found`` and a digest of what it lists after it, so it never lands on the
-job's own list, and a second run that lists more, the run after a review
-answer, writes a new list rather than refusing over the first.
-
-Not gated and not destructive: it writes new files, and :func:`listdoc.write`
-refuses rather than replaces a file that holds anything else, so it cannot
-overwrite somebody's list. Nothing here composes ``acquire download``, so
-nothing here can spend a download.
+Not gated and not destructive: :func:`listdoc.write` refuses rather than
+replaces a file that holds anything else, and nothing here composes ``acquire
+download``, so nothing here can spend a download.
 """
 
 from __future__ import annotations
@@ -113,7 +48,7 @@ import json
 import re
 import shlex
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -129,14 +64,14 @@ from cratekit.label import catalogue
 #: The payload key ``crate sync all`` stamps each job it queues with.
 RUN_ID = "run_id"
 
+_ORIGIN = ("intake.missing",)
+
 #: What a run's list and its landing's intake file are named after the run, so
-#: the list, the download and the landing read as one pass. The batch itself is
-#: named for the date and the source since U110, and ``land_name`` in the
+#: the list, the download and the landing read as one pass. ``land_name`` in the
 #: listing's subject is this pass, handed to the landing as ``--pass``.
 SYNCED_SUFFIX = "_synced"
 
 #: What the provenance sidecar says a listed row came from, by the job's key.
-#: A set job reaches the sidecar through a row its ISRC named (U78).
 PROVENANCE_SOURCE: Mapping[str, str] = {"intake.playlist": "playlist", "intake.set": "set"}
 
 #: What the sidecar says a row named from a list somebody already had came from.
@@ -156,9 +91,8 @@ _LIST_SUFFIXES = (listdoc.UNLISTED_SUFFIX, listdoc.LIST_SUFFIX, ".json", ".txt")
 #: The folder under download staging a list lands in when ``--out`` is not given.
 LISTS_DIR = "lists"
 
-#: The four words a committed intake report may carry. A report carrying any
-#: other is refused, because a state this verb cannot read is a track it cannot
-#: say is or is not missing.
+#: The four words a committed intake report may carry. Any other is refused: a
+#: state this verb cannot read is a track it cannot say is or is not missing.
 _WORDS = frozenset({"owned", "offered", "suppressed", "missing"})
 
 #: What a row its job resolved missing has become since, by the summary key it
@@ -169,8 +103,7 @@ _SINCE: Mapping[match.MatchState, str] = {
     match.MatchState.NEEDS_REVIEW: "offered_since",
 }
 
-#: What a row its job offered for review, and a person has answered since, is
-#: now, by the summary key it is counted under (R-503).
+#: What a row its job offered, and a person has answered since, is now (R-503).
 _ANSWERED: Mapping[match.MatchState, str] = {
     match.MatchState.MISSING: "answered_missing",
     match.MatchState.MATCHED: "answered_owned",
@@ -179,16 +112,7 @@ _ANSWERED: Mapping[match.MatchState, str] = {
 }
 
 #: The report word each state the consult answers is counted under.
-_WORD: Mapping[match.MatchState, str] = {
-    match.MatchState.MISSING: "missing",
-    match.MatchState.MATCHED: "owned",
-    match.MatchState.SUPPRESSED: "suppressed",
-    match.MatchState.NEEDS_REVIEW: "offered",
-}
-
-#: Twelve characters: country, registrant, year, designation. Hyphens and
-#: spaces are presentation and are folded away before the shape is asked, and a
-#: code of any other shape is never sent to the provider.
+_WORD = {**match_cli.SETTLED_WORDS, match.MatchState.MISSING: "missing"}
 
 #: Why a row was handed on rather than listed, one word a script can switch on.
 NO_ISRC = "none"
@@ -209,41 +133,25 @@ class _Unnamed:
 def build_missing(parser, entry) -> None:
     chosen = parser.add_mutually_exclusive_group(required=True)
     chosen.add_argument(
-        "--job",
-        default=None,
-        metavar="JOB_ID",
-        help="the finished intake job whose missing tracks to list",
+        "--job", metavar="JOB_ID", help="the finished intake job whose missing tracks to list"
     )
-    # ITS OWN DEST, NOT ``run``. The dispatcher's global ``--run`` continues a
-    # run stopped at a gate and reads ``args.run``; a subcommand flag writing
-    # the same name would hand a sync pass's identifier to the gate loader.
+    # ITS OWN DEST, NOT ``run``: the dispatcher's global ``--run`` reads
+    # ``args.run`` and would hand a sync pass's identifier to the gate loader.
     chosen.add_argument(
-        "--run",
-        dest="sync_run",
-        default=None,
-        metavar="RUN_ID",
+        "--run", dest="sync_run", metavar="RUN_ID",
         help="the sync all pass whose intake jobs to list as one",
     )
     chosen.add_argument(
-        "--list",
-        dest="text_list",
-        default=None,
-        metavar="PATH",
-        help=(
-            "a text list, the unlisted list of an earlier run or any tracklist, "
-            "whose missing tracks to find on the provider and list"
-        ),
+        "--list", dest="text_list", metavar="PATH",
+        help="a text list, the unlisted list of an earlier run or any tracklist, "
+        "whose missing tracks to find on the provider and list",
     )
     parser.add_argument(
-        "--skip-failed",
-        action="store_true",
-        dest="skip_failed",
+        "--skip-failed", action="store_true", dest="skip_failed",
         help="with --run, leave out a job that failed or was cancelled and say so",
     )
     parser.add_argument(
-        "--out",
-        default=None,
-        metavar="DIR",
+        "--out", metavar="DIR",
         help="folder to write the list into (default: the lists folder under download staging)",
     )
     parser.set_defaults(_handler=intake_missing)
@@ -256,12 +164,7 @@ def _resume_argv(job: jobs.Job) -> str:
 
 def _unusable(message: str, *steps: str, inner=None, **detail: Any):
     return refuse(
-        "intake-list-unusable",
-        message,
-        steps=steps,
-        origin=("intake.missing",),
-        detail=detail,
-        inner=inner,
+        "intake-list-unusable", message, steps=steps, origin=_ORIGIN, detail=detail, inner=inner
     )
 
 
@@ -273,8 +176,7 @@ def _finished_or_refuse(store, job_id: str) -> jobs.Job:
             "job-unknown",
             f"job {job.job_id} was queued for {job.handler_key!r}, which is not an "
             f"intake job, so there are no intake reports to list",
-            steps=("name the job an intake playlist or intake set run printed",),
-            origin=("intake.missing",),
+            steps=("name the job an intake playlist or intake set run printed",), origin=_ORIGIN,
             detail={"job_id": job.job_id, "handler": job.handler_key},
         )
     if job.state is not jobs.JobState.SUCCEEDED:
@@ -284,9 +186,7 @@ def _finished_or_refuse(store, job_id: str) -> jobs.Job:
             f"may not be resolved and a list of the rest would read as complete",
             f"finish it with: crate {argv}" if job.is_open() else
             "queue the playlist again, let it finish, then list that job",
-            inner=job.cause,
-            job_id=job.job_id,
-            state=str(job.state),
+            inner=job.cause, job_id=job.job_id, state=str(job.state),
         )
     return job
 
@@ -294,35 +194,28 @@ def _finished_or_refuse(store, job_id: str) -> jobs.Job:
 def _reports_or_refuse(store, job: jobs.Job) -> tuple[dict[str, Any], ...]:
     """One readable report per item, read with the configuration the job froze.
 
-    BY IDENTIFIER, NOT BY COUNT. A report the reader skipped and a stray report
-    for an item the job never had would leave the count right and the list
-    wrong.
+    BY IDENTIFIER, NOT BY COUNT: a skipped report and a stray one would leave
+    the count right and the list wrong.
     """
     wanted = [item.item_id for item in jobs.items(store, job.job_id)]
     if not wanted:
-        # A JOB WITH NO ITEMS IS NOT A JOB WITH NOTHING MISSING. A build before
-        # U57 queued intake jobs with no items, and one that was driven reads
-        # succeeded over a listing nothing resolved; zero reports against zero
-        # items would pass the comparison below and report a clean empty list.
+        # A JOB WITH NO ITEMS IS NOT A JOB WITH NOTHING MISSING (pre U57 builds):
+        # zero reports against zero items would pass the comparison below.
         raise _unusable(
             f"job {job.job_id} has no items, so it never resolved a track; it was "
             f"queued by a build that did not record what its tracks were",
-            "queue the playlist again and list the new job",
-            job_id=job.job_id,
+            "queue the playlist again and list the new job", job_id=job.job_id,
         )
     reports = intake_cli.ARTIFACTS.committed(jobs.frozen_config(job), job.job_id)
     reported = [str(report.get("item_id")) for report in reports]
     if sorted(reported) != sorted(wanted):
-        absent = sorted(set(wanted) - set(reported))
         raise _unusable(
             f"job {job.job_id} has {len(wanted)} item(s) and {len(reports)} readable "
             f"report(s), so a list from them would leave tracks out without saying so",
             "the reports under the job's artifacts folder are damaged or missing; "
             "queue the playlist again and list the new job",
-            job_id=job.job_id,
-            items=len(wanted),
-            reports=len(reports),
-            unreported=absent,
+            job_id=job.job_id, items=len(wanted), reports=len(reports),
+            unreported=sorted(set(wanted) - set(reported)),
         )
     for report in reports:
         if report.get("state") not in _WORDS or not isinstance(report.get("track"), Mapping):
@@ -330,33 +223,25 @@ def _reports_or_refuse(store, job: jobs.Job) -> tuple[dict[str, Any], ...]:
                 f"the report for item {report.get('item_id')!r} of job {job.job_id} "
                 f"does not say whether the track is missing, so the job cannot be listed",
                 "queue the playlist again and list the new job",
-                job_id=job.job_id,
-                item_id=str(report.get("item_id")),
+                job_id=job.job_id, item_id=str(report.get("item_id")),
             )
     return reports
 
 
 def job_reports(store, job: jobs.Job) -> tuple[dict[str, Any], ...]:
-    """A finished intake job's committed reports, one per item, or the refusal.
-
-    The public face of the reader above, for a verb that asks what a job's
-    tracks resolved to without listing them. ``crate sync mark`` is the caller.
-    """
+    """A finished intake job's committed reports, one per item, or the refusal."""
     return _reports_or_refuse(store, job)
 
 
 def _out_dir(ctx, subject: Mapping[str, Any]) -> Path:
-    given = ctx.args.out
-    if given:
-        out = Path(str(given)).expanduser().absolute()
+    if ctx.args.out:
+        out = Path(str(ctx.args.out)).expanduser().absolute()
     else:
         out = intake_cli._load().paths.download_staging / LISTS_DIR
     if out.exists() and not out.is_dir():
         raise _unusable(
             f"{out} exists and is not a folder, so no list can be written into it",
-            "name a folder with --out",
-            out=str(out),
-            **subject,
+            "name a folder with --out", out=str(out), **subject,
         )
     return out
 
@@ -364,17 +249,13 @@ def _out_dir(ctx, subject: Mapping[str, Any]) -> Path:
 def _changed_since(out: Path, name: str, rows) -> list[str]:
     """What an earlier list of this name names that ``rows`` do not, and the reverse.
 
-    READ FROM THAT FILE, NOT INFERRED FROM THE JOB. A count of rows the library
-    gained or a person answered since the job ran says nothing about when the
-    earlier list was written, so a row gained before it and one answered after
-    it read as the same story. The earlier file is the only witness to what it
-    names. One this cannot read gives no reason rather than a wrong one.
+    READ FROM THAT FILE, NOT INFERRED FROM THE JOB: a count of rows gained or
+    answered says nothing about when the earlier list was written. One this
+    cannot read gives no reason rather than a wrong one.
     """
     try:
         body = json.loads((out / f"{name}{listdoc.LIST_SUFFIX}").read_text(encoding="utf-8"))
-        earlier = {
-            str(track["id"]): f"{track['artist']} - {track['title']}" for track in body["tracks"]
-        }
+        earlier = {str(t["id"]): f"{t['artist']} - {t['title']}" for t in body["tracks"]}
     except (OSError, ValueError, KeyError, TypeError):
         return []
     now = {str(row.ref or "").strip(): f"{row.artist} - {row.title}" for row in rows}
@@ -397,76 +278,85 @@ def _changed_since(out: Path, name: str, rows) -> list[str]:
 def _written_or_refuse(out: Path, name: str, rows, provenance, subject, handed_on=()):
     """The emitter's write, with both of its failures as this verb's refusal.
 
-    A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL, as it is
-    ``label approved``'s. The emitter converts what it reads and lets a failed
-    write through, and left alone that reaches a person as an internal error
-    telling them to report a defect over a folder they cannot write to.
-
-    A LIST THAT CHANGED IS REFUSED OVER ITS EARLIER COPY, since the name is
-    fixed by the job, and without the change said the refusal reads as
-    somebody else's file in the way. Rows the library gained since (R-502) and
-    rows a person answered since (R-503) both change it.
+    A folder that cannot be written is a refusal, not an internal error telling
+    a person to report a defect. A list that changed is refused over its
+    earlier copy, since the name is fixed, and the refusal says what changed so
+    it does not read as somebody else's file in the way.
     """
     try:
         return listdoc.write(out, name, rows, provenance, handed_on=handed_on)
     except listdoc.ListDocRefused as exc:
         why = _changed_since(out, name, rows)
         raise _unusable(
-            str(exc),
-            *why,
-            "move the file aside or name another folder with --out",
-            **subject,
+            str(exc), *why, "move the file aside or name another folder with --out", **subject
         ) from exc
     except OSError as exc:
         raise _unusable(
             f"the list could not be written ({type(exc).__name__}: "
             f"{exc.strerror or exc}); nothing acquire download could read was left behind",
             "name another folder with --out, or make this one writable",
-            path=str(exc.filename or ""),
-            **subject,
+            path=str(exc.filename or ""), **subject,
         ) from exc
 
 
+def _text(path) -> str | None:
+    return str(path) if path is not None else None
+
+
+def _command(*argv: str, path) -> str | None:
+    return shlex.join(["crate", *argv, str(path)]) if path is not None else None
+
+
+def _summary_head(subject, written: listdoc.Written, counts) -> dict[str, Any]:
+    """The keys every listing's summary opens with, in their order."""
+    head = {**subject, "list": _text(written.list_path), "manifest": _text(written.manifest_path)}
+    head.update(next=_command("acquire", "download", path=written.list_path))
+    head.update(written=len(written.listed))
+    return head | {word: counts[word] for word in ("missing", "owned", "offered", "suppressed")}
+
+
 def _check(key: str, status: str, detail: str) -> dict[str, Any]:
-    return {"key": f"intake.missing.{key}", "title": key, "status": status,
-            "detail": detail, "remedy": None}
+    return dict(key=f"intake.missing.{key}", title=key, status=status, detail=detail, remedy=None)
+
+
+def _isrc_check(by_isrc: int) -> dict[str, Any]:
+    said = f"{by_isrc} missing track(s) with no provider identifier named by ISRC and listed"
+    return _check("isrc", "info", said)
+
 
 
 def _source_ref(job: jobs.Job) -> str | None:
     return str((job.payload or {}).get(intake_cli.SOURCE) or "") or None
 
 
+def provider_ref(wanted: match.Wanted) -> str:
+    """The row's identifier if it is the PROVIDER'S, the rule ``listdoc`` writes by.
 
-
-def _isrc_of(wanted: match.Wanted) -> str:
-    """The row's ISRC folded and NOT validated, so a malformed one is still
-    named as malformed below rather than read as absent. One fold, the index's."""
-    return match.fold_isrc(wanted.isrc)
+    Public, so ``acquire fallback`` never searches a second source for a row
+    this verb would list by its id.
+    """
+    return str(wanted.ref or "").strip() if wanted.origin == match.TIDAL else ""
 
 
 def _ids_or_unnamed(code: str, tracks: tuple[Any, ...]) -> tuple[str, ...] | _Unnamed:
     """The distinct identifiers an answer holds, or why they cannot be trusted.
 
-    A TRACK WITH NO IDENTIFIER IS NOT DROPPED. Dropped, an answer of one named
-    track and one unnamed would read as one identifier and list a guess.
+    A track with no identifier is not dropped, or one named and one unnamed
+    would read as one identifier and list a guess.
     """
     ids = [str(getattr(track, "id", "") or "").strip() for track in tracks]
     if any(not one for one in ids):
-        return _Unnamed(
-            UNREADABLE,
-            f"the provider answered ISRC {code} with a track carrying no identifier, "
-            f"so the answer cannot be read as one track",
-        )
+        return _Unnamed(UNREADABLE, f"the provider answered ISRC {code} with a track carrying "
+                        f"no identifier, so the answer cannot be read as one track")
     return tuple(dict.fromkeys(ids))
 
 
 def _catalogue_once(cfg=None) -> Callable[[], catalogue.Catalogue]:
     """A getter that resolves the catalogue on first use and once per run.
 
-    LAZY, so a run with nothing to ask spends no login, and SHARED, so a list
-    with rows to ask by ISRC and rows to search for restores one session and
-    not two. Looked up on the module at call time, the contract
-    ``label/catalogue.py`` states, which is what lets a suite substitute it.
+    Lazy, so a run with nothing to ask spends no login, and looked up on the
+    module at call time, as ``label/catalogue.py`` states, so a suite can
+    substitute it.
     """
     held: list[catalogue.Catalogue] = []
 
@@ -483,22 +373,19 @@ def _named_by_isrc(
 ) -> list[str | _Unnamed]:
     """Each row's one provider identifier, or why the provider cannot name it.
 
-    THE CATALOGUE IS RESOLVED ONLY WHEN A ROW CAN BE ASKED ABOUT, so a job whose
-    rows all lack an ISRC spends no login and refuses over no missing
-    credential. It is looked up on the module at call time, the contract
-    ``label/catalogue.py`` states, which is what lets a suite substitute it.
-    Every code is asked once, however many rows carry it, and every answer is
-    in hand before the caller writes anything.
+    The catalogue is resolved only when a row can be asked about, so a job whose
+    rows all lack an ISRC spends no login. Every code is asked once, and every
+    answer is in hand before the caller writes anything. The ISRC is folded and
+    not validated, so a malformed one is named as malformed rather than absent.
     """
-    codes = [_isrc_of(one) for one in wanted]
+    codes = [match.fold_isrc(one.isrc) for one in wanted]
     askable = list(dict.fromkeys(code for code in codes if match.isrc_token(code)))
     answers: dict[str, tuple[str, ...] | _Unnamed] = {}
     if askable:
         found = (resolve or _catalogue_once())()
         # THE CODES THE CATALOGUE FILES NOTHING UNDER, asked in batches first
-        # (U207), so each is answered with no request of its own below. Every
-        # other code is still asked alone, since a batch names one release a
-        # code and the row is listed only when the code names exactly one.
+        # (U207). Every other code is still asked alone, since a batch names one
+        # release a code and the row is listed only when the code names one.
         found.screen_isrcs(askable)
         for code in askable:
             try:
@@ -511,9 +398,7 @@ def _named_by_isrc(
                     f"the streaming provider could not answer for ISRC {code} ({exc}), "
                     f"so the missing tracks it would name cannot be sorted into listed "
                     f"and handed on; nothing was written",
-                    remedy=Remedy.RETRY_LATER,
-                    scope=Scope.RUN,
-                    origin=("intake.missing",),
+                    remedy=Remedy.RETRY_LATER, scope=Scope.RUN, origin=_ORIGIN,
                     detail={"isrc": code},
                 ) from exc
             answers[code] = _ids_or_unnamed(code, tracks)
@@ -521,33 +406,24 @@ def _named_by_isrc(
     for one, code in zip(wanted, codes, strict=True):
         answer = answers.get(code)
         if not code:
-            named.append(
-                _Unnamed(NO_ISRC, "it carries no ISRC, so the provider cannot be asked for it exactly")
-            )
+            answer = _Unnamed(
+                NO_ISRC, "it carries no ISRC, so the provider cannot be asked for it exactly")
         elif answer is None:
-            named.append(
-                _Unnamed(
-                    MALFORMED,
-                    f"its ISRC {one.isrc!r} is not a well formed ISRC, so the provider was not asked",
-                )
-            )
+            answer = _Unnamed(MALFORMED, f"its ISRC {one.isrc!r} is not a well formed ISRC, so "
+                              f"the provider was not asked")
         elif isinstance(answer, _Unnamed):
-            named.append(answer)
+            pass
         elif len(answer) == 1:
-            named.append(answer[0])
+            answer = answer[0]
         elif not answer:
-            named.append(_Unnamed(UNKNOWN, f"the provider files no track under ISRC {code}"))
+            answer = _Unnamed(UNKNOWN, f"the provider files no track under ISRC {code}")
         else:
-            # SORTED, so the order the provider happened to answer in never
-            # changes the file's bytes and turns a repeat run into a refusal.
-            named.append(
-                _Unnamed(
-                    SEVERAL,
-                    f"the provider files {len(answer)} tracks under ISRC {code} "
-                    f"({', '.join(sorted(answer))}), and which release to download is "
-                    f"not something the ISRC decides",
-                )
-            )
+            # SORTED, so the provider's order never changes the file's bytes and
+            # turns a repeat run into a refusal.
+            answer = _Unnamed(SEVERAL, f"the provider files {len(answer)} tracks under ISRC {code} "
+                f"({', '.join(sorted(answer))}), and which release to download is "
+                f"not something the ISRC decides")
+        named.append(answer)
     return named
 
 
@@ -556,28 +432,20 @@ def _run_jobs_or_refuse(
 ) -> tuple[list[jobs.Job], list[jobs.Job]]:
     """The run's finished intake jobs for THIS library, oldest first, and the skipped.
 
-    THE LIBRARY AS WELL AS THE RUN. The queue is installation scoped, and a run
-    identifier alone would list another library's jobs into this one's download.
-    Oldest first, the identifier breaking a tie, so a second run writes the same
-    bytes and is recognised as the same list rather than refused.
+    THE LIBRARY AS WELL AS THE RUN, since the queue is installation scoped.
+    Oldest first, the identifier breaking a tie, so a second run writes the
+    same bytes and is recognised rather than refused.
     """
     if not run_id.strip():
-        # A BLANK RUN IS NOT A RUN. Compared as it stands it would match nothing
-        # today, and a job queued with an empty run would be listed as a pass.
-        raise _unusable(
-            "--run was given no run identifier",
-            "name the run a crate sync all pass printed",
-            run_id=run_id,
-        )
+        # A BLANK RUN IS NOT A RUN: a job queued with an empty run would match.
+        raise _unusable("--run was given no run identifier",
+                        "name the run a crate sync all pass printed", run_id=run_id)
     library_id = intake_cli._load().library.volume_id
     found = sorted(
-        (
-            job
-            for job in jobs.list_jobs(store)
+        (job for job in jobs.list_jobs(store)
             if job.handler_key in intake_cli.INTAKE_KEYS
             and (job.payload or {}).get(RUN_ID) == run_id
-            and job.library_id == library_id
-        ),
+            and job.library_id == library_id),
         key=lambda job: (job.created, job.job_id),
     )
     if not found:
@@ -585,25 +453,19 @@ def _run_jobs_or_refuse(
             "job-unknown",
             f"no intake job queued for this library carries the run {run_id!r}, so "
             f"there is nothing to list for it",
-            steps=(
-                "name the run a crate sync all pass printed on this library",
-                "a pass that queued no playlist has no intake jobs to list",
-            ),
-            origin=("intake.missing",),
-            detail={"run_id": run_id, "library_id": library_id},
+            steps=("name the run a crate sync all pass printed on this library",
+                   "a pass that queued no playlist has no intake jobs to list"),
+            origin=_ORIGIN, detail={"run_id": run_id, "library_id": library_id},
         )
     still_open = [job for job in found if job.is_open()]
     if still_open:
-        # ONE OPEN JOB REFUSES THE RUN. A list of the finished ones would read as
-        # the whole pass, and the open job's tracks would never be listed.
+        # ONE OPEN JOB REFUSES THE RUN: the rest would read as the whole pass.
         raise _unusable(
             f"{len(still_open)} of the {len(found)} intake job(s) in run {run_id} "
             f"are still open, so a list of the rest would read as the whole pass: "
             + ", ".join(f"{job.job_id} ({job.state})" for job in still_open),
             *(f"finish job {job.job_id} with: crate {_resume_argv(job)}" for job in still_open),
-            "then list the run again",
-            run_id=run_id,
-            open=[job.job_id for job in still_open],
+            "then list the run again", run_id=run_id, open=[job.job_id for job in still_open],
         )
     unfinished = [job for job in found if job.state is not jobs.JobState.SUCCEEDED]
     if unfinished and not skip_failed:
@@ -614,20 +476,16 @@ def _run_jobs_or_refuse(
             + ", ".join(f"{job.job_id} ({job.state})" for job in unfinished),
             "pass --skip-failed to list the rest and name these as left out",
             "or queue those playlists again with crate sync all and list that run",
-            inner=unfinished[0].cause,
-            run_id=run_id,
-            failed=[job.job_id for job in unfinished],
+            inner=unfinished[0].cause, run_id=run_id, failed=[job.job_id for job in unfinished],
         )
     kept = [job for job in found if job.state is jobs.JobState.SUCCEEDED]
     if not kept:
-        # EVERY JOB SKIPPED IS NOT NOTHING MISSING. A no-op here would read like
-        # a pass where the library already held everything.
+        # EVERY JOB SKIPPED IS NOT NOTHING MISSING, which a no-op would read as.
         raise _unusable(
             f"every intake job in run {run_id} failed or was cancelled, so no track "
             f"of the pass was resolved and there is nothing to list",
             "queue those playlists again with crate sync all and list that run",
-            run_id=run_id,
-            failed=[job.job_id for job in unfinished],
+            run_id=run_id, failed=[job.job_id for job in unfinished],
         )
     return kept, unfinished
 
@@ -638,7 +496,7 @@ def _provenance(
     """Each listed id's provenance: the first job it came from, and every one.
 
     FIRST SOURCE WINS, as the list document's own row does, and the rest are
-    kept rather than dropped, so a track two playlists share still says both.
+    kept, so a track two playlists share still says both.
     """
     first: dict[str, jobs.Job] = {}
     every: dict[str, list[str]] = {}
@@ -652,11 +510,8 @@ def _provenance(
         if said is not None and said not in refs:
             refs.append(said)
     return {
-        ref: listdoc.Provenance(
-            source=PROVENANCE_SOURCE[job.handler_key],
-            source_ref=_source_ref(job),
-            source_refs=tuple(every[ref]),
-        )
+        ref: listdoc.Provenance(source=PROVENANCE_SOURCE[job.handler_key],
+                                source_ref=_source_ref(job), source_refs=tuple(every[ref]))
         for ref, job in first.items()
     }
 
@@ -664,14 +519,10 @@ def _provenance(
 def _answered(offered: list[dict[str, Any]]) -> list[bool]:
     """Whether each offered report's review item carries an answer now (R-503).
 
-    BY THE KEY THE WORKER OFFERED IT UNDER. Every report the worker commits
-    names the item it asked, ``review_item``, so the item is found by that
-    identifier rather than by one rebuilt from a library that may have moved
-    since. READ ONLY: an unanswered row is left exactly where it is, nothing is
-    offered and the library is not walked, so a job whose questions nobody
-    answered lists as it always did. A report naming no item has no answer
-    that could reach it and stays offered. A store that cannot be read refuses,
-    because it is not a store where nobody answered.
+    By the ``review_item`` key the worker offered it under, not one rebuilt
+    from a library that may have moved. READ ONLY: an unanswered row is left
+    where it is. A report naming no item stays offered, and a store that cannot
+    be read refuses, because it is not a store where nobody answered.
     """
     if not offered:
         return []
@@ -689,28 +540,13 @@ def _asked_again(
 ) -> list[match.TrackMatch]:
     """What each row resolves to now, asked the way the worker asked it.
 
-    THE WORKER'S CONSULT, NOT A SECOND OPINION. Each row is resolved as
-    :func:`cratekit.intake.cli.resolve_track` resolves it: the library view
-    ``match_cli.library_view`` builds, then a question the library raises goes
-    through ``adjudicate``, so an answer a person already gave decides it.
-    Without that step a row a person answered as a different track would read
-    here as a fresh question and drop out of the list for ever. The library is
-    walked once, however many jobs a run holds.
-
-    THE LIBRARY AS IT IS NOW, not as the job froze it. The question is whether
-    the library holds the track today, and a library whose root moved since the
-    job was queued would otherwise refuse as unmounted while mounted, or answer
-    from the old folder. ``--list`` and ``sync mark`` ask the same question the
-    same way.
-
-    AN ABSENT LIBRARY IS NOT AN EMPTY ONE. Every row would recheck missing and
-    the list would read as asked again when it was not.
-
-    Two kinds of row come here, and the caller counts them apart: a row the
-    job found missing (R-502), and a row the job offered for review that a
-    person has answered since (R-503). The second is decided by that answer
-    exactly as the worker decides it, rejection and tombstone, a yes bound to
-    the copy it was about, a yes about a copy that is gone still a question.
+    THE WORKER'S CONSULT, NOT A SECOND OPINION: the library view, then
+    ``adjudicate`` for a question the library raises, so an answer a person
+    already gave decides it, a rejection, a yes bound to its copy, a yes about
+    a copy that is gone still a question. THE LIBRARY AS IT IS NOW, not as the
+    job froze it, since a moved root would otherwise refuse or answer from the
+    old folder. AN ABSENT LIBRARY IS NOT AN EMPTY ONE: every row would recheck
+    missing.
     """
     cfg = intake_cli._load()
     music = Path(cfg.library.root) / cfg.library.music_dir
@@ -720,17 +556,13 @@ def _asked_again(
             f"this library's music folder {str(music)!r} is not there, so no track "
             f"the job found missing, or a person answered since, can be asked "
             f"again whether it is held now; nothing was written",
-            remedy=Remedy.MOUNT_LIBRARY_VOLUME,
-            origin=("intake.missing",),
+            remedy=Remedy.MOUNT_LIBRARY_VOLUME, origin=_ORIGIN,
             detail={"music": str(music), **subject},
         )
     index, suppresses, identify = match_cli.library_view(cfg)
-    now = [
-        match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify)
-        for one in wanted
-    ]
-    # BY THE JOB'S OWN VERB, since the review item is keyed by the handler that
-    # asked it and the worker asked under the job's.
+    now = [match.resolve_one(one, index, suppresses=suppresses, suppression_id=identify)
+           for one in wanted]
+    # BY THE JOB'S OWN VERB, since the review item is keyed by the asking handler.
     asked: dict[str, list[int]] = {}
     for n, one in enumerate(now):
         if match_cli.touches_the_queue(one):
@@ -739,11 +571,8 @@ def _asked_again(
         with review.open_store(cfg) as items:
             for handler_key, at in asked.items():
                 answered = match_cli.adjudicate(
-                    items,
-                    match.MatchResult(matches=tuple(now[n] for n in at)),
-                    handler_key=handler_key,
-                    suppresses=suppresses,
-                    suppression_id=identify,
+                    items, match.MatchResult(matches=tuple(now[n] for n in at)),
+                    handler_key=handler_key, suppresses=suppresses, suppression_id=identify,
                 )
                 for n, one in zip(at, answered.matches, strict=True):
                     now[n] = one
@@ -752,12 +581,11 @@ def _asked_again(
 
 @dataclass(frozen=True, slots=True)
 class _Staged:
-    """What the staging folder holds of the rows asked (U212).
+    """What the staging folder holds of the rows asked.
 
     ``found`` pairs each staged row's position with the file that carries it,
-    ``unread`` says why the folder could not be read, empty when it was, and
-    ``unasked`` says why nothing was compared with it, empty when something was
-    (review round one, F2), so the row never reads as a look it did not take.
+    ``unread`` says why the folder could not be read, and ``unasked`` why
+    nothing was compared with it, so the row never reads as a look it did not take.
     """
 
     folder: Path
@@ -769,11 +597,10 @@ class _Staged:
 def _own_rows(out: Path, name: str) -> tuple[frozenset[str], frozenset[str]]:
     """The provider ids and ISRCs this list's own earlier copy names, or nothing.
 
-    THE EARLIER FILE IS THE WITNESS, as :func:`_changed_since` reads it. A row it
-    names is this list's, and a continued pass finds that row's download in
-    the staging folder because this list asked for it, so it is never counted
-    as an earlier pass's. A copy that cannot be read claims nothing, and a list
-    then written shorter is refused over it by the emitter, loudly.
+    A row it names is this list's, and a continued pass finds that row's
+    download staged because this list asked for it, so it is never counted as
+    an earlier pass's. A copy that cannot be read claims nothing, and a shorter
+    list is then refused over it by the emitter, loudly.
     """
     try:
         body = json.loads((out / f"{name}{listdoc.LIST_SUFFIX}").read_text(encoding="utf-8"))
@@ -786,43 +613,30 @@ def _own_rows(out: Path, name: str) -> tuple[frozenset[str], frozenset[str]]:
 
 
 def _staged(wanted: list[match.Wanted], *, out: Path, name: str) -> _Staged:
-    """Which of ``wanted`` a file in the download staging folder already carries (U212).
+    """Which of ``wanted`` a file in the download staging folder already carries.
 
-    BY THE ISRC THE DOWNLOADER WRITES, read from each file a landing would take
-    from the folder through the index reader the landing files a manifest by,
-    so a file renamed by ``name apply`` is found as well as one still named for
-    its provider id. ABSENCE OF A READ IS NOT A MATCH: a row with no ISRC asks
-    nothing, and a file whose tag is absent, malformed or unreadable holds no
-    identity, so the row stays listed and the worst case is the download it
-    always was. A folder that is not there holds nothing; one that is there
-    and cannot be read is said by the caller, never read as empty.
+    ABSENCE OF A READ IS NOT A MATCH: a row with no ISRC asks nothing, and a file
+    whose tag is absent, malformed or unreadable holds no identity, so the row
+    stays listed and the worst case is the download it always was. A folder
+    that is there and cannot be read is said by the caller, never read as empty.
     """
     cfg = intake_cli._load()
     folder = Path(cfg.paths.download_staging).expanduser().absolute()
     asked = [(n, match.isrc_token(one.isrc)) for n, one in enumerate(wanted)]
     asked = [(n, token) for n, token in asked if token]
     if not asked:
-        return _Staged(
-            folder,
-            unasked="no missing track carries an ISRC, so none was compared with the "
-            "download staging folder",
-        )
+        return _Staged(folder, unasked="no missing track carries an ISRC, so none was compared "
+                       "with the download staging folder")
     try:
         if not folder.exists():
-            return _Staged(
-                folder,
-                unasked=f"the download staging folder {folder} is not there, so "
-                f"nothing is staged",
-            )
+            return _Staged(folder, unasked=f"the download staging folder {folder} is not there, "
+                           f"so nothing is staged")
         files = landing.listing(folder)
     except OSError as exc:
         return _Staged(folder, unread=str(exc.strerror or exc))
     if not files:
-        return _Staged(
-            folder,
-            unasked=f"the download staging folder {folder} holds no file a landing "
-            f"would take, so nothing is staged",
-        )
+        return _Staged(folder, unasked=f"the download staging folder {folder} holds no file a "
+                       f"landing would take, so nothing is staged")
     ids, isrcs = _own_rows(out, name)
     index = match.index_paths(files, template=match_cli.library_template(cfg))
     found: list[tuple[int, Path]] = []
@@ -836,27 +650,56 @@ def _staged(wanted: list[match.Wanted], *, out: Path, name: str) -> _Staged:
     return _Staged(folder, tuple(found))
 
 
-def _listed(
-    ctx,
-    found: list[tuple[jobs.Job, tuple[dict[str, Any], ...]]],
-    *,
-    name: str,
-    subject: dict[str, Any],
-    checks: list[dict[str, Any]],
-    after: str = "",
-    left_out: tuple[jobs.Job, ...] = (),
-) -> Envelope:
+def _staged_check(staged: _Staged | None, rows: list[tuple[match.Wanted, Path]]) -> dict[str, Any]:
+    """The row that says what the staging folder held of the missing tracks."""
+    if staged is not None and staged.unread:
+        return _check(
+            "staged",
+            "fail",
+            f"the download staging folder {staged.folder} could not be read "
+            f"({staged.unread}), so no missing track was checked against what is "
+            f"staged there, and one staged already is listed and downloaded again",
+        )
+    if rows:
+        return _check("staged", "info", f"{len(rows)} missing track(s) are staged already in "
+            f"{staged.folder if staged else ''} by a download not landed yet, so they "
+            f"are not listed or downloaded again, and land with the download that staged them: "
+            + "; ".join(f"{one.artist} - {one.title} as {path.name}" for one, path in rows))
+
+    if staged is None:
+        return _check("staged", "info", "no track is missing, so none was asked whether it is staged")
+    if staged.unasked:
+        return _check("staged", "info", staged.unasked)
+    return _check("staged", "info", f"no missing track is staged already in {staged.folder}")
+
+
+@dataclass
+class _Tally:
+    """What one listing's steps found, carried to its report."""
+
+    counts: dict[str, int]
+    since: dict[str, int] = field(default_factory=lambda: dict.fromkeys(_SINCE.values(), 0))
+    now_answered: dict = field(default_factory=lambda: dict.fromkeys(_ANSWERED.values(), 0))
+    by_isrc: int = 0
+    handed: list[tuple[listdoc.Row, match.Wanted, _Unnamed]] = field(default_factory=list)
+    unwritable: list[tuple[listdoc.Row, _Unnamed]] = field(default_factory=list)
+    staged: _Staged | None = None
+    staged_rows: list[tuple[match.Wanted, Path]] = field(default_factory=list)
+    written: listdoc.Written = listdoc.Written(None, None, (), ())
+
+
+def _listed(ctx, found: list[tuple[jobs.Job, tuple[dict[str, Any], ...]]], *, name: str,
+            subject: dict[str, Any], checks: list[dict[str, Any]], after: str = "",
+            left_out: tuple[jobs.Job, ...] = ()) -> Envelope:
     """Write one list from every missing report of ``found``, in order, and report it.
 
-    ``subject`` identifies what was listed, a job or a run, on every refusal
-    and at the head of the summary. ``checks`` are the caller's own rows,
-    reported after the ones every listing carries. ``left_out`` are the jobs a
-    run skipped, whose tracks nothing resolved.
+    ``subject`` names what was listed, a job or a run, on every refusal and at
+    the head of the summary. ``checks`` are the caller's own rows, reported
+    after the shared ones. ``left_out`` are the jobs a run skipped.
     """
     counts = {word: 0 for word in _WORDS}
-    # IN REPORT ORDER, missing and offered together, so a row a person answered
-    # is listed where its playlist put it and a list's bytes do not depend on
-    # which rows were answered first.
+    # IN REPORT ORDER, missing and offered together, so a list's bytes do not
+    # depend on which rows were answered first.
     rows_in: list[tuple[jobs.Job, dict[str, Any]]] = []
     for job, reports in found:
         for report in reports:
@@ -865,8 +708,7 @@ def _listed(
                 rows_in.append((job, report))
     offered = [report for _job, report in rows_in if report["state"] == "offered"]
     answered = iter(_answered(offered))
-    # AN OFFERED ROW NOBODY ANSWERED IS NOT ASKED AGAIN. It stays offered on the
-    # check it always had, and asking it would offer it again from here.
+    # AN OFFERED ROW NOBODY ANSWERED IS NOT ASKED AGAIN, which would offer it again.
     asking = [
         (job, report)
         for job, report in rows_in
@@ -874,15 +716,8 @@ def _listed(
     ]
     missing = [intake_cli.thawed(report["track"]) for _job, report in asking]
     origins = [job for job, _report in asking]
-    written = listdoc.Written(None, None, (), ())
-    handed: list[tuple[listdoc.Row, match.Wanted, _Unnamed]] = []
-    unwritable: list[tuple[listdoc.Row, _Unnamed]] = []
-    by_isrc = 0
-    since = dict.fromkeys(_SINCE.values(), 0)
-    now_answered = dict.fromkeys(_ANSWERED.values(), 0)
-    out: Path | None = None
-    staged: _Staged | None = None
-    staged_rows: list[tuple[match.Wanted, Path]] = []
+    tally = _Tally(counts)
+    since, now_answered = tally.since, tally.now_answered
     if missing:
         # THE FOLDER BEFORE THE LIBRARY WALK AND THE PROVIDER, so a bad --out
         # spends neither.
@@ -891,9 +726,8 @@ def _listed(
         kept: list[int] = []
         for n, (one, (_job, report)) in enumerate(zip(now, asking, strict=True)):
             if report["state"] == "offered":
-                # COUNTED AS WHAT THE ANSWER MADE IT. A rejected row is missing
-                # and an accepted one is owned, and the offered count is what is
-                # still a question, which is what the check promises (R-503).
+                # COUNTED AS WHAT THE ANSWER MADE IT, so the offered count is
+                # what is still a question, which the check promises.
                 now_answered[_ANSWERED[one.state]] += 1
                 counts["offered"] -= 1
                 counts[_WORD[one.state]] += 1
@@ -903,114 +737,96 @@ def _listed(
                 kept.append(n)
         missing = [missing[n] for n in kept]
         origins = [origins[n] for n in kept]
-        # STAGED AFTER THE LIBRARY IS ASKED (U212): a row the library holds now
-        # is owned, whatever the staging folder also holds.
-        # NOTHING STILL MISSING ASKS NOTHING (review round two, finding 2), and
-        # the row then says no track is missing rather than giving a reason.
-        staged = _staged(missing, out=out, name=name) if missing else None
+        # STAGED AFTER THE LIBRARY IS ASKED: a row the library holds now is
+        # owned, whatever is staged. Nothing still missing asks nothing.
+        staged = tally.staged = _staged(missing, out=out, name=name) if missing else None
         gone = {n for n, _path in staged.found} if staged else set()
-        staged_rows = [(missing[n], path) for n, path in staged.found] if staged else []
+        tally.staged_rows = [(missing[n], path) for n, path in staged.found] if staged else []
         missing = [one for n, one in enumerate(missing) if n not in gone]
         origins = [job for n, job in enumerate(origins) if n not in gone]
         counts["missing"] = len(missing)
-    gained = sum(since.values())
     if missing:
         rows = list(listdoc.rows_of(missing))
         bare = [n for n, row in enumerate(rows) if not str(row.ref or "").strip()]
         unnamed: set[int] = set()
-        if bare:
-            for n, answer in zip(bare, _named_by_isrc([missing[n] for n in bare]), strict=True):
-                if isinstance(answer, _Unnamed):
-                    unnamed.add(n)
-                    handed.append((rows[n], missing[n], answer))
-                else:
-                    rows[n] = replace(rows[n], ref=answer)
-                    by_isrc += 1
+        for n, answer in zip(bare, _named_by_isrc([missing[n] for n in bare]), strict=True):
+            if isinstance(answer, _Unnamed):
+                unnamed.add(n)
+                tally.handed.append((rows[n], missing[n], answer))
+            else:
+                rows[n] = replace(rows[n], ref=answer)
+                tally.by_isrc += 1
         kept = [n for n in range(len(rows)) if n not in unnamed]
         listed_rows = tuple(rows[n] for n in kept)
         writable = []
-        for row, _wanted, why in handed:
+        for row, _wanted, why in tally.handed:
             try:
                 listdoc.text_line(row)
             except listdoc.ListDocRefused:
-                # ONE ROW IS NOT THE LIST. Refusing here would withhold every
-                # track the provider did name, on every run and in any folder,
-                # so the row is named on its own failing check instead.
-                unwritable.append((row, why))
+                # ONE ROW IS NOT THE LIST. Refusing would withhold every track
+                # the provider did name, so the row has its own failing check.
+                tally.unwritable.append((row, why))
                 continue
             writable.append(listdoc.HandedOn(row, why.reason))
-        written = _written_or_refuse(
-            out,
-            name,
-            listed_rows,
-            _provenance(listed_rows, [origins[n] for n in kept]),
-            subject,
-            handed_on=writable,
-        )
+        provenance = _provenance(listed_rows, [origins[n] for n in kept])
+        tally.written = _written_or_refuse(
+            out, name, listed_rows, provenance, subject, handed_on=writable)
+    return _listed_report(ctx, tally, missing, subject, checks, after, left_out)
+
+
+def _listed_report(ctx, tally: _Tally, missing, subject, checks, after, left_out) -> Envelope:
+    """The listing's refusals for nothing written, then its checks and summary."""
+    counts, since, now_answered = tally.counts, tally.since, tally.now_answered
+    staged, staged_rows, written = tally.staged, tally.staged_rows, tally.written
+    handed, unwritable = tally.handed, tally.unwritable
     listed = len(written.listed)
     unlisted = len(handed)
     in_file = unlisted - len(unwritable)
     if missing and not listed and not in_file:
-        # MISSING TRACKS AND NOTHING WRITTEN IS NOT NOTHING TO DO. Reported as a
-        # no-op it would read, to a person and to a script, exactly like a job
-        # where everything was owned, and the tracks would be dropped.
+        # MISSING TRACKS AND NOTHING WRITTEN IS NOT NOTHING TO DO. A no-op would
+        # read exactly like a job where everything was owned.
         raise _unusable(
             f"{unlisted} missing track(s), none the provider can name exactly and "
             f"none writable as an 'Artist - Title' line, so nothing was written",
             "find these tracks on the provider by hand, add them to a playlist, "
             "and run intake playlist on it",
-            unlisted_tracks=[
-                {"artist": row.artist, "title": row.title, "reason": why.reason}
-                for row, why in unwritable
-            ],
+            unlisted_tracks=[{"artist": row.artist, "title": row.title, "reason": why.reason}
+                             for row, why in unwritable],
             **subject,
         )
     if left_out and not listed and not unlisted and not staged_rows:
-        # NOTHING LISTED WITH JOBS LEFT OUT IS NOT A PASS WITH NOTHING MISSING.
-        # The skipped jobs' tracks were never resolved, and a no-op would tell a
-        # person and a script that the pass needs no download.
+        # NOTHING LISTED WITH JOBS LEFT OUT IS NOT A PASS WITH NOTHING MISSING:
+        # the skipped jobs' tracks were never resolved.
         raise _unusable(
             f"nothing is missing from the job(s) that finished, and "
             f"{len(left_out)} job(s) that failed or were cancelled were left out "
             f"unresolved, so this is not a pass with nothing to download: "
             + ", ".join(f"{job.job_id} ({_source_ref(job)})" for job in left_out),
             "queue those playlists again with crate sync all and list that run",
-            failed=[job.job_id for job in left_out],
-            **subject,
+            failed=[job.job_id for job in left_out], **subject,
         )
-    command = (
-        shlex.join(["crate", "acquire", "download", str(written.list_path)])
-        if written.list_path is not None
-        else None
-    )
-    # THE ROUTE, NOT THE SORT. ``match run`` sorts these rows into owned, review
-    # and missing and stops, and a missing text row can never be downloaded, so
-    # naming it here sent a person to a dead end (R-415). ``--list`` searches.
-    handed_command = (
-        shlex.join(["crate", "intake", "missing", "--list", str(written.unlisted_path)])
-        if written.unlisted_path is not None
-        else None
-    )
+    command = _command("acquire", "download", path=written.list_path)
+    # THE ROUTE, NOT THE SORT. ``match run`` stops at missing and a missing text
+    # row can never be downloaded (R-415); ``--list`` searches.
+    handed_command = _command("intake", "missing", "--list", path=written.unlisted_path)
+    gained = sum(since.values())
+    what = "run" if "run_id" in subject else "job"
     if listed:
         said = f"{listed} missing track(s) written to {written.list_path}; next: {command}{after}"
     elif in_file:
-        said = (
-            f"nothing listed for download: the missing tracks were handed on to "
-            f"{written.unlisted_path}; next: {handed_command}"
-        )
+        said = (f"nothing listed for download: the missing tracks were handed on to "
+                f"{written.unlisted_path}; next: {handed_command}")
     elif staged_rows:
-        said = (
-            f"nothing listed for download: the {len(staged_rows)} missing track(s) "
-            f"are staged already in {staged.folder if staged else ''}, and land with "
-            f"the download that staged them"
-        )
+        said = (f"nothing listed for download: the {len(staged_rows)} missing track(s) are "
+                f"staged already in {staged.folder if staged else ''}, and land with the "
+                f"download that staged them")
     elif gained:
         said = (
-            f"nothing listed: every track this {'run' if 'run_id' in subject else 'job'} "
-            f"found missing is in the library, deleted on purpose or offered for review since"
+            f"nothing listed: every track this {what} found missing is in the library, "
+            f"deleted on purpose or offered for review since"
         )
     else:
-        said = f"nothing listed: no track in this {'run' if 'run_id' in subject else 'job'} is missing"
+        said = f"nothing listed: no track in this {what} is missing"
     checks = [
         _check("written", "ok" if listed else "info", said),
         _check("owned", "info", f"{counts['owned']} already in the library, not listed"),
@@ -1021,135 +837,63 @@ def _listed(
             f"see: crate review list, then list this again",
         ),
         _check("suppressed", "info", f"{counts['suppressed']} deleted on purpose, not listed"),
-        _check(
-            "answered",
-            "info",
+        _check("answered", "info",
             f"{sum(now_answered.values())} track(s) offered for review when the job ran "
             f"were answered since, asked again now: {now_answered['answered_missing']} "
             f"missing, {now_answered['answered_owned']} in the library, "
             f"{now_answered['answered_suppressed']} deleted on purpose, "
             f"{now_answered['answered_offered']} still a question the answer did not settle",
         ),
-        _check(
-            "since",
-            "info",
+        _check("since", "info",
             f"{gained} track(s) missing when the job ran are not listed, asked again now: "
             f"{since['owned_since']} in the library since, {since['suppressed_since']} "
             f"deleted on purpose since, {since['offered_since']} held in another version "
             f"since and offered for review",
         ),
         _staged_check(staged, staged_rows),
-        _check(
-            "isrc",
-            "info",
-            f"{by_isrc} missing track(s) with no provider identifier named by ISRC and listed",
-        ),
+        _isrc_check(tally.by_isrc),
         _check(
             "unlisted",
             "fail" if unlisted else "ok",
             f"{unlisted} missing track(s) the provider cannot name exactly are NOT in the "
             f"download list; {in_file} of them are in {written.unlisted_path} with the "
-            f"reason, for: {handed_command}"
-            if unlisted
-            else "every missing track is in the list",
+            f"reason, for: {handed_command}" if unlisted else "every missing track is in the list",
         ),
-        _check(
-            "unwritable",
-            "fail" if unwritable else "ok",
-            f"{len(unwritable)} of them cannot be written as an 'Artist - Title' line "
-            f"and are in no file: "
-            + "; ".join(f"{row.artist} - {row.title} ({why.reason})" for row, why in unwritable)
-            if unwritable
-            else "every track handed on is in the text list",
-        ),
+        _check("unwritable", "fail" if unwritable else "ok",
+            f"{len(unwritable)} of them cannot be written as an 'Artist - Title' line and are in "
+            f"no file: " + "; ".join(f"{row.artist} - {row.title} ({why.reason})"
+                                     for row, why in unwritable)
+            if unwritable else "every track handed on is in the text list"),
         *checks,
     ]
     summary = {
-        **subject,
-        "list": str(written.list_path) if written.list_path is not None else None,
-        "manifest": str(written.manifest_path) if written.manifest_path is not None else None,
-        "next": command,
-        "written": listed,
-        "missing": counts["missing"],
-        "owned": counts["owned"],
-        "offered": counts["offered"],
-        "suppressed": counts["suppressed"],
+        **_summary_head(subject, written, counts),
         **since,
         **now_answered,
-        "by_isrc": by_isrc,
+        "by_isrc": tally.by_isrc,
         "staged": len(staged_rows),
-        "staging": str(staged.folder) if staged is not None else None,
+        "staging": _text(staged.folder if staged is not None else None),
         "staged_tracks": [
-            {
-                "artist": wanted.artist,
-                "title": wanted.title,
-                "isrc": match.isrc_token(wanted.isrc),
-                "ref": provider_ref(wanted),
-                "file": str(path),
-            }
+            {"artist": wanted.artist, "title": wanted.title, "isrc": match.isrc_token(wanted.isrc),
+             "ref": provider_ref(wanted), "file": str(path)}
             for wanted, path in staged_rows
         ],
         "unlisted": unlisted,
-        "unlisted_list": (
-            str(written.unlisted_path) if written.unlisted_path is not None else None
-        ),
+        "unlisted_list": _text(written.unlisted_path),
         "unlisted_next": handed_command,
         "unlisted_tracks": [
-            {
-                "artist": row.artist,
-                "title": row.title,
-                "isrc": wanted.isrc,
-                "why": why.why,
-                "reason": why.reason,
-                "in_file": not any(row is gone for gone, _why in unwritable),
-            }
+            {"artist": row.artist, "title": row.title, "isrc": wanted.isrc, "why": why.why,
+             "reason": why.reason, "in_file": not any(row is gone for gone, _why in unwritable)}
             for row, wanted, why in handed
         ],
     }
+
     return ctx.envelope(
         data={"checks": checks, "summary": summary},
-        # EVERY ROW STAGED IS SOMETHING TO LAND (U212), and a no-op would end a
-        # pass before the landing that takes them.
+        # EVERY ROW STAGED IS SOMETHING TO LAND, and a no-op would end a pass
+        # before the landing that takes them.
         outcome=Outcome.OK if listed or unlisted or staged_rows else Outcome.NO_OP,
     )
-
-
-def _staged_check(
-    staged: _Staged | None, rows: list[tuple[match.Wanted, Path]]
-) -> dict[str, Any]:
-    """The row that says what the staging folder held of the missing tracks (U212)."""
-    if staged is not None and staged.unread:
-        return _check(
-            "staged",
-            "fail",
-            f"the download staging folder {staged.folder} could not be read "
-            f"({staged.unread}), so no missing track was checked against what is "
-            f"staged there, and one staged already is listed and downloaded again",
-        )
-    if rows:
-        return _check(
-            "staged",
-            "info",
-            f"{len(rows)} missing track(s) are staged already in "
-            f"{staged.folder if staged else ''} by a download not landed yet, so they "
-            f"are not listed or downloaded again, and land with the download that "
-            f"staged them: "
-            + "; ".join(f"{one.artist} - {one.title} as {path.name}" for one, path in rows),
-        )
-    if staged is None:
-        return _check("staged", "info", "no track is missing, so none was asked whether it is staged")
-    if staged.unasked:
-        return _check("staged", "info", staged.unasked)
-    return _check("staged", "info", f"no missing track is staged already in {staged.folder}")
-
-
-def provider_ref(wanted: match.Wanted) -> str:
-    """The row's identifier if it is the PROVIDER'S, the rule ``listdoc`` writes by.
-
-    Public since U80: ``acquire fallback`` asks the same question, so a row
-    this verb would list by its id is never searched for on a second source.
-    """
-    return str(wanted.ref or "").strip() if wanted.origin == match.TIDAL else ""
 
 
 def found_name(
@@ -1166,13 +910,9 @@ def found_name(
     and never onto it. A character a file name should not carry becomes a
     hyphen, and a name with nothing left is ``tracklist``.
 
-    THE DIGEST IS WHAT LETS THE SECOND RUN HAPPEN. The emitter refuses a name
-    whose file holds other bytes, and the run after a review answer lists MORE
-    than the run before it, by design. Under a fixed name that run was refused
-    until somebody moved a file by hand, which the unit's review drove. The
-    same work still rewrites the same bytes under the same name, and two
-    tracklists that share a file name in two folders take two names, since the
-    provenance names the folder.
+    THE DIGEST IS WHAT LETS THE SECOND RUN HAPPEN. The run after a review answer
+    lists more by design, and under a fixed name the emitter refused it. The
+    same work still rewrites the same bytes under the same name.
     """
     body, _listed, _unlisted = listdoc.document(rows)
     said = {
@@ -1192,17 +932,12 @@ def found_name(
     return f"{stem or 'tracklist'}{FOUND_SUFFIX}-{digest}"
 
 
-def _searched(
-    resolve: Callable[[], catalogue.Catalogue], wanted: list[match.Wanted]
-) -> list[candidates.Answer]:
+def _searched(resolve: Callable[[], catalogue.Catalogue], wanted: list[match.Wanted]) -> list:
     """One search answer per row, every one in hand before anything is offered.
 
-    THE CATALOGUE IS RESOLVED ONLY WHEN A ROW HAS TO BE SEARCHED FOR, looked up
-    on the module at call time as ``_named_by_isrc`` does. A provider that could
-    not answer refuses the whole verb, with no provider candidate offered and
-    no file written: a partial pass would report the unasked rows as having no
-    candidate. A version question the LIBRARY raised is already in the queue by
-    then, so the sentence says which offers it means.
+    The catalogue is resolved only when a row has to be searched for. A provider
+    that could not answer refuses the whole verb with nothing offered and no
+    file written: a partial pass would report the unasked rows as candidateless.
     """
     if not wanted:
         return []
@@ -1221,50 +956,36 @@ def _searched(
                 f"be sorted into listed and offered; no provider candidate was "
                 f"offered and no list was written",
                 remedy=Remedy.RETRY_LATER,
-                steps=(
-                    "run it again later",
-                    "if the search for this one row fails on every run, take the "
-                    "row out of the list and run it again, so the rest are not "
-                    "held back by it",
-                ),
-                scope=Scope.RUN,
-                origin=("intake.missing",),
-                detail={"artist": one.artist, "title": one.listed},
+                steps=("run it again later", "if the search for this one row fails on every run, "
+                       "take the row out of the list and run it again, so the rest are not "
+                       "held back by it"),
+                scope=Scope.RUN, origin=_ORIGIN, detail={"artist": one.artist, "title": one.listed},
             ) from exc
         answers.append(candidates.read_answer(one, rows))
     return answers
 
 
-def _missing_for_list(ctx, given: str) -> Envelope:
-    """List what a text list's missing rows can be named as, and offer the rest."""
-    path = Path(given).expanduser().absolute()
-    subject = {"list_in": str(path)}
-    cfg = intake_cli._load()
+def _resolved(ctx, cfg, path: Path, subject: Mapping[str, Any]):
+    """The list's counts, its distinct missing rows, and the library view it was read by."""
     wanted = match_cli.read_list(path)
     music = Path(cfg.library.root) / cfg.library.music_dir
     if not music.is_dir():
-        # AN ABSENT LIBRARY IS NOT AN EMPTY ONE. The index of a folder that is
-        # not there holds nothing, every row would resolve missing, and this
-        # verb would list for download every track the library already holds.
+        # AN ABSENT LIBRARY IS NOT AN EMPTY ONE: every row would resolve missing
+        # and be listed for download, held or not.
         raise refuse(
             "library-volume-unmounted",
             f"this library's music folder {str(music)!r} is not there, so no row of "
             f"the list can be told from a track the library already holds",
-            remedy=Remedy.MOUNT_LIBRARY_VOLUME,
-            origin=("intake.missing",),
+            remedy=Remedy.MOUNT_LIBRARY_VOLUME, origin=_ORIGIN,
             detail={"music": str(music), **subject},
         )
-    index, suppresses, identify = match_cli.library_view(cfg)
+    view = match_cli.library_view(cfg)
+    index, suppresses, identify = view
     resolved = match.resolve_all(wanted, index, suppresses=suppresses, suppression_id=identify)
     if any(match_cli.touches_the_queue(one) for one in resolved.matches):
         with review.open_store(cfg) as items:
-            resolved = match_cli.adjudicate(
-                items,
-                resolved,
-                handler_key=ctx.entry.handler_key,
-                suppresses=suppresses,
-                suppression_id=identify,
-            )
+            resolved = match_cli.adjudicate(items, resolved, handler_key=ctx.entry.handler_key,
+                                            suppresses=suppresses, suppression_id=identify)
     counts = {word: 0 for word in _WORDS}
     missing: list[match.Wanted] = []
     seen: set[str] = set()
@@ -1278,7 +999,33 @@ def _missing_for_list(ctx, given: str) -> Envelope:
             if settled.match_id not in seen:
                 seen.add(settled.match_id)
                 missing.append(settled.wanted)
+    return counts, missing, view
 
+
+def _held_since(proposals: list[candidates.Proposal], named: list[match.Wanted], view) -> None:
+    """Add each named proposal's track to ``named``, unless the library holds it now."""
+    index, suppresses, identify = view
+    for n, one in enumerate(proposals):
+        if one.state not in candidates.NAMED or one.track is None:
+            continue
+        if one.state == candidates.ACCEPTED:
+            # AN ACCEPTED CANDIDATE IS ASKED OF THE LIBRARY AS ITSELF. The row it
+            # answers stays missing when the candidate is another spelling or
+            # version, so every later run would download the same track again.
+            now = match.resolve_one(
+                one.track, index, suppresses=suppresses, suppression_id=identify)
+            if now.state in (match.MatchState.MATCHED, match.MatchState.SUPPRESSED):
+                proposals[n] = replace(one, state=candidates.HELD)
+                continue
+        named.append(one.track)
+
+
+def _missing_for_list(ctx, given: str) -> Envelope:
+    """List what a text list's missing rows can be named as, and offer the rest."""
+    path = Path(given).expanduser().absolute()
+    subject = {"list_in": str(path)}
+    cfg = intake_cli._load()
+    counts, missing, view = _resolved(ctx, cfg, path, subject)
     named: list[match.Wanted] = []
     by_isrc = 0
     proposals: list[candidates.Proposal] = []
@@ -1286,10 +1033,8 @@ def _missing_for_list(ctx, given: str) -> Envelope:
     if missing:
         # THE FOLDER BEFORE THE PROVIDER, so a bad --out spends no lookup.
         out = _out_dir(ctx, subject)
-        # ONLY THE PROVIDER'S OWN IDENTIFIER NAMES A ROW, the emitter's rule. A
-        # row of another service's list carries that service's id, the emitter
-        # writes it with none, and sorted here by its ref it was in no file and
-        # on no check, a missing track dropped at exit zero. It is bare.
+        # ONLY THE PROVIDER'S OWN IDENTIFIER NAMES A ROW, the emitter's rule: a
+        # row carrying another service's id is written with none, so it is bare.
         resolve = _catalogue_once(cfg)
         bare = [one for one in missing if not provider_ref(one)]
         named = [one for one in missing if provider_ref(one)]
@@ -1302,121 +1047,76 @@ def _missing_for_list(ctx, given: str) -> Envelope:
                 named.append(replace(one, ref=answer, origin=match.TIDAL))
                 by_isrc += 1
         if unnamed:
-            # THE QUEUE BEFORE THE PROVIDER, and every answer before any offer.
-            # A row already answered, or already in front of a person, spends no
-            # search, and a provider that fails part way leaves nothing offered.
+            # THE QUEUE BEFORE THE PROVIDER, and every answer before any offer: a
+            # row already answered or in front of a person spends no search, and
+            # a provider failing part way leaves nothing offered.
             with review.open_store(cfg) as items:
                 held = [candidates.settled(items, one) for one in unnamed]
             unasked = [one for one, said in zip(unnamed, held, strict=True) if said is None]
             answers = iter(_searched(resolve, unasked))
             with review.open_store(cfg) as items:
                 for one, said in zip(unnamed, held, strict=True):
-                    proposals.append(
-                        said
-                        if said is not None
-                        else candidates.propose(
-                            items, one, next(answers), handler_key=ctx.entry.handler_key
-                        )
-                    )
+                    proposals.append(said if said is not None else candidates.propose(
+                        items, one, next(answers), handler_key=ctx.entry.handler_key))
 
-    for n, one in enumerate(proposals):
-        if one.state not in candidates.NAMED or one.track is None:
-            continue
-        if one.state == candidates.ACCEPTED:
-            # AN ACCEPTED CANDIDATE IS ASKED OF THE LIBRARY AS ITSELF. The row it
-            # answers stays missing for ever when the candidate is another
-            # spelling or another version of it, so without this every later run
-            # of the same list would list, and download, the same track again.
-            now = match.resolve_one(
-                one.track, index, suppresses=suppresses, suppression_id=identify
-            )
-            if now.state in (match.MatchState.MATCHED, match.MatchState.SUPPRESSED):
-                proposals[n] = replace(one, state=candidates.HELD)
-                continue
-        named.append(one.track)
-
+    _held_since(proposals, named, view)
     written = listdoc.Written(None, None, (), ())
     if named:
         rows = listdoc.rows_of(named)
-        provenance = {
-            str(row.ref).strip(): listdoc.Provenance(source=LIST_SOURCE, source_ref=str(path))
-            for row in rows
-        }
-        written = _written_or_refuse(
-            out, found_name(path, rows, provenance), rows, provenance, subject
-        )
+        provenance = {str(row.ref).strip(): listdoc.Provenance(source=LIST_SOURCE,
+                      source_ref=str(path)) for row in rows}
+        written = _written_or_refuse(out, found_name(path, rows, provenance), rows, provenance,
+                                     subject)
+    return _found_report(ctx, path, subject, counts, by_isrc, proposals, written)
+
+
+def _found_report(ctx, path, subject, counts, by_isrc, proposals, written) -> Envelope:
+    """The ``--list`` refusal for nothing routed, then its checks and summary."""
     listed = len(written.listed)
 
     def of(*states: str) -> list[candidates.Proposal]:
         return [one for one in proposals if one.state in states]
 
     in_library = of(candidates.HELD)
-
     by_search = len(of(candidates.LISTED))
     by_review = len(of(candidates.ACCEPTED))
     asked = of(*candidates.ASKED)
     unfound = of(candidates.NO_CANDIDATES, candidates.REJECTED, candidates.STALLED)
+    unfound_said = "; ".join(f"{one.wanted.artist} - {one.wanted.listed}: {one.reason}"
+                             for one in unfound)
     if unfound and not listed and not asked:
         # MISSING TRACKS, NOTHING WRITTEN AND NOTHING ASKED IS NOT NOTHING TO DO.
-        # A no-op would read exactly like a list the library already holds.
         raise _unusable(
             f"{len(unfound)} missing track(s) and the provider has a route to none of "
-            f"them, so nothing was written and nothing is waiting in review: "
-            + "; ".join(f"{one.wanted.artist} - {one.wanted.listed}: {one.reason}" for one in unfound),
+            f"them, so nothing was written and nothing is waiting in review: " + unfound_said,
             "find these tracks on the provider by hand, add them to a playlist, "
             "and run intake playlist on it",
             "a rejected or stalled row is asked again after: crate review clear ITEM_ID",
-            tracks=[one.to_json() for one in unfound],
-            **subject,
+            tracks=[one.to_json() for one in unfound], **subject,
         )
-    command = (
-        shlex.join(["crate", "acquire", "download", str(written.list_path)])
-        if written.list_path is not None
-        else None
-    )
-    again = shlex.join(["crate", "intake", "missing", "--list", str(path)])
+    command = _command("acquire", "download", path=written.list_path)
+    again = _command("intake", "missing", "--list", path=path)
     review_command = f"crate review list --queue {candidates.QUEUE} --kind {candidates.KIND}"
     if listed:
         said = f"{listed} missing track(s) written to {written.list_path}; next: {command}"
     elif asked:
-        said = (
-            f"nothing listed yet: {len(asked)} row(s) are waiting in review; answer "
-            f"them, then run: {again}"
-        )
+        said = f"nothing listed yet: {len(asked)} row(s) are waiting in review; answer them, " \
+            f"then run: {again}"
     else:
         said = "nothing listed: no track in this list is missing"
     checks = [
         _check("written", "ok" if listed else "info", said),
         _check("owned", "info", f"{counts['owned']} already in the library, not listed"),
-        _check(
-            "offered",
-            "info",
-            f"{counts['offered']} held in another version, offered for review and not "
-            f"listed until answered; see: crate review list",
-        ),
+        _check("offered", "info", f"{counts['offered']} held in another version, offered for "
+               f"review and not listed until answered; see: crate review list"),
         _check("suppressed", "info", f"{counts['suppressed']} deleted on purpose, not listed"),
-        _check(
-            "isrc",
-            "info",
-            f"{by_isrc} missing track(s) with no provider identifier named by ISRC and listed",
-        ),
-        _check(
-            "search",
-            "info",
-            f"{by_search} missing track(s) named by the one exact candidate a provider "
-            f"search held, and listed",
-        ),
-        _check(
-            "accepted",
-            "info",
-            f"{by_review} missing track(s) listed as the candidate accepted in review"
-            + (
-                f"; {len(in_library)} more accepted candidate(s) are already in the "
-                f"library or were deleted on purpose, and are not listed again"
-                if in_library
-                else ""
-            ),
-        ),
+        _isrc_check(by_isrc),
+        _check("search", "info", f"{by_search} missing track(s) named by the one exact candidate "
+               f"a provider search held, and listed"),
+        _check("accepted", "info",
+               f"{by_review} missing track(s) listed as the candidate accepted in review"
+               + (f"; {len(in_library)} more accepted candidate(s) are already in the library "
+                  f"or were deleted on purpose, and are not listed again" if in_library else "")),
         _check(
             "candidates",
             "fail" if asked else "ok",
@@ -1427,35 +1127,18 @@ def _missing_for_list(ctx, given: str) -> Envelope:
             if asked
             else "no missing track is waiting on a provider candidate",
         ),
-        _check(
-            "unfound",
-            "fail" if unfound else "ok",
-            f"{len(unfound)} missing track(s) have no route to a download and are NOT "
-            f"in the list: "
-            + "; ".join(f"{one.wanted.artist} - {one.wanted.listed}: {one.reason}" for one in unfound)
-            if unfound
-            else "every missing track is listed or waiting in review",
-        ),
+        _check("unfound", "fail" if unfound else "ok",
+               f"{len(unfound)} missing track(s) have no route to a download and are NOT in the "
+               f"list: " + unfound_said if unfound
+               else "every missing track is listed or waiting in review"),
     ]
     summary = {
-        **subject,
-        "list": str(written.list_path) if written.list_path is not None else None,
-        "manifest": str(written.manifest_path) if written.manifest_path is not None else None,
-        "next": command,
-        "written": listed,
-        "missing": counts["missing"],
-        "owned": counts["owned"],
-        "offered": counts["offered"],
-        "suppressed": counts["suppressed"],
-        "by_isrc": by_isrc,
-        "by_search": by_search,
-        "by_review": by_review,
-        "in_library": len(in_library),
-        "candidates_offered": len(asked),
-        "unfound": len(unfound),
-        "review_next": review_command if asked else None,
+        **_summary_head(subject, written, counts), "by_isrc": by_isrc, "by_search": by_search,
+        "by_review": by_review, "in_library": len(in_library), "candidates_offered": len(asked),
+        "unfound": len(unfound), "review_next": review_command if asked else None,
         "rows": [one.to_json() for one in proposals],
     }
+
     return ctx.envelope(
         data={"checks": checks, "summary": summary},
         outcome=Outcome.OK if listed or asked else Outcome.NO_OP,
@@ -1470,10 +1153,8 @@ def synced_name(run_id: str) -> str:
 def in_pass(job: jobs.Job, pass_name: str) -> bool:
     """Whether ``job`` was queued by the run the pass ``pass_name`` is named for.
 
-    ONE COMPARISON FOR EVERY READER OF A PASS, ``sync mark`` and the landing's
-    batch name (U110), made in the direction the name was built: the job's own
-    run is spelled as a pass and compared, and nothing puts the colons back. A
-    job queued by no run belongs to no pass.
+    ONE COMPARISON FOR EVERY READER OF A PASS (U110), made in the direction the
+    name was built, so nothing puts the colons back. No run is no pass.
     """
     run_id = str((job.payload or {}).get(RUN_ID) or "")
     return bool(run_id) and synced_name(run_id) == pass_name
@@ -1487,42 +1168,21 @@ def _missing_for_run(ctx, run_id: str) -> Envelope:
         found = [(job, _reports_or_refuse(store, job)) for job in kept]
     name = synced_name(run_id)
     checks = [
-        _check(
-            "jobs",
-            "info",
-            f"{len(kept)} finished intake job(s) of run {run_id} listed as one: "
-            + ", ".join(job.job_id for job in kept),
-        ),
-        _check(
-            "skipped",
-            "fail" if skipped else "ok",
-            f"{len(skipped)} job(s) failed or were cancelled and their tracks are NOT "
-            f"in the list: "
-            + ", ".join(f"{job.job_id} ({_source_ref(job)})" for job in skipped)
-            if skipped
-            else "every intake job in the run succeeded",
-        ),
+        _check("jobs", "info", f"{len(kept)} finished intake job(s) of run {run_id} listed as "
+               "one: " + ", ".join(job.job_id for job in kept)),
+        _check("skipped", "fail" if skipped else "ok",
+               f"{len(skipped)} job(s) failed or were cancelled and their tracks are NOT in the "
+               "list: " + ", ".join(f"{job.job_id} ({_source_ref(job)})" for job in skipped)
+               if skipped else "every intake job in the run succeeded"),
     ]
+    subject = {"run_id": run_id, "jobs": [job.job_id for job in kept],
+               "skipped": [job.job_id for job in skipped],
+               "sources": [_source_ref(job) for job in kept], "land_name": name}
     return _listed(
-        ctx,
-        found,
-        name=name,
-        subject={
-            "run_id": run_id,
-            "jobs": [job.job_id for job in kept],
-            "skipped": [job.job_id for job in skipped],
-            "sources": [_source_ref(job) for job in kept],
-            "land_name": name,
-        },
-        checks=checks,
-        # TRUE ON BOTH MEDIA, AND READS NEITHER (R-770). The landing takes an
-        # export on the xml bridge and refuses one on a native intake tree, so
-        # a hint that always named --export sent a person on a cut over library
-        # to a refusal. It says both rather than reading the switch, because a
-        # hint must not be one more thing that can refuse a listing.
-        # ``--pass`` AND NOT ``--name`` (U110). The pass names the intake file,
-        # which is how ``sync mark`` finds this run's jobs, and the batch itself
-        # is named for the date and the playlists, not for the run.
+        ctx, found, name=name, subject=subject, checks=checks,
+        # TRUE ON BOTH MEDIA, AND READS NEITHER (R-770): a hint must not be one
+        # more thing that can refuse a listing. ``--pass``, not ``--name``
+        # (U110): the pass names the intake file ``sync mark`` finds jobs by.
         after=(
             f"; land what it downloads as one batch with: crate intake land "
             f"--pass {name}, adding --export XML, a Fresh Export of the collection, "
@@ -1539,52 +1199,28 @@ def intake_missing(ctx) -> Envelope:
         return _missing_for_run(ctx, str(ctx.args.sync_run))
     if ctx.args.text_list is not None:
         if ctx.args.skip_failed:
-            raise _unusable(
-                "--skip-failed leaves failed jobs out of a run's list and means "
-                "nothing for a text list",
-                "drop --skip-failed",
-                list=str(ctx.args.text_list),
-            )
+            raise _unusable("--skip-failed leaves failed jobs out of a run's list and means "
+                            "nothing for a text list", "drop --skip-failed",
+                            list=str(ctx.args.text_list))
         return _missing_for_list(ctx, str(ctx.args.text_list))
     if ctx.args.skip_failed:
-        # A FLAG THAT WOULD MEAN NOTHING IS REFUSED, not ignored. One job that
-        # failed is refused either way, and a person who asked to skip it would
-        # otherwise read that refusal as the flag not working.
+        # A FLAG THAT WOULD MEAN NOTHING IS REFUSED, not ignored, or a failed
+        # job's refusal would read as the flag not working.
         raise _unusable(
             "--skip-failed leaves failed jobs out of a run's list and means nothing "
             "for one job",
-            "drop --skip-failed, or list the whole pass with --run",
-            job_id=str(ctx.args.job),
+            "drop --skip-failed, or list the whole pass with --run", job_id=str(ctx.args.job),
         )
     with jobs.open_store() as store:
         job = _finished_or_refuse(store, str(ctx.args.job))
         reports = _reports_or_refuse(store, job)
-    return _listed(
-        ctx,
-        [(job, reports)],
-        name=f"intake-{job.job_id}",
-        subject={"job_id": job.job_id, "source": _source_ref(job)},
-        checks=[],
-    )
+    subject = {"job_id": job.job_id, "source": _source_ref(job)}
+    return _listed(ctx, [(job, reports)], name=f"intake-{job.job_id}", subject=subject, checks=[])
 
 
 __all__ = [
-    "DIGEST_BYTES",
-    "FOUND_SUFFIX",
-    "LISTS_DIR",
-    "LIST_SOURCE",
-    "MALFORMED",
-    "NO_ISRC",
-    "PROVENANCE_SOURCE",
-    "RUN_ID",
-    "SEVERAL",
-    "SYNCED_SUFFIX",
-    "UNKNOWN",
-    "UNREADABLE",
-    "build_missing",
-    "found_name",
-    "intake_missing",
-    "job_reports",
-    "provider_ref",
-    "synced_name",
+    "LISTS_DIR", "LIST_SOURCE", "MALFORMED", "NO_ISRC", "RUN_ID", "SEVERAL", "SYNCED_SUFFIX",
+    "UNKNOWN", "UNREADABLE", "build_missing", "found_name", "intake_missing", "job_reports",
+    "provider_ref", "synced_name",
 ]
+
