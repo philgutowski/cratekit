@@ -55609,6 +55609,8 @@ deleted membership has always left in a live playlist, and rekordbox orders a
 list by `TrackNo`, so the order shown is unchanged; whether rekordbox reads a
 gap as anything else is the measurement.
 
+**Measured, sitting 102 (A197), 2026-11-22.** On rekordbox 7.2.19, a playlist made by hand held a real track, a throwaway and a second real track at `TrackNo` 1, 2 and 3; the throwaway taken out with Remove from Collection, the AFTER copy held **the second real track at `TrackNo` 2: rekordbox renumbers the members after a removed one**, and the playlist's two other rows were otherwise unchanged. So Cratekit's removal, which leaves the gap, differs from rekordbox's. A history list holding other tracks was not measured, since it needs real tracks played on a deck.
+
 **Closes when:** an attended sitting removes one track from a playlist and a
 history list holding others with Remove from Collection, compares the copies,
 and the removal imitates what it finds. Ledger only: it closes at a sitting.
@@ -55946,6 +55948,8 @@ version deletes content rows outright.
 deletes the playlist row outright, every later removal of that landing's
 tracks is never offered, and the gate shows no count of it; the files stay on
 disk, which keeps rather than trashes.
+
+**Measured, sitting 102 (A200), 2026-11-22.** On rekordbox 7.2.19, a throwaway playlist made by hand holding one throwaway track, deleted in rekordbox's own sidebar ("Playlist will be deleted from all synced devices"): **its `djmdPlaylist` row is deleted outright, no `rb_local_deleted` marker left**, with its `djmdCloudFilterPlaylist` row and its membership; 18 other playlist rows changed, their order renumbered. So a landing whose made playlist Phillip deletes by hand reads as rolled back, and its later removals are never offered.
 
 **Closes when:** an attended check deletes a throwaway playlist made by hand
 in rekordbox and reads djmdPlaylist on before and after copies, and the guard

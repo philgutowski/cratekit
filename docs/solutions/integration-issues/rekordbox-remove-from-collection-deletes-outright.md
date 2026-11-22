@@ -108,6 +108,13 @@ leaves. Since the row leaves no soft delete marker, its session record names
 every row it removed, and `crate delete review` reads that record to offer
 the file (R-1037), from a position the removal gives the pass when it has
 none, so a first review does not accept the removal as history.
-**Still unmeasured:** a track whose
-history list or playlist holds other tracks (whether `TrackNo` is renumbered),
-genre and label rows, and My Tag and sampler rows.
+**Measured at sitting 102 (A197, A200), 2026-11-22:** a throwaway between two
+real tracks in a playlist made by hand, taken out with Remove from Collection,
+leaves **the member after it renumbered**, `TrackNo` 3 to 2 (R-1830); a playlist
+deleted by hand in the sidebar is **deleted outright** from `djmdPlaylist`, no
+`rb_local_deleted` marker (R-1844). On its next launch rekordbox also deleted an
+album row and a genre row that no track carried any more (the album a `sync
+removed` removal left, a genre a retag had emptied), so orphan album and genre
+rows are pruned by rekordbox itself at launch.
+**Still unmeasured:** a history list holding other tracks, label rows, and
+My Tag and sampler rows.
