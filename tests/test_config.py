@@ -685,6 +685,12 @@ def test_credentials_are_not_a_file_at_all(cfg):
             config.state_path(key, cfg)
 
 
+@pytest.mark.parametrize("key", ["job_queue", "held_plans", "session_log", "snapshots"])
+def test_a_directory_entry_is_declared_a_directory_under_either_root(key):
+    """The medium each entry constructor passes through (U299), one per root and two each."""
+    assert config.state_file(key).medium is config.Medium.DIRECTORY
+
+
 def test_resolving_a_library_scoped_entry_without_a_config_refuses():
     """No silent fallback to the installation root. That fallback IS the bug."""
     with pytest.raises(ValueError, match="library-scoped"):
