@@ -1605,6 +1605,20 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "tagging_rows/row_genres_written_from_their_files",
         "write/guarded_tree_write",
         "write/xml_splice",
+        "write_link/an_unknown_row_refuses_before_any_gate",
+        "write_link/three_probe_values_written_behind_the_gate",
+        "write_link/without_the_acknowledgment_the_probe_refuses_before_its_gate",
+        "write_metadata/an_unreadable_calibration_refuses_and_writes_nothing",
+        "write_metadata/vocal_tags_planned_then_written_then_already_there",
+        "write_naming/a_rename_onto_a_name_another_file_holds_overwrites_nothing",
+        "write_naming/a_rename_planned_and_applied_beside_a_referenced_file",
+        "write_naming/a_row_under_an_unmapped_volume_refuses_and_renames_nothing",
+        "write_pending/route_pending_after_a_native_landing",
+        "write_resort/a_resort_planned_queued_and_run_by_its_worker",
+        "write_resort/an_answer_over_a_copy_does_not_approve_the_live_file",
+        "write_rows/an_inline_answer_is_refused_and_nothing_is_filled",
+        "write_rows/bare_rows_given_their_defaults_behind_the_gate",
+        "write_rows/without_the_acknowledgment_the_repair_refuses_before_its_gate",
     ]
     assert manifest["root"] == str(root.resolve()) and manifest["source"] == "the working tree"
     # The run cleaned up after itself, and held nothing back.
@@ -1613,7 +1627,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "15 scenarios" in summary and "no difference" in summary
+    assert "29 scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())

@@ -2,7 +2,7 @@
 title: "A verb's nothing-to-do answer that a pending check reads as proof of import must not double as the answer to a failed run"
 date: 2026-09-18
 category: workflow-issues
-module: "src/cratekit/write/routing_cli.py, src/cratekit/write/trees.py"
+module: "src/cratekit/write/routing_export.py, src/cratekit/write/routing_cli.py, src/cratekit/write/trees.py"
 problem_type: workflow_issue
 component: pending_action_check
 severity: high
