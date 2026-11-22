@@ -1,8 +1,8 @@
 """Held offers: what a producer withheld from a review queue, and can return (R-798, R-815).
 
-Split from ``core.review`` to keep each module readable; every name here is
-imported back into ``core.review`` and used from there, and only
-``core.review`` imports this module, at its foot.
+A hold is neither an item nor a suppression: it is never decided, a person can
+return it, and a returned hold is kept so nothing holds that candidate again.
+Imported back into ``core.review`` at its foot, and only from there.
 """
 
 from __future__ import annotations
@@ -17,14 +17,11 @@ from cratekit.core.review import (
     RUN_FIELD,
     ReviewStore,
     _assert_declared_queue,
+    _payload_of,
     item_id_for,
     normalize_identity,
     normalize_kind,
 )
-
-# ---------------------------------------------------------------------------
-# Held offers: what a producer withheld from a queue, and can be returned
-# ---------------------------------------------------------------------------
 
 #: A hold in force. The producer judges it again on every round that reaches it.
 HOLD_HELD = "held"
@@ -37,10 +34,9 @@ HOLD_STATES: tuple[str, ...] = (HOLD_HELD, HOLD_RETURNED)
 class Hold:
     """One candidate a producer withheld from a queue, with what it would have filed.
 
-    ``item_id`` is the identifier the candidate would carry as an item, so a
-    hold and the item it becomes are addressed by one value. ``reason`` is the
-    sentence a person reads and ``detail`` is what the producer judged on, kept
-    so it can judge again without asking anybody.
+    ``item_id`` is the identifier the candidate would carry as an item.
+    ``reason`` is the sentence a person reads, and ``detail`` what the producer
+    judged on, kept so it can judge again.
     """
 
     queue: str
@@ -76,27 +72,18 @@ class Hold:
 
 
 def _hold_of(row: sqlite3.Row) -> Hold:
-    def decoded(text: str) -> dict[str, Any]:
-        # A COLUMN THIS BUILD CANNOT READ IS AN EMPTY MAP, NEVER A CRASH. The
-        # row still names the release and says it is held, which is what a
-        # listing needs, and a producer that finds no recorded words judges
-        # nothing from it rather than releasing the hold.
-        try:
-            found = json.loads(text)
-        except ValueError:
-            return {}
-        return found if isinstance(found, dict) else {}
-
+    # A column this build cannot read is an empty map, never a crash: the row
+    # still names the release, and a producer judges nothing from no words.
     return Hold(
         queue=row["queue"],
         item_id=row["item_id"],
         kind=row["kind"],
-        identity=decoded(row["identity"]),
-        payload=decoded(row["payload"]),
+        identity=_payload_of(row["identity"]),
+        payload=_payload_of(row["payload"]),
         group=row["group_key"],
         name=row["group_name"],
         reason=row["reason"],
-        detail=decoded(row["detail"]),
+        detail=_payload_of(row["detail"]),
         state=row["state"],
         run_id=row["run_id"],
         created=row["created"],
@@ -110,45 +97,26 @@ def _held_row(store: ReviewStore, queue: str, item_id: str) -> sqlite3.Row | Non
     ).fetchone()
 
 
-#: The payload field a hold carries when its candidate was TAKEN BACK OUT OF THE
-#: QUEUE by :func:`withhold`, where a hold a producer made on a candidate it
-#: never filed carries none (R-815). The difference matters to whoever would
-#: drop a hold: a candidate never filed goes back to being unexamined, and one
-#: that was in front of a person must not vanish from both places.
+#: The payload field marking a hold whose candidate :func:`withhold` took back
+#: out of the queue (R-815). Dropping such a hold must not make a candidate a
+#: person was shown vanish from both places.
 WITHHELD_FIELD = "withheld_from_review"
 
-#: The payload fields a refresh carries over from the hold it replaces, when
-#: the new payload does not name them. Both are facts about the candidate's
-#: history that the producer refreshing a hold does not know: it describes
-#: every hold as a candidate it never filed.
+#: The payload fields a refresh carries over from the hold it replaces when the
+#: new payload does not name them: history the refreshing producer cannot know.
 _CARRIED_ACROSS_A_REFRESH: tuple[str, ...] = (RUN_FIELD, WITHHELD_FIELD)
 
 
 def _put_hold(
-    store: ReviewStore,
-    conn: sqlite3.Connection,
-    *,
-    queue: str,
-    item_id: str,
-    kind: str,
-    identity: str,
-    payload: Mapping[str, Any],
-    group: str,
-    name: str,
-    reason: str,
-    detail: Mapping[str, Any],
-    run_id: str,
-    state: str,
+    store: ReviewStore, conn: sqlite3.Connection, *, queue: str, item_id: str, kind: str,
+    identity: str, payload: Mapping[str, Any], group: str, name: str, reason: str,
+    detail: Mapping[str, Any], run_id: str, state: str,
 ) -> None:
     """Write one hold row inside the caller's transaction. THE ONE WRITER.
 
-    :func:`hold` and :func:`withhold` both make a hold, and two spellings of
-    one row are how the two come to disagree about a column.
-
-    No row yet: it is inserted in ``state``. A hold IN FORCE is refreshed: what
-    the producer knows now replaces the payload, the reason and what it judged
-    on, and the run and the time it was first made are kept. A hold a person
-    RETURNED is left exactly as it is.
+    No row yet: inserted in ``state``. A hold IN FORCE is refreshed: payload,
+    reason and detail replaced, run and creation kept. A RETURNED hold is left
+    exactly as it is.
     """
     now = timestamp()
     encoded_detail = json.dumps(dict(detail), sort_keys=True)
@@ -158,21 +126,8 @@ def _put_hold(
             "INSERT INTO held_offers (queue, item_id, kind, identity, payload, "
             "group_key, group_name, reason, detail, state, run_id, created, updated) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                queue,
-                item_id,
-                kind,
-                identity,
-                json.dumps(dict(payload), sort_keys=True),
-                group,
-                name,
-                reason,
-                encoded_detail,
-                state,
-                run_id,
-                now,
-                now,
-            ),
+            (queue, item_id, kind, identity, json.dumps(dict(payload), sort_keys=True),
+             group, name, reason, encoded_detail, state, run_id, now, now),
         )
     elif row["state"] == HOLD_HELD:
         refreshed = dict(payload)
@@ -183,16 +138,8 @@ def _put_hold(
         conn.execute(
             "UPDATE held_offers SET payload = ?, group_key = ?, group_name = ?, "
             "reason = ?, detail = ?, updated = ? WHERE queue = ? AND item_id = ?",
-            (
-                json.dumps(refreshed, sort_keys=True),
-                group,
-                name,
-                reason,
-                encoded_detail,
-                now,
-                queue,
-                item_id,
-            ),
+            (json.dumps(refreshed, sort_keys=True), group, name, reason, encoded_detail,
+             now, queue, item_id),
         )
 
 
@@ -212,28 +159,14 @@ def hold(
 ) -> Hold:
     """Withhold one candidate from ``queue``, or refresh the hold already there.
 
-    ``returned`` RECORDS A PERSON'S ANSWER WHERE NO HOLD EXISTS YET: the row is
-    made already returned, in one write, for a candidate that is in the queue
-    and that a later judgment must not hold. It changes nothing about a row
-    that is already there.
+    ``returned`` makes a NEW row already returned, recording a person's answer
+    for a candidate in the queue; it changes nothing about an existing row.
 
-    A HOLD A PERSON RETURNED IS NEVER HELD AGAIN. Its row is handed back as it
-    stands, state and all, so the producer that asked can see its hold did not
-    take. Returning is the person overruling the producer, and a later round
-    that overruled them back would undo an answer nobody asked it to revisit.
-
-    THE FIRST ROUND STAYS THE HOLDING ROUND. A refresh rewrites what the
-    producer knows now, the payload, the reason and what it judged on, and
-    keeps the run and the time the hold was first made, so a count of what one
-    round held does not move when a later round looks at the same release.
-
-    A REFRESH KEEPS WHAT THE REPLACED PAYLOAD SAID OF THE CANDIDATE'S HISTORY,
-    when the new payload does not say it (R-815): the run it was filed under,
-    and that it was taken back out of the queue. A candidate :func:`withhold`
-    took back carries both, and the producer that refreshes its hold describes
-    it as a candidate never filed. Dropped, a return would file it under the
-    round that held it, which filed nothing, and nothing could tell it from a
-    candidate no person was ever shown.
+    A HOLD A PERSON RETURNED IS NEVER HELD AGAIN: it is handed back as it
+    stands, so the producer sees its hold did not take. A refresh keeps the
+    first round's run and time, so a round's count of holds does not move, and
+    keeps the replaced payload's history fields when the new one lacks them
+    (R-815), so a returned candidate is filed under the run that filed it.
     """
     declared = _assert_declared_queue(queue)
     item_id = item_id_for(declared, kind, identity)
@@ -268,38 +201,15 @@ def withhold(
 ) -> Hold | None:
     """Move one OPEN item out of its queue and into a hold, or None when it may not.
 
-    R-815. A producer that judges a candidate ALREADY FILED, and finds it would
-    not have filed it, takes it back: the item's row is deleted and a hold is
-    written carrying what the item carried, so returning it files the same
-    thing. Not a verdict. A superseded item would still be an item, and the
-    producer that reads "is there an item" to decide whether a candidate was
-    offered would read this one as offered and drop its hold.
+    R-815. The item's row is deleted and a hold carrying its payload, marked
+    with :data:`WITHHELD_FIELD`, is written in ONE TRANSACTION, so the candidate
+    is never both decidable and held, nor neither. Not a verdict: a superseded
+    item would still read as offered.
 
-    ONE TRANSACTION, BOTH WRITES. A hold written beside an item still in the
-    queue is a candidate a person can decide while a listing says it is held,
-    and an item deleted with no hold written is a candidate nothing offers and
-    nothing holds.
-
-    ONLY OVER AN EMPTY VERDICT COLUMN, on the rule :func:`supersede` states. An
-    accepted, a rejected and a superseded item stand, and so does one carrying
-    a verdict this build cannot read: on a queue two builds share, that is a
-    decision somebody made. The check is inside the transaction, so an item a
-    person decides while a producer is judging it is theirs.
-
-    A HOLD A PERSON RETURNED IS NEVER HELD AGAIN, the rule :func:`hold` keeps.
-    The item stays where it is and None is the answer.
-
-    None for an identifier nothing answers to, too. Each None means the same
-    thing to a caller: nothing was moved.
-
-    THE HOLD SAYS IT WAS TAKEN BACK, under :data:`WITHHELD_FIELD` on its
-    payload, and a refresh keeps the word. A hold beside an open item, the
-    state two writes of an earlier build can leave, is refreshed and keeps the
-    run that first held it.
-
-    AN ITEM THAT ARRIVED BY IMPORT CARRIES NO IDENTITY, and its hold then
-    carries an empty one. The hold is still found by the item's identifier,
-    which is all a return asks, and its payload still names the candidate.
+    Only over an empty verdict column, checked inside the transaction, on the
+    rule :func:`supersede` states. None too for a hold a person returned and
+    for an unknown identifier: each None means nothing was moved. An imported
+    item carries no identity, so its hold carries an empty one.
     """
     with store.immediate() as conn:
         row = conn.execute(
@@ -332,8 +242,7 @@ def withhold(
             run_id=run_id,
             state=HOLD_HELD,
         )
-        # THE FLOOR BEFORE THE DELETE, so the ordinal this row held is never
-        # handed to a later item. See ``ordinal_floor`` in the schema.
+        # The floor before the delete, so this ordinal is never reused (``ordinal_floor``).
         conn.execute(
             "INSERT INTO ordinal_floor (id, ordinal) VALUES (1, ?) "
             "ON CONFLICT(id) DO UPDATE SET ordinal = MAX(ordinal, excluded.ordinal)",
@@ -358,10 +267,7 @@ def holds(
     states: Sequence[str] = (HOLD_HELD,),
     group: str | None = None,
 ) -> tuple[Hold, ...]:
-    """Every hold on ``queue`` in one of ``states``, oldest first.
-
-    ``group`` narrows it to one group's, a label's for the label-release queue.
-    """
+    """Every hold on ``queue`` in one of ``states``, oldest first, optionally one ``group``'s."""
     wanted = tuple(states)
     marks = ", ".join("?" for _ in wanted)
     narrowed = " AND group_key = ?" if group is not None else ""
@@ -376,9 +282,8 @@ def holds(
 def release_hold(store: ReviewStore, *, queue: str, item_id: str) -> bool:
     """Drop a hold IN FORCE, because its producer filed the candidate after all.
 
-    True when a row was dropped. A returned hold is kept: it is the record that
-    a person overruled the producer, and the only thing that stops a later
-    round, or a later verb reading the same judgment, from holding it again.
+    True when a row was dropped. A returned hold is kept, the record that stops
+    anything holding it again.
     """
     with store.immediate() as conn:
         dropped = conn.execute(
@@ -391,11 +296,9 @@ def release_hold(store: ReviewStore, *, queue: str, item_id: str) -> bool:
 def return_hold(store: ReviewStore, *, queue: str, item_id: str) -> Hold | None:
     """Mark a hold returned by a person, and hand it back, or None for no such hold.
 
-    THE MARK ONLY. Filing the candidate is the caller's, through :func:`offer`
-    and the producer's own key, and it comes FIRST: a hold marked returned whose
-    item was never filed would be a release nothing holds and nothing offers.
-    A hold already returned is handed back unchanged, so a second ask is the
-    same answer.
+    The mark only. The caller files the candidate FIRST, through :func:`offer`,
+    so no returned hold lacks its item. An already returned hold comes back
+    unchanged.
     """
     declared = _assert_declared_queue(queue)
     with store.immediate() as conn:
