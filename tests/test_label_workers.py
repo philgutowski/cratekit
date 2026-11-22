@@ -154,6 +154,20 @@ def queued_sweep(run_id: str | None = None) -> str:
     return job.job_id
 
 
+def swept(job_id: str) -> dict:
+    """Drive a queued sweep through ``sync labels --job``, which must succeed."""
+    code, resumed = drive(["sync", "labels", "--job", job_id])
+    assert code == int(ExitCode.OK), resumed
+    return resumed
+
+
+def unswept(job_id: str) -> dict:
+    """Drive a queued sweep through ``sync labels --job``, which must not succeed."""
+    code, failed = drive(["sync", "labels", "--job", job_id])
+    assert code != int(ExitCode.OK), failed
+    return failed
+
+
 def item_states(job_id: str) -> dict[str, str]:
     with jobs.open_store() as store:
         return {item.item_id: str(item.state) for item in jobs.items(store, job_id)}
@@ -228,8 +242,7 @@ def test_a_sweep_queued_before_u109_still_resumes_to_done(installed, monkeypatch
     bind(monkeypatch, readable(*SLUGS[:2]))
     job_id = queued_sweep()
     assert queued_items(job_id) == list(SLUGS[:2])
-    code, resumed = drive(["sync", "labels", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    swept(job_id)
     assert set(item_states(job_id).values()) == {str(jobs.ItemState.DONE)}
     assert set(offers(config.load()).values()) == set(SLUGS[:2])
 
@@ -354,8 +367,7 @@ def test_a_sweep_runs_every_one_of_its_labels_from_pending_to_done(installed, mo
     job_id = queued_sweep()
     assert set(item_states(job_id).values()) == {str(jobs.ItemState.PENDING)}
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    resumed = swept(job_id)
     assert item_states(job_id) == {slug: str(jobs.ItemState.DONE) for slug in SLUGS[:2]}
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
 
@@ -365,8 +377,7 @@ def test_each_item_sweeps_its_own_label_and_not_one_named_by_the_payload(install
     register(*LABELS[:2])
     catalogue_fake = bind(monkeypatch, readable(*SLUGS[:2]))
     job_id = queued_sweep()
-    code, resumed = drive(["sync", "labels", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    swept(job_id)
 
     assert offers(installed) == {
         "hf-1": "hotflush-recordings",
@@ -392,8 +403,7 @@ def test_the_resume_envelope_is_exactly_job_state_and_nothing_beside_it(installe
     register(LABELS[0])
     bind(monkeypatch, readable(SLUGS[0]))
     job_id = queued_sweep()
-    code, resumed = drive(["sync", "labels", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    resumed = swept(job_id)
     assert set(resumed["data"]) == {"job_id", "state", "cause", "progress"}
 
 
@@ -405,8 +415,7 @@ def test_a_catalogue_that_cannot_be_listed_fails_the_item_and_the_job(installed,
     register(LABELS[0])
     bind(monkeypatch, UnreadableCatalogue())
     job_id = queued_sweep()
-    code, failed = drive(["sync", "labels", "--job", job_id])
-    assert code != int(ExitCode.OK), failed
+    failed = unswept(job_id)
     assert item_causes(job_id) == {SLUGS[0]: "sync-source-lookups-failed"}
     assert job_state(job_id) == str(jobs.JobState.FAILED)
     assert failed["cause"]["reason"] == "no-evidence"
@@ -424,8 +433,7 @@ def test_a_sweep_whose_failures_are_permanent_does_not_tell_the_person_to_resume
     register(*LABELS[:2])
     bind(monkeypatch, readable(SLUGS[0]))
     job_id = queued_sweep()
-    code, failed = drive(["sync", "labels", "--job", job_id])
-    assert code != int(ExitCode.OK), failed
+    failed = unswept(job_id)
     assert item_causes(job_id) == {SLUGS[0]: None, SLUGS[1]: "sync-source-lookups-failed"}
     assert job_state(job_id) == str(jobs.JobState.FAILED)
     cause = failed["cause"]
@@ -448,8 +456,7 @@ def test_an_increment_that_could_not_offer_every_release_fails_the_item(installe
 
     monkeypatch.setattr(sweep, "offer_release", refusing_offer)
     job_id = queued_sweep()
-    code, failed = drive(["sync", "labels", "--job", job_id])
-    assert code != int(ExitCode.OK), failed
+    unswept(job_id)
     assert item_causes(job_id) == {SLUGS[0]: "label-sweep-incomplete"}
     assert job_state(job_id) == str(jobs.JobState.FAILED)
 
@@ -464,32 +471,16 @@ def test_a_label_the_registry_no_longer_holds_refuses_rather_than_sweeping_nothi
     code, removed = drive(["label", "registry", "remove", LABELS[0]])
     assert code == int(ExitCode.OK), removed
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
-    assert code != int(ExitCode.OK), failed
+    unswept(job_id)
     causes = item_causes(job_id)
     assert causes[SLUGS[0]] == "label-unknown"
     assert causes[SLUGS[1]] is None
     assert item_states(job_id)[SLUGS[1]] == str(jobs.ItemState.DONE)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 6b. A catalogue that confirms nothing is not a label with nothing new
-#
-# THE THREE ARMS BELONG TOGETHER AND ARE WRITTEN TOGETHER. A catalogue whose
-# verification endpoint is degraded, rate limited, or answering under a
-# distributor's name confirms nothing, so every release it listed is dropped,
-# the increment sees no processed items and no errors, and it reports
-# ``shortfall="empty"``. That is the same envelope a label with genuinely
-# nothing new produces, which is R-135's shape on the one path U52 made
-# reachable.
-#
-# THE REFUSAL IS KEYED ON THE DROPPED POPULATION rather than on an empty
-# candidate list, and the second and third tests are what hold that key in
-# place. An all tombstoned label and a label whose crawl is exhausted both
-# produce no candidates and both are genuine no ops, so a build that refused on
-# "nothing was offered" would turn every quiet label into an error and would
-# trade R-135 for its mirror image.
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 6b. A catalogue that confirms nothing is not a label with nothing new ────
+# Keyed on the dropped population, not an empty candidate list, so a quiet label
+# (all tombstoned, or an exhausted crawl) stays a no op.
 
 
 def unconfirming(*label_ids: str) -> FakeCatalogue:
@@ -513,9 +504,8 @@ def test_a_sweep_that_confirmed_none_of_what_it_read_fails_rather_than_succeedin
     bind(monkeypatch, unconfirming(SLUGS[0]))
     job_id = queued_sweep()
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
+    unswept(job_id)
 
-    assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {SLUGS[0]: "label-sweep-incomplete"}
     assert job_state(job_id) != str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
@@ -548,9 +538,8 @@ def test_a_label_whose_every_release_is_tombstoned_still_succeeds(installed, mon
     bind(monkeypatch, readable(SLUGS[0]))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    resumed = swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
@@ -573,9 +562,8 @@ def test_a_verification_call_that_raises_fails_the_item_in_the_lookup_vocabulary
     )
     job_id = queued_sweep()
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
+    unswept(job_id)
 
-    assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {SLUGS[0]: "sync-source-lookups-failed"}
     assert job_state(job_id) == str(jobs.JobState.FAILED)
 
@@ -586,9 +574,8 @@ def test_a_label_whose_crawl_listed_nothing_at_all_still_succeeds(installed, mon
     bind(monkeypatch, FakeCatalogue(artists={SLUGS[0]: FakePagedArtist([])}))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    resumed = swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
@@ -611,9 +598,8 @@ def test_a_sweep_that_confirmed_some_of_what_it_read_succeeds_and_offers_those(
     )
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    resumed = swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {"hf-1": SLUGS[0]}
 
@@ -655,9 +641,8 @@ def test_a_refusal_the_sweep_verifier_raises_in_kind_keeps_its_own_reason(instal
     )
     job_id = queued_sweep()
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
+    unswept(job_id)
 
-    assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
 
 
@@ -674,9 +659,8 @@ def test_a_revoked_tombstone_no_longer_keeps_a_release_out_of_the_queue(installe
     bind(monkeypatch, readable(SLUGS[0]))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
 
 
@@ -696,9 +680,8 @@ def test_an_unreadable_tombstone_store_does_not_fail_a_label_with_nothing_to_ask
     bind(monkeypatch, FakeCatalogue(artists={SLUGS[0]: FakePagedArtist([])}))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    resumed = swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
 
 
@@ -711,9 +694,8 @@ def test_an_unreadable_tombstone_store_still_refuses_a_label_with_a_confirmed_re
     bind(monkeypatch, readable(SLUGS[0]))
     job_id = queued_sweep()
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
+    unswept(job_id)
 
-    assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {SLUGS[0]: "review-file-unusable"}
     assert offers(installed) == {}
 
@@ -748,8 +730,7 @@ def test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok(installed, mon
     job_id = queued_sweep()
     assert drive(["sync", "labels", "--job", job_id])[0] != int(ExitCode.OK)
 
-    code, again = drive(["sync", "labels", "--job", job_id])
-    assert code != int(ExitCode.OK), again
+    again = unswept(job_id)
     # The stored job cause, raised on a closed job. It used to be the wrapper's
     # unavailable-transient. The items failed as sync-source-lookups-failed, which
     # is not retryable, so that is now the job's reason too.
@@ -769,9 +750,8 @@ def test_a_resume_of_a_cancelled_sweep_does_not_exit_ok_over_the_items_it_never_
     with jobs.open_store() as store:
         jobs.cancel(store, job_id)
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    resumed = unswept(job_id)
 
-    assert code != int(ExitCode.OK), resumed
     assert resumed["cause"]["reason"] == "cancelled"
     assert job_state(job_id) == str(jobs.JobState.CANCELLED)
     assert set(item_states(job_id).values()) == {str(jobs.ItemState.PENDING)}
@@ -813,8 +793,7 @@ def test_the_worker_offers_into_the_library_its_job_was_queued_for(
         "there would be indistinguishable from one written to the frozen library"
     )
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
-    assert code == int(ExitCode.OK), resumed
+    swept(job_id)
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
     assert not review.queue_path(live).exists(), (
         "the worker opened the review store against the CURRENT configuration, "
@@ -822,21 +801,8 @@ def test_the_worker_offers_into_the_library_its_job_was_queued_for(
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 9. Harvest, the verb that can now succeed
-#
-# THE DEFECT THESE REPLACE. ``harvest_playlist`` raised
-# ``label-playlist-unreadable`` on every call and had never listed a playlist,
-# so a person was told their playlist could not be read at a moment when
-# nothing had been contacted. A refusal whose stated cause is false is worse
-# than an honest one, because it sends somebody to check a playlist that is
-# fine.
-#
-# HARVEST QUEUES NOTHING, so nothing below reads the job store. It runs in
-# process, it writes into the review queue, and the queue is the only durable
-# record it leaves; every assertion here therefore reads either the emitted
-# envelope or the review store, and never an exit code alone.
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 9. Harvest, the verb that can now succeed ────────────────────────────────
+# Harvest queues nothing: every assertion reads the envelope or the review store.
 
 PLAYLIST = "https://example.invalid/playlist/harvest"
 
@@ -1154,13 +1120,8 @@ def test_a_refusal_the_harvest_verifier_raises_in_kind_keeps_its_own_reason(inst
     assert refused["cause"]["reason"] == "credential-missing"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 10. The review round, 2026-09-07
-#
-# Each test here drives one finding the built in review raised after the merge
-# with main. They sit together rather than in their sections because a reader
-# of the record should be able to find what a round changed in one place.
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 10. The review round, 2026-09-07 ─────────────────────────────────────────
+# One finding of the review after the merge with main per test.
 
 
 def test_the_keys_this_verb_will_drive_are_the_keys_bound_to_its_worker():
@@ -1272,9 +1233,8 @@ def test_a_mixed_listing_of_tombstoned_and_unconfirmed_releases_is_a_label_with_
     bind(monkeypatch, counting(SLUGS[0], confirmed=frozenset()))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    resumed = swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
@@ -1301,9 +1261,8 @@ def test_a_tombstoned_release_is_never_sent_to_the_provider_for_verification(
     fake = bind(monkeypatch, counting(SLUGS[0]))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert fake.verifications == 1, fake.verifications
     assert offers(installed) == {"hf-2": SLUGS[0]}
 
@@ -1349,23 +1308,15 @@ def test_a_refusal_the_artist_lookup_raises_in_kind_keeps_its_own_reason(install
     bind(monkeypatch, SessionExpiredAtListing())
     job_id = queued_sweep()
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
+    unswept(job_id)
 
-    assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 12. A release the library already holds is not offered. R-259.
-#
+# ── 12. A release the library already holds is not offered. R-259. ───────────
 # The worker passed an empty owned set, and both filters on the labels path are
 # membership tests against the set they are handed, so every sweep offered what
-# the library already held. A release is owned when the provider lists at least
-# one track on it and the library index the match engine uses resolves every
-# one of them as matched. Anything short of that is still offered, because an
-# offer costs a person one decline and a release wrongly called owned is music
-# they never see.
-# ═══════════════════════════════════════════════════════════════════════════
+# the library already held.
 
 
 class Row:
@@ -1417,9 +1368,8 @@ def test_a_label_whose_catalogue_the_library_already_holds_offers_nothing(instal
     bind(monkeypatch, tracked())
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    resumed = swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
@@ -1433,9 +1383,8 @@ def test_a_release_with_one_track_still_missing_is_offered_beside_one_that_is_he
     bind(monkeypatch, tracked())
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert offers(installed) == {"hf-1": SLUGS[0]}
 
 
@@ -1448,9 +1397,8 @@ def test_a_release_listing_no_tracks_and_a_release_that_is_gone_are_both_offered
     fake = bind(monkeypatch, tracked(releases={"hf-1": ([], 2026)}))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
     assert sorted(fake.releases_asked_for) == ["hf-1", "hf-2"]
 
@@ -1467,9 +1415,8 @@ def test_a_release_the_library_holds_only_in_another_version_is_offered(installe
     bind(monkeypatch, tracked())
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert offers(installed) == {"hf-2": SLUGS[0]}
 
 
@@ -1481,9 +1428,8 @@ def test_an_unconfirmed_release_is_never_read_and_a_confirmed_one_is_read_once(
     fake = bind(monkeypatch, tracked(confirmed={"hf-1"}))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert fake.releases_asked_for == ["hf-1"]
     assert offers(installed) == {"hf-1": SLUGS[0]}
 
@@ -1520,9 +1466,8 @@ def test_a_track_read_the_provider_could_not_answer_offers_the_release(installed
     fake = bind(monkeypatch, tracked(cls=TracksOutage))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    resumed = swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
     assert sorted(fake.releases_asked_for) == ["hf-1", "hf-2"]
@@ -1535,9 +1480,8 @@ def test_three_failed_track_reads_in_a_row_stop_the_asking(installed, monkeypatc
     fake = bind(monkeypatch, TracksOutage(artists={SLUGS[0]: FakePagedArtist(many)}))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert len(fake.releases_asked_for) == 3, fake.releases_asked_for
     assert sorted(offers(installed)) == [f"hf-{n}" for n in range(1, 6)]
 
@@ -1557,9 +1501,8 @@ def test_a_release_that_is_gone_breaks_the_run_of_failed_reads(installed, monkey
     fake = bind(monkeypatch, Alternating(artists={SLUGS[0]: FakePagedArtist(many)}))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert len(fake.releases_asked_for) == 7, fake.releases_asked_for
 
 
@@ -1588,9 +1531,8 @@ def test_a_sweep_of_two_labels_walks_the_library_once(installed, monkeypatch):
     )
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert len(walks) == 1, len(walks)
     assert set(offers(installed)) == {"hf-1", "hf-2", "ot-1"}
 
@@ -1601,9 +1543,8 @@ def test_a_refusal_the_track_read_raises_in_kind_keeps_its_own_reason(installed,
     bind(monkeypatch, tracked(cls=TracksSessionExpired))
     job_id = queued_sweep()
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
+    unswept(job_id)
 
-    assert code != int(ExitCode.OK), failed
     assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
 
 
@@ -1623,9 +1564,8 @@ def test_a_release_with_a_row_the_reader_cannot_read_is_offered(installed, monke
     bind(monkeypatch, tracked(releases=releases))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert offers(installed) == {"hf-2": SLUGS[0]}
 
 
@@ -1644,9 +1584,8 @@ def test_a_track_read_that_succeeds_breaks_the_run_of_failed_reads(installed, mo
     fake = bind(monkeypatch, Intermittent(artists={SLUGS[0]: FakePagedArtist(many)}))
     job_id = queued_sweep()
 
-    code, resumed = drive(["sync", "labels", "--job", job_id])
+    swept(job_id)
 
-    assert code == int(ExitCode.OK), resumed
     assert len(fake.releases_asked_for) == 7, fake.releases_asked_for
 
 
@@ -1733,9 +1672,8 @@ def test_a_rate_limited_listing_fails_its_item_as_retryable_and_the_job_says_res
     _, limit = _one_label_rate_limited(monkeypatch)
     job_id = queued_sweep()
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
+    failed = unswept(job_id)
 
-    assert code != int(ExitCode.OK), failed
     assert limit.answered == 6 and len(waits) == 5, (limit.answered, waits)
     assert item_states(job_id) == {
         SLUGS[0]: str(jobs.ItemState.DONE),
@@ -1808,9 +1746,8 @@ def test_a_rate_limited_verification_is_retryable_too(installed, monkeypatch):
     )
     job_id = queued_sweep()
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
+    failed = unswept(job_id)
 
-    assert code != int(ExitCode.OK), failed
     assert limit.answered == 1
     cause = item_cause(job_id, SLUGS[0])
     assert cause.reason == "sync-source-lookups-failed"
@@ -1865,9 +1802,8 @@ def test_a_rate_limit_at_every_other_sweep_boundary_is_retryable(installed, monk
     bind(monkeypatch, fake())
     job_id = queued_sweep()
 
-    code, failed = drive(["sync", "labels", "--job", job_id])
+    unswept(job_id)
 
-    assert code != int(ExitCode.OK), failed
     cause = item_cause(job_id, SLUGS[0])
     assert cause.reason == "sync-source-lookups-failed"
     assert cause.retryable is True

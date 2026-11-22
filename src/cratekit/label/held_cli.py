@@ -77,7 +77,8 @@ def _label_rows(held: Sequence[review.Hold]) -> list[dict[str, Any]]:
             one.group, {"label_id": one.group, "label_name": one.name, "held": 0, "called": {}}
         )
         row["held"] += 1
-        words = ", ".join(_genres(one) or ()) or "words this build could not read back"
+        genres = _genres(one)
+        words = ", ".join(genres) if genres else "words this build could not read back"
         row["called"][words] = row["called"].get(words, 0) + 1
     return sorted(rows.values(), key=lambda row: str(row["label_name"]).casefold())
 

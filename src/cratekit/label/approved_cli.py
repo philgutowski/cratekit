@@ -599,8 +599,8 @@ def list_releases(
         provenance = _provenance(rows, origins)
         try:
             body, _listed, _unlisted = listdoc.document(rows)
-            name = list_name(body, provenance, prefix=prefix)
-            written = listdoc.write(out(), name, rows, provenance)
+            folder, name = out(), list_name(body, provenance, prefix=prefix)
+            written = listdoc.write(folder, name, rows, provenance)
         except listdoc.ListDocRefused as exc:
             raise _unusable(str(exc), f"move the file aside, or {elsewhere}") from exc
         except OSError as exc:
