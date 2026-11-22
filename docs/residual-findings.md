@@ -56196,3 +56196,54 @@ the order before, and the next append still goes past the highest position.
 Remove from Collection, a playlist holding a gap below the removed track, and
 the renumbered row's every column, and the rule is kept or given what
 rekordbox does. Ledger only.
+
+---
+
+## R-1854. The front rule's copy test in tests/test_sync_pair_stopped.py compares a function with itself since the copy became a call
+
+**Found:** at the review of #855, U298, 2026-11-21.
+
+**The mechanism.** `tests/test_sync_pair_stopped.py` holds 25 tests, a permutation over four tracks and a track held twice, that assert `pair_stopped.front_moves` equals `tidal_account._to_the_front`. U298 made `_to_the_front` a call of `front_moves`, so each test now asserts that a function equals itself, and no mutation of the rule can fail them.
+
+**Measured cost.** None to a run, and the rule is still held: the review mutated `== 1` to `>= 1` in `front_moves` and 29 other tests failed, among them `tests/test_outbound_order.py` and `tests/test_sync_pair_settle.py`. What is lost is 25 tests that test nothing, named for a copy that is gone.
+
+**Closes when:** the sync area card deletes the 25 tests or turns them into assertions of the rule's own answers. Ledger only.
+
+---
+
+## R-1855. Three modules load more of the product at import since their helpers moved to a shared home
+
+**Found:** at the review of #855, U298, 2026-11-21.
+
+**The mechanism.** The review compared what each of the 329 modules loads on import, base against branch. `modules/outbound/tidal_account.py` now loads `cratekit.sync` and `cratekit.favorites` at import, an edge between two toggleable packages that the import rules do not count. `sync/pair_stopped.py`, whose docstring calls it pure, now loads 14 more modules, the shell package and its registry among them. `core/night_budget.py` loads 8 more.
+
+**Measured cost.** None to a run: the top level imports of a toggleable package (54), the lazy ones (111), the verbs left dangling (159) and every allowance line are unchanged, and the behaviour comparison over every verb's help is clean. What it costs is import time and a seam the rules do not see.
+
+**Closes when:** the area cards for the outbound module and sync either import the shared helper lazily or home it lower, and the import rules count an edge between two toggleable packages. Ledger only.
+
+---
+
+## R-1856. Three near copies stand beside the homes U298 gave their helpers, each differing in shape
+
+**Found:** during U298 and its review, 2026-11-21.
+
+**The mechanism.** U298 replaced exact copies only, as its brief says. Three copies differ in shape and were left:
+
+- `modules/outbound/shell.load_config` takes its origin as one string where `cli.output.load_config` takes a sequence. It gives the same cause for `(origin,)`.
+- `_rollback_quietly` in `sync/removed.py` (landed by U288 beside this card) and in `write/metadata_cli.py` swallow a failed rollback without the warning `write.trees.rollback_quietly` logs.
+
+**Measured cost.** None to a run. Three helpers keep a second spelling until their area cards fold them in. The rollback pair differs in a log line, so folding them changes what a log shows and is a listed UX cleanup.
+
+**Closes when:** the outbound, sync and write area cards fold each into its home, naming the rollback's added log line if they take it. Ledger only.
+
+---
+
+## R-1857. config.lock_now takes a lock file left at another mode as it finds it, so the driver and staging locks never harden one
+
+**Found:** at the review of #855, U298, 2026-11-21. On main as well.
+
+**The mechanism.** `core.config.lock_now`, which the job driver's lock (`core/jobs.py`) and the staging lock (`core/staging_lock.py`) take, opens its file with `os.open` at the private mode. `O_CREAT` applies a mode only when it creates the file, so a lock file already there at 0666 stays at 0666. The docstring warns about exactly that exposure: a lock any local account could hold refuses every later run. `flock_exclusive` takes a `harden` from its caller for this case; `lock_now` takes none. The review drove the driver lock with a file left at 0666, and it stayed at 0666 on the base and on the branch alike.
+
+**Measured cost.** Not driven past the mode: nothing the review found produces a lock file at another mode, so reachability is unmeasured. U298 moved the function and changed none of it.
+
+**Closes when:** `lock_now` hardens a file it did not create, or a test shows nothing can leave one. Ledger only.
