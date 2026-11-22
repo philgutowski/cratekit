@@ -462,24 +462,8 @@ def assert_within_policy(plan: Plan) -> None:
 
 
 __all__ = [
-    "OPERATIONS",
-    "PAD_CAMELOT",
-    "RATING_BACKFILL",
-    "RETAG_GENRE",
-    "UNWRITABLE_FIELDS",
-    "Change",
-    "Plan",
-    "PolicyRefused",
-    "Report",
-    "Skipped",
-    "write_plan",
-    "assert_within_policy",
-    "database_stars",
-    "enable",
-    "first_active_id",
-    "plan_genre_retag",
-    "plan_rating_backfill",
-    "plan_title_padding",
-    "rating_for",
-    "resolve_genre_id",
+    "OPERATIONS", "PAD_CAMELOT", "RATING_BACKFILL", "RETAG_GENRE", "UNWRITABLE_FIELDS",
+    "Change", "Plan", "PolicyRefused", "Report", "Skipped", "write_plan",
+    "assert_within_policy", "database_stars", "enable", "first_active_id", "plan_genre_retag",
+    "plan_rating_backfill", "plan_title_padding", "rating_for", "resolve_genre_id",
 ]

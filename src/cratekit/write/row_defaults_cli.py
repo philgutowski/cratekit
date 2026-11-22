@@ -215,11 +215,6 @@ def repair_rows(ctx) -> Envelope:
 
 
 __all__ = [
-    "BOUND_UNDECIDABLE",
-    "CONFIRM_GATE",
-    "DEFAULTS_WRITTEN",
-    "NOTHING_TO_WRITE",
-    "UNRENUMBERED",
-    "build",
-    "repair_rows",
+    "BOUND_UNDECIDABLE", "CONFIRM_GATE", "DEFAULTS_WRITTEN", "NOTHING_TO_WRITE", "UNRENUMBERED",
+    "build", "repair_rows",
 ]

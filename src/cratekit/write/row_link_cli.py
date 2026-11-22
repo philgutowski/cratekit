@@ -176,9 +176,5 @@ def repair_link(ctx) -> Envelope:
 
 
 __all__ = [
-    "CONFIRM_GATE",
-    "LINK_WRITTEN",
-    "NOTHING_TO_WRITE",
-    "build",
-    "repair_link",
+    "CONFIRM_GATE", "LINK_WRITTEN", "NOTHING_TO_WRITE", "build", "repair_link",
 ]
