@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22663,
   "baseline_exit": 1,
-  "pytest_runs": 12,
+  "pytest_runs": 16,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -243,6 +243,68 @@
       "source": {
         "table": "r154-c.json",
         "id": "C5_stated_volume_stops_at_the_verb"
+      }
+    },
+    {
+      "id": "r367.G10_the_report_drops_the_absent_field",
+      "description": "the off machine half ran and the person is not told the sidecar was missing",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a1419929a91067f7",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "            missing = pulled.absent_sidecars",
+      "new": "            missing = ()",
+      "source": {
+        "table": "r367.json",
+        "id": "G10_the_report_drops_the_absent_field"
+      }
+    },
+    {
+      "id": "r368-round-2.G14_the_destination_check_is_equality_only",
+      "description": "re-measured: drop the name-plus-parent half, so a landing path that is not on disk yet passes",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "001409f07790c9ef",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    if _same_place(landing, live) or (\n        landing.name == live.name and _same_place(landing.parent, live.parent)\n    ):\n",
+      "new": "    if _same_place(landing, live):\n",
+      "source": {
+        "table": "r368-round-2.json",
+        "id": "G14_the_destination_check_is_equality_only"
       }
     }
   ],

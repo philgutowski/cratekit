@@ -358,42 +358,6 @@ new = '''
     found: dict[str, JobState] = dict.fromkeys(wanted, JobState.QUEUED)'''
 
 [[rows]]
-id = "u27-round-8-independent.W2_composite_wrong_file"
-source = { table = "u27-round-8-independent.json", id = "W2_composite_wrong_file" }
-description = "COMPOSITE for W2: the canary names a file that is not the one it opened"
-file = "src/cratekit/core/rb_writer.py"
-surface = "user"
-tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
-old = '        named = path if path is not None else handle_path(db)'
-new = '        named = (str(path) + "-not-this-file") if path is not None else handle_path(db)'
-
-[[rows]]
-id = "u27-round-8-independent.W3_canary_no_name_the_database"
-source = { table = "u27-round-8-independent.json", id = "W3_canary_no_name_the_database" }
-description = "Drop the name_the_database hand-off in the canary, so a chmod 000 database is unclassifiable"
-file = "src/cratekit/core/rb_writer.py"
-surface = "user"
-tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
-old = '''
-        if named is not None:
-            name_the_database(exc, named)'''
-new = ''
-
-[[rows]]
-id = "u27-round-8-independent.W5_canary_message_no_path"
-source = { table = "u27-round-8-independent.json", id = "W5_canary_message_no_path" }
-description = "Reword the canary refusal so its sentence no longer names the database file"
-file = "src/cratekit/core/rb_writer.py"
-surface = "user"
-tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
-old = '''
-            f"the rekordbox database{where} opened but could not be read as "
-            f"expected: {exc}",'''
-new = '''
-            f"the rekordbox database could not be read as expected after it "
-            f"opened: {exc}",'''
-
-[[rows]]
 id = "u221.R21_unknown_name_not_refused"
 source = { table = "u221.json", id = "R21_unknown_name_not_refused" }
 description = "release plan: drop the refusal of a name that is no twin's, so it reaches the lookup"

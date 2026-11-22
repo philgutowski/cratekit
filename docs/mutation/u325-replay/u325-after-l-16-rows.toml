@@ -46,28 +46,6 @@ new = '''
         return'''
 
 [[rows]]
-id = "r338-c.C4_bare_metal_asks_about_the_share"
-source = { table = "r338-c.json", id = "C4_bare_metal_asks_about_the_share" }
-description = "recover_under_bare_metal_session: let the plan ask the remote about a share the skipped database half will never pull"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
-old = '                pull_share=False,'
-new = '                pull_share=True,'
-
-[[rows]]
-id = "r338-c.C5_report_loses_the_word"
-source = { table = "r338-c.json", id = "C5_report_loses_the_word" }
-description = "restore_under_one_session: stop carrying the plan's share word onto the report, so the totals say null whatever happened to the grids"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
-old = '''
-                "share": str(pulled.share),
-'''
-new = ''
-
-[[rows]]
 id = "u80-b.F9_coverage_weight"
 source = { table = "u80-b.json", id = "F9_coverage_weight" }
 description = "The score weights similarity 60 and word coverage 40, not half and half"

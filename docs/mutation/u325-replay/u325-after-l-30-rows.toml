@@ -916,20 +916,6 @@ old = '            named.get(item) or _unplaceable(item, declared) or _occupied(
 new = '            named.get(item) or _occupied(item, target / item.name)'
 
 [[rows]]
-id = "r816-e.D2_survey_total"
-source = { table = "r816-e.json", id = "D2_survey_total" }
-description = "_is_a_file: let a refusal to answer raise out of the survey"
-file = "src/cratekit/write/metadata_cli.py"
-surface = "user"
-tests = ["tests/test_tag_rows.py", "tests/test_metadata_cli.py", "tests/test_paths_resolved.py"]
-old = '''
-    try:
-        return path.is_file()
-    except (OSError, ValueError):
-        return False'''
-new = '    return path.is_file()'
-
-[[rows]]
 id = "u164.T1_filed_target"
 source = { table = "u164.json", id = "T1_filed_target" }
 description = "landing_target: land in the music folder's batch path rather than the filed folder"

@@ -800,16 +800,6 @@ new = '''
         argv.append("--full")'''
 
 [[rows]]
-id = "r757-c1.S4_rehearsal_says_it_sent"
-source = { table = "r757-c1.json", id = "S4_rehearsal_says_it_sent" }
-description = "comparison_warning: say sent over a rehearsal, the review's fix"
-file = "src/cratekit/backup/cli.py"
-surface = "user"
-tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
-old = '        if recorded.get("dry_run")'
-new = '        if False'
-
-[[rows]]
 id = "r757-c2.S5_unread_number_printed_as_zero"
 source = { table = "r757-c2.json", id = "S5_unread_number_printed_as_zero" }
 description = "comparison_warning: print a total that was not read as 0"
@@ -828,16 +818,6 @@ surface = "user"
 tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
 old = '    if asked_full is not None and asked_full != _is_full(job):'
 new = '    if False:'
-
-[[rows]]
-id = "r757-c2.S7_verb_says_nothing_of_the_comparison"
-source = { table = "r757-c2.json", id = "S7_verb_says_nothing_of_the_comparison" }
-description = "backup_library: leave the comparison sentence off the resumed envelope"
-file = "src/cratekit/backup/cli.py"
-surface = "user"
-tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
-old = '                *comparison_warning(reported["progress"].get(OUTCOMES)),'
-new = '                *(),'
 
 [[rows]]
 id = "u166.A11_warning_names_batch"

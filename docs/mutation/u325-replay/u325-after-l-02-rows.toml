@@ -533,30 +533,6 @@ old = '    named = str(item.item_id or "")'
 new = '    named = str(backup_facts.Portion.FILES)'
 
 [[rows]]
-id = "u188.M5_repeat_kept"
-source = { table = "u188.json", id = "M5_repeat_kept" }
-description = "_mapped_back: keep a repeated pair instead of dropping it, so the refusal names the folder pair twice on a drive that never moved"
-file = "src/cratekit/intake/land_cli.py"
-surface = "maintainer"
-tests = ["tests/test_restore_cli.py"]
-old = '''
-    return tuple(
-        dict.fromkeys(
-            (
-                (str(area.staging), str(planned.folder)),
-                (str(scratch_target), str(target)),
-                stored,
-            )
-        )
-    )'''
-new = '''
-    return (
-        (str(area.staging), str(planned.folder)),
-        (str(scratch_target), str(target)),
-        stored,
-    )'''
-
-[[rows]]
 id = "r154-c.C1_digest_the_word"
 source = { table = "r154-c.json", id = "C1_digest_the_word" }
 description = "Digest a constant where the resolved stamp goes, which is R-153 itself: a backup landing between the two acts leaves the digest where it was"
@@ -611,32 +587,6 @@ old = '''
 new = '''
         snapshot_volume=None,
         accept_unrecorded=pulling.named if pulling is not None else None,'''
-
-[[rows]]
-id = "r367.G10_the_report_drops_the_absent_field"
-source = { table = "r367.json", id = "G10_the_report_drops_the_absent_field" }
-description = "the off machine half ran and the person is not told the sidecar was missing"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '            missing = pulled.absent_sidecars'
-new = '            missing = ()'
-
-[[rows]]
-id = "r368-round-2.G14_the_destination_check_is_equality_only"
-source = { table = "r368-round-2.json", id = "G14_the_destination_check_is_equality_only" }
-description = "re-measured: drop the name-plus-parent half, so a landing path that is not on disk yet passes"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '''
-    if _same_place(landing, live) or (
-        landing.name == live.name and _same_place(landing.parent, live.parent)
-    ):
-'''
-new = '''
-    if _same_place(landing, live):
-'''
 
 [[rows]]
 id = "r368-round-2.G6_ancestors_not_walked"
@@ -888,46 +838,6 @@ new = '''
 '''
 
 [[rows]]
-id = "r592-b.B1_step_on_every_failure"
-source = { table = "r592-b.json", id = "B1_step_on_every_failure" }
-description = "_half_failed: give the removal step to a mirror failure too, sending a person to delete files the mirror never lands"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '    if not dry_run and half == DATABASE_HALF:'
-new = '    if not dry_run:'
-
-[[rows]]
-id = "r592-b.B2_step_on_the_wrong_half"
-source = { table = "r592-b.json", id = "B2_step_on_the_wrong_half" }
-description = "_half_failed: give the removal step to the mirror half and not the database half, so a database half that landed part of the fileset says nothing about it"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '    if not dry_run and half == DATABASE_HALF:'
-new = '    if not dry_run and half == MIRROR_HALF:'
-
-[[rows]]
-id = "r592-b.B4_step_names_the_wrong_directory"
-source = { table = "r592-b.json", id = "B4_step_names_the_wrong_directory" }
-description = "rerun_step: name the target rather than the directory the database lands in, so the person looks for it in the wrong place"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '        f"companion of it in {database_target.parent} if one is there, because a "'
-new = '        f"companion of it in {database_target.parent.parent} if one is there, because a "'
-
-[[rows]]
-id = "r592-b.B5_step_names_no_file"
-source = { table = "r592-b.json", id = "B5_step_names_no_file" }
-description = "rerun_step: say the database rather than its file name, so the step does not say which file to remove"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '        f"before running the recovery again, remove {database_target.name} and any "'
-new = '        f"before running the recovery again, remove the database and any "'
-
-[[rows]]
 id = "r592-b.B7_sample_halves_split"
 source = { table = "r592-b.json", id = "B7_sample_halves_split" }
 description = "SAMPLE, existing guard: _halves hands the whole plan to the mirror half, so a failed mirror lands the database behind it"
@@ -936,16 +846,6 @@ surface = "user"
 tests = ["tests/test_restore_cli.py"]
 old = '    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)'
 new = '    mirror = tuple(decided.commands)'
-
-[[rows]]
-id = "r592-c.C1_step_on_a_rehearsal_remeasured"
-source = { table = "r592-c.json", id = "C1_step_on_a_rehearsal_remeasured" }
-description = "_half_failed: give the removal step to a rehearsal whose database half failed, though a rehearsal landed nothing (B3 of r592-b, re-measured)"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '    if not dry_run and half == DATABASE_HALF:'
-new = '    if half == DATABASE_HALF:'
 
 [[rows]]
 id = "u211.R1_restore_says_what_the_mirror_left"
@@ -1014,35 +914,6 @@ old = '    return {"digest": offered["digest"], "items": items, "totals": totals
 new = '    return {"digest": digest_of(items), "items": items, "totals": totals, "chunk": None}'
 
 [[rows]]
-id = "u27-restore-cli-author.P2_a_mirror_pull_is_reported_as_nothing"
-source = { table = "u27-restore-cli-author.json", id = "P2_a_mirror_pull_is_reported_as_nothing" }
-description = "Leave the off-machine transfers out of the report, which is the defect this shape fixed"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '''
-    items: list[dict[str, Any]] = [
-        {"half": "off-machine", "transfer": label} for label in report.pulled
-    ]'''
-new = '    items: list[dict[str, Any]] = []'
-
-[[rows]]
-id = "u27-restore-cli-author.P3_convergence_is_reported_for_a_run_that_spent_no_capture"
-source = { table = "u27-restore-cli-author.json", id = "P3_convergence_is_reported_for_a_run_that_spent_no_capture" }
-description = "Answer the capture restore's own question when no capture restore happened"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '''
-    if outcome is not None:
-        totals["converged"] = outcome.converged
-        totals["outstanding"] = len(outcome.outstanding)'''
-new = '''
-    totals["converged"] = outcome.converged if outcome is not None else True
-    if outcome is not None:
-        totals["outstanding"] = len(outcome.outstanding)'''
-
-[[rows]]
 id = "u27-restore-cli-author.R1_a_backup_refusal_becomes_an_internal_error"
 source = { table = "u27-restore-cli-author.json", id = "R1_a_backup_refusal_becomes_an_internal_error" }
 description = "Flatten every off-machine diagnosis into report-a-defect"
@@ -1057,16 +928,6 @@ new = '''
             reason="internal-error",
             message=exc.detail,
             remediation=Remediation(remedy=Remedy.REPORT_DEFECT),'''
-
-[[rows]]
-id = "u27-restore-cli-author.S6_the_named_decision_is_withdrawn"
-source = { table = "u27-restore-cli-author.json", id = "S6_the_named_decision_is_withdrawn" }
-description = "Tell the off-machine restore no decision exists, which R33 makes it refuse on"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '                    confirmed=True,'
-new = '                    confirmed=False,'
 
 [[rows]]
 id = "u27-restore-cli-author.S8_a_rehearsal_performs_the_capture_restore"
@@ -1111,46 +972,6 @@ old = '            remediation=reservations.remediation_for(slug),'
 new = '            remediation=Remediation(remedy=Remedy.REPORT_DEFECT),'
 
 [[rows]]
-id = "u27-restore-cli-round-2.S7_a_rehearsal_performs_the_mirror_pull"
-source = { table = "u27-restore-cli-round-2.json", id = "S7_a_rehearsal_performs_the_mirror_pull" }
-description = "Ignore dry_run on the off-machine half, so a preview transfers for real"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '''
-                    pulled,
-                    cfg,
-                    dry_run=dry_run,'''
-new = '''
-                    pulled,
-                    cfg,
-                    dry_run=False,'''
-
-[[rows]]
-id = "u96-a.A12_which_half_failed"
-source = { table = "u96-a.json", id = "A12_which_half_failed" }
-description = "_half_failed: swap the two failure sentences, so a failed mirror is reported as a failed database half"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '''
-    elif half == MIRROR_HALF:
-        message = ('''
-new = '''
-    elif half == DATABASE_HALF:
-        message = ('''
-
-[[rows]]
-id = "u96-a.A13_completed_halves_recorded"
-source = { table = "u96-a.json", id = "A13_completed_halves_recorded" }
-description = "Never record a completed half, so a database failure does not say the mirror arrived"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '            completed.append(half)'
-new = '            pass'
-
-[[rows]]
 id = "u96-a.A14_target_is_required"
 source = { table = "u96-a.json", id = "A14_target_is_required" }
 description = "build_bare_metal: make --target optional, so the verb can be typed with no destination"
@@ -1164,26 +985,6 @@ old = '''
 new = '''
         "--target",
         metavar="DIRECTORY",'''
-
-[[rows]]
-id = "u96-a.A15_report_names_where_the_database_is"
-source = { table = "u96-a.json", id = "A15_report_names_where_the_database_is" }
-description = "_recovered: always report the rebased database path, so a database that was never recovered is reported at the top of the target"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '            "database_target": str(report.database_elsewhere or report.database_target),'
-new = '            "database_target": str(report.database_target),'
-
-[[rows]]
-id = "u96-a.A16_no_absent_companion_for_a_half_that_did_not_run"
-source = { table = "u96-a.json", id = "A16_no_absent_companion_for_a_half_that_did_not_run" }
-description = "Report the plan's absent companions even when the database half was skipped"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '            absent=decided.absent_sidecars if elsewhere is None else (),'
-new = '            absent=decided.absent_sidecars,'
 
 [[rows]]
 id = "u96-a.A1_acceptance_reaches_the_engine"
@@ -1241,46 +1042,6 @@ surface = "user"
 tests = ["tests/test_restore_cli.py"]
 old = '    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)'
 new = '    mirror = decided.commands'
-
-[[rows]]
-id = "u96-a.A7_rekordbox_asked_again"
-source = { table = "u96-a.json", id = "A7_rekordbox_asked_again" }
-description = "Disarm the second rekordbox check, the one before the database half"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '''
-                    if running:
-                        raise backup.BackupRefused('''
-new = '''
-                    if False:
-                        raise backup.BackupRefused('''
-
-[[rows]]
-id = "u96-a.A8_database_elsewhere_is_skipped"
-source = { table = "u96-a.json", id = "A8_database_elsewhere_is_skipped" }
-description = "Run the database half even when the configured database was never on the lost volume"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '            if half == DATABASE_HALF and elsewhere is not None:'
-new = '            if False:'
-
-[[rows]]
-id = "u96-a.A9_a_rehearsal_stays_a_rehearsal"
-source = { table = "u96-a.json", id = "A9_a_rehearsal_stays_a_rehearsal" }
-description = "Pass dry_run=False to run_restore whatever was asked, so a rehearsal transfers"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py"]
-old = '''
-                    portion,
-                    cfg,
-                    dry_run=dry_run,'''
-new = '''
-                    portion,
-                    cfg,
-                    dry_run=False,'''
 
 [[rows]]
 id = "r172-a.A1_nothing_collides"

@@ -2,18 +2,6 @@ name = "u325-after-l-22"
 pass_kind = "replay"
 
 [[rows]]
-id = "u27-restore-cli-author.S1_plan_takes_its_own_lock"
-source = { table = "u27-restore-cli-author.json", id = "S1_plan_takes_its_own_lock" }
-description = "Let the off-machine PLAN acquire the library lock itself instead of taking the open guard"
-file = "src/cratekit/session/restore_cli.py"
-surface = "user"
-tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
-old = '''
-                    include_mirror=include_mirror,
-                    gates=held.guard,'''
-new = '                    include_mirror=include_mirror,'
-
-[[rows]]
 id = "u217.K11_asked_now_counted_as_reused"
 source = { table = "u217.json", id = "K11_asked_now_counted_as_reused" }
 description = "_fresh: drop the short circuit for an answer this run asked, so it counts as reused"
