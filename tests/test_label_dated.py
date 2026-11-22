@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import config
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.label import dated, playlists_cli, sync_cli
 from cratekit.modules.outbound import folders
 from cratekit.organize import account as organize_account
@@ -357,3 +357,19 @@ def test_the_year_plans_actions_are_the_outbound_folders_own_values():
     """dated spells them by value to import outbound only to write; they may not drift."""
     assert (dated.CREATE, dated.REUSE, dated.AMBIGUOUS) == (
         folders.CREATE, folders.REUSE, folders.AMBIGUOUS)
+
+
+def test_a_write_that_failed_part_way_keeps_a_refusals_reason_and_adds_its_step_again():
+    inner = refuse("label-new-playlists-no-folder", "no folder", steps=("make it",))
+    said = dated.refused_part_way(
+        inner, "one playlist was made", "run it again", {"made": 1},
+        failed="the build", origin=("label", "dated"),
+    )
+    assert said.cause.reason == "label-new-playlists-no-folder"
+    assert said.cause.remediation.steps == ("make it", "run it again")
+    other = dated.refused_part_way(
+        OSError("disk"), "nothing was written", "run it again", {},
+        failed="the build", origin=("label", "dated"),
+    )
+    assert other.cause.reason == "internal-error"
+    assert other.cause.remediation.steps == ("run it again",)

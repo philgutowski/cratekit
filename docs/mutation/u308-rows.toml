@@ -20,7 +20,7 @@ id = "M2_declined_gate_drops_warnings"
 description = "spine.run: a declined gate drops the warnings the plan carried"
 file = "src/cratekit/favorites/spine.py"
 surface = "user"
-tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_genre_favorites.py"]
+tests = ["tests/test_favorites_order.py", "tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_genre_favorites.py"]
 old = '''    if ctx.gate.require(spec, plan=data, context=engine.facts(plan)) != "approve":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)'''
 new = '''    if ctx.gate.require(spec, plan=data, context=engine.facts(plan)) != "approve":
@@ -170,19 +170,12 @@ new = '    return held in rb_writer.ROOT_PARENT_SENTINELS or held == parent_id'
 
 [[rows]]
 id = "L1_record_lock_refusal_lost"
-description = "sync_cli.record_lock: a record that cannot be locked is recorded unlocked"
+description = "sync_cli.record_lock: a record that cannot be locked fails raw, not as the record's own refusal"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
 tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
-old = '''    try:
-        lock.__enter__()
-    except config.ConfigLockUnavailable as exc:
-        raise _refusal('''
-new = '''    try:
-        lock.__enter__()
-    except config.ConfigLockUnavailable as exc:
-        return
-        raise _refusal('''
+old = '    except config.ConfigLockUnavailable as exc:'
+new = '    except ZeroDivisionError as exc:'
 
 [[rows]]
 id = "L2_part_way_again_dropped"

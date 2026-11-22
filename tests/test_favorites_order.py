@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 from cratekit.core import rb_writer, session
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.exit_codes import ExitCode
-from cratekit.favorites import order, order_cli, placement
+from cratekit.favorites import order, order_cli, placement, spine
 from tests.cli_drive import drive
 from tests.test_favorites_backfill import _account, _db, _landed_hearts, _note, _sql
 from tests.test_favorites_backfill import _acts as _backfill_acts
@@ -393,3 +397,61 @@ def test_the_verb_refuses_an_answer_the_read_back_does_not_hold(home, monkeypatc
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "session-committed-unverified"
     assert "the folder reads otherwise" in acted["cause"]["message"]
+
+
+# The shared spine the four verbs and three writers run through, driven on its own.
+
+
+def test_the_write_handle_requires_rekordbox_closed_and_the_read_handle_does_not(monkeypatch):
+    opened = []
+    monkeypatch.setattr(spine.rb_writer, "live_db_path", lambda cfg: "live")
+    monkeypatch.setattr(spine.rb_writer, "open_db", lambda path, **kw: opened.append(kw) or path)
+    monkeypatch.setattr(spine.rb_writer, "close_db", lambda db: None)
+    for write in (True, False):
+        with spine.handle("cfg", write=write):
+            pass
+    assert opened == [
+        {"require_closed": True, "cfg": "cfg"},
+        {"require_closed": False, "check_app_version": False, "cfg": "cfg"},
+    ]
+
+
+def test_a_writer_given_no_analysis_root_refuses_to_watch_nothing():
+    with pytest.raises(ValueError, match="would watch nothing"):
+        spine.watched([])
+
+
+def test_the_shared_writer_start_detects_an_out_of_band_restore(monkeypatch):
+    seen = []
+    monkeypatch.setattr(spine.convergence, "detect_out_of_band_restore", lambda *a: seen.append(a))
+    monkeypatch.setattr(spine.tree_registry, "read", lambda cfg: "registry")
+    plan = SimpleNamespace(digest="d")
+    roots, again = spine.prepared("cfg", "db", ["/r"], lambda: plan, plan, "moved", ("f", "x"))
+    assert seen == [("cfg", "db", "registry")] and again is plan and roots == [Path("/r")]
+
+
+def test_a_commit_that_landed_and_then_raised_is_recorded_once(monkeypatch):
+    @contextmanager
+    def witnessing(_db):
+        yield SimpleNamespace(landed=True)
+
+    monkeypatch.setattr(spine.rb_writer, "commit_witness", witnessing)
+    monkeypatch.setattr(spine.trees, "rollback_quietly", lambda db: None)
+    recorded = []
+    with pytest.raises(OSError), spine.witnessed("db", lambda: recorded.append(1)):
+        raise OSError("the legacy playlist file could not be saved")
+    assert recorded == [1]
+
+
+def test_a_declined_gate_keeps_the_warnings_the_plan_carried(monkeypatch):
+    monkeypatch.setattr(spine, "declared_gate", lambda entry, name: name)
+    monkeypatch.setattr(spine.session, "assert_backup_acknowledged", lambda cfg: None)
+    gate = SimpleNamespace(require=lambda spec, **kw: "decline")
+    ctx = SimpleNamespace(entry=None, gate=gate, envelope=lambda **kw: kw)
+    engine = SimpleNamespace(payload=lambda plan: {"totals": {}}, facts=lambda plan: {})
+    warning = {"code": "favorites-folders-left-alone", "message": "two folders"}
+    said = spine.run(
+        ctx, "cfg", "favorites.refresh.approve", engine, planned=lambda: SimpleNamespace(writes=True),
+        written=None, idle=None, done=None, told=lambda plan: [warning],
+    )
+    assert said["outcome"] is Outcome.NO_OP and said["warnings"] == [warning]

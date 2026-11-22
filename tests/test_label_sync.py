@@ -11,7 +11,7 @@ import pytest
 
 from cratekit.cli import prompt, registry
 from cratekit.core import config, private_store, review, tombstone
-from cratekit.core.cause import Cause, Remediation
+from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.core.jobs import Parked
 from cratekit.core.review import DecisionStore, Queue
@@ -1412,3 +1412,15 @@ def test_next_with_one_label_skipped_and_the_next_asked_still_asks(installed, mo
     assert envelope["data"]["summary"]["question"]["label_id"] == "beta-works"
     (alpha,) = checks(envelope, "label.alpha-works")
     assert alpha["status"] == "fail"
+
+
+def test_a_record_that_cannot_be_locked_refuses_rather_than_record_unlocked(installed, monkeypatch):
+    class Held:
+        def __enter__(self):
+            raise config.ConfigLockUnavailable("another run holds it")
+
+    monkeypatch.setattr(sync_cli.config, "exclusive_lock", lambda path: Held())
+    with pytest.raises(CratekitError) as refused, sync_cli.record_lock(installed, "recording"):
+        pass
+    assert refused.value.cause.reason == "label-sync-unusable"
+    assert "recording unlocked discards an answer" in refused.value.cause.message

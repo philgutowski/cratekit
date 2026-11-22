@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -602,3 +603,9 @@ def test_a_month_is_never_seated_above_all_favorites(cfg, db):
     assert _shown(db, folder) == ["2026-08", "Undated", SOURCE]
     _place(db, [("1", "2026-11")])
     assert _shown(db, folder) == ["2026-08", "Undated", SOURCE, "2026-11"]
+
+
+def test_a_row_under_a_folder_is_not_at_the_root_and_a_root_row_is_under_no_folder():
+    at_root, under = SimpleNamespace(ParentID="root"), SimpleNamespace(ParentID="7")
+    assert placement._sits_under(under, "7", False) and not placement._sits_under(at_root, "7", False)
+    assert placement._sits_under(at_root, "", True) and not placement._sits_under(under, "", True)
