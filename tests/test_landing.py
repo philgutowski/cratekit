@@ -183,36 +183,35 @@ def test_a_file_with_no_declared_sub_is_left_in_staging_naming_tag_folder(
     assert [item.path.name for item in result.placed] == ["Placed.flac"]
 
 
-def test_a_stub_export_is_refused_before_any_move(cfg, silence, tmp_path):
+STUB = (
+    b'<?xml version="1.0" encoding="UTF-8"?>\r\n<DJ_PLAYLISTS>\r\n'
+    b'  <COLLECTION Entries="1">\r\n    <TRACK Name="A - One"/>\r\n'
+    b"  </COLLECTION>\r\n</DJ_PLAYLISTS>\r\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("body", "reason", "said"),
+    [
+        (STUB, "intake-export-is-stub", ""),
+        (_fresh_xml().replace(b'Name="INBOX"', b'Name="ELSEWHERE"'), "library-export-unusable", "nothing was moved"),
+        (None, "library-export-unusable", ""),
+    ],
+    ids=["stub", "no-intake-folder", "missing"],
+)
+def test_an_export_that_cannot_be_spliced_is_refused_before_any_move(
+    cfg, silence, tmp_path, body, reason, said
+):
     staged = [_stage(cfg, silence, name) for name in ("One.flac", "Two.flac")]
-    stub = tmp_path / "stub.xml"
-    stub.write_bytes(
-        b'<?xml version="1.0" encoding="UTF-8"?>\r\n<DJ_PLAYLISTS>\r\n'
-        b'  <COLLECTION Entries="1">\r\n    <TRACK Name="A - One"/>\r\n'
-        b"  </COLLECTION>\r\n</DJ_PLAYLISTS>\r\n"
-    )
-    assert _refused(cfg, stub).reason == "intake-export-is-stub"
+    export = tmp_path / "export.xml"
+    if body is not None:
+        export.write_bytes(body)
+    cause = _refused(cfg, export)
+    assert cause.reason == reason
+    assert said in cause.message
     assert all(path.is_file() for path in staged)
     assert not (Path(cfg.library.root) / cfg.library.music_dir).exists()
     assert not _destination(cfg).exists()
-
-
-def test_an_export_with_no_intake_folder_is_refused_before_any_move(
-    cfg, silence, tmp_path
-):
-    staged = _stage(cfg, silence, "One.flac")
-    bare = tmp_path / "bare.xml"
-    bare.write_bytes(_fresh_xml().replace(b'Name="INBOX"', b'Name="ELSEWHERE"'))
-    cause = _refused(cfg, bare)
-    assert cause.reason == "library-export-unusable"
-    assert "nothing was moved" in cause.message
-    assert staged.is_file()
-
-
-def test_a_missing_export_is_refused_before_any_move(cfg, silence, tmp_path):
-    staged = _stage(cfg, silence, "One.flac")
-    assert _refused(cfg, tmp_path / "absent.xml").reason == "library-export-unusable"
-    assert staged.is_file()
 
 
 def test_an_added_file_makes_the_plan_stale(cfg, silence, export):

@@ -464,6 +464,7 @@ def test_a_batch_folder_that_cannot_be_indexed_reports_every_label_row(
         (json.dumps({"list": 1, "origin": "tidal", "tracks": []}).encode(), "not a manifest"),
         (json.dumps({"manifest": 2, "rows": {}}).encode(), "version 2"),
         (json.dumps({"manifest": 1}).encode(), "no rows"),
+        (None, "could not be read"),
     ],
 )
 def test_a_manifest_that_cannot_be_read_refuses_before_any_file_moves(
@@ -471,22 +472,14 @@ def test_a_manifest_that_cannot_be_read_refuses_before_any_file_moves(
 ):
     staged = _stage(cfg, silence, "Ada", "North")
     manifest = tmp_path / "bad.manifest.json"
-    manifest.write_bytes(body)
+    if body is not None:
+        manifest.write_bytes(body)
     cause = _refused(cfg, export, manifest)
     assert cause.reason == "intake-list-unusable"
     assert said in cause.message
     assert "nothing was moved" in cause.message
     assert staged.exists()
     assert not _music(cfg).exists()
-
-
-def test_a_manifest_that_is_not_there_refuses_before_any_file_moves(
-    cfg, silence, export, tmp_path
-):
-    staged = _stage(cfg, silence, "Ada", "North")
-    cause = _refused(cfg, export, tmp_path / "absent.manifest.json")
-    assert cause.reason == "intake-list-unusable"
-    assert staged.exists()
 
 
 def test_a_manifest_rewritten_after_it_was_fingerprinted_is_stale_and_moves_nothing(
