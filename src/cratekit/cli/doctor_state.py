@@ -1,4 +1,7 @@
 """Doctor's checks of this installation's own state: sessions, the commit hook, trees, the install and its notes.
+
+What could not be read is said as unknown, never as absent or empty, and the
+notes at the end are INFO in every state.
 """
 
 from __future__ import annotations
@@ -42,10 +45,8 @@ def _check_unresolved_session(inputs: _Inputs) -> Finding:
     unreadable = _library_state_unreadable(inputs, "the session log")
     if unreadable is not None:
         return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
-    # ONE SCAN, BRANCHED ON WHAT IT COULD NOT READ (R-1255, review round one):
-    # the log itself, unlisted, or records in it. A probe of its own asked the
-    # listing a second time, and a window between the two let the record
-    # branch name the log directory as a record nobody could read.
+    # One scan, branched on what it could not read, so no second listing can
+    # race the first (R-1255).
     parsed, unreadable = session.scan_log(inputs.cfg)
     if session.log_unlisted(unreadable, inputs.cfg):
         unreadable_directory = session.log_dir(inputs.cfg)
@@ -62,9 +63,8 @@ def _check_unresolved_session(inputs: _Inputs) -> Finding:
             remedy=Remedy.REPORT_DEFECT,
         )
     if unreadable:
-        # A gate reading its own state through a tolerant reader fails OPEN, which
-        # is why the scan returns both halves. Doctor reports the half the gate
-        # will refuse on rather than the half it can read.
+        # Report the unreadable records the gate will refuse on, not only the
+        # ones it can read.
         return Finding(
             key=key,
             title=title,
@@ -119,14 +119,11 @@ def _check_unresolved_session(inputs: _Inputs) -> Finding:
 def _open_state(record: session.SessionRecord) -> str:
     """An open run's state, as a person should read it.
 
-    A landing whose import was proven stays ``open`` until a tree cuts over,
-    because the placement it still owes needs one (R-501). Listed bare, a
-    library with fifty finished landings reads as fifty runs in progress.
+    Names a proven landing waiting for a cutover (R-501) and an orphaned run
+    (R-598), which listed bare would read as runs in progress.
     """
     if session.owes_only_deferred_routing(record):
         return f"{record.state}, import proven, placement waits for a cutover"
-    # A RUN WHOSE HOLDER IS GONE WILL NEVER END ITSELF (R-598), and listed bare it
-    # reads as a run in progress. This layer names verbs, so it names the one.
     if session.orphaned(record):
         return f"{record.state}, its process is gone, crate session release abandons it"
     return str(record.state)
@@ -141,10 +138,8 @@ _HOOK_CONFIG_DEFAULT = ".pre-commit-config.yaml"
 _HOOK_DISPATCH = "hook-impl"
 
 
-#: Every git hook type pre-commit can install. Copied from its own constants
-#: rather than imported, because this check runs in checkouts that never
-#: installed the dev extra, and it must not need the tool in order to report that
-#: the tool's hooks are missing.
+#: Every git hook type pre-commit can install, copied rather than imported so
+#: the check works without the dev extra.
 _HOOK_TYPES = frozenset(
     {
         "commit-msg",
@@ -166,11 +161,7 @@ _STAGE_ALIASES = {"commit": "pre-commit", "merge-commit": "pre-merge-commit", "p
 
 
 def _config_path(named: str, root: Path) -> Path:
-    """Where a configuration name from a hook's dispatch line points.
-
-    Relative names are resolved by pre-commit against the repository it runs in,
-    which is this one.
-    """
+    """Where a configuration name from a hook's dispatch line points, relative to ``root``."""
     configured = Path(named)
     return configured if configured.is_absolute() else root / configured
 
@@ -180,23 +171,11 @@ def _configured_hook_types(
 ) -> tuple[tuple[str, ...], str | None, Remedy | None]:
     """Every hook type ``config_file`` needs installed, pre-commit first, or why that is unknown.
 
-    THE WIDENED HALF OF THE RESIDUAL FINDING "The commit hook is off by default on
-    a fresh clone". ``pre-commit install`` on its own writes the pre-commit hook
-    and nothing else, and this repository also runs a check on the commit-msg
-    stage. A clone with a perfectly good pre-commit hook and no commit-msg hook
-    reported green here while that check never ran. So the answer is read from
-    the configuration rather than assumed to be the one type the check happened
-    to know when it was written.
-
-    A type is needed when the configuration NAMES it: a hook's ``stages``, the
-    ``default_stages``, or ``default_install_hook_types``. A hook that names no
-    stage runs on every stage that is installed, which makes no further type
-    necessary, so pre-commit itself is the floor and is always first.
-
-    UNKNOWN IS NOT ONE. A configuration this cannot read, parse, or understand
-    comes back as a sentence rather than as ``("pre-commit",)``, because that
-    tuple is the answer that reports green over exactly the gap this exists to
-    close.
+    Read from the configuration, since ``pre-commit install`` alone writes only
+    the pre-commit hook. A type is needed when a hook's ``stages``,
+    ``default_stages`` or ``default_install_hook_types`` names it. A
+    configuration that cannot be understood returns a sentence, never
+    ``("pre-commit",)``, which would read green over the gap.
     """
     try:
         text = config_file.read_text()
@@ -207,8 +186,7 @@ def _configured_hook_types(
             access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
         )
     try:
-        # The dev extra's, through pre-commit. Not a runtime dependency, and not
-        # worth making one for a check that only speaks in a checkout.
+        # From the dev extra, not a runtime dependency.
         import yaml
     except ImportError:
         return (
@@ -255,45 +233,33 @@ def _configured_hook_types(
 def _install_command(types: Sequence[str], config_name: str = _HOOK_CONFIG_DEFAULT) -> str:
     """The one line that installs every hook type in ``types`` against ``config_name``.
 
-    The configuration is named whenever it is not the default, because the
-    installer rewrites every hook it writes to dispatch to whichever one it was
-    given. Without it that is the default, which may not exist, so following the
-    advice would break a pre-commit hook that was working.
+    A configuration other than the default is named, since the installer points
+    every hook it writes at the one it is given.
     """
     words = ["pre-commit", "install"]
     if config_name != _HOOK_CONFIG_DEFAULT:
         words += ["--config", config_name]
     for kind in types:
         words += ["--hook-type", kind]
-    # ``shlex.join``, as pre-commit builds its own argument vector, so a name
-    # needing quotes comes out quoted.
+    # ``shlex.join``, so a name needing quotes comes out quoted.
     return shlex.join(words)
 
 
 def _remedy_command(root: Path) -> str:
     """The install line for this checkout, naming every type its configuration needs.
 
-    ``pre-commit install`` writes its hooks against the default configuration,
-    so that is the one read. When it cannot be read the line falls back to the
-    floor, and the check reports the configuration itself once that hook exists.
+    Reads the default configuration, falling back to the pre-commit hook alone
+    when it cannot be read.
     """
     types, problem, _remedy = _configured_hook_types(root / _HOOK_CONFIG_DEFAULT)
     return _install_command(types if problem is None else ("pre-commit",))
 
 
 def _hook_config_name(body: str) -> str:
-    """Which configuration file the hook's dispatch line names.
+    """Which configuration file the hook's dispatch line names, or the default.
 
-    READ WITH ``shlex``, BECAUSE IT WAS WRITTEN WITH ``shlex``. ``pre_commit``
-    builds that argument vector with ``shlex.join``, which quotes any path
-    carrying a character a shell would treat specially, so a regular expression
-    matching non-space characters stops at the space in ``my config.yaml`` and
-    reports that a file called ``my`` does not exist. That is a refusal aimed at
-    a developer whose hook is installed and working, and doctor exits 30 over it.
-
-    Absence is not a defect: pre-commit's own default is what it means, and the
-    default is named here once so the answer this returns is always a real
-    filename rather than sometimes None.
+    Read with ``shlex``, since pre-commit writes the line with ``shlex.join``
+    and a quoted path may hold spaces.
     """
     for line in body.splitlines():
         if _HOOK_DISPATCH not in line:
@@ -313,23 +279,9 @@ def _hook_config_name(body: str) -> str:
 def _hook_dispatch_problem(body: str, root: Path, hook_type: str = "pre-commit") -> str | None:
     """Why this hook does not run THIS repository's pre-commit for ``hook_type``, or None.
 
-    Substring-matching ``pre-commit`` was the whole test before, and it is
-    satisfied by a hook whose entire content is the comment ``# pre-commit``, and
-    by a hook that dispatches to a completely different repository's
-    configuration. Both report green while nothing scans the commit, which is the
-    state the residual finding "The commit hook is off by default on a fresh
-    clone" exists to end, and the check's own message already CLAIMED it
-    refused when the hook "does not dispatch to this repository's pre-commit
-    configuration". This makes the claim and the code agree.
-
-    Three positive requirements, each killing one of those:
-
-    * the body calls pre-commit's own hook implementation;
-    * it was installed for ``hook_type``'s STAGE, not for some other hook type
-      that happens to have been copied into this file;
-    * the configuration it names resolves INSIDE this checkout and exists. A hook
-      pointing at another repository's configuration runs that repository's
-      checks over these commits.
+    It must call pre-commit's hook implementation, for ``hook_type``'s stage,
+    against a configuration that exists inside this checkout, since a hook
+    pointing elsewhere runs another repository's checks.
     """
     stage = f"--hook-type={hook_type}"
     if _HOOK_DISPATCH not in body:
@@ -340,12 +292,7 @@ def _hook_dispatch_problem(body: str, root: Path, hook_type: str = "pre-commit")
     try:
         resolved = _config_path(named, root).resolve()
     except (OSError, RuntimeError) as exc:
-        # ``RuntimeError`` IS THE ONE THAT HAPPENS. ``Path.resolve`` does not
-        # raise for an absent path, so an ``OSError`` alone was a handler for a
-        # shape a hook file cannot produce, while the shape it CAN produce, a
-        # symlink loop on the way to the named configuration, arrives as
-        # ``RuntimeError("Symlink loop from ...")`` and escaped this handler
-        # entirely to be reported as a check that did not complete.
+        # A symlink loop arrives as ``RuntimeError`` from ``Path.resolve``.
         return f"the configuration it names, {named}, cannot be resolved ({exc})"
     if root.resolve() not in resolved.parents and resolved != root.resolve():
         return f"the configuration it names, {named}, is outside {root}"
@@ -355,18 +302,11 @@ def _hook_dispatch_problem(body: str, root: Path, hook_type: str = "pre-commit")
 
 
 def _check_commit_hook(inputs: _Inputs) -> Finding:
-    """The residual finding "The commit hook is off by default on a fresh clone".
+    """Whether the repository scan runs as a commit hook in this checkout.
 
-    A personal path or a credential that reaches a commit is already in the
-    history, and removing it is a rewrite every clone has to follow. The scan is
-    wired as a pre-commit hook, and the hook only exists once somebody has run
-    the installer; on a machine where the tool was not on PATH, a planted literal
-    committed cleanly with no hook and no warning.
-
-    It says nothing at all on a user's machine, because an installed wheel has no
-    checkout beside it. A check that reported on the absence of a developer tool
-    to somebody who is not a developer would be noise, and noise is what teaches
-    people to stop reading the report.
+    A secret that reaches a commit needs a history rewrite to remove, and the
+    hook exists only once the installer has run. An installed package has no
+    checkout, so it gets an INFO note.
     """
     key, title = "repo.commit_hook", "repository commit hook"
     root = inputs.probes.checkout_root()
@@ -379,14 +319,8 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
         )
     git_dir, unreadable, unreadable_remedy = _git_dir(root)
     if unreadable is not None:
-        # AN UNREADABLE MARKER IS NOT A MARKER THAT NAMES NOTHING. Both arrived
-        # here as None and both read as the second, at INFO with no remedy, so
-        # the whole report stayed green and doctor exited 0 over a repository
-        # whose commit scan was never established to run. Git reads the marker
-        # with different privileges than this process may have, so whether the
-        # hook fires is genuinely unknown, and unknown is a FAIL here for the
-        # reason ``answer`` gives: INFO means "nothing to do now", and nothing
-        # established that.
+        # An unreadable marker is not one that names nothing: whether the hook
+        # fires is unknown, and unknown is a FAIL.
         return Finding(
             key=key,
             title=title,
@@ -422,15 +356,8 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
             ),
         )
     except (OSError, UnicodeDecodeError) as exc:
-        # A HOOK THAT IS THERE AND CANNOT BE READ IS NOT A MISSING HOOK. One
-        # handler over both reported "no pre-commit hook at X" for a file sitting
-        # at X, and sent the user to `pre-commit install`, which rewrites a file
-        # it may not be able to open either. Git will still try to RUN it, so
-        # whether the scan happens is genuinely unknown here, which is the answer.
-        #
-        # It no longer says the hook EXISTS, for the reason the taxonomy check
-        # gives one screen up: an untraversable hooks directory raises the same
-        # permission error, and nothing beneath it has been observed.
+        # An unreadable hook is not a missing one, and not proven present
+        # either, since an untraversable directory fails the same way.
         return Finding(
             key=key,
             title=title,
@@ -458,9 +385,7 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
             ),
         )
 
-    # EVERY OTHER TYPE THE CONFIGURATION NEEDS, read from the configuration this
-    # hook actually dispatches to. A pre-commit hook alone was reported green
-    # while the commit-msg stage, and the closing check on it, never ran.
+    # Every other type the configuration this hook dispatches to needs.
     config_name = _hook_config_name(body)
     config_file = _config_path(config_name, root)
     types, unknown, unknown_remedy = _configured_hook_types(config_file)
@@ -487,8 +412,7 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
             absent.append(f"no {hook_type} hook at {other}")
             continue
         except (OSError, UnicodeDecodeError) as exc:
-            # The same split the pre-commit hook makes above: a file this account
-            # cannot open is not a file that is missing, and git runs it anyway.
+            # Unreadable is not missing, as for the pre-commit hook above.
             return Finding(
                 key=key,
                 title=title,
@@ -508,11 +432,8 @@ def _check_commit_hook(inputs: _Inputs) -> Finding:
                 f"pre-commit configuration ({other_problem})"
             )
             continue
-        # THE SAME configuration, not merely one inside the checkout. The types
-        # were read from the pre-commit hook's configuration, so a hook for one of
-        # them that dispatches anywhere else runs a stage that configuration does
-        # not describe, and the check it configures there never runs. Both paths
-        # already resolved once, in the dispatch checks above.
+        # The same configuration as the pre-commit hook, since the types were
+        # read from it.
         other_name = _hook_config_name(other_body)
         if _config_path(other_name, root).resolve() != config_file.resolve():
             absent.append(f"the hook at {other} dispatches to {other_name}, not {config_name}")
@@ -549,14 +470,9 @@ def _declared_trees(
 ) -> tuple[tuple[str, ...], frozenset[str], str | None]:
     """The trees this taxonomy declares, the ones that may cut over, and why not.
 
-    The routing tree, the intake tree, and the catalogue tree when one is
-    declared, by stable identifier. The second answer is the subset a cutover
-    may record, and it is ``tree_registry.cutover_trees``, the set the cutover
-    verb accepts, read from the one place both ask. A list kept here said the
-    routing tree alone after #224 taught the verb the intake tree, so doctor
-    failed every library that had cut its inbox over (R-787). An unusable
-    template is ``taxonomy.active``'s failure and is reported there, so here it
-    costs the declared half of the list and a clause saying so, never the check.
+    The cutover set is ``tree_registry.cutover_trees``, the one the verb accepts
+    (R-787). An unusable template is reported by ``taxonomy.active``, so here it
+    costs only the declared list.
     """
     try:
         declared = active_taxonomy.load(cfg)
@@ -571,35 +487,12 @@ def _declared_trees(
 def _check_tree_registry(inputs: _Inputs) -> Finding:
     """Each tree's medium and anchored root, read off the registry (R-235).
 
-    EVERY DECLARED TREE IS LISTED, recorded or not. A tree with no record is on
-    the XML bridge, and a report listing only the records would answer "which
-    trees have cut over" with silence on the library where the answer is none,
-    which is the library a person is about to cut over.
-
-    A RECORD FOR A TREE THE TAXONOMY DOES NOT DECLARE IS LISTED TOO, after the
-    declared ones, because the registry is what decides which writer runs and a
-    record nobody can see still decides it.
-
-    A NATIVE RECORD THE PRODUCT WOULD REFUSE TO CREATE IS NOT GREEN. The cutover
-    verb records the routing tree and the intake tree and nothing else, so a
-    native record for the catalogue tree or a tree nobody declares arrived by a
-    hand edit or by a template that changed after the cutover. So did a native
-    record for either of those two that names a source no rebuild reproduces,
-    since ``assert_rebuildable`` refuses that before anything is recorded. It
-    is a FAIL, since it routes a writer today. A native intake tree from a
-    rebuildable source is a record the verb makes and reads ok, in the same
-    sentence as the routing tree. The sentence
-    names the act, because no remedy token means "revert this tree" and this is
-    the layer that may name a verb.
-
-    AN UNREADABLE REGISTRY IS NOT ANSWERED HERE. ``tree_registry.read`` refuses
-    with its own cause and remedy, and :func:`answer` reports that refusal
-    whole. Collapsing it into "no record" would read as every tree still being
-    on the bridge.
-
-    WHAT IS REPORTED IS THE RECORD. Whether the anchored root is still in the
-    database, and whether the tree's membership matches its declaration, need
-    the database open and are the convergence report's to answer.
+    Every declared tree is listed, recorded or not, then any undeclared record,
+    since a record still routes a writer. A native record a cutover would never
+    make (a tree outside the cutover set, or a source no rebuild reproduces) is
+    a FAIL naming ``crate tree revert``. An unreadable registry raises, so it is
+    never read as every tree on the bridge. Only the record is reported; the
+    database itself is the convergence report's.
     """
     key, title = "tree.registry", "tree registry"
     if inputs.cfg is None:
@@ -661,8 +554,7 @@ def _release_version(tag: str) -> tuple[int, ...] | None:
 def _kept(inputs: _Inputs, origin: InstallOrigin) -> tuple[str, ...]:
     """The extras an upgrade keeps: this copy's, plus ``vocals`` once the library scored (U181).
 
-    An upgrade from a copy that lost the vocals extra would otherwise install
-    without it again, and the next pass would land rows with no score.
+    So an upgrade does not drop the vocals extra and land rows with no score.
     """
     if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):
         return origin.extras
@@ -678,22 +570,9 @@ def release_upgrade_command(url: str, tag: str, extras: Sequence[str]) -> str:
 def _check_install_extras(inputs: _Inputs) -> Finding:
     """Whether the vocal model can score in this copy, and the command if not (U181).
 
-    Sitting 51 landed a pass from a pipx copy installed with the analysis
-    extra and not the vocals one: ``analyze run`` finished every file with a
-    key and an energy and no voxlevel, the files took the Camelot head that
-    is its resume marker, and the landing plan said so in one line. This row
-    says it before the pass does.
-
-    THE ONE TEST IS THE VOCALS MODULE'S OWN, through its probe, so this row
-    and the refusal ``crate sync land`` gives agree by construction. A missing
-    extra prints the reinstall command with the extras this copy carries plus
-    ``vocals``; missing model files print the sentence that names them, since
-    a reinstall does not place them.
-
-    NEVER A FAIL, for the reason ``install.release`` gives: this runs inside
-    ``crate setup``, and a copy without the vocals extra still runs every verb
-    but the score. The pass that would land rows with no score refuses on its
-    own, in its preflight.
+    Uses the vocals module's own probe, so it agrees with ``crate sync land``.
+    Never a FAIL, since it runs inside ``crate setup`` and the pass refuses on
+    its own in its preflight.
     """
     key, title = "install.extras", "installed extras"
     missing = inputs.probes.vocal_requirement()
@@ -733,11 +612,8 @@ def _check_install_extras(inputs: _Inputs) -> Finding:
 def vocals_install_command(origin: InstallOrigin) -> str:
     """The command that adds the vocals extra to this copy, keeping the rest (U181).
 
-    A release install is reinstalled at its own tag with the extras it carries
-    plus ``vocals``, in the form ``install.release`` prints. Any other install
-    is the vocals module's own command, which reads pipx's record or names this
-    interpreter's pip. A git install whose version is not ``X.Y.Z``, a branch
-    head, has no tag of its own to name, so it takes that command too.
+    A release install is reinstalled at its own tag; any other install, a
+    branch head included, takes the vocals module's own command.
     """
     if origin.kind == "vcs" and origin.url and origin.version and _is_release(origin.version):
         extras = sorted({*origin.extras, VOCALS_EXTRA})
@@ -759,11 +635,8 @@ VOCALS_EXTRA = "vocals"
 def _check_release(inputs: _Inputs) -> Finding:
     """Whether a newer release than this copy is published (U159).
 
-    NEVER A FAIL. A copy behind the latest release still works, and this check
-    runs inside ``crate setup``, which must not refuse a person over it. A newer
-    release is INFO carrying the one command that upgrades. A read that fails is
-    INFO saying the releases could not be read, and never OK, because a check
-    that could not look has not established that the copy is current.
+    Never a FAIL, since an older copy still works and this runs inside
+    ``crate setup``. A failed read is INFO, never OK, since it did not look.
     """
     key, title = "install.release", "installed release"
     origin = inputs.probes.install_origin()
@@ -814,8 +687,8 @@ def _check_release(inputs: _Inputs) -> Finding:
         )
     newest, tag = releases[-1]
     if installed is None:
-        # A version this parser cannot read is not behind every release, and
-        # telling it to "upgrade" to an older tag would be a downgrade.
+        # An unparsed version is not behind every release; advising one could
+        # be a downgrade.
         return Finding(
             key=key,
             title=title,
@@ -843,10 +716,7 @@ def _check_release(inputs: _Inputs) -> Finding:
     )
 
 
-#: The key of doctor's note on runs left at a gate (U186), and the age past
-#: which a run counts as left there. A day, because a plan answered within
-#: a sitting is answered within hours, and sitting 51 left two runs blocked
-#: that nobody went back to.
+#: The key of doctor's note on runs left at a gate (U186).
 OPEN_GATES_CHECK = "runs.open-gates"
 
 
@@ -862,6 +732,8 @@ BUDGET_CHECK = "provider.budget"
 NIGHT_CHECK = "sync.night"
 
 
+#: The age past which a run counts as left at a gate, since a plan is
+#: answered within hours in a sitting.
 OPEN_GATE_NOTE_AGE = timedelta(days=1)
 
 
@@ -877,16 +749,9 @@ def _age_words(age: timedelta) -> str:
 def _check_open_gates(inputs: _Inputs) -> Finding:
     """Runs blocked at a gate for more than a day, with their verb, gate and age (U186).
 
-    A NOTE AND NEVER A FAILURE: a run left at a gate costs nothing until
-    somebody answers a plan the library has moved past, and that answer is
-    refused stale on the write handle. Doctor says it so a person finds the
-    run before a second session plans over the same rows.
-
-    The age is :func:`gates.idle_since`, the one ``crate status`` and ``crate
-    run retire`` read through :func:`gates.old_gate`, so the three never
-    disagree about which run is old. A record that cannot be read is named in
-    the note rather than skipped, since an unread record is not a record
-    without a gate.
+    A note, since a stale answer is refused on the write handle. The age is
+    read through :func:`gates.old_gate`, as ``crate status`` and ``crate run
+    retire`` read it, and an unreadable record is named, never skipped.
     """
     moment = inputs.probes.now
     try:
@@ -929,11 +794,8 @@ def _check_open_gates(inputs: _Inputs) -> Finding:
 def _check_isrc_cache(inputs: _Inputs) -> Finding:
     """What the ISRC cache holds, and every file it set aside (U206).
 
-    A NOTE AND NEVER A FAILURE: the cache is a saving, and a file it could not
-    parse costs calls and no data. Doctor names a set aside file so a person
-    knows why the provider was asked again, and may remove it. The module is
-    imported here, so a doctor run loads the matcher it keys by only to answer
-    this note.
+    A note, since the cache only saves calls. The module is imported here so
+    doctor loads its matcher only for this note.
     """
     from cratekit.acquire import isrc_cache  # noqa: PLC0415 - see the docstring
 
@@ -969,17 +831,13 @@ def _check_isrc_cache(inputs: _Inputs) -> Finding:
 def _check_night_pass(inputs: _Inputs) -> Finding:
     """The last night pass's one line (U293), what ``crate sync night`` left.
 
-    A NOTE AND NEVER A FAILURE, in every state: a night that waits at the
-    landing's gate is the pass working as meant, and one that stopped or was
-    refused says why in its own line. A record that cannot be read is said,
-    never shown as no night pass having run.
+    A note in every state; an unreadable record is said, never shown as no pass.
     """
     from cratekit.cli import sync_night  # noqa: PLC0415 - the verb's own record
 
     title = "the last night pass"
     try:
-        # AS THINGS STAND NOW (review round one): a wait answered or landed
-        # since its firing reads as settled, never as still waiting.
+        # As things stand now: a wait answered since its firing reads settled.
         record = sync_night.settle(sync_night.read_status(), inputs.cfg)
     except ValueError as exc:
         return Finding(
@@ -994,8 +852,7 @@ def _check_night_pass(inputs: _Inputs) -> Finding:
     if record is None:
         detail = "no night pass has run on this installation; crate sync night runs one"
     else:
-        # THE LATEST FIRING'S TIME (review round two): a record kept over a
-        # refusal carries the refusal's own under ``firing``.
+        # The latest firing's time, kept under ``firing`` after a refusal.
         firing = record.get("firing") if isinstance(record.get("firing"), dict) else {}
         detail = f"{record['line']} (ended {firing.get('ended') or record.get('ended')})"
     return Finding(key=NIGHT_CHECK, title=title, status=Status.INFO, detail=detail)
@@ -1004,14 +861,9 @@ def _check_night_pass(inputs: _Inputs) -> Finding:
 def _check_provider_budget(inputs: _Inputs) -> Finding:
     """Where the account stands in the hour, off the one gate (U278).
 
-    Each identity's calls in the last sixty minutes against the hour's budget,
-    the line a read stops at and what is kept for writes and downloads, an
-    identity at its read line with the time it frees, and any cooldown with the
-    time it lifts. Read from the gate every installation state pointed at the
-    account shares, and its file named, so a copy run's doctor shows the live
-    hour. A NOTE AND NEVER A FAILURE: the gate itself refuses each call past a
-    line, and doctor's job is to say so before a person starts one. A file
-    that could not be read is said, never shown as an hour with nothing spent.
+    Each identity's calls against the budget, the read line, any identity at it
+    and any cooldown, from the shared gate file it names. A note, since the gate
+    refuses each call itself; an unreadable file is said, never shown as empty.
     """
     settings = (
         provider_gate.GateSettings.from_config(inputs.cfg)

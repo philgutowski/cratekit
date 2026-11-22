@@ -1,7 +1,7 @@
 """Doctor's checks of the backups: their ages, the acknowledgment, the comparisons and the remote.
 
-Every check is INFO in a readable state and FAIL only where a record cannot be
-trusted, since a backup that is due is not a broken machine.
+The age checks are INFO in every readable state and FAIL only where a record
+cannot be trusted, since a backup that is due is not a fault.
 """
 
 from __future__ import annotations
