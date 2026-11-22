@@ -265,6 +265,30 @@ def _approved_adds() -> list[dict[str, str]]:
     return [row for report in reports for row in rebuild.additions(report)]
 
 
+def _enqueue_resort(*item_ids: str) -> jobs.Job:
+    """A resort queued by hand over ``item_ids``, frozen with the adds its gate would show."""
+    with jobs.open_store() as store:
+        return jobs.enqueue(
+            store,
+            handler_key="route.resort",
+            payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
+            cfg=config.load(),
+            item_ids=item_ids,
+        )
+
+
+def _fail_other_trees(monkeypatch, failure=lambda: RuntimeError("this tree is not there")):
+    """Every tree but the governed one fails its rebuild with ``failure()``."""
+    real = rebuild.rebuild_governed_tree
+
+    def one_of_two(cfg, *, tree_id, workflow, **rest):
+        if tree_id != TREE_ID:
+            raise failure()
+        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
+
+    monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)
+
+
 def _items(job_id: str) -> tuple[jobs.Item, ...]:
     with jobs.open_store() as store:
         return jobs.items(store, job_id)
@@ -979,14 +1003,7 @@ def test_a_resume_whose_items_did_not_all_succeed_is_not_an_ok_exit(
             item_ids=(TREE_ID, "second_tree"),
         )
 
-    real = rebuild.rebuild_governed_tree
-
-    def one_of_two(cfg, *, tree_id, workflow, **rest):
-        if tree_id != TREE_ID:
-            raise RuntimeError("this tree is not there")
-        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
-
-    monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)
+    _fail_other_trees(monkeypatch)
 
     code, envelope = _drive([*argv, "--job", job.job_id])
     assert code != int(ExitCode.OK), envelope
@@ -1323,14 +1340,7 @@ def test_one_jobs_leftovers_are_not_counted_under_another(acknowledged, native, 
             # The first resort filed every add, and since U219 a resort with
             # nothing to add queues no job, so the second job over the same
             # state is enqueued with the adds its gate would freeze, none.
-            with jobs.open_store() as store:
-                job_id = jobs.enqueue(
-                    store,
-                    handler_key="route.resort",
-                    payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
-                    cfg=config.load(),
-                    item_ids=(TREE_ID,),
-                ).job_id
+            job_id = _enqueue_resort(TREE_ID).job_id
         (warning,) = _left_behind(_drive(["route", "resort", "--job", job_id])[1])
         assert "1 membership" in warning["message"], warning
         assert job_id in warning["message"], "the warning does not say where this job's list is"
@@ -1356,22 +1366,8 @@ def test_a_resort_that_failed_part_way_still_names_what_the_finished_tree_left(
 ):
     """THE OTHER EXIT, which is the one a resort over several trees usually takes."""
     del acknowledged, native, leftover
-    with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key="route.resort",
-            payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
-            cfg=config.load(),
-            item_ids=(TREE_ID, "second_tree"),
-        )
-    real = rebuild.rebuild_governed_tree
-
-    def one_of_two(cfg, *, tree_id, workflow, **rest):
-        if tree_id != TREE_ID:
-            raise RuntimeError("this tree is not there")
-        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
-
-    monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)
+    job = _enqueue_resort(TREE_ID, "second_tree")
+    _fail_other_trees(monkeypatch)
     code, refused = _drive(["route", "resort", "--job", job.job_id])
     assert code != int(ExitCode.OK), refused
     with jobs.open_store() as store:
@@ -1389,22 +1385,8 @@ def test_a_resort_that_failed_with_nothing_left_behind_adds_no_step(
 ):
     """Gated on what ran. A refusal over a converged tree names no leftover."""
     del acknowledged, native
-    with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key="route.resort",
-            payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
-            cfg=config.load(),
-            item_ids=(TREE_ID, "second_tree"),
-        )
-    real = rebuild.rebuild_governed_tree
-
-    def one_of_two(cfg, *, tree_id, workflow, **rest):
-        if tree_id != TREE_ID:
-            raise RuntimeError("this tree is not there")
-        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
-
-    monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)
+    job = _enqueue_resort(TREE_ID, "second_tree")
+    _fail_other_trees(monkeypatch)
     code, refused = _drive(["route", "resort", "--job", job.job_id])
     assert code != int(ExitCode.OK), refused
     with jobs.open_store() as store:
@@ -1428,14 +1410,7 @@ def test_a_second_process_names_what_the_first_ones_tree_left(
 ):
     """The driver that died is the run an in memory note loses."""
     del acknowledged, native, leftover
-    with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key="route.resort",
-            payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
-            cfg=config.load(),
-            item_ids=(TREE_ID, "second_tree"),
-        )
+    job = _enqueue_resort(TREE_ID, "second_tree")
     real = rebuild.rebuild_governed_tree
     calls: list[str] = []
 
@@ -1468,22 +1443,8 @@ def test_a_refusal_raised_before_the_drive_carries_no_leftover_step(
     from cratekit.write import metadata_cli
 
     del acknowledged, native, leftover
-    with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key="route.resort",
-            payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
-            cfg=config.load(),
-            item_ids=(TREE_ID, "second_tree"),
-        )
-    real = rebuild.rebuild_governed_tree
-
-    def one_of_two(cfg, *, tree_id, workflow, **rest):
-        if tree_id != TREE_ID:
-            raise _not_there_yet()
-        return real(cfg, tree_id=tree_id, workflow=workflow, **rest)
-
-    monkeypatch.setattr(rebuild, "rebuild_governed_tree", one_of_two)
+    job = _enqueue_resort(TREE_ID, "second_tree")
+    _fail_other_trees(monkeypatch, _not_there_yet)
     code, first = _drive(["route", "resort", "--job", job.job_id])
     assert ARRIVED in " ".join(first["cause"]["remediation"]["steps"]), first
     with jobs.open_store() as store:
