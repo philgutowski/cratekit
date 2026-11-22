@@ -118,6 +118,8 @@ _PLACED: dict[str, str] = {
     "cratekit.core.routing": "domain",
     "cratekit.core.secrets": "foundation",
     "cratekit.core.taxonomy": "domain",
+    "cratekit.core.taxonomy_build": "domain",
+    "cratekit.core.taxonomy_model": "domain",
     "cratekit.core.tombstone": "domain",
     "cratekit.core.tree_registry": "write",
     "cratekit.core.types": "foundation",
