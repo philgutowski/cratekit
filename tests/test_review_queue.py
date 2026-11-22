@@ -2147,3 +2147,37 @@ def test_the_adoption_plan_becomes_review_items_rather_than_a_file():
 def test_the_path_repair_pass_offers_its_proposals_into_the_path_repair_queue():
     """U37's obligation: a proposal is never applied without a decision taken in the queue."""
     assert _target_offers_into("cratekit.intake", "Queue.PATH_REPAIR")
+
+
+
+def _hold_one(store):
+    review.hold(store, queue=review.Queue.LABEL_RELEASE, kind="label-release",
+                identity={"release_id": "r1"}, payload={}, group="g", name="L", reason="r",
+                detail={}, run_id="run-1")
+
+
+def _import_over_a_verdict(store):
+    document = review.export_document(store)
+    review.resolve(store, document["items"][0]["id"], review.Verdict.ACCEPTED,
+                   option="opt-accept", actor="a")
+    return lambda: review.import_document(store, document, actor="importer")
+
+
+@pytest.mark.parametrize(
+    ("name", "ready"),
+    [
+        ("item_id_for", lambda store: lambda: _hold_one(store)),
+        ("list_items", lambda store: lambda: review.grouped(
+            store, queue=review.Queue.LABEL_RELEASE, by="label")),
+        ("_item_from_row", lambda store: (_offer_one(store), _import_over_a_verdict(store))[1]),
+    ],
+    ids=["hold", "grouped", "import_document"],
+)
+def test_a_name_patched_on_review_reaches_the_module_it_moved_to(store, monkeypatch, name, ready):
+    """U301. hold, grouped and import_document read these through ``core.review``."""
+    act = ready(store)
+    calls = []
+    real = getattr(review, name)
+    monkeypatch.setattr(review, name, lambda *a, **k: calls.append(1) or real(*a, **k))
+    act()
+    assert calls
