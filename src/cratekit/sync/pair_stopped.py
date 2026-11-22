@@ -457,16 +457,6 @@ def reordered(kept: Sequence[str], now: Sequence[str]) -> bool:
 
 
 __all__ = [
-    "StoppedWrite",
-    "finished",
-    "front_moves",
-    "moving_step",
-    "shows",
-    "ordering_step",
-    "passed",
-    "passed_by",
-    "positions",
-    "reached",
-    "reordered",
-    "stopped_writes",
+    "StoppedWrite", "finished", "front_moves", "moving_step", "shows", "ordering_step", "passed",
+    "passed_by", "positions", "reached", "reordered", "stopped_writes"
 ]

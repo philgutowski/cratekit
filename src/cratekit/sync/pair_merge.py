@@ -338,20 +338,7 @@ def appended(now: Sequence[str], removed: Iterable[str], added: Sequence[str]) -
 
 
 __all__ = [
-    "ACCOUNT",
-    "ADDITION_LATER",
-    "REKORDBOX",
-    "REMOVAL_LATER",
-    "TIME_UNKNOWN",
-    "Base",
-    "Call",
-    "Merged",
-    "Side",
-    "Stopped",
-    "appended",
-    "as_held",
-    "distinct",
-    "merge",
-    "order_changed",
-    "placed",
+    "ACCOUNT", "ADDITION_LATER", "REKORDBOX", "REMOVAL_LATER", "TIME_UNKNOWN", "Base", "Call",
+    "Merged", "Side", "Stopped", "appended", "as_held", "distinct", "merge", "order_changed",
+    "placed"
 ]

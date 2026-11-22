@@ -235,23 +235,8 @@ def named(expected: int, line: int) -> int:
 
 
 __all__ = [
-    "ADD_CHUNK",
-    "MAKE_FOLDER",
-    "MAKE_PLAYLIST",
-    "MARGIN",
-    "PLAYLIST_PAGE",
-    "READ_FOLDER",
-    "REMOVE_CHUNK",
-    "REPARSE",
-    "ROUND_TO",
-    "UNPAGED_READ",
-    "account_write",
-    "check",
-    "folders_made",
-    "judged_calls",
-    "listing_calls",
-    "named",
-    "pages",
-    "pair_write",
-    "unpaged_calls",
+    "ADD_CHUNK", "MAKE_FOLDER", "MAKE_PLAYLIST", "MARGIN", "PLAYLIST_PAGE", "READ_FOLDER",
+    "REMOVE_CHUNK", "REPARSE", "ROUND_TO", "UNPAGED_READ", "account_write", "check",
+    "folders_made", "judged_calls", "listing_calls", "named", "pages", "pair_write",
+    "unpaged_calls"
 ]

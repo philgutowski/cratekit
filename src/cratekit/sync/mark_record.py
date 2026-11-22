@@ -362,19 +362,8 @@ class MarkRecord:
 
 
 __all__ = [
-    "BY_LABEL",
-    "BY_PASS",
-    "BY_SET",
-    "FOUND_PREFIXED",
-    "HOW",
-    "MIGRATION",
-    "READS",
-    "RECORD_VERSION",
-    "SWEPT_PREFIX",
-    "MarkRecord",
-    "Marked",
-    "Taken",
-    "standing_prefix_marks",
+    "BY_LABEL", "BY_PASS", "BY_SET", "FOUND_PREFIXED", "HOW", "MIGRATION", "READS",
+    "RECORD_VERSION", "SWEPT_PREFIX", "MarkRecord", "Marked", "Taken", "standing_prefix_marks"
 ]
 
 

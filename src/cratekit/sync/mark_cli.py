@@ -841,12 +841,6 @@ def sync_mark(ctx) -> Envelope:
 
 
 __all__ = [
-    "PassPlan",
-    "apply_pass",
-    "build_mark",
-    "listed",
-    "native_passes",
-    "plan_pass",
-    "shown",
-    "sync_mark",
+    "PassPlan", "apply_pass", "build_mark", "listed", "native_passes", "plan_pass", "shown",
+    "sync_mark"
 ]

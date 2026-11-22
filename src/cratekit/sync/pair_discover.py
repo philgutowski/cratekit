@@ -620,34 +620,10 @@ def by_kind(listed: Iterable[Listed]) -> Mapping[str, tuple[Listed, ...]]:
 
 
 __all__ = [
-    "BEFORE",
-    "BY_HAND",
-    "COPY",
-    "FOLDER",
-    "LISTED_KINDS",
-    "PLAIN",
-    "RELEASED",
-    "ROOT_FOLDER",
-    "SKIPPED",
-    "SAID",
-    "SMART",
-    "TAKEN",
-    "TWICE",
-    "TWIN_FOLDER",
-    "Discovery",
-    "Found",
-    "Home",
-    "Listed",
-    "adoption_moment",
-    "before_adoption",
-    "by_kind",
-    "copy_candidates",
-    "discover",
-    "downloaded_copy",
-    "home_of",
-    "left_behind",
-    "name_of",
-    "title_of",
+    "BEFORE", "BY_HAND", "COPY", "FOLDER", "LISTED_KINDS", "PLAIN", "RELEASED", "ROOT_FOLDER",
+    "SKIPPED", "SAID", "SMART", "TAKEN", "TWICE", "TWIN_FOLDER", "Discovery", "Found", "Home",
+    "Listed", "adoption_moment", "before_adoption", "by_kind", "copy_candidates", "discover",
+    "downloaded_copy", "home_of", "left_behind", "name_of", "title_of"
 ]
 
 

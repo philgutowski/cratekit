@@ -250,18 +250,7 @@ class UnavailableRecord:
 
 
 __all__ = [
-    "APART",
-    "CLIENT_NOT_FOUND",
-    "BY",
-    "BY_PERSON",
-    "BY_SIGHTINGS",
-    "RECORD_VERSION",
-    "Sighting",
-    "UnavailableRecord",
-    "answered_unavailable",
-    "day",
-    "now",
-    "retired_by_person",
-    "sighted",
-    "stamp",
+    "APART", "CLIENT_NOT_FOUND", "BY", "BY_PERSON", "BY_SIGHTINGS", "RECORD_VERSION", "Sighting",
+    "UnavailableRecord", "answered_unavailable", "day", "now", "retired_by_person", "sighted",
+    "stamp"
 ]

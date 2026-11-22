@@ -274,14 +274,6 @@ def sync_release(ctx) -> Envelope:
 
 
 __all__ = [
-    "APPROVE_GATE",
-    "BY_TIME",
-    "NOT_A_TWIN",
-    "UNNAMED",
-    "Planned",
-    "build",
-    "facts",
-    "payload",
-    "plan",
-    "sync_release",
+    "APPROVE_GATE", "BY_TIME", "NOT_A_TWIN", "UNNAMED", "Planned", "build", "facts", "payload",
+    "plan", "sync_release"
 ]
