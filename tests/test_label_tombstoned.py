@@ -28,6 +28,7 @@ from tests.label_fakes import (
 )
 from tests.test_label_playlists import LABEL, LABEL_ID, LISTED
 from tests.test_label_playlists_releases import _took
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 from tests.test_label_workers import register
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture

@@ -193,15 +193,13 @@ class SplitPlan:
     withheld: int = 0
     unreadable: tuple[str, ...] = ()
 
+    def adding(self, name: str) -> int:
+        """The memberships the write would add to one month, the ones it holds already left out."""
+        return sum(1 for one in self.months[name] if one not in self.held.get(name, frozenset()))
+
     @property
     def adds(self) -> int:
-        """The memberships the write would add, the ones a month already holds left out."""
-        return sum(
-            1
-            for name, ids in self.months.items()
-            for content_id in ids
-            if content_id not in self.held.get(name, frozenset())
-        )
+        return sum(self.adding(name) for name in self.months)
 
     @property
     def creates(self) -> tuple[str, ...]:
@@ -331,7 +329,7 @@ def payload(planned: SplitPlan) -> dict[str, Any]:
             "action": "fill",
             "playlist": name,
             "count": len(ids),
-            "adds": sum(1 for one in ids if one not in planned.held.get(name, frozenset())),
+            "adds": planned.adding(name),
             "made": name in planned.creates,
         }
         for name, ids in planned.months.items()
@@ -558,14 +556,13 @@ def apply(
                         origin=_ORIGIN,
                         detail={"folder": home.folder_id},
                     )
-            parent_id = str(parent.ID) if parent is not None else ""
             before = rb_writer.node_tables(db)
             for name, ids in planned.months.items():
                 row, fresh = placement.month_row(db, name, parent, source_id=home.source_id)
                 rows[name] = str(row.ID)
                 if fresh:
                     db.session.flush()
-                    made[str(row.ID)] = (name, parent_id or str(row.ParentID))
+                    made[str(row.ID)] = (name, str(row.ParentID if parent is None else parent.ID))
                 count = len(rb_writer.add_memberships(db, row, ids))
                 added += count
                 written.append((name, str(row.ID), count))

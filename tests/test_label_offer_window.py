@@ -17,6 +17,7 @@ from cratekit.sync import artifacts, run, watermarks
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
 from tests.test_label_registry_verbs import installed as installed  # noqa: PLC0414
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 from tests.test_label_workers import queued_sweep
 
 LABEL = "Anjunadeep"

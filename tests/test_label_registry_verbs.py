@@ -10,6 +10,7 @@ from cratekit.core import config
 from cratekit.core.exit_codes import ExitCode
 from tests.cli_drive import drive
 from tests.test_config import valid_data
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 
 
 def install(tmp_path, monkeypatch) -> config.Config:
@@ -77,8 +78,8 @@ def test_list_shows_the_limit_and_the_seeds_to_a_person():
 
 
 def test_set_changes_one_field_and_keeps_the_rest():
-    ok(["add", "Ostgut Ton", "--match", "Ostgut", "--track-limit", "30",
-        "--seed", "Ben Klock", "--seed", "Marcel Dettmann"])
+    ok(["add", "Ostgut Ton", "--match", "Ostgut", "--track-limit", "30", "--seed", "Ben Klock",
+        "--seed", "Marcel Dettmann"])
     envelope = ok(["set", "ostgut-ton", "--track-limit", "120"])
     assert envelope["data"]["summary"]["updated"] == "ostgut-ton"
     entry = listed()["ostgut-ton"]

@@ -159,8 +159,7 @@ def _left_out(report: dict, said: list[dict]) -> list[dict[str, str]]:
         if isinstance(one, dict):
             named[str(one.get("row") or "")] = one
     rows = []
-    for item in report.get("unmatched") or ():
-        identity = str(item)
+    for identity in map(str, report.get("unmatched") or ()):
         one = named.get(identity, {})
         rows.append(
             {
@@ -202,19 +201,15 @@ def build_sync(parser, entry) -> None:
     del entry
     parser.add_argument(
         "--job",
-        default=None,
         metavar="JOB_ID",
         help="continue the favourites increment already queued under this identifier",
     )
     parser.add_argument(
         "--run-id",
-        default=None,
-        dest="run_id",
         help="intake run shared with the other sources in this sync",
     )
     parser.add_argument(
         "--export",
-        default=None,
         metavar="EXPORT",
         help=(
             "the rekordbox collection export holding the favourites playlist; "
@@ -224,7 +219,6 @@ def build_sync(parser, entry) -> None:
     parser.add_argument(
         "--favorites-playlist",
         default=source.DEFAULT_FAVORITES_PLAYLIST,
-        dest="favorites_playlist",
         metavar="NAME",
         help=(
             "the playlist whose members are swept; the default is the one the "

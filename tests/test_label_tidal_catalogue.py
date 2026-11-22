@@ -26,6 +26,7 @@ from cratekit.sync import run, watermarks
 from tests.cli_drive import drive
 from tests.label_fakes import FakeArtistLookup, FakeCatalogue, FakePagedPlaylist
 from tests.test_label_registry_verbs import install
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 from tests.test_label_workers import queued_sweep
 
 PLAYLIST = "0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0"
@@ -666,9 +667,7 @@ def test_the_listing_hands_back_the_count_the_walk_ended_on():
     assert (len(rows), declared) == (185, 197)
 
 
-def test_intake_playlist_favorites_lists_what_came_back_and_names_the_shortfall(
-    cfg, monkeypatch
-):
+def test_intake_playlist_favorites_lists_what_came_back_and_names_the_shortfall(cfg, monkeypatch):
     """Driven through the real adapter and the real dispatcher."""
     use_client(monkeypatch, hearts_client(withholding_favorites()))
     record_session()
@@ -1011,9 +1010,7 @@ def test_an_authentication_error_on_album_search_still_refuses_the_label():
         harbour_roster(client)
 
 
-def test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered(
-    cfg, monkeypatch
-):
+def test_a_various_compilation_the_credited_artists_do_not_list_is_not_offered(cfg, monkeypatch):
     act, compilation = _credited("Act A", "10")
     use_client(monkeypatch, FakeClient(artists=[act], albums=[compilation]))
     record_session()
@@ -1199,9 +1196,7 @@ def test_a_rate_limit_during_discovery_fails_the_sweep_and_names_the_artist(cfg,
     assert _offered() == {"own1", "a1"}
 
 
-def test_a_rate_limit_during_discovery_climbs_the_ladder_before_it_is_recorded(
-    cfg, monkeypatch
-):
+def test_a_rate_limit_during_discovery_climbs_the_ladder_before_it_is_recorded(cfg, monkeypatch):
     """R-393's closing condition: the 429 is retried, and the suite sleeps for none of it."""
     busy = RateLimitedArtist("Busy Act", [], artist_id="10")
     client = _label_with_a_discovered_pair(busy)
@@ -1213,9 +1208,7 @@ def test_a_rate_limit_during_discovery_climbs_the_ladder_before_it_is_recorded(
     assert [(one.artist, one.listing) for one in roster.unread] == [("Busy Act", "artist_releases")]
 
 
-def test_a_held_artist_rate_limited_during_discovery_is_not_recorded_as_unread(
-    cfg, monkeypatch
-):
+def test_a_held_artist_rate_limited_during_discovery_is_not_recorded_as_unread(cfg, monkeypatch):
     """Review finding: the roster reads a held artist again, and that read is the one used."""
     class LimitedForOneLadder(ProviderArtist):
         """429 on every attempt discovery's ladder makes, then answers the roster."""

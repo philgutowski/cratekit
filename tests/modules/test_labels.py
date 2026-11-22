@@ -567,9 +567,7 @@ def test_the_missing_artist_refusal_names_the_missing_object_not_the_listing(cfg
     assert "Life and Death" in said, said
 
 
-def test_a_source_with_neither_verifier_nor_catalogue_refuses_rather_than_confirming_nothing(
-    cfg,
-):
+def test_a_source_with_neither_verifier_nor_catalogue_refuses_rather_than_confirming_nothing(cfg):
     """The verifier's own missing-object case, which the docstring names and no test drove."""
     artists = {labels.slug("Life and Death"): _paged("X", ("a", "2026", "A"))}
     _id, source = _label_source(cfg, "Life and Death", artists=artists)

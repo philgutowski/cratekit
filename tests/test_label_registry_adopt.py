@@ -15,14 +15,17 @@ from cratekit.label import harvest
 from cratekit.label import registry as labels
 from tests.cli_drive import drive
 from tests.test_label_registry_verbs import installed as installed  # noqa: PLC0414
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 
 
 def offer(cfg: config.Config, *names: str) -> dict[str, str]:
     """Harvest ``names`` into the review queue; the item identifier per name."""
     tracks = [SimpleNamespace(copyright=f"(P) 2024 {name}") for name in names]
+    def confirmed(name: str) -> dict:
+        return {"verdict": "confirmed"}
     with review.open_store(cfg) as store:
-        report = harvest.from_tracks(tracks, store=store, verify=lambda name: {"verdict": "confirmed"})
-    return {str(item.payload["name"]): item_id for item in report.offered}
+        report = harvest.from_tracks(tracks, store=store, verify=confirmed)
+    return {str(item.payload["name"]): item.item_id for item in report.offered}
 
 
 def harvested(cfg: config.Config, name: str, **fields) -> str:

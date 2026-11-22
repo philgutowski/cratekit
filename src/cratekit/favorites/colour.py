@@ -149,8 +149,7 @@ def write_pink(db: Any, pink: str, content_ids: Sequence[str]) -> tuple[str, ...
         row = find_row(db, str(content_id))
         if row is None or not is_uncoloured(getattr(row, COLUMN, None)):
             continue
-        decision = rb_writer.write_metadata_field(row, OWNER, COLUMN, pink)
-        if decision is rb_writer.Decision.WRITE:
+        if rb_writer.write_metadata_field(row, OWNER, COLUMN, pink) is rb_writer.Decision.WRITE:
             written.append(str(content_id))
     return tuple(written)
 

@@ -19,6 +19,7 @@ from cratekit.tagging.tag import LabelAnswer, SearchHit
 from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_label_registry_verbs import install
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 from tests.test_tag_workers import bound, item_causes, resume_argv, tag_job
 from tests.test_tagging_engine import SPECIFIC, _jpeg, answering, plant
 

@@ -12,6 +12,7 @@ from cratekit.label import registry as labels
 from tests.test_label_registry_verbs import _library as _library  # noqa: PLC0414
 from tests.test_label_registry_verbs import installed as installed  # noqa: PLC0414
 from tests.test_label_registry_verbs import intent_bytes, listed, ok, refused
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 
 
 def test_add_with_an_account_round_trips_through_list():
@@ -23,14 +24,9 @@ def test_add_with_an_account_round_trips_through_list():
 
 @pytest.mark.parametrize(
     "given",
-    [
-        "PulsRomania",
-        "pulsromania.bandcamp.com",
-        "https://pulsromania.bandcamp.com",
-        "https://PulsRomania.bandcamp.com/music",
-        "pulsromania.bandcamp.com/album/sun-path",
-        "  pulsromania  ",
-    ],
+    ["PulsRomania", "pulsromania.bandcamp.com", "https://pulsromania.bandcamp.com",
+     "https://PulsRomania.bandcamp.com/music", "pulsromania.bandcamp.com/album/sun-path",
+     "  pulsromania  "],
 )
 def test_an_address_or_any_case_is_stored_as_the_account_a_purchase_is_read_as(given):
     ok(["add", "PULS", "--bandcamp", given])
@@ -132,12 +128,10 @@ def _hand_written(labels_: dict) -> labels.Registry:
 
 
 def test_two_labels_naming_one_account_by_hand_answer_no_label():
-    held = _hand_written(
-        {
-            "puls": {"name": "PULS", "bandcamp": "pulsromania"},
-            "puls-romania": {"name": "Puls Romania", "bandcamp": "PulsRomania.bandcamp.com"},
-        }
-    )
+    held = _hand_written({
+        "puls": {"name": "PULS", "bandcamp": "pulsromania"},
+        "puls-romania": {"name": "Puls Romania", "bandcamp": "PulsRomania.bandcamp.com"},
+    })
     assert [entry.label_id for entry in held.claimants("pulsromania")] == ["puls", "puls-romania"]
     assert held.by_bandcamp("pulsromania") is None
 

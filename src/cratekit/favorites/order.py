@@ -280,15 +280,14 @@ def apply(
                 rb_writer.commit_guarded(db)
         if moved:
             convergence.record_fingerprint(cfg, db)
-        disagreements = _read_back(db, planned)
-        order = tuple(
-            str(getattr(row, "Name", "") or "") for row in placement.children(db, folder_id)
-        )
+        # READ BACK FIRST, then the folder's names as they read.
         return Ordered(
+            disagreements=_read_back(db, planned),
+            order=tuple(
+                str(getattr(row, "Name", "") or "") for row in placement.children(db, folder_id)
+            ),
             moved=tuple(one.name for one in planned.children if one.row in moved),
-            order=order,
             session_id=record.session_id,
-            disagreements=disagreements,
         )
 
 
