@@ -1,70 +1,44 @@
 """The rekordbox XML byte bridge: one set of locates, one set of writes, one guard.
 
-rekordbox's export is not "some XML". It is a byte format with conventions a
-general purpose serializer does not preserve, and every rule below was learned by
-breaking a real library.
+rekordbox's export is a byte format with conventions a general serializer does
+not keep, and every rule below was learned by breaking a real library.
 
-THE FOUR BYTE RULES, AND THE INCIDENT BEHIND EACH.
+THE FOUR BYTE RULES.
 
-* **CRLF only, on the write side.** rekordbox writes and reads ``\\r\\n``. A
-  splicer that emitted a bare LF produced a playlist rekordbox rendered wrong,
-  and the damage was invisible in every text editor anybody opened it in. Reads
-  are forgiving, because real exports still carry lines that old splicer wrote,
-  and removal has to find those or the corruption becomes permanent.
+* **CRLF only, on the write side.** A bare LF rendered a playlist wrong and was
+  invisible in any editor. Reads are forgiving, because real exports still carry
+  lines an old splicer wrote, and a removal that missed them would make that
+  corruption permanent.
+* **Never round trip through a tree serializer.** ``lxml`` and the standard
+  library collapse multi line attributes and rekordbox's display breaks. Reads
+  may parse; writes are byte splices into the original document.
+* **Anchors are scoped to the playlist section.** A ``Name=`` search from byte
+  zero finds a COLLECTION track of that name first, and three old splicers
+  silently dropped the routing write that way.
+* **Patch the count AFTER the insert, never before.** Growing ``Entries="0"``
+  to ``Entries="10"`` adds a byte, and a write at an offset taken before the
+  patch corrupted the document tail.
 
-* **Never round trip through a tree serializer.** Both ``lxml`` and the standard
-  library collapse multi line attributes, and rekordbox's display breaks on the
-  result. Reads may parse; writes are byte splices into the original document.
+THE LOCATES ARE HERE AND NOT AT THE CALL SITES, because a call site that can
+locate a node can splice into it without calling a writer, and the guard in the
+writers then covers nothing. INDENTATION IS DERIVED from depth by one function,
+because pinned constants emitted another tree's nodes at an indent no locate
+found.
 
-* **Anchors are scoped to the playlist section.** A search from byte zero for a
-  ``Name=`` attribute finds a COLLECTION track of that name first, because the
-  collection precedes the playlists in the document. The system this replaces had
-  three splicers that did exactly this: given a track named after a folder and a
-  track named after a sub-playlist, all three warned and silently dropped the
-  routing write. The user saw a successful run and an empty playlist.
+THE INTAKE TREE'S SHAPE IS PINNED HERE (KTD14): one folder holding one playlist
+per batch, whatever the genre tree looks like. The routing tree follows the
+taxonomy, and one nesting deeper than this indentation encodes is refused by
+name. How many levels a template may declare lives in ``taxonomy``, and a test
+pins it equal to :data:`TREE_DEPTH`.
 
-* **Patch the count AFTER the insert, never before.** Growing ``Entries="0"`` to
-  ``Entries="10"`` adds a byte. A splicer that recorded the closing tag's offset
-  first, then patched the count, then wrote at the stale offset, corrupted the
-  document tail. Ten tracks was the threshold, which is why it survived testing.
-
-WHY THE LOCATES ARE HERE AND NOT AT THE CALL SITES. The claim this module makes
-is that a guard living in the byte writers covers every byte write. That claim is
-false while call sites can find a node themselves, because a call site that can
-locate a node can splice into it without ever calling a writer. So the locates
-are consolidated too, and they are the half that makes the guard's coverage real
-rather than nominal. In the system this replaces there were, at least: two whole
-byte engines, a locate keyed on a full open tag with its attributes in one fixed
-order, a second locate keyed on the SAME tag with the attributes in the other
-order, three indent pinned close tag searches, an indent based tree walk, a track
-element bounded by the wrong token, and a track attribute patched inside a fixed
-size window that could reach into the next element. Every one of those shapes is
-expressible with the primitives below, and none of them needs its own regex.
-
-WHY INDENTATION IS DERIVED. rekordbox indents the playlist root at four spaces
-and adds two per level. The system this replaces pinned three constants for that,
-so a tree of another depth silently emitted nodes at the wrong indent, which
-every indent pinned locate then failed to find. Here one function turns a depth
-into an indent, and the constants are named depths.
-
-WHAT THE BRIDGE SERVES, AND WHY THAT RECONCILES A FIXED DEPTH WITH A USER'S OWN
-TAXONOMY (KTD14). The intake tree's shape is pinned in this module and is not
-read from the declared taxonomy: intake is one folder holding one playlist per
-arriving batch, whatever anybody's genre tree looks like. So a template that
-renames the levels, or reorders them, changes the routing tree and leaves intake
-alone. The routing tree's shape does follow the taxonomy, and a taxonomy nesting
-deeper than this indentation encodes is refused by name rather than emitted at an
-indent nothing can find again. How many levels a template may DECLARE is one
-number, and it lives in ``taxonomy`` because that is where a template is read;
-this module carries the same number as the indentation it encodes, and a test
-pins the two equal.
+The read-only placement helpers the structural inserts use are in
+:mod:`cratekit.write.rbxml_insert` and imported back; every byte writer is here.
 """
 
 from __future__ import annotations
 
 import re
-import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from typing import Iterable, Iterator, Sequence
 
@@ -82,55 +56,36 @@ ROOT_INDENT = 4
 #: Spaces rekordbox adds per level.
 INDENT_STEP = 2
 
-#: How many levels below the playlist root the bridge's indentation encodes: a
-#: root child, a folder inside it, and a sub-playlist inside that. Track keys sit
-#: one level deeper again. A declared tree deeper than this is refused by name
-#: (see :func:`assert_bridge_can_serve`) rather than written at an indent that no
-#: later locate would find.
+#: Levels below the playlist root the indentation encodes: a root child, a
+#: folder inside it, and a sub-playlist inside that. A deeper declared tree is
+#: refused by name (see :func:`assert_bridge_can_serve`).
 TREE_DEPTH = 3
 
 #: The intake tree's depth, PINNED HERE and never read from the taxonomy (KTD14).
-#: Intake is one folder holding one playlist per arriving batch. Deriving it from
-#: somebody's genre tree is what forced the old system to choose between a fixed
-#: depth and a user definable taxonomy; pinning it means neither has to give.
 INTAKE_DEPTH = 2
 
 
 def indent_at(depth: int) -> int:
-    """Spaces of indentation for a node at ``depth`` below the playlist root.
-
-    Depth 0 is the root node itself. One function rather than three constants,
-    because three constants is how a tree of another shape came to be emitted at
-    an indent that every indent pinned search then failed to find.
-    """
+    """Spaces of indentation for a node at ``depth`` below the playlist root (0)."""
     if depth < 0:
         raise ValueError(f"depth must not be negative, got {depth}")
     return ROOT_INDENT + INDENT_STEP * depth
 
 
-#: Where a sub-playlist's own tags sit, and where its track keys sit. Both are
-#: derived, and both remain arguments on every writer that emits them so a caller
-#: serving a shallower tree does not have to fight the default.
+#: Where a sub-playlist's own tags sit, and where its track keys sit. Both stay
+#: arguments on every writer that emits them, for a caller serving a shallower tree.
 SUB_CLOSE_INDENT = indent_at(TREE_DEPTH)
 TRACK_INDENT = indent_at(TREE_DEPTH + 1)
 
-#: The two node types rekordbox writes. A folder holds nodes, a playlist holds
-#: track keys, and confusing them patches the wrong attribute: a folder carries
-#: ``Count`` and a playlist carries ``Entries``.
+#: The two node types rekordbox writes. A folder carries ``Count`` and a
+#: playlist ``Entries``, so confusing them patches the wrong attribute.
 FOLDER_TYPE = "0"
 PLAYLIST_TYPE = "1"
 
-#: WHAT A NODE'S KIND READS AS, IN THREE ANSWERS RATHER THAN TWO. The third is
-#: the one this repository loses: :func:`node_at` substitutes the empty string
-#: for a ``Type`` attribute that is absent or unreadable, so a classifier written
-#: as "a playlist, or else a folder" answers FOLDER for every node whose kind is
-#: a question, and the caller never learns a question was asked. Measured on the
-#: reports suite's own export, retyping the playlists made every one of them a
-#: folder, dropped seven playlists to zero, and left the intake report rendering
-#: a clean queue over a tree it could not read.
-#:
-#: Two answers cannot express that, whoever is asking, which is why the kind is
-#: named here beside the values rather than re-decided at each call site.
+#: What a node's kind reads as, in THREE answers. :func:`node_at` reads an absent
+#: or unreadable ``Type`` as the empty string, and "a playlist, or else a folder"
+#: then calls every such node a folder: retyped playlists dropped to zero and an
+#: intake report rendered a clean queue over a tree it could not read.
 KIND_FOLDER = "folder"
 KIND_PLAYLIST = "playlist"
 KIND_UNREADABLE = "unreadable"
@@ -139,16 +94,9 @@ KIND_UNREADABLE = "unreadable"
 def node_kind(node_type: str) -> str:
     """Which of the three kinds a node's ``Type`` value spells.
 
-    POSITIVE ON BOTH KNOWN VALUES, and unreadable on everything else. A rule that
-    recognises one value and defaults to the other reports a node it could not
-    read as the kind it happens to default to, which is this repository's first
-    recurring defect with the two branches written the other way round.
-
-    The unreadable answer covers three spellings that are one fact: a ``Type``
-    attribute that is not there at all, one whose value is empty, and one
-    carrying a value this format does not define. What they have in common is
-    that the kind is unknown, and a caller that must not guess needs them to
-    arrive as one answer rather than as three it has to enumerate.
+    POSITIVE ON BOTH KNOWN VALUES, and unreadable on everything else: an absent
+    attribute, an empty one, and an undefined value are one fact, an unknown kind,
+    and a rule defaulting to one kind reports such a node as that kind.
     """
     if node_type == FOLDER_TYPE:
         return KIND_FOLDER
@@ -156,14 +104,12 @@ def node_kind(node_type: str) -> str:
         return KIND_PLAYLIST
     return KIND_UNREADABLE
 
-#: The document sections. Named because both the locate scope and the failure
-#: message have to spell them the same way.
+#: The document sections, spelled once for the locate scope and the message.
 PLAYLISTS_SECTION = "PLAYLISTS"
 COLLECTION_SECTION = "COLLECTION"
 
-# Quote aware open tag matchers. An attribute value may legally contain '>', and
-# a track's open tag spans several lines in a real export, so neither tag can be
-# bounded by a plain search for the next '>'.
+# Quote aware open tag matchers. A value may legally hold '>', and a track's open
+# tag spans several lines, so neither is bounded by a search for the next '>'.
 _NODE_OPEN = re.compile(rb'<NODE\b((?:[^>"]|"[^"]*")*)>')
 _TRACK_OPEN = re.compile(rb'<TRACK\b((?:[^>"]|"[^"]*")*)>')
 _ATTR_PAIR = re.compile(rb'\b([A-Za-z_][A-Za-z0-9_]*)="([^"]*)"')
@@ -181,10 +127,8 @@ _NODE_OPEN_LEAD = b"<NODE"
 def xml_escape_attr(value: object) -> str:
     """Escape a value for a double quoted attribute the way rekordbox does.
 
-    Ampersand, angle brackets and the double quote only. An apostrophe is legal
-    to escape and rekordbox does not escape it, so escaping it anyway produces
-    valid XML that no marker search will ever match, and the write silently
-    misses the node it was aimed at.
+    Ampersand, angle brackets and the double quote only. rekordbox leaves the
+    apostrophe, so escaping it produces a marker no search will match.
     """
     return (
         str(value)
@@ -198,10 +142,8 @@ def xml_escape_attr(value: object) -> str:
 def xml_unescape_attr(value: str) -> str:
     """The exact inverse, so a name read out of the document compares equal.
 
-    The ampersand is undone LAST, mirroring the escaper doing it first. Undoing
-    it first would turn an escaped ampersand followed by ``lt;`` back into a
-    literal angle bracket, which is a different string from the one that was
-    written.
+    The ampersand is undone LAST, or an escaped ampersand followed by ``lt;``
+    would come back as a literal angle bracket.
     """
     return (
         value.replace("&quot;", '"')
@@ -212,11 +154,7 @@ def xml_unescape_attr(value: str) -> str:
 
 
 def name_marker(name: str) -> bytes:
-    """The exact ``Name="..."`` bytes as they appear in the document.
-
-    Built with the one escaper the emitters use. Two escapers is how a marker
-    stops matching the node it was built from.
-    """
+    """The exact ``Name="..."`` bytes, built with the one escaper the emitters use."""
     return b'Name="' + xml_escape_attr(name).encode("utf-8") + b'"'
 
 
@@ -248,11 +186,8 @@ def playlist_open(name: str, entries: int, indent: int) -> str:
 
 
 def empty_playlist(name: str, indent: int) -> str:
-    """A self closed, empty playlist node.
-
-    No trailing newline: callers splice it in front of an existing line break, so
-    emitting one here would double it.
-    """
+    """A self closed, empty playlist node, with no trailing newline: callers
+    splice it in front of an existing line break."""
     return (
         f'{" " * indent}<NODE Name="{xml_escape_attr(name)}" '
         f'Type="{PLAYLIST_TYPE}" KeyType="0" Entries="0"/>'
@@ -273,23 +208,14 @@ def node_close(indent: int) -> str:
 class Tree:
     """The tree a byte write targets, and whether anything governs it.
 
-    ``display`` is the name the document carries and is what the locates match
-    on. ``id`` is the taxonomy's stable identifier, which is what the registry is
-    keyed on, and it is never a display name (R19). The two are separate fields
-    precisely because they are separate things: renaming a folder in rekordbox
-    changes one and must not change the other.
+    ``display`` is the name the document carries and the locates match; ``id`` is
+    the taxonomy's stable identifier the registry is keyed on, never a display
+    name (R19), so renaming a folder in rekordbox changes one and not the other.
 
-    Both governance fields are present or both are absent. A tree that names an
-    identifier but carries no registry could not be checked, and passing the
-    check by default is the exact hole the guard exists to close; a registry with
-    no identifier has nothing to look up. Neither half is useful alone, so
-    neither half is allowed alone.
-
-    ``Tree(display=...)`` with no governance is an UNGOVERNED playlist. It
-    anchors the write and bypasses the guard entirely, which is correct and not a
-    weakening: most playlists in a real library are somebody's own, this product
-    governs none of them, and a guard that refused them would fire on correct
-    code until somebody switched it off.
+    Both governance fields are present or both absent: either alone could not be
+    checked, and the guard would pass by default. ``Tree(display=...)`` is an
+    UNGOVERNED playlist, which anchors the write and bypasses the guard, because
+    most playlists in a library are somebody's own and governed by nothing.
     """
 
     display: str
@@ -313,29 +239,16 @@ class Tree:
 def tree_for(node: taxonomy.Node, registry: tree_registry.Registry) -> Tree:
     """A governed :class:`Tree` from a declared taxonomy node.
 
-    The registry is REQUIRED and has no default, deliberately. These are the
-    trees the registry exists to govern, so a default would hand a caller who
-    omitted one argument a fully ungoverned tree that passes the guard in
-    silence. That is the same hole :meth:`Tree.__post_init__` refuses one level
-    down, and manufacturing it from a default here would be refusing it in one
-    place and offering it in the other.
-
-    A caller that has genuinely loaded no records yet passes
-    ``tree_registry.EMPTY``, which says "nothing is recorded, so every tree is
-    still on the bridge". That is a sentence somebody can check. An ungoverned
-    playlist is still expressible, as ``Tree(display=...)``, because most
-    playlists in a real library are somebody's own.
+    The registry has NO default: a default would hand a caller who omitted it an
+    ungoverned tree that passes the guard in silence. A caller with no records yet
+    passes ``tree_registry.EMPTY``.
     """
     return Tree(display=node.display, id=node.id, registry=registry)
 
 
 class TreeTooDeep(ValueError):
-    """A declared tree the bridge's indentation cannot express.
-
-    Refused by name, with the declared depth and the supported depth both in the
-    message. The alternative is emitting nodes at an indent no later locate finds
-    again, which reads to the user as a sweep that ran and did nothing.
-    """
+    """A declared tree the bridge's indentation cannot express, refused by name,
+    rather than emitted at an indent no later locate finds again."""
 
     def __init__(self, *, tree_id: str, declared: int, supported: int) -> None:
         self.tree_id = tree_id
@@ -353,17 +266,10 @@ class TreeTooDeep(ValueError):
 def assert_bridge_can_serve(declared: taxonomy.Taxonomy) -> None:
     """Refuse a taxonomy whose tree is deeper than this indentation encodes.
 
-    Only DEEPER is refused here, because deeper is the case that would emit at an
-    indent no later locate finds. Shallower is not this function's to refuse: the
-    indent is derived from the depth rather than pinned, so the bytes would be
-    findable, and the number of levels a TEMPLATE may declare is the taxonomy
-    loader's rule rather than the bridge's. That loader takes exactly
-    :data:`taxonomy.SUPPORTED_TREE_DEPTH` today, which is the same number as
-    :data:`TREE_DEPTH`, and a test pins the two equal so the pair cannot drift
-    into a template that loads at a depth this module cannot emit.
-
-    So this guard is the second of two, not the only one, and it stays because a
-    ``Taxonomy`` is a value a caller can build without going through the loader.
+    Only DEEPER, the case that would emit at an indent no locate finds; a
+    shallower tree's indent is derived and findable, and what a template may
+    declare is the taxonomy loader's rule. This is the second guard of two,
+    kept because a ``Taxonomy`` can be built without the loader.
     """
     if declared.tree_depth > TREE_DEPTH:
         raise TreeTooDeep(
@@ -374,24 +280,14 @@ def assert_bridge_can_serve(declared: taxonomy.Taxonomy) -> None:
 
 
 def routing_tree(declared: taxonomy.Taxonomy, registry: tree_registry.Registry) -> Tree:
-    """The declared routing tree, refused if the bridge cannot express its shape.
-
-    The depth check belongs HERE and not on the intake tree, because this is the
-    tree whose shape follows the taxonomy.
-    """
+    """The declared routing tree, refused if the bridge cannot express its shape."""
     assert_bridge_can_serve(declared)
     return tree_for(declared.tree, registry)
 
 
 def intake_tree(declared: taxonomy.Taxonomy, registry: tree_registry.Registry) -> Tree:
-    """The intake tree, at the pinned shallow shape (KTD14).
-
-    Deliberately NOT depth checked against the declared tree. Intake is one
-    folder holding one playlist per arriving batch, and its shape is fixed in this
-    module, so a taxonomy the bridge cannot serve for routing still has a working
-    intake tree. That is the whole reconciliation: the fixed depth constrains the
-    tree it actually describes, and stops constraining the one it does not.
-    """
+    """The intake tree, at the pinned shallow shape (KTD14), never depth checked,
+    so a taxonomy the bridge cannot route still has a working intake tree."""
     return tree_for(declared.intake, registry)
 
 
@@ -399,16 +295,9 @@ def _refuse_wrong_medium(tree: Tree | None) -> None:
     """The emitter guard. Every byte writer below calls it first, except the ones
     ``UNGOVERNED_WRITERS`` names and says why.
 
-    Three outcomes, and the middle one is the one people get wrong:
-
-    * the tree is governed and native to the database, so the write is refused
-      and the refusal names the tree;
-    * the tree is governed and still on the bridge, so the write proceeds;
-    * the tree is ungoverned, so the guard does not apply at all.
-
-    The third is not a gap. A guard that refused an ordinary user playlist would
-    fire on correct code, and a guard that fires on correct code gets suppressed,
-    and a suppressed guard protects nothing (P7).
+    A governed tree native to the database is refused by name; a governed tree
+    still on the bridge proceeds; an ungoverned tree is not this guard's at all,
+    because a guard that fires on correct code gets suppressed (P7).
     """
     if tree is None or tree.id is None or tree.registry is None:
         return
@@ -424,10 +313,9 @@ def _refuse_wrong_medium(tree: Tree | None) -> None:
 class NodeSpan:
     """One located node, bounded exactly.
 
-    ``close_start`` is -1 for a self closed node, and that is the distinction the
-    depth walk exists to respect: a childless folder is exported self closed, so
-    it has no matching close tag, and a walk that assumes one marches on to a
-    SIBLING's close and deletes everything in between.
+    ``close_start`` is -1 for a self closed node: a childless folder has no
+    matching close, and a walk assuming one marches on to a SIBLING's close and
+    deletes everything in between.
     """
 
     name: str
@@ -459,11 +347,8 @@ class NodeSpan:
 class TrackSpan:
     """One located collection track element, bounded by its real close.
 
-    A track element is self closed in a minimal export and multi line with a
-    separate close tag in a real one. Bounding it by the next ``/>`` gets the
-    second shape wrong, and the patch that follows then lands in whatever
-    self closed element came next, which in an analysed export is the tempo child
-    of the very same track.
+    Self closed in a minimal export, multi line with a close tag in a real one.
+    Bounded by the next ``/>``, a patch lands in the track's own tempo child.
     """
 
     track_id: str
@@ -480,11 +365,9 @@ def line_start(content: bytes, pos: int) -> int:
 
 
 def section_span(content: bytes, tag: str) -> tuple[int, int] | None:
-    """The half open byte range of a top level section, open tag to close tag.
+    """The offsets of a top level section's ``<`` and its closing tag's ``<``.
 
-    Returns the offset of the section's ``<`` and the offset of its closing
-    tag's ``<``. None when either end is missing, never a -1 for the caller to
-    feed into slice arithmetic.
+    None when either end is missing, never a -1 for slice arithmetic.
     """
     opening = content.find(f"<{tag}".encode("utf-8"))
     if opening == -1:
@@ -501,12 +384,7 @@ def playlists_span(content: bytes) -> tuple[int, int] | None:
 
 
 def playlists_start(content: bytes) -> int:
-    """The offset of the playlist section's open tag, or -1.
-
-    Kept as a named primitive because a caller's first question is usually "does
-    this document even have a playlist section", and answering it by parsing the
-    whole tree is a waste on a file this size.
-    """
+    """The offset of the playlist section's open tag, or -1, without parsing the tree."""
     return content.find(f"<{PLAYLISTS_SECTION}>".encode("utf-8"))
 
 
@@ -516,12 +394,8 @@ def collection_span(content: bytes) -> tuple[int, int] | None:
 
 
 def attributes(content: bytes, node: NodeSpan | TrackSpan) -> dict[str, str]:
-    """Every attribute on a located tag, unescaped, order independent.
-
-    Order independent is the point. Two writers in the system this replaces
-    matched the same node with the attributes in opposite orders, and each one
-    silently found nothing in the other's output.
-    """
+    """Every attribute on a located tag, unescaped, ORDER INDEPENDENT: two old
+    writers matched one node with the attributes in opposite orders."""
     raw = bytes(content[node.tag_start : node.tag_end])
     return {
         key.decode("utf-8"): xml_unescape_attr(value.decode("utf-8"))
@@ -535,12 +409,8 @@ def _attr_pattern(name: str) -> re.Pattern[bytes]:
 
 
 def attribute_span(content: bytes, name: str, *, start: int, end: int) -> tuple[int, int] | None:
-    """Absolute bounds of one attribute's VALUE inside a located tag.
-
-    The value's bounds rather than the value, because the two writes that matter
-    here both need to replace digits in place, and both need offsets that stay
-    valid across an insertion made elsewhere in the document.
-    """
+    """Absolute bounds of one attribute's VALUE inside a located tag, so digits
+    can be replaced in place with offsets that survive an insert elsewhere."""
     match = _attr_pattern(name).search(bytes(content[start:end]))
     if match is None:
         return None
@@ -555,15 +425,9 @@ def _read_int(content: bytes, span: tuple[int, int]) -> int:
 def _open_tag_bounds(content: bytes, opening: int) -> tuple[int, bool] | None:
     """One open tag's end offset and whether it closes itself, quote aware.
 
-    Through the same matcher :func:`node_at` uses, and that is the whole point.
-    An attribute value may legally carry a '>', so a depth walk that bounded a
-    tag with a plain search for the next one stopped inside a display name,
-    counted a self closed node as an opening, and handed back a close tag
-    belonging to an ancestor. The splice that followed landed in a different
-    folder and reported success, which is the failure this module opens with.
-
-    None when the bytes at ``opening`` are not a complete NODE open tag, so a
-    truncated document refuses rather than being guessed at.
+    Through :func:`node_at`'s own matcher: a walk bounding a tag by the next '>'
+    stopped inside a display name and handed back an ancestor's close. None when
+    the bytes are not a complete NODE open tag, so truncation refuses.
     """
     match = _NODE_OPEN.match(content, opening)
     if match is None:
@@ -571,54 +435,66 @@ def _open_tag_bounds(content: bytes, opening: int) -> tuple[int, bool] | None:
     return match.end(), match.group(1).endswith(b"/")
 
 
+def _node_tokens(content: bytes, cursor: int, limit: int) -> Iterator[tuple[int, int]]:
+    """Each NODE token in ``[cursor, limit)``, as its depth change and its offset.
+
+    An open tag is +1, a close tag -1 and a self closed node 0, because it opens
+    and closes itself. PAIRS, never a count of close tags (which puts the first
+    close on the wrong node) or self closing syntax alone (which puts every empty
+    sibling a level too deep). Ends at the last token or a truncated open tag.
+    """
+    while True:
+        opening = content.find(_NODE_OPEN_LEAD, cursor, limit)
+        closing = content.find(_NODE_CLOSE, cursor, limit)
+        if opening != -1 and (closing == -1 or opening < closing):
+            bounds = _open_tag_bounds(content, opening)
+            if bounds is None:
+                return
+            cursor, self_closing = bounds
+            yield (0 if self_closing else 1), opening
+        elif closing != -1:
+            cursor = closing + len(_NODE_CLOSE)
+            yield -1, closing
+        else:
+            return
+
+
 def matching_close(content: bytes, tag_end: int) -> int:
     """The offset of the close tag matching an open tag that ends at ``tag_end``.
 
-    A depth walk over node token PAIRS, and the pairing is what makes it correct.
-    rekordbox writes an empty playlist as a self closed node, which opens and
-    closes itself and so is depth neutral, and writes a track bearing one across
-    several lines. Deriving depth from a count of close tags puts the first close
-    after the open tag on the wrong node, and deriving it from self closing
-    syntax puts every empty sibling one level too deep.
-
-    Returns -1 when the node is unterminated, never a guess.
+    -1 when the node is unterminated, never a guess.
     """
     depth = 1
-    cursor = tag_end + 1
-    while True:
-        opening = content.find(_NODE_OPEN_LEAD, cursor)
-        closing = content.find(_NODE_CLOSE, cursor)
-        if closing == -1:
-            return -1
-        if opening != -1 and opening < closing:
-            bounds = _open_tag_bounds(content, opening)
-            if bounds is None:
-                return -1
-            end, self_closing = bounds
-            if not self_closing:
-                depth += 1
-            cursor = end
-        else:
-            depth -= 1
-            if depth == 0:
-                return closing
-            cursor = closing + len(_NODE_CLOSE)
+    for step, at in _node_tokens(content, tag_end + 1, len(content)):
+        depth += step
+        if depth == 0:
+            return at
+    return -1
+
+
+def _open_tag(
+    pattern: re.Pattern[bytes], content: bytes, tag_start: int
+) -> tuple[re.Match[bytes], dict[bytes, bytes], bool] | None:
+    """The open tag ``pattern`` matches at ``tag_start``: the match, its raw
+    attributes, and whether it closes itself."""
+    match = pattern.match(content, tag_start)
+    if match is None:
+        return None
+    raw_attrs = match.group(1)
+    return match, dict(_ATTR_PAIR.findall(raw_attrs)), raw_attrs.endswith(b"/")
 
 
 def node_at(content: bytes, tag_start: int, *, depth: int = 0) -> NodeSpan | None:
     """Bound the node whose open tag begins at ``tag_start``.
 
-    None rather than a partially filled span when the tag cannot be parsed or the
-    node is unterminated: a half located node feeds -1 into slice arithmetic, and
-    a slice with a -1 in it does not fail, it deletes to the end of the document.
+    None rather than a partial span when the tag cannot be parsed or the node is
+    unterminated: a slice with a -1 in it deletes to the end of the document.
     """
-    match = _NODE_OPEN.match(content, tag_start)
-    if match is None:
+    tag = _open_tag(_NODE_OPEN, content, tag_start)
+    if tag is None:
         return None
-    raw_attrs = match.group(1)
-    self_closing = raw_attrs.endswith(b"/")
+    match, found, self_closing = tag
     tag_end = match.end() - 1
-    found = dict(_ATTR_PAIR.findall(raw_attrs))
     name = found.get(b"Name")
     node_type = found.get(b"Type")
     if self_closing:
@@ -644,43 +520,18 @@ def node_at(content: bytes, tag_start: int, *, depth: int = 0) -> NodeSpan | Non
 def depth_of(content: bytes, tag_start: int) -> int:
     """How many nodes enclose the node whose open tag begins at ``tag_start``.
 
-    Counted by walking node PAIRS from the playlist section, never derived from
-    the indent. Indent is a formatting artifact, and reading depth out of it is
-    exactly the shape that made an intake report misread any tree whose levels
-    were not two spaces apart.
+    Counted by node PAIRS from the playlist section, never from the indent, which
+    is formatting and misread every tree whose levels were not two spaces apart.
     """
     span = playlists_span(content)
     if span is None:
         return 0
-    depth = 0
-    cursor = span[0]
-    while cursor < tag_start:
-        opening = content.find(_NODE_OPEN_LEAD, cursor, tag_start)
-        closing = content.find(_NODE_CLOSE, cursor, tag_start)
-        if opening == -1 and closing == -1:
-            break
-        if opening != -1 and (closing == -1 or opening < closing):
-            bounds = _open_tag_bounds(content, opening)
-            if bounds is None:
-                break
-            end, self_closing = bounds
-            if not self_closing:
-                depth += 1
-            cursor = end
-        else:
-            depth -= 1
-            cursor = closing + len(_NODE_CLOSE)
-    return depth
+    return sum(step for step, _at in _node_tokens(content, span[0], tag_start))
 
 
 def root_node(content: bytes) -> NodeSpan | None:
-    """The playlist root: the first node inside the playlist section.
-
-    Located by position rather than by its name attribute. The name is a
-    structural constant of the format rather than anything a user chose, but
-    finding it by position also means an export that spells it differently, or a
-    fixture that omits it, fails at the locate rather than three splices later.
-    """
+    """The playlist root: the first node inside the playlist section, found by
+    position so an export spelling it differently fails at the locate."""
     span = playlists_span(content)
     if span is None:
         return None
@@ -694,9 +545,8 @@ def root_node(content: bytes) -> NodeSpan | None:
 def child_nodes(content: bytes, parent: NodeSpan) -> tuple[NodeSpan, ...]:
     """The DIRECT children of a located node, in document order.
 
-    Direct is the load bearing word. A byte search inside a node's range finds
-    grandchildren too, and a writer that treated one as a child would replace a
-    node several levels down while reporting that it had replaced a sibling.
+    A byte search inside the range finds grandchildren too, and a writer treating
+    one as a child replaces a node several levels down.
     """
     if parent.self_closing:
         return ()
@@ -718,10 +568,7 @@ def walk_nodes(
 ) -> Iterator[tuple[tuple[str, ...], NodeSpan]]:
     """Every descendant of ``parent`` in document order, with its display path.
 
-    The path is what a caller diffing two documents needs, and building it during
-    the walk is what stops each caller inventing its own tree index. The root's
-    own name is not in the path, because it is a constant of the format rather
-    than part of any tree a user named.
+    The root's own name is not in the path: it is a constant of the format.
     """
     for child in child_nodes(content, parent):
         here = (*path, child.name)
@@ -739,14 +586,10 @@ def find_node(
 ) -> NodeSpan | None:
     """The first node named ``name`` in ``[start, end)``, optionally by type.
 
-    ``start`` is required and has no default, deliberately. Every historical
-    mis-anchor in this format came from a search that began at byte zero, and a
-    default would be a byte zero waiting to happen.
-
-    The type filter is the second half of the same defence. A folder and one of
-    its own sub-playlists routinely share a name, the folder carries ``Count``
-    and the playlist carries ``Entries``, and a splice that matched the folder
-    patched the wrong attribute and dropped the track.
+    ``start`` has NO default: every historical mis-anchor in this format began at
+    byte zero. The type filter is the second defence, because a folder and its
+    own sub-playlist share names and a splice matching the folder patched
+    ``Count`` and dropped the track.
     """
     limit = len(content) if end is None or end < 0 else end
     marker = name_marker(name)
@@ -758,8 +601,8 @@ def find_node(
         tag_start = content.rfind(_NODE_OPEN_LEAD, start, at)
         if tag_start != -1:
             node = node_at(content, tag_start, depth=depth_of(content, tag_start))
-            # The marker has to sit inside THIS open tag. Otherwise it belongs to
-            # something else entirely and the enclosing node is a coincidence.
+            # The marker has to sit inside THIS open tag, or it belongs to
+            # something else and the enclosing node is a coincidence.
             if (
                 node is not None
                 and node.tag_start <= at < node.tag_end
@@ -784,10 +627,8 @@ def track_key_line(
 ) -> tuple[int, int] | None:
     """The bounds of one track key LINE inside a playlist, terminator included.
 
-    Tolerates a bare LF terminator, and this is the one place that tolerance
-    lives. Real exports still carry lines an old splicer wrote with a bare LF, and
-    a removal that could not find those would make that corruption permanent.
-    Writes remain strictly CRLF.
+    The one place a bare LF terminator is tolerated, so a removal finds lines an
+    old splicer wrote. Writes remain strictly CRLF.
     """
     if node.self_closing:
         return None
@@ -806,9 +647,8 @@ def find_collection_track(
 ) -> TrackSpan | None:
     """One collection track element, matched on its id EXACTLY.
 
-    The marker carries the closing quote, so an id of 42 cannot match an element
-    whose id is 421. A prefix match here rates, retags or relocates the wrong
-    track, and the user has no way to tell which write was wrong.
+    The marker carries the closing quote, so an id of 42 cannot match 421 and
+    rate, retag or relocate the wrong track.
     """
     span = collection_span(content)
     low = start if start is not None else (span[0] if span else 0)
@@ -824,13 +664,9 @@ def find_collection_track(
 
 
 def collection_tracks(content: bytes) -> tuple[TrackSpan, ...]:
-    """Every collection track element, in document order, in one pass.
-
-    The pass is the point. A caller patching many tracks that located each one
-    separately is quadratic in the size of a real export, which is where the
-    fixed size search window in the system this replaces came from, and that
-    window is what let a patch reach into the following element.
-    """
+    """Every collection track element, in document order, in ONE pass: locating
+    each separately is quadratic, which is where the old fixed size window came
+    from, and that window let a patch reach into the following element."""
     span = collection_span(content)
     if span is None:
         return ()
@@ -850,13 +686,10 @@ def collection_tracks(content: bytes) -> tuple[TrackSpan, ...]:
 
 
 def _track_at(content: bytes, tag_start: int) -> TrackSpan | None:
-    match = _TRACK_OPEN.match(content, tag_start)
-    if match is None:
+    tag = _open_tag(_TRACK_OPEN, content, tag_start)
+    if tag is None:
         return None
-    raw_attrs = match.group(1)
-    self_closing = raw_attrs.endswith(b"/")
-    tag_end = match.end() - 1
-    found = dict(_ATTR_PAIR.findall(raw_attrs))
+    match, found, self_closing = tag
     track_id = found.get(b"TrackID", b"").decode("utf-8")
     if self_closing:
         end = match.end()
@@ -869,7 +702,7 @@ def _track_at(content: bytes, tag_start: int) -> TrackSpan | None:
         track_id=track_id,
         line_start=line_start(content, tag_start),
         tag_start=tag_start,
-        tag_end=tag_end,
+        tag_end=match.end() - 1,
         self_closing=self_closing,
         end=end,
     )
@@ -885,12 +718,8 @@ def dedupe_track_ids(
     existing_keys: Iterable[object] = (),
     norm_by_tid: dict | None = None,
 ) -> list:
-    """First occurrence dedup, by exact id and then by normalized name.
-
-    Two identifiers can be the same recording. A re download, a different
-    release, or a re import gives one recording two ids, so deduplicating on the
-    identifier alone puts it in the playlist twice.
-    """
+    """First occurrence dedup, by exact id and then by normalized name, because a
+    re download, another release or a re import gives one recording two ids."""
     by_tid = norm_by_tid or {}
     seen_tid = {str(key) for key in existing_keys}
     seen_norm = {by_tid[key] for key in seen_tid if by_tid.get(key)}
@@ -914,39 +743,21 @@ def dedupe_track_ids(
 # names, and that set is checked against this module rather than trusted.
 # ---------------------------------------------------------------------------
 
-#: Byte writers that target no tree, so no tree governs them and none of them
-#: takes a ``tree`` argument.
+#: Byte writers that target no tree and take no ``tree`` argument. Declared, and
+#: tests/test_tree_registry.py derives every byte writer from this module and
+#: asserts this set plus the guarded ones covers it EXACTLY (P3). None of the
+#: three writes membership INSIDE A TREE, which is what a cutover moves:
 #:
-#: Declared rather than inferred, and the conformance test in
-#: tests/test_tree_registry.py derives the full set of byte writers from this
-#: module and asserts that this set plus the guarded ones covers it EXACTLY. So a
-#: new emitter cannot land unguarded without the omission appearing in a diff
-#: here, which is the P3 obligation applied to a set that cannot be derived from
-#: behaviour alone.
-#:
-#: All three are decisions, and the boundary is the same one in each case: none
-#: of them writes membership INSIDE A TREE, which is the thing a cutover moves.
-#:
-#: * the rating patch writes one collection attribute on one track. A track's
-#:   rating does not change medium when a tree cuts over, so no tree governs it.
-#: * the attribute patcher replaces one value inside a tag the caller has already
-#:   located. Its legitimate uses are a collection attribute, which is ungoverned
-#:   for the reason above, and recounting a tag while ASSEMBLING a new document,
-#:   which writes nothing into the library at all. Reaching for it to change a
-#:   live tree's entry count instead of calling a writer would route around the
-#:   guard, and that is a residual this module cannot close from the inside: the
-#:   locate consolidation makes calling it the only way to try, and naming the
-#:   tree at the writers is the contract the call sites owe.
-#: * the root playlist writer emits a playlist as a DIRECT child of the playlist
-#:   root. A tree is a folder at that level, never a playlist, and the registry
-#:   is keyed on taxonomy identifiers, which a standalone root playlist does not
-#:   have. So no record could ever govern this write, and a tree argument here
-#:   would arm the guard on a subject the write does not touch: name a tree that
-#:   has cut over and a correct write is refused, name none and the tree the
-#:   write is not touching goes unmentioned either way. A guard that fires on
-#:   correct code gets switched off, and a switched off guard protects nothing
-#:   (P7). What this writer DOES owe is the type check every other writer makes,
-#:   so a root playlist named after a tree refuses instead of replacing it.
+#: * the rating patch writes one collection attribute, which no cutover moves;
+#: * the attribute patcher replaces a value in a tag the caller located: a
+#:   collection attribute, or a recount while ASSEMBLING a new document. Using it
+#:   to change a live tree's entry count would route around the guard, a
+#:   residual the call sites owe by naming the tree at the writers;
+#: * the root playlist writer emits a DIRECT child of the playlist root, where a
+#:   tree is a folder, never a playlist, and no record could govern it. A tree
+#:   argument would arm the guard on a subject the write does not touch, and a
+#:   guard firing on correct code gets switched off (P7). It still makes the type
+#:   check, so a root playlist named after a tree refuses instead of replacing it.
 UNGOVERNED_WRITERS = frozenset(
     {"apply_rating_changes", "patch_attribute", "insert_root_playlist"}
 )
@@ -956,11 +767,9 @@ UNGOVERNED_WRITERS = frozenset(
 class SpliceResult:
     """What a splice did, or the reason it did nothing.
 
-    A warning rather than an exception for a missing node, because a sweep
-    touches many playlists and one absent folder is a fact to report at the end,
-    not a reason to abandon the other forty writes. A refusal by the guard IS an
-    exception, because that one means the caller is writing in the wrong medium
-    and continuing would corrupt a library.
+    A missing node is a warning, so one absent folder does not abandon forty
+    other writes; a refusal by the guard IS an exception, because it means the
+    wrong medium and continuing would corrupt a library.
     """
 
     inserted: int = 0
@@ -969,14 +778,10 @@ class SpliceResult:
     warning: str | None = None
 
 
-#: Attribute names that carry a beat grid, in the one spelling this module
-#: compares: lowercase, so a caller cannot reach the grid through a difference in
-#: case. Held here rather than only in the source scan because the scan reads
-#: string CONSTANTS, and an attribute name arriving as a call argument is not a
-#: constant it can see. R17 is absolute in both directions: this package never
-#: creates a grid, and never destroys the one rekordbox authored. A generic
-#: attribute patcher over export bytes is the only primitive here that could do
-#: either, so the refusal lives in it.
+#: Attribute names that carry a beat grid, compared lowercase so case cannot
+#: reach the grid. Held here as well as in the source scan, which reads string
+#: constants and cannot see a name arriving as an argument. R17 is absolute both
+#: ways: this package never creates a grid, nor destroys rekordbox's.
 _GRID_ATTRIBUTES = frozenset({"averagebpm", "bpm", "inizio", "metro", "battito"})
 
 
@@ -985,18 +790,13 @@ def patch_attribute(
 ) -> bool:
     """Replace one attribute's value inside an ALREADY LOCATED tag.
 
-    Bounded by the tag, never by a fixed size window. The window version of this
-    could not tell "this element has no such attribute" from "the next element
-    does", so it patched the next element's, and the user saw a rating land on a
-    track they had never touched.
+    Bounded by the tag, never a fixed window, which patched the next element's
+    attribute and landed a rating on a track nobody touched. Strings go through
+    the one escaper; numbers are written as digits.
 
-    Strings are escaped through the one escaper. Numbers are written as digits.
-
-    A tempo bearing attribute is REFUSED rather than patched. The two reachable
-    shapes are a track's own average tempo, which rekordbox reads on import as
-    the seed for its analysis, and a tempo element's own attributes, which a
-    caller reaches by passing a range that bounds the whole element rather than
-    its open tag. Both are grid writes, and a grid is rekordbox's to author (R17).
+    A tempo bearing attribute is REFUSED: a track's average tempo seeds
+    rekordbox's analysis on import, and a range bounding a whole tempo element
+    reaches its attributes. Both are grid writes, and a grid is rekordbox's (R17).
     """
     if name.lower() in _GRID_ATTRIBUTES:
         raise ValueError(
@@ -1013,89 +813,6 @@ def patch_attribute(
     return True
 
 
-def _tree_node(content: bytes, tree: Tree | None) -> NodeSpan | str:
-    """The node a tree scoped write happens inside, or a warning naming why not.
-
-    With no tree named, the enclosing node is INFERRED as the playlist root's one
-    folder child, and inference is refused when there is more than one. Guessing
-    among several would put a whole genre folder inside whichever tree happened to
-    come first in the document.
-    """
-    span = playlists_span(content)
-    if span is None:
-        return f"{PLAYLISTS_SECTION} section not found"
-    root = root_node(content)
-    if root is None:
-        return "ROOT node not found"
-    folders = [child for child in child_nodes(content, root) if child.node_type == FOLDER_TYPE]
-    if tree is not None:
-        # A tree is a DIRECT child of the playlist root, so it is looked up among
-        # those rather than searched for anywhere below. That is not pedantry: a
-        # folder several levels down could share the name, and writing a whole
-        # tree's worth of nodes inside it would be silent.
-        node = next((child for child in folders if child.name == tree.display), None)
-        if node is None:
-            return f"folder not found: {tree.display}"
-        return node
-    if len(folders) == 1:
-        return folders[0]
-    return (
-        f"the enclosing tree was not named and the playlist root holds "
-        f"{len(folders)} folders, so it cannot be inferred"
-    )
-
-
-def _type_name(node_type: str) -> str:
-    """How a node type is spelled in a refusal a person has to act on.
-
-    Read through :func:`node_kind` rather than tested against one value, because
-    the sentence below tells somebody what is standing in the way of a write.
-    "A playlist named 'Deep House' is already there" is a statement of fact when
-    the node says it is a playlist and a guess when the node says nothing this
-    build understands, and the person acts on it either way.
-    """
-    kind = node_kind(node_type)
-    return "node of an unreadable kind" if kind == KIND_UNREADABLE else kind
-
-
-def direct_child(
-    content: bytes, parent: NodeSpan, name: str, node_type: str
-) -> NodeSpan | str | None:
-    """The direct child of ``parent`` named ``name``, of that TYPE, or a warning.
-
-    Three answers: the node, None when no child carries the name, and a warning
-    when one does at the other type.
-
-    PUBLIC, and it is a locate rather than a writer, so it carries no tree and no
-    guard. It is public because the alternative is a caller writing the same
-    ``name and type`` filter over :func:`child_nodes` for itself, and that copy
-    loses the third answer: a filter that tests name and type in one condition
-    reports a wrong-type collision as "not found", so a sweep walks nothing and
-    reports success. This module's claim is that consolidating the LOCATES is
-    what makes the guard's coverage real, and a locate a call site cannot reach
-    is a locate it re-implements.
-
-    The type half is not pedantry, it is the same defence :func:`find_node`
-    carries. A folder and a playlist routinely share a name, and every writer
-    below replaces or deletes what this returns. Matched on the name alone, a
-    root level playlist named after a tree replaced that whole tree with a flat
-    playlist, and every playlist and every track key underneath it went with it,
-    while the run reported success. Refusing is the only safe answer: the caller
-    asked to write one kind of node and something else is already standing there.
-    """
-    for child in child_nodes(content, parent):
-        if child.name != name:
-            continue
-        if child.node_type == node_type:
-            return child
-        return (
-            f"a {_type_name(child.node_type)} named {name!r} is already there, and "
-            f"this writer emits a {_type_name(node_type)}; replacing one with the "
-            f"other would delete everything the existing node holds"
-        )
-    return None
-
-
 def splice_into_subplaylist(
     content: bytearray,
     genre_folder: str,
@@ -1110,48 +827,25 @@ def splice_into_subplaylist(
 ) -> SpliceResult:
     """Insert track keys into a sub-playlist and bump its entry count.
 
-    Dedup on insert, on BOTH paths: a track already in the sub is never added
-    again, by id or by normalized name, and neither is a track the batch itself
-    names twice. With ``create_missing`` a sub that does not exist is created as
-    the last child of the folder.
+    Dedup on BOTH paths, by id or normalized name, against the sub and within the
+    batch. With ``create_missing`` an absent sub is created as the folder's last
+    child.
 
-    A FOLDER's ``Count`` is advisory, because rekordbox recounts a folder's
-    children on import, and this one splice leaves it alone: its exact bytes are
-    pinned by a golden ported from the system being replaced. The writers that
-    add or remove a whole child do keep it accurate, so a document this package
-    wrote still describes itself to the next thing that reads it. A PLAYLIST's
-    ``Entries`` is not advisory and is always patched, because rekordbox trusts
-    it over the children it can see.
+    A FOLDER's ``Count`` is advisory, since rekordbox recounts children on import,
+    and this splice leaves it alone because a golden pins its bytes; the writers
+    adding or removing a child keep it accurate. A PLAYLIST's ``Entries`` is
+    always patched, because rekordbox trusts it over the children it sees.
 
-    A failure writes NOTHING. Not most of it, nothing. A partial byte splice into
-    this format is not a partial success, it is a corrupt file.
+    A failure writes NOTHING: a partial splice into this format is a corrupt file.
     """
     _refuse_wrong_medium(tree)
     if not track_ids:
         return SpliceResult()
 
-    scope = _tree_scope(content, tree)
-    if isinstance(scope, str):
-        return SpliceResult(warning=scope)
-    scope_start, scope_end = scope
-
-    folder = find_node(
-        content, genre_folder, start=scope_start, end=scope_end, node_type=FOLDER_TYPE
-    )
-    if folder is None:
-        return SpliceResult(warning=f"genre folder not found: {genre_folder}")
-
-    # Search for the sub AFTER the folder's own open tag. Starting at the folder
-    # would re-find the folder itself when the two share a name, landing on a tag
-    # that carries a count rather than an entry count, and silently dropping the
-    # track.
-    sub = find_node(
-        content,
-        sub_name,
-        start=folder.body_start,
-        end=folder.body_end,
-        node_type=PLAYLIST_TYPE,
-    )
+    located = _folder_and_sub(content, genre_folder, sub_name, tree)
+    if isinstance(located, str):
+        return SpliceResult(warning=located)
+    folder, sub = located
 
     if sub is None:
         if not create_missing:
@@ -1160,17 +854,11 @@ def splice_into_subplaylist(
             return SpliceResult(
                 warning=f"cannot find close tag for genre folder: {genre_folder}"
             )
-        # Deduplicated here too, against nothing existing. The batch itself can
-        # carry one recording twice, under one identifier or under two, and a
-        # create path that skipped this made the outcome depend on whether the
-        # sub happened to exist yet: the run that created it kept both copies
-        # forever, and the run that found it kept one.
-        # THE BREAK BEFORE THE CLOSE LINE HAS TO BE A CRLF, or the offset below
-        # lands one byte early, inside the line before, and the node splits a
-        # ``/>`` in two: a file no parser reads, written as a success (U91).
-        # Real exports still carry bare LF lines an old splicer wrote. Refused
-        # rather than written around, because writing there anyway means
-        # inventing a line ending, which is how the bare LF got in.
+        # Deduplicated against nothing, or the run that creates the sub keeps a
+        # recording the batch names twice and the run that finds it keeps one.
+        # THE BREAK BEFORE THE CLOSE LINE HAS TO BE A CRLF, or the node splits a
+        # ``/>`` in two and writes a file no parser reads, as a success (U91).
+        # Refused rather than written around, which would invent a line ending.
         at = _break_before(content, line_start(content, folder.close_start))
         if at is None:
             return SpliceResult(
@@ -1179,14 +867,8 @@ def splice_into_subplaylist(
                 f"without inventing a line ending"
             )
         fresh = dedupe_track_ids(track_ids, (), norm_by_tid)
-        new_node = (
-            "\r\n"
-            + playlist_open(sub_name, len(fresh), close_indent)
-            + track_key_lines(fresh, track_indent)
-            + " " * close_indent
-            + "</NODE>"
-        ).encode("utf-8")
-        content[at:at] = bytearray(new_node)
+        new_node = _lead_broken_playlist(sub_name, fresh, close_indent, track_indent)
+        content[at:at] = bytearray(new_node.encode("utf-8"))
         return SpliceResult(inserted=len(fresh), entries_after=len(fresh), created=True)
 
     existing_keys = track_keys(content, sub)
@@ -1199,10 +881,8 @@ def splice_into_subplaylist(
         return SpliceResult(warning=f"Entries attr not found for {genre_folder}/{sub_name}")
     new_entries = _read_int(content, entries) + len(filtered)
 
-    # Insert FIRST, then patch the count. The insert happens at or after the open
-    # tag's end, so the count's offsets stay valid; patching first shifts every
-    # later offset the moment the count grows a digit, and the write then lands
-    # past the end of the document.
+    # Insert FIRST, then patch the count: the insert is past the open tag, so the
+    # count's offsets stay valid.
     new_lines = track_key_lines(filtered, track_indent).encode("utf-8")
     if sub.self_closing:
         close_marker = b" " * close_indent + _NODE_CLOSE
@@ -1216,25 +896,6 @@ def splice_into_subplaylist(
     return SpliceResult(inserted=len(filtered), entries_after=new_entries)
 
 
-def _tree_scope(content: bytes, tree: Tree | None) -> tuple[int, int] | str:
-    """The byte range a folder search is confined to, or a warning naming why not.
-
-    With a tree named, the range is that tree's own node, so a folder of the same
-    name under a DIFFERENT tree is not a candidate. With none named, it is the
-    whole playlist section, which is the narrowest honest answer: still never the
-    whole document, because the collection precedes it and holds track names.
-    """
-    span = playlists_span(content)
-    if span is None:
-        return f"{PLAYLISTS_SECTION} section not found"
-    if tree is None:
-        return span
-    node = _tree_node(content, tree)
-    if isinstance(node, str):
-        return node
-    return node.body_start, node.body_end
-
-
 def remove_tracks_from_subplaylist(
     content: bytearray,
     genre_folder: str,
@@ -1246,37 +907,18 @@ def remove_tracks_from_subplaylist(
 ) -> tuple[int, str | None]:
     """Delete track key lines from a sub-playlist and decrement its entry count.
 
-    Returns how many were actually removed and a warning or None. The count is
-    decremented by what was removed rather than by what was asked for, because
-    rekordbox trusts the count over the number of children it can see.
-
-    Takes ``track_indent`` and NOT the close indent its inserting counterpart
-    takes. Removal re-bounds the node from the bytes it finds rather than from a
-    width it was told, so a close indent here would be a knob that does nothing,
-    and a knob that does nothing reads as a pair of functions being symmetric
-    when only one half of them is.
+    Returns how many were removed and a warning or None. The count moves by what
+    was removed, not what was asked for. No close indent: removal re-bounds the
+    node from the bytes it finds, so that knob would do nothing.
     """
     _refuse_wrong_medium(tree)
     if not track_ids:
         return 0, None
 
-    scope = _tree_scope(content, tree)
-    if isinstance(scope, str):
-        return 0, scope
-    scope_start, scope_end = scope
-
-    folder = find_node(
-        content, genre_folder, start=scope_start, end=scope_end, node_type=FOLDER_TYPE
-    )
-    if folder is None:
-        return 0, f"genre folder not found: {genre_folder}"
-    sub = find_node(
-        content,
-        sub_name,
-        start=folder.body_start,
-        end=folder.body_end,
-        node_type=PLAYLIST_TYPE,
-    )
+    located = _folder_and_sub(content, genre_folder, sub_name, tree)
+    if isinstance(located, str):
+        return 0, located
+    _folder, sub = located
     if sub is None:
         return 0, f"sub-playlist not found: {genre_folder}/{sub_name}"
     if sub.self_closing:
@@ -1287,16 +929,8 @@ def remove_tracks_from_subplaylist(
     close_start = sub.close_start
     for tid in track_ids:
         # Re-bound the node on each pass: every deletion moves its close tag.
-        current = NodeSpan(
-            name=sub.name,
-            node_type=sub.node_type,
-            depth=sub.depth,
-            line_start=sub.line_start,
-            tag_start=sub.tag_start,
-            tag_end=sub.tag_end,
-            self_closing=False,
-            close_start=close_start,
-            close_end=close_start + len(_NODE_CLOSE),
+        current = replace(
+            sub, close_start=close_start, close_end=close_start + len(_NODE_CLOSE)
         )
         line = track_key_line(content, current, tid, indent=track_indent)
         if line is None:
@@ -1314,14 +948,9 @@ def remove_tracks_from_subplaylist(
 def apply_rating_changes(rating_plan: dict, content: bytearray) -> int:
     """Patch the rating attribute in place on collection track elements.
 
-    Ids appear on collection tracks only, since playlists reference tracks by
-    key, so this needs no playlist scoping. Every element is located in ONE pass
-    and the patches are applied from the end of the document backwards, so a
-    value that grows a digit cannot invalidate the offsets of the ones still to
-    come.
-
-    No tree governs this: it writes an attribute on a track and no membership
-    anywhere, so a tree's cutover does not change where it belongs. See
+    Ids sit on collection tracks only, so no playlist scoping. Every element is
+    located in ONE pass and patched from the end backwards, so a value growing a
+    digit cannot move the offsets still to come. Ungoverned: see
     ``UNGOVERNED_WRITERS``.
     """
     if not rating_plan:
@@ -1341,6 +970,13 @@ def apply_rating_changes(rating_plan: dict, content: bytearray) -> int:
     return updated
 
 
+def _insert_last(content: bytearray, parent: NodeSpan, block: str) -> None:
+    """Splice a lead broken ``block`` in as ``parent``'s last child, just before
+    the break that ends its last line."""
+    at = line_start(content, parent.close_start) - len(CRLF)
+    content[at:at] = bytearray(block.encode("utf-8"))
+
+
 def insert_root_playlist(
     name: str,
     track_ids: Sequence[object],
@@ -1349,25 +985,14 @@ def insert_root_playlist(
     """Append a playlist as the last child of the playlist root, replacing any
     existing playlist of the same name.
 
-    Every workflow here is re-runnable, which means every write is idempotent. A
-    second run that appended a second copy would turn "run it again" from the
-    recovery procedure into a second failure.
-
-    Only a DIRECT child is replaced. The version this ports searched the whole
-    subtree and then assumed whatever it found sat at the root's own indent, so a
-    nested playlist of the same name was deleted across a range that was not its
-    own.
-
-    Takes no tree, and that is a decision rather than an omission. See
-    ``UNGOVERNED_WRITERS``: the playlist root is not a tree, nothing the registry
-    can record sits at this level, and a tree named here would arm the guard on a
-    subject the write does not touch.
+    Idempotent, so "run it again" stays the recovery procedure. Only a DIRECT
+    child is replaced: the version this ports searched the whole subtree and
+    deleted a nested namesake across a range that was not its own. Takes no tree,
+    by decision: see ``UNGOVERNED_WRITERS``.
     """
-    if playlists_span(content) is None:
-        return f"{PLAYLISTS_SECTION} section not found"
-    root = root_node(content)
-    if root is None:
-        return "ROOT node not found"
+    root = _playlist_root(content)
+    if isinstance(root, str):
+        return root
 
     existing = direct_child(content, root, name, PLAYLIST_TYPE)
     if isinstance(existing, str):
@@ -1378,15 +1003,7 @@ def insert_root_playlist(
         if root is None:  # pragma: no cover - the delete cannot remove the root
             return "ROOT node not found"
 
-    new_node = (
-        "\r\n"
-        + playlist_open(name, len(track_ids), indent_at(1))
-        + track_key_lines(track_ids, indent_at(2))
-        + " " * indent_at(1)
-        + "</NODE>"
-    ).encode("utf-8")
-    at = line_start(content, root.close_start) - len(CRLF)
-    content[at:at] = bytearray(new_node)
+    _insert_last(content, root, _lead_broken_playlist(name, track_ids, indent_at(1), indent_at(2)))
     if existing is None:
         _bump_count(content, root, +1)
     return None
@@ -1401,10 +1018,8 @@ def insert_genre_folder(
 ) -> str | None:
     """Insert a folder as the last child of a tree, with one empty sub per name.
 
-    The folder sits one level below the tree and its subs one level below that,
-    both derived from :data:`TREE_DEPTH` rather than pinned. Bumps the tree's
-    count by one. Idempotent: an existing child of that name is left alone, which
-    is what stops a second import growing a duplicate node.
+    Indents derived from the tree's depth, the tree's count bumped by one.
+    Idempotent: an existing child of that name is left alone.
     """
     _refuse_wrong_medium(tree)
     parent = _tree_node(content, tree)
@@ -1426,13 +1041,9 @@ def insert_genre_folder(
         )
         + " " * indent_at(parent.depth + 1)
         + "</NODE>"
-    ).encode("utf-8")
-
-    # Insert FIRST, then bump the count, mirroring the splice: the count sits
-    # inside the open tag, which precedes the insertion point, so its offsets stay
-    # valid and a count that grows a digit cannot shift a live offset.
-    at = line_start(content, parent.close_start) - len(CRLF)
-    content[at:at] = bytearray(block)
+    )
+    # Insert FIRST, then bump the count, which sits before the insertion point.
+    _insert_last(content, parent, block)
     _bump_count(content, parent, +1)
     return None
 
@@ -1445,14 +1056,9 @@ def remove_folder_node(
 ) -> str | None:
     """Remove a named folder that is a direct child of a tree, and its lead break.
 
-    The matching close is found by a depth walk over node PAIRS, so a childless
-    folder, which rekordbox exports self closed and which therefore has no
-    matching close at all, is removed as exactly its own open tag. A walk that
-    assumed a close tag would march on to a SIBLING's and delete everything in
-    between, which destroys data rather than merely misbehaving.
-
-    An absent name is a warning and a no-op, never an exception and never a
-    corrupting slice.
+    Bounded by a depth walk over node PAIRS, so a self closed childless folder is
+    removed as exactly its own tag rather than up to a SIBLING's close. An absent
+    name is a warning and a no-op.
     """
     _refuse_wrong_medium(tree)
     parent = _tree_node(content, tree)
@@ -1478,13 +1084,9 @@ def insert_intake_playlist(
 ) -> str | None:
     """Insert a playlist as the last child of the intake tree, at the pinned shape.
 
-    :data:`INTAKE_DEPTH` rather than the tree's own depth, and that is KTD14 made
-    concrete: intake is one folder holding one playlist per arriving batch, so
-    this shape does not move when somebody's genre taxonomy does.
-
-    Idempotent, like every other write here: an existing playlist of that name is
-    replaced rather than joined by a second copy, and the tree's count is bumped
-    only when a new node is actually added.
+    :data:`INTAKE_DEPTH`, never the tree's own depth (KTD14). Idempotent: an
+    existing playlist of that name is replaced, and the count bumped only when a
+    node is added.
     """
     _refuse_wrong_medium(tree)
     parent = _tree_node(content, tree)
@@ -1505,32 +1107,11 @@ def insert_intake_playlist(
             return refreshed
         parent = refreshed
 
-    node = (
-        "\r\n"
-        + playlist_open(name, len(track_ids), indent_at(INTAKE_DEPTH))
-        + track_key_lines(track_ids, indent_at(INTAKE_DEPTH + 1))
-        + " " * indent_at(INTAKE_DEPTH)
-        + "</NODE>"
-    ).encode("utf-8")
-    at = line_start(content, parent.close_start) - len(CRLF)
-    content[at:at] = bytearray(node)
+    node = _lead_broken_playlist(name, track_ids, indent_at(INTAKE_DEPTH), indent_at(INTAKE_DEPTH + 1))
+    _insert_last(content, parent, node)
     if not replaced:
         _bump_count(content, parent, +1)
     return None
-
-
-def intake_names(content: bytes, *, tree: Tree | None = None) -> tuple[str, ...] | str:
-    """Every name a node anywhere under the intake tree carries, or a warning naming why not.
-
-    A LOCATE, NOT A WRITER, for a landing choosing a name INBOX does not hold
-    yet (U113). Every descendant and not only the direct children, so a batch
-    the rotation moved into ``Old`` still holds its name, and a folder's name
-    counts as much as a playlist's.
-    """
-    parent = _tree_node(content, tree)
-    if isinstance(parent, str):
-        return parent
-    return tuple(node.name for _path, node in walk_nodes(content, parent))
 
 
 def insert_empty_subplaylist(
@@ -1543,30 +1124,16 @@ def insert_empty_subplaylist(
 ) -> SpliceResult:
     """Insert an EMPTY sub-playlist as the last child of a folder inside a tree.
 
-    The one write no other emitter here can make, and it exists because rekordbox
-    has no import path that creates an empty playlist. A splice needs somewhere to
-    splice INTO, so a routing sub that no track has landed in yet has to be
-    created before the first track can be routed to it, and
-    :func:`splice_into_subplaylist` cannot do it: with no track keys there is
-    nothing to insert, and it returns early rather than emitting a node.
-
-    Idempotent, and that is the property the caller depends on: a folder that
-    already carries the sub is left byte-identical, so a re-run after a new folder
-    appears touches only the new one.
-
-    The indent is derived from the located folder's own depth rather than pinned,
-    so a shallower tree gets a sub at the indent its own document uses. The
-    override exists for a caller assembling a document at a shape this tree does
-    not describe, and defaults to None rather than to a number so that "derive it"
-    stays the answer nobody has to opt into.
+    rekordbox has no import path that creates an empty playlist, and
+    :func:`splice_into_subplaylist` returns early with no keys, so a routing sub
+    no track has reached yet is made here. Idempotent: a folder already holding
+    the sub is left byte identical. The indent derives from the folder's depth;
+    ``close_indent`` overrides it for a document at another shape.
     """
     _refuse_wrong_medium(tree)
-    # A DIRECT child of the tree, never a search over its whole body. The caller
-    # that drives this loops over the tree's direct folder children by name, and
-    # a body-wide search resolves that name to whichever node carries it FIRST in
-    # document order, which is a folder nested inside an earlier sibling whenever
-    # the two share a name. The enumeration and the write would then disagree
-    # about which folder is meant, and the write would win silently.
+    # A DIRECT child of the tree, never a body wide search: the caller loops over
+    # the tree's direct folders by name, and a body search finds a namesake
+    # nested in an earlier sibling first, so the write would land elsewhere.
     parent = _tree_node(content, tree)
     if isinstance(parent, str):
         return SpliceResult(warning=parent)
@@ -1586,116 +1153,9 @@ def insert_empty_subplaylist(
         return SpliceResult(warning=f"cannot find close tag for genre folder: {folder_name}")
 
     indent = indent_at(folder.depth + 1) if close_indent is None else close_indent
-    node = ("\r\n" + empty_playlist(sub_name, indent)).encode("utf-8")
-    at = line_start(content, folder.close_start) - len(CRLF)
-    content[at:at] = bytearray(node)
+    _insert_last(content, folder, "\r\n" + empty_playlist(sub_name, indent))
     _bump_count(content, folder, +1)
     return SpliceResult(created=True, entries_after=0)
-
-
-def _catalog_block(
-    folder_name: str, playlists: Sequence[tuple[str, Sequence[object]]], indent: int
-) -> str:
-    """One folder holding one ready-made playlist per pair, fully populated.
-
-    A pure emitter over the shared string builders, so the only thing the caller
-    below has to get right is where the bytes go.
-    """
-    out = [folder_open(folder_name, len(playlists), indent)]
-    for name, track_ids in playlists:
-        out.append(_catalog_playlist(name, track_ids, indent + INDENT_STEP))
-    out.append(node_close(indent))
-    return "".join(out)
-
-
-def _catalog_playlist(name: str, track_ids: Sequence[object], indent: int) -> str:
-    """One populated playlist node at ``indent``, every line CRLF terminated."""
-    ids = list(track_ids)
-    return (
-        playlist_open(name, len(ids), indent)
-        + track_key_lines(ids, indent + INDENT_STEP)
-        + node_close(indent)
-    )
-
-
-def _folded(name: str) -> str:
-    """A node name in the form two sibling names are compared in.
-
-    Canonical Unicode equivalence and nothing wider. A label name arrives from a
-    provider and a folder name from an export, and one ``Café`` composed and one
-    decomposed are the same name drawn two ways, so treating them as two would
-    write the second folder the duplicate guard below exists to refuse. Case is
-    NOT folded: nothing recorded says rekordbox merges two folders that differ
-    only by case, and merging them here would pour one label into another's
-    folder on a guess (R-453).
-    """
-    return unicodedata.normalize("NFC", name)
-
-
-def _sole_child(
-    content: bytes, parent: NodeSpan, name: str, node_type: str
-) -> NodeSpan | str | None:
-    """The ONE direct child of ``parent`` named ``name``, of that type, or a warning.
-
-    :func:`direct_child`'s three answers plus a fourth, and the fourth is R-129.
-    Importing a folder that already exists makes rekordbox merge it by name and
-    append every child as a new row, so a document holding two siblings of one
-    name doubles on each import that names their parent. That is how nine label
-    year playlists reached 3,072 copies each. A writer that merged into the first
-    of two leaves the second standing and reports success over a document that
-    will do it again, so two of a name refuse and the document is left for a
-    person to repair.
-    """
-    wanted = _folded(name)
-    matches = [child for child in child_nodes(content, parent) if _folded(child.name) == wanted]
-    if not matches:
-        return None
-    for child in matches:
-        if child.node_type != node_type:
-            return (
-                f"a {_type_name(child.node_type)} named {name!r} is already there, and "
-                f"this writer emits a {_type_name(node_type)}; replacing one with the "
-                f"other would delete everything the existing node holds"
-            )
-    if len(matches) > 1:
-        return (
-            f"{len(matches)} {_type_name(node_type)}s named {name!r} already sit side "
-            f"by side under {parent.name!r}; rekordbox merges an imported folder by "
-            f"name and appends every child it carries, so this document would "
-            f"duplicate them again on import. Remove the extra copies first"
-        )
-    return matches[0]
-
-
-def _merged_pairs(
-    playlists: Sequence[tuple[str, Sequence[object]]],
-) -> list[tuple[str, list]]:
-    """The caller's playlists with one entry per name and each id listed once.
-
-    The payload that started R-129 carried a label's subtree twice. A caller that
-    names one playlist twice is asking for one playlist, so the two are joined in
-    the order they were given, the first spelling of the name kept, rather than
-    emitted as the sibling pair the guard above refuses in a document.
-    """
-    order: list[str] = []
-    joined: dict[str, tuple[str, list]] = {}
-    for name, track_ids in playlists:
-        key = _folded(name)
-        if key not in joined:
-            joined[key] = (name, [])
-            order.append(key)
-        joined[key][1].extend(track_ids)
-    return [(joined[key][0], dedupe_track_ids(joined[key][1])) for key in order]
-
-
-def _starts_its_line(content: bytes, line_at: int, tag_at: int) -> bool:
-    """Whether only indentation stands between a line's start and a tag on it.
-
-    Every merge below writes whole lines at a line start. When a tag shares its
-    line with something else, that line start belongs to the something else, and
-    a write there lands inside it.
-    """
-    return bytes(content[line_at:tag_at]).strip(b" ") == b""
 
 
 def insert_catalog_folder(
@@ -1707,41 +1167,23 @@ def insert_catalog_folder(
 ) -> str | None:
     """Insert a whole populated folder into a tree, creating the tree when absent.
 
-    The only writer here that emits a subtree rather than a node, because it
-    serves the one workflow that produces a whole catalog at once: a label's
-    releases, grouped into a playlist per year. Everything else in this module
-    adds to a tree somebody already has.
+    The one writer that emits a subtree: a label's releases, a playlist per year.
 
-    Where the bytes go, and why each choice rather than the other:
+    * **A new folder goes in FIRST, not last**, unlike every other insert: the
+      caller orders playlists newest first, and a golden pins the layout.
+    * **An existing folder of that name is MERGED INTO** (R-129). A held
+      playlist gains only the ids it lacks; a missing one goes before the first
+      held playlist whose name sorts below its own, newest first for years. So a
+      second identical write changes no byte, and the old always inserting
+      system duplicated the whole label.
+    * **Two siblings of one name refuse** at each level written: the tree, the
+      folder and each playlist. See ``_sole_child``.
+    * **The tree's own node is created when missing**, as the root's first child,
+      because a catalog tree is created by its first write, not by setup.
 
-    * **A new folder goes in FIRST, not last**, which is the reverse of every
-      other insert here. The caller orders its playlists newest first, and a
-      catalog whose newest year sits at the top of the folder while its newest
-      folder sits at the bottom of the tree is ordered two ways at once. This
-      preserves the byte layout the system being replaced produced, which a
-      golden pins.
-    * **An existing folder of that name is MERGED INTO, never appended beside
-      and never replaced** (R-129). A playlist it already holds keeps every
-      member and gains only the ids it lacks; a playlist it lacks is added
-      before the first held playlist whose name sorts below its own, which is
-      newest first for playlists named by year. So
-      writing the same catalog twice leaves the document byte for byte as the
-      first write left it, and a re-crawl that found one new year adds one
-      playlist and touches nothing else. The system being replaced always
-      inserted, so its second run duplicated the whole label.
-    * **Two siblings of one name refuse**, at each of the three levels this
-      writes: the tree under the root, the folder under the tree, and each
-      playlist under the folder. See :func:`_sole_child`.
-    * **The tree's own node is created when it is missing**, as the playlist
-      root's first child. A catalog tree is not a taxonomy tree: nobody's setup
-      created it, and the first write is the thing that brings it into existence.
-
-    Names are compared through :func:`_folded`. Track ids are deduplicated
-    inside each playlist, against themselves and against the members it holds.
-
-    Returns a warning naming what stopped it, or None on success. A failure
-    writes nothing at all: every edit is made on a copy that replaces the
-    document only once the last one has landed.
+    Names compare through ``_folded``; ids are deduplicated within each playlist
+    and against its members. Returns a warning or None. A failure writes nothing:
+    every edit is made on a copy that replaces the document only at the end.
     """
     _refuse_wrong_medium(tree)
     work = bytearray(content)
@@ -1757,18 +1199,12 @@ def _write_catalog(
     pairs: Sequence[tuple[str, Sequence[object]]],
     tree: Tree | None,
 ) -> str | None:
-    if playlists_span(content) is None:
-        return f"{PLAYLISTS_SECTION} section not found"
-    root = root_node(content)
-    if root is None:
-        return "ROOT node not found"
+    root = _playlist_root(content)
+    if isinstance(root, str):
+        return root
 
-    # With no tree named the enclosing node is inferred exactly as it is
-    # everywhere else here, and inference refuses rather than guesses. With one
-    # named, an absent node is not a failure: this writer creates it, and the
-    # creation happens INSIDE this branch rather than under a flag read further
-    # down, so ``tree`` is known to be present where its display name is used
-    # and no assertion has to stand in for that.
+    # With no tree named the enclosing node is inferred and inference refuses
+    # rather than guesses. With one named, an absent node is created here.
     if tree is None:
         inferred = _tree_node(content, None)
         if isinstance(inferred, str):
@@ -1820,16 +1256,14 @@ def _merge_catalog(
 ) -> str | None:
     """Merge the pairs into a folder the document already holds, in place.
 
-    Every edit lands after the folder's own open tag, so that tag's offset stays
-    valid across all of them and the folder is re-read from it after each one,
-    rather than trusting spans the previous edit has moved.
+    Every edit lands after the folder's open tag, so the folder is re-read from
+    that offset after each one rather than trusting spans an edit has moved.
     """
     if not _starts_its_line(content, folder.line_start, folder.tag_start):
         return f"the folder {folder.name!r} does not start its own line"
     indent = folder.indent + INDENT_STEP
     if folder.self_closing:
-        # An empty folder exported self closed has nothing to keep and no body to
-        # write into, so it is opened first and then merged into like any other.
+        # An empty folder exported self closed has no body, so it is opened first.
         content[folder.tag_end - 1 : folder.tag_end + 1] = bytearray(
             b">" + CRLF + b" " * folder.indent + _NODE_CLOSE
         )
@@ -1848,12 +1282,9 @@ def _merge_catalog(
                 return warning
             continue
 
-        # Before the first held playlist whose name sorts below the new one, and
-        # last when none does. A catalog folder is read newest first and its
-        # playlists are named for their year, so that is the newest first slot
-        # among what the folder HOLDS, including a year the caller did not name
-        # this time. Placing by the caller's own list alone put a new year after
-        # a held one it should precede whenever the caller left the held one out.
+        # Before the first HELD playlist whose name sorts below the new one, and
+        # last when none does: newest first among what the folder holds, even a
+        # year the caller left out this time.
         wanted = _folded(name)
         anchor = next(
             (
@@ -1887,9 +1318,8 @@ def _extend_playlist(
 ) -> str | None:
     """Add the ids a playlist does not already hold, and move its entry count.
 
-    Its members stay exactly as they are, duplicates the document already had
-    included, because a merge that rewrote a person's playlist would be the
-    replace this writer stopped doing.
+    Its members stay exactly as they are, duplicates included: rewriting a
+    person's playlist would be the replace this writer stopped doing.
     """
     fresh = dedupe_track_ids(track_ids, track_keys(content, playlist))
     if not fresh:
@@ -1913,64 +1343,6 @@ def _extend_playlist(
         content[at:at] = bytearray(lines)
     content[entries[0] : entries[1]] = str(total).encode("utf-8")
     return None
-
-
-def _first_child_offset(content: bytes, parent: NodeSpan) -> int | None:
-    """Where a first child's own line begins, or None when there is no such place.
-
-    A node's body starts immediately after its open tag's ``>``, and what follows
-    in this format is the break that ends that line. A block emitted at the body
-    start would land ON the open tag's line; a block emitted after the break lands
-    on its own. None rather than a guess when the break is absent, because the
-    only way to write there anyway is to invent a line ending, and inventing one
-    is how a bare LF got into an export in the first place.
-
-    A SELF CLOSED node has no body at all, and this is where that has to be
-    caught. Its ``body_start`` lands just past the closing ``/>``, and the bytes
-    there are the break ending the node's OWN line, so the arithmetic below
-    succeeds and hands back a position OUTSIDE the node. The caller then writes
-    its children as the node's siblings and reports success. Refused here rather
-    than at each call site, so every current and future caller inherits it.
-    """
-    if parent.self_closing:
-        return None
-    at = parent.body_start
-    if bytes(content[at : at + len(CRLF)]) != CRLF:
-        return None
-    return at + len(CRLF)
-
-
-def _break_before(content: bytes, line_at: int) -> int | None:
-    """Where the CRLF ending the line before ``line_at`` begins, or None.
-
-    An insert that emits a lead broken node lands it just before that break.
-    None when the line ends in a bare LF, or in nothing, for the reason
-    :func:`_first_child_offset` gives: the only way to write there anyway is to
-    invent a line ending. A line at the very start has no break before it, and
-    the slice there is shorter than a CRLF, so it answers None the same way.
-    """
-    at = line_at - len(CRLF)
-    if bytes(content[at:line_at]) != CRLF:
-        return None
-    return at
-
-
-def _absorb_lead_break(content: bytes, start: int) -> int:
-    """Where a node's removal begins once the break ending the line before is taken.
-
-    Every insert here emits its node as a leading break followed by the node, so a
-    delete that took only the node's own lines would leave that break behind and
-    each replace would grow the document by one blank line. Returns ``start`` moved
-    back over one CRLF when one sits directly before it, and ``start`` unchanged
-    otherwise.
-
-    A LEAD break, never a trailing one. The catalog writer replaces a node in
-    place and takes the break AFTER it instead, because what lands there is a
-    block rather than a lead-broken node, so it does not call this.
-    """
-    if bytes(content[start - len(CRLF) : start]) == CRLF:
-        return start - len(CRLF)
-    return start
 
 
 def _bump_count(content: bytearray, node: NodeSpan, delta: int) -> None:
@@ -2049,3 +1421,25 @@ __all__ = [
     "xml_escape_attr",
     "xml_unescape_attr",
 ]
+
+# The read-only placement helpers, bound last: rbxml_insert imports this
+# module's names at its own end, so either module may be imported first.
+from cratekit.write.rbxml_insert import (
+    _absorb_lead_break,
+    _break_before,
+    _catalog_block,
+    _catalog_playlist,
+    _first_child_offset,
+    _folded,
+    _folder_and_sub,
+    _lead_broken_playlist,
+    _merged_pairs,
+    _playlist_root,
+    _sole_child,
+    _starts_its_line,
+    _tree_node,
+    _tree_scope,  # noqa: F401 - reachable as rbxml._tree_scope
+    _type_name,  # noqa: F401 - reachable as rbxml._type_name
+    direct_child,
+    intake_names,
+)
