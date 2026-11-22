@@ -95,70 +95,43 @@ def build(parser, entry) -> None:
     # One of the three anchor forms and never two, decided by the parser.
     anchor = parser.add_mutually_exclusive_group()
     anchor.add_argument(
-        "anchor",
-        nargs="?",
-        default=None,
+        "anchor", nargs="?", default=None,
         help="the track to build around, as a path under the library",
     )
     anchor.add_argument(
         "--named",
         default=None,
         metavar="TEXT",
-        help=(
-            "build around an owned track named by artist and title, as you "
-            "remember it; a name that reaches several tracks lists them and "
-            "refuses rather than picking one"
-        ),
+        help="build around an owned track named by artist and title, as you "
+        "remember it; a name that reaches several tracks lists them and "
+        "refuses rather than picking one",
     )
     anchor.add_argument(
-        "--unowned",
-        default=None,
-        metavar="LABEL",
-        help=(
-            "build around a track the library does not hold, named by LABEL; "
-            "needs --key, and nothing looks the key up"
-        ),
+        "--unowned", default=None, metavar="LABEL",
+        help="build around a track the library does not hold, named by LABEL; "
+        "needs --key, and nothing looks the key up",
     )
     parser.add_argument(
-        "--key",
-        type=camelot_key,
-        default=None,
-        metavar="CODE",
+        "--key", type=camelot_key, default=None, metavar="CODE",
         help="the Camelot key of an --unowned anchor, as you know it",
     )
     parser.add_argument(
-        "--bpm",
-        dest="tempo",
-        type=positive_tempo,
-        default=None,
-        metavar="N",
+        "--bpm", dest="tempo", type=positive_tempo, default=None, metavar="N",
         help="the tempo of an --unowned anchor, used for ranking and never written",
     )
     parser.add_argument(
-        "--count",
-        type=positive_count,
-        default=None,
-        metavar="N",
-        help=(
-            "cap the ranked companions, or the picks per side with --role; the "
-            "suggested sequence ships whole even when it exceeds the cap"
-        ),
+        "--count", type=positive_count, default=None, metavar="N",
+        help="cap the ranked companions, or the picks per side with --role; the "
+        "suggested sequence ships whole even when it exceeds the cap",
     )
     parser.add_argument(
-        "--role",
-        choices=ROLES,
-        default=None,
+        "--role", choices=ROLES, default=None,
         help="narrow the answer to one side of the anchor; both sides by default",
     )
     parser.add_argument(
-        "--vox-threshold",
-        type=float,
-        default=None,
-        metavar="LEVEL",
-        help=(
-            "the vocal level at which a track counts as vocal-forward, so two "
-            "lead vocals are not stacked; the signal scores neutral without it"
-        ),
+        "--vox-threshold", type=float, default=None, metavar="LEVEL",
+        help="the vocal level at which a track counts as vocal-forward, so two "
+        "lead vocals are not stacked; the signal scores neutral without it",
     )
     parser.set_defaults(_handler=set_build)
 
@@ -183,15 +156,19 @@ def anchor_path(anchor: str, root: Path) -> Path:
     given = Path(anchor)
     candidate = given if given.is_absolute() else root / given
     if not _within(candidate, root):
-        raise refuse(
+        raise _refuse(
             "setbuild-anchor-outside-library",
             f"{anchor} is not inside the configured library, and a set is built "
             f"only from tracks this library owns",
-            steps=("pass a path under the library root",),
-            origin=_ORIGIN,
+            "pass a path under the library root",
             detail={"anchor": str(candidate), "root": str(root)},
         )
     return candidate
+
+
+def _refuse(reason: str, message: str, *steps: str, detail: dict | None = None) -> Exception:
+    """A refusal from this shell, its remedy steps in order."""
+    return refuse(reason, message, steps=steps, origin=_ORIGIN, detail=detail)
 
 
 def _within(candidate: Path, root: Path) -> bool:
@@ -241,24 +218,20 @@ def named_anchor(text: str, index: Sequence[setbuilder.Track]) -> setbuilder.Tra
     picks.
     """
     if not names_something(text):
-        raise refuse(
+        raise _refuse(
             "setbuild-anchor-unknown",
             "setbuild needs the track to build the set around",
-            steps=("pass the artist and title of an owned track with --named",),
-            origin=_ORIGIN,
+            "pass the artist and title of an owned track with --named",
         )
     matched = setbuilder.match_in_index(text, index)
     if matched.track is not None:
         return matched.track
     if not matched.candidates:
-        raise refuse(
+        raise _refuse(
             "setbuild-anchor-not-indexed",
             f"no track named {text} is in the library index{_INDEXED_WHEN}",
-            steps=(
-                "check the artist and title, or pass the track's path instead",
-                "or, for a track you do not own, pass --unowned LABEL --key CODE",
-            ),
-            origin=_ORIGIN,
+            "check the artist and title, or pass the track's path instead",
+            "or, for a track you do not own, pass --unowned LABEL --key CODE",
             detail={"named": text, "indexed": len(index)},
         )
     shown = matched.candidates[: setbuilder.CANDIDATE_LIMIT]
@@ -281,11 +254,10 @@ def named_anchor(text: str, index: Sequence[setbuilder.Track]) -> setbuilder.Tra
             f"and a set built around the wrong one looks exactly as right as "
             f"one built around the right one, so none was picked"
         )
-    raise refuse(
+    raise _refuse(
         "setbuild-anchor-ambiguous",
         message,
-        steps=tuple(steps),
-        origin=_ORIGIN,
+        *steps,
         detail={
             "named": text,
             "reached": len(matched.candidates),
@@ -317,25 +289,20 @@ def unowned_anchor(label: str, key: str | None, tempo: float | None) -> setbuild
         )
     resolved = setbuilder.resolve_anchor(label, (), key=key, bpm=tempo)
     if resolved.key is None:
-        raise refuse(
+        raise _refuse(
             "setbuild-unowned-key-missing",
             f"{label} is not in your library and no Camelot key was supplied for "
             f"it, and nothing here looks a key up, so there is nothing to rank "
             f"the library against",
-            steps=("pass the track's Camelot key with --key, for example --key 8A",),
-            origin=_ORIGIN,
+            "pass the track's Camelot key with --key, for example --key 8A",
             detail={"label": label, "unresolved": resolved.unresolved},
         )
     return resolved
 
 
 def plan_for(
-    anchor: setbuilder.Track | setbuilder.Anchor,
-    index: Sequence[setbuilder.Track],
-    *,
-    declared,
-    count: int | None = None,
-    role: str | None = None,
+    anchor: setbuilder.Track | setbuilder.Anchor, index: Sequence[setbuilder.Track], *,
+    declared, count: int | None = None, role: str | None = None,
     vox_threshold: float | None = None,
 ) -> dict:
     """The plan this verb emits, as a ``plan/1`` payload. PURE over an index.
@@ -412,16 +379,13 @@ def set_build(ctx) -> Envelope:
         anchor = unowned_anchor(ctx.args.unowned, ctx.args.key, ctx.args.tempo)
         return _emit(ctx, declared, anchor, _index(cfg, root))
     if ctx.args.key is not None or ctx.args.tempo is not None:
-        raise refuse(
+        raise _refuse(
             "setbuild-supplied-needs-unowned",
             "--key and --bpm describe a track the library does not hold, and an "
             "owned anchor takes both from the library's own analysis, so the "
             "supplied value would be ignored",
-            steps=(
-                "drop --key and --bpm to build around the owned track",
-                "or pass --unowned LABEL instead of a path or a name",
-            ),
-            origin=_ORIGIN,
+            "drop --key and --bpm to build around the owned track",
+            "or pass --unowned LABEL instead of a path or a name",
             detail={"key": ctx.args.key, "tempo": ctx.args.tempo},
         )
     if ctx.args.named is not None:
@@ -433,14 +397,11 @@ def set_build(ctx) -> Envelope:
     index = _index(cfg, root)
     track = anchor_in_index(candidate, index)
     if track is None:
-        raise refuse(
+        raise _refuse(
             "setbuild-anchor-not-indexed",
             f"{candidate} is not in the library index{_INDEXED_WHEN}",
-            steps=(
-                "check the path names an audio file under the library root",
-                "analyze the track so it carries a Camelot key",
-            ),
-            origin=_ORIGIN,
+            "check the path names an audio file under the library root",
+            "analyze the track so it carries a Camelot key",
             detail={"anchor": str(candidate), "indexed": len(index)},
         )
     return _emit(ctx, declared, track, index)
@@ -476,16 +437,11 @@ def _refuse_if_excluded(candidate: Path, cfg: config.Config, root: Path) -> None
             f"the download staging folder {holder}, which holds downloads "
             f"not yet filed into the library"
         )
-    raise refuse(
+    raise _refuse(
         "setbuild-anchor-not-indexed",
-        f"{candidate} sits in {where}, so it is never indexed and a set is not "
-        f"built around it",
-        steps=(
-            "if the library holds the same track, pass its path there",
-            "if it does not yet, pass --unowned LABEL --key CODE to rank the "
-            "library against it",
-        ),
-        origin=_ORIGIN,
+        f"{candidate} sits in {where}, so it is never indexed and a set is not built around it",
+        "if the library holds the same track, pass its path there",
+        "if it does not yet, pass --unowned LABEL --key CODE to rank the library against it",
         detail={"anchor": str(candidate), "excluded_by": str(holder)},
     )
 
@@ -500,16 +456,11 @@ def _index(cfg: config.Config, root: Path) -> tuple[setbuilder.Track, ...]:
     )
 
 
-def _emit(
-    ctx, declared: taxonomy.Taxonomy, anchor, index: Sequence[setbuilder.Track]
-) -> Envelope:
+def _emit(ctx, declared: taxonomy.Taxonomy, anchor, index: Sequence[setbuilder.Track]) -> Envelope:
+    args = ctx.args
     plan = plan_for(
-        anchor,
-        index,
-        declared=declared,
-        count=ctx.args.count,
-        role=ctx.args.role,
-        vox_threshold=ctx.args.vox_threshold,
+        anchor, index, declared=declared, count=args.count, role=args.role,
+        vox_threshold=args.vox_threshold,
     )
     return ctx.envelope(data=plan, outcome=Outcome.OK)
 

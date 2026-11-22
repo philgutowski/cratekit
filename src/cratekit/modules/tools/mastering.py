@@ -264,17 +264,12 @@ def apply_filter(settings: Settings, measured: Loudness) -> str:
     Every measured value is required: omitting one drops loudnorm silently into
     its dynamic mode, which compresses the set instead of moving it.
     """
-    missing = [
-        name
-        for name, value in (
-            ("integrated", measured.integrated_lufs),
-            ("true peak", measured.true_peak_db),
-            ("loudness range", measured.loudness_range),
-            ("threshold", measured.threshold),
-            ("target offset", measured.target_offset),
-        )
-        if value is None
-    ]
+    named = (
+        ("integrated", measured.integrated_lufs), ("true peak", measured.true_peak_db),
+        ("loudness range", measured.loudness_range), ("threshold", measured.threshold),
+        ("target offset", measured.target_offset),
+    )
+    missing = [name for name, value in named if value is None]
     if missing:
         raise MasteringRefused(
             Refusal.ENCODER_FAILED,
@@ -483,24 +478,15 @@ def probe_source(source: Path, *, runner: Runner, ffprobe: str) -> SourceProbe:
     except (KeyError, ValueError):
         channels = None
     return SourceProbe(
-        sample_rate=rate,
-        sample_fmt=values.get("sample_fmt", ""),
-        size_bytes=source.stat().st_size,
-        channels=channels,
-        codec=values.get("codec_name", ""),
+        sample_rate=rate, sample_fmt=values.get("sample_fmt", ""), size_bytes=source.stat().st_size,
+        channels=channels, codec=values.get("codec_name", ""),
     )
 
 
 def master(
-    source: Path | str,
-    *,
-    settings: Settings = DEFAULT_SETTINGS,
-    output_dir: Path | None = None,
-    archive: bool = True,
-    archive_dir: Path | None = None,
-    overwrite: bool = False,
-    runner: Runner = subprocess_runner,
-    workspace: Path | None = None,
+    source: Path | str, *, settings: Settings = DEFAULT_SETTINGS, output_dir: Path | None = None,
+    archive: bool = True, archive_dir: Path | None = None, overwrite: bool = False,
+    runner: Runner = subprocess_runner, workspace: Path | None = None,
 ) -> Report:
     """Master one recording. The source is opened read-only and never modified.
 
@@ -565,14 +551,9 @@ def master(
 
     _wrote_or_refuse(target, "normalize-and-encode")
     return Report(
-        source=source,
-        output=target,
-        archived_to=archived_to,
-        before=before,
-        after=parse_output_loudness(applied.stderr),
-        source_bytes=probe.size_bytes,
-        output_bytes=target.stat().st_size if target.exists() else 0,
-        bit_depth=depth,
+        source=source, output=target, archived_to=archived_to, before=before,
+        after=parse_output_loudness(applied.stderr), source_bytes=probe.size_bytes,
+        output_bytes=target.stat().st_size if target.exists() else 0, bit_depth=depth,
     )
 
 
@@ -611,10 +592,7 @@ def _wrote_or_refuse(target: Path, label: str) -> None:
 
 
 def concatenate(
-    parts: Sequence[Path | str],
-    destination: Path | str,
-    *,
-    runner: Runner = subprocess_runner,
+    parts: Sequence[Path | str], destination: Path | str, *, runner: Runner = subprocess_runner
 ) -> Path:
     """Join a recording a device split across several files into one source.
 
@@ -660,35 +638,25 @@ def concatenate(
 
 
 def master_parts(
-    parts: Sequence[Path | str],
-    *,
-    settings: Settings = DEFAULT_SETTINGS,
-    output_dir: Path | None = None,
-    overwrite: bool = False,
-    runner: Runner = subprocess_runner,
+    parts: Sequence[Path | str], *, settings: Settings = DEFAULT_SETTINGS,
+    output_dir: Path | None = None, overwrite: bool = False, runner: Runner = subprocess_runner,
     workspace: Path | None = None,
 ) -> Report:
     """Master a recording a player split into several files, as one set.
 
-    One part is :func:`master` and nothing else. Parts are joined in the order
-    given, never sorted: only the person knows it, and ``REC10`` sorts before
-    ``REC2``. Every refusal decidable by reading comes before the first write,
-    including a probe of every part, because a stream copy across different audio
-    layouts does not fail, it plays at the wrong speed. Every part is archived
-    beside itself; the joined file is written into a fresh private directory, so
-    ffmpeg's ``-y`` cannot replace a file of the person's, and removed after.
+    One part is :func:`master` alone. Parts join in the order given, never
+    sorted (``REC10`` sorts before ``REC2``). Every refusal decidable by reading,
+    a probe of every part included, comes before the first write: a stream copy
+    across layouts does not fail, it plays at the wrong speed. Each part is
+    archived beside itself; the join is written in a fresh private directory.
     """
     paths = [Path(p) for p in parts]
     if not paths:
         raise MasteringRefused(Refusal.SOURCE_MISSING, "no recording was named")
     if len(paths) == 1:
         return master(
-            paths[0],
-            settings=settings,
-            output_dir=output_dir,
-            overwrite=overwrite,
-            runner=runner,
-            workspace=workspace,
+            paths[0], settings=settings, output_dir=output_dir, overwrite=overwrite,
+            runner=runner, workspace=workspace,
         )
 
     for path in paths:
@@ -746,13 +714,8 @@ def master_parts(
     try:
         joined = concatenate(paths, join_dir / joined_name(paths), runner=runner)
         report = master(
-            joined,
-            settings=settings,
-            output_dir=target.parent,
-            archive=False,
-            overwrite=overwrite,
-            runner=runner,
-            workspace=join_dir,
+            joined, settings=settings, output_dir=target.parent, archive=False,
+            overwrite=overwrite, runner=runner, workspace=join_dir,
         )
     finally:
         shutil.rmtree(join_dir, ignore_errors=True)
@@ -777,15 +740,12 @@ def _loudness_payload(loudness: Loudness) -> dict:
 def as_payload(report: Report) -> dict:
     """The report as plain data; ``parts`` and ``archives`` only for a joined run."""
     payload = {
-        "payload_version": PAYLOAD_VERSION,
-        "source": str(report.source),
+        "payload_version": PAYLOAD_VERSION, "source": str(report.source),
         "output": str(report.output),
         "archived_to": str(report.archived_to) if report.archived_to else None,
         "bit_depth": report.bit_depth,
-        "before": _loudness_payload(report.before),
-        "after": _loudness_payload(report.after),
-        "source_bytes": report.source_bytes,
-        "output_bytes": report.output_bytes,
+        "before": _loudness_payload(report.before), "after": _loudness_payload(report.after),
+        "source_bytes": report.source_bytes, "output_bytes": report.output_bytes,
         "size_reduction": round(report.size_reduction, 6),
     }
     if report.parts:

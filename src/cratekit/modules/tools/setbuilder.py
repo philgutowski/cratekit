@@ -28,13 +28,7 @@ from pathlib import Path
 from rapidfuzz import fuzz, process
 
 from cratekit.core import config, routing, tags
-from cratekit.core.naming import (
-    AUDIO_EXTS,
-    NameTemplate,
-    parse_camelot,
-    parse_head,
-    split_head,
-)
+from cratekit.core.naming import AUDIO_EXTS, NameTemplate, parse_camelot, parse_head, split_head
 from cratekit.core.taxonomy import Taxonomy
 
 log = logging.getLogger(__name__)
@@ -42,13 +36,7 @@ log = logging.getLogger(__name__)
 #: The tag fields the index reads, all through ``core.tags``'s one reader, so
 #: this module never opens an audio file itself.
 INDEX_FIELDS: tuple[str, ...] = (
-    "title",
-    "artist",
-    "genre",
-    "initialkey",
-    "energylevel",
-    "voxlevel",
-    "voxgender",
+    "title", "artist", "genre", "initialkey", "energylevel", "voxlevel", "voxgender",
 )
 
 #: Cache format. Bumped when :class:`Track` changes shape, AND when the parse
@@ -209,10 +197,8 @@ def iter_audio(root: Path, exclude: Iterable[Path] = ()) -> Iterator[Path]:
     """Every audio file under ``root``, sorted, less the ``exclude`` folders.
 
     Sorted because the order decides which duplicate survives the collapse.
-    ``exclude`` names folders under the library that are not its own music (the
-    state folder and the download staging folder), matched by :class:`Exclusion`
-    as directories, never by name, and pruned rather than walked. Everything else
-    is yielded as ``sorted(root.rglob("*"))`` yields it.
+    ``exclude`` folders (state, download staging) are pruned by :class:`Exclusion`;
+    the rest is yielded as ``sorted(root.rglob("*"))`` yields it.
     """
     suffixes = frozenset(AUDIO_EXTS)
     for candidate in sorted(Exclusion.under(root, exclude).walk(root)):
@@ -232,12 +218,10 @@ def _identity(status: os.stat_result) -> _Identity:
 class Exclusion:
     """The folders under a root the index leaves out, BY LOCATION.
 
-    A path is not an identity (symlinked mounts, ``..``, letter case, a deeper
-    folder sharing a name), so each configured folder is read once as its device
-    and inode. ``folders`` maps each to the configured path a refusal names;
-    ``ancestors`` holds the directories between the root and an excluded folder,
-    the only ones walked by hand. A folder that is missing, is the root, holds
-    it, or sits outside it excludes nothing.
+    A path is not an identity, so each folder is read once as device and inode.
+    ``folders`` maps each to the configured path a refusal names; ``ancestors``
+    are the directories above one, the only ones walked by hand. A folder that is
+    missing, is or holds the root, or sits outside it excludes nothing.
     """
 
     folders: Mapping[_Identity, Path]
@@ -338,10 +322,7 @@ def _chain_to(folder: Path, top: _Identity) -> list[_Identity]:
 
 
 def parse_entry(
-    raw: Mapping[str, str | None],
-    *,
-    path: str = "",
-    template: NameTemplate,
+    raw: Mapping[str, str | None], *, path: str = "", template: NameTemplate
 ) -> Track | None:
     """Build a :class:`Track` from a tag mapping, or None without a Camelot key.
 
@@ -361,54 +342,38 @@ def parse_entry(
         artist=artist,
         title=clean_title,
         key=key,
-        bpm=_as_float(head_fields.get("bpm")),
+        bpm=_as_number(float, head_fields.get("bpm")),
         genre=(raw.get("genre") or "").strip(),
-        energy=_as_int(raw.get("energylevel")),
-        vox=_as_int(raw.get("voxlevel")),
+        energy=_as_number(int, raw.get("energylevel")),
+        vox=_as_number(int, raw.get("voxlevel")),
         voxgender=(raw.get("voxgender") or "").strip() or None,
         match=match_key(artist, clean_title),
         path=path,
     )
 
 
-def _as_int(value: object) -> int | None:
+def _as_number(kind: type[int] | type[float], value: object) -> int | float | None:
     try:
-        return int(str(value).strip())
-    except (TypeError, ValueError):
-        return None
-
-
-def _as_float(value: object) -> float | None:
-    try:
-        return float(str(value).strip())
+        return kind(str(value).strip())
     except (TypeError, ValueError):
         return None
 
 
 def build_index(
-    root: Path | str,
-    *,
-    template: NameTemplate,
-    cache_path: Path | None = None,
-    reader: TagReader = read_index_tags,
-    lister: FileLister = iter_audio,
+    root: Path | str, *, template: NameTemplate, cache_path: Path | None = None,
+    reader: TagReader = read_index_tags, lister: FileLister = iter_audio,
     exclude: Sequence[Path] = (),
 ) -> tuple[Track, ...]:
     """Scan ``root`` and return the deduplicated index, in walk order.
 
-    ``cache_path`` None means no cache, with no fallback: the cache is the
-    declared state file ``setbuilder_index_cache``, which the caller resolves.
-    An entry is keyed on path, nanosecond modification time AND size (restore
-    tools keep the old time over new bytes), and the whole cache is stamped with
-    the template it was parsed under, since a changed template changes titles
-    without touching a file.
-
-    A parse that yielded nothing is cached as nothing, but a read with no field
-    at all is not cached: it cannot be told from an I/O error on an external
-    volume. Nothing is written when the walk found no file, since that is what
-    an unmounted volume's mountpoint looks like. A failed cache write is logged
-    and swallowed. ``exclude`` is handed to the lister, so an entry cached under
-    an excluded folder is never served and is dropped on the next write.
+    ``cache_path`` None means no cache, never a fallback path: the cache is the
+    declared state file ``setbuilder_index_cache``. Entries are keyed on path,
+    nanosecond mtime AND size (restores keep old times over new bytes), and the
+    cache is stamped with the template, whose change alters titles but no file.
+    A read with no field at all is not cached, as it may be an I/O error. Nothing
+    is written after an empty walk (an unmounted volume's mountpoint), and a
+    failed write is logged and swallowed. Only paths the lister yields, less
+    ``exclude``, are served or written back.
     """
     root = Path(root)
     files = list(lister(root, tuple(exclude)))
@@ -547,30 +512,16 @@ def compatible_keys(anchor_key: str) -> dict[str, str]:
         return {}
     number, letter = parsed
     other = "B" if letter == "A" else "A"
-    tiers: dict[str, str] = {}
-    for code in (
-        f"{_wrap(number - 2)}{letter}",
-        f"{_wrap(number + 3)}{letter}",
-        f"{_wrap(number - 1)}{other}",
-        f"{_wrap(number + 1)}{other}",
-    ):
-        tiers[code] = "wider"
+    wider = ((-2, letter), (3, letter), (-1, other), (1, other))
+    perfect = ((0, letter), (1, letter), (-1, letter), (0, other))
+    tiers = {f"{_wrap(number + step)}{side}": "wider" for step, side in wider}
     tiers[f"{_wrap(number + 2)}{letter}"] = "boost"
-    for code in (
-        f"{_wrap(number)}{letter}",
-        f"{_wrap(number + 1)}{letter}",
-        f"{_wrap(number - 1)}{letter}",
-        f"{_wrap(number)}{other}",
-    ):
-        tiers[code] = "perfect"
+    tiers.update({f"{_wrap(number + step)}{side}": "perfect" for step, side in perfect})
     return tiers
 
 
 def in_band(
-    candidate_bpm: float | None,
-    anchor_bpm: float | None,
-    *,
-    width: float = DEFAULT_BPM_WIDTH,
+    candidate_bpm: float | None, anchor_bpm: float | None, *, width: float = DEFAULT_BPM_WIDTH
 ) -> bool:
     """True when the candidate sits within ``width`` of the anchor, its half, or its double.
 
@@ -588,10 +539,7 @@ def in_band(
 
 
 def build_pool(
-    anchor: Anchor,
-    index: Sequence[Track],
-    *,
-    width: float = DEFAULT_BPM_WIDTH,
+    anchor: Anchor, index: Sequence[Track], *, width: float = DEFAULT_BPM_WIDTH
 ) -> tuple[tuple[Track, str], ...]:
     """Filter the index to harmonically and rhythmically compatible candidates.
 
@@ -618,10 +566,7 @@ def harmonic_score(tier: str) -> float:
 
 
 def bpm_score(
-    candidate: float | None,
-    anchor: float | None,
-    *,
-    width: float = DEFAULT_BPM_WIDTH,
+    candidate: float | None, anchor: float | None, *, width: float = DEFAULT_BPM_WIDTH
 ) -> float:
     """Proximity to the nearest of the anchor, its half, or its double; neutral when unknown."""
     if candidate is None or anchor is None:
@@ -646,12 +591,7 @@ def energy_score(candidate: int | None, anchor: int | None, role: str) -> float:
     return max(0.0, 1.0 - abs(delta) / 8.0)
 
 
-def vocal_score(
-    candidate: int | None,
-    anchor: int | None,
-    *,
-    threshold: float | None,
-) -> float:
+def vocal_score(candidate: int | None, anchor: int | None, *, threshold: float | None) -> float:
     """Penalize a vocal forward companion beside a vocal forward anchor.
 
     The threshold is passed in (D7) so the ranker imports no analysis module; an
@@ -708,12 +648,8 @@ def _reason(track: Track, tier: str, anchor: Anchor, role: str, affinity: float)
 
 
 def rank(
-    pool: Sequence[tuple[Track, str]],
-    anchor: Anchor,
-    *,
-    taxonomy: Taxonomy,
-    width: float = DEFAULT_BPM_WIDTH,
-    weights: Weights = DEFAULT_WEIGHTS,
+    pool: Sequence[tuple[Track, str]], anchor: Anchor, *, taxonomy: Taxonomy,
+    width: float = DEFAULT_BPM_WIDTH, weights: Weights = DEFAULT_WEIGHTS,
     vox_threshold: float | None = None,
 ) -> tuple[Scored, ...]:
     """Score the pool and order it, best first.
@@ -783,12 +719,10 @@ def match_in_index(
 ) -> AnchorMatch:
     """Resolve ``query`` against the index, refusing rather than guessing.
 
-    An exact hit on the comparison key wins outright: ``token_set_ratio`` scores
-    a subset at 100, so no threshold separates a title from its extended mix.
-    Then every fuzzy hit at the threshold is collected, and a hit counts only
-    when it holds every typed word, give or take a slip. One such hit resolves;
-    several are a question for the person; hits that all lack part of the name
-    come back ``partial``. Candidates order by score, match key and path.
+    An exact hit on the comparison key wins outright (``token_set_ratio`` scores
+    a subset at 100). Then a fuzzy hit counts only when it holds every typed
+    word, give or take a slip: one resolves, several are a question, and hits
+    that all lack part of the name come back ``partial``.
     """
     wanted = match_key("", query)
     if not wanted or not index:
@@ -840,11 +774,7 @@ def _unresolved(query: str, why: str) -> Anchor:
 
 
 def resolve_anchor(
-    query: str,
-    index: Sequence[Track],
-    *,
-    key: str | None = None,
-    bpm: float | None = None,
+    query: str, index: Sequence[Track], *, key: str | None = None, bpm: float | None = None,
     web_lookup: WebKeyLookup | None = None,
 ) -> Anchor:
     """Resolve the anchor against the library, or against supplied values.
@@ -894,12 +824,9 @@ def resolve_anchor(
         derived = web_lookup("", query) or {}
         canonical = canonical_key(str(derived.get("key") or ""))
         if canonical:
+            tempo = _as_number(float, derived.get("bpm"))
             return Anchor(
-                key=canonical,
-                bpm=_as_float(derived.get("bpm")),
-                owned=False,
-                display=query,
-                key_needs_confirming=True,
+                key=canonical, bpm=tempo, owned=False, display=query, key_needs_confirming=True
             )
 
     return _unresolved(
@@ -923,11 +850,7 @@ def _pick_side(ranked: Sequence[Scored], side: str, count: int) -> tuple[Scored,
 
 
 def build_plan(
-    ranked: Sequence[Scored],
-    anchor: Anchor,
-    *,
-    count: int | None = None,
-    role: str | None = None,
+    ranked: Sequence[Scored], anchor: Anchor, *, count: int | None = None, role: str | None = None
 ) -> SetPlan:
     """Compose the ranked pool and one suggested sequence.
 
@@ -949,18 +872,10 @@ def build_plan(
 
 
 def build_set(
-    query: str,
-    index: Sequence[Track],
-    *,
-    taxonomy: Taxonomy,
-    key: str | None = None,
-    bpm: float | None = None,
-    count: int | None = None,
-    role: str | None = None,
-    width: float = DEFAULT_BPM_WIDTH,
-    weights: Weights = DEFAULT_WEIGHTS,
-    vox_threshold: float | None = None,
-    web_lookup: WebKeyLookup | None = None,
+    query: str, index: Sequence[Track], *, taxonomy: Taxonomy, key: str | None = None,
+    bpm: float | None = None, count: int | None = None, role: str | None = None,
+    width: float = DEFAULT_BPM_WIDTH, weights: Weights = DEFAULT_WEIGHTS,
+    vox_threshold: float | None = None, web_lookup: WebKeyLookup | None = None,
 ) -> SetPlan:
     """The whole engine over a prepared index. No input, no output, no network."""
     anchor = resolve_anchor(query, index, key=key, bpm=bpm, web_lookup=web_lookup)
@@ -1002,19 +917,13 @@ def as_payload(plan: SetPlan) -> dict:
 
 
 def _scored_payload(scored: Scored) -> dict:
+    track = scored.track
     return {
-        "artist": scored.track.artist,
-        "title": scored.track.title,
-        "key": scored.track.key,
+        "artist": track.artist, "title": track.title, "key": track.key,
         # See as_payload: the serialized key avoids the tag spelling on purpose.
-        "tempo": scored.track.bpm,
-        "genre": scored.track.genre,
-        "energy": scored.track.energy,
-        "vox": scored.track.vox,
-        "path": scored.track.path,
-        "tier": scored.tier,
-        "role": scored.role,
-        "score": round(scored.score, 6),
+        "tempo": track.bpm,
+        "genre": track.genre, "energy": track.energy, "vox": track.vox, "path": track.path,
+        "tier": scored.tier, "role": scored.role, "score": round(scored.score, 6),
         "reason": scored.reason,
     }
 

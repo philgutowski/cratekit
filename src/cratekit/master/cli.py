@@ -50,54 +50,35 @@ def build(parser, entry) -> None:
     parser.add_argument(
         "recording",
         nargs="+",
-        help=(
-            "the set recording to master, as a path to a wav, aiff or flac file. "
-            "A recording the player split into several files is named as every "
-            "part, in order; they are joined in the order given and never sorted"
-        ),
+        help="the set recording to master, as a path to a wav, aiff or flac file. "
+        "A recording the player split into several files is named as every "
+        "part, in order; they are joined in the order given and never sorted",
     )
     parser.add_argument(
-        "--job",
-        default=None,
-        metavar="JOB_ID",
+        "--job", default=None, metavar="JOB_ID",
         help="continue the mastering already queued under this identifier",
     )
     parser.add_argument(
-        "--output-dir",
-        default=None,
-        metavar="DIR",
-        help=(
-            "where the mastered file lands; beside the recording by default, and "
-            "never over the recording itself under any value"
-        ),
+        "--output-dir", default=None, metavar="DIR",
+        help="where the mastered file lands; beside the recording by default, and "
+        "never over the recording itself under any value",
     )
     parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help=(
-            "replace an existing master rather than refusing. The previous one is "
-            "not archived and a failed encode leaves nothing to fall back on"
-        ),
+        "--overwrite", action="store_true",
+        help="replace an existing master rather than refusing. The previous one is "
+        "not archived and a failed encode leaves nothing to fall back on",
     )
+    low, high = mastering.LUFS_RANGE
     parser.add_argument(
-        "--lufs",
-        type=float,
-        default=None,
-        metavar="N",
-        help=(
-            f"the integrated loudness target, between {mastering.LUFS_RANGE[0]:g} "
-            f"and {mastering.LUFS_RANGE[1]:g}; "
-            f"{mastering.DEFAULT_SETTINGS.target_lufs:g} by default"
-        ),
+        "--lufs", type=float, default=None, metavar="N",
+        help=f"the integrated loudness target, between {low:g} and {high:g}; "
+        f"{mastering.DEFAULT_SETTINGS.target_lufs:g} by default",
     )
     parser.set_defaults(_handler=master_recording)
 
 
 def frozen_payload(
-    recording: str | Sequence[str],
-    output_dir: str | None,
-    overwrite: bool,
-    *,
+    recording: str | Sequence[str], output_dir: str | None, overwrite: bool, *,
     lufs: float | None = None,
 ) -> dict[str, Any]:
     """What the queued job carries, and the only thing the resume is rebuilt from.
@@ -141,14 +122,12 @@ def settings_for(lufs: float | None) -> mastering.Settings:
     try:
         return mastering.Settings(target_lufs=float(lufs))
     except ValueError as exc:
+        low, high = mastering.LUFS_RANGE
+        step = f"pass --lufs between {low:g} and {high:g}, or leave it out for the default; "
         raise refuse(
             "target-lufs-out-of-range",
             str(exc),
-            steps=(
-                f"pass --lufs between {mastering.LUFS_RANGE[0]:g} and "
-                f"{mastering.LUFS_RANGE[1]:g}, or leave it out for the default; "
-                f"nothing was queued, read or written",
-            ),
+            steps=(step + "nothing was queued, read or written",),
             origin=_ORIGIN,
             detail={"lufs": str(lufs)},
         ) from exc
@@ -196,10 +175,8 @@ def master_recording(ctx) -> Envelope:
     if not all(parts):
         # ``source-missing``: its reserved remedy fits an empty positional too.
         raise refuse(
-            "source-missing",
-            "master needs the recording to work on",
-            steps=("pass the path to the recording after the verb",),
-            origin=_ORIGIN,
+            "source-missing", "master needs the recording to work on",
+            steps=("pass the path to the recording after the verb",), origin=_ORIGIN,
         )
     # Refused before anything is queued: a job whose only outcome is this
     # refusal would be found by whoever resumes it.
