@@ -379,38 +379,20 @@ def test_a_track_the_account_lists_twice_is_one_membership_and_counted_once(
     assert _live_members(cfg, playlist_id) == ["Held1", "New1"]
 
 
-class _Row:
-    def __init__(self, row_id: str, name: str, *, parent: str = "root") -> None:
-        self.ID = row_id
-        self.Name = name
-        self.ParentID = parent
-        self.Attribute = 0
-        self.rb_local_deleted = 0
+def test_the_name_is_asked_only_of_a_playlist_no_record_gives_another_pass_and_only_if_read():
+    from types import SimpleNamespace
 
+    def row(row_id: str) -> SimpleNamespace:
+        return SimpleNamespace(ID=row_id, Name=ACCOUNT, ParentID="root", Attribute=0, rb_local_deleted=0)
 
-class _Db:
-    def __init__(self, *rows: _Row) -> None:
-        self._rows = {row.ID: row for row in rows}
-
-    def get_playlist(self, ID=None):  # noqa: N803 - the binding's spelling
-        return self._rows.get(ID)
-
-
-def test_the_name_is_not_asked_of_a_playlist_a_record_gives_another_pass():
-    mine, theirs = _Row("1", ACCOUNT), _Row("2", ACCOUNT)
-    under = {"1": mine, "2": theirs}
-    found = refill.locate(
-        _Db(mine, theirs), under, (), others=frozenset({"2"}), account="pl-a", name=ACCOUNT, job_id="j"
-    )
+    under = {"1": row("1"), "2": row("2")}
+    db = SimpleNamespace(get_playlist=lambda ID=None: under.get(ID))  # noqa: N803
+    found = refill.locate(db, under, (), others=frozenset({"2"}), account="pl-a", name=ACCOUNT, job_id="j")
     assert isinstance(found, refill.Target)
     assert (found.playlist_id, found.found_by) == ("1", refill.BY_NAME)
-
-
-def test_the_name_is_not_trusted_while_a_session_record_cannot_be_read():
-    mine = _Row("1", ACCOUNT)
-    found = refill.locate(
-        _Db(mine), {"1": mine}, (), unreadable=1, account="pl-a", name=ACCOUNT, job_id="j"
-    )
+    # Not trusted while a session record cannot be read.
+    mine = {"1": under["1"]}
+    found = refill.locate(db, mine, (), unreadable=1, account="pl-a", name=ACCOUNT, job_id="j")
     assert isinstance(found, refill.Unfound) and found.why == refill.UNREADABLE
 
 

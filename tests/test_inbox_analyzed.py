@@ -357,13 +357,12 @@ def test_no_analyze_playlist_still_asks_and_a_batch_named_analyze_is_refused(nat
     assert sorted(p.name for p in staged) == ["Alpha.flac"]
 
 
-def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine):
+def test_with_no_acknowledgment_then_on_the_bridge_the_verb_refuses_before_the_gate(machine):
     code, refused = drive(VERB)
     assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
     assert refused["cause"]["reason"] == "backup-acknowledgment-missing", refused
-
-
-def test_an_intake_tree_on_the_bridge_is_refused_naming_the_cutover(acknowledged):
+    # Acknowledged, an intake tree on the bridge is refused naming the cutover.
+    session.record_acknowledgment(machine, terminal=lambda: True)
     code, refused = drive(VERB)
     assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
     assert refused["cause"]["reason"] == "tree-unconverged", refused
@@ -392,15 +391,12 @@ def test_the_digest_names_every_row_and_its_answer():
     assert analyzed.identity(base) != analyzed.identity(waiting)
 
 
-def test_the_playlist_is_inbox_slash_analyze_as_the_brief_names_it():
+def test_the_playlist_is_inbox_slash_analyze_and_no_account_playlist_takes_its_name():
     """A literal, so a rename of the constant is a failure and not X equals X."""
     assert native.ANALYZE == "Analyze"
     assert sync_land.ANALYZE_PLAYLIST == f"{DECLARED.intake.display} / {native.ANALYZE}"
     assert sync_land.ANALYZE_PLAYLIST == "INBOX / Analyze"
-
-
-def test_an_account_playlist_named_analyze_lands_dated_and_never_as_analyze():
-    """U175: the date at the end of every account playlist's name keeps it off ``Analyze``."""
+    # U175: the date at the end of every account playlist's name keeps it off ``Analyze``.
     from cratekit.intake import batch_name
     assert batch_name.ANALYZE == native.ANALYZE
     named = batch_name.inbox_names(["Analyze", "Sunset"], ("Analyze",), batch="2026-10-28 x")

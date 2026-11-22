@@ -359,7 +359,7 @@ def test_a_linked_file_is_never_renamed_through_its_link(configured, tmp_path):
     assert "linked file" in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
 
-def test_an_interrupt_between_the_claim_and_the_rename_leaves_no_stub(
+def test_an_interrupt_or_a_refused_rename_after_the_claim_leaves_no_stub(
     configured, monkeypatch
 ):
     folder, path = _one_accepted(configured, b"fLaC mine")
@@ -373,11 +373,7 @@ def test_an_interrupt_between_the_claim_and_the_rename_leaves_no_stub(
     assert _names(folder) == {LONG}
     assert path.read_bytes() == b"fLaC mine"
 
-
-def test_a_refused_rename_is_named_and_leaves_no_stub(configured, monkeypatch):
-    folder, path = _one_accepted(configured)
-
-    def refused(self, target):
+    def refused(self, target):  # A REFUSED RENAME is named, and leaves no stub either.
         raise PermissionError(13, "Permission denied")
 
     monkeypatch.setattr(Path, "rename", refused)
@@ -405,7 +401,7 @@ def test_two_accepted_proposals_for_one_name_rename_neither(configured):
     assert envelope["cause"]["detail"]["incomplete_count"] == 2
 
 
-def test_a_row_that_appears_after_the_gate_holds_the_file(configured, monkeypatch):
+def test_a_row_after_the_gate_holds_the_file_and_an_unreadable_collection_refuses(configured, monkeypatch):
     folder, path = _one_accepted(configured)
     reads = iter([(), (str(path),)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
@@ -415,10 +411,6 @@ def test_a_row_that_appears_after_the_gate_holds_the_file(configured, monkeypatc
     assert _actions(envelope["data"]) == {LONG: "rename"}
     assert "after the plan was approved" in envelope["cause"]["detail"]["incomplete"][0]["why"]
     assert envelope["data"]["totals"]["renamed"] == 0
-
-
-def test_an_unreadable_collection_refuses_and_renames_nothing(configured, monkeypatch):
-    folder, path = _one_accepted(configured)
     # No database was ever built under this library, so the read fails for real.
     monkeypatch.setattr(naming_cli, "_recorded", _REAL_RECORDED)
     code, envelope = _answer("apply")
@@ -493,8 +485,20 @@ def _after_the_gate(monkeypatch, act) -> None:
     monkeypatch.setattr(naming_cli, "_recorded", recorded)
 
 
-def test_a_name_taken_after_the_gate_is_never_overwritten(configured, monkeypatch):
+def test_a_name_refused_or_taken_after_the_gate_is_named_and_never_overwritten(configured, monkeypatch):
     folder, path = _one_accepted(configured, b"fLaC mine")
+
+    def refused(target):  # A NAME THE FILESYSTEM REFUSES TO CLAIM is named.
+        raise OSError(63, "File name too long")
+
+    claim = naming_cli.naming.claim_target
+    monkeypatch.setattr(naming_cli.naming, "claim_target", refused)
+    code, envelope = _answer("apply")
+    assert _names(folder) == {LONG}
+    assert code == int(ExitCode.PRECONDITION)
+    assert "File name too long" in envelope["cause"]["detail"]["incomplete"][0]["why"]
+    monkeypatch.setattr(naming_cli.naming, "claim_target", claim)
+    # A NAME TAKEN AFTER THE GATE is never overwritten.
     _after_the_gate(monkeypatch, lambda: _audio(folder, SHORT, b"fLaC theirs"))
     code, envelope = _answer("apply")
     assert (folder / SHORT).read_bytes() == b"fLaC theirs"
@@ -514,19 +518,6 @@ def test_a_file_deleted_after_the_gate_is_named_and_not_called_renamed(
     assert "no longer there" in envelope["cause"]["detail"]["incomplete"][0]["why"]
     assert envelope["data"]["totals"]["renamed"] == 0
     assert _names(folder) == set()
-
-
-def test_a_name_the_filesystem_refuses_to_claim_is_named(configured, monkeypatch):
-    folder, path = _one_accepted(configured)
-
-    def refused(target):
-        raise OSError(63, "File name too long")
-
-    monkeypatch.setattr(naming_cli.naming, "claim_target", refused)
-    code, envelope = _answer("apply")
-    assert _names(folder) == {LONG}
-    assert code == int(ExitCode.PRECONDITION)
-    assert "File name too long" in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
 
 def test_a_root_limits_the_apply_in_any_case_and_a_shared_prefix_is_not_the_folder(configured):

@@ -395,13 +395,6 @@ def _refused_before_the_gate(cfg: config.Config, code: int, envelope: dict, reas
     assert not [r for r in session.records(cfg) if r.workflow == rotate.WORKFLOW]
 
 
-def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine):
-    _cut_over_intake(machine)
-    code, envelope = drive(VERB)
-    assert code == int(ExitCode.ACK_REQUIRED), envelope
-    assert "gate" not in (envelope.get("cause") or {}).get("detail", {})
-
-
 def test_an_intake_tree_on_the_bridge_is_refused_naming_the_cutover(acknowledged):
     code, envelope = drive(VERB)
     _refused_before_the_gate(acknowledged, code, envelope, "tree-unconverged")
@@ -588,8 +581,19 @@ def _after(**changes) -> rb_writer.NodeTables:
     return _tables(**merged)
 
 
-def test_the_judge_admits_exactly_the_planned_change():
+def test_the_judge_admits_exactly_the_planned_change_and_refuses_one_never_made_or_a_renumbering():
     assert _judge(_after()) == []
+    # Asked whether it changed or not: a move or a removal that did nothing is a refusal.
+    assert sorted(_judge(_tables())) == [
+        "the djmdSongPlaylist row 'm1' of the removed playlist 'b2' is still live",
+        "the moved playlist 'b1' is not live under the planned 'old'",
+        "the removed playlist 'b2' does not carry the marker",
+    ]
+    # The binding renumbers INBOX and Old; a position moved anywhere else is not that.
+    base = _tables(playlists={"g1": ("g1", "genre", "genre-root", 1, 0)})
+    after = _after(playlists={"g1": ("g1", "genre", "genre-root", 2, 0)})
+    violations = rb_writer.node_change_violations(base, after, moved={"b1": "old"}, removed=["b2"])
+    assert len(violations) == 1 and "['Seq']" in violations[0], violations
 
 
 @pytest.mark.parametrize(
@@ -614,35 +618,14 @@ def test_the_judge_refuses_every_change_the_plan_does_not_explain(after, expecte
     assert len(violations) == 1 and expected in violations[0], violations
 
 
-def test_the_judge_refuses_a_renumbering_outside_the_parents_a_node_left_or_joined():
-    """The binding renumbers INBOX and Old. A position moved anywhere else is not that."""
-    base = _tables(playlists={"g1": ("g1", "genre", "genre-root", 1, 0)})
-    after = _after(playlists={"g1": ("g1", "genre", "genre-root", 2, 0)})
-    violations = rb_writer.node_change_violations(base, after, moved={"b1": "old"}, removed=["b2"])
-    assert len(violations) == 1 and "['Seq']" in violations[0], violations
-
-
-def test_the_judge_refuses_a_planned_change_that_was_never_made():
-    """Asked whether it changed or not: a move or a removal that did nothing is a refusal."""
-    violations = _judge(_tables())
-    assert sorted(violations) == [
-        "the djmdSongPlaylist row 'm1' of the removed playlist 'b2' is still live",
-        "the moved playlist 'b1' is not live under the planned 'old'",
-        "the removed playlist 'b2' does not carry the marker",
-    ]
-
-
 def test_a_commit_naming_the_rotation_tables_admits_a_node_marker_and_no_content_marker():
     removal = {rb_writer.SOFT_DELETE_COLUMN, "updated_at"}
-    assert (
-        rb_writer.guard_violations(
-            [], [(rb_writer.PLAYLIST_TABLE, removal)], [], removals=rotate.REMOVALS
-        )
-        == []
-    )
-    refused = rb_writer.guard_violations(
-        [], [(rb_writer.CONTENT_TABLE, removal)], [], removals=rotate.REMOVALS
-    )
+
+    def judged(table: str) -> list[str]:
+        return rb_writer.guard_violations([], [(table, removal)], [], removals=rotate.REMOVALS)
+
+    assert judged(rb_writer.PLAYLIST_TABLE) == []
+    refused = judged(rb_writer.CONTENT_TABLE)
     assert len(refused) == 1 and "djmdContent" in refused[0]
 
 
@@ -724,7 +707,9 @@ def test_a_template_without_the_section_declares_no_old_folder():
     assert DECLARED.intake_old == taxonomy.Node("inbox_old", "Old")
 
 
-def test_the_name_a_landing_gives_is_the_shape_the_rotation_recognises(machine, monkeypatch):
+def test_the_name_a_landing_gives_is_the_rotations_shape_and_no_acknowledgment_refuses(
+    machine, monkeypatch
+):
     """One owner of the shape: what ``readable`` names, ``is_default_shape`` knows."""
     from cratekit.intake import batch_name
     monkeypatch.setattr(batch_name, "today", lambda: TODAY)
@@ -734,6 +719,11 @@ def test_the_name_a_landing_gives_is_the_shape_the_rotation_recognises(machine, 
     assert batch_name.is_default_shape("2026-10-03 Tidal playlists 2")
     for name in ("listen later", "2026-10-03", "2026-10-03T101010Z-1_inboxed", "3_9_26 phil"):
         assert not batch_name.is_default_shape(name), name
+    # With no acknowledgment the verb refuses before the gate, on a cut over tree.
+    _cut_over_intake(machine)
+    code, envelope = drive(VERB)
+    assert code == int(ExitCode.ACK_REQUIRED), envelope
+    assert "gate" not in (envelope.get("cause") or {}).get("detail", {})
 
 
 def test_a_batch_created_late_in_the_evening_is_aged_from_its_local_day(
