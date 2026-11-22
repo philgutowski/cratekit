@@ -21,7 +21,7 @@ from cratekit.label import catalogue, harvest
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_cli, pair_model, pair_read, twins, twins_cli
+from cratekit.sync import pair_cli, twins, twins_cli
 from cratekit.write import playlist_pair
 from tests import outbound_fakes
 from tests.cli_drive import drive
@@ -557,6 +557,7 @@ def test_the_mirrors_link_to_a_track_wins_and_a_link_to_a_removed_row_falls_thro
 
 def test_the_library_keeps_every_landed_account_playlists_source(world, cfg, monkeypatch):
     """Every landed playlist's source is kept, not only the first a spent generator gave."""
+    from cratekit.sync import pair_read
     monkeypatch.setattr(
         pair_read,
         "landed_inbox_playlists",
@@ -774,6 +775,7 @@ def _registry_free():
 @pytest.mark.parametrize("top", ["BY GENRE + ENERGY", "INBOX", "INSPIRATION"])
 def test_the_pair_rule_still_refuses_a_playlist_under_cratekits_own_trees(top):
     from cratekit.core.cause import CratekitError
+    from cratekit.sync import pair_model
 
     tops = pair_cli.generated_tops(taxonomy.default_taxonomy(), _registry_free())
     assert top in tops[1]
@@ -786,6 +788,7 @@ def test_the_pair_rule_still_refuses_a_playlist_under_cratekits_own_trees(top):
 
 
 def test_the_pair_rule_lets_a_twin_pair():
+    from cratekit.sync import pair_model
     tops = pair_cli.generated_tops(taxonomy.default_taxonomy(), _registry_free())
     found = playlist_pair.Playlist(
         playlist_id="p1",

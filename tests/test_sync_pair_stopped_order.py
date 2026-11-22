@@ -16,7 +16,7 @@ import pytest
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs, tidal_account
-from cratekit.sync import pair_cli, pair_plan, pair_stopped
+from cratekit.sync import pair_cli, pair_stopped
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -109,6 +109,7 @@ def _ids(*content_ids: str) -> list[str]:
 
 def _agreeing_at_once(monkeypatch) -> None:
     """Two readings agree however close together, as if minutes had passed between runs (U234)."""
+    from cratekit.sync import pair_plan
     monkeypatch.setattr(pair_plan, "AGREE_AFTER", timedelta(0))
 
 
@@ -1041,6 +1042,7 @@ def test_a_reading_that_moved_before_it_settled_starts_again(world, strayed, mon
 
 def test_a_differing_order_waits_the_agreement_window(world, strayed, monkeypatch):
     """With the window kept, a settled reading and one new reading agree with nothing yet."""
+    from cratekit.sync import pair_plan
     closer, account_id, _run = strayed
     plan_only()
     plan_only()

@@ -20,7 +20,7 @@ from cratekit.core import config, held_plan
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs, tidal_account
-from cratekit.sync import pair_cli, pair_model, pair_plan, pair_write
+from cratekit.sync import pair_cli
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -50,6 +50,7 @@ def owed(world):
 
 def _agreeing_at_once(monkeypatch) -> None:
     """Two readings agree however close together, as if minutes had passed between runs."""
+    from cratekit.sync import pair_plan
     monkeypatch.setattr(pair_plan, "AGREE_AFTER", timedelta(0))
 
 
@@ -624,6 +625,7 @@ def test_a_write_that_keeps_no_record_sends_no_order(world, owed, cfg, monkeypat
 
 def test_two_readings_agree_only_once_minutes_apart(world, owed, cfg, monkeypatch):
     """The agreement rule's gap, AGREE_AFTER, is what a later run waits out."""
+    from cratekit.sync import pair_model
     opener, account_id = owed
     _stopping_after(world, monkeypatch, account_id, 1)
     code, stopped = sync()
@@ -670,6 +672,8 @@ def test_a_reading_kept_from_before_the_moves_is_no_agreement(world, owed, cfg, 
 def test_the_settle_window_counts_the_time_spent_on_other_writes(world, owed, cfg, monkeypatch):
     """Only what is left of the window is waited."""
     from datetime import UTC, datetime
+
+    from cratekit.sync import pair_model
 
     start = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
     ticks = iter(range(0, 10_000, 20))
@@ -801,6 +805,8 @@ def test_a_continues_settle_window_is_counted_from_when_the_moves_began(
     """A continue waits only what is left of the window the moves began."""
     from datetime import UTC, datetime
 
+    from cratekit.sync import pair_model
+
     _opener, account_id = owed
     _stopping_after(world, monkeypatch, account_id, 1)
     code, stopped = sync()
@@ -813,7 +819,7 @@ def test_a_continues_settle_window_is_counted_from_when_the_moves_began(
 
 def test_a_rekordbox_side_to_be_made_is_under_gig_ready_only_inside_the_folder(cfg):
     """The same scope rule for a pair whose rekordbox side is new."""
-    from cratekit.sync import pair_discover
+    from cratekit.sync import pair_discover, pair_plan
     from cratekit.write import playlist_pair
 
     made = playlist_pair.Playlist(
@@ -1656,7 +1662,7 @@ def test_a_finish_whose_plan_read_no_account_passes_no_agreed_reading():
     A stand in that does not take ``agreed`` is asked as before. No sync makes
     such a plan, so it is built by hand.
     """
-    from cratekit.sync import pair_merge
+    from cratekit.sync import pair_merge, pair_write
     from cratekit.write import playlist_pair
 
     one = pair_cli.PairPlan(
@@ -1711,6 +1717,7 @@ def test_with_no_stopped_write_an_unread_track_follows_the_one_listed_before_it(
     ordered, listed, expected
 ):
     """R-1264's rule, unchanged where no write stopped: behind the track listed before it."""
+    from cratekit.sync import pair_plan
     assert pair_plan._with_unread_placed(ordered, listed) == expected
     assert pair_plan._with_unread_placed(ordered, listed, ()) == expected
 
@@ -1762,6 +1769,7 @@ def test_at_a_finish_an_unread_track_is_placed_by_the_stopped_writes_target(
     ordered, listed, target, expected
 ):
     """R-1432: each unread id the target names stands behind the track the target puts before it."""
+    from cratekit.sync import pair_plan
     assert pair_plan._with_unread_placed(ordered, listed, target) == expected
 
 
@@ -2031,6 +2039,7 @@ TARGET = ["t2", "t3", "t4", "t9", "t1"]
 )
 def test_a_settled_reorder_moved_a_readable_track_only_when_one_moved(kept, reading, unread, moved):
     """R-1446: the settled reading and now are compared with every unread id left out."""
+    from cratekit.sync import pair_plan
     settled = pairs.StopReading("run-1", tuple(kept), "2026-11-07T00:00:00+00:00", settled=True)
     write = _write_from(START, TARGET)
     assert pair_plan._readable_moved(write, settled, reading, unread, moved_nothing=False) is moved
@@ -2038,6 +2047,7 @@ def test_a_settled_reorder_moved_a_readable_track_only_when_one_moved(kept, read
 
 def test_with_no_settled_reading_a_reorder_stands_as_read():
     """R-1446: a reorder read with no settled reading kept to compare is left as it was read."""
+    from cratekit.sync import pair_plan
     write = _write_from(START, TARGET)
     reading = ["t1", "t2", "t3", "t9", "t4"]
     assert pair_plan._readable_moved(write, None, reading, {"t9"}, moved_nothing=False)
@@ -2061,12 +2071,14 @@ def test_after_a_write_that_sent_nothing_only_readable_tracks_off_its_path_are_a
     reading, unread, moved
 ):
     """R-1446: a write known to have sent no move is off its path only where a readable track is."""
+    from cratekit.sync import pair_plan
     write = _write_from(START, TARGET)
     assert pair_plan._readable_moved(write, None, reading, unread, moved_nothing=True) is moved
 
 
 def test_the_unread_tracks_moved_since_the_stop_are_those_off_the_order_both_readings_share():
     """R-1446: the moved unread ids are those outside the longest run both orders share, readable ids held."""
+    from cratekit.sync import pair_plan
     write = _write_from(START, TARGET)
     kept = pairs.StopReading("run-1", ("t9", "t1", "t8", "t2", "t3", "t4"), "2026-11-07T00:00:00+00:00", settled=True)
     assert pair_plan._unread_moved(

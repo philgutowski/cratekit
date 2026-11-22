@@ -18,7 +18,7 @@ import pytest
 
 from cratekit.core import held_plan
 from cratekit.modules.outbound import tidal_account
-from cratekit.sync import pair_cli, pair_plan, pair_read, pair_stopped
+from cratekit.sync import pair_cli, pair_stopped
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
 
@@ -423,6 +423,8 @@ def test_a_stop_from_before_the_pair_was_marked_again_is_not_its_stop():
     from datetime import timedelta
     from types import SimpleNamespace
 
+    from cratekit.sync import pair_read
+
     write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
     reader = SimpleNamespace(stopped=(write, ()))
 
@@ -444,6 +446,8 @@ def test_a_first_sync_reads_the_stop_on_its_account_playlist_whatever_the_mark()
     """R-1376: a pair released after a stop and paired again has no snapshot, and the stop predates the mark."""
     from datetime import timedelta
     from types import SimpleNamespace
+
+    from cratekit.sync import pair_read
 
     write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
     reader = SimpleNamespace(stopped=(write, ()))
@@ -488,6 +492,7 @@ def test_a_carried_directory_that_cannot_be_listed_is_named_never_read_as_none(c
 
 def test_a_carried_copy_gives_way_to_its_own_runs_steps_kept_under_the_same_plan(cfg):
     """The run's steps say whether the pair finished, which the copy, taken before, cannot."""
+    from cratekit.sync import pair_read
     began = {"account": _WHEN.isoformat(), "ordering": _ordering()}
     held_plan.Steps("run-1", "d1", {"pl-1": {**began, "done": "pl-1"}}).begin()
     held_plan.carry(held_plan.Steps("run-1", "d1", {"pl-1": dict(began)}), "pl-1")
@@ -724,6 +729,7 @@ def test_a_kept_reading_counts_only_for_its_run_at_or_after_its_moves():
     from types import SimpleNamespace
 
     from cratekit.modules.outbound import pairs
+    from cratekit.sync import pair_plan
 
     def held(at: str, run: str = "run-a"):
         return SimpleNamespace(stop_seen=pairs.StopReading(run, ("t1", "t2"), at))

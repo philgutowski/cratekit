@@ -14,7 +14,7 @@ import pytest
 from cratekit.core import held_plan, provider_gate
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_calls, pair_cli, pair_write
+from cratekit.sync import pair_calls, pair_cli
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -307,6 +307,7 @@ def test_a_stop_in_a_run_whose_plan_was_not_held_says_it_cannot_be_continued(
 
 def test_made_here_reads_only_a_pair_made_for_this_playlist_in_this_folder():
     from cratekit.modules.outbound.pairs import Pair
+    from cratekit.sync import pair_write
 
     one = pair_cli.PairPlan.__new__(pair_cli.PairPlan)
     object.__setattr__(one, "target", pair_cli.Target("", "rb-1", False, "GIG READY", "t"))

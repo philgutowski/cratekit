@@ -19,7 +19,7 @@ from cratekit.label import catalogue
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import ledger, pairs
-from cratekit.sync import pair_cli, pair_read
+from cratekit.sync import pair_cli
 from tests import outbound_fakes
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, catalogue_factory
@@ -1048,6 +1048,7 @@ def test_one_row_landed_in_two_inbox_playlists_is_one_row(world, cfg, tmp_path):
 
 def test_each_landed_file_is_read_once_per_plan(world, cfg, tmp_path, monkeypatch):
     """U229. This pair's own landing and every landing are one read of each file."""
+    from cratekit.sync import pair_read
     w = world(account=("1",), rekordbox=("1",))
     assert sync(w.args())[0] == int(ExitCode.OK)
     _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))

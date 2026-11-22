@@ -17,7 +17,7 @@ import pytest
 from cratekit.core import held_plan, jobs
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_cli, pair_plan
+from cratekit.sync import pair_cli
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
@@ -259,6 +259,7 @@ def test_a_stop_in_the_middle_of_an_order_sends_no_move_again_and_a_later_sync_f
     order, pending. Two later readings that agree finish it from rekordbox, as
     U225 finishes a stopped write.
     """
+    from cratekit.sync import pair_plan
     made = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
     assert sync(made.args())[0] == int(ExitCode.OK)
     gate_the_account(made.account, monkeypatch)
