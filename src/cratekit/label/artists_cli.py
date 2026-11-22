@@ -58,7 +58,6 @@ OUTCOMES: tuple[str, ...] = (
 
 
 def build_artists(parser, entry) -> None:
-    del entry
     parser.set_defaults(_handler=label_artists)
 
 
@@ -108,20 +107,13 @@ class _Run:
         self.counts[outcome] += 1
         # Keyed by the item when no release is read for it, since such an item
         # may name another item's release.
-        key = (
-            f"item.{subject.item_id}"
-            if outcome == UNADDRESSED
-            else f"release.{subject.release_id}"
+        key = f"item.{subject.item_id}" if outcome == UNADDRESSED else (
+            f"release.{subject.release_id}"
         )
         self.checks.append(_check(key, status, said))
         # The sentence rides the row too, since a refusal carries no check line.
         self.releases.append(
-            {
-                **asdict(subject),
-                "outcome": outcome,
-                "artist": artist,
-                "said": said,
-            }
+            {**asdict(subject), "outcome": outcome, "artist": artist, "said": said}
         )
 
     def summary(self) -> dict[str, Any]:
@@ -319,10 +311,8 @@ def label_artists(ctx) -> Envelope:
         lines.append(_check("decided", "info", f"{done.counts[DECIDED]} release(s) reading "
                             "an address are decided or left review, and a decided item is "
                             "never rewritten"))
-    return ctx.envelope(
-        data={"checks": [*lines, *done.checks], "summary": done.summary()},
-        outcome=Outcome.OK if done.counts[REPAIRED] else Outcome.NO_OP,
-    )
+    outcome = Outcome.OK if done.counts[REPAIRED] else Outcome.NO_OP
+    return review_common.ended(ctx, [*lines, *done.checks], done.summary(), outcome)
 
 
 __all__ = [

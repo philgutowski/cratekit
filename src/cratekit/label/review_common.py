@@ -5,17 +5,27 @@ Layer: modules.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
-from cratekit.core.cause import CratekitError, rebuilt
+from cratekit.core.cause import CratekitError, Outcome, rebuilt
 
 
 def check(namespace: str, key: str, status: str, detail: str) -> dict[str, Any]:
     """One check line under ``namespace``, carrying no remedy of its own."""
     return {"key": f"{namespace}.{key}", "title": key, "status": status,
             "detail": detail, "remedy": None}
+
+
+def ended(
+    ctx, checks: Sequence[Mapping[str, Any]], summary: Any, outcome: Outcome = Outcome.OK,
+    warnings: Sequence[Mapping[str, str]] = (),
+) -> Any:
+    """The verb's envelope over its check lines and its summary."""
+    return ctx.envelope(
+        data={"checks": checks, "summary": summary}, outcome=outcome, warnings=warnings
+    )
 
 
 def text(value: Any) -> str:
@@ -58,4 +68,4 @@ def extended(error: CratekitError, step: str, **detail: Any) -> CratekitError:
     )
 
 
-__all__ = ["check", "extended", "named", "quoted", "text", "wanted"]
+__all__ = ["check", "ended", "extended", "named", "quoted", "text", "wanted"]

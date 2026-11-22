@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -103,10 +103,25 @@ def taken_by_goes(document: Mapping[str, Any], label_id: str) -> dict[str, str]:
                 if isinstance(one, Mapping) and _text(one.get("identity"))
             ]
         for identity in identities:
-            held = days.get(identity)
-            if held is None or day < held:
-                days[identity] = day
+            days[identity] = min(day, days.get(identity, day))
     return days
+
+
+def playlist_item(step, *, early: Mapping[str, Any] = {}, late: Mapping[str, Any] = {}):
+    """One planned playlist step as a gate shows it, ``early`` keys before its
+    name and ``late`` ones after its action."""
+    return {
+        "id": step.remote_id,
+        "kind": "playlist",
+        "year": step.year,
+        **early,
+        "name": step.name,
+        "action": step.action,
+        **late,
+        "add": len(step.add),
+        "tracks": step.tracks,
+        **({"why": step.why} if step.why else {}),
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,20 +182,7 @@ class DatedPlan:
         }
 
     def items(self) -> list[dict[str, Any]]:
-        items: list[dict[str, Any]] = [
-            {
-                "id": step.remote_id,
-                "kind": "playlist",
-                "year": step.year,
-                "date": step.day,
-                "name": step.name,
-                "action": step.action,
-                "add": len(step.add),
-                "tracks": step.tracks,
-                **({"why": step.why} if step.why else {}),
-            }
-            for step in self.steps
-        ]
+        items = [playlist_item(step, early={"date": step.day}) for step in self.steps]
         items.extend(
             {
                 "id": one.remote_id,
@@ -291,18 +293,12 @@ def plan(
                 f"so which one is the dated playlist is not something a name decides"
             )
             steps.append(step_of(action=AMBIGUOUS, why=why))
-            continue
-        if matching:
+        elif matching:
             have = set(account.playlist_tracks(matching[0]))
-            steps.append(
-                step_of(
-                    action=REUSE,
-                    remote_id=matching[0],
-                    add=tuple(one for one in tracks if one not in have),
-                )
-            )
-            continue
-        steps.append(step_of(action=CREATE, add=tuple(tracks)))
+            add = tuple(one for one in tracks if one not in have)
+            steps.append(step_of(action=REUSE, remote_id=matching[0], add=add))
+        else:
+            steps.append(step_of(action=CREATE, add=tuple(tracks)))
     return DatedPlan(
         label_id=catalogue.label_id,
         label=catalogue.name,
@@ -384,13 +380,9 @@ def _failed_part_way(exc: Exception, done: DatedApplied, planned: DatedPlan) -> 
         )
     else:
         wrote = "nothing was written before this failed"
-    detail = {
-        "label_id": planned.label_id,
-        "created": list(done.created),
-        "ids": dict(done.ids),
-        "unplaced": [[name, done.ids[name]] for name in done.unplaced],
-        "added": dict(done.added),
-    }
+    detail = {"label_id": planned.label_id, **asdict(done)}
+    detail["unplaced"] = [[name, done.ids[name]] for name in done.unplaced]
+    del detail["refused"]
     again = "run crate organize again; a dated playlist is found by its name and only the rest is added"
     if done.unplaced:
         wrote += ", and " + ", ".join(
@@ -479,21 +471,16 @@ def add_step(cfg, area, entry, year_plan: folders.Plan, remote_of) -> None:
         def run() -> dict[str, Any]:
             done = apply(cfg, remote_of.get(), planned)
             if done.refused:
-                step.warnings.append(
-                    {
-                        "code": "label-new-playlists-tracks-refused",
-                        "message": (
-                            f"the provider would not add {sum(done.refused.values())} "
-                            f"track(s) to {len(done.refused)} dated playlist(s)"
-                        ),
-                    }
+                message = (
+                    f"the provider would not add {sum(done.refused.values())} "
+                    f"track(s) to {len(done.refused)} dated playlist(s)"
                 )
-            return {
-                "created": list(done.created),
-                "ids": dict(done.ids),
-                "added": dict(done.added),
-                "refused": dict(done.refused),
-            }
+                warning = {"code": "label-new-playlists-tracks-refused", "message": message}
+                step.warnings.append(warning)
+            # EVERY FIELD WRITTEN, copied, but the moves still owed.
+            written = asdict(done)
+            del written["unplaced"]
+            return written
 
         step.apply = run
     area.steps.append(step)

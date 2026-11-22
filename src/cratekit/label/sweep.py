@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Container, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from cratekit.acquire import match, match_cli
@@ -70,7 +70,7 @@ class Canary:
     """The one held release a sweep verified again, and what the verifier answered (U277).
 
     Asked only when the sweep turned down every release it asked about, chosen as
-    :func:`_canary_of` says. ``unconfirmed`` is no label credit, ``mismatch`` a
+    :func:`_canary_order` says. ``unconfirmed`` is no label credit, ``mismatch`` a
     credit the needle does not match (the name in ``notes``), and ``gone`` a
     release the provider no longer has (R-1634).
 
@@ -103,14 +103,7 @@ class Canary:
         return f"{named}, release {self.identity}, {answer}"
 
     def to_json(self) -> dict[str, str]:
-        return {
-            "identity": self.identity,
-            "artist": self.artist,
-            "title": self.title,
-            "verdict": self.verdict,
-            "notes": self.notes,
-            "basis": self.basis,
-        }
+        return asdict(self)
 
 
 #: What a re-verified release's answer rested on (R-1634), :attr:`Canary.basis`.
@@ -255,6 +248,17 @@ def _lookup_failure(message: str, exc: BaseException) -> run.LookupFailure:
     return run.LookupFailure(message)
 
 
+@contextmanager
+def _translated(fail: Callable[[Exception], Exception]) -> Iterator[None]:
+    """A provider failure raised as ``fail`` makes it; a ``CratekitError`` passes through."""
+    try:
+        yield
+    except CratekitError:
+        raise
+    except Exception as exc:
+        raise fail(exc) from exc
+
+
 def _linked(exc: BaseException, attribute: str) -> Iterator[BaseException]:
     """``exc`` and every error one link attribute leads to, once each, since links can loop."""
     seen: set[int] = set()
@@ -279,17 +283,13 @@ def _crawl_or_refuse(
     ``CratekitError`` passes through unchanged, since an expired session names an
     act the person can take.
     """
-    try:
+    with _translated(lambda exc: _lookup_failure(
+        f"the catalogue object for {entry.name!r} could not be examined "
+        f"({type(exc).__name__}: {exc}), so its releases were never read; "
+        f"that is not an empty catalogue",
+        exc,
+    )):
         listable = crawl.can_list(artist)
-    except CratekitError:
-        raise
-    except Exception as exc:
-        raise _lookup_failure(
-            f"the catalogue object for {entry.name!r} could not be examined "
-            f"({type(exc).__name__}: {exc}), so its releases were never read; "
-            f"that is not an empty catalogue",
-            exc,
-        ) from exc
     if not listable:
         raise run.LookupFailure(
             f"the catalogue object for {entry.name!r} exposes none of the listing "
@@ -297,17 +297,13 @@ def _crawl_or_refuse(
             f"never read; that is not an empty catalogue"
         )
     skipped: list[str] = []
-    try:
+    with _translated(lambda exc: _lookup_failure(
+        f"the catalogue listing for {entry.name!r} could not be read "
+        f"({type(exc).__name__}: {exc}); that is not an empty catalogue",
+        exc,
+    )):
         releases = list(crawl.releases(artist, skipped=skipped))
         built = tuple(getattr(artist, "unread", None) or ())
-    except CratekitError:
-        raise
-    except Exception as exc:
-        raise _lookup_failure(
-            f"the catalogue listing for {entry.name!r} could not be read "
-            f"({type(exc).__name__}: {exc}); that is not an empty catalogue",
-            exc,
-        ) from exc
     return releases, (*built, *(missing_listing(artist, method) for method in skipped))
 
 
@@ -358,7 +354,10 @@ class OwnedReleases:
         self.catalogue = (
             catalogue if isinstance(catalogue, ReleaseTracks) else ReleaseTracks(catalogue)
         )
-        self._library_of = library
+        #: Looked up when first asked, so a release with no tracks walks nothing.
+        self._library_of = library if library is not None else (
+            lambda: match_cli.library_view(self.cfg)
+        )
         self._view: LibraryView | None = None
         self._answers: dict[str, bool] = {}
 
@@ -371,10 +370,7 @@ class OwnedReleases:
 
     def _library(self) -> LibraryView:
         if self._view is None:
-            if self._library_of is not None:
-                self._view = self._library_of()
-            else:
-                self._view = match_cli.library_view(self.cfg)
+            self._view = self._library_of()
         return self._view
 
     def _holds(self, release_id: str) -> bool:
@@ -442,11 +438,6 @@ MISMATCH = "mismatch"
 def _answered_by_name(dropped: Sequence[Dropped]) -> bool:
     """Whether every release the sweep turned down was credited to another label's name."""
     return all(one.reason == MISMATCH for one in dropped)
-
-
-def _canary_of(held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]) -> Any:
-    """The held release to verify again, the first of :func:`_canary_order`."""
-    return _canary_order(held, claimed, dropped)[0]
 
 
 def _canary_order(
@@ -578,20 +569,21 @@ def list_for_label(
         examined += 1
         identity = str(getattr(release, "id", "") or "")
         reached.add(identity)
-        if tombstoned(release):
+        removed = tombstoned(release)
+        standing = gate.standing(identity) if gate is not None else None
+        still_held = standing is not None and standing.state == review.HOLD_HELD
+        if removed:
             suppressed.append(_candidate(entry, release))
             # Deleted on purpose outranks held, so its hold goes.
-            was = gate.standing(identity) if gate is not None else None
-            if was is not None and was.state == review.HOLD_HELD:
+            if still_held:
                 stale.append(identity)
             continue
-        standing = gate.standing(identity) if gate is not None else None
         if identity in offered_ids:
             held += 1
             held_releases.append(release)
             # In the queue and still held, which a process dying between two writes or a
             # moved queue can leave: the queue is the truth, so its hold goes.
-            if standing is not None and standing.state == review.HOLD_HELD:
+            if still_held:
                 stale.append(identity)
             continue
         if standing is not None and standing.state == review.HOLD_RETURNED:
@@ -627,7 +619,7 @@ def list_for_label(
             candidates.append(_candidate(entry, release, judged.stamp()))
     # One held release is re-verified, only when the sweep confirmed nothing it
     # asked about: it was confirmed when filed, so its answer says whether the
-    # endpoint is up. Chosen by :func:`_canary_of` (U277).
+    # endpoint is up. The first of :func:`_canary_order` (U277).
     #
     # Every drop a mismatch: the ordinary verifier is asked, which judges a held
     # label line from that line. Any other drop: the provider is read through
@@ -658,14 +650,9 @@ def list_for_label(
                 answered = dict(
                     label_verify.verify_release(claimed, chosen, search=reread)
                 )
-                answered["notes"] = "; ".join(
-                    part
-                    for part in (
-                        str(answered.get("notes") or ""),
-                        f"read in place of release {first}, which the provider no longer has",
-                    )
-                    if part
-                )
+                said = f"read in place of release {first}, which the provider no longer has"
+                notes = str(answered.get("notes") or "")
+                answered["notes"] = f"{notes}; {said}" if notes else said
         elif not lined:
             answered = label_verify.verify_release(claimed, chosen, search=verify)
             basis = READ_PROVIDER
@@ -750,18 +737,14 @@ def _guarded(read: Callable[[str, Any], Mapping[str, Any]]) -> Callable[[str, An
     """
 
     def verified(claimed: str, release: Any) -> Mapping[str, Any]:
-        try:
+        with _translated(lambda exc: _lookup_failure(
+            f"the catalogue could not confirm who is credited on a "
+            f"release ({type(exc).__name__}: {exc}); the releases "
+            f"this sweep listed were never verified, and an "
+            f"unverified release is not a release with no match",
+            exc,
+        )):
             return read(claimed, release)
-        except CratekitError:
-            raise
-        except Exception as exc:
-            raise _lookup_failure(
-                f"the catalogue could not confirm who is credited on a "
-                f"release ({type(exc).__name__}: {exc}); the releases "
-                f"this sweep listed were never verified, and an "
-                f"unverified release is not a release with no match",
-                exc,
-            ) from exc
 
     return verified
 
@@ -840,17 +823,13 @@ class LabelSource:
         if artist is not None:
             return artist
         if self.catalogue is not None:
-            try:
+            with _translated(lambda exc: _lookup_failure(
+                f"the catalogue could not resolve an artist for the label "
+                f"{entry.name!r} ({type(exc).__name__}: {exc}); its releases "
+                f"were never listed",
+                exc,
+            )):
                 return self.catalogue.artist_for(entry)
-            except CratekitError:
-                raise
-            except Exception as exc:
-                raise _lookup_failure(
-                    f"the catalogue could not resolve an artist for the label "
-                    f"{entry.name!r} ({type(exc).__name__}: {exc}); its releases "
-                    f"were never listed",
-                    exc,
-                ) from exc
         raise run.LookupFailure(
             f"no catalogue object was available for the registered label "
             f"{entry.name!r}, so its releases were never listed; that is not "
@@ -896,11 +875,7 @@ class LabelSource:
         # The verifier is resolved once, and only when there is a label to verify for.
         verify = self._verifier() if self.registry.labels else None
         reread = self._rereader()
-        found: list[run.Candidate] = []
-        discarded: list[Dropped] = []
-        unread: list[Unread] = []
         listings: list[tuple[registry.LabelEntry, LabelListing]] = []
-        read = 0
         with self._queue() as store:
             offered = QueuedReleases(store, self.offered) if store is not None else None
             for entry in self.registry.labels.values():
@@ -916,19 +891,15 @@ class LabelSource:
                 )
                 if store is not None:
                     self._record_holds(store, entry, listing)
-                found.extend(listing.candidates)
-                discarded.extend(listing.dropped)
-                unread.extend(listing.unread)
                 listings.append((entry, listing))
-                read += listing.listed
-        self.dropped = tuple(discarded)
-        self.unread = tuple(unread)
+        lists = [listing for _, listing in listings]
+        self.dropped = tuple(drop for listing in lists for drop in listing.dropped)
+        self.unread = tuple(one for listing in lists for one in listing.unread)
         self.listings = tuple(listings)
-        self.held_unconfirmed = sum(listing.held_unconfirmed for _, listing in listings)
-        self._released = frozenset(
-            identity for _, listing in listings for identity in listing.released
-        )
-        self.read = read
+        self.held_unconfirmed = sum(listing.held_unconfirmed for listing in lists)
+        self._released = frozenset(identity for listing in lists for identity in listing.released)
+        self.read = sum(listing.listed for listing in lists)
+        found = [candidate for listing in lists for candidate in listing.candidates]
         found.sort(key=lambda item: item.recency, reverse=True)
         return found[:n] if n >= 0 else found
 
@@ -942,9 +913,7 @@ class LabelSource:
         a stale hold is dropped here.
         """
         for identity in listing.stale:
-            review.release_hold(
-                store, queue=Queue.LABEL_RELEASE, item_id=genre_gate.release_item_id(identity)
-            )
+            _drop_hold(store, identity)
         for one in listing.gated:
             payload = dict(one.candidate.payload or {})
             payload.setdefault("identity", one.candidate.identity)
@@ -992,11 +961,14 @@ class LabelSource:
         """Offer one release, then drop the hold it was released from, if any. The offer first."""
         offer_release(store, candidate, run_id=run_id)
         if candidate.identity in self._released:
-            review.release_hold(
-                store,
-                queue=Queue.LABEL_RELEASE,
-                item_id=genre_gate.release_item_id(candidate.identity),
-            )
+            _drop_hold(store, candidate.identity)
+
+
+def _drop_hold(store: review.ReviewStore, identity: str) -> None:
+    """Drop the genre gate's hold on one release."""
+    review.release_hold(
+        store, queue=Queue.LABEL_RELEASE, item_id=genre_gate.release_item_id(identity)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1060,11 +1032,9 @@ def confirm_listed(cfg: config.Config, listed: Listed) -> Confirmed:
     tombstoned = _suppression_reader(cfg)
     confirmed: list[Any] = []
     dropped: list[Dropped] = []
-    suppressed = 0
     held_back: list[Any] = []
     for release in ordered:
         if tombstoned(release):
-            suppressed += 1
             held_back.append(release)
             continue
         drop = _turned_down(listed.claimed, release, listed.verify)
@@ -1076,7 +1046,7 @@ def confirm_listed(cfg: config.Config, listed: Listed) -> Confirmed:
         releases=tuple(confirmed),
         listed=len(ordered),
         dropped=tuple(dropped),
-        suppressed=suppressed,
+        suppressed=len(held_back),
         unread=listed.unread,
         suppressed_releases=tuple(held_back),
     )

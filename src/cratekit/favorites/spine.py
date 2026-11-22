@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
 from cratekit.cli.output import Envelope, declared_gate
-from cratekit.core import analysis_store, config, rb_writer, session
+from cratekit.core import analysis_store, config, convergence, rb_writer, session, tree_registry
 from cratekit.core.cause import Outcome, refuse
 from cratekit.write import trees
 
@@ -28,12 +28,8 @@ RECORD_KEY = "favorites"
 @contextmanager
 def handle(cfg: config.Config, *, write: bool = False) -> Iterator[Any]:
     """The live library on a handle of the caller's own, opened to read or to write, and closed."""
-    if write:
-        db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    else:
-        db = rb_writer.open_db(
-            rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
-        )
+    extra = {} if write else {"check_app_version": False}
+    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=write, cfg=cfg, **extra)
     try:
         yield db
     finally:
@@ -124,6 +120,27 @@ def watched(analysis_roots: Iterable[Path | str]) -> list[Path]:
     return roots
 
 
+def prepared(
+    cfg: config.Config,
+    db: Any,
+    analysis_roots: Iterable[Path | str],
+    again: Callable[[], Any],
+    approved: Any,
+    said: str,
+    origin: tuple[str, str],
+) -> tuple[list[Path], Any]:
+    """A writer's start: the watched roots, the plan taken again on the write handle, fresh.
+
+    THE OUT OF BAND RESTORE IS DETECTED BEFORE THE FINGERPRINT IS TOUCHED, so
+    the fingerprint a write records blesses no database recovered from a
+    backup; the Favorites folder is no tree, so the detection marks and never refuses.
+    """
+    roots = watched(analysis_roots)
+    planned = fresh(again(), approved, said, origin)
+    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
+    return roots, planned
+
+
 def fresh(again: Any, approved: Any, said: str, origin: tuple[str, str]) -> Any:
     """``again``, the plan taken on the write handle, refused when its digest moved."""
     if again.digest != approved.digest:
@@ -145,7 +162,7 @@ def change(created: int, updated: int) -> session.ChangeSummary:
 
 @contextmanager
 def witnessed(db: Any, landed: Callable[[], None]) -> Iterator[None]:
-    """A commit witnessed: anything raised rolls back, and one that landed is still recorded."""
+    """A commit witnessed and recorded: anything raised rolls back, and one that landed is recorded."""
     with rb_writer.commit_witness(db) as witness:
         try:
             yield
@@ -154,6 +171,7 @@ def witnessed(db: Any, landed: Callable[[], None]) -> Iterator[None]:
             if witness.landed:
                 landed()
             raise
+    landed()
 
 
 def confined(
@@ -179,6 +197,45 @@ def confined(
             origin=origin,
             detail={"violations": violations},
         )
+
+
+def shown(planned: Any, items: list[dict[str, Any]], totals: dict[str, Any]) -> dict[str, Any]:
+    """A plan as its gate shows it: its digest, one item per line of the screen, and the totals."""
+    return {"digest": planned.digest, "items": items, "totals": totals, "chunk": None}
+
+
+def drift(
+    before: rb_writer.NodeTables,
+    after: rb_writer.NodeTables,
+    *,
+    touches: str,
+    made: Iterable[str],
+    written: list[str],
+    allowed: Callable[[str], frozenset[str]],
+    explains: str,
+) -> list[str]:
+    """What two readings differ in that a playlist writer's plan does not explain, memberships aside.
+
+    No content row changes and no playlist row disappears; a playlist row is
+    added only when ``made``; ``written`` is the caller's own reading of the rows
+    it wrote, put next; an existing row changes only the columns ``allowed`` it.
+    """
+    violations: list[str] = []
+    if before.content != after.content:
+        violations.append(f"a {rb_writer.CONTENT_TABLE} row changed, and {touches} touches no track")
+    for key in sorted(set(before.playlists) - set(after.playlists)):
+        violations.append(f"the {rb_writer.PLAYLIST_TABLE} row {key!r} disappeared")
+    for key in sorted(set(after.playlists) - set(before.playlists) - set(made)):
+        violations.append(f"an unplanned {rb_writer.PLAYLIST_TABLE} row {key!r} was added")
+    violations.extend(written)
+    for key in sorted(set(before.playlists) & set(after.playlists)):
+        moved = changed(before.playlist_columns, before.playlists[key], after.playlists[key])
+        if moved - allowed(key):
+            violations.append(
+                f"the {rb_writer.PLAYLIST_TABLE} row {key!r} changed "
+                f"{sorted(moved - allowed(key))}, which {explains}"
+            )
+    return violations
 
 
 def changed(columns: Iterable[str], before: Iterable[Any], after: Iterable[Any]) -> set[str]:

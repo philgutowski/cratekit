@@ -98,35 +98,32 @@ def build_registry(parser, entry) -> None:
             "counting those already there; overrides labels.offer_per_sweep"
         ),
     )
-    parser.add_argument(
-        "--kind",
-        metavar="KIND",
-        help=(
+    for flag, metavar, said in (
+        (
+            "--kind",
+            "KIND",
             "the kind of music this label is followed for, one the library's "
             "taxonomy names under label_gate, or any; it decides which releases "
             "the genre gate passes. A label with none is the taxonomy's default "
-            "kind, and --kind default clears a kind back to none"
+            "kind, and --kind default clears a kind back to none",
         ),
-    )
-    parser.add_argument(
-        "--genre",
-        metavar="WORD",
-        help=(
+        (
+            "--genre",
+            "WORD",
             "the genre every track of this label is tagged with when it has none, "
             "so tag folder asks no catalogue for it; checked against the "
-            "library's taxonomy, and --genre default clears it back to none"
+            "library's taxonomy, and --genre default clears it back to none",
         ),
-    )
-    parser.add_argument(
-        "--bandcamp",
-        metavar="ACCOUNT",
-        help=(
+        (
+            "--bandcamp",
+            "ACCOUNT",
             "the Bandcamp seller account this label's releases are sold from, the "
             "name in their address (ACCOUNT.bandcamp.com) or the address itself; a "
             "purchase from it is staged tagged with this label and filed under it. "
-            "One account names one label, and --bandcamp default clears it"
+            "One account names one label, and --bandcamp default clears it",
         ),
-    )
+    ):
+        parser.add_argument(flag, metavar=metavar, help=said)
     parser.add_argument(
         "--accept-fallback",
         action="store_true",
@@ -213,10 +210,9 @@ def _check(key: str, title: str, status: str, detail: str) -> dict:
     return {"key": key, "title": title, "status": status, "detail": detail, "remedy": None}
 
 
-def _checks_for(held: labels.Registry, routed: dict[str, str] | None = None) -> list[dict]:
+def _checks_for(held: labels.Registry, routed: dict[str, str]) -> list[dict]:
     """One check per label. ``routed`` adds, for the label a verb just gave a
     genre, the sentence saying where that genre routes (U178)."""
-    routed = routed or {}
     if not held.labels:
         return [_check("labels.empty", "favourite labels", "ok", "no labels are registered")]
     return [
@@ -228,11 +224,6 @@ def _checks_for(held: labels.Registry, routed: dict[str, str] | None = None) -> 
         )
         for entry in held.labels.values()
     ]
-
-
-def _labels_json(held: labels.Registry) -> list[dict]:
-    """Every held field, for a reader that is not a person."""
-    return [entry.to_json() for entry in held.labels.values()]
 
 
 def _declared_kind(kind: str) -> str:
@@ -319,32 +310,23 @@ def _declared_genre(genre: str, accept_fallback: bool) -> tuple[str, dict | None
     }
 
 
-def _routed(label_id: str, route: dict | None) -> dict[str, str]:
-    """The routing sentence for the label a verb just gave a genre, keyed for :func:`_checks_for`."""
-    return {label_id: route["sentence"]} if route else {}
-
-
-def _route(route: dict | None) -> dict:
-    """The route a verb's summary carries, for a reader that is not a person."""
-    if not route:
-        return {}
-    return {"genre_route": {key: value for key, value in route.items() if key != "sentence"}}
-
-
 def _answer(
     ctx, store: labels.RegistryStore, done: dict, label_id: str = "", route: dict | None = None
 ) -> Envelope:
     """The registry as it now stands, one check per label, beside what the verb did.
 
-    ``done`` names the change; a listing names none and carries every held field.
+    ``done`` names the change; a listing names none and carries every held field,
+    for a reader that is not a person. ``route`` adds where a genre the verb just
+    set routes: in full to the summary, as its sentence to that label's check.
     """
     held = store.load()
-    summary = {**done, "count": len(held.labels), **_route(route)}
+    summary = {**done, "count": len(held.labels)}
+    if route:
+        summary["genre_route"] = {key: value for key, value in route.items() if key != "sentence"}
     if not done:
-        summary["labels"] = _labels_json(held)
-    return ctx.envelope(
-        data={"checks": _checks_for(held, _routed(label_id, route)), "summary": summary}
-    )
+        summary["labels"] = [entry.to_json() for entry in held.labels.values()]
+    routed = {label_id: route["sentence"]} if route else {}
+    return ctx.envelope(data={"checks": _checks_for(held, routed), "summary": summary})
 
 
 def registry_cmd(ctx) -> Envelope:
@@ -391,26 +373,23 @@ def registry_cmd(ctx) -> Envelope:
     # that follows the taxonomy's default kind, so a later change of that
     # default reaches it.
     clear_genre = genre == CLEAR_GENRE
-    genre = None if clear_genre else genre
     clear_kind = kind == taxonomy.NO_KIND
-    kind = None if clear_kind else kind
     # Matched as typed whatever its case, so an account named that is set by its address.
     clear_bandcamp = bandcamp is not None and bandcamp.strip().lower() == labels.CLEAR_BANDCAMP
-    bandcamp = None if clear_bandcamp else bandcamp
+    # Every field but the seeds, which add and set read differently.
+    fields = dict(
+        match=ctx.args.match,
+        track_limit=track_limit,
+        offer=offer,
+        kind=None if clear_kind else kind,
+        clear_kind=clear_kind,
+        genre=None if clear_genre else genre,
+        clear_genre=clear_genre,
+        bandcamp=None if clear_bandcamp else bandcamp,
+        clear_bandcamp=clear_bandcamp,
+    )
     if action == "add":
-        label_id = store.add(
-            name,
-            match=ctx.args.match,
-            seed_artists=tuple(seeds or ()),
-            track_limit=track_limit,
-            offer=offer,
-            kind=kind,
-            clear_kind=clear_kind,
-            genre=genre,
-            clear_genre=clear_genre,
-            bandcamp=bandcamp,
-            clear_bandcamp=clear_bandcamp,
-        )
+        label_id = store.add(name, seed_artists=tuple(seeds or ()), **fields)
         return _answer(ctx, store, {"added": label_id}, label_id, route)
     if action == "set":
         if all(given is None for given in fields_given):
@@ -421,19 +400,7 @@ def registry_cmd(ctx) -> Envelope:
                 "pass --track-limit, --offer, --kind, --genre, --bandcamp, --seed, "
                 "or --match",
             )
-        edited = store.edit(
-            name,
-            match=ctx.args.match,
-            seed_artists=seeds,
-            track_limit=track_limit,
-            offer=offer,
-            kind=kind,
-            clear_kind=clear_kind,
-            genre=genre,
-            clear_genre=clear_genre,
-            bandcamp=bandcamp,
-            clear_bandcamp=clear_bandcamp,
-        )
+        edited = store.edit(name, seed_artists=seeds, **fields)
         return _answer(ctx, store, {"updated": edited.label_id}, edited.label_id, route)
     if action == "remove":
         return _answer(ctx, store, {"removed": store.remove(name)})
@@ -493,8 +460,7 @@ def adopt_harvested(ctx, store: labels.RegistryStore) -> Envelope:
             "run label registry adopt with no name",
             "or add one label with: crate label registry add <name>",
         )
-    cfg = _load()
-    with review.open_store(cfg) as items:
+    with review.open_store(_load()) as items:
         found = harvest.decided(items)
     results = store.adopt([name for _, name in found.accepted]) if found.accepted else ()
     checks = [
@@ -594,23 +560,20 @@ def _refuse_an_itemless_job(store, job) -> None:
     if jobs.items(store, job.job_id):
         return
     # The steps name the way out: the job stays open after this refusal.
-    raise refuse(
+    raise _refused(
         "internal-error",
         f"job {job.job_id} has no items to run, so driving it would report a "
         f"success over work it never did. It was queued by a build that did not "
         f"record what its items were",
-        remedy=Remedy.REPORT_DEFECT,
-        steps=(
-            f"cancel it with: crate job cancel {job.job_id}",
-            # A sweep cannot be queued again since U109, so its way back is the
-            # verb that replaced it.
-            (
-                f"then take label releases with: {GUIDED_VERB}"
-                if job.handler_key == sweep.HANDLER_KEY
-                else "then queue the import again, which records its items"
-            ),
+        f"cancel it with: crate job cancel {job.job_id}",
+        # A sweep cannot be queued again since U109, so its way back is the
+        # verb that replaced it.
+        (
+            f"then take label releases with: {GUIDED_VERB}"
+            if job.handler_key == sweep.HANDLER_KEY
+            else "then queue the import again, which records its items"
         ),
-        origin=("label.cli",),
+        remedy=Remedy.REPORT_DEFECT,
         detail={"job_id": job.job_id},
     )
 
@@ -668,16 +631,13 @@ def sync_labels(ctx) -> Envelope:
     """
     if ctx.args.job:
         return _resume(ctx, ctx.args.job)
-    raise refuse(
+    raise _refused(
         "verb-retired",
         "sync labels no longer queues a sweep. Label releases are taken label "
         f"by label with {GUIDED_VERB}, which asks before it downloads anything",
-        steps=(
-            f"take label releases with: {GUIDED_VERB}",
-            "a sweep queued before this change still runs with: crate sync labels "
-            "--job JOB_ID",
-        ),
-        origin=("label.cli",),
+        f"take label releases with: {GUIDED_VERB}",
+        "a sweep queued before this change still runs with: crate sync labels "
+        "--job JOB_ID",
     )
 
 
@@ -725,8 +685,7 @@ def playlist_listing_or_refuse(
     type is the installed client's, and a ``CratekitError`` passes through so
     an adapter's own refusal keeps the act it names.
     """
-    rows, short, _window = _listed(found, reference, current=False)
-    return rows, short
+    return _listed(found, reference, current=False)[:2]
 
 
 def playlist_listing_judged(
@@ -765,13 +724,12 @@ def _listed(
     except CratekitError:
         raise
     except Exception as exc:
-        raise refuse(
+        raise _refused(
             "label-playlist-unreadable",
             f"the playlist {reference!r} could not be listed by the provider "
             f"({exc}); harvest needs a reachable provider playlist and will not "
             f"invent labels",
-            steps=("pass a playlist this account can read, then retry",),
-            origin=("label.cli",),
+            "pass a playlist this account can read, then retry",
             detail={"playlist": reference, "kind": type(exc).__name__},
         ) from exc
 
@@ -910,13 +868,12 @@ def harvest_playlist(ctx) -> Envelope:
             verify=_label_verifier(found, reference),
             extract=extract,
         )
-    unresolved = len(report.dropped) + nameless
     # A short playlist is said on the warnings channel, never refused (R-515).
     return ctx.envelope(
         data={
             "queue": str(review.Queue.LABEL_RELEASE),
             "items": [_offered(item) for item in report.offered],
-            "unresolved": unresolved,
+            "unresolved": len(report.dropped) + nameless,
         },
         warnings=(harvest_withheld_warning(short, reference),) if short is not None else (),
         # An empty playlist is a success that found nothing.
@@ -965,57 +922,23 @@ def _asked_for(cfg: config.Config, label_id: str) -> frozenset[str]:
     return sync_cli.asked_releases(sync_cli.load_record(cfg), label_id)
 
 
+def _kept_for(held: dict, key: Any, make: Callable[[], Any]) -> Any:
+    """``held[key]``, made on first use; ``held`` keeps the one job being driven alone."""
+    if key not in held:
+        held.clear()
+        held[key] = make()
+    return held[key]
+
+
 def _job_asking(job) -> genre_gate.Asking:
     """The asking for ``job``, made on first use and kept for that job alone."""
-    key = str(job.job_id)
-    held = _JOB_ASKING.get(key)
-    if held is None:
-        _JOB_ASKING.clear()
-        held = _JOB_ASKING[key] = genre_gate.Asking()
-    return held
+    return _kept_for(_JOB_ASKING, str(job.job_id), genre_gate.Asking)
 
 
 def _job_library(job, cfg: config.Config) -> Callable[[], sweep.LibraryView]:
     """The library view for ``job``, walked on first use and once per job."""
     key = (str(job.job_id), str(cfg.library.root / cfg.library.music_dir))
-
-    def view() -> sweep.LibraryView:
-        held = _JOB_LIBRARY.get(key)
-        if held is None:
-            _JOB_LIBRARY.clear()
-            held = _JOB_LIBRARY[key] = match_cli.library_view(cfg)
-        return held
-
-    return view
-
-
-def _refuse_unread(
-    entry: labels.LabelEntry, unread: Sequence[catalogue.Unread], *, offered: int
-) -> None:
-    """Refuse a sweep whose crawl skipped part of the label (R-261, R-393).
-
-    Raised after the increment, so what the crawl read is already offered; a job
-    item has no warning channel, only a cause. Resumable only when something can
-    change: a rate limit clears, a listing the client lacks does not.
-    """
-    transient = any(one.transient for one in unread)
-    parts = "; ".join(f"{one.artist} ({one.listing}: {one.reason})" for one in unread)
-    raise _refused(
-        "label-sweep-incomplete",
-        f"the sweep of {entry.name!r} offered what it read and could not read "
-        f"{len(unread)} listings of the label: {parts}. The releases on those "
-        f"listings are missing from this sweep, not absent from the label",
-        remedy=Remedy.RESUME_JOB if transient else Remedy.REPORT_DEFECT,
-        retryable=transient,
-        detail={
-            "label_id": entry.label_id,
-            "offered": offered,
-            "unread": [
-                {"artist": one.artist, "listing": one.listing, "reason": one.reason}
-                for one in unread
-            ],
-        },
-    )
+    return lambda: _kept_for(_JOB_LIBRARY, key, lambda: match_cli.library_view(cfg))
 
 
 def _refuse_unfinished(entry, result: run.IncrementResult, source: sweep.LabelSource) -> None:
@@ -1025,7 +948,7 @@ def _refuse_unfinished(entry, result: run.IncrementResult, source: sweep.LabelSo
     recorded only once it has passed.
     """
     if result.errors:
-        raise refuse(
+        raise _refused(
             "label-sweep-incomplete",
             f"the sweep of {entry.name!r} could not offer "
             f"{len(result.errors)} of the releases it listed "
@@ -1034,7 +957,6 @@ def _refuse_unfinished(entry, result: run.IncrementResult, source: sweep.LabelSo
             # The raise site owns the remedy: the successful offers are durable,
             # and a resume redoes only the items that failed.
             remedy=Remedy.RESUME_JOB,
-            origin=("label.cli",),
             detail={
                 "label_id": entry.label_id,
                 "offered": len(result.processed),
@@ -1042,7 +964,29 @@ def _refuse_unfinished(entry, result: run.IncrementResult, source: sweep.LabelSo
             },
         )
     if source.unread:
-        _refuse_unread(entry, source.unread, offered=len(result.processed))
+        # A crawl that skipped part of the label (R-261, R-393), raised after the
+        # increment, so what it read is already offered; a job item has no warning
+        # channel, only a cause. Resumable only when something can change: a rate
+        # limit clears, a listing the client lacks does not.
+        unread = source.unread
+        transient = any(one.transient for one in unread)
+        parts = "; ".join(f"{one.artist} ({one.listing}: {one.reason})" for one in unread)
+        raise _refused(
+            "label-sweep-incomplete",
+            f"the sweep of {entry.name!r} offered what it read and could not read "
+            f"{len(unread)} listings of the label: {parts}. The releases on those "
+            f"listings are missing from this sweep, not absent from the label",
+            remedy=Remedy.RESUME_JOB if transient else Remedy.REPORT_DEFECT,
+            retryable=transient,
+            detail={
+                "label_id": entry.label_id,
+                "offered": len(result.processed),
+                "unread": [
+                    {"artist": one.artist, "listing": one.listing, "reason": one.reason}
+                    for one in unread
+                ],
+            },
+        )
     # A catalogue that confirms nothing is not a label with nothing new.
     # ``list_for_label`` drops every release a degraded verifier will not
     # confirm, and the increment then answers ``shortfall="empty"``. Keyed on
@@ -1113,7 +1057,6 @@ def handle(job, item, cfg) -> jobs.Produced | None:
             detail={"label_id": label_id, "job_id": job.job_id},
         )
 
-    payload = dict(job.payload or {})
     # One review store for the whole item, opened against the frozen
     # configuration (R17) before the catalogue is resolved, so offers share it.
     with review.open_store(cfg) as store:
@@ -1126,7 +1069,7 @@ def handle(job, item, cfg) -> jobs.Produced | None:
         # One reader for ownership and the genre gate, which read the same rows.
         tracks = catalogue.ReleaseTracks(found)
         owned = sweep.OwnedReleases(cfg, tracks, library=_job_library(job, cfg))
-        run_id = str(payload.get("run_id") or job.job_id)
+        run_id = str((job.payload or {}).get("run_id") or job.job_id)
         source = sweep.LabelSource(
             cfg,
             registry=labels.Registry(labels={entry.label_id: entry}),

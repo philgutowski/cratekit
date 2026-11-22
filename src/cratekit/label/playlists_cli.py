@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import shlex
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any
 
 from cratekit.cli.output import Envelope, digest_of
@@ -84,15 +84,22 @@ def tombstoned_said(count: int) -> str:
     )
 
 
+def said_no_op(ctx, payload: dict[str, Any], code: str, name: str, said: str) -> Envelope:
+    """The plan ended NO_OP under one warning, ``code`` saying ``<name>: <said>``."""
+    warning = {"code": code, "message": f"{name}: {said}"}
+    return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=[warning])
+
+
 def not_followed(ctx, payload: dict[str, Any], name: str) -> Envelope:
     """A label nobody follows: the plan of nothing, ended NO_OP under its warning."""
-    return ctx.envelope(
-        data=payload,
-        outcome=Outcome.NO_OP,
-        warnings=[
-            {"code": "label-playlists-not-followed", "message": f"{name}: {NOT_FOLLOWED_SAID}"}
-        ],
-    )
+    return said_no_op(ctx, payload, "label-playlists-not-followed", name, NOT_FOLLOWED_SAID)
+
+
+def applied(ctx, payload: dict[str, Any], written: dict[str, Any], warnings) -> Envelope:
+    """An apply ended OK; WHAT WAS WRITTEN RIDES ON THE TOTALS, as ``plan/1`` admits no
+    other key."""
+    totals = {**payload["totals"], "applied": written}
+    return ctx.envelope(data={**payload, "totals": totals}, outcome=Outcome.OK, warnings=warnings)
 
 
 def label_argument(parser) -> None:
@@ -160,15 +167,6 @@ def list_catalogue(cfg, entry: labels.LabelEntry, found: catalogue.Catalogue) ->
     return listed
 
 
-@dataclass(frozen=True, slots=True)
-class _Grouped:
-    years: dict[str, tuple[str, ...]]
-    by_release: dict[str, tuple[str, tuple[str, ...]]]
-    undated: int
-    gone: int
-    tombstoned: tuple[str, ...] = ()
-
-
 def release_rows(
     entry: labels.LabelEntry, tracks: catalogue.ReleaseTracks, release_id: str
 ) -> tuple[Sequence[Any], Any] | None:
@@ -215,11 +213,12 @@ def _grouped(
     wanted: Sequence[tuple[str, str]],
     gone_from_library: tombstoned.Tombstoned,
     reads: kept_reads.KeptReads | None = None,
-) -> _Grouped:
+) -> dict[str, Any]:
     """Each ``(identifier, listed year)`` release's tracks read once and grouped by
-    year, or the refusal. ``reads`` (R-1091) are written once more on the way out,
-    a park included; a track ``gone_from_library`` answers for (U243) is left out
-    of every year and named in ``tombstoned``."""
+    year, as the :class:`folders.LabelCatalogue` fields that decides, or the refusal.
+    ``reads`` (R-1091) are written once more on the way out, a park included; a
+    track ``gone_from_library`` answers for (U243) is left out of every year and
+    named in ``tombstoned``."""
     if reads is None:
         return _group(entry, catalogue.ReleaseTracks(found), wanted, None, gone_from_library)
     try:
@@ -246,7 +245,7 @@ def _group(
     wanted: Sequence[tuple[str, str]],
     reads: kept_reads.KeptReads | None,
     gone_from_library: tombstoned.Tombstoned,
-) -> _Grouped:
+) -> dict[str, Any]:
     years: dict[str, list[str]] = {}
     by_release: dict[str, tuple[str, tuple[str, ...]]] = {}
     taken_away: dict[str, None] = {}
@@ -282,18 +281,18 @@ def _group(
             if identifier and getattr(row, "available", True) is not False:
                 if identifier not in held:
                     held.append(identifier)
-    return _Grouped(
+    return {
         # A YEAR EMPTIED BY REMOVALS ALONE IS NOT MADE.
-        years={
+        "years": {
             year: tuple(ids)
             for year, ids in years.items()
             if ids or year not in emptied_by
         },
-        by_release=by_release,
-        undated=undated,
-        gone=gone,
-        tombstoned=tuple(sorted(taken_away)),
-    )
+        "by_release": by_release,
+        "undated": undated,
+        "gone": gone,
+        "tombstoned": tuple(sorted(taken_away)),
+    }
 
 
 def read_catalogue(
@@ -323,28 +322,25 @@ def read_catalogue(
         )
     gone_from_library = tombstoned.Tombstoned(cfg)
 
-    def grouped_of(releases: Sequence[Any]) -> _Grouped:
+    def grouped_of(releases: Sequence[Any]) -> dict[str, Any]:
         wanted = [(_id(release), sweep.year_of(release)) for release in releases]
         return _grouped(entry, found, wanted, gone_from_library, reads)
 
     grouped = grouped_of(confirmed.releases)
     # A SUPPRESSED RELEASE IS READ FOR ITS TOMBSTONED TRACKS ALONE (U243).
     held_back = (
-        grouped_of(confirmed.suppressed_releases).tombstoned
+        grouped_of(confirmed.suppressed_releases)["tombstoned"]
         if confirmed.suppressed_releases
         else ()
     )
+    grouped["tombstoned"] = tuple(sorted({*grouped["tombstoned"], *held_back}))
     return folders.LabelCatalogue(
         label_id=entry.label_id,
         name=entry.name,
-        years=grouped.years,
         releases=len(confirmed.releases),
-        undated=grouped.undated,
         dropped=len(confirmed.dropped),
-        gone=grouped.gone,
         suppressed=confirmed.suppressed,
-        by_release=grouped.by_release,
-        tombstoned=tuple(sorted({*grouped.tombstoned, *held_back})),
+        **grouped,
         # ONLY A MISMATCH IS "NO LONGER CONFIRMS" TO THE PRUNE (R-836).
         mismatched=tuple(one.identity for one in confirmed.dropped if one.reason == "mismatch"),
     )
@@ -355,9 +351,9 @@ class TakenRelease:
     """One release a go took for the label, as its answer recorded it."""
 
     identity: str
-    artist: str
-    title: str
-    year: str
+    artist: str = ""
+    title: str = ""
+    year: str = ""
 
 
 def taken_releases(document: Mapping[str, Any], label_id: str) -> tuple[TakenRelease, ...]:
@@ -374,17 +370,10 @@ def taken_releases(document: Mapping[str, Any], label_id: str) -> tuple[TakenRel
                 continue
             identity = str(raw.get("identity") or "")
             if identity in took and identity not in recorded:
-                recorded[identity] = TakenRelease(
-                    identity=identity,
-                    artist=str(raw.get("artist") or ""),
-                    title=str(raw.get("title") or ""),
-                    year=str(raw.get("year") or ""),
-                )
+                said = (str(raw.get(key) or "") for key in ("artist", "title", "year"))
+                recorded[identity] = TakenRelease(identity, *said)
     ordered = sorted(took.items(), key=lambda kv: (kv[1], kv[0]))
-    return tuple(
-        recorded.get(identity) or TakenRelease(identity=identity, artist="", title="", year="")
-        for identity, _day in ordered
-    )
+    return tuple(recorded.get(identity) or TakenRelease(identity) for identity, _day in ordered)
 
 
 def read_taken(
@@ -401,14 +390,7 @@ def read_taken(
         entry, found, [(one.identity, one.year) for one in readable], tombstoned.Tombstoned(cfg)
     )
     return folders.LabelCatalogue(
-        label_id=entry.label_id,
-        name=entry.name,
-        years=grouped.years,
-        releases=len(readable),
-        undated=grouped.undated,
-        gone=grouped.gone,
-        by_release=grouped.by_release,
-        tombstoned=grouped.tombstoned,
+        label_id=entry.label_id, name=entry.name, releases=len(readable), **grouped
     )
 
 
@@ -425,12 +407,10 @@ class Estimate:
     #: How old the oldest of those kept reads is, as a person reads it.
     kept_age: str = ""
     #: The command's call ceiling and what the listing spent of it (U193).
-    ceiling: int = field(
-        default_factory=lambda: int(core_config.DEFAULT_PROVIDER_CALLS_PER_COMMAND)
-    )
+    ceiling: int = core_config.DEFAULT_PROVIDER_CALLS_PER_COMMAND
     spent: int = 0
     #: The hour's budget (U278).
-    budget: int = field(default_factory=lambda: int(core_config.DEFAULT_PROVIDER_CALLS_PER_HOUR))
+    budget: int = core_config.DEFAULT_PROVIDER_CALLS_PER_HOUR
     #: Where the label's listing came from, kept or asked and why (U217).
     listing: str = ""
 
@@ -477,24 +457,14 @@ class Estimate:
 
     def plan(self) -> dict[str, Any]:
         """The crawl gate's plan: the label and the count it was decided over."""
-        items = [
-            {
-                "id": self.label_id,
-                "kind": "catalogue",
-                "name": self.name,
-                "action": "crawl",
-                "releases": self.releases,
-                "kept": self.kept,
-                "calls": self.calls,
-                "seconds": self.seconds,
-            }
-        ]
+        item = {"id": self.label_id, "kind": "catalogue", "name": self.name, "action": "crawl"}
+        counts = {"releases": self.releases, "kept": self.kept, "calls": self.calls}
         return dated.gate_plan(
             # OVER THE LISTING'S COUNT, so a resumed run is not stale.
             digest_of(
                 {"kind": CRAWL_GATE, "label": self.label_id, "releases": self.releases}
             ),
-            items,
+            [{**item, **counts, "seconds": self.seconds}],
             {"create": 0, "add": 0, "writes": False},
         )
 
@@ -523,7 +493,11 @@ class Estimate:
             ),
         }
         if self.kept:
-            shown["kept reads"] = _kept_said(self.kept, self.kept_age)
+            shown["kept reads"] = (
+                f"{self.kept} release read(s) kept from an earlier run, the oldest "
+                f"{self.kept_age} old; a read is taken again once it is "
+                f"{kept_reads.kept_for_said()} old"
+            )
         if self.listing:
             shown["listing"] = self.listing
         if self.over_ceiling:
@@ -536,13 +510,6 @@ class Estimate:
                 + " before the command"
             )
         return shown
-
-
-def _kept_said(count: int, age: str) -> str:
-    return (
-        f"{count} release read(s) kept from an earlier run, the oldest {age} old; a "
-        f"read is taken again once it is {kept_reads.kept_for_said()} old"
-    )
 
 
 def estimate(
@@ -567,35 +534,18 @@ def estimate(
     )
 
 
-def _items(planned: folders.Plan | None) -> list[dict[str, Any]]:
-    if planned is None:
-        return []
-    folder = {"id": planned.folder_id, "kind": "folder", "name": planned.catalogue.name}
-    return [
-        {**folder, "action": planned.folder_action},
-        *(
-            {
-                "id": step.remote_id,
-                "kind": "playlist",
-                "year": step.year,
-                "name": step.name,
-                "action": step.action,
-                "move": step.move,
-                "add": len(step.add),
-                "tracks": step.tracks,
-                **({"why": step.why} if step.why else {}),
-            }
-            for step in planned.years
-        ),
-    ]
-
-
 def _payload(planned: folders.Plan | None, *, name: str, scope: str = "") -> dict[str, Any]:
     identity = planned.identity() if planned is not None else {"kind": "label-playlists", "label": name}
     if scope:
         # A RELEASES PLAN IS ITS OWN DECISION, never a full build's answer.
         identity = {**identity, "scope": scope}
-    items = _items(planned)
+    items = []
+    if planned is not None:
+        folder = {"id": planned.folder_id, "kind": "folder", "name": planned.catalogue.name}
+        items = [
+            {**folder, "action": planned.folder_action},
+            *(dated.playlist_item(step, late={"move": step.move}) for step in planned.years),
+        ]
     return dated.gate_plan(
         digest_of(identity),
         items,
@@ -659,9 +609,8 @@ def _shown(
     from cratekit.modules.outbound import folders
 
     if planned is None:
-        if taken is not None:
-            return {"label": name, "nothing to build": _nothing_said(taken, read)}
-        return {"label": name, "nothing to build": NOT_FOLLOWED_SAID}
+        said = NOT_FOLLOWED_SAID if taken is None else _nothing_said(taken, read)
+        return {"label": name, "nothing to build": said}
     read = planned.catalogue
     folder = {
         folders.CREATE: "create it",
@@ -696,14 +645,14 @@ def _shown(
     if listed is not None:
         shown["provider calls"] = (
             f"{listed.releases} release(s) listed, at least {listed.calls} provider "
-            f"call(s) to read their tracks"
-            if not listed.kept
-            else f"{listed.releases} release(s) listed, at least {listed.calls} "
-            f"provider call(s) to read the tracks of the "
-            f"{listed.releases - listed.kept} not kept from an earlier run"
+            f"call(s) to read "
+        ) + (
+            f"the tracks of the {listed.releases - listed.kept} not kept from an earlier run"
+            if listed.kept
+            else "their tracks"
         )
-    if listed is not None and listed.listing:
-        shown["listing"] = listed.listing
+        if listed.listing:
+            shown["listing"] = listed.listing
     if reads is not None:
         shown["release reads"] = _reads_said(reads)
     if planned.stale_folder:
@@ -719,21 +668,20 @@ def _shown(
 def _reads_said(reads: kept_reads.KeptReads) -> str:
     """What the build gate says about the release reads its plan was made from."""
     kept_for = kept_reads.kept_for_said()
-    if not reads.reused:
-        if reads.unkept:
-            return f"all {reads.read_now} release read(s) made by this run; {_unkept_said(reads)}"
+    if reads.reused:
+        said = (
+            f"{reads.reused} release read(s) reused from an earlier run, the oldest "
+            f"{reads.age_said()} old, and {reads.read_now} read by this run; a read is "
+            f"taken again once it is {kept_for} old"
+        )
+    elif reads.unkept:
+        said = f"all {reads.read_now} release read(s) made by this run"
+    else:
         return (
             f"all {reads.read_now} release read(s) made by this run, and kept for "
             f"{kept_for}, so the run that applies the plan reads none of them again"
         )
-    said = (
-        f"{reads.reused} release read(s) reused from an earlier run, the oldest "
-        f"{reads.age_said()} old, and {reads.read_now} read by this run; a read is "
-        f"taken again once it is {kept_for} old"
-    )
-    if reads.unkept:
-        said += f"; {_unkept_said(reads)}"
-    return said
+    return f"{said}; {_unkept_said(reads)}" if reads.unkept else said
 
 
 def _unkept_said(reads: kept_reads.KeptReads) -> str:
@@ -762,13 +710,8 @@ def _failed_part_way(exc: Exception, done: folders.Applied, planned: folders.Pla
             f", {len(done.created)} year playlist(s) were created and "
             f"{sum(done.added.values())} track(s) added"
         )
-    detail = {
-        "label_id": planned.catalogue.label_id,
-        "folder_id": done.folder_id,
-        "created": list(done.created),
-        "moved": list(done.moved),
-        "added": dict(done.added),
-    }
+    detail = {"label_id": planned.catalogue.label_id, **applied_totals(done)}
+    del detail["folder_created"], detail["refused"]
     again = "run crate label playlists again; what was written is reused, never made twice"
     return dated.refused_part_way(
         exc, wrote, again, detail, failed="The build", origin=_ORIGIN, steps=False
@@ -812,15 +755,8 @@ def apply_plan(cfg, remote, planned: folders.Plan) -> folders.Applied:
 
 
 def applied_totals(done: folders.Applied) -> dict[str, Any]:
-    """What was written, as the totals carry it."""
-    return {
-        "folder_id": done.folder_id,
-        "folder_created": done.folder_created,
-        "created": list(done.created),
-        "moved": list(done.moved),
-        "added": dict(done.added),
-        "refused": dict(done.refused),
-    }
+    """What was written, as the totals carry it: every field of ``done``, copied."""
+    return asdict(done)
 
 
 #: Public for ``crate organize`` (U112), whose label step shows these items.
@@ -878,8 +814,7 @@ def label_playlists(ctx) -> Envelope:
         if not (from_releases and not read.years):
             remote = account.resolve(cfg)
             planned = folders.plan(cfg, read, remote)
-    scope = "releases" if from_releases else ""
-    payload = _payload(planned, name=name, scope=scope)
+    payload = _payload(planned, name=name, scope="releases" if from_releases else "")
     # THE PLAN ITSELF, so the screen shows every item the digest covers (R-693).
     option = ctx.gate.require(
         _gate(ctx, BUILD_GATE),
@@ -893,19 +828,13 @@ def label_playlists(ctx) -> Envelope:
             code, said = "label-playlists-nothing-taken", NOTHING_TAKEN_SAID
         else:
             code, said = "label-playlists-nothing-left", _nothing_said(taken, read)
-        warning = {"code": code, "message": f"{name}: {said}"}
-        return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=[warning])
+        return said_no_op(ctx, payload, code, name, said)
     if option != "apply" or not planned.writes:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=_unkept_warnings(reads))
 
     done = apply_plan(cfg, remote, planned)
-    # WHAT WAS WRITTEN RIDES ON THE TOTALS, as ``plan/1`` admits no other key.
-    totals = {**payload["totals"], "applied": applied_totals(done)}
-    return ctx.envelope(
-        data={**payload, "totals": totals},
-        outcome=Outcome.OK,
-        warnings=[*refused_warnings(done), *_unkept_warnings(reads)],
-    )
+    warnings = [*refused_warnings(done), *_unkept_warnings(reads)]
+    return applied(ctx, payload, applied_totals(done), warnings)
 
 
 __all__ = [

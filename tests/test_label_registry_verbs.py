@@ -1,9 +1,4 @@
-"""U99: the label registry verbs set a track limit and seed artists (R-418).
-
-Every drive goes through the real dispatcher and every read back through
-``list``, so a field a person cannot see set fails. A refusal is proven by the
-file not moving as well as by its reason.
-"""
+"""U99: the label registry verbs set a track limit and seed artists (R-418)."""
 
 from __future__ import annotations
 
@@ -67,7 +62,6 @@ def intent_bytes() -> bytes | None:
 
 def test_an_add_with_a_limit_and_two_seeds_round_trips_through_list():
     ok(["add", "Hotflush Recordings", "--track-limit", "50", "--seed", "Scuba", "--seed", "id:4012"])
-
     entry = listed()["hotflush-recordings"]
     assert entry["track_limit"] == 50
     assert entry["seed_artists"] == ["Scuba", "id:4012"]
@@ -77,7 +71,6 @@ def test_an_add_with_a_limit_and_two_seeds_round_trips_through_list():
 def test_list_shows_the_limit_and_the_seeds_to_a_person():
     """The human rendering reads the check detail, so the fields ride there too."""
     ok(["add", "Kompakt", "--track-limit", "20", "--seed", "id:77"])
-
     envelope = ok([])
     (check,) = envelope["data"]["checks"]
     assert check["detail"] == "kompakt, track limit 20, seeds id:77"
@@ -86,10 +79,8 @@ def test_list_shows_the_limit_and_the_seeds_to_a_person():
 def test_set_changes_one_field_and_keeps_the_rest():
     ok(["add", "Ostgut Ton", "--match", "Ostgut", "--track-limit", "30",
         "--seed", "Ben Klock", "--seed", "Marcel Dettmann"])
-
     envelope = ok(["set", "ostgut-ton", "--track-limit", "120"])
     assert envelope["data"]["summary"]["updated"] == "ostgut-ton"
-
     entry = listed()["ostgut-ton"]
     assert entry["track_limit"] == 120
     assert entry["seed_artists"] == ["Ben Klock", "Marcel Dettmann"]
@@ -99,9 +90,7 @@ def test_set_changes_one_field_and_keeps_the_rest():
 
 def test_set_seeds_replaces_the_list_and_keeps_the_limit():
     ok(["add", "Ostgut Ton", "--track-limit", "30", "--seed", "Ben Klock"])
-
     ok(["set", "Ostgut Ton", "--seed", "id:9", "--seed", "Answer Code Request"])
-
     entry = listed()["ostgut-ton"]
     assert entry["seed_artists"] == ["id:9", "Answer Code Request"]
     assert entry["track_limit"] == 30
@@ -110,9 +99,7 @@ def test_set_seeds_replaces_the_list_and_keeps_the_limit():
 def test_set_on_an_unknown_label_refuses_by_name_and_creates_nothing():
     ok(["add", "Kompakt"])
     before = intent_bytes()
-
     cause = refused(["set", "Innervisions", "--track-limit", "10"])
-
     assert cause["reason"] == "label-unknown"
     assert "Innervisions" in cause["message"]
     assert intent_bytes() == before
@@ -123,9 +110,7 @@ def test_set_on_an_unknown_label_refuses_by_name_and_creates_nothing():
 def test_a_malformed_seed_on_add_refuses_and_writes_nothing(seed):
     ok(["add", "Kompakt", "--seed", "Michael Mayer"])
     before = intent_bytes()
-
     cause = refused(["add", "Kompakt", "--seed", "Wolfgang Voigt", "--seed", seed])
-
     assert cause["reason"] == "label-name-invalid"
     assert intent_bytes() == before
     assert listed()["kompakt"]["seed_artists"] == ["Michael Mayer"]
@@ -134,9 +119,7 @@ def test_a_malformed_seed_on_add_refuses_and_writes_nothing(seed):
 def test_a_malformed_id_seed_on_set_refuses_and_writes_nothing():
     ok(["add", "Kompakt", "--track-limit", "40", "--seed", "id:1"])
     before = intent_bytes()
-
     cause = refused(["set", "kompakt", "--track-limit", "80", "--seed", "id:1x"])
-
     assert cause["reason"] == "label-name-invalid"
     assert "id:1x" in cause["message"]
     assert intent_bytes() == before
@@ -166,7 +149,6 @@ def test_the_store_refuses_a_limit_below_one_from_a_python_caller(limit):
     """The parser guards the verb; this guards the store, which Python callers reach directly."""
     from cratekit.core.cause import CratekitError
     from cratekit.label import registry as labels
-
     store = labels.RegistryStore()
     with pytest.raises(CratekitError) as added:
         store.add("Kompakt", track_limit=limit)
@@ -181,9 +163,7 @@ def test_the_store_refuses_a_limit_below_one_from_a_python_caller(limit):
 def test_set_with_no_field_refuses_rather_than_reporting_an_edit():
     ok(["add", "Kompakt", "--track-limit", "40"])
     before = intent_bytes()
-
     cause = refused(["set", "kompakt"])
-
     assert cause["reason"] == "label-name-invalid"
     assert intent_bytes() == before
 
@@ -195,9 +175,7 @@ def test_set_with_no_field_refuses_rather_than_reporting_an_edit():
 def test_a_field_flag_on_an_action_that_does_not_set_it_refuses(action, field):
     ok(["add", "Kompakt"])
     before = intent_bytes()
-
     cause = refused([*action, *field])
-
     assert cause["reason"] == "label-name-invalid"
     assert intent_bytes() == before
 
@@ -209,9 +187,7 @@ def test_set_finds_an_accented_name_typed_in_decomposed_form():
     assert composed != decomposed
     ok(["add", composed])
     (label_id,) = listed()
-
     envelope = ok(["set", decomposed, "--track-limit", "25"])
-
     assert envelope["data"]["summary"]["updated"] == label_id
     held = listed()
     assert set(held) == {label_id}

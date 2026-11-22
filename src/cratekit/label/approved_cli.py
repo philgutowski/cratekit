@@ -39,6 +39,7 @@ import json
 import shlex
 from collections.abc import Callable, Container, Mapping
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -262,16 +263,14 @@ def _judged_by_kind(
         # What the release's own record settles comes first, as in ``label
         # judge``. Its ``not-asked`` is the general catalogue's, not this
         # module's ``NOT_ASKED`` (a release the provider was not asked for).
-        recorded = genre_gate.judge_recorded(declared, kind, release.genres)
-        if recorded is not None:
-            judged = recorded
-        elif owned(release):
+        judged = genre_gate.judge_recorded(declared, kind, release.genres)
+        if judged is None and owned(release):
             unjudged[release.item_id] = (
                 "every track of it is already in the library, so the general "
                 "catalogue was not asked about it"
             )
             continue
-        else:
+        if judged is None:
             judged = genre_gate.judge_rows(declared, kind, outcome.rows, asking)
         if judged.held:
             held[release.item_id] = _OutOfKind(release, judged)
@@ -304,9 +303,8 @@ def _queued(items: review.ReviewStore) -> tuple[list[_Release], int, int]:
     guided label sync, counts as neither (U107).
     """
     page = review.list_items(
-        items, queue=str(Queue.LABEL_RELEASE),
-        kinds=(sweep.KIND,),
-        include_resolved=True, limit=None,
+        items, queue=str(Queue.LABEL_RELEASE), kinds=(sweep.KIND,), include_resolved=True,
+        limit=None,
     )
     accepted: list[_Release] = []
     rejected = still_open = 0
@@ -614,10 +612,9 @@ def list_releases(
                 path=str(exc.filename or ""),
             ) from exc
     listed = len(written.listed)
-    unlisted = len(written.unlisted)
     if missing and not listed:
         raise _unusable(
-            f"{unlisted} missing track(s) and none carries a provider identifier, so "
+            f"{len(written.unlisted)} missing track(s) and none carries a provider identifier, so "
             f"there is nothing acquire download could be asked for; nothing was written",
             "this is a defect in what the provider returned for these releases; "
             "run this again, and report it if it repeats",
@@ -644,8 +641,7 @@ def listing_checks(listing: Listing, *, namespace: str = "label.approved") -> li
     counts = listing.counts
     unlisted = len(listing.written.unlisted)
 
-    def check(key: str, status: str, detail: str) -> dict[str, Any]:
-        return _check(key, status, detail, namespace=namespace)
+    check = partial(_check, namespace=namespace)
 
     def tally(key: str, found: Any, said: str, fine: str) -> dict[str, Any]:
         """A line that fails when ``found`` holds anything, and says ``fine`` otherwise."""
@@ -703,6 +699,10 @@ def listing_checks(listing: Listing, *, namespace: str = "label.approved") -> li
     ]
 
 
+#: The counts the summary carries, in its order.
+_SUMMED = ("missing", "owned", "offered", "suppressed", "duplicate")
+
+
 def label_approved(ctx) -> Envelope:
     """List the missing tracks of every accepted label release, or say why not."""
     cfg = label_cli._load()
@@ -719,9 +719,7 @@ def label_approved(ctx) -> Envelope:
         # ASKED BEFORE THE CATALOGUE IS RESOLVED, so nothing accepted spends a login.
         checks = [_check("written", "info", "nothing listed: no label release is accepted")]
         summary = _summary(None, accepted=0, rejected=rejected, open=still_open)
-        return ctx.envelope(
-            data={"checks": [*checks, queue_check], "summary": summary}, outcome=Outcome.NO_OP
-        )
+        return review_common.ended(ctx, [*checks, queue_check], summary, Outcome.NO_OP)
 
     listing = list_releases(
         cfg, accepted, out=lambda: _out_dir(ctx, cfg), handler_key=ctx.entry.handler_key
@@ -746,20 +744,17 @@ def label_approved(ctx) -> Envelope:
         queue_check,
         *listing_checks(listing),
     ]
-    counts = listing.counts
     summary = _summary(
         written,
         accepted=len(accepted), rejected=rejected, open=still_open, read=listing.read, next=command,
-        **{word: counts[word] for word in ("missing", "owned", "offered", "suppressed")},
-        duplicate=counts["duplicate"],
+        **{word: listing.counts[word] for word in _SUMMED},
         unreadable=len(listing.unreadable),
         undated=[release.release_id for release in listing.undated],
         held=[one.to_json() for one in held.values()],
         ungated=[release.release_id for release, _why in listing.ungated],
         failed=[one.to_json() for one in listing.failures],
     )
-    outcome = Outcome.OK if listed else Outcome.NO_OP
-    return ctx.envelope(data={"checks": checks, "summary": summary}, outcome=outcome)
+    return review_common.ended(ctx, checks, summary, Outcome.OK if listed else Outcome.NO_OP)
 
 
 def _provenance(

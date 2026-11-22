@@ -1,8 +1,4 @@
-"""U177: a label in the registry names the Bandcamp seller account it sells from.
-
-Set and cleared with the registry's own verbs and read back through ``list``,
-for the reason ``tests/test_label_registry_verbs.py`` gives. D1 applies.
-"""
+"""U177: a label in the registry names the Bandcamp seller account it sells from."""
 
 from __future__ import annotations
 
@@ -20,7 +16,6 @@ from tests.test_label_registry_verbs import intent_bytes, listed, ok, refused
 
 def test_add_with_an_account_round_trips_through_list():
     envelope = ok(["add", "PULS", "--bandcamp", "pulsromania"])
-
     assert listed()["puls"]["bandcamp"] == "pulsromania"
     (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "labels.puls"]
     assert "Bandcamp pulsromania" in check["detail"]
@@ -39,14 +34,12 @@ def test_add_with_an_account_round_trips_through_list():
 )
 def test_an_address_or_any_case_is_stored_as_the_account_a_purchase_is_read_as(given):
     ok(["add", "PULS", "--bandcamp", given])
-
     assert listed()["puls"]["bandcamp"] == "pulsromania"
 
 
 def test_a_seller_on_its_own_domain_keeps_the_whole_host():
     """``acquire.bandcamp.seller_of`` keeps the host of a seller off bandcamp.com."""
     ok(["add", "PULS", "--bandcamp", "https://music.example.org/album/x"])
-
     assert listed()["puls"]["bandcamp"] == "music.example.org"
 
 
@@ -54,9 +47,7 @@ def test_a_seller_on_its_own_domain_keeps_the_whole_host():
 def test_an_account_that_could_match_no_purchase_is_refused_and_writes_nothing(given):
     ok(["add", "PULS"])
     before = intent_bytes()
-
     cause = refused(["set", "PULS", f"--bandcamp={given}"])
-
     assert cause["reason"] == "label-name-invalid"
     assert intent_bytes() == before
 
@@ -65,7 +56,6 @@ def test_a_second_label_naming_a_held_account_is_refused_by_the_holders_name():
     ok(["add", "PULS", "--bandcamp", "pulsromania"])
     ok(["add", "Kompakt"])
     before = intent_bytes()
-
     for argv in (
         ["set", "Kompakt", "--bandcamp", "pulsromania.bandcamp.com"],
         ["add", "Puls Romania", "--bandcamp", "PULSROMANIA"],
@@ -80,10 +70,8 @@ def test_a_second_label_naming_a_held_account_is_refused_by_the_holders_name():
 
 def test_a_label_setting_its_own_account_again_is_no_conflict():
     ok(["add", "PULS", "--bandcamp", "pulsromania"])
-
     ok(["set", "PULS", "--bandcamp", "pulsromania"])
     ok(["add", "PULS", "--bandcamp", "pulsromania", "--track-limit", "9"])
-
     assert listed()["puls"]["bandcamp"] == "pulsromania"
     assert listed()["puls"]["track_limit"] == 9
 
@@ -91,34 +79,27 @@ def test_a_label_setting_its_own_account_again_is_no_conflict():
 def test_default_clears_the_account_and_frees_it_for_another_label():
     ok(["add", "PULS", "--bandcamp", "pulsromania"])
     ok(["add", "Kompakt"])
-
     ok(["set", "PULS", "--bandcamp", "Default"])
     ok(["set", "Kompakt", "--bandcamp", "pulsromania"])
-
     assert listed()["puls"]["bandcamp"] is None
     assert listed()["kompakt"]["bandcamp"] == "pulsromania"
 
 
 def test_an_account_named_default_is_set_by_its_address():
     ok(["add", "PULS", "--bandcamp", "default.bandcamp.com"])
-
     assert listed()["puls"]["bandcamp"] == "default"
 
 
 def test_set_of_another_field_keeps_the_account():
     ok(["add", "PULS", "--bandcamp", "pulsromania"])
-
     ok(["set", "PULS", "--track-limit", "40"])
     ok(["add", "PULS", "--offer", "3"])
-
     assert listed()["puls"]["bandcamp"] == "pulsromania"
 
 
 def test_a_rename_of_the_label_keeps_its_seller():
     ok(["add", "PULS", "--bandcamp", "pulsromania"])
-
     ok(["rename", "PULS", "--to", "PULS Records"])
-
     entry = listed()["puls"]
     assert entry["name"] == "PULS Records"
     assert entry["bandcamp"] == "pulsromania"
@@ -129,18 +110,14 @@ def test_a_rename_of_the_label_keeps_its_seller():
 def test_bandcamp_on_an_action_that_does_not_set_it_refuses(action):
     ok(["add", "PULS"])
     before = intent_bytes()
-
     cause = refused([*action, "--bandcamp", "pulsromania"])
-
     assert cause["reason"] == "label-name-invalid"
     assert intent_bytes() == before
 
 
 def test_set_with_only_bandcamp_is_a_field_to_change():
     ok(["add", "PULS"])
-
     ok(["set", "PULS", "--bandcamp", "pulsromania"])
-
     assert listed()["puls"]["bandcamp"] == "pulsromania"
 
 
@@ -161,14 +138,12 @@ def test_two_labels_naming_one_account_by_hand_answer_no_label():
             "puls-romania": {"name": "Puls Romania", "bandcamp": "PulsRomania.bandcamp.com"},
         }
     )
-
     assert [entry.label_id for entry in held.claimants("pulsromania")] == ["puls", "puls-romania"]
     assert held.by_bandcamp("pulsromania") is None
 
 
 def test_a_malformed_stored_account_is_no_account_and_the_label_keeps_the_rest():
     held = _hand_written({"puls": {"name": "PULS", "bandcamp": "puls romania", "track_limit": 9}})
-
     entry = held.by_id("puls")
     assert entry.bandcamp is None and entry.track_limit == 9
     assert held.by_bandcamp("puls romania") is None
@@ -177,7 +152,6 @@ def test_a_malformed_stored_account_is_no_account_and_the_label_keeps_the_rest()
 def test_an_account_is_looked_up_in_any_form_a_purchase_could_name_it():
     labels.RegistryStore().add("PULS", bandcamp="pulsromania")
     held = labels.RegistryStore().load()
-
     for form in ("pulsromania", "PULSROMANIA", "https://pulsromania.bandcamp.com/"):
         assert held.by_bandcamp(form).label_id == "puls"
     assert held.by_bandcamp("otherlabel") is None
@@ -188,9 +162,7 @@ def test_the_store_refuses_a_second_claimant_from_a_python_caller():
     store = labels.RegistryStore()
     store.add("PULS", bandcamp="pulsromania")
     store.add("Kompakt")
-
     with pytest.raises(CratekitError) as caught:
         store.edit("Kompakt", bandcamp="pulsromania")
-
     assert caught.value.cause.reason == "label-name-invalid"
     assert store.load().by_id("kompakt").bandcamp is None

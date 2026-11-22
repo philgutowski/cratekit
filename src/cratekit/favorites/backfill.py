@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Sequence
 
 from cratekit.acquire import match, match_cli
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, jobs, rb_writer, session, tree_registry
+from cratekit.core import config, convergence, jobs, rb_writer, session
 from cratekit.core.cause import CratekitError
 from cratekit.favorites import colour, placeholders, placement, spine
 from cratekit.intake import account_playlists, batch_name, native
@@ -393,16 +393,13 @@ def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
     items = []
     for heart in planned.hearts:
         one = by_row[heart.content_id]
-        try:
-            shown = str(heart.path.relative_to(root))
-        except ValueError:
-            shown = str(heart.path)
+        shown = heart.path.relative_to(root) if heart.path.is_relative_to(root) else heart.path
         items.append(
             {
                 "action": "place",
                 "row": heart.content_id,
                 "title": heart.title,
-                "path": shown,
+                "path": str(shown),
                 "month": one.month,
                 "into_source": one.into_source,
                 "into_month": one.into_month,
@@ -416,24 +413,19 @@ def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
         {"action": "colour", "row": one.content_id, "title": one.title}
         for one in planned.placements.recolour
     )
-    return {
-        "digest": planned.digest,
-        "items": items,
-        "totals": {
-            "count": len(planned.hearts),
-            "adds": planned.placements.adds,
-            "creates": len(planned.placements.creates),
-            "colours": planned.placements.colours,
-            "colour held": len(planned.placements.held),
-            "undated": planned.undated,
-            "dates from the account": planned.asked,
-            "held back": len(planned.held_back),
-            "taken back": len(planned.taken_back),
-            "jobs unread": len(planned.unreadable),
-            "already placed": planned.already,
-        },
-        "chunk": None,
-    }
+    return spine.shown(planned, items, {
+        "count": len(planned.hearts),
+        "adds": planned.placements.adds,
+        "creates": len(planned.placements.creates),
+        "colours": planned.placements.colours,
+        "colour held": len(planned.placements.held),
+        "undated": planned.undated,
+        "dates from the account": planned.asked,
+        "held back": len(planned.held_back),
+        "taken back": len(planned.taken_back),
+        "jobs unread": len(planned.unreadable),
+        "already placed": planned.already,
+    })
 
 
 def facts(planned: BackfillPlan) -> dict[str, Any]:
@@ -553,22 +545,12 @@ def apply(
 
     THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST and a digest that moved refuses.
     """
-    watched = spine.watched(analysis_roots)
-    planned = spine.fresh(
-        replan(db, approved, source=source),
-        approved,
+    watched, planned = spine.prepared(
+        cfg, db, analysis_roots, lambda: replan(db, approved, source=source), approved,
         "the favourites are not as the approved plan read them, so no heart was placed",
         _ORIGIN,
     )
-    pairs = [
-        (one.content_id, one.month)
-        for one in planned.placements.placements
-        if one.into_source or one.into_month
-    ]
-    # THE OUT OF BAND RESTORE IS DETECTED BEFORE THE FINGERPRINT IS TOUCHED, so
-    # the fingerprint this write records blesses no database recovered from a
-    # backup. The Favorites folder is no tree, so the detection never refuses.
-    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
+    shown = planned.placements
     with session.assert_gates(
         cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
     ) as gates:
@@ -582,20 +564,21 @@ def apply(
         with spine.witnessed(db, landed):
             placed = placement.place(
                 db,
-                planned.placements.home,
-                pairs,
-                pink=planned.placements.pink,
-                to_colour=planned.placements.to_colour,
-                held=planned.placements.held,
-                colour_skipped=planned.placements.colour_skipped,
+                shown.home,
+                [(one.content_id, one.month) for one in shown.placements if one.adds],
+                pink=shown.pink,
+                to_colour=shown.to_colour,
+                held=shown.held,
+                colour_skipped=shown.colour_skipped,
             )
             rb_writer.commit_guarded(db)
-        _record_backfill_commit(record, placed, cfg)
         if placed.added or placed.coloured:
             convergence.record_fingerprint(cfg, db)
-        disagreements = _read_back(db, placed, planned)
-        session_id = record.session_id
-    return Backfilled(placed=placed, session_id=session_id, disagreements=disagreements)
+        return Backfilled(
+            placed=placed,
+            session_id=record.session_id,
+            disagreements=_read_back(db, placed, planned),
+        )
 
 
 def assert_read_back(done: Backfilled) -> None:

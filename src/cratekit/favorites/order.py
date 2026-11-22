@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, rb_writer, session, tree_registry
+from cratekit.core import config, convergence, rb_writer, session
 from cratekit.core.cause import Remedy, refuse
 from cratekit.favorites import placeholders, placement, spine
 from cratekit.write import trees
@@ -144,18 +144,13 @@ def payload(planned: OrderPlan) -> dict[str, Any]:
         for one in planned.children
     ]
     count = Counter(one.kind for one in planned.children)
-    return {
-        "digest": planned.digest,
-        "items": items,
-        "totals": {
-            "count": len(items),
-            "moves": len(planned.moves),
-            "months": count["month"],
-            "undated": count["undated"],
-            "others": count["other"],
-        },
-        "chunk": None,
-    }
+    return spine.shown(planned, items, {
+        "count": len(items),
+        "moves": len(planned.moves),
+        "months": count["month"],
+        "undated": count["undated"],
+        "others": count["other"],
+    })
 
 
 def facts(planned: OrderPlan) -> dict[str, Any]:
@@ -185,42 +180,29 @@ def order_violations(
     WHETHER IT CHANGED OR NOT so a move that never happened is refused, and
     changed its position and bookkeeping only.
     """
-    violations: list[str] = []
     planned = {str(key): int(value) for key, value in seated.items()}
-    if before.content != after.content:
-        violations.append(
-            f"a {rb_writer.CONTENT_TABLE} row changed, and an order touches no track"
-        )
-
     p_cols = before.playlist_columns
     marker_at = p_cols.index(rb_writer.SOFT_DELETE_COLUMN)
     parent_at = p_cols.index("ParentID")
     seq_at = p_cols.index("Seq")
-    for key in sorted(set(before.playlists) - set(after.playlists)):
-        violations.append(f"the {rb_writer.PLAYLIST_TABLE} row {key!r} disappeared")
-    for key in sorted(set(after.playlists) - set(before.playlists)):
-        violations.append(f"an unplanned {rb_writer.PLAYLIST_TABLE} row {key!r} was added")
-    for key, slot in sorted(planned.items()):
-        row = after.playlists.get(key)
-        if (
-            row is None
-            or str(row[parent_at]) != str(folder_id)
-            or row[marker_at]
-            or int(row[seq_at] or 0) != slot
-        ):
-            violations.append(
-                f"the {rb_writer.PLAYLIST_TABLE} row {key!r} is not live under the folder "
-                f"{folder_id!r} at the planned position {slot}"
-            )
-    for key in sorted(set(before.playlists) & set(after.playlists)):
-        changed = spine.changed(p_cols, before.playlists[key], after.playlists[key])
-        allowed = _SEATED_COLUMNS if key in planned else frozenset()
-        if changed - allowed:
-            violations.append(
-                f"the {rb_writer.PLAYLIST_TABLE} row {key!r} changed "
-                f"{sorted(changed - allowed)}, which the planned order does not explain"
-            )
-
+    unseated = [
+        f"the {rb_writer.PLAYLIST_TABLE} row {key!r} is not live under the folder "
+        f"{folder_id!r} at the planned position {slot}"
+        for key, slot in sorted(planned.items())
+        if (row := after.playlists.get(key)) is None
+        or str(row[parent_at]) != str(folder_id)
+        or row[marker_at]
+        or int(row[seq_at] or 0) != slot
+    ]
+    violations = spine.drift(
+        before,
+        after,
+        touches="an order",
+        made=(),
+        written=unseated,
+        allowed=lambda key: _SEATED_COLUMNS if key in planned else frozenset(),
+        explains="the planned order does not explain",
+    )
     for key in sorted(set(before.memberships) ^ set(after.memberships)):
         violations.append(f"the {rb_writer.MEMBERSHIP_TABLE} row {key!r} was added or disappeared")
     for key in sorted(set(before.memberships) & set(after.memberships)):
@@ -294,18 +276,12 @@ def apply(
     THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST and a digest that moved
     refuses; the commit is confined from SQL by :func:`assert_order_confined`.
     """
-    watched = spine.watched(analysis_roots)
-    planned = spine.fresh(
-        plan(db, source=source),
-        approved,
+    watched, planned = spine.prepared(
+        cfg, db, analysis_roots, lambda: plan(db, source=source), approved,
         "the Favorites folder is not as the approved plan read it, so nothing was written",
         _ORIGIN,
     )
     folder_id = planned.home.folder_id
-    # THE OUT OF BAND RESTORE IS DETECTED BEFORE THE FINGERPRINT IS TOUCHED:
-    # the Favorites folder is no tree, so the detection marks and never refuses.
-    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
-
     moved: tuple[str, ...] = ()
     with session.assert_gates(
         cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -320,21 +296,18 @@ def apply(
             )
             if moved:
                 rb_writer.commit_guarded(db)
-        _record_order_commit(record, moved=len(moved), cfg=cfg)
         if moved:
             convergence.record_fingerprint(cfg, db)
         disagreements = _read_back(db, planned)
         order = tuple(
             str(getattr(row, "Name", "") or "") for row in placement.children(db, folder_id)
         )
-        session_id = record.session_id
-    names = {one.row: one.name for one in planned.children}
-    return Ordered(
-        moved=tuple(names[row] for row in moved),
-        order=order,
-        session_id=session_id,
-        disagreements=disagreements,
-    )
+        return Ordered(
+            moved=tuple(one.name for one in planned.children if one.row in moved),
+            order=order,
+            session_id=record.session_id,
+            disagreements=disagreements,
+        )
 
 
 def assert_read_back(done: Ordered) -> None:

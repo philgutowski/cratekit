@@ -117,35 +117,20 @@ def label_heard(ctx) -> Envelope:
         planned = heard.plan(
             cfg, read, remote, document, year=year, day=day, named=ctx.args.releases
         )
-    if planned is not None:
-        payload = planned.payload()
-    else:
-        payload = dated.gate_plan(
-            digest_of({"kind": "label-heard", "label": name, "year": year, "day": day}),
-            [],
-            {"heard": 0, "add": 0, "remove": 0, "take off": 0, "writes": False},
-        )
+    payload = planned.payload() if planned is not None else dated.gate_plan(
+        digest_of({"kind": "label-heard", "label": name, "year": year, "day": day}),
+        [],
+        {"heard": 0, "add": 0, "remove": 0, "take off": 0, "writes": False},
+    )
     option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=_shown(planned, name=name))
     if planned is None:
         return playlists_cli.not_followed(ctx, payload, name)
     if option != "apply" or not planned.writes:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=[_tree_warning()])
     done = heard.apply(cfg, remote, planned)
-    totals = {
-        **payload["totals"],
-        "applied": {
-            "added": done.added,
-            "taken off": done.taken_off,
-            "removed": done.removed,
-            "kept": done.kept,
-            "heard": done.recorded,
-        },
-    }
-    return ctx.envelope(
-        data={**payload, "totals": totals},
-        outcome=Outcome.OK,
-        warnings=_applied_warnings(planned, done),
-    )
+    written = {"added": done.added, "taken off": done.taken_off, "removed": done.removed}
+    written.update(kept=done.kept, heard=done.recorded)
+    return playlists_cli.applied(ctx, payload, written, _applied_warnings(planned, done))
 
 
 __all__ = ["TREE_UNCHANGED", "build_heard", "label_heard"]

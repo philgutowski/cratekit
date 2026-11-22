@@ -113,8 +113,7 @@ def _year(release: Any) -> int | None:
     not a year, nor is a number outside four digits.
     """
     for held in (getattr(release, "year", None), getattr(release, "release_date", None)):
-        if held is None or isinstance(held, bool):
-            continue
+        # None and a boolean fall through every test below.
         found = getattr(held, "year", held)
         if isinstance(found, bool):
             continue
@@ -360,7 +359,7 @@ class TidalCatalogue:
         kept.keep_identified(
             artist_id,
             found=artist is not None,
-            name=str(getattr(artist, "name", "") or "") if artist is not None else "",
+            name=str(getattr(artist, "name", "") or ""),
         )
         return artist
 
@@ -540,12 +539,12 @@ class TidalCatalogue:
             else:
                 artists.append(artist)
         if unresolved:
-            bits = []
-            for seed in unresolved:
-                if seed_identifier(seed) is not None:
-                    bits.append(f"no artist with identifier {seed!r}")
-                else:
-                    bits.append(f"no artist named exactly {seed!r}")
+            bits = [
+                f"no artist with identifier {seed!r}"
+                if seed_identifier(seed) is not None
+                else f"no artist named exactly {seed!r}"
+                for seed in unresolved
+            ]
             raise LabelUnresolvable(
                 f"the provider has {', '.join(bits)}, a seed of the label "
                 f"{entry.name!r}"

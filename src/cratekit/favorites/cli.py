@@ -81,31 +81,13 @@ def union_with_pink(
     ``from_playlist`` and ``from_colour`` count each source's candidates, so a
     row in both is counted in both and queued once.
     """
-    missing: list[str] = []
-    in_export: list[str] = []
-    for track_id in pink_ids:
-        if track_id in library.entries:
-            in_export.append(track_id)
-        else:
-            missing.append(track_id)
-    seen: set[str] = set()
-    kept: list[str] = []
-    for track_id in playlist.track_ids:
-        if track_id in seen:
-            continue
-        seen.add(track_id)
-        kept.append(track_id)
-    for track_id in in_export:
-        if track_id in seen:
-            continue
-        seen.add(track_id)
-        kept.append(track_id)
+    in_export = [track_id for track_id in pink_ids if track_id in library.entries]
     return replace(
         playlist,
-        track_ids=tuple(kept),
+        track_ids=tuple(dict.fromkeys([*playlist.track_ids, *in_export])),
         from_playlist=len(playlist.track_ids),
         from_colour=len(in_export),
-        pink_missing=tuple(missing),
+        pink_missing=tuple(track_id for track_id in pink_ids if track_id not in library.entries),
     )
 
 
@@ -139,15 +121,13 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     """
     from cratekit.modules.outbound import artifacts
 
-    hearted: list[str] = []
-    already: list[str] = []
-    unmatched: list[str] = []
+    found: dict[str, list[str]] = {"hearted": [], "already": [], "unmatched": []}
+    hearted, already, unmatched = found.values()
     reasons: list[str] = []
     left_out: list[dict[str, str]] = []
     for report in artifacts.committed(cfg, job_id):
-        hearted.extend(str(item) for item in report.get("hearted") or ())
-        already.extend(str(item) for item in report.get("already") or ())
-        unmatched.extend(str(item) for item in report.get("unmatched") or ())
+        for key, held in found.items():
+            held.extend(str(item) for item in report.get(key) or ())
         # One sentence per favourite the account would not choose a release for (R-356).
         said = [one for one in report.get("reasons") or () if isinstance(one, dict)]
         reasons.extend(
@@ -157,9 +137,7 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
         )
         left_out.extend(_left_out(report, said))
     return {
-        "hearted": hearted,
-        "already": already,
-        "unmatched": unmatched,
+        **found,
         "reasons": reasons,
         "counts": {
             "hearted": len(hearted),

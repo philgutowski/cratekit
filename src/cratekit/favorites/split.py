@@ -20,11 +20,11 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from cratekit.acquire import match, match_cli
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, rb_writer, session, tree_registry
+from cratekit.core import config, convergence, rb_writer, session
 from cratekit.core.cause import refuse
 from cratekit.favorites import backfill, placeholders, placement, spine
 from cratekit.intake import cli as intake_cli
@@ -119,27 +119,14 @@ def _tied(
     return dates
 
 
-def _job_rows(cfg: config.Config) -> tuple[list[tuple[match.Wanted, datetime]], tuple[str, ...]]:
-    """Each heart a hearts job on this library dated, once, oldest job first, whatever its state.
-
-    EVERY STATE, since a heart the library owned when its job ran is still
-    dated on its row and the quarters hold owned hearts above all. A PROVIDER
-    IDENTIFIER IS RESOLVED ONCE, its first dated mention winning, since every
-    sync freezes the whole listing again and the match is the slow part.
-    """
-    rows, unreadable = backfill.reported(cfg)
-    found: dict[str, tuple[match.Wanted, datetime]] = {}
-    for row in rows:
-        if row.hearted is not None and row.ref not in found:
-            found[row.ref] = (row.wanted, row.hearted)
-    return list(found.values()), unreadable
-
-
 def date_members(cfg: config.Config, db: Any, content_ids: Iterable[str]) -> Dating:
     """Each content row's date: a hearts job's frozen one, else the account's, else none.
 
     The library is walked once for both, and the account listed once, only when
     some row no job dates; a listing that cannot be read refuses with its reason.
+    A JOB'S HEART IS READ IN EVERY STATE, since a heart the library owned when
+    its job ran is still dated on its row, and A PROVIDER IDENTIFIER IS RESOLVED
+    ONCE, its first dated mention winning, since the match is the slow part.
     """
     from cratekit.label import catalogue
 
@@ -147,18 +134,20 @@ def date_members(cfg: config.Config, db: Any, content_ids: Iterable[str]) -> Dat
     if not wanted:
         return Dating(by_row={})
     view = match_cli.library_view(cfg)
-    job_rows, unreadable = _job_rows(cfg)
+    rows, unreadable = backfill.reported(cfg)
+    found: dict[str, tuple[match.Wanted, datetime]] = {}
+    for row in rows:
+        if row.hearted is not None and row.ref not in found:
+            found[row.ref] = (row.wanted, row.hearted)
     by_row = {
         content_id: (when, BY_JOB)
-        for content_id, when in _tied(cfg, db, view, job_rows, wanted).items()
+        for content_id, when in _tied(cfg, db, view, list(found.values()), wanted).items()
     }
-    listed = False
-    withheld = 0
+    dating = Dating(by_row=by_row, unreadable=unreadable)
     rest = wanted - set(by_row)
     if rest:
         frozen, short = intake_cli.list_favorites(catalogue.resolve(cfg))
-        listed = True
-        withheld = short.withheld if short is not None else 0
+        dating = replace(dating, listed=True, withheld=short.withheld if short is not None else 0)
         account_rows = [
             (intake_cli.thawed(said), when)
             for said in frozen.values()
@@ -166,9 +155,8 @@ def date_members(cfg: config.Config, db: Any, content_ids: Iterable[str]) -> Dat
         ]
         for content_id, when in _tied(cfg, db, view, account_rows, rest).items():
             by_row[content_id] = (when, BY_ACCOUNT)
-    for content_id in wanted - set(by_row):
-        by_row[content_id] = (None, BY_NONE)
-    return Dating(by_row=by_row, listed=listed, withheld=withheld, unreadable=unreadable)
+    by_row.update({content_id: (None, BY_NONE) for content_id in wanted - set(by_row)})
+    return dating
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,27 +241,13 @@ class SplitPlan:
         }
 
 
-def _titles(db: Any, content_ids: Iterable[str]) -> dict[str, str]:
-    """Each content row's ``artist - title`` for the screen, a row that is not there left blank."""
-    found: dict[str, str] = {}
-    for content_id in content_ids:
-        row = db.get_content(ID=content_id)
-        if row is None:
-            found[content_id] = ""
-            continue
-        artist = str(getattr(row, "ArtistName", "") or "")
-        title = str(getattr(row, "Title", "") or "")
-        found[content_id] = f"{artist} - {title}" if artist else title
-    return found
-
-
-def _in_quarters(held_quarters: Sequence[Quarter]) -> dict[str, list[str]]:
-    """Each content row the quarters hold, in quarter order, with the quarters holding it."""
-    found: dict[str, list[str]] = {}
-    for one in held_quarters:
-        for content_id in one.members:
-            found.setdefault(content_id, []).append(one.name)
-    return found
+def _title(row: Any) -> str:
+    """A content row's ``artist - title`` for the screen, a row that is not there left blank."""
+    if row is None:
+        return ""
+    artist = str(getattr(row, "ArtistName", "") or "")
+    title = str(getattr(row, "Title", "") or "")
+    return f"{artist} - {title}" if artist else title
 
 
 def taken_back(db: Any, home: placement.Home, content_ids: Iterable[str]) -> frozenset[str]:
@@ -293,11 +267,16 @@ def _planned(
     db: Any,
     home: placement.Home,
     held_quarters: Sequence[Quarter],
-    dating: Dating,
+    dated: Callable[[set[str]], Dating],
 ) -> SplitPlan:
-    in_quarters = _in_quarters(held_quarters)
+    """The split against ``home``, each member the author did not take back dated by ``dated``."""
+    in_quarters: dict[str, list[str]] = {}
+    for one in held_quarters:
+        for content_id in one.members:
+            in_quarters.setdefault(content_id, []).append(one.name)
     gone = taken_back(db, home, in_quarters)
-    titles = _titles(db, in_quarters)
+    dating = dated(set(in_quarters) - gone)
+    titles = {cid: _title(db.get_content(ID=cid)) for cid in in_quarters}
     every = [
         Member(cid, titles.get(cid, ""), tuple(names), *dating.by_row.get(cid, (None, BY_NONE)))
         for cid, names in in_quarters.items()
@@ -332,11 +311,7 @@ def plan(cfg: config.Config, db: Any, *, source: str) -> SplitPlan:
     library never walked; a member the author took back is not dated either.
     """
     home = placement.resolve_home(db, source)
-    held = quarters(db, home)
-    in_quarters = _in_quarters(held)
-    wanted = set(in_quarters) - taken_back(db, home, in_quarters)
-    dating = date_members(cfg, db, wanted) if wanted else Dating(by_row={})
-    return _planned(db, home, held, dating)
+    return _planned(db, home, quarters(db, home), lambda wanted: date_members(cfg, db, wanted))
 
 
 def replan(db: Any, approved: SplitPlan, *, source: str) -> SplitPlan:
@@ -353,7 +328,7 @@ def replan(db: Any, approved: SplitPlan, *, source: str) -> SplitPlan:
         withheld=approved.withheld,
         unreadable=approved.unreadable,
     )
-    return _planned(db, home, quarters(db, home), dating)
+    return _planned(db, home, quarters(db, home), lambda _wanted: dating)
 
 
 def payload(planned: SplitPlan) -> dict[str, Any]:
@@ -373,23 +348,18 @@ def payload(planned: SplitPlan) -> dict[str, Any]:
         for q in planned.quarters
     )
     by_source = Counter(one.dated_by for one in planned.members)
-    return {
-        "digest": planned.digest,
-        "items": items,
-        "totals": {
-            "count": len(items),
-            "members": len(planned.members),
-            "adds": planned.adds,
-            "creates": len(planned.creates),
-            "retires": len(planned.quarters),
-            "undated": len(planned.undated),
-            "taken back": len(planned.taken_back),
-            "dates from jobs": by_source[BY_JOB],
-            "dates from the account": by_source[BY_ACCOUNT],
-            "jobs unread": len(planned.unreadable),
-        },
-        "chunk": None,
-    }
+    return spine.shown(planned, items, {
+        "count": len(items),
+        "members": len(planned.members),
+        "adds": planned.adds,
+        "creates": len(planned.creates),
+        "retires": len(planned.quarters),
+        "undated": len(planned.undated),
+        "taken back": len(planned.taken_back),
+        "dates from jobs": by_source[BY_JOB],
+        "dates from the account": by_source[BY_ACCOUNT],
+        "jobs unread": len(planned.unreadable),
+    })
 
 
 def facts(planned: SplitPlan) -> dict[str, Any]:
@@ -444,50 +414,41 @@ def addition_violations(
       planned name and parent, and none disappears; an existing one moves only
       its bookkeeping, and only when it is a planned month or beside a made one.
     """
-    violations: list[str] = []
     wanted = {str(row): {str(content_id) for content_id in ids} for row, ids in planned.items()}
-    if before.content != after.content:
-        violations.append(f"a {rb_writer.CONTENT_TABLE} row changed, and the split touches no track")
-
     p_cols = before.playlist_columns
     marker_at = p_cols.index(rb_writer.SOFT_DELETE_COLUMN)
     parent_at = p_cols.index("ParentID")
     name_at = p_cols.index("Name")
     kind_at = p_cols.index("Attribute")
-    for key in sorted(set(before.playlists) - set(after.playlists)):
-        violations.append(f"the {rb_writer.PLAYLIST_TABLE} row {key!r} disappeared")
-    added = set(after.playlists) - set(before.playlists)
-    for key in sorted(added - set(created)):
-        violations.append(f"an unplanned {rb_writer.PLAYLIST_TABLE} row {key!r} was added")
-    beside = {str(parent) for _name, parent in created.values()}
+    made: list[str] = []
     for key, (name, parent) in sorted(created.items()):
         row = after.playlists.get(key)
         if row is None:
-            violations.append(f"the planned month {name!r} (row {key!r}) was not made")
-            continue
-        if (
+            made.append(f"the planned month {name!r} (row {key!r}) was not made")
+        elif (
             str(row[name_at]) != name
             or str(row[parent_at]) != str(parent)
             or row[marker_at]
             or int(row[kind_at] or 0) != 0
         ):
-            violations.append(
+            made.append(
                 f"the {rb_writer.PLAYLIST_TABLE} row {key!r} is not a live plain playlist "
                 f"named {name!r} under {parent!r}"
             )
-    for key in sorted(set(before.playlists) & set(after.playlists)):
-        changed = spine.changed(p_cols, before.playlists[key], after.playlists[key])
-        allowed = (
+    beside = {str(parent) for _name, parent in created.values()}
+    violations = spine.drift(
+        before,
+        after,
+        touches="the split",
+        made=created,
+        written=made,
+        allowed=lambda key: (
             _BOOKKEEPING
             if key in wanted or str(before.playlists[key][parent_at]) in beside
             else frozenset()
-        )
-        if changed - allowed:
-            violations.append(
-                f"the {rb_writer.PLAYLIST_TABLE} row {key!r} changed {sorted(changed - allowed)}, "
-                f"which the split's additions do not explain"
-            )
-
+        ),
+        explains="the split's additions do not explain",
+    )
     owner_at, content_at, m_marker = trees.membership_positions(before)
     for key in sorted(set(before.memberships) - set(after.memberships)):
         violations.append(f"the {rb_writer.MEMBERSHIP_TABLE} row {key!r} disappeared")
@@ -592,18 +553,12 @@ def apply(
     admitting the playlist and membership tables alone, and no quarter is
     retired until every member it holds reads back live in its month.
     """
-    watched = spine.watched(analysis_roots)
-    planned = spine.fresh(
-        replan(db, approved, source=source),
-        approved,
+    watched, planned = spine.prepared(
+        cfg, db, analysis_roots, lambda: replan(db, approved, source=source), approved,
         "the quarter playlists are not as the approved plan read them, so nothing was written",
         _ORIGIN,
     )
     home = planned.home
-    # THE OUT OF BAND RESTORE IS DETECTED BEFORE THE FINGERPRINT IS TOUCHED:
-    # the Favorites folder is no tree, so the detection marks and never refuses.
-    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
-
     written: list[tuple[str, str, int]] = []
     created: list[str] = []
     rows: dict[str, str] = {}
@@ -650,7 +605,6 @@ def apply(
             )
             if added or made:
                 rb_writer.commit_guarded(db)
-        _record_split_commit(record, added=added, retired=0, cfg=cfg)
         if added:
             convergence.record_fingerprint(cfg, db)
 
@@ -675,17 +629,14 @@ def apply(
                 db, before, moved={}, removed=[one.playlist_id for one in planned.quarters]
             )
             rb_writer.commit_guarded(db, removals=REMOVALS)
-        _record_split_commit(record, added=0, retired=len(retired), cfg=cfg)
         convergence.record_fingerprint(cfg, db)
-        disagreements = _read_back(db, planned, rows)
-        session_id = record.session_id
-    return Split(
-        months=tuple(written),
-        created=tuple(created),
-        retired=tuple(retired),
-        session_id=session_id,
-        disagreements=disagreements,
-    )
+        return Split(
+            months=tuple(written),
+            created=tuple(created),
+            retired=tuple(retired),
+            session_id=record.session_id,
+            disagreements=_read_back(db, planned, rows),
+        )
 
 
 def assert_read_back(done: Split) -> None:

@@ -1,8 +1,4 @@
-"""U178: a registered label can carry its genre, so tag folder tags its files with it.
-
-Three layers: the registry and its verb, the engine's tier, and the sweep end
-to end through the real dispatcher and a resume.
-"""
+"""U178: a registered label can carry its genre, so tag folder tags its files with it."""
 
 from __future__ import annotations
 
@@ -62,11 +58,7 @@ def track(
     genre: str | None = None,
     picture: bool = True,
 ) -> Path:
-    """One FLAC file carrying the label tag, genre and picture asked for.
-
-    A PICTURE BY DEFAULT, because a file with none is searched for its art, and
-    the property most cases assert is that a label genre asks no catalogue.
-    """
+    """One FLAC file carrying the label tag, genre and picture asked for."""
     path = folder / f"{name}.flac"
     shutil.copy2(silence, path)
     fields: dict[str, object] = {}
@@ -96,12 +88,10 @@ def held(name: str = LABEL) -> labels.LabelEntry:
 def seam(table: dict[str, str]):
     """A label seam over ``{label: genre}`` that records every name it was asked."""
     asked: list[str] = []
-
     def answer(name: str) -> LabelAnswer | None:
         asked.append(name)
         genre = table.get(name)
         return LabelAnswer(label=name, genre=genre) if genre else None
-
     answer.asked = asked  # type: ignore[attr-defined]
     return answer
 
@@ -132,7 +122,6 @@ def test_a_genre_the_taxonomy_routes_is_stored_as_typed_and_the_screen_says_wher
     }
     detail = envelope["data"]["checks"][0]["detail"]
     assert "genre Rominimal routes to Minimal / Deep Tech by an alias the taxonomy declares" in detail
-
     code, listed = drive(["label", "registry", "list"])
     assert code == int(ExitCode.OK), listed
     assert "genre Rominimal" in listed["data"]["checks"][0]["detail"]
@@ -338,11 +327,9 @@ def test_a_puls_file_with_no_picture_is_searched_for_its_art_only(folder, silenc
         {"a": SearchHit(genre="Techno", source=searchers.BEATPORT, source_genre="techno", art_url="https://img/a.jpg")}
     )
     fetched: list[str] = []
-
     def fetch(url: str) -> bytes:
         fetched.append(url)
         return _jpeg(640, 640)
-
     result = tag.tag_one(path, searcher=searcher, fetch_image=fetch, label_genre=seam({LABEL: GENRE}))
     assert searcher.asked == [("", "a")]
     assert fetched == ["https://img/a.jpg"]
@@ -353,7 +340,6 @@ def test_a_puls_file_with_no_picture_is_searched_for_its_art_only(folder, silenc
 
 def test_a_refusal_on_the_art_search_does_not_fail_a_puls_file(folder, silence):
     path = track(folder, silence, "a", label=LABEL, picture=False)
-
     def refusing(artist: str, title: str):
         raise refuse(
             searchers.UNREACHABLE_REASON,
@@ -362,7 +348,6 @@ def test_a_refusal_on_the_art_search_does_not_fail_a_puls_file(folder, silence):
             retryable=True,
             origin=("tests",),
         )
-
     result = tag.tag_one(path, searcher=refusing, label_genre=seam({LABEL: GENRE}))
     assert tags.read_genre_from_file(path) == GENRE, "the genre was saved before the search"
     assert result.genre_written == GENRE
@@ -401,9 +386,7 @@ def test_a_puls_batch_is_tagged_by_the_label_and_the_report_counts_it_apart(
     track(folder, silence, "d", label="Sudbeat")
     track(folder, silence, "e", label="Other Label")
     searcher = bound(monkeypatch, answering({"e": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
-
     job, resumed = sweep(str(folder), "--label", LABEL)
-
     assert searcher.asked == [("", "e")], "only the file of a label with no genre was searched"
     assert [tags.read_genre_from_file(folder / f"{name}.flac") for name in "abcde"] == [
         GENRE,
@@ -494,9 +477,7 @@ def test_an_unreadable_registry_warns_and_refuses_only_a_sweep_that_named_a_labe
 def test_a_sweep_driven_at_its_queue_keeps_the_label_warning_and_never_calls_its_label_unapplied(
     cfg, folder, silence, monkeypatch
 ):
-    """U192. The ``--label`` typed on the queueing call is the one frozen, so the
-    settled answer carries the queue's warning once and not the resume's
-    "--label was not applied", which would tell a person their label was ignored."""
+    """The ``--label`` typed on the queueing call is frozen, so the resume warns nothing new."""
     registered()
     track(folder, silence, "a")
     searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
@@ -522,11 +503,7 @@ def test_a_label_typed_on_a_resume_is_still_said_to_be_unapplied(cfg, folder, si
 
 
 def refusing_writes(monkeypatch) -> None:
-    """A file that will not take a genre, a locked file or a read only volume.
-
-    ``write_genre`` answers False for every such file rather than raising, which
-    is the return the first build ignored.
-    """
+    """A file that will not take a genre, a locked file or a read only volume."""
     monkeypatch.setattr(tags, "write_genre", lambda path, genre: False)
 
 
@@ -563,11 +540,9 @@ def test_an_art_search_for_a_labelled_file_never_offers_the_general_catalogue_it
     path = track(folder, silence, "a", label=LABEL, picture=False)
     assert tags.write_tags(path, {"isrc": "ZZTST2600001"})
     offered: list[object] = []
-
     def published(hit, isrc):
         offered.append(isrc)
         return hit
-
     searcher = answering({"a": SearchHit(source=searchers.BEATPORT, answers=())})
     tag.tag_one(path, searcher=searcher, published=published, label_genre=seam({LABEL: GENRE}))
     assert offered == [None], "the genre was the label's, so no ISRC is offered for one"
@@ -647,11 +622,7 @@ def test_a_file_its_own_label_answered_for_is_never_named_as_outranked(
 
 
 def two_alphas() -> None:
-    """Alpha with a genre, and omega renamed onto Alpha's display name with none.
-
-    ``registry rename`` accepts a name another label carries, so this is a
-    registry a person can make with the shipped verbs.
-    """
+    """Alpha with a genre, and omega renamed onto Alpha's display name with none."""
     registered("--genre", GENRE, name="Alpha")
     registered(name="Omega")
     code, envelope = drive(["label", "registry", "rename", "omega", "--to", "Alpha"])
@@ -666,9 +637,7 @@ def test_a_label_sharing_its_name_with_one_carrying_a_genre_is_never_given_that_
     two_alphas()
     track(folder, silence, "a")
     searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
-
     code, queued = drive(["tag", "folder", "--queue-only", str(folder), "--label", "omega"])
-
     assert code == int(ExitCode.OK), queued
     job = tag_job()
     code, resumed = drive(resume_argv(job.job_id))
@@ -690,9 +659,7 @@ def test_the_label_carrying_the_genre_still_gives_it_under_the_shared_name(
     two_alphas()
     track(folder, silence, "a")
     bound(monkeypatch, never_searched)
-
     job, resumed = sweep(str(folder), "--label", "alpha")
-
     assert tags.read_genre_from_file(folder / "a.flac") == GENRE
     assert resumed["data"]["progress"]["tagging"]["label_genres"] == {"Alpha": 1}
     assert tag_cli.LABEL_NO_GENRE not in [warning["code"] for warning in resumed["warnings"]]
@@ -708,9 +675,7 @@ def test_a_files_own_tag_naming_a_shared_name_is_given_neither_labels_genre(
     track(folder, silence, "a", label="Alpha")
     track(folder, silence, "b", label="alpha")
     searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
-
     _job, resumed = sweep(str(folder))
-
     assert sorted(searcher.asked) == [("", "a"), ("", "b")]
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
     assert tags.read_genre_from_file(folder / "b.flac") is None, "the shared name in any case"
@@ -722,9 +687,7 @@ def test_a_shared_name_outranking_the_folders_label_is_named_truly(cfg, folder, 
     track(folder, silence, "a", label="Alpha")
     track(folder, silence, "b")
     bound(monkeypatch, answering({}))
-
     _job, resumed = sweep(str(folder), "--label", "alpha")
-
     assert tags.read_genre_from_file(folder / "b.flac") == GENRE
     assert tags.read_genre_from_file(folder / "a.flac") is None
     warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
@@ -762,9 +725,7 @@ def test_a_name_that_is_another_labels_identifier_is_the_label_named_so(
     track(folder, silence, "a", label="alpha")
     track(folder, silence, "b", label="Alpha Recordings")
     searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
-
     _job, resumed = sweep(str(folder))
-
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC, "never Alpha Recordings' genre"
     assert tags.read_genre_from_file(folder / "b.flac") == GENRE
     assert searcher.asked == [("", "a")]
@@ -785,9 +746,7 @@ def test_a_tag_naming_a_label_whose_name_is_another_labels_identifier_takes_its_
     renamed("xenon", "omega")
     track(folder, silence, "a", label="omega")
     bound(monkeypatch, never_searched)
-
     _job, resumed = sweep(str(folder))
-
     assert tags.read_genre_from_file(folder / "a.flac") == GENRE
     assert resumed["data"]["progress"]["tagging"]["label_genres"] == {"omega": 1}
 

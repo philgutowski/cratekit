@@ -1,9 +1,4 @@
-"""U26: label registry, sweeps, import, and harvest.
-
-Scope is most recent N plus owned dedup; a last pulled year is never a floor
-(KTD11). Verification drops unconfirmed rather than guessing. Listing goes
-through cratekit.acquire.listing, tombstones through cratekit.core.tombstone.
-"""
+"""U26: label registry, sweeps, import, and harvest."""
 
 from __future__ import annotations
 
@@ -46,12 +41,7 @@ def cfg(tmp_path, monkeypatch):
 
 
 class ProviderArtist:
-    """The real client shape: album.artist is an object with a name, not a string.
-
-    ``str`` of a tidalapi Artist is a memory address. A stand-in that
-    stringifies to the name would hide the defect the live sweep wrote into
-    98 review rows.
-    """
+    """The real client shape: album.artist is an object with a name, not a string."""
 
     def __init__(self, name: str) -> None:
         self.name = name
@@ -73,12 +63,7 @@ class Album:
 
 
 class PagedArtist:
-    """A provider listing that truncates to one page when not given a limit.
-
-    That is the real client shape: one page, no complaint. A crawl that
-    calls this without pagination wrappers will silently lose everything
-    after the first 100.
-    """
+    """A provider listing that truncates to one page when not given a limit."""
 
     page_size = 100
 
@@ -112,7 +97,6 @@ def _confirm_named(allowed: set[str]):
             "source": "fixture",
             "notes": "no web match",
         }
-
     return search
 
 
@@ -122,13 +106,10 @@ def _confirm_named(allowed: set[str]):
 def test_the_registry_survives_a_label_rename_without_orphaning_its_state(cfg):
     from cratekit.label import marks as label_marks
     from cratekit.label import registry as labels
-
     store = labels.RegistryStore()
     label_id = store.add("Anjunadeep", match="anjunadeep", seed_artists=["Jody Wisternoff"])
     label_marks.advance(cfg, label_id, year="2024")
-
     store.rename(label_id, "Anjunadeep Recordings")
-
     reloaded = store.load()
     entry = reloaded.by_id(label_id)
     assert entry is not None
@@ -141,7 +122,6 @@ def test_the_registry_survives_a_label_rename_without_orphaning_its_state(cfg):
 
 def test_adding_the_same_label_again_keeps_its_identifier(cfg):
     from cratekit.label import registry as labels
-
     store = labels.RegistryStore()
     first = store.add("Colorize")
     second = store.add("Colorize", match="colorize")
@@ -151,9 +131,7 @@ def test_adding_the_same_label_again_keeps_its_identifier(cfg):
 
 
 def test_the_registry_records_an_id_seed(cfg):
-    del cfg
     from cratekit.label import registry as labels
-
     store = labels.RegistryStore()
     label_id = store.add("Harbour Lights", seed_artists=["id:99"])
     entry = store.load().by_id(label_id)
@@ -167,7 +145,6 @@ def test_the_registry_records_an_id_seed(cfg):
 def test_a_crawl_outside_a_naive_date_floor_still_returns_those_items(cfg):
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     store = labels.RegistryStore()
     label_id = store.add("Sudbeat", match="sudbeat")
     artist = PagedArtist(
@@ -194,7 +171,6 @@ def test_a_crawl_outside_a_naive_date_floor_still_returns_those_items(cfg):
 def test_an_unverified_catalogue_match_is_dropped_and_reported_never_acquired(cfg):
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     store = labels.RegistryStore()
     label_id = store.add("All Day I Dream", match="all day i dream")
     artist = PagedArtist(
@@ -220,7 +196,6 @@ def test_an_unverified_catalogue_match_is_dropped_and_reported_never_acquired(cf
 def test_a_tombstoned_version_is_reported_suppressed_by_the_sweep(cfg):
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     store = labels.RegistryStore()
     label_id = store.add("Afterlife", match="afterlife")
     identity = tombstone.version_identity(artist="Anyma", title="Conscience")
@@ -251,7 +226,6 @@ def test_a_tombstoned_version_is_reported_suppressed_by_the_sweep(cfg):
 
 def test_a_listing_longer_than_one_page_returns_fully(cfg):
     from cratekit.label import crawl
-
     albums = [
         Album(f"a{i}", year="2026", artist="Label Act", title=f"Track {i}")
         for i in range(180)
@@ -265,7 +239,6 @@ def test_a_listing_longer_than_one_page_returns_fully(cfg):
 
 def test_the_sweep_does_not_call_a_provider_listing_directly():
     from tests.test_adapter_listing import direct_listing_calls
-
     problems: list[str] = []
     for path in sorted(LABEL_ROOT.rglob("*.py")):
         problems.extend(direct_listing_calls(path.read_text(), path.as_posix()))
@@ -278,7 +251,6 @@ def test_the_sweep_does_not_call_a_provider_listing_directly():
 def test_a_sweep_review_output_is_a_review_queue_item_not_a_file(cfg, tmp_path):
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     store = labels.RegistryStore()
     label_id = store.add("Stil Vor Talent", match="stil vor talent")
     artist = PagedArtist(
@@ -310,7 +282,6 @@ def test_a_sweep_review_output_is_a_review_queue_item_not_a_file(cfg, tmp_path):
     assert len(items) == 1
     assert items[0].queue == Queue.LABEL_RELEASE
     assert items[0].payload["identity"] == "r1"
-
     written = [path for path in tmp_path.rglob("*") if path.suffix in {".csv", ".tsv"}]
     assert written == []
 
@@ -319,7 +290,6 @@ def test_an_offered_release_records_the_artist_name_not_the_provider_object(cfg)
     """The live sweep stored str(album.artist), which is a memory address."""
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     credited = ProviderArtist("Oliver Koletzki")
     assert "object at 0x" in str(credited)
     store = labels.RegistryStore()
@@ -338,7 +308,6 @@ def test_an_offered_release_records_the_artist_name_not_the_provider_object(cfg)
     assert payload["artist"] == "Oliver Koletzki"
     assert "object at 0x" not in payload["artist"]
     assert payload["title"] == "First"
-
     with review.open_store(cfg) as queue:
         item = sweep.offer_release(queue, found.candidates[0])
         stored = item.payload["artist"]
@@ -350,7 +319,6 @@ def test_a_string_artist_is_still_recorded_as_the_string(cfg):
     """The suite's stand-ins pass a string, and that spelling must keep working."""
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     store = labels.RegistryStore()
     label_id = store.add("Sudbeat", match="sudbeat")
     found = sweep.list_for_label(
@@ -366,7 +334,6 @@ def test_a_string_artist_is_still_recorded_as_the_string(cfg):
 
 def test_the_label_package_does_not_construct_a_csv_writer():
     from tests.test_cli_contract import constructs_a_csv_writer
-
     for path in sorted(LABEL_ROOT.rglob("*.py")):
         assert not constructs_a_csv_writer(path.read_text()), path
 
@@ -377,7 +344,6 @@ def test_the_label_package_does_not_construct_a_csv_writer():
 def test_a_sweep_produces_the_same_acquisition_set_as_the_source_algorithm(cfg):
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     albums = [
         Album("a", year="2026", artist="Act", title="A"),
         Album("b", year="2025", artist="Act", title="B"),
@@ -402,7 +368,6 @@ def test_increment_does_not_use_the_watermark_as_a_date_floor(cfg):
     from cratekit.label import marks as label_marks
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     store = labels.RegistryStore()
     label_id = store.add("Crosstown Rebels", match="crosstown")
     label_marks.advance(cfg, label_id, year="2024")
@@ -439,7 +404,6 @@ def test_an_owned_newest_release_does_not_hide_an_older_unowned_one(cfg):
     """R-137, driven through ``LabelSource.list_recent`` and the increment."""
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     store = labels.RegistryStore()
     label_id = store.add("Kompakt", match="kompakt")
     owned = {"new"}
@@ -475,18 +439,15 @@ def test_an_owned_newest_release_does_not_hide_an_older_unowned_one(cfg):
 def test_harvest_offers_verified_labels_and_imports_nothing(cfg, tmp_path):
     from cratekit.label import harvest
     from cratekit.label import registry as labels
-
     tracks = [
         type("Track", (), {"copyright": "2026 Anjunadeep", "label": None, "id": "t1"})(),
         type("Track", (), {"copyright": "2026 Colorize", "label": None, "id": "t2"})(),
         type("Track", (), {"copyright": "2026 Mystery Distro", "label": None, "id": "t3"})(),
     ]
-
     def verify_name(name: str) -> dict:
         if name in {"Anjunadeep", "Colorize"}:
             return {"verdict": "confirmed", "resolved_label": name, "notes": ""}
         return {"verdict": "unconfirmed", "resolved_label": "", "notes": "no match"}
-
     with review.open_store(cfg) as queue:
         report = harvest.from_tracks(
             tracks,
@@ -495,7 +456,6 @@ def test_harvest_offers_verified_labels_and_imports_nothing(cfg, tmp_path):
             extract=harvest.labels_from_copyright,
         )
         items = list(review.list_items(queue, queue=Queue.LABEL_RELEASE))
-
     names = {item.payload["name"] for item in items}
     assert names == {"Anjunadeep", "Colorize"}
     assert "Mystery Distro" in {drop.name for drop in report.dropped}
@@ -510,7 +470,6 @@ def test_harvest_offers_verified_labels_and_imports_nothing(cfg, tmp_path):
 def test_an_unreadable_intent_file_refuses_rather_than_going_empty(cfg):
     from cratekit.core.cause import CratekitError
     from cratekit.label import registry as labels
-
     path = config.state_path("label_intent")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("not json", encoding="utf-8")
@@ -522,22 +481,13 @@ def test_an_unreadable_intent_file_refuses_rather_than_going_empty(cfg):
 def test_renaming_an_unknown_label_refuses(cfg):
     from cratekit.core.cause import CratekitError
     from cratekit.label import registry as labels
-
     with pytest.raises(CratekitError) as excinfo:
         labels.RegistryStore().rename("no-such-label", "Other")
     assert excinfo.value.cause.reason == "label-unknown"
 
 
 class HarvestCtx:
-    """A context for the two branches an UNBOUND build must refuse on.
-
-    ``envelope`` raises, which is what the test it replaces used, and it is kept
-    for exactly the two cases where the property still holds: a build with no
-    catalogue adapter never reaches an emit, so a call that emitted here has
-    resolved something it could not have. The branches that DO emit are driven
-    through the real dispatcher in ``tests/test_label_workers.py`` instead,
-    because a context whose envelope raises cannot describe a verb that succeeds.
-    """
+    """A context for the two branches an UNBOUND build must refuse on."""
 
     def __init__(self, playlist: str = "https://example.invalid/playlist") -> None:
         self.args = type("Args", (), {"playlist": playlist})()
@@ -558,7 +508,6 @@ def _adapter_absent(monkeypatch):
     still describes after U62. A ``None`` in ``sys.modules`` is what Python itself
     reads as a module that cannot be imported."""
     import sys
-
     monkeypatch.setitem(sys.modules, "cratekit.label.tidal_catalogue", None)
 
 
@@ -567,10 +516,8 @@ def test_harvest_on_a_build_with_no_adapter_refuses_that_nothing_is_bound(cfg, m
     from cratekit.core import secrets
     from cratekit.core.cause import CratekitError
     from cratekit.label import cli as label_cli
-
     secrets.set_json(secrets.Credential.PROVIDER_SESSION, {"token": "recorded"})
     _adapter_absent(monkeypatch)
-
     with pytest.raises(CratekitError) as excinfo:
         label_cli.harvest_playlist(HarvestCtx())
     cause = excinfo.value.cause
@@ -589,7 +536,6 @@ def test_harvest_with_no_provider_session_refuses_the_credential_instead(cfg):
     """The other refusal a shipped build gives, and it is a different act to fix."""
     from cratekit.core.cause import CratekitError
     from cratekit.label import cli as label_cli
-
     with pytest.raises(CratekitError) as excinfo:
         label_cli.harvest_playlist(HarvestCtx())
     assert excinfo.value.cause.reason == "credential-missing"
@@ -600,7 +546,6 @@ def test_harvest_with_no_provider_session_refuses_the_credential_instead(cfg):
 def test_import_one_label_returns_the_unowned_confirmed_set(cfg):
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     store = labels.RegistryStore()
     label_id = store.add("Kompakt", match="kompakt")
     artist = PagedArtist(
@@ -634,7 +579,6 @@ def test_with_no_provider_session_the_catalogue_seam_names_the_credential(cfg):
     from cratekit.core import secrets
     from cratekit.core.cause import CratekitError
     from cratekit.label import catalogue
-
     with pytest.raises(CratekitError) as excinfo:
         catalogue.resolve(cfg)
     cause = excinfo.value.cause
@@ -649,11 +593,9 @@ def test_with_a_session_recorded_and_no_adapter_the_seam_refuses_that_nothing_is
     from cratekit.core import secrets
     from cratekit.core.cause import CratekitError
     from cratekit.label import catalogue
-
     secrets.set_json(secrets.Credential.PROVIDER_SESSION, {"token": "recorded"})
     assert secrets.exists(str(secrets.Credential.PROVIDER_SESSION))
     _adapter_absent(monkeypatch)
-
     with pytest.raises(CratekitError) as excinfo:
         catalogue.resolve(cfg)
     cause = excinfo.value.cause
@@ -670,15 +612,11 @@ def test_the_catalogue_seam_answers_bound_without_reading_a_credential(cfg, monk
     """Asked at enqueue, where the answer is still useful, so it must not raise."""
     from cratekit.core import secrets
     from cratekit.label import catalogue
-
-    del cfg
-
     def _refuse_to_be_asked(name: str) -> bool:
         raise AssertionError(
             f"bound() read the credential {name!r}. It is asked before a person "
             f"commits to the work and answers about this build, not this machine"
         )
-
     monkeypatch.setattr(secrets, "exists", _refuse_to_be_asked)
     assert catalogue.bound() is True
     _adapter_absent(monkeypatch)
@@ -688,7 +626,6 @@ def test_the_catalogue_seam_answers_bound_without_reading_a_credential(cfg, monk
 def test_the_strict_catalogue_raises_on_a_method_outside_the_protocol():
     """A caller cannot even NAME a provider read the seam does not declare."""
     from tests.label_fakes import PROTOCOL_METHODS, StrictCatalogue
-
     strict = StrictCatalogue()
     for method in sorted(PROTOCOL_METHODS):
         assert callable(getattr(strict, method))
@@ -711,25 +648,14 @@ def test_the_strict_catalogue_raises_on_a_method_outside_the_protocol():
 
 
 class UnpageableArtist:
-    """A listing method that exists and refuses pagination arguments.
-
-    The client shape ``listing.ListingNotPaginated`` is written for: a version
-    that dropped the ``limit`` and ``offset`` keywords. The wrapper raises rather
-    than taking the one page it could serve, and this is the object that drives
-    it out of a crawl.
-    """
+    """A listing method that exists and refuses pagination arguments."""
 
     def get_albums(self):
         return []
 
 
 class RaisingArtist:
-    """A listing method that pages correctly and fails at the provider.
-
-    The other half of the crawl's failure surface. ``listing.fetch_with_retry``
-    re-raises this exception once its retries are spent, so what reaches the
-    sweep is the PROVIDER's own type rather than anything this codebase defines.
-    """
+    """A listing method that pages correctly and fails at the provider."""
 
     def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Album]:
         del limit, offset
@@ -737,48 +663,21 @@ class RaisingArtist:
 
 
 def _impatient_crawl(monkeypatch) -> None:
-    """Run the real crawl with its retry backoff collapsed, and nothing else.
-
-    ``listing.fetch_with_retry`` retries ANY exception, deliberately and for a
-    reason its own docstring gives, and its ladder sleeps thirty one real
-    seconds before re-raising. That includes the ``ListingNotPaginated`` a method
-    that cannot page raises, which is never going to succeed on attempt five.
-    ``list_for_label`` exposes no seam to shorten the ladder and should not grow
-    one for a test.
-
-    So the retry COUNT is shortened here and nothing else is substituted. The
-    pagination wrapper, the exception types and the conversion under test all run
-    exactly as shipped, which is the difference between shortening a timer and
-    replacing the mechanism.
-    """
+    """Run the real crawl with its retry backoff collapsed, and nothing else."""
     from cratekit.label import crawl
-
     real = crawl.releases
-
     def impatient(artist, **kwargs):
         kwargs.setdefault("max_retries", 0)
         return real(artist, **kwargs)
-
     monkeypatch.setattr(crawl, "releases", impatient)
 
 
 class SilentArtist:
-    """An artist object exposing neither listing method the crawl tries.
-
-    ``listing.artist_releases`` skips a missing method with a ``continue``, so
-    this object produces an empty list from a catalogue that was never read.
-    That is the R-135 producer this unit closes, and the empty list it still
-    produces one layer down is asserted below rather than assumed.
-    """
+    """An artist object exposing neither listing method the crawl tries."""
 
 
 class AlbumsOnlyArtist:
-    """ONE working listing method over a catalogue that really has nothing.
-
-    The case that must keep reporting empty. It is the reason the fix is a check
-    on the artist object and on the crawl's exceptions, and not a rule that an
-    empty release list is an error.
-    """
+    """ONE working listing method over a catalogue that really has nothing."""
 
     def get_albums(self, limit: int | None = None, offset: int = 0) -> list[Album]:
         del limit, offset
@@ -789,7 +688,6 @@ def _label_source(cfg, name: str, **kwargs):
     """One registered favourite label and a ``LabelSource`` over it."""
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     store = labels.RegistryStore()
     label_id = store.add(name, match=name.lower())
     source = sweep.LabelSource(cfg, registry=store.load(), **kwargs)
@@ -815,11 +713,9 @@ def test_a_listing_that_cannot_be_paged_raises_instead_of_reporting_empty(
     from cratekit.acquire import listing
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     _impatient_crawl(monkeypatch)
     store = labels.RegistryStore()
     label_id = store.add("Diynamic", match="diynamic")
-
     with pytest.raises(run.LookupFailure) as excinfo:
         sweep.list_for_label(
             cfg,
@@ -827,7 +723,6 @@ def test_a_listing_that_cannot_be_paged_raises_instead_of_reporting_empty(
             artist=UnpageableArtist(),
             verify=_always_confirm,
         )
-
     assert "Diynamic" in str(excinfo.value)
     # The original is reachable rather than swallowed, so a person debugging
     # gets the client's own words and not only this layer's summary.
@@ -840,11 +735,9 @@ def test_a_provider_error_out_of_the_crawl_is_not_an_empty_catalogue(cfg, monkey
     """The wrap is not narrowed to the one exception type this layer knows."""
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     _impatient_crawl(monkeypatch)
     store = labels.RegistryStore()
     label_id = store.add("Innervisions", match="innervisions")
-
     with pytest.raises(run.LookupFailure) as excinfo:
         sweep.list_for_label(
             cfg,
@@ -852,7 +745,6 @@ def test_a_provider_error_out_of_the_crawl_is_not_an_empty_catalogue(cfg, monkey
             artist=RaisingArtist(),
             verify=_always_confirm,
         )
-
     assert isinstance(excinfo.value.__cause__, RuntimeError)
     assert "503" in str(excinfo.value.__cause__)
 
@@ -861,13 +753,11 @@ def test_an_artist_exposing_no_listing_method_raises_rather_than_crawling_nothin
     """The producer is one layer down, and this pins BOTH halves of it."""
     from cratekit.label import crawl, sweep
     from cratekit.label import registry as labels
-
     silent = SilentArtist()
     # The wrapper's silence is the thing being closed, so it is asserted rather
     # than described. It skips each missing method and returns an empty list from
     # an object it never read.
     assert crawl.releases(silent) == []
-
     store = labels.RegistryStore()
     label_id = store.add("Rekids", match="rekids")
     with pytest.raises(run.LookupFailure) as excinfo:
@@ -892,9 +782,7 @@ def test_one_working_listing_with_no_releases_still_reports_empty(cfg):
         verify=_always_confirm,
     )
     source.artists = {label_id: AlbumsOnlyArtist()}
-
     result = _increment(cfg, source)
-
     assert result.shortfall == "empty"
     assert result.processed == ()
 
@@ -902,7 +790,6 @@ def test_one_working_listing_with_no_releases_still_reports_empty(cfg):
 def test_an_unreadable_listing_stops_the_increment_at_the_lookup(cfg, monkeypatch):
     """Named where the run stopped, not merely that nothing came out of it."""
     from cratekit.core.cause import CratekitError
-
     _impatient_crawl(monkeypatch)
     label_id, source = _label_source(
         cfg,
@@ -911,10 +798,8 @@ def test_an_unreadable_listing_stops_the_increment_at_the_lookup(cfg, monkeypatc
         verify=_always_confirm,
     )
     source.artists = {label_id: RaisingArtist()}
-
     with pytest.raises(CratekitError) as excinfo:
         _increment(cfg, source)
-
     cause = excinfo.value.cause
     assert cause.reason == "sync-source-lookups-failed"
     assert cause.detail["source_id"] == "labels"
@@ -927,13 +812,10 @@ def test_a_label_the_catalogue_cannot_resolve_stops_the_increment(cfg):
     """The path ``list_for_label`` never sees, driven end to end."""
     from cratekit.core.cause import CratekitError
     from tests.label_fakes import UnreadableCatalogue
-
     catalogue = UnreadableCatalogue()
     label_id, source = _label_source(cfg, "Ostgut Ton", catalogue=catalogue)
-
     with pytest.raises(CratekitError) as excinfo:
         _increment(cfg, source)
-
     assert excinfo.value.cause.reason == "sync-source-lookups-failed"
     # The catalogue was genuinely asked, so the refusal is about a failed read
     # and not about a label that was never looked up.
@@ -943,17 +825,14 @@ def test_a_label_the_catalogue_cannot_resolve_stops_the_increment(cfg):
 def test_a_registered_label_with_no_artist_object_refuses_rather_than_skipping(cfg):
     """The bare ``continue`` this unit removed, asserted as gone."""
     from cratekit.core.cause import CratekitError
-
     _label_source_id, source = _label_source(
         cfg,
         "Life and Death",
         artists={},
         verify=_always_confirm,
     )
-
     with pytest.raises(CratekitError) as excinfo:
         _increment(cfg, source)
-
     assert excinfo.value.cause.reason == "sync-source-lookups-failed"
 
 
@@ -965,10 +844,8 @@ def test_the_missing_artist_refusal_names_the_missing_object_not_the_listing(cfg
         artists={},
         verify=_always_confirm,
     )
-
     with pytest.raises(run.LookupFailure) as excinfo:
         source.list_recent(10)
-
     said = str(excinfo.value)
     assert "no catalogue object was available" in said, said
     assert "Life and Death" in said, said
@@ -979,7 +856,6 @@ def test_a_source_with_neither_verifier_nor_catalogue_refuses_rather_than_confir
 ):
     """The verifier's own missing-object case, which the docstring names and no test drove."""
     from cratekit.label import registry as labels
-
     _label_source_id, source = _label_source(
         cfg,
         "Life and Death",
@@ -989,10 +865,8 @@ def test_a_source_with_neither_verifier_nor_catalogue_refuses_rather_than_confir
             )
         },
     )
-
     with pytest.raises(run.LookupFailure) as excinfo:
         source.list_recent(10)
-
     assert "neither a verification callable nor a catalogue" in str(excinfo.value)
     assert source.dropped == ()
 
@@ -1001,9 +875,7 @@ def test_a_source_over_an_empty_registry_lists_nothing_rather_than_refusing_its_
     """A no-op stays a no-op: nothing to confirm means no way to confirm is needed."""
     from cratekit.label import registry as labels
     from cratekit.label import sweep
-
     source = sweep.LabelSource(cfg, registry=labels.Registry(labels={}))
-
     assert source.list_recent(10) == []
     assert source.read == 0
 
@@ -1018,7 +890,6 @@ class ProxyThatFetchesOnAttributeAccess:
 def test_an_artist_object_that_raises_on_inspection_is_a_lookup_failure_not_a_defect(cfg):
     """The listing probe sits inside the boundary, as the listing itself does."""
     from cratekit.core.cause import CratekitError
-
     _label_source_id, source = _label_source(
         cfg,
         "Life and Death",
@@ -1026,10 +897,8 @@ def test_an_artist_object_that_raises_on_inspection_is_a_lookup_failure_not_a_de
         verify=_always_confirm,
     )
     source.artists = {_label_source_id: ProxyThatFetchesOnAttributeAccess()}
-
     with pytest.raises(CratekitError) as excinfo:
         _increment(cfg, source)
-
     assert excinfo.value.cause.reason == "sync-source-lookups-failed"
     assert "ConnectionError" in excinfo.value.cause.message
 
@@ -1037,16 +906,13 @@ def test_an_artist_object_that_raises_on_inspection_is_a_lookup_failure_not_a_de
 def test_a_refusal_raised_mid_crawl_passes_through_the_listing_boundary_unchanged(cfg):
     """The crawl's boundary keeps the rule the verifier's states."""
     from cratekit.core.cause import CratekitError, refuse
-
     class RefusingArtist:
         def get_albums(self, limit=None, offset=0):
             del limit, offset
             raise refuse("credential-missing", "the session expired mid page", origin=("tests",))
-
         def get_ep_singles(self, limit=None, offset=0):
             del limit, offset
             return []
-
     _label_source_id, source = _label_source(
         cfg,
         "Life and Death",
@@ -1054,17 +920,14 @@ def test_a_refusal_raised_mid_crawl_passes_through_the_listing_boundary_unchange
         verify=_always_confirm,
     )
     source.artists = {_label_source_id: RefusingArtist()}
-
     with pytest.raises(CratekitError) as excinfo:
         _increment(cfg, source)
-
     assert excinfo.value.cause.reason == "credential-missing"
 
 
 def test_the_crawl_probes_exactly_the_methods_the_listing_reads_by_default():
     from cratekit.acquire import listing
     from cratekit.label import crawl
-
     assert crawl.LISTING_METHODS == listing.RELEASE_METHODS == ("get_albums", "get_ep_singles")
 
 
@@ -1073,22 +936,17 @@ def test_a_rate_limit_is_recognized_through_the_errors_it_was_declared_from():
     from tidalapi.exceptions import TooManyRequests
 
     from cratekit.label import sweep
-
     limit = TooManyRequests("Album unavailable")
     assert sweep._lookup_failure("m", limit).rate_limited is True
-
     wrapped = RuntimeError("the client gave up")
     wrapped.__cause__ = limit
     assert sweep._lookup_failure("m", wrapped).rate_limited is True
-
     assert sweep._lookup_failure("m", RuntimeError("provider 503")).rate_limited is False
-
     # The client reads a 429's body as JSON before it builds its own error, so
     # a gateway's non JSON 429 arrives as a decode error raised while handling
     # it. The context counts because it carries the status itself.
     import requests
     from tidalapi.exceptions import http_error_to_tidal_error
-
     def translated(status: int) -> BaseException:
         answered = requests.Response()
         answered.status_code = status
@@ -1101,15 +959,12 @@ def test_a_rate_limit_is_recognized_through_the_errors_it_was_declared_from():
         except Exception as undecoded:  # noqa: BLE001 - the error under test
             return undecoded
         raise AssertionError("the client read a non JSON body as JSON")
-
     assert sweep._lookup_failure("m", translated(429)).rate_limited is True
     assert sweep._lookup_failure("m", translated(503)).rate_limited is False
-
     # A context is read for the status and never for the type.
     words = RuntimeError("raised while handling one")
     words.__context__ = TooManyRequests("Album unavailable")
     assert sweep._lookup_failure("m", words).rate_limited is False
-
     looped = RuntimeError("names itself")
     looped.__cause__ = looped
     looped.__context__ = looped
@@ -1129,7 +984,6 @@ U237_PREFIXES = ("", "2021 ", "(P) 2021 ", "(C) 2021 ", "(p) 2021 ", "(c) 2021 "
 
 def _copyright_track(text: str, *, field: str = "copyright"):
     from tests.label_fakes import FakeTrack
-
     return FakeTrack("t1", **{field: text})
 
 
@@ -1137,14 +991,12 @@ def _copyright_track(text: str, *, field: str = "copyright"):
 @pytest.mark.parametrize("name", U237_NAMES)
 def test_a_copyright_line_keeps_the_label_name_whole_under_every_prefix(prefix, name):
     from cratekit.label import harvest
-
     assert harvest.labels_from_copyright(_copyright_track(prefix + name)) == (name,)
 
 
 @pytest.mark.parametrize("name", U237_NAMES)
 def test_a_label_credit_read_when_no_copyright_line_keeps_its_first_letter(name):
     from cratekit.label import harvest
-
     assert harvest.labels_from_copyright(_copyright_track(name, field="label")) == (name,)
 
 
@@ -1175,13 +1027,11 @@ def test_a_label_credit_read_when_no_copyright_line_keeps_its_first_letter(name)
 )
 def test_only_the_parenthesised_or_symbol_mark_and_the_year_are_stripped(text, expected):
     from cratekit.label import harvest
-
     assert harvest.labels_from_copyright(_copyright_track(text)) == expected
 
 
 def test_a_letter_after_a_mark_is_not_a_second_mark():
     from cratekit.label import harvest
-
     # ``(P) Cadenza`` loses the mark and keeps every letter after it; ``P Cadenza``
     # and ``C 2021 Puls`` carry no mark this reader knows, so nothing is stripped.
     assert harvest.labels_from_copyright(_copyright_track("(P) Cadenza")) == ("Cadenza",)
@@ -1191,18 +1041,14 @@ def test_a_letter_after_a_mark_is_not_a_second_mark():
 
 def test_harvest_offers_cadenza_not_adenza(cfg):
     from cratekit.label import harvest
-
     asked: list[str] = []
-
     def verify_name(name: str) -> dict:
         asked.append(name)
         return {"verdict": "confirmed", "resolved_label": name, "notes": ""}
-
     tracks = [_copyright_track("(P) 2021 Cadenza"), _copyright_track("Pressure Traxx")]
     with review.open_store(cfg) as queue:
         report = harvest.from_tracks(tracks, store=queue, verify=verify_name)
         names = {item.payload["name"] for item in review.list_items(queue, queue=Queue.LABEL_RELEASE)}
-
     assert asked == ["Cadenza", "Pressure Traxx"]
     assert names == {"Cadenza", "Pressure Traxx"}
     assert report.dropped == ()
@@ -1234,7 +1080,6 @@ def test_harvest_offers_cadenza_not_adenza(cfg):
 )
 def test_a_needle_confirms_its_label_on_whole_words(needle, credit):
     from cratekit.label import verify
-
     assert verify.labels_match(needle, credit)
 
 
@@ -1258,17 +1103,14 @@ def test_a_needle_confirms_its_label_on_whole_words(needle, credit):
 )
 def test_a_needle_inside_a_longer_word_confirms_nothing(needle, credit):
     from cratekit.label import verify
-
     assert not verify.labels_match(needle, credit)
 
 
 def test_a_release_credited_to_a_longer_act_name_is_a_mismatch_not_a_confirmation():
     from cratekit.label import verify
-
     def search(claimed, release):
         del claimed, release
         return {"resolved_label": "RAWAXXX", "source": "fake"}
-
     verdict = verify.verify_release("Rawax", object(), search=search)
     assert verdict["verdict"] == "mismatch"
     assert verdict["notes"] == "credited as 'RAWAXXX'"

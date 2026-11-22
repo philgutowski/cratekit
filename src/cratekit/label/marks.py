@@ -44,10 +44,7 @@ def _load(cfg: config.Config) -> dict[str, str]:
         raise _unusable(path, "it has no labels map")
     found: dict[str, str] = {}
     for key, value in records.items():
-        if isinstance(value, Mapping):
-            year = value.get("last_pulled")
-        else:
-            year = value
+        year = value.get("last_pulled") if isinstance(value, Mapping) else value
         if year:
             found[str(key)] = str(year)
     return found

@@ -53,9 +53,7 @@ class Decided:
 
 
 def _text(value: Any) -> str | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return value.strip()
+    return (value.strip() or None) if isinstance(value, str) else None
 
 
 def decided(store: review.ReviewStore) -> Decided:

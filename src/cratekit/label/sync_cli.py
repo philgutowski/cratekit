@@ -26,6 +26,7 @@ import math
 from collections.abc import Callable, Container, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 from cratekit.acquire import match_cli
@@ -36,7 +37,7 @@ from cratekit.core.cause import Cause, CratekitError, Outcome, Scope, refuse
 from cratekit.core.review import Queue, Verdict
 from cratekit.core.routing import KindVerdict
 from cratekit.core.taxonomy import Taxonomy
-from cratekit.label import catalogue, kept_listing, sweep
+from cratekit.label import catalogue, kept_listing, review_common, sweep
 from cratekit.label import cli as label_cli
 from cratekit.label import gate as genre_gate
 from cratekit.label import registry as labels
@@ -169,7 +170,12 @@ def write_record(cfg: config.Config, document: Mapping[str, Any]) -> None:
 
 
 @contextmanager
-def _locked(cfg: config.Config, doing: str) -> Iterator[None]:
+def record_lock(cfg: config.Config, doing: str) -> Iterator[None]:
+    """The record's own lock, for a caller that reads, decides and writes as one step.
+
+    BLOCKING, not refusing: a second go waits for the first to finish
+    planning, and then sees the job the first one queued.
+    """
     lock = config.exclusive_lock(config.state_path("label_sync_lock", cfg))
     try:
         lock.__enter__()
@@ -212,9 +218,7 @@ def settle_in(
     now = timestamp()
     count = 0
     for index, label_id, answered_at in answers:
-        if index >= len(entries):
-            continue
-        entry = entries[index]
+        entry = entries[index] if index < len(entries) else None
         if not isinstance(entry, Mapping) or entry.get(SETTLED):
             continue
         if (
@@ -230,15 +234,6 @@ def settle_in(
     return count
 
 
-def record_lock(cfg: config.Config, doing: str):
-    """The record's own lock, for a caller that reads, decides and writes as one step.
-
-    BLOCKING, not refusing: a second go waits for the first to finish
-    planning, and then sees the job the first one queued.
-    """
-    return _locked(cfg, doing)
-
-
 def _pending(document: Mapping[str, Any], label_id: str) -> Mapping[str, Any] | None:
     """The question saved for ``label_id`` and not yet answered, or None."""
     pending = (document["labels"].get(label_id) or {}).get("pending")
@@ -247,8 +242,7 @@ def _pending(document: Mapping[str, Any], label_id: str) -> Mapping[str, Any] | 
 
 def asked_releases(document: Mapping[str, Any], label_id: str) -> frozenset[str]:
     """The identities a question about ``label_id`` already covered: the marker."""
-    held = document["labels"].get(label_id) or {}
-    asked = held.get("asked")
+    asked = (document["labels"].get(label_id) or {}).get("asked")
     if not isinstance(asked, list):
         return frozenset()
     return frozenset(str(one) for one in asked if isinstance(one, str) and one)
@@ -397,9 +391,7 @@ class Question:
             # whole as unchecked, a bound and never the label's; so is a split
             # that is present and unreadable.
             beyond_unchecked=beyond if unchecked is None else min(beyond, unchecked),
-            unread=count_of(raw.get("unread")) or 0,
-            withheld=count_of(raw.get("withheld")) or 0,
-            unjudged=count_of(raw.get("unjudged")) or 0,
+            **{name: count_of(raw.get(name)) or 0 for name in _QUESTION_COUNTS[-3:]},
         )
 
 
@@ -498,10 +490,6 @@ class _Listed:
     withheld: int = 0
 
 
-def _text(value: Any) -> str:
-    return value.strip() if isinstance(value, str) else ""
-
-
 def _offered(
     reader: catalogue.ReleaseTracks, identity: str, payload: Mapping[str, Any], year: str,
     item_id: str | None = None,
@@ -509,16 +497,10 @@ def _offered(
     """One release as a question offers it, measured unless an open item names no release."""
     unnamed = item_id is not None and identity.startswith("item:")
     measured = _measured(reader, identity) if not unnamed else None
+    tracks, size, short = measured or (None, None, None)
     return Offered(
-        identity=identity,
-        artist=_text(payload.get("artist")),
-        title=_text(payload.get("title")),
-        year=year,
-        tracks=measured[0] if measured else None,
-        size=measured[1] if measured else None,
-        short=measured[2].block() if measured and measured[2] else None,
-        item_id=item_id,
-        payload=dict(payload),
+        identity, _text(payload.get("artist")), _text(payload.get("title")), year, tracks, size,
+        item_id, dict(payload), short.block() if short else None,
     )
 
 
@@ -536,18 +518,14 @@ def _question_for(
     found = tools.catalogue()
     declared = tools.taxonomy()
     reader = catalogue.ReleaseTracks(found)
-    owned = sweep.OwnedReleases(tools.cfg, reader, library=tools.library)
     source = sweep.LabelSource(
         tools.cfg, registry=labels.Registry(labels={entry.label_id: entry}), catalogue=found,
-        store=store, owned=owned,
+        store=store, owned=sweep.OwnedReleases(tools.cfg, reader, library=tools.library),
         gate=genre_gate.SweepGate(
-            declared,
-            tracks=reader.release_tracks,
-            standing=genre_gate.StandingHolds(store),
+            declared, tracks=reader.release_tracks, standing=genre_gate.StandingHolds(store),
             asking=tools.asking,
         ),
-        run_id=tools.run_id,
-        offered=asked,
+        run_id=tools.run_id, offered=asked,
     )
     try:
         candidates = source.list_recent(-1)
@@ -612,7 +590,7 @@ def _save_pending(cfg: config.Config, question: Question) -> None:
     """Save the question under its label BEFORE it is asked, so an answer from
     either path applies to exactly what was shown and ``--next`` can print it
     again with no provider call."""
-    with _locked(cfg, "saving a question"):
+    with record_lock(cfg, "saving a question"):
         document = load_record(cfg)
         held = dict(document["labels"].get(question.label_id) or {})
         held.update(name=question.label_name, pending=question.to_json())
@@ -640,12 +618,11 @@ class Answered:
     removed: bool = False
 
     def to_json(self) -> dict[str, Any]:
-        taken = self.taken
         return {
             "label_id": self.label_id, "label_name": self.label_name, "answer": self.answer,
-            "offered": self.offered, "taken": [one.identity for one in taken],
-            "tracks": sum(one.tracks or 0 for one in taken),
-            "size": sum(one.size or 0 for one in taken),
+            "offered": self.offered, "taken": [one.identity for one in self.taken],
+            "tracks": sum(one.tracks or 0 for one in self.taken),
+            "size": sum(one.size or 0 for one in self.taken),
             "left": list(self.left), "removed": self.removed,
         }
 
@@ -733,7 +710,7 @@ def record_answer(
             f"answer with one of: {', '.join(ANSWERS)}",
             answer=answer,
         )
-    with _locked(cfg, "recording an answer"):
+    with record_lock(cfg, "recording an answer"):
         document = load_record(cfg)
         held = dict(document["labels"].get(entry.label_id) or {})
         pending = _pending(document, entry.label_id)
@@ -771,9 +748,7 @@ def record_answer(
             ],
             rule=ANSWERED_RULE,
         )
-        removed = False
-        if answer == STOP:
-            removed = labels.RegistryStore().remove(entry.label_id)
+        removed = labels.RegistryStore().remove(entry.label_id) if answer == STOP else False
         now = timestamp()
         asked = set(asked_releases(document, entry.label_id)) | set(question.identities())
         held.pop("pending", None)
@@ -796,9 +771,8 @@ def record_answer(
 # ---------------------------------------------------------------------------
 
 
-def _check(key: str, status: str, detail: str) -> dict[str, Any]:
-    return {"key": f"label.sync.{key}", "title": key, "status": status,
-            "detail": detail, "remedy": None}
+_check = partial(review_common.check, "label.sync")
+_text = review_common.text
 
 
 def _named(one: Offered) -> str:
@@ -840,22 +814,18 @@ def _counts(question: Question) -> str:
         f"{len(question.releases)} new release(s), {question.tracks} track(s), "
         f"about {size_text(question.size)}"
     )
-    if question.unknown:
-        said += f", {question.unknown} with tracks unread"
-    if question.provider_withheld:
-        said += (
-            f"; {question.provider_withheld} track(s) withheld by the provider "
-            f"on {question.short_releases} release(s), counted but not listed"
-        )
     past = _past_window(question.beyond, question.beyond_unchecked)
-    if past:
-        said += f"; {past}"
-    if question.unread:
-        said += f"; {question.unread} listing(s) of the label could not be read"
-    if question.withheld:
-        said += f"; {question.withheld} open item(s) taken back by the genre gate"
-    if question.unjudged:
-        said += f"; {question.unjudged} the genre gate has no word for"
+    for count, more in (
+        (question.unknown, f", {question.unknown} with tracks unread"),
+        (question.provider_withheld, f"; {question.provider_withheld} track(s) withheld by "
+         f"the provider on {question.short_releases} release(s), counted but not listed"),
+        (past, f"; {past}"),
+        (question.unread, f"; {question.unread} listing(s) of the label could not be read"),
+        (question.withheld, f"; {question.withheld} open item(s) taken back by the genre gate"),
+        (question.unjudged, f"; {question.unjudged} the genre gate has no word for"),
+    ):
+        if count:
+            said += more
     return said
 
 
@@ -929,10 +899,6 @@ def _listing_checks(entry: labels.LabelEntry, listed: _Listed) -> list[dict[str,
     return said
 
 
-def _skipped_check(entry: labels.LabelEntry, why: str) -> dict[str, Any]:
-    return _check(f"label.{entry.label_id}", "fail", f"{entry.name}: not asked; {why}")
-
-
 def _unasked(
     entry: labels.LabelEntry, listed: _Listed, checks: list[dict[str, Any]],
     seen: list[dict[str, Any]], nothing: list[str] | None = None,
@@ -940,7 +906,8 @@ def _unasked(
     """Report a label listed with no question, skipped or with nothing new, and
     say True; False when it has a question to ask."""
     if listed.skipped is not None:
-        checks.append(_skipped_check(entry, listed.skipped))
+        said = f"{entry.name}: not asked; {listed.skipped}"
+        checks.append(_check(f"label.{entry.label_id}", "fail", said))
         state = "skipped"
     elif listed.question is None:
         checks.append(_nothing_check(entry, listed))
@@ -1004,11 +971,8 @@ def _estimate(
             break
         costs.append(kept_listing.cost(entry))
     known = [one for one in costs if one is not None]
-    unknown = len(costs) - len(known)
-    each = (
-        math.ceil(sum(one.held for one in known) / len(known)) if known else UNLISTED_ESTIMATE
-    )
-    return sum(one.aged for one in known) + unknown * each, len(costs)
+    each = math.ceil(sum(one.held for one in known) / len(known)) if known else UNLISTED_ESTIMATE
+    return sum(one.aged for one in known) + (len(costs) - len(known)) * each, len(costs)
 
 
 def _sweep_check(
@@ -1077,9 +1041,7 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
     seen: list[dict[str, Any]] = []
     # A WALK OVER EVERY LABEL SAYS ITS COST FIRST (U278); one label named is
     # one listing, held by the gate call by call like any other.
-    checks: list[dict[str, Any]] = (
-        [_sweep_check(cfg, entries, document)] if only is None else []
-    )
+    checks = [_sweep_check(cfg, entries, document)] if only is None else []
     withheld = 0
     nothing: list[str] = []
     with review.open_store(cfg) as store:
@@ -1101,9 +1063,7 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
                 f"{entry.label_id}, or pick with --release, or not-now, or stop"
             )
             checks.extend(_question_checks(question, how=how))
-            return ctx.envelope(
-                data={"checks": checks, "summary": _summary(question=question, labels_seen=seen)}
-            )
+            return review_common.ended(ctx, checks, _summary(question=question, labels_seen=seen))
     data = {"checks": checks, "summary": _summary(labels_seen=seen)}
     if not nothing:
         # EVERY LABEL ASKED ABOUT WAS SKIPPED (R-1114), the ``no-evidence`` rule:
@@ -1165,10 +1125,10 @@ def _unlisted_cause(entries: Sequence[labels.LabelEntry]) -> Cause:
 def _answer(ctx, cfg: config.Config) -> Envelope:
     """Record the one answer named on the command line."""
     entry = _entry_or_refuse(_followed_or_refuse(), str(ctx.args.label))
-    picks = list(ctx.args.releases or ())
     with review.open_store(cfg) as store:
         answered = record_answer(
-            cfg, store, entry, str(ctx.args.answer), picks, run_id=ctx.run.run_id
+            cfg, store, entry, str(ctx.args.answer), list(ctx.args.releases or ()),
+            run_id=ctx.run.run_id,
         )
     checks = [
         _answer_check(answered),
@@ -1178,10 +1138,10 @@ def _answer(ctx, cfg: config.Config) -> Envelope:
 
 
 def _question_text(question: Question) -> str:
-    lines = [f"\n{question.label_name}: {_counts(question)}\n"]
-    for number, one in enumerate(question.releases, start=1):
-        lines.append(f"  {number:>3}. {_release_said(one)}\n")
-    return "".join(lines)
+    numbered = enumerate(question.releases, start=1)
+    return f"\n{question.label_name}: {_counts(question)}\n" + "".join(
+        f"  {number:>3}. {_release_said(one)}\n" for number, one in numbered
+    )
 
 
 def _ask(prompter: prompt.Prompter, question: Question) -> tuple[str, list[str]]:
@@ -1252,17 +1212,16 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
     nobody can answer, has saved every answer given before it.
     """
     followed = _followed_or_refuse()
+    entries = list(followed.labels.values())
     tools = _Tools(cfg=cfg, run_id=ctx.run.run_id, followed=followed)
     answered: list[Answered] = []
     seen: list[dict[str, Any]] = []
     # Every label is listed afresh, so the estimate is asked over an empty record (U278).
-    checks: list[dict[str, Any]] = [
-        _sweep_check(cfg, list(followed.labels.values()), {"labels": {}})
-    ]
+    checks = [_sweep_check(cfg, entries, {"labels": {}})]
     stopped_at: str | None = None
     withheld = 0
     with review.open_store(cfg) as store:
-        for entry in list(followed.labels.values()):
+        for entry in entries:
             document = load_record(cfg)
             listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))
             withheld += listed.withheld
@@ -1370,10 +1329,9 @@ def label_sync(ctx) -> Envelope:
     # ONLY THE GO SPENDS THE HOUR'S RESERVE (U278). Asking, answering and the
     # walk stop where every read stops, and a ``--calls`` past the hour's budget
     # is refused here, before the first call.
-    if not args.go:
-        provider_gate.reading(provider_gate.GateSettings.from_config(cfg))
     if args.go:
         return _go(ctx, cfg)
+    provider_gate.reading(provider_gate.GateSettings.from_config(cfg))
     if args.answer is not None:
         return _answer(ctx, cfg)
     if args.next_question:

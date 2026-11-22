@@ -137,9 +137,7 @@ class Summary:
 
     @property
     def age(self) -> str:
-        if self.oldest is None:
-            return ""
-        return kept_reads.age_text(_now() - self.oldest)
+        return "" if self.oldest is None else kept_reads.age_text(_now() - self.oldest)
 
     def said(self) -> str:
         """One sentence a person reads: where the listing came from, and why."""
@@ -387,36 +385,21 @@ class KeptListing(kept_reads._Store):
     def keep_listed(self, artist_id: str, method: str, releases: Iterable[Any]) -> None:
         self._keep(LISTED, _listing_key(artist_id, method), [release_row(one) for one in releases])
 
-    def flush(self) -> None:
-        """Write every answer held, if any is unwritten, on R-1091's rule."""
-        self._since = 0
-        if not self._unwritten:
-            return
-        self._write(
-            {
-                "version": VERSION,
-                "label_id": self.label_id,
-                "asked_for": self.asked_for,
-                **{
-                    section: {
-                        key: {"read_at": held.read_at.isoformat(), "value": held.value}
-                        for key, held in sorted(self._held[section].items())
-                    }
-                    for section in _SECTIONS
-                },
-            }
-        )
+    def _sections(self) -> dict[str, Any]:
+        return {
+            "asked_for": self.asked_for,
+            **{
+                section: {
+                    key: {"read_at": held.read_at.isoformat(), "value": held.value}
+                    for key, held in sorted(self._held[section].items())
+                }
+                for section in _SECTIONS
+            },
+        }
 
     def summary(self) -> Summary:
-        return Summary(
-            reused=self.reused,
-            asked=self.asked,
-            stale=self.stale,
-            changed=self.changed,
-            oldest=self.oldest,
-            unkept=self.unkept,
-            path=str(self.path),
-        )
+        held = (self.reused, self.asked, self.stale, self.changed, self.oldest, self.unkept)
+        return Summary(*held, path=str(self.path))
 
 
 @dataclass(frozen=True, slots=True)
@@ -443,8 +426,7 @@ def cost(entry: Any) -> Cost | None:
 
 def estimate(entry: Any) -> int | None:
     """The calls a fresh ask of the label would make, by :func:`cost`, or None."""
-    found = cost(entry)
-    return found.aged if found is not None else None
+    return None if (found := cost(entry)) is None else found.aged
 
 
 def _young(held: Answer) -> bool:

@@ -1,8 +1,4 @@
-"""U243: a track the library removed leaves its label year playlists and stays off.
-
-Both verbs are driven through the dispatcher, the tombstone written by the
-deletion pass's own recorder, the catalogue and account faked. D1 applies.
-"""
+"""U243: a track the library removed leaves its label year playlists and stays off."""
 
 from __future__ import annotations
 
@@ -329,11 +325,9 @@ def test_the_question_is_asked_of_one_read_of_the_store(installed, monkeypatch):
     _tombstone(installed, ACT, "Track t4")
     reads = []
     real = tombstoned.DecisionStore.suppressions
-
     def counted(self, *args, **kwargs):
         reads.append(1)
         return real(self, *args, **kwargs)
-
     monkeypatch.setattr(tombstoned.DecisionStore, "suppressions", counted)
     asked = tombstoned.Tombstoned(installed)
     assert asked(ACT, "Track t4") and not asked(ACT, "Track t5") and asked(ACT, "track t4")
@@ -343,7 +337,6 @@ def test_the_question_is_asked_of_one_read_of_the_store(installed, monkeypatch):
 def test_a_track_with_no_words_is_never_removed_and_reads_nothing(installed, monkeypatch):
     def unread(self, *args, **kwargs):
         raise AssertionError("the store was read for a track with nothing to ask under")
-
     monkeypatch.setattr(tombstoned.DecisionStore, "suppressions", unread)
     assert tombstoned.Tombstoned(installed)("", "") is False
     assert tombstoned.Tombstoned(installed)(" ", " ") is False
@@ -391,7 +384,6 @@ def test_hearing_a_dated_playlist_never_puts_a_removed_track_back(plain):
     code, done = _two_acts(["label", "prune", LABEL], PRUNE)
     assert code == int(ExitCode.OK), done
     assert playlists_suite._years(account, folder_id)[heard_suite.YEAR] == ["t5", "t6", "t7"]
-
     code, refused = drive(heard_suite.VERB)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert "1 left out as removed" in refused["cause"]["detail"]["shown"]["year playlist"]
@@ -494,7 +486,6 @@ def test_a_removed_single_is_taken_off_though_its_release_is_suppressed(followed
     code, done = _two_acts(["label", "playlists", LABEL], BUILD)
     assert code == int(ExitCode.OK), done
     assert followed.account.playlists["pl-3"][-1] == "t10"
-
     _tombstone(followed.cfg, ACT, "Solo Cut")
     code, refused = drive(["label", "prune", LABEL])
     assert code == int(ExitCode.DECISION_REQUIRED), refused

@@ -11,7 +11,7 @@ import json
 import re
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -56,14 +56,12 @@ def slug(name: str) -> str:
     )
     folded = _fold(stripped)
     if not folded:
-        raise refuse(
+        raise _refused(
             "label-name-invalid",
             "a favourite label needs a name that yields an identifier; "
             "an empty or punctuation-only name would collapse every such "
             "entry onto one record",
-            steps=("give the label a name with a letter or a digit",),
-            scope=Scope.ITEM,
-            origin=("label.registry",),
+            "give the label a name with a letter or a digit",
         )
     return folded
 
@@ -72,15 +70,14 @@ def slug(name: str) -> str:
 _ID_SEED = re.compile(r"id:[0-9]+")
 
 
+def _refused(reason: str, message: str, *steps: str, **kwargs: Any) -> CratekitError:
+    """A refusal raised by this module, its steps given in order, one item by default."""
+    kwargs.setdefault("scope", Scope.ITEM)
+    return refuse(reason, message, steps=steps, origin=("label.registry",), **kwargs)
+
+
 def _field_invalid(message: str, step: str, detail: dict[str, Any]) -> CratekitError:
-    return refuse(
-        "label-name-invalid",
-        message,
-        steps=(step,),
-        scope=Scope.ITEM,
-        origin=("label.registry",),
-        detail=detail,
-    )
+    return _refused("label-name-invalid", message, step, detail=detail)
 
 
 def check_seed(seed: str) -> str:
@@ -210,19 +207,31 @@ def _checked_seeds(seed_artists: Sequence[str]) -> tuple[str, ...]:
 
 
 def _checked(
-    track_limit: int | None, offer: int | None, kind: str | None, genre: str | None,
-    bandcamp: str | None,
-) -> tuple[str | None, str | None, str | None]:
-    """Check every given field before a lock is taken; the kind, genre and account as stored."""
+    match: str | None, seeds: tuple[str, ...] | None, track_limit: int | None,
+    offer: int | None, kind: str | None, genre: str | None, bandcamp: str | None,
+    cleared: Mapping[str, bool],
+) -> tuple[dict[str, Any], str | None]:
+    """Check every given field before a lock is taken: the changes, and the account as stored.
+
+    The changes are what ``replace`` takes: a None field keeps what is held, and a
+    field ``cleared`` flags is the way back to None.
+    """
     if track_limit is not None:
         check_track_limit(track_limit)
     if offer is not None:
         check_offer(offer)
-    return (
-        check_kind(kind) if kind is not None else None,
-        check_genre(genre) if genre is not None else None,
-        bandcamp_account(bandcamp) if bandcamp is not None else None,
-    )
+    given = {
+        "match": match,
+        "seed_artists": seeds,
+        "track_limit": track_limit,
+        "offer": offer,
+        "kind": check_kind(kind) if kind is not None else None,
+        "genre": check_genre(genre) if genre is not None else None,
+        "bandcamp": bandcamp_account(bandcamp) if bandcamp is not None else None,
+    }
+    changes = {key: value for key, value in given.items() if value is not None}
+    changes.update((key, None) for key, clear in cleared.items() if clear)
+    return changes, given["bandcamp"]
 
 
 def _name_key(name: str) -> str:
@@ -241,9 +250,8 @@ def _coerce_int(value: Any) -> int | None:
 
 def effective_limit(entry: LabelEntry, default: int = DEFAULT_TRACK_LIMIT) -> int:
     """Per-label newest-N. A last-pulled year is not an input."""
-    if entry.track_limit is not None and entry.track_limit > 0:
-        return entry.track_limit
-    return default
+    limit = entry.track_limit
+    return limit if limit is not None and limit > 0 else default
 
 
 def effective_offer(entry: LabelEntry, default: int) -> int:
@@ -282,17 +290,7 @@ class LabelEntry:
     bandcamp: str | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return {
-            "label_id": self.label_id,
-            "name": self.name,
-            "match": self.match,
-            "seed_artists": list(self.seed_artists),
-            "track_limit": self.track_limit,
-            "offer": self.offer,
-            "kind": self.kind,
-            "genre": self.genre,
-            "bandcamp": self.bandcamp,
-        }
+        return {**asdict(self), "seed_artists": list(self.seed_artists)}
 
 
 @dataclass(frozen=True, slots=True)
@@ -476,17 +474,13 @@ def _claim(current: Mapping[str, LabelEntry], label_id: str, account: str | None
         return
     for other in current.values():
         if other.label_id != label_id and other.bandcamp == account:
-            raise refuse(
+            raise _refused(
                 "label-name-invalid",
                 f"the Bandcamp account {account} is already the seller of the label "
                 f"{other.name} ({other.label_id}), and one account names one label, "
                 f"so nothing was changed",
-                steps=(
-                    f"clear it there first with crate label registry set "
-                    f"{other.label_id} --bandcamp {CLEAR_BANDCAMP}, or name another account",
-                ),
-                scope=Scope.ITEM,
-                origin=("label.registry",),
+                f"clear it there first with crate label registry set "
+                f"{other.label_id} --bandcamp {CLEAR_BANDCAMP}, or name another account",
                 detail={"bandcamp": account, "held_by": other.label_id},
             )
 
@@ -501,14 +495,13 @@ class RegistryStore:
         )
 
     def _unusable(self, what: str) -> CratekitError:
-        return refuse(
+        return _refused(
             "label-intent-unusable",
             f"the favourite-label list at {self.path.name} could not be read "
             f"({what}), so which labels to follow is unknown; treating it as "
             f"empty would drop the curated list on the next save",
-            steps=("repair or restore the favourite-label list before editing it",),
+            "repair or restore the favourite-label list before editing it",
             scope=Scope.RUN,
-            origin=("label.registry",),
             detail={"problem": what, "path": str(self.path)},
         )
 
@@ -561,14 +554,13 @@ class RegistryStore:
         try:
             lock.__enter__()
         except config.ConfigLockUnavailable as exc:
-            raise refuse(
+            raise _refused(
                 "label-intent-unusable",
                 f"the favourite-label list could not be locked ({exc}), and "
                 f"writing it unlocked discards whatever a second edit is "
                 f"recording at the same time",
-                steps=("make the installation state directory writable by this account",),
+                "make the installation state directory writable by this account",
                 scope=Scope.RUN,
-                origin=("label.registry",),
                 detail={"lock": str(self.lock_path)},
             ) from exc
         try:
@@ -604,7 +596,10 @@ class RegistryStore:
         """
         new_id = slug(name)
         seeds = _checked_seeds(seed_artists)
-        kind, genre, bandcamp = _checked(track_limit, offer, kind, genre, bandcamp)
+        changes, bandcamp = _checked(
+            match, seeds or None, track_limit, offer, kind, genre, bandcamp,
+            {"kind": clear_kind, "genre": clear_genre, "bandcamp": clear_bandcamp},
+        )
         written: list[str] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
@@ -619,19 +614,7 @@ class RegistryStore:
             written.append(label_id)
             held = current.get(label_id) or LabelEntry(label_id=label_id, name=name)
             _claim(current, label_id, bandcamp)
-            current[label_id] = replace(
-                held,
-                name=name,
-                match=match if match is not None else held.match,
-                seed_artists=seeds or held.seed_artists,
-                track_limit=track_limit if track_limit is not None else held.track_limit,
-                offer=offer if offer is not None else held.offer,
-                kind=None if clear_kind else (kind if kind is not None else held.kind),
-                genre=None if clear_genre else (genre if genre is not None else held.genre),
-                bandcamp=None
-                if clear_bandcamp
-                else (bandcamp if bandcamp is not None else held.bandcamp),
-            )
+            current[label_id] = replace(held, name=name, **changes)
 
         self.update(mutate)
         return written[-1]
@@ -692,34 +675,23 @@ class RegistryStore:
         resolving nothing refuses rather than creating an entry.
         """
         seeds = _checked_seeds(seed_artists) if seed_artists is not None else None
-        kind, genre, bandcamp = _checked(track_limit, offer, kind, genre, bandcamp)
+        changes, bandcamp = _checked(
+            match, seeds, track_limit, offer, kind, genre, bandcamp,
+            {"kind": clear_kind, "genre": clear_genre, "bandcamp": clear_bandcamp},
+        )
         edited: list[LabelEntry] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
             existing = Registry(labels=current).resolve(name_or_id)
             if existing is None:
-                raise refuse(
+                raise _refused(
                     "label-unknown",
                     f"no favourite label is named {name_or_id!r}",
-                    steps=("list the registry and take the identifier from it",),
-                    scope=Scope.ITEM,
-                    origin=("label.registry",),
+                    "list the registry and take the identifier from it",
                     detail={"name": name_or_id},
                 )
             _claim(current, existing.label_id, bandcamp)
-            entry = replace(
-                existing,
-                match=match if match is not None else existing.match,
-                seed_artists=seeds if seeds is not None else existing.seed_artists,
-                track_limit=track_limit if track_limit is not None else existing.track_limit,
-                offer=offer if offer is not None else existing.offer,
-                # A None field keeps what is held; a clear flag is the way back to None.
-                kind=None if clear_kind else (kind if kind is not None else existing.kind),
-                genre=None if clear_genre else (genre if genre is not None else existing.genre),
-                bandcamp=None
-                if clear_bandcamp
-                else (bandcamp if bandcamp is not None else existing.bandcamp),
-            )
+            entry = replace(existing, **changes)
             current[existing.label_id] = entry
             edited.append(entry)
 
@@ -732,12 +704,10 @@ class RegistryStore:
         def mutate(current: dict[str, LabelEntry]) -> None:
             existing = current.get(label_id)
             if existing is None:
-                raise refuse(
+                raise _refused(
                     "label-unknown",
                     f"no favourite label has the identifier {label_id!r}",
-                    steps=("list the registry and take the identifier from it",),
-                    scope=Scope.ITEM,
-                    origin=("label.registry",),
+                    "list the registry and take the identifier from it",
                     detail={"label_id": label_id},
                 )
             current[label_id] = replace(existing, name=new_name)

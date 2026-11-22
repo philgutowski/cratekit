@@ -1,10 +1,4 @@
-"""R-790: a label sweep offers a window of its newest releases, not its catalogue.
-
-Driven through the real dispatcher, queue and worker where the property is
-what a person is handed, and through the sweep engine where it is which
-release takes a place. No date floor anywhere (KTD11): the watermark tests
-advance every watermark past every release. Nothing here accepts a release.
-"""
+"""R-790: a label sweep offers a window of its newest releases, not its catalogue."""
 
 from __future__ import annotations
 
@@ -71,11 +65,9 @@ def test_a_first_sweep_files_the_default_ten_and_counts_the_other_forty(installe
     register()
     bind(monkeypatch, catalogue_of(50))
     sweep_once()
-
     items = filed(installed)
     assert [item.payload["identity"] for item in items] == [f"r{y}" for y in range(2026, 2016, -1)]
     assert all(item.verdict is None for item in items)
-
     (row,) = grouped("label")
     assert row["label"] == SLUG
     assert row["label_name"] == LABEL
@@ -89,18 +81,15 @@ def test_a_second_sweep_files_only_the_new_release_and_refiles_nothing(installed
     bind(monkeypatch, releases)
     sweep_once()
     first = {item.payload["identity"]: item for item in filed(installed)}
-
     bind(monkeypatch, [FakeRelease("r2027", year="2027"), *releases])
     sweep_once()
     second = {item.payload["identity"]: item for item in filed(installed)}
-
     assert set(second) - set(first) == {"r2027"}
     assert len(second) == 11
     for identity, item in first.items():
         assert second[identity].payload[sweep.SWEEP_RUN] == item.payload[sweep.SWEEP_RUN]
     assert second["r2027"].payload[sweep.SWEEP_RUN] != first["r2026"].payload[sweep.SWEEP_RUN]
     assert all(item.verdict is None for item in second.values())
-
     runs = grouped("run")
     assert [row["items"] for row in runs] == [10, 1]
     assert [row["labels"] for row in runs] == [1, 1]
@@ -195,11 +184,9 @@ def entry(installed):
 
 def counting_confirm():
     asked: list[str] = []
-
     def search(claimed, release):
         asked.append(release.id)
         return {"verdict": "confirmed", "resolved_label": claimed, "source": "fixture", "notes": ""}
-
     return search, asked
 
 
@@ -298,15 +285,7 @@ def test_a_watermark_past_every_release_still_offers_the_unowned_unoffered_ones(
 
 
 def mixed_roster(label: str = LABEL) -> list[FakeRelease]:
-    """Two artists on one roster, newest first, and two releases with no line.
-
-    The label's act on the even years 2026 to 2008, each crediting the label;
-    another act on the odd years 2025 to 2007, each crediting another label;
-    then 2006 and 2005 by the label's act with no copyright line at all, the
-    shape a listing that omitted the field leaves. Measured live (Atipic, 414
-    counted past the window for about 27 of its own) this is the roster that
-    used to be counted whole.
-    """
+    """Two artists on one roster, newest first, and two releases with no line."""
     own = [
         FakeRelease(f"own{year}", year=str(year), copyright=f"(P) {year} {label}")
         for year in range(2026, 2007, -2)
@@ -383,7 +362,6 @@ def test_a_round_records_the_most_the_label_could_still_offer(installed, monkeyp
     )
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     sweep_once()
-
     assert [item.payload["identity"] for item in filed(installed)] == [
         "own2026",
         "own2024",
@@ -466,7 +444,6 @@ def test_a_queue_with_no_grouping_refuses_rather_than_listing_nothing(installed)
 
 def item_causes(job_id: str) -> dict[str, str | None]:
     from cratekit.core import jobs
-
     with jobs.open_store() as store:
         return {
             item.item_id: (item.cause.reason if item.cause is not None else None)
@@ -507,9 +484,7 @@ def test_a_dead_verifier_on_a_later_sweep_refuses_rather_than_reporting_nothing_
 def test_held_releases_that_still_confirm_let_a_label_of_unconfirmed_releases_succeed(
     installed, monkeypatch
 ):
-    """The distributor credited shape: a few releases are the label's and the
-    rest never confirm. Its later sweeps file nothing and must not refuse.
-    """
+    """The distributor credited shape: a few releases are the label's and the rest never confirm."""
     register()
     releases = catalogue_of(7)
     fake = FakeCatalogue(
@@ -588,11 +563,7 @@ class CountingCatalogue(FakeCatalogue):
 def test_a_later_sweep_asks_the_provider_nothing_about_releases_it_already_holds(
     installed, monkeypatch
 ):
-    """Held releases are read off the queue the worker has open, not verified
-    again. ``review.offer`` would quietly absorb a second filing of each, so the
-    only place a sweep that forgot its queue shows is the provider calls it
-    spends, one per held release per sweep, against a rate limited account.
-    """
+    """Held releases are read off the queue the worker has open, not verified again."""
     register()
     releases = catalogue_of(50)
     bind(monkeypatch, releases)

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
+from functools import partial
 from typing import Any
 
 from cratekit.cli.output import Envelope
@@ -35,6 +36,7 @@ from cratekit.label import registry as labels
 from cratekit.tagging import published, searchers, shell
 
 ORIGIN = ("label", "judge_cli")
+_refuse = partial(refuse, origin=ORIGIN)
 
 #: Where one release's report is staged and committed, under the queue root.
 ARTIFACTS = jobs.Artifacts(final="label-judge-artifacts", staging="label-judge-staging")
@@ -105,12 +107,11 @@ def _scope(names: Sequence[str] | None) -> _Scope | None:
     resolved = [(name, followed.resolve(name)) for name in wanted]
     unknown = [name for name, entry in resolved if entry is None]
     if unknown:
-        raise refuse(
+        raise _refuse(
             "label-unknown",
             f"no followed label is named {review_common.quoted(unknown)}, "
             f"so there is nothing of it to judge; nothing was queued",
             steps=("take the name from: crate label registry list",),
-            origin=ORIGIN,
             detail={"unknown": unknown},
         )
     return _Scope(tuple(dict.fromkeys(entry.label_id for _name, entry in resolved)), followed)
@@ -122,9 +123,7 @@ def pending(store: review.ReviewStore, scope: _Scope | None = None) -> tuple[str
     Read off the review queue alone, so queueing asks no provider. ``scope``
     narrows it to the labels named.
     """
-    page = review.list_items(
-        store, queue=str(Queue.LABEL_RELEASE), kinds=(sweep.KIND,), limit=None
-    )
+    page = review.list_items(store, queue=str(Queue.LABEL_RELEASE), kinds=(sweep.KIND,), limit=None)
     return tuple(
         item.item_id
         for item in page.items
@@ -211,20 +210,15 @@ def _warnings(counted: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
     return tuple(found)
 
 
-def _left(store, job_id: str) -> int:
-    """How many of the job's releases no run has finished."""
-    counts = jobs.progress(store, job_id)["counts"]
-    settled = (str(jobs.ItemState.DONE), str(jobs.ItemState.SKIPPED))
-    return sum(n for state, n in counts.items() if state not in settled)
-
-
 def _with_summary(error: CratekitError, cfg: config.Config, store, job_id: str) -> CratekitError:
     """The same refusal, carrying what the run did and how much it left.
 
     A run that parked, failed or was stopped leaves through its cause, and is
     the run a person most needs the counts from.
     """
-    left = _left(store, job_id)
+    counts = jobs.progress(store, job_id)["counts"]
+    settled = (str(jobs.ItemState.DONE), str(jobs.ItemState.SKIPPED))
+    left = sum(n for state, n in counts.items() if state not in settled)
     # A parked job is open and this verb drives it; only ``job resume``
     # re-arms one that failed or was stopped.
     how = (
@@ -244,14 +238,13 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         # The job has to be this verb's: the worker is resolved from the job
         # row, so any other verb's job would run under this verb's envelope.
         if queued.handler_key != ctx.entry.handler_key:
-            raise refuse(
+            raise _refuse(
                 "job-unknown",
                 f"job {queued.job_id} was queued for {queued.handler_key!r}, which "
                 f"is not a judging job, so this verb will not drive it",
                 steps=(
                     f"resume it through its own verb, or with: crate job resume {queued.job_id}",
                 ),
-                origin=ORIGIN,
                 detail={"job_id": queued.job_id, "handler": queued.handler_key},
             )
         try:
@@ -306,9 +299,7 @@ def _parked(job, error: CratekitError) -> jobs.Parked:
     release would meet it too. The tools are dropped so a resume asks afresh.
     """
     _JOB_TOOLS.pop(str(job.job_id), None)
-    if isinstance(error, jobs.Parked):
-        return error
-    return jobs.Parked(error.cause)
+    return error if isinstance(error, jobs.Parked) else jobs.Parked(error.cause)
 
 
 @dataclass(frozen=True, slots=True)
@@ -363,37 +354,29 @@ def _asked(
     failed its own bound. Nothing here retries or waits.
     """
     tools = _tools(job)
-    if tools.refused is not None:
-        raise refuse(
-            "catalogue-unreachable",
-            f"the general catalogue refused ({tools.refused}), so the run stopped "
-            f"asking it. The release it refused stays in review marked not "
-            f"judged, and the next one was not read from the provider",
-            steps=_WAIT,
-            origin=ORIGIN,
-            detail={"job_id": str(job.job_id), "refused": tools.refused},
+    if tools.refused is not None or tools.asking.given_up:
+        why, which, detail = (
+            (f"refused ({tools.refused})", "The release it refused stays",
+             {"refused": tools.refused})
+            if tools.refused is not None
+            else (f"could not be read for {genre_gate.UNREAD_IN_A_ROW} releases in a row",
+                  "Those releases stay", {"unread_in_a_row": genre_gate.UNREAD_IN_A_ROW})
         )
-    if tools.asking.given_up:
-        raise refuse(
+        raise _refuse(
             "catalogue-unreachable",
-            f"the general catalogue could not be read for "
-            f"{genre_gate.UNREAD_IN_A_ROW} releases in a row, so the run stopped "
-            f"asking it. Those releases stay in review marked not judged, and "
-            f"the next one was not read from the provider",
-            steps=_WAIT,
-            origin=ORIGIN,
-            detail={"job_id": str(job.job_id), "unread_in_a_row": genre_gate.UNREAD_IN_A_ROW},
+            f"the general catalogue {why}, so the run stopped asking it. {which} in "
+            f"review marked not judged, and the next one was not read from the provider",
+            steps=_WAIT, detail={"job_id": str(job.job_id), **detail},
         )
     if tools.reader is None:
         tools.reader = catalogue.ReleaseTracks(catalogue.resolve(cfg))
     if tools.reader.given_up:
-        raise refuse(
+        raise _refuse(
             "unavailable-transient",
             f"the provider failed {catalogue.READS_FAILED_IN_A_ROW} release reads "
             f"in a row, so the run stopped reading. Those releases stay in "
             f"review marked not judged",
             remedy=Remedy.RESUME_JOB,
-            origin=ORIGIN,
             detail={"job_id": str(job.job_id)},
         )
     gate = genre_gate.SweepGate(declared, tracks=tools.reader.release_tracks, asking=tools.asking)

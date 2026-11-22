@@ -33,7 +33,7 @@ from cratekit.acquire import provider_session
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
 from cratekit.acquire.provider_session import ProviderUnavailable
 from cratekit.core import config, secrets
-from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import registry
 
@@ -226,12 +226,10 @@ class ReleaseTracks:
             rows, year, short = self.catalogue.release_tracks(release_id)
         except CratekitError:
             raise
-        except ReleaseUnresolvable as exc:
-            self._failed_in_a_row = 0
-            self._read[release_id] = exc
-            raise
         except Exception as exc:
-            self._failed_in_a_row += 1
+            # A gone release is the provider answering, so it ends the run of failures.
+            gone = isinstance(exc, ReleaseUnresolvable)
+            self._failed_in_a_row = 0 if gone else self._failed_in_a_row + 1
             self._read[release_id] = exc
             raise
         self._failed_in_a_row = 0
@@ -413,7 +411,6 @@ def _unbound(exc: BaseException) -> Exception:
         f"it to list a label or a playlist does not import in this build ({exc}), "
         "so the queued work cannot be carried out. Nothing was offered for review",
         steps=("reinstall the product so its core dependencies are present, then retry",),
-        scope=Scope.RUN,
         origin=("label", "catalogue"),
     )
 
@@ -436,7 +433,6 @@ def resolve(cfg: config.Config) -> Catalogue:
             "no streaming provider session is stored, so there is no catalogue "
             "to read this label or this playlist from",
             remedy=Remedy.AUTHENTICATE_PROVIDER,
-            scope=Scope.RUN,
             origin=("label", "catalogue"),
             detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
         )
@@ -452,7 +448,6 @@ def resolve(cfg: config.Config) -> Catalogue:
             f"the streaming provider could not be reached to open the catalogue "
             f"({exc}); the stored session was not judged and is kept",
             remedy=Remedy.RETRY_LATER,
-            scope=Scope.RUN,
             origin=("label", "catalogue"),
         ) from exc
     except (AdapterAuthFailed, AdapterBroken) as exc:
@@ -461,7 +456,6 @@ def resolve(cfg: config.Config) -> Catalogue:
             f"the stored streaming provider session could not be used to open "
             f"the catalogue ({exc})",
             remedy=_REMEDIES.get(exc.remedy.value, Remedy.REAUTHENTICATE_PROVIDER),
-            scope=Scope.RUN,
             origin=("label", "catalogue"),
             detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
         ) from exc

@@ -112,12 +112,9 @@ class Words:
 def _isrcs(rows: Sequence[Any]) -> tuple[str, ...]:
     """Each row's ISRC as the provider spelled it, in order, once each, read by
     :func:`cratekit.acquire.match.row_isrc` so the match engine cannot disagree."""
-    found: dict[str, None] = {}
-    for row in rows:
-        value = match.row_isrc(row)
-        if isinstance(value, str) and value.strip():
-            found.setdefault(value.strip(), None)
-    return tuple(found)
+    values = (match.row_isrc(row) for row in rows)
+    found = (one.strip() for one in values if isinstance(one, str))
+    return tuple(dict.fromkeys(one for one in found if one))
 
 
 #: The answers that say the catalogue WAS ASKED AND HAD NO WORD, most telling
@@ -184,14 +181,11 @@ class Judged:
 
     def stamp(self) -> dict[str, Any]:
         """What a filed release's payload says about the gate."""
-        said: dict[str, Any] = {
-            GATE_FIELD: self.verdict.value,
-            GATE_NOTE_FIELD: self.reason,
+        return {
+            GATE_FIELD: self.verdict.value, GATE_NOTE_FIELD: self.reason,
             GATE_ANSWER_FIELD: self.answer,
+            **({GENRES_FIELD: list(self.genres)} if self.genres else {}),
         }
-        if self.genres:
-            said[GENRES_FIELD] = list(self.genres)
-        return said
 
     def detail(self) -> dict[str, Any]:
         """What a hold records, so the release can be judged again with no request."""
@@ -437,8 +431,8 @@ class SweepGate:
         if genres is None:
             kind = routing.label_kind(self.declared, entry.kind)
             return Judged(KindVerdict.HOLD, kind, (), held.reason)
-        words = Words(genres, Answer.MATCHED.value)
-        return _of(routing.kind_verdict(self.declared, entry.kind, genres), words)
+        verdict = routing.kind_verdict(self.declared, entry.kind, genres)
+        return _of(verdict, Words(genres, Answer.MATCHED.value))
 
 
 __all__ = [

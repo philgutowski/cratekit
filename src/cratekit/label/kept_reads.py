@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -132,11 +132,10 @@ def _entry(path: Path, release_id: str, raw: Any) -> Kept:
             not isinstance(track, Mapping)
             or not isinstance(track.get("id"), str)
             or not isinstance(track.get("available"), bool)
+            or not all(isinstance(track.get(key), (str, type(None))) for key in ("artist", "title"))
         ):
             raise _unusable(path, f"a track of the read of {release_id!r} is malformed")
         words = {key: track.get(key) for key in ("artist", "title")}
-        if any(value is not None and not isinstance(value, str) for value in words.values()):
-            raise _unusable(path, f"a track of the read of {release_id!r} is malformed")
         kept.append(KeptTrack(id=track["id"], available=track["available"], **words))
     return Kept(read_at=read_at, gone=False, tracks=tuple(kept), year=year)
 
@@ -154,14 +153,8 @@ def _row(track: Any) -> dict[str, Any]:
 def _stored(kept: Kept) -> dict[str, Any]:
     if kept.gone:
         return {"read_at": kept.read_at.isoformat(), "gone": True}
-    return {
-        "read_at": kept.read_at.isoformat(),
-        "year": kept.year,
-        "tracks": [
-            {"id": one.id, "available": one.available, "artist": one.artist, "title": one.title}
-            for one in kept.tracks
-        ],
-    }
+    tracks = [asdict(one) for one in kept.tracks]
+    return {"read_at": kept.read_at.isoformat(), "year": kept.year, "tracks": tracks}
 
 
 class _Store:
@@ -201,6 +194,16 @@ class _Store:
             raise unusable(path, f"it names the label {raw.get('label_id')!r}, not {label_id!r}")
         return raw
 
+    def flush(self) -> None:
+        """Write every answer held, if any is unwritten, by :meth:`_write`'s rule."""
+        self._since = 0
+        if self._unwritten:
+            self._write({"version": VERSION, "label_id": self.label_id, **self._sections()})
+
+    def _sections(self) -> dict[str, Any]:
+        """The store's own sections of its document, beside the shared header."""
+        raise NotImplementedError
+
     def _write(self, document: Mapping[str, Any]) -> None:
         """Write the document whole and atomically. A REFUSED WRITE IS SAID, NEVER
         RAISED, as ``unkept``: it costs the next run calls, never this run its plan."""
@@ -235,11 +238,8 @@ class KeptReads(_Store):
         reads = raw.get("reads")
         if not isinstance(reads, Mapping):
             raise _unusable(path, "its reads are not a map")
-        return cls(
-            label_id,
-            {str(key): _entry(path, str(key), value) for key, value in reads.items()},
-            path=path,
-        )
+        held = {str(key): _entry(path, str(key), value) for key, value in reads.items()}
+        return cls(label_id, held, path=path)
 
     def _is_fresh(self, kept: Kept) -> bool:
         # NOT FRESH FROM THE FUTURE, NOR WITHOUT THE TRACKS' WORDS (U243).
@@ -274,38 +274,19 @@ class KeptReads(_Store):
     def keep(self, release_id: str, rows: Iterable[Any], year: int | None) -> None:
         """Hold one read this run made, the tracks and the year the provider stated."""
         stated = year if isinstance(year, int) and not isinstance(year, bool) else None
-        self._hold(
-            release_id,
-            Kept(
-                read_at=clock(),
-                gone=False,
-                tracks=tuple(KeptTrack(**_row(row)) for row in rows),
-                year=stated,
-            ),
-        )
+        tracks = tuple(KeptTrack(**_row(row)) for row in rows)
+        self._hold(release_id, Kept(read_at=clock(), gone=False, tracks=tracks, year=stated))
 
     def keep_gone(self, release_id: str) -> None:
         """Hold the provider's answer that the release is gone."""
         self._hold(release_id, Kept(read_at=clock(), gone=True))
 
-    def flush(self) -> None:
-        """Write every read held, if any is unwritten, by :meth:`_Store._write`'s rule."""
-        self._since = 0
-        if not self._unwritten:
-            return
-        self._write(
-            {
-                "version": VERSION,
-                "label_id": self.label_id,
-                "reads": {key: _stored(value) for key, value in sorted(self._held.items())},
-            }
-        )
+    def _sections(self) -> dict[str, Any]:
+        return {"reads": {key: _stored(value) for key, value in sorted(self._held.items())}}
 
     def age_said(self) -> str:
         """How old the oldest reused read is, as a person reads it."""
-        if self.oldest is None:
-            return ""
-        return age_text(clock() - self.oldest)
+        return "" if self.oldest is None else age_text(clock() - self.oldest)
 
 
 def age_text(age: timedelta) -> str:

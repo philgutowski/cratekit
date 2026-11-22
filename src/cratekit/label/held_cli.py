@@ -42,6 +42,7 @@ RETURN = "return"
 ORIGIN = ("label.held",)
 
 _check = partial(review_common.check, "label.held")
+_refuse = partial(refuse, origin=ORIGIN)
 _release_id = genre_gate.hold_release_id
 
 
@@ -98,34 +99,26 @@ def _sweep_rows(store: review.ReviewStore) -> list[dict[str, Any]]:
         group: {"label_id": group, "label_name": found.name, "run": found.run_id, **zero}
         for group, found in newest.items()
     }
-    cursor: int | None = None
-    while True:
-        page = review.list_items(
-            store, queue=queue, kinds=(sweep.KIND,), include_resolved=True,
-            limit=review.DEFAULT_PAGE, after=cursor,
-        )
-        for item in page.items:
-            row = rows.get(str(item.payload.get("label_id") or ""))
-            if row is None or item.payload.get(sweep.SWEEP_RUN) != row["run"]:
-                continue
-            row["filed"] += 1
-            # Not judged is a fact about the release as it stands, whoever stamped it.
-            if item.payload.get(genre_gate.GATE_FIELD) == routing.KindVerdict.NOT_JUDGED.value:
-                row["not_judged"] += 1
-            # A stamp naming a judging job was written after the sweep, and its
-            # answer is not what this sweep asked (R-815).
-            if item.payload.get(genre_gate.GATE_RUN_FIELD):
-                continue
-            answer = item.payload.get(genre_gate.GATE_ANSWER_FIELD)
-            # A release with no ISRC was not asked about; counting it would hide
-            # a sweep whose every real question went unread.
-            if answer is not None and answer not in (searchers.NOT_ASKED, NO_ISRC):
-                row["asked"] += 1
-            if answer in published.UNREAD:
-                row["unread"] += 1
-        if page.next_cursor is None:
-            break
-        cursor = page.next_cursor
+    wanted = review.Predicate(queue=queue, kind=sweep.KIND)
+    for item in review.iter_items(store, predicate=wanted, include_resolved=True):
+        row = rows.get(str(item.payload.get("label_id") or ""))
+        if row is None or item.payload.get(sweep.SWEEP_RUN) != row["run"]:
+            continue
+        row["filed"] += 1
+        # Not judged is a fact about the release as it stands, whoever stamped it.
+        if item.payload.get(genre_gate.GATE_FIELD) == routing.KindVerdict.NOT_JUDGED.value:
+            row["not_judged"] += 1
+        # A stamp naming a judging job was written after the sweep, and its
+        # answer is not what this sweep asked (R-815).
+        if item.payload.get(genre_gate.GATE_RUN_FIELD):
+            continue
+        answer = item.payload.get(genre_gate.GATE_ANSWER_FIELD)
+        # A release with no ISRC was not asked about; counting it would hide
+        # a sweep whose every real question went unread.
+        if answer is not None and answer not in (searchers.NOT_ASKED, NO_ISRC):
+            row["asked"] += 1
+        if answer in published.UNREAD:
+            row["unread"] += 1
     for one in review.holds(store, queue=queue):
         row = rows.get(one.group)
         if row is not None and one.run_id == row["run"]:
@@ -237,10 +230,7 @@ def _listed(ctx) -> Envelope:
         for one in held
     ]
     summary = {"held": len(held), "labels": by_label, "releases": releases, "sweeps": sweeps}
-    return ctx.envelope(
-        data={"checks": checks, "summary": summary},
-        outcome=Outcome.OK if held else Outcome.NO_OP,
-    )
+    return review_common.ended(ctx, checks, summary, Outcome.OK if held else Outcome.NO_OP)
 
 
 def _found(store: review.ReviewStore, wanted: list[str]) -> dict[str, review.Hold | review.Item]:
@@ -258,7 +248,7 @@ def _found(store: review.ReviewStore, wanted: list[str]) -> dict[str, review.Hol
         ) or review.find(store, item_id)
     unknown = [release_id for release_id, one in found.items() if one is None]
     if unknown:
-        raise refuse(
+        raise _refuse(
             "review-item-unknown",
             f"no release named {review_common.quoted(unknown)} is held "
             f"by the genre gate or waiting in review, so there is nothing to "
@@ -267,7 +257,6 @@ def _found(store: review.ReviewStore, wanted: list[str]) -> dict[str, review.Hol
                 "take the identifier from: crate label held",
                 "or from the held line of: crate label approved",
             ),
-            origin=ORIGIN,
             detail={"unknown": unknown},
         )
     return {release_id: one for release_id, one in found.items() if one is not None}
@@ -322,12 +311,11 @@ def _return_one(
 def _returned(ctx) -> Envelope:
     wanted = review_common.wanted(ctx.args.releases)
     if not wanted:
-        raise refuse(
+        raise _refuse(
             "review-selection-invalid",
             "label held return needs the release to return, and returning nothing "
             "would report a release filed that never was",
             steps=("pass a release identifier from: crate label held",),
-            origin=ORIGIN,
         )
     cfg = label_cli._load()
     checks: list[dict[str, Any]] = []
@@ -337,10 +325,8 @@ def _returned(ctx) -> Envelope:
             joins, said = _return_one(store, release_id, one)
             summary[joins].append(release_id)
             checks.append(_check(f"release.{release_id}", "ok", said))
-    return ctx.envelope(
-        data={"checks": checks, "summary": summary},
-        outcome=Outcome.OK if summary["returned"] or summary["marked"] else Outcome.NO_OP,
-    )
+    outcome = Outcome.OK if summary["returned"] or summary["marked"] else Outcome.NO_OP
+    return review_common.ended(ctx, checks, summary, outcome)
 
 
 def label_held(ctx) -> Envelope:
@@ -348,12 +334,11 @@ def label_held(ctx) -> Envelope:
     if ctx.args.action == RETURN:
         return _returned(ctx)
     if ctx.args.releases:
-        raise refuse(
+        raise _refuse(
             "review-selection-invalid",
             "label held lists every held release and takes no release to list; "
             "ignoring the ones named would read as a listing of them",
             steps=("drop the identifiers, or use: crate label held return RELEASE_ID",),
-            origin=ORIGIN,
         )
     return _listed(ctx)
 

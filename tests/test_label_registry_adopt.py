@@ -1,8 +1,4 @@
-"""U100: an accepted harvested label is added to the registry (R-419).
-
-Items are offered by the real producer, ``harvest.from_tracks``, answered
-through ``review resolve`` and read back through ``label registry list``.
-"""
+"""U100: an accepted harvested label is added to the registry (R-419)."""
 
 from __future__ import annotations
 
@@ -57,13 +53,11 @@ def intent_bytes() -> bytes | None:
 def test_an_accepted_label_is_added_once_and_a_second_run_adds_none(installed):
     ids = offer(installed, "Hotflush Recordings")
     answer(ids["Hotflush Recordings"])
-
     first = adopt()
     assert first["outcome"] == "ok"
     assert first["data"]["summary"]["added"] == ["hotflush-recordings"]
     assert listed() == {"hotflush-recordings": "Hotflush Recordings"}
     written = intent_bytes()
-
     second = adopt()
     assert second["outcome"] == "no_op"
     assert second["data"]["summary"]["added"] == []
@@ -86,9 +80,7 @@ def test_an_adopt_that_adds_nothing_does_not_rewrite_the_registry(installed):
     before = intent_bytes()
     ids = offer(installed, "Kompakt")
     answer(ids["Kompakt"])
-
     envelope = adopt()
-
     assert envelope["data"]["summary"]["present"] == ["kompakt"]
     assert intent_bytes() == before
 
@@ -97,9 +89,7 @@ def test_a_rejected_or_open_label_is_not_added(installed):
     ids = offer(installed, "Kept", "Turned Down", "Undecided")
     answer(ids["Kept"])
     answer(ids["Turned Down"], "rejected")
-
     summary = adopt()["data"]["summary"]
-
     assert summary["added"] == ["kept"]
     assert summary["rejected"] == 1
     assert summary["open"] == 1
@@ -109,9 +99,7 @@ def test_a_rejected_or_open_label_is_not_added(installed):
 def test_nothing_accepted_writes_nothing_and_says_what_is_waiting(installed):
     ids = offer(installed, "Undecided", "Turned Down")
     answer(ids["Turned Down"], "rejected")
-
     envelope = adopt()
-
     assert envelope["outcome"] == "no_op"
     (check,) = envelope["data"]["checks"]
     assert check["detail"] == "no harvested label is accepted in review; 1 open, 1 rejected"
@@ -139,9 +127,7 @@ def test_a_label_held_under_a_folded_name_is_reported_not_duplicated(installed, 
             handler_key=harvest.HANDLER_KEY,
         )
     answer(item.item_id)
-
     envelope = adopt()
-
     assert envelope["data"]["summary"]["added"] == []
     assert envelope["data"]["summary"]["present"] == ["kompakt"]
     assert listed() == {"kompakt": "Kompakt"}
@@ -160,9 +146,7 @@ def test_a_carried_over_accented_label_is_not_filed_twice(installed):
     decomposed = unicodedata.normalize("NFD", "Sueño")
     ids = offer(installed, decomposed)
     answer(ids[decomposed])
-
     envelope = adopt()
-
     assert envelope["data"]["summary"]["added"] == []
     assert envelope["data"]["summary"]["present"] == ["sueno"]
     assert listed() == {"sueno": "Sueño"}
@@ -185,9 +169,7 @@ def test_two_spellings_accepted_in_one_run_add_the_label_once(installed):
         )
     answer(ids["Drumcode"])
     answer(loud.item_id)
-
     summary = adopt()["data"]["summary"]
-
     assert summary["added"] == ["drumcode"]
     assert summary["present"] == ["drumcode"]
     assert listed() == {"drumcode": "Drumcode"}
@@ -206,9 +188,7 @@ def test_a_name_with_no_identifier_fails_alone_and_the_rest_land(installed):
         )
     answer(ids["Innervisions"])
     answer(bare.item_id)
-
     envelope = adopt()
-
     assert envelope["data"]["summary"]["added"] == ["innervisions"]
     assert envelope["data"]["summary"]["refused"] == ["---"]
     # Not present: a script reading the summary must not be told the registry holds it.
@@ -230,9 +210,7 @@ def test_an_accepted_item_naming_no_label_is_reported_not_skipped(installed):
             handler_key=harvest.HANDLER_KEY,
         )
     answer(item.item_id)
-
     envelope = adopt()
-
     assert envelope["data"]["summary"]["nameless"] == [item.item_id]
     (check,) = envelope["data"]["checks"]
     assert check["status"] == "fail"
@@ -251,9 +229,7 @@ def test_a_label_release_on_the_same_queue_is_not_adopted(installed):
             handler_key="sync.labels",
         )
     answer(release.item_id)
-
     envelope = adopt()
-
     assert envelope["data"]["summary"]["added"] == []
     assert intent_bytes() is None
 
@@ -266,9 +242,7 @@ def test_a_label_release_on_the_same_queue_is_not_adopted(installed):
 def test_adopt_with_a_name_or_a_field_refuses_and_writes_nothing(installed, extra):
     ids = offer(installed, "Hotflush Recordings")
     answer(ids["Hotflush Recordings"])
-
     code, envelope = drive(["label", "registry", "adopt", *extra])
-
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "label-name-invalid"
     assert intent_bytes() is None
@@ -279,9 +253,7 @@ def test_a_person_reading_the_default_output_sees_what_was_added(installed):
     ids = offer(installed, "Hotflush Recordings")
     answer(ids["Hotflush Recordings"])
     out, err = io.StringIO(), io.StringIO()
-
     code = cli.run(["label", "registry", "adopt"], stdout=out, stderr=err)
-
     assert code == int(ExitCode.OK), err.getvalue()
     lines = out.getvalue().splitlines()
     assert any(

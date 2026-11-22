@@ -166,7 +166,7 @@ class HeardPlan:
                 "name": self.name,
                 "action": self.action,
                 "tracks": len(self.tracks),
-                **({"why": _why(self)} if _why(self) else {}),
+                **({"why": why} if (why := _why(self)) else {}),
             }
         )
         if self.year_id and (self.add or self.merging):
@@ -339,16 +339,15 @@ def plan(
     planned = replace(base, action=action, dated_id=dated_id, tracks=tracks, merging=merging)
     if not merging:
         return planned
-    year_record = shape.years.get(year)
+    recorded = shape.years.get(year)
     taken_away = set(catalogue.tombstoned) | (
-        set(year_record.pruned) if year_record is not None else set()
+        set(recorded.pruned) if recorded is not None else set()
     )
     if all(one in taken_away for one in merging):
         # EVERY TRACK WAS REMOVED (U243), so no year, which is never built, is asked.
         return replace(planned, tombstoned=merging)
     year_name = folders.year_name(catalogue.name, year)
     # THE RECORDED YEAR FIRST, then one by its name or pre U242 marked name.
-    recorded = shape.years.get(year)
     year_id = recorded.remote_id if recorded is not None and recorded.remote_id in inside else ""
     year_id = year_id or _one_named(inside, year_name, folders.MARK_PREFIX + year_name)
     if not year_id:

@@ -26,6 +26,7 @@ import dataclasses
 import shlex
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +41,7 @@ from cratekit.intake import beside as staged
 from cratekit.intake.beside import Beside, Waiting, continue_command
 from cratekit.intake.land_cli import default_name
 from cratekit.intake.missing_cli import LISTS_DIR
-from cratekit.label import approved_cli, sync_cli
+from cratekit.label import approved_cli, review_common, sync_cli
 from cratekit.label import gate as genre_gate
 
 #: The one gate, declared on the ``label.sync`` registry entry.
@@ -164,8 +165,9 @@ def held_by_goes(store: jobs.JobStore) -> Held:
     return Held(resume=tuple(resume), tracks=frozenset(tracks))
 
 
-def _text(value: Any) -> str:
-    return value.strip() if isinstance(value, str) else ""
+_text = review_common.text
+_check = partial(review_common.check, "label.sync.go")
+_ended = review_common.ended
 
 
 def _taken_by(entry: Mapping[str, Any]) -> list[Taken]:
@@ -181,20 +183,19 @@ def _taken_by(entry: Mapping[str, Any]) -> list[Taken]:
         if one.identity
     }
     named = entry.get("taken")
-    identities = [str(one) for one in named if isinstance(one, str) and one] if isinstance(
-        named, list
-    ) else list(recorded)
+    identities = (
+        [str(one) for one in named if isinstance(one, str) and one]
+        if isinstance(named, list) else list(recorded)
+    )
     found: list[Taken] = []
     for identity in identities:
         one = recorded.get(identity)
         item_id = (one.item_id if one is not None else None) or genre_gate.release_item_id(identity)
-        if one is None:
-            found.append(Taken(label_id, label_name, identity, item_id, "", "", "", None, None))
-        else:
-            found.append(
-                Taken(label_id, label_name, identity, item_id, one.artist, one.title, one.year,
-                      one.tracks, one.size)
-            )
+        said = (
+            ("", "", "", None, None) if one is None
+            else (one.artist, one.title, one.year, one.tracks, one.size)
+        )
+        found.append(Taken(label_id, label_name, identity, item_id, *said))
     return found
 
 
@@ -320,24 +321,14 @@ def summarise(document: Mapping[str, Any], held: Held, cfg) -> Summary:
         elif word == sync_cli.STOP:
             stopped.setdefault(name)
     return Summary(
-        answers=tuple(answers),
-        taken=tuple(taken.values()),
-        taking=tuple(taking),
-        not_now=tuple(not_now),
-        stopped=tuple(stopped),
-        open_jobs=tuple((job.job_id, left) for job, left in held.resume),
-        pace_s=pace_of(cfg),
+        tuple(answers), tuple(taken.values()), tuple(taking), tuple(not_now), tuple(stopped),
+        tuple((job.job_id, left) for job, left in held.resume), pace_of(cfg),
     )
 
 
 # ---------------------------------------------------------------------------
 # The gate and the go
 # ---------------------------------------------------------------------------
-
-
-def _check(key: str, status: str, detail: str) -> dict[str, Any]:
-    return {"key": f"label.sync.go.{key}", "title": key, "status": status,
-            "detail": detail, "remedy": None}
 
 
 def _gate(ctx):
@@ -377,15 +368,11 @@ def tail(staging: Path, manifest: str, run_id: str) -> list[str]:
     (R-1056) and no ``--name``, so the batch takes the landing's date and label.
     """
     folder = str(staging)
-    return [
-        shlex.join(["crate", "tag", "folder", folder]),
-        shlex.join(["crate", "analyze", "run", folder]),
-        shlex.join(["crate", "analyze", "restamp", folder]),
-        shlex.join(["crate", "name", "apply", "--root", folder]),
-        shlex.join(
-            ["crate", "intake", "land", folder, "--manifest", manifest, "--pass", default_name(run_id)]
-        ),
-    ]
+    return [shlex.join(["crate", *words]) for words in (
+        ["tag", "folder", folder], ["analyze", "run", folder], ["analyze", "restamp", folder],
+        ["name", "apply", "--root", folder],
+        ["intake", "land", folder, "--manifest", manifest, "--pass", default_name(run_id)],
+    )]
 
 
 def landing(staging: Path, manifest: str, run_id: str, job_id: str) -> dict[str, str]:
@@ -426,15 +413,14 @@ def _drive(
         said = acquire_cli.declined_warnings(store, job)
     else:
         read = acquire_cli.read_download(store, job)
-    warnings = [*said]
     reasons = {str(row["item_id"]): row for row in read.refused}
-    for item_id in read.failed:
-        row = reasons[item_id]
-        message = (
+    warnings = [*said, *(
+        {"code": REFUSED_WARNING, "message": (
             f"{acquire_cli.track_name(job, item_id)} ({item_id}) failed for good "
-            f"and is skipped ({row['reason']}): {row['message']}"
-        )
-        warnings.append({"code": REFUSED_WARNING, "message": message})
+            f"and is skipped ({reasons[item_id]['reason']}): {reasons[item_id]['message']}"
+        )}
+        for item_id in read.failed
+    )]
     return job, warnings, read
 
 
@@ -499,12 +485,6 @@ def _waiting(summary: Summary, checks: list[dict[str, Any]]) -> None:
         ))
 
 
-def _ended(ctx, checks, report, warnings) -> Envelope:
-    return ctx.envelope(
-        data={"checks": checks, "summary": report}, outcome=Outcome.OK, warnings=tuple(warnings)
-    )
-
-
 def go(
     ctx, cfg: config.Config, *, walk: Sequence[str] | None = None,
     data: Mapping[str, Any] | None = None, wrote: bool = False,
@@ -524,9 +504,8 @@ def go(
         summary = summarise(document, held_by_goes(store), cfg)
     # ABSOLUTE, as ``sync land`` takes it: a relative root once planned nothing (U169).
     staging = Path(cfg.paths.download_staging).expanduser().absolute()
-    base = dict(data or {})
-    checks: list[dict[str, Any]] = list(base.pop("checks", []))
-    report: dict[str, Any] = dict(base.pop("summary", {}) or {})
+    checks: list[dict[str, Any]] = list((data or {}).get("checks", []))
+    report: dict[str, Any] = dict((data or {}).get("summary") or {})
     own = _own(ctx)
     if own is not None:
         # THIS RUN'S GO ALREADY STARTED A DOWNLOAD (U239): taken on, not asked again.
@@ -550,10 +529,7 @@ def go(
             f"answer(s) are kept for a later go: crate label sync --go",
         ))
         report["go"] = {**summary.to_json(), "declined": True, "job": None}
-        return ctx.envelope(
-            data={"checks": checks, "summary": report},
-            outcome=Outcome.OK if wrote else Outcome.NO_OP,
-        )
+        return _ended(ctx, checks, report, Outcome.OK if wrote else Outcome.NO_OP)
 
     if summary.open_jobs:
         return _resume(ctx, cfg, summary, staging, checks, report)
@@ -615,8 +591,7 @@ def go(
         )
         document = sync_cli.load_record(cfg)
         settled = sync_cli.settle_in(
-            document,
-            summary.answers,
+            document, summary.answers,
             marker={"run": run_id, "job": queued.job_id if queued is not None else None},
             keep=retry,
         )
@@ -670,19 +645,11 @@ def go(
                 ctx, store, queued.job_id, "downloaded", f"job {queued.job_id}", checks,
                 warnings, listing.listed,
             )
-        refused = list(read.refused)
-        if not nothing:
-            landed = tail(staging, manifest, run_id)
-        if read.landed:
             # A DOWNLOAD THAT FINISHED IN THE FOLDER WHILE THIS ONE DROVE (R-1467).
-            with jobs.open_store() as store:
-                _refuse_beside(
-                    cfg, store, queued, staging, manifest,
-                    run_id, landed, own={queued.job_id}, refused=refused,
-                )
-            land = landing(staging, manifest, run_id, queued.job_id)
-        if land is None and landed:
-            checks.append(_next_check(landed))
+            landed, land = _tail_of(
+                cfg, store, queued, read, nothing, staging, manifest, run_id, checks
+            )
+        refused = list(read.refused)
     if listing is None or listing.written.manifest_path is None:
         manifest = None
     report["go"] = _report(
@@ -690,11 +657,8 @@ def go(
         list_path=list_path, manifest=manifest, withdrawn=[one.identity for one in withdrawn],
         carried=sorted(retry),
     )
-    return ctx.envelope(
-        data={"checks": checks, "summary": report},
-        outcome=Outcome.OK if queued is not None or settled or wrote else Outcome.NO_OP,
-        warnings=tuple(warnings),
-    )
+    outcome = Outcome.OK if queued is not None or settled or wrote else Outcome.NO_OP
+    return _ended(ctx, checks, report, outcome, tuple(warnings))
 
 
 def _next_check(landed: Sequence[str]) -> dict[str, Any]:
@@ -755,19 +719,14 @@ def _resume(
     if landed and land is None:
         checks.append(_next_check(landed))
     report["go"] = _report(summary, None, refused, landed, land, also={"resumed": resumed})
-    return _ended(ctx, checks, report, warnings)
+    return _ended(ctx, checks, report, warnings=tuple(warnings))
 
 
 def own_job(store: jobs.JobStore, run_id: str) -> jobs.Job | None:
     """The download job this run's go queued, or None (U239): a go queues at most
     one, and the job carries the run in its origin."""
     for job in jobs.list_jobs(store):
-        origin = (job.payload or {}).get(ORIGIN_KEY)
-        if (
-            job.handler_key == DOWNLOAD
-            and isinstance(origin, Mapping)
-            and origin.get("run") == run_id
-        ):
+        if _goes_job(job) and job.payload[ORIGIN_KEY].get("run") == run_id:
             return job
     return None
 
@@ -797,9 +756,7 @@ def _beside(store: jobs.JobStore, job: jobs.Job) -> list[jobs.Job]:
     """
     found: list[jobs.Job] = []
     for other in jobs.list_jobs(store):
-        if other.job_id == job.job_id or other.created < job.created:
-            continue
-        if not _goes_job(other):
+        if other.job_id == job.job_id or other.created < job.created or not _goes_job(other):
             continue
         if other.is_open() or any(
             item.state is jobs.ItemState.DONE for item in jobs.items(store, other.job_id)
@@ -849,9 +806,7 @@ def _waiting_refusal(
     found: Beside, staging: Path, walk: Sequence[str] | None
 ) -> CratekitError:
     """A fresh go refused before its gate, naming what the folder holds (R-1467)."""
-    detail: dict[str, Any] = found.to_json()
-    if walk is not None:
-        detail["answered_this_run"] = list(walk)
+    answered = {"answered_this_run": list(walk)} if walk is not None else {}
     return refuse(
         "refused-by-policy",
         f"the staging folder {found.folder} holds {found.said()}; a landing lands the "
@@ -863,7 +818,7 @@ def _waiting_refusal(
             + ("; the answers given are saved" if walk is not None else ""),
         ),
         origin=("label.go",),
-        detail=detail,
+        detail={**found.to_json(), **answered},
     )
 
 
@@ -964,18 +919,14 @@ def _carry_on(
     download names are this download's own only when its tail left them
     (:func:`keep_tail`) and its pass has no landing proof.
     """
-    run_id = ctx.run.run_id
     warnings: list[dict[str, str]] = []
-    refused: list[dict[str, Any]] = []
-    land: dict[str, str] | None = None
-    landed: list[str] = []
     named = ctx.run.related_runs.get(landing_role(job_id))
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
         payload = dict(job.payload or {})
         manifest = dict(payload.get(ORIGIN_KEY) or {}).get("manifest")
         manifest = manifest if isinstance(manifest, str) and manifest else None
-        run_of = str(payload.get(RUN_KEY) or run_id)
+        run_of = str(payload.get(RUN_KEY) or ctx.run.run_id)
         also = {"continued": job_id, "resumed": []}
         if named:
             checks.append(_check(
@@ -985,16 +936,11 @@ def _carry_on(
                 f"answer and apply that landing, or read it with: "
                 + shlex.join(["crate", "run", "show", named]),
             ))
-            report["go"] = _report(summary, job_id, refused, landed, land, also=also,
-                                   manifest=manifest)
+            report["go"] = _report(summary, job_id, [], [], None, also=also, manifest=manifest)
             # A WALK THAT REACHED THIS GO WROTE ITS ANSWERS, so it is not a no-op.
-            return ctx.envelope(
-                data={"checks": checks, "summary": report},
-                outcome=Outcome.OK if wrote else Outcome.NO_OP,
-            )
-        listed = len(jobs.items(store, job_id))
-        left = _left(jobs.items(store, job_id))
-        if not job.is_open() and resumable(job, left):
+            return _ended(ctx, checks, report, Outcome.OK if wrote else Outcome.NO_OP)
+        items = jobs.items(store, job_id)
+        if not job.is_open() and resumable(job, _left(items)):
             # STOPPED HALF FAILED WITH A CAUSE A RETRY MAY CLEAR: re-armed, as
             # :func:`_resume` re-arms.
             if not acquire_cli.read_download(store, job).settled:
@@ -1002,24 +948,39 @@ def _carry_on(
         job, read, nothing = _driven(
             ctx, store, job_id, "continued",
             f"took this run's download {job_id} on under the decision already given",
-            checks, warnings, listed,
+            checks, warnings, len(items),
         )
-        refused = list(read.refused)
-        if manifest is not None and not nothing:
-            landed = tail(staging, manifest, run_of)
-        if read.landed:
-            _refuse_beside(
-                cfg, store, job, staging, manifest, run_of, landed,
-                own={job_id}, kept=kept_tail(cfg, job_id),
-                refused=refused,
-            )
-    if read.landed and manifest is not None:
-        land = landing(staging, manifest, run_of, job_id)
-    elif landed:
-        checks.append(_next_check(landed))
+        landed, land = _tail_of(
+            cfg, store, job, read, nothing, staging, manifest, run_of, checks, own_tail=True
+        )
     _waiting(summary, checks)
+    refused = list(read.refused)
     report["go"] = _report(summary, job_id, refused, landed, land, also=also, manifest=manifest)
-    return _ended(ctx, checks, report, warnings)
+    return _ended(ctx, checks, report, warnings=tuple(warnings))
+
+
+def _tail_of(
+    cfg: config.Config, store: jobs.JobStore, job: jobs.Job, read: acquire_cli.DownloadRead,
+    nothing: bool, staging: Path, manifest: str | None, run_of: str,
+    checks: list[dict[str, Any]], *, own_tail: bool = False,
+) -> tuple[list[str], dict[str, str] | None]:
+    """The tail one settled download names, and its landing once it landed.
+
+    NOT BESIDE ANYTHING ELSE (R-1467): a landed download is refused while the
+    folder holds what is not its own, which with ``own_tail`` includes what its
+    own tail left (:func:`keep_tail`). A tail with no landing is a next step.
+    """
+    landed = tail(staging, manifest, run_of) if manifest is not None and not nothing else []
+    if read.landed:
+        _refuse_beside(
+            cfg, store, job, staging, manifest, run_of, landed, own={job.job_id},
+            kept=kept_tail(cfg, job.job_id) if own_tail else frozenset(), refused=read.refused,
+        )
+    if read.landed and manifest is not None:
+        return landed, landing(staging, manifest, run_of, job.job_id)
+    if landed:
+        checks.append(_next_check(landed))
+    return landed, None
 
 
 __all__ = [
