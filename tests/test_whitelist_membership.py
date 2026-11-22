@@ -1,23 +1,13 @@
 """Exact membership of every set that decides how much a writer may do.
 
-R-15. The guard tests assert what must NOT be permitted, that the beat grid
-table and the genre lookup table are absent, and that every entry is real. Those
-answer a different question from what IS permitted. Only exact membership catches
-a widening. Adding a table or a column is a two word diff that raises the ceiling
-for every writer, present and future, and it passes every negative assertion as
-long as it is not one of the entries they name. Measured on this tree before
-these pins existed: a sixth permitted table and a swapped bookkeeping column,
-applied together, killed nothing in the full suite.
+R-15. The guard tests assert what must NOT be permitted; only exact membership
+catches a widening, since adding a table or column passes every negative
+assertion. Measured before these pins: a sixth permitted table and a swapped
+bookkeeping column, applied together, killed nothing in the full suite.
 
-HAND LISTED ON PURPOSE, which is the opposite of the rule the neighbouring guard
-files follow. A test that quantifies over a set should derive it (P3), so the
-next addition is covered. A pin does not quantify, it IS the ceiling, and the next
-addition is exactly what it exists to refuse. Changing a pin is the review of the
-widening, so the edit here and the edit to the constant land in one diff where a
-reader sees both.
-
-Each pin was checked red against a deliberate widening before it was committed,
-which is the only order that works. A pin written after a widening ratifies it.
+Hand listed on purpose, against P3: a pin does not quantify, it IS the
+ceiling, so changing a pin is the review of the widening. Each pin was checked
+red against a deliberate widening first; a pin written after one ratifies it.
 """
 
 from __future__ import annotations
@@ -58,9 +48,8 @@ def test_the_permitted_tables_are_exactly_these_five():
 def test_the_baseline_content_allow_list_is_exactly_the_track_colour():
     """What a slim install may write into a track row with nothing enabled.
 
-    The allow list is derived from the registry rather than listed, so the pin
-    sits on the registry's baseline: the one policy it holds, that policy's
-    field and mode, and the union they produce.
+    The allow list is derived from the registry, so the pin sits on its
+    baseline: the one policy, its field and mode, and their union.
     """
     policies = {
         owner: dict(policy.fields)
@@ -71,11 +60,8 @@ def test_the_baseline_content_allow_list_is_exactly_the_track_colour():
 
 
 def test_every_metadata_operation_declares_exactly_its_field_and_mode():
-    """The mode is part of the ceiling.
-
-    Moving the rating backfill from fill if empty to owned adds no column and
-    still widens the write: it lets automation overwrite a rating a person set.
-    """
+    """The mode is part of the ceiling: owned over fill if empty adds no
+    column and lets automation overwrite a rating a person set."""
     declared = {
         owner: dict(policy.fields) for owner, policy in metadata.OPERATIONS.items()
     }
@@ -92,13 +78,10 @@ def test_the_content_allow_list_with_every_operation_enabled_is_exactly_four_col
 
 
 def test_the_bookkeeping_set_is_exactly_these_ten_columns():
-    """The quietest widening of the three, so it gets the tightest pin.
+    """The quietest widening, so the tightest pin.
 
-    Entries here are IGNORED when a modification is judged. An addition does not
-    grant a write, it stops the guard looking at one, and the session that
-    follows passes the guard rather than being permitted by it. A count held this
-    before and a count misses a swap: one bookkeeping column traded for a content
-    column keeps the length at ten.
+    Entries are IGNORED when a modification is judged, so an addition stops the
+    guard looking at a write. A count misses a swap that keeps the length at ten.
     """
     assert W.BOOKKEEPING_COLUMNS == frozenset(
         {
@@ -151,9 +134,8 @@ def _called_name(node: ast.AST) -> str | None:
 def _audit_database_opens(tree: ast.AST) -> tuple[int, list[tuple[int, str]]]:
     """Count the constructor calls in one module and say what is wrong with each.
 
-    A reference that is not a call, an alias assignment or a ``partial`` for
-    instance, is itself a problem, because its arguments are supplied somewhere
-    this walk cannot see.
+    A reference that is not a call (an alias, a ``partial``) is itself a
+    problem, since its arguments are supplied where this walk cannot see.
     """
     names = {_CONSTRUCTOR}
     for node in ast.walk(tree):
@@ -202,24 +184,22 @@ def _audit_database_opens(tree: ast.AST) -> tuple[int, list[tuple[int, str]]]:
 def test_every_database_open_in_src_names_the_file_it_opens():
     """R-15's related half. ``db_dir`` is not the database.
 
-    ``Rekordbox6Database(db_dir=...)`` does not open the database in that
-    directory. In the pinned binding ``db_dir`` names where it looks for its
-    playlist XML and sets the ``share`` directory analysis paths resolve under.
-    The database comes from ``path``, and with ``path`` empty the binding falls
-    back to the rekordbox configuration's ``db_path``, which is the live library.
-    A call passing ``db_dir`` alone reads live rows while appearing to read a
-    copy, resolves their analysis paths into the copy's share, and returns
-    entirely plausible results from two libraries at once.
+    The binding opens ``path``, and with ``path`` empty falls back to the
+    configured live library; ``db_dir`` only names where it reads playlist XML
+    and analysis paths. A call passing ``db_dir`` alone reads live rows while
+    appearing to read a copy. This pins the argument, the cheap half; what the
+    connection opened is a separate check, filed rather than made.
 
-    In the guard's own terms: refusing the live path as an argument is not the
-    same as not reading it. This pins the argument, which is the cheap half. What
-    the connection actually opened is a separate check, filed rather than made.
+    A module that never spells the constructor cannot hold a call, an alias, a
+    reference or a string of it, so it is not parsed.
     """
     found = 0
     problems: list[str] = []
     for source in sorted((SRC_ROOT / "cratekit").rglob("*.py")):
-        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
-        count, bad = _audit_database_opens(tree)
+        text = source.read_text(encoding="utf-8")
+        if _CONSTRUCTOR not in text:
+            continue
+        count, bad = _audit_database_opens(ast.parse(text, filename=str(source)))
         found += count
         problems.extend(f"{source.relative_to(SRC_ROOT)}:{line}: {why}" for line, why in bad)
     assert found, f"no {_CONSTRUCTOR} call in src; this check would pass by finding nothing"

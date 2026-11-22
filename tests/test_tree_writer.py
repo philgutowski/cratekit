@@ -1,35 +1,19 @@
 """U18: the tree writers, in both mediums, and the row matching between them.
 
-WHAT THE GOLDENS ALREADY COVER AND THIS FILE DOES NOT REPEAT. Nine golden files
-in tests/test_xml_splice_golden.py pin the exact bytes every bridge writer here
-emits, which is the answer to "did collapsing five implementations into one
-change the output". This file covers what a byte comparison cannot: the paths no
-golden was ever produced for, and the whole database half, which has no bytes.
+The nine goldens in tests/test_xml_splice_golden.py pin every bridge writer's
+bytes; this file covers the paths no golden was produced for and the whole
+database half. The plan's five scenarios: a second pass adds nothing
+(``test_a_second_pass_adds_nothing``), it adopts the folder the first made
+(``test_a_second_pass_adopts_the_folder_the_first_pass_made``), normalization
+resolves a prefixed path, a composition-form mismatch and a device-relative
+row (the ``test_normalization_*`` cases), two active rows on one location are
+skipped and surfaced, and a tree still on the bridge refuses
+(``test_a_database_write_at_a_tree_still_on_the_bridge_is_refused``).
 
-THE FIVE SCENARIOS THE PLAN NAMES FOR THIS UNIT, and where each is proved:
-
-1. membership deduplicates on re-run, zero new rows on a second pass
-   -> ``test_a_second_pass_adds_nothing``
-2. adoption by name picks the existing folder, not a numbered duplicate
-   -> ``test_a_second_pass_adopts_the_folder_the_first_pass_made``
-3. normalization resolves a prefixed path, a composition-form mismatch, and a
-   device-relative row -> the three ``test_normalization_*`` cases
-4. two active rows on one normalized location are skipped and surfaced
-   -> ``test_two_active_rows_on_one_location_are_skipped_and_both_surfaced``
-5. the writer refuses when the registry still marks the tree as XML
-   -> ``test_a_database_write_at_a_tree_still_on_the_bridge_is_refused``
-
-WHY THE DATABASE HALF RUNS AGAINST A REAL DATABASE. The pure rules are proved
-pure, without one. What a synthetic mapping cannot prove is the joint: that a
-folder found by name is the folder the previous run created, that a membership
-insert really is idempotent through the binding rather than through our reading
-of it, and that the whole thing survives the session spine it is wrapped in.
-Those are the joints where correct-looking code guards nothing.
-
-D1 APPLIES TO EVERY NAME HERE. Nothing below names a real volume, a real person,
-or a real track, and the paths are synthetic while still carrying the character
-classes that matter: a space, and an accented character in both composition
-forms.
+The database half runs against a real database, since the joints (adoption by
+name, idempotence through the binding, the session spine) are where
+correct-looking code guards nothing. D1: every name is synthetic, carrying a
+space and an accented character in both composition forms.
 """
 
 from __future__ import annotations
@@ -41,15 +25,16 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import config, locations, preflight, rb_writer, session, taxonomy, tree_registry
+from cratekit.core import locations, preflight, rb_writer, session, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rbxml, trees
-from tests.test_config import valid_data
-from tests.test_rb_writer_db import (
-    RECORDED_APP_VERSION,
-    _build_disposable_database,
-)
+from tests.test_rb_writer_db import _build_disposable_database
+from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
+from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
+from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
+from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
+from tests.test_rebuild import library as library  # noqa: PLC0414
 from tests.xml_fixtures import _fresh_xml, _no_bare_lf, _xml_doc
 
 # ── synthesized names (D1) ───────────────────────────────────────────────────
@@ -111,12 +96,7 @@ def _registry(mode: tree_registry.Mode, *, root_id: str | None = ADOPTED_ROOT):
 
 
 def test_a_routing_sweep_reports_what_it_could_not_place_rather_than_raising():
-    """One absent folder is a fact to carry to the end, not a reason to stop.
-
-    A sweep touches many playlists. Raising on the first miss abandons the other
-    writes, and the source system's answer, printing and continuing, is not
-    available to a layer with no console.
-    """
+    """One absent folder is a fact to carry to the end, not a reason to stop."""
     content = bytearray(_tree_doc())
     report = trees.apply_playlist_changes(
         {(FOLDER_DISPLAY, SUB_DISPLAY): [1, 2], (OTHER_FOLDER, SUB_DISPLAY): [3]},
@@ -129,11 +109,7 @@ def test_a_routing_sweep_reports_what_it_could_not_place_rather_than_raising():
 
 
 def test_the_creating_sweep_creates_and_the_placing_sweep_refuses_to():
-    """The one difference between the two entry points, asserted from both sides.
-
-    They shared a body and differ by one flag, so the risk is that the flag stops
-    reaching one of them. Proved by driving the same absent sub through both.
-    """
+    """The one difference between the two entry points, asserted from both sides."""
     placing = bytearray(_tree_doc())
     placed = trees.apply_playlist_changes(
         {(FOLDER_DISPLAY, "Not There Yet"): [7]}, placing, tree=_ungoverned()
@@ -151,11 +127,7 @@ def test_the_creating_sweep_creates_and_the_placing_sweep_refuses_to():
 
 
 def test_a_sweep_with_nothing_to_place_writes_nothing():
-    """An empty plan entry is skipped rather than emitted as an empty playlist.
-
-    The creating path is the one that could get this wrong: asked to create a sub
-    for zero tracks, it would leave an empty node behind on every run.
-    """
+    """An empty plan entry is skipped rather than emitted as an empty playlist."""
     content = bytearray(_tree_doc())
     before = bytes(content)
     report = trees.apply_unplaced_changes(
@@ -165,11 +137,7 @@ def test_a_sweep_with_nothing_to_place_writes_nothing():
 
 
 def test_the_sweep_order_does_not_depend_on_the_callers_dict_order():
-    """A golden compares BYTES, so the byte output cannot depend on insertion order.
-
-    Two plans holding the same pairs in opposite orders must produce one document,
-    or a golden becomes a test of whichever order the producer happened to use.
-    """
+    """A golden compares BYTES, so the byte output cannot depend on insertion order."""
     first = bytearray(_tree_doc(folders=(FOLDER_DISPLAY, OTHER_FOLDER)))
     trees.apply_playlist_changes(
         {(FOLDER_DISPLAY, SUB_DISPLAY): [1], (OTHER_FOLDER, SUB_DISPLAY): [2]},
@@ -186,13 +154,7 @@ def test_the_sweep_order_does_not_depend_on_the_callers_dict_order():
 
 
 def test_a_bridge_sweep_at_a_database_native_tree_is_refused_by_name():
-    """The bridge guard reaches the sweep through the emitter, not around it.
-
-    Asserted here as well as per-emitter in tests/test_tree_registry.py, because
-    what this file is about is the CALL SITE: a sweep that dropped the tree
-    argument would pass every emitter test and still splice a tree the database
-    owns.
-    """
+    """The bridge guard reaches the sweep through the emitter, not around it."""
     governed = rbxml.Tree(
         display=TREE_DISPLAY, id=TREE_ID, registry=_registry(tree_registry.Mode.DATABASE)
     )
@@ -207,17 +169,7 @@ def test_a_bridge_sweep_at_a_database_native_tree_is_refused_by_name():
 
 
 def test_the_default_tree_is_governed_so_a_cutover_refuses_the_sweep():
-    """The hole a reviewer walked through, pinned from the entry point that had it.
-
-    tests/test_tree_registry.py proves the emitter guard fires when a governed
-    tree is handed to it, and the sweep test above proves a call site that
-    forwards one keeps that property. Neither says anything about the tree a
-    caller gets when it names none, and that was the one that was wrong: an
-    ungoverned tree built from a declared node, which the guard correctly ignores
-    because most playlists in a real library are somebody's own. The sweep then
-    spliced an export for a tree the database already owned, and under U9's A2
-    verdict importing that export replaces the database-native tree outright.
-    """
+    """The hole a reviewer walked through, pinned from the entry point that had it."""
     declared = taxonomy.default_taxonomy()
     document = _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
@@ -252,12 +204,7 @@ def test_the_default_tree_is_governed_so_a_cutover_refuses_the_sweep():
 
 
 def test_a_sweep_naming_neither_a_registry_nor_a_tree_refuses_to_guess():
-    """There is no ungoverned default, which is the property, not the message.
-
-    A default would hand back exactly the tree the test above proves is unsafe,
-    so the absence of one is what closes the hole. Asserted on both entry points
-    because they had the same default and would regress independently.
-    """
+    """There is no ungoverned default, which is the property, not the message."""
     with pytest.raises(ValueError, match="registry"):
         trees.add_vox_playlists(_tree_doc(), DECLARED)
 
@@ -274,13 +221,7 @@ def test_a_catalog_import_naming_neither_a_registry_nor_a_tree_refuses(tmp_path)
 
 
 def test_a_catalog_tree_is_not_written_outside_a_self_closed_playlist_root(tmp_path):
-    """rekordbox exports a childless node self closed, and it has no body to write into.
-
-    The offset arithmetic succeeds against one anyway: the bytes just past the
-    closing slash are the break ending the node's OWN line, so the write lands
-    beside the root rather than inside it and reports success. Refused now, with
-    the document left byte for byte as it was found.
-    """
+    """rekordbox exports a childless node self closed, and it has no body to write into."""
     document = (
         '<?xml version="1.0" encoding="UTF-8"?>\r\n'
         '<DJ_PLAYLISTS Version="1.0.0">\r\n'
@@ -298,14 +239,7 @@ def test_a_catalog_tree_is_not_written_outside_a_self_closed_playlist_root(tmp_p
 
 
 def test_the_vocal_sweep_writes_the_direct_child_not_a_nested_namesake():
-    """The enumeration and the write have to mean the same folder.
-
-    The sweep lists the tree's DIRECT folder children, then writes to each by
-    name. A body-wide search resolves that name to whichever node carries it
-    first in document order, which is a folder nested inside an earlier sibling
-    whenever the two share a name. The write would land one level too deep and
-    report the outer folder's name.
-    """
+    """The enumeration and the write have to mean the same folder."""
     document = _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
         root_children=[
@@ -323,11 +257,7 @@ def test_the_vocal_sweep_writes_the_direct_child_not_a_nested_namesake():
     out, report = trees.add_vox_playlists(document, DECLARED, tree=_ungoverned())
     vox = taxonomy.default_taxonomy().sub_class(trees.VOX_SUB_CLASS).display
 
-    # Both DIRECT children gain one, which is the sweep doing its job. What must
-    # not gain one is the nested namesake, because it is not a child of the tree
-    # and the enumeration never named it. Before the direct-child scoping, the
-    # write for FOLDER_DISPLAY resolved to that nested node instead, so the
-    # direct child of the same name got nothing and the report said otherwise.
+    # Both direct children gain one; the nested namesake, never enumerated, must not.
     root = rbxml.root_node(out)
     tree_node = rbxml.direct_child(out, root, TREE_DISPLAY, rbxml.FOLDER_TYPE)
     outer = rbxml.direct_child(out, tree_node, OTHER_FOLDER, rbxml.FOLDER_TYPE)
@@ -345,11 +275,7 @@ def test_the_vocal_sweep_writes_the_direct_child_not_a_nested_namesake():
 
 
 def test_the_vocal_sweep_carries_out_a_warning_instead_of_dropping_it():
-    """A folder it could not serve and a folder that needed nothing are not one fact.
-
-    Reported through ``modified`` alone they were: both leave the name off the
-    list. The blocked folder is the one somebody has to act on.
-    """
+    """A folder it could not serve and a folder that needed nothing are not one fact."""
     document = _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
         root_children=[
@@ -373,11 +299,7 @@ def test_the_vocal_sweep_carries_out_a_warning_instead_of_dropping_it():
 
 
 def test_two_folders_of_one_name_are_refused_rather_than_half_served():
-    """A name-targeted writer cannot tell them apart, so it must not try.
-
-    Without this the vocal sweep writes to the first folder twice and to the
-    second one never, and the count it returns says two.
-    """
+    """A name-targeted writer cannot tell them apart, so it must not try."""
     raw = _tree_doc(folders=(FOLDER_DISPLAY, FOLDER_DISPLAY))
     with pytest.raises(trees.DuplicateFolders) as excinfo:
         trees.add_vox_playlists(raw, DECLARED, tree=_ungoverned())
@@ -385,12 +307,7 @@ def test_two_folders_of_one_name_are_refused_rather_than_half_served():
 
 
 def test_a_playlist_wearing_the_trees_name_refuses_rather_than_walking_nothing():
-    """The wrong-type collision, which "not found" would have hidden.
-
-    A root-level PLAYLIST named after the tree is not an absent tree. Reported as
-    absent, the sweep walks zero folders, returns an empty modified list, and
-    reads to the user exactly like a library that was already up to date.
-    """
+    """The wrong-type collision, which "not found" would have hidden."""
     document = _xml_doc(
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"],
         root_children=[
@@ -409,12 +326,7 @@ def test_a_sweep_over_a_document_with_no_such_tree_refuses(tmp_path):
 
 
 def test_the_vocal_sweep_touches_only_the_folders_that_lack_the_playlist():
-    """Idempotence per FOLDER, not per document.
-
-    The golden proves one folder gains one playlist. This proves the second run
-    after a new folder appears touches the new one and leaves the other byte for
-    byte alone, which is what makes re-running it the ordinary thing to do.
-    """
+    """Idempotence per FOLDER, not per document."""
     declared = taxonomy.default_taxonomy()
     vox = declared.sub_class(trees.VOX_SUB_CLASS).display
 
@@ -432,18 +344,7 @@ def test_the_vocal_sweep_touches_only_the_folders_that_lack_the_playlist():
 
 
 def test_copying_a_taxonomy_for_a_test_keeps_its_derived_indexes():
-    """The trap the two tests below would otherwise fall into, pinned here.
-
-    A ``Taxonomy`` carries four indexes derived at construction, each defaulting
-    to an empty mapping. Rebuilding one by hand-listing its public fields, which
-    is the obvious way to change a single entry, silently hands back an object
-    whose bucket and alias lookups all answer nothing. Nothing raises; the
-    taxonomy simply behaves as though it declared no buckets at all.
-
-    ``dataclasses.replace`` copies every field including those four, which is why
-    it is the idiom this suite already uses. This asserts the property rather
-    than the idiom, so a future hand-rolled copy fails here and says why.
-    """
+    """The trap the two tests below would otherwise fall into, pinned here."""
     declared = taxonomy.default_taxonomy()
     copied = replace(declared, catalog=None)
     assert copied.catalog is None
@@ -452,13 +353,7 @@ def test_copying_a_taxonomy_for_a_test_keeps_its_derived_indexes():
 
 
 def test_the_vocal_sweep_reads_both_names_from_the_declared_taxonomy():
-    """R19 in its live form: rename either name and the sweep follows.
-
-    The write layer may not spell a display name at all, so the only way this can
-    be wrong is by reaching for the shipped default when a caller supplied their
-    own template. Driven with a renamed sub-playlist, which is what a user who
-    dislikes the shipped name actually does.
-    """
+    """R19 in its live form: rename either name and the sweep follows."""
     declared = taxonomy.default_taxonomy()
     renamed = tuple(
         entry if entry.id != trees.VOX_SUB_CLASS else replace(entry, display="Sung")
@@ -479,13 +374,7 @@ def _buckets(*years: int) -> dict:
 
 
 def test_a_catalog_rerun_refreshes_the_folder_rather_than_duplicating_it(tmp_path):
-    """The source system's second run grew a second copy of the whole label.
-
-    No golden covers this, because the system these were ported from had no test
-    that ran twice. It is the defect the consolidation fixes, so it is asserted
-    directly: one folder, the new year merged into it, and the tree's own count
-    unmoved. The merge rules themselves are pinned in tests/test_rbxml.py.
-    """
+    """The source system's second run grew a second copy of the whole label."""
     source = tmp_path / "fresh.xml"
     source.write_bytes(_fresh_xml())
     first = tmp_path / "one.xml"
@@ -506,11 +395,7 @@ def test_a_catalog_rerun_refreshes_the_folder_rather_than_duplicating_it(tmp_pat
 
 
 def test_a_catalog_write_into_a_taxonomy_declaring_no_catalog_tree_refuses_by_name(tmp_path):
-    """A default nobody saw would put a folder in somebody's library by surprise.
-
-    The catalog tree is optional in the template on purpose, so the writer has to
-    have an answer for a library that declares none, and inventing one is not it.
-    """
+    """A default nobody saw would put a folder in somebody's library by surprise."""
     declared = taxonomy.default_taxonomy()
     without = replace(declared, catalog=None)
     source = tmp_path / "fresh.xml"
@@ -684,11 +569,7 @@ def _rules() -> list[locations.PrefixRule]:
 
 
 def test_normalization_resolves_a_prefixed_path_to_the_right_row():
-    """Most active rows in a real library record a volume name it no longer uses.
-
-    A resolver with no map resolves none of them, so this is not an edge case, it
-    is the ordinary case.
-    """
+    """Most active rows in a real library record a volume name it no longer uses."""
     rows = [trees.ContentRow("41", f"{OLDER}/Music/a.flac", deleted=False)]
     (match,) = trees.match_active_rows(
         [f"{ROOT}/Music/a.flac"], rows, root=ROOT, prefix_map=_rules()
@@ -698,11 +579,7 @@ def test_normalization_resolves_a_prefixed_path_to_the_right_row():
 
 
 def test_normalization_resolves_a_composition_form_mismatch():
-    """Both sides go through the normalizer, or neither side is comparable.
-
-    Asserted in the direction that actually occurs: the row carries one form and
-    the caller supplies the other.
-    """
+    """Both sides go through the normalizer, or neither side is comparable."""
     rows = [trees.ContentRow("42", f"{ROOT}/Music/{NFD_NAME}", deleted=False)]
     (match,) = trees.match_active_rows(
         [f"{ROOT}/Music/{NFC_NAME}"], rows, root=ROOT, prefix_map=_rules()
@@ -712,12 +589,7 @@ def test_normalization_resolves_a_composition_form_mismatch():
 
 
 def test_a_device_relative_row_is_reported_as_unresolved_and_not_as_missing():
-    """Three different problems keep three different names.
-
-    A streaming pseudo-location and a device-relative path are not files this
-    machine can resolve, and calling either one "absent" tells a user to go
-    looking for something that was never there.
-    """
+    """Three different problems keep three different names."""
     rows = [trees.ContentRow("43", "Contents/a.flac", deleted=False)]
     (match,) = trees.match_active_rows(
         ["Contents/a.flac"], rows, root=ROOT, prefix_map=_rules()
@@ -738,11 +610,7 @@ def test_an_unmapped_prefix_is_unresolved_rather_than_silently_absent():
 
 
 def test_a_location_url_and_a_plain_path_resolve_to_one_row():
-    """The XML side records a URL and the database side records a path.
-
-    One matcher serves both, because a cutover compares what the bridge wrote
-    against what the database holds and the two spell the same file differently.
-    """
+    """The XML side records a URL and the database side records a path."""
     rows = [trees.ContentRow("45", f"{ROOT}/Music/one two.flac", deleted=False)]
     (match,) = trees.match_active_rows(
         [locations.location_url(f"{ROOT}/Music/one two.flac")],
@@ -768,15 +636,7 @@ def test_a_soft_deleted_row_beside_one_active_row_resolves_cleanly():
 
 
 def test_a_sweep_matches_every_entry_against_rows_supplied_as_a_cursor():
-    """The library is walked ONCE, and a one-shot iterator survives the sweep.
-
-    The natural way to hand over "every content row" for a library this size is a
-    database cursor, not a materialized list. A sweep that rebuilt its index per
-    plan entry would consume the whole cursor on the first entry and see an
-    exhausted iterable on every entry after it, reporting each of those tracks as
-    absent while the run reported itself clean. That is the shape this pins: the
-    same rows, supplied as a generator, matched twice.
-    """
+    """The library is walked ONCE, and a one-shot iterator survives the sweep."""
     rows = [
         trees.ContentRow("50", f"{ROOT}/Music/a.flac", deleted=False),
         trees.ContentRow("51", f"{ROOT}/Music/b.flac", deleted=False),
@@ -795,12 +655,7 @@ def test_a_sweep_matches_every_entry_against_rows_supplied_as_a_cursor():
 
 
 def test_two_active_rows_on_one_location_are_skipped_and_both_surfaced():
-    """Written to both, one track sits in a playlist twice under two identities.
-
-    The user then removes it once and it is still there, which reads as the
-    product ignoring them. Skipping and naming both is the only answer that lets
-    them fix it.
-    """
+    """Written to both, one track sits in a playlist twice under two identities."""
     rows = [
         trees.ContentRow("48", f"{OLDER}/Music/a.flac", deleted=False),
         trees.ContentRow("49", f"{ROOT}/Music/a.flac", deleted=False),
@@ -819,91 +674,8 @@ def test_two_active_rows_on_one_location_are_skipped_and_both_surfaced():
 
 
 @pytest.fixture
-def library(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "db").mkdir(parents=True)
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    return root
-
-
-@pytest.fixture
-def cfg(library, monkeypatch):
-    """Configuration with the application pin RECORDED, since an unset one refuses."""
-    resolved = config.from_dict(
-        valid_data(
-            library,
-            rekordbox={
-                "pinned_app_version": RECORDED_APP_VERSION,
-                "validated_on": "2026-08-01",
-            },
-        )
-    )
-    monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
-    monkeypatch.setattr(
-        rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION
-    )
-    return resolved
-
-
-@pytest.fixture(autouse=True)
-def _platform_seams(monkeypatch):
-    """Everything about THIS machine that a temporary library cannot speak for.
-
-    The three process probes and the cloud-sync marker, patched where the guards
-    resolve them. None of this weakens what is under test here: that these guards
-    refuse is proved directly, against the same seams driven the other way, in
-    tests/test_rb_writer_db.py.
-    """
-    from pyrekordbox.db6 import database as binding
-
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
-    monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
-
-
-@pytest.fixture(autouse=True)
-def _release_process_locks():
-    """No test may leave this process believing it still holds a session lock."""
-    yield
-    session._HELD.clear()
-
-
-@pytest.fixture
-def gates_pass(cfg, monkeypatch):
-    """The volume identity agrees and the acknowledgment is recorded.
-
-    Patched at the PRECONDITION seam rather than injected, so the writer is
-    driven with no seam supplied at all, which is exactly how a real caller
-    reaches the gates.
-    """
-    monkeypatch.setattr(
-        preflight,
-        "default_identity_provider",
-        lambda: (lambda _path: cfg.library.volume_id),
-    )
-    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
-    session.record_acknowledgment(cfg, terminal=lambda: True)
-    return cfg
-
-
-@pytest.fixture
 def db(cfg, tmp_path, monkeypatch):
-    """A disposable database, opened through the whole gate and released after.
-
-    A supplied snapshot SUBSTITUTES for the synthetic build rather than switching
-    these tests on, which is the convention seam decision Part 4 sets for every
-    volume-dependent gate: the battery runs either way, and supplying a real
-    snapshot strengthens it. The supplied file is copied first, because these
-    tests write and writing to a file somebody handed us is not ours to do. The
-    synthetic build is not encrypted, so it opens without the key and the key
-    path is exercised only by a supplied snapshot.
-    """
+    """A disposable database, opened through the whole gate and released after."""
     import shutil
 
     supplied = rb_writer.integration_db_path()
@@ -920,12 +692,8 @@ def db(cfg, tmp_path, monkeypatch):
         path = Path(cfg.library.db_path)
         _build_disposable_database(path)
         unlock = False
-        # The capture's integrity check reaches for the key by default, and an
-        # unencrypted fixture fails it, which would report every session here as
-        # having no verified recovery point. Compensated at the FIXTURE, never by
-        # giving the writer a verifier argument: a writer that accepts one
-        # accepts ``lambda _: True``, and the gate this unit is registered
-        # against would then be defeatable by the parameter meant to test it.
+        # The integrity check reaches for the key and this fixture is unencrypted.
+        # Compensated here, never by a verifier argument the writer would accept.
         real_integrity_ok = rb_writer.integrity_ok
         monkeypatch.setattr(
             rb_writer,
@@ -941,12 +709,7 @@ def db(cfg, tmp_path, monkeypatch):
 
 
 def _rows(root: Path) -> list[trees.ContentRow]:
-    """The two content rows the disposable database carries, given locations.
-
-    The database's own rows hold no path, so the matcher is fed the mapping a
-    caller would build from them. What is under test on this side is the write,
-    not the read.
-    """
+    """The two content rows the disposable database carries, given locations."""
     return [
         trees.ContentRow("1", f"{root}/Music/one.flac", deleted=False),
         trees.ContentRow("2", f"{root}/Music/two.flac", deleted=False),
@@ -955,13 +718,7 @@ def _rows(root: Path) -> list[trees.ContentRow]:
 
 @pytest.fixture
 def adopted_root(db):
-    """The tree folder a cutover adopted, as a REAL row with a real identifier.
-
-    Seeded rather than invented, because the whole point of the adopted root is
-    that the folders a membership write creates hang off it. A test naming an
-    identifier no row carries can only prove the refusal path; proving the write
-    lands INSIDE the tree needs a row the write can be parented to.
-    """
+    """The tree folder a cutover adopted, as a REAL row with a real identifier."""
     folder = rb_writer.ensure_folder(db, TREE_DISPLAY)
     db.session.commit()
     return folder
@@ -984,12 +741,52 @@ def _write(cfg, db, *, plan, root_id, registry=None, root_exists=lambda _root: T
     )
 
 
-def test_a_database_write_at_a_tree_still_on_the_bridge_is_refused(cfg, gates_pass):
-    """The plan's fifth scenario, and it refuses before it opens anything.
+def _one(cfg) -> dict:
+    """The plan most writes here take: one track into the named folder and sub."""
+    return {(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]}
 
-    Driven with no database handle at all, which is the assertion: a writer that
-    checked the medium after opening the library would need one.
-    """
+
+def _unverified_capture(monkeypatch) -> None:
+    """Every capture comes back reporting that its integrity check failed."""
+    import cratekit.core.snapshot as snapshot_module
+
+    real_capture = snapshot_module.capture
+
+    def unverified(*args, **kwargs):
+        taken = real_capture(*args, **kwargs)
+        return type(taken)(
+            stamp=taken.stamp, root=taken.root, database=taken.database,
+            integrity_verified=False, sources=taken.sources, manifest=taken.manifest,
+        )
+
+    monkeypatch.setattr(trees.snapshot, "capture", unverified)
+
+
+def _volume_agrees(cfg, monkeypatch) -> None:
+    """The volume identity agrees, and no acknowledgment is recorded."""
+    monkeypatch.setattr(
+        preflight, "default_identity_provider", lambda: (lambda _path: cfg.library.volume_id)
+    )
+    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+
+
+def _fail_second_insert(db, monkeypatch) -> dict:
+    """The binding's second membership insert raises; returns the call count."""
+    real_insert = db.add_to_playlist
+    calls = {"n": 0}
+
+    def explode_on_the_second(playlist, content, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("the library went away mid-sweep")
+        return real_insert(playlist, content, *args, **kwargs)
+
+    monkeypatch.setattr(db, "add_to_playlist", explode_on_the_second)
+    return calls
+
+
+def test_a_database_write_at_a_tree_still_on_the_bridge_is_refused(cfg, gates_pass):
+    """The plan's fifth scenario, and it refuses before it opens anything."""
     with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
         _write(
             cfg,
@@ -1015,11 +812,7 @@ def test_a_registry_naming_a_root_this_library_lacks_is_refused(cfg, gates_pass)
 
 
 def test_naming_no_analysis_root_is_refused_rather_than_watching_nothing(cfg, gates_pass):
-    """P5, on this unit's own softening path.
-
-    An empty watch reports a clean session whatever happened to the library's
-    grids, which is worse than no watch at all because it looks like one ran.
-    """
+    """P5, on this unit's own softening path."""
     with pytest.raises(ValueError, match="watch nothing"):
         trees.write_tree_membership(
             cfg,
@@ -1036,14 +829,7 @@ def test_naming_no_analysis_root_is_refused_rather_than_watching_nothing(cfg, ga
 def test_a_grid_rewritten_during_a_membership_write_refuses_the_session(
     cfg, gates_pass, db, adopted_root, monkeypatch
 ):
-    """R-11. The watch this writer arms, driven over a root that holds a grid.
-
-    Every other write in this file names ``root/Music``, which holds no analysis
-    file, so the watch fingerprints nothing and would pass whatever happened to a
-    grid. Here a real analysis file sits where rekordbox keeps one, the library
-    root is named, and the membership primitive rewrites it as a side effect,
-    which is the shape of write the runtime half exists to catch.
-    """
+    """R-11. The watch this writer arms, driven over a root that holds a grid."""
     root = Path(cfg.library.root)
     # In the share beside the database, the analysis store (R-14), rather than
     # the USB export cache at the volume root that no row resolves into.
@@ -1075,10 +861,8 @@ def test_a_grid_rewritten_during_a_membership_write_refuses_the_session(
     assert cause.reason == "anlz-modified"
     assert cause.code is ExitCode.REFUSED_BY_POLICY
     assert any(str(grid) in line for line in cause.detail["changed"])
-    # THE RECORD CLOSES AFTER THE WATCH HAS JUDGED, so a session refused over a
-    # moved grid is not on record as cleanly finished. The commit landed before
-    # the watch looked, and the record says that too, which is what lets a
-    # restore see rows this refused session left behind.
+    # The record closes after the watch judged, so a refused session is not on
+    # record as clean, and it says the commit landed before the watch looked.
     (record,) = session.records(cfg)
     assert record.state is session.SessionState.ABANDONED
     assert record.committed_sources() == (TREE_ID,)
@@ -1086,12 +870,7 @@ def test_a_grid_rewritten_during_a_membership_write_refuses_the_session(
 
 def test_membership_lands_in_the_named_folder_and_sub(cfg, gates_pass, db, adopted_root):
     """The happy path, end to end through the gates and a real commit."""
-    report = _write(
-        cfg,
-        db,
-        plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-        root_id=str(adopted_root.ID),
-    )
+    report = _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
     assert report.added == 1 and report.already_present == 0
     assert report.skipped == ()
     assert report.root_id == str(adopted_root.ID)
@@ -1099,12 +878,8 @@ def test_membership_lands_in_the_named_folder_and_sub(cfg, gates_pass, db, adopt
 
 
 def test_a_second_pass_adds_nothing(cfg, gates_pass, db, adopted_root):
-    """The plan's first scenario. Re-running is the recovery procedure.
-
-    A second pass that inserted again would turn "run it again" into a second
-    failure, and the duplicate is one the user cannot remove by removing it once.
-    """
-    plan = {(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]}
+    """The plan's first scenario. Re-running is the recovery procedure."""
+    plan = _one(cfg)
     root_id = str(adopted_root.ID)
     first = _write(cfg, db, plan=plan, root_id=root_id)
     second = _write(cfg, db, plan=plan, root_id=root_id)
@@ -1115,13 +890,7 @@ def test_a_second_pass_adds_nothing(cfg, gates_pass, db, adopted_root):
 def test_entries_sharing_a_folder_resolve_it_once_and_insert_once_per_playlist(
     cfg, gates_pass, db, adopted_root, monkeypatch
 ):
-    """R-10. One folder lookup per folder and one membership call per playlist.
-
-    Counted at the writer primitives, because the cost R-10 recorded was the
-    number of round trips and a green count of added rows cannot see it. The
-    rows are asserted too, so a loop that made fewer calls by writing less
-    would fail here rather than pass.
-    """
+    """R-10. One folder lookup per folder and one membership call per playlist."""
     from pyrekordbox.db6 import tables
 
     real_folder = rb_writer.ensure_folder
@@ -1165,13 +934,7 @@ def test_entries_sharing_a_folder_resolve_it_once_and_insert_once_per_playlist(
 
 
 def test_a_track_named_twice_in_one_entry_lands_once(cfg, gates_pass, db, adopted_root):
-    """The second mention reads as present, as it did when each track was its own read.
-
-    The batch answers presence from one read taken before any insert, so an id
-    the batch itself just inserted has to join that answer. If it did not, the
-    second mention would insert a duplicate the user cannot remove by removing
-    it once.
-    """
+    """The second mention reads as present, as it did when each track was its own read."""
     from pyrekordbox.db6 import tables
 
     path = f"{cfg.library.root}/Music/one.flac"
@@ -1188,15 +951,10 @@ def test_a_track_named_twice_in_one_entry_lands_once(cfg, gates_pass, db, adopte
 
 
 def test_a_second_pass_adopts_the_folder_the_first_pass_made(cfg, gates_pass, db, adopted_root):
-    """The plan's second scenario, asserted by COUNTING rows rather than by name.
-
-    A "numbered duplicate" is what the binding's own create helper produces when
-    a find misses, and it is invisible to any assertion that only looks up the
-    name again: the lookup finds the first one and reports success.
-    """
+    """The plan's second scenario, asserted by COUNTING rows rather than by name."""
     from pyrekordbox.db6 import tables
 
-    plan = {(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]}
+    plan = _one(cfg)
     root_id = str(adopted_root.ID)
     _write(cfg, db, plan=plan, root_id=root_id)
     _write(
@@ -1218,11 +976,7 @@ def test_a_second_pass_adopts_the_folder_the_first_pass_made(cfg, gates_pass, db
 def test_an_ambiguous_location_is_skipped_and_carried_into_the_report(
     cfg, gates_pass, db, adopted_root
 ):
-    """Surfaced, which means it reaches the caller rather than a log line.
-
-    The whole value of skipping is that somebody is told. A skip the report does
-    not carry is indistinguishable from a track that was never asked for.
-    """
+    """Surfaced, which means it reaches the caller rather than a log line."""
     report = trees.write_tree_membership(
         cfg,
         db,
@@ -1243,23 +997,10 @@ def test_an_ambiguous_location_is_skipped_and_carried_into_the_report(
 
 
 def test_the_folder_hangs_off_the_root_the_cutover_adopted(cfg, gates_pass, db, adopted_root):
-    """The assertion has to reach the write, or it is decoration.
-
-    ``anchored_root`` refuses a tree whose adopted root this library lacks, which
-    is the restored pre-cutover database. That refusal buys nothing if the write
-    then resolves its folder globally by name: the assertion holds, and the
-    folder is created at the database root beside the tree rather than inside it,
-    which is the silent parallel tree the registry exists to prevent. Asserted on
-    ParentID, because counting rows by name passes either way.
-    """
+    """The assertion has to reach the write, or it is decoration."""
     from pyrekordbox.db6 import tables
 
-    _write(
-        cfg,
-        db,
-        plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-        root_id=str(adopted_root.ID),
-    )
+    _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
     written = [
         row for row in db.session.query(tables.DjmdPlaylist).all() if row.Name == FOLDER_DISPLAY
     ]
@@ -1272,13 +1013,7 @@ def test_the_folder_hangs_off_the_root_the_cutover_adopted(cfg, gates_pass, db, 
 def test_a_root_the_probe_vouched_for_but_the_database_lacks_is_refused(
     cfg, gates_pass, db
 ):
-    """The gap between the caller's probe and the database itself.
-
-    ``anchored_root`` asks a ``root_exists`` callable the caller supplies, so a
-    caller whose probe is optimistic, or simply stale, gets past it. Reaching the
-    write with no such row and creating the folders unparented would put the
-    whole tree beside itself, so this refuses on the read-back instead.
-    """
+    """The gap between the caller's probe and the database itself."""
     with pytest.raises(tree_registry.RegistrySkew) as excinfo:
         _write(
             cfg,
@@ -1293,28 +1028,12 @@ def test_a_root_the_probe_vouched_for_but_the_database_lacks_is_refused(
 def test_a_failure_mid_loop_leaves_nothing_pending_on_the_handle(
     cfg, gates_pass, db, adopted_root, monkeypatch
 ):
-    """Nothing durable lands, and nothing waits to land under another name.
-
-    The loop creates folders, playlists and membership rows and commits once at
-    the end. An exception between the two leaves those objects pending on the
-    CALLER'S handle, and the guarded commit raises on two of its own refusals
-    before reaching its rollback. Left pending, they ride out on whatever commits
-    next and arrive attributed to that operation.
-    """
+    """Nothing durable lands, and nothing waits to land under another name."""
     from pyrekordbox.db6 import tables
 
     # Faulted at the binding's insert rather than at a writer primitive, so the
     # fault lands between two real inserts whichever primitive the loop calls.
-    real_insert = db.add_to_playlist
-    calls = {"n": 0}
-
-    def explode_on_the_second(playlist, content, *args, **kwargs):
-        calls["n"] += 1
-        if calls["n"] == 2:
-            raise RuntimeError("the library went away mid-sweep")
-        return real_insert(playlist, content, *args, **kwargs)
-
-    monkeypatch.setattr(db, "add_to_playlist", explode_on_the_second)
+    _fail_second_insert(db, monkeypatch)
     with pytest.raises(RuntimeError, match="mid-sweep"):
         _write(
             cfg,
@@ -1339,58 +1058,20 @@ def test_a_failure_mid_loop_leaves_nothing_pending_on_the_handle(
 def test_the_write_commits_behind_a_verified_capture(
     cfg, gates_pass, db, adopted_root, monkeypatch
 ):
-    """Nothing commits behind a capture that did not verify.
-
-    Driven by failing the capture's own integrity check, which is the condition
-    the gate exists for, rather than by patching the gate itself.
-    """
-    import cratekit.core.snapshot as snapshot_module
-
-    real_capture = snapshot_module.capture
-
-    def unverified(*args, **kwargs):
-        record = real_capture(*args, **kwargs)
-        return type(record)(
-            stamp=record.stamp,
-            root=record.root,
-            database=record.database,
-            integrity_verified=False,
-            sources=record.sources,
-            manifest=record.manifest,
-        )
-
-    monkeypatch.setattr(trees.snapshot, "capture", unverified)
+    """Nothing commits behind a capture that did not verify."""
+    _unverified_capture(monkeypatch)
     with pytest.raises(CratekitError) as excinfo:
-        _write(
-            cfg,
-            db,
-            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-            root_id=str(adopted_root.ID),
-        )
+        _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
     assert excinfo.value.cause.reason == "snapshot-integrity-failed"
 
 
 def test_a_missing_acknowledgment_refuses_before_the_database_is_touched(
     cfg, monkeypatch, db, adopted_root
 ):
-    """The gates are the writer's, not a caller's to remember.
-
-    No acknowledgment is minted here, which is the whole fixture difference from
-    every test above.
-    """
-    monkeypatch.setattr(
-        preflight,
-        "default_identity_provider",
-        lambda: (lambda _path: cfg.library.volume_id),
-    )
-    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+    """The gates are the writer's, not a caller's to remember."""
+    _volume_agrees(cfg, monkeypatch)
     with pytest.raises(CratekitError) as excinfo:
-        _write(
-            cfg,
-            db,
-            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-            root_id=str(adopted_root.ID),
-        )
+        _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
     assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
 
 
@@ -1406,12 +1087,7 @@ def _the_one_record(cfg) -> session.SessionRecord:
 def test_a_membership_write_is_listed_as_restorable_with_its_per_tree_counts(
     cfg, gates_pass, db, adopted_root
 ):
-    """The cost R-375 names, reproduced: the write took a capture nothing could list.
-
-    Read through ``restore.list_sessions``, which is what ``restore list`` shows a
-    person, rather than through the record alone. A record naming a capture the
-    restore side cannot read is the same stranded undo with a file beside it.
-    """
+    """The cost R-375 names, reproduced: the write took a capture nothing could list."""
     from cratekit.core import restore
 
     _write(
@@ -1442,12 +1118,7 @@ def test_a_membership_write_is_listed_as_restorable_with_its_per_tree_counts(
 def test_the_capture_is_protected_from_pruning_for_the_life_of_the_write(
     cfg, gates_pass, db, adopted_root, monkeypatch
 ):
-    """R-12's first consequence, asked at the moment it matters: mid write.
-
-    The real protection scan is read from inside the guarded commit, so the
-    answer is about a write still in flight and not about a record opened after
-    the fact.
-    """
+    """R-12's first consequence, asked at the moment it matters: mid write."""
     seen: dict[str, object] = {}
     real_commit = rb_writer.commit_guarded
 
@@ -1457,12 +1128,7 @@ def test_the_capture_is_protected_from_pruning_for_the_life_of_the_write(
         return real_commit(handle, *args, **kwargs)
 
     monkeypatch.setattr(trees.rb_writer, "commit_guarded", commit_and_look)
-    _write(
-        cfg,
-        db,
-        plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-        root_id=str(adopted_root.ID),
-    )
+    _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
 
     record = _the_one_record(cfg)
     assert seen["state"] is session.SessionState.OPEN
@@ -1481,12 +1147,7 @@ def test_a_membership_write_that_fails_is_abandoned_and_claims_no_commit(
 
     monkeypatch.setattr(db, "add_to_playlist", explode)
     with pytest.raises(RuntimeError, match="mid-sweep"):
-        _write(
-            cfg,
-            db,
-            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-            root_id=str(adopted_root.ID),
-        )
+        _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
 
     record = _the_one_record(cfg)
     assert record.state is session.SessionState.ABANDONED
@@ -1498,14 +1159,7 @@ def test_a_membership_write_that_fails_is_abandoned_and_claims_no_commit(
 def test_a_failure_after_the_commit_still_reads_as_committed_work(
     cfg, gates_pass, db, adopted_root, monkeypatch
 ):
-    """The commit is recorded the instant it lands, not at the clean end.
-
-    The fingerprint is written AFTER the commit, so a failure there leaves rows in
-    the library behind a record that closes abandoned. A later restore decides
-    whether it is discarding work by reading committed sources, and a record that
-    only learned of its commit on the clean path would let that restore reach
-    back past these rows without asking.
-    """
+    """The commit is recorded the instant it lands, not at the clean end."""
     from cratekit.core import convergence
 
     def explode(*args, **kwargs):
@@ -1513,12 +1167,7 @@ def test_a_failure_after_the_commit_still_reads_as_committed_work(
 
     monkeypatch.setattr(convergence, "record_fingerprint", explode)
     with pytest.raises(RuntimeError, match="state write failed"):
-        _write(
-            cfg,
-            db,
-            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-            root_id=str(adopted_root.ID),
-        )
+        _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
 
     record = _the_one_record(cfg)
     assert record.state is session.SessionState.ABANDONED
@@ -1528,69 +1177,29 @@ def test_a_failure_after_the_commit_still_reads_as_committed_work(
 
 def test_a_refused_gate_leaves_no_record(cfg, monkeypatch, db, adopted_root):
     """A refusal writes nothing. No acknowledgment is minted here."""
-    monkeypatch.setattr(
-        preflight,
-        "default_identity_provider",
-        lambda: (lambda _path: cfg.library.volume_id),
-    )
-    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
+    _volume_agrees(cfg, monkeypatch)
     with pytest.raises(CratekitError):
-        _write(
-            cfg,
-            db,
-            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-            root_id=str(adopted_root.ID),
-        )
+        _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
     assert session.records(cfg) == ()
 
 
 def test_a_capture_that_did_not_verify_is_recorded_before_the_refusal(
     cfg, gates_pass, db, adopted_root, monkeypatch
 ):
-    """Attached the instant it exists, which is BEFORE it is judged.
-
-    An unverified capture is still a directory on disk a person may go looking
-    for, and ``restore list`` lists an unusable entry rather than dropping it.
-    """
-    import cratekit.core.snapshot as snapshot_module
-
-    real_capture = snapshot_module.capture
-
-    def unverified(*args, **kwargs):
-        taken = real_capture(*args, **kwargs)
-        return type(taken)(
-            stamp=taken.stamp,
-            root=taken.root,
-            database=taken.database,
-            integrity_verified=False,
-            sources=taken.sources,
-            manifest=taken.manifest,
-        )
-
-    monkeypatch.setattr(trees.snapshot, "capture", unverified)
+    """Attached the instant it exists, which is BEFORE it is judged."""
+    _unverified_capture(monkeypatch)
     with pytest.raises(CratekitError):
-        _write(
-            cfg,
-            db,
-            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-            root_id=str(adopted_root.ID),
-        )
+        _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
     record = _the_one_record(cfg)
     assert record.state is session.SessionState.ABANDONED
     assert record.snapshot_path and Path(record.snapshot_path).is_dir()
 
 
 def test_a_pass_that_added_nothing_claims_no_commit(cfg, gates_pass, db, adopted_root):
-    """The inbox sweep re-runs this writer on every tree, and most runs add nothing.
-
-    A restore reads a committed source as work it would discard, so a no-op that
-    claimed one would make restoring to last week refuse over a list of sessions
-    that each created nothing. The record itself stays, because its capture is
-    real.
-    """
+    """The inbox sweep re-runs this writer on every tree, and most runs add nothing."""
     from cratekit.core import restore
 
-    plan = {(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]}
+    plan = _one(cfg)
     _write(cfg, db, plan=plan, root_id=str(adopted_root.ID))
     again = _write(cfg, db, plan=plan, root_id=str(adopted_root.ID))
     assert again.added == 0
@@ -1611,12 +1220,7 @@ def test_a_pass_that_added_nothing_claims_no_commit(cfg, gates_pass, db, adopted
 def test_a_commit_that_lands_and_then_raises_is_still_recorded_as_committed(
     cfg, gates_pass, db, adopted_root, monkeypatch
 ):
-    """An exception out of the commit is not proof that nothing was committed.
-
-    The binding lands the SQL transaction and THEN saves rekordbox's playlist
-    file, so a failure in the second half arrives over durable rows. Driven by
-    letting the real commit land and raising where that save would.
-    """
+    """An exception out of the commit is not proof that nothing was committed."""
     from pyrekordbox.db6 import tables
 
     real_commit = db.commit
@@ -1627,12 +1231,7 @@ def test_a_commit_that_lands_and_then_raises_is_still_recorded_as_committed(
 
     monkeypatch.setattr(db, "commit", lands_then_fails)
     with pytest.raises(OSError, match="playlist file"):
-        _write(
-            cfg,
-            db,
-            plan={(FOLDER_DISPLAY, SUB_DISPLAY): [f"{cfg.library.root}/Music/one.flac"]},
-            root_id=str(adopted_root.ID),
-        )
+        _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
 
     landed = [row for row in db.session.query(tables.DjmdPlaylist).all() if row.Name == SUB_DISPLAY]
     assert landed, "the fixture did not land the commit it claims to"
@@ -1658,12 +1257,7 @@ def test_the_commit_witness_leaves_the_handle_as_it_found_it(cfg, gates_pass, db
 def test_the_commit_witness_does_not_read_a_commit_that_never_landed_as_landed(
     cfg, gates_pass, db, adopted_root
 ):
-    """The other half: a commit refused on its way IN recorded nothing durable.
-
-    The refusing listener is registered after the witness's own, so a witness
-    listening one event too early would already have marked itself by the time
-    this raises.
-    """
+    """The other half: a commit refused on its way IN recorded nothing durable."""
     from sqlalchemy import event
 
     def refuse(_session):
@@ -1684,24 +1278,8 @@ def test_the_commit_witness_does_not_read_a_commit_that_never_landed_as_landed(
 def test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit(
     cfg, gates_pass, db, adopted_root, monkeypatch
 ):
-    """The witness decides, not the count. Found by the mutation table as a zero row.
-
-    The failure test above raises before anything is counted, so the rule that a
-    pass which added nothing claims no commit was covering for the witness: a
-    writer that recorded a commit on EVERY raise still passed. Here the first
-    playlist's membership is counted and the second playlist's insert fails, so
-    the count is one, nothing landed, and the record must say nothing landed.
-    """
-    real_insert = db.add_to_playlist
-    calls = {"n": 0}
-
-    def explode_on_the_second(playlist, content, *args, **kwargs):
-        calls["n"] += 1
-        if calls["n"] == 2:
-            raise RuntimeError("the library went away mid-sweep")
-        return real_insert(playlist, content, *args, **kwargs)
-
-    monkeypatch.setattr(db, "add_to_playlist", explode_on_the_second)
+    """The witness decides, not the count. Found by the mutation table as a zero row."""
+    calls = _fail_second_insert(db, monkeypatch)
     with pytest.raises(RuntimeError, match="mid-sweep"):
         _write(
             cfg,
