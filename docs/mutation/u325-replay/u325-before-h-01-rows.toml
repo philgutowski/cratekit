@@ -1,0 +1,891 @@
+name = "u325-before-h-01"
+pass_kind = "replay"
+
+[[rows]]
+id = "u41-author-full.D1_dedupe_disabled"
+source = { table = "u41-author-full.json", id = "D1_dedupe_disabled" }
+description = "dedupe_stem stops dropping a trailing segment that repeats the lead; an existing guard this unit switched on for real input"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    deduped = dedupe_stem(spec.stem, spec.title, spec.album, sep=template.segment_sep)
+'''
+new = '''
+    deduped = spec.stem
+'''
+
+[[rows]]
+id = "u41-author-full.D2_dedupe_structural_rule_widened"
+source = { table = "u41-author-full.json", id = "D2_dedupe_structural_rule_widened" }
+description = "The structural dedupe rule drops its exact trailing match, so an unrelated trailing segment is mutilated"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if lead and stem.endswith(sep + lead):
+'''
+new = '''
+        if lead:
+'''
+
+[[rows]]
+id = "u41-naming-independent.D3_endswith_widened_to_containment"
+source = { table = "u41-naming-independent.json", id = "D3_endswith_widened_to_containment" }
+description = "The repeat test becomes containment rather than a trailing match, so a lead appearing mid name triggers a cut"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if lead and stem.endswith(sep + lead):
+'''
+new = '''
+        if lead and (sep + lead) in stem:
+'''
+
+[[rows]]
+id = "u41-naming-independent.D6_repeat_widened_to_prefix"
+source = { table = "u41-naming-independent.json", id = "D6_repeat_widened_to_prefix" }
+description = "AMBIGUITY MEANS IDENTITY is inverted: a trailing segment that merely BEGINS with the lead counts as a repeat"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if lead and stem.endswith(sep + lead):
+'''
+new = '''
+        if lead and parts[-1].startswith(lead):
+'''
+
+[[rows]]
+id = "u41-naming-independent.E1_budget_bypassed"
+source = { table = "u41-naming-independent.json", id = "E1_budget_bypassed" }
+description = "The fitted stem is discarded and the deduped one is returned, so nothing is ever shortened to the path ceiling"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    return replace(spec, stem=fitted)
+'''
+new = '''
+    return replace(spec, stem=deduped)
+'''
+
+[[rows]]
+id = "u41-naming-independent.E3_budget_min_becomes_max"
+source = { table = "u41-naming-independent.json", id = "E3_budget_min_becomes_max" }
+description = "The two ceilings are combined with max rather than min, so the looser one wins"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    max_stem = min(
+'''
+new = '''
+    max_stem = max(
+'''
+
+[[rows]]
+id = "u41-naming-independent.E4_path_separator_byte_dropped"
+source = { table = "u41-naming-independent.json", id = "E4_path_separator_byte_dropped" }
+description = "The path separator's byte is no longer counted against the path budget"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        + 1  # the path separator
+'''
+new = '''
+        + 0  # the path separator
+'''
+
+[[rows]]
+id = "u41-naming-independent.E5_truncation_tail_not_reserved"
+source = { table = "u41-naming-independent.json", id = "E5_truncation_tail_not_reserved" }
+description = "The disambiguating tail's bytes are not reserved, so the assembled name overshoots the ceiling by its length"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    avail = max_stem - len(tail)
+'''
+new = '''
+    avail = max_stem
+'''
+
+[[rows]]
+id = "u41-naming-independent.F3_body_tag_preference_flipped"
+source = { table = "u41-naming-independent.json", id = "F3_body_tag_preference_flipped" }
+description = "The tag body prefers the filename's stem over the title, which is A2 reproduced inside the engine"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    body_tag = spec.title if spec.title else spec.stem
+'''
+new = '''
+    body_tag = spec.stem if spec.stem else spec.title
+'''
+
+[[rows]]
+id = "u41-naming-independent.F4_body_tag_fallback_dropped"
+source = { table = "u41-naming-independent.json", id = "F4_body_tag_fallback_dropped" }
+description = "The tag body has no fallback at all, so a spec with no title renders None into the tag"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    body_tag = spec.title if spec.title else spec.stem
+'''
+new = '''
+    body_tag = spec.title
+'''
+
+[[rows]]
+id = "u41-naming-independent.F6_filename_prefers_the_title_body"
+source = { table = "u41-naming-independent.json", id = "F6_filename_prefers_the_title_body" }
+description = "R-168 reproduced one file over: the FILENAME is rendered from the title body when there is one, inside the engine rather than in the shell"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        filename=head + spec.stem + spec.suffix,
+'''
+new = '''
+        filename=head + (spec.title or spec.stem) + spec.suffix,
+'''
+
+[[rows]]
+id = "u41-naming-independent.F7_library_name_split_from_the_tag"
+source = { table = "u41-naming-independent.json", id = "F7_library_name_split_from_the_tag" }
+description = "The library name is derived from the stem rather than from the rendered title tag, so the marker can go missing from one surface only"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        library_name=title_tag,
+'''
+new = '''
+        library_name=head + spec.stem,
+'''
+
+[[rows]]
+id = "u39-author-full.D1_default_pad_reverted"
+source = { table = "u39-author-full.json", id = "D1_default_pad_reverted" }
+description = "Revert the key_pad default to none, the pre U39 written form"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    key_pad: str = "camelot2"
+'''
+new = '''
+    key_pad: str = "none"
+'''
+
+[[rows]]
+id = "u39-author-full.D2_pad_unguarded"
+source = { table = "u39-author-full.json", id = "D2_pad_unguarded" }
+description = "Pad unconditionally, so an off wheel key raises from pad_camelot instead of the one refusal path"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if key_pad == "camelot2":
+'''
+
+[[rows]]
+id = "u39-author-full.D3_pad_never_runs"
+source = { table = "u39-author-full.json", id = "D3_pad_never_runs" }
+description = "Padding stage disabled entirely, even for explicit camelot2 templates"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "u39-author-full.E1_budget_ordering_dropped"
+source = { table = "u39-author-full.json", id = "E1_budget_ordering_dropped" }
+description = "Existing guard sample: the budget narrower than written refusal is disabled"
+file = "src/cratekit/core/naming.py"
+surface = "maintainer"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if KEY_PADS.index(self.budget_key_pad) < KEY_PADS.index(self.key_pad):
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "u39-author-full.E2_wheel_bound_widened"
+source = { table = "u39-author-full.json", id = "E2_wheel_bound_widened" }
+description = "Existing guard sample: the Camelot number bound admits 13 through 19"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+_CAMELOT_NUMBER = r"(?:[1-9]|1[0-2])"
+'''
+new = '''
+_CAMELOT_NUMBER = r"(?:[1-9]|1[0-9])"
+'''
+
+[[rows]]
+id = "u39-author-full.M1_refusal_reworded"
+source = { table = "u39-author-full.json", id = "M1_refusal_reworded" }
+description = "Reword the unwritable key refusal, do not append to it"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+            f"{name}={value!r} renders as {rendered!r}, which this engine cannot "
+'''
+new = '''
+            f"{name}={value!r} renders as {rendered!r}, which this engine declines to "
+'''
+
+[[rows]]
+id = "u39-naming-independent.D2_pad_condition_inverted"
+source = { table = "u39-naming-independent.json", id = "D2_pad_condition_inverted" }
+description = "Invert the padding condition: pad exactly the off-wheel values and leave real Camelot codes alone"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is None:
+'''
+
+[[rows]]
+id = "u39-naming-independent.D3_pad_condition_unreachable"
+source = { table = "u39-naming-independent.json", id = "D3_pad_condition_unreachable" }
+description = "The padding stage never fires for any key_pad value, including camelot2"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if key_pad == "impossible-sentinel":
+'''
+
+[[rows]]
+id = "u39-naming-independent.D4_fake_pad_no_zero_fill"
+source = { table = "u39-naming-independent.json", id = "D4_fake_pad_no_zero_fill" }
+description = "Padding uppercases but does not zero-fill, a plausible-looking near miss"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+            rendered = pad_camelot(rendered)
+'''
+new = '''
+            rendered = rendered.upper()
+'''
+
+[[rows]]
+id = "u39-naming-independent.E1_budget_ordering_inverted"
+source = { table = "u39-naming-independent.json", id = "E1_budget_ordering_inverted" }
+description = "Existing guard sample: the budget-narrower-than-written refusal is inverted rather than disabled outright"
+file = "src/cratekit/core/naming.py"
+surface = "maintainer"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if KEY_PADS.index(self.budget_key_pad) < KEY_PADS.index(self.key_pad):
+'''
+new = '''
+        if KEY_PADS.index(self.budget_key_pad) > KEY_PADS.index(self.key_pad):
+'''
+
+[[rows]]
+id = "u39-naming-independent.E2_wheel_letter_widened"
+source = { table = "u39-naming-independent.json", id = "E2_wheel_letter_widened" }
+description = "Existing guard sample: the Camelot letter class admits C, not just A/B"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+_CAMELOT_LETTER = r"[AB]"
+'''
+new = '''
+_CAMELOT_LETTER = r"[ABC]"
+'''
+
+[[rows]]
+id = "u39-naming-independent.M1_refusal_reworded"
+source = { table = "u39-naming-independent.json", id = "M1_refusal_reworded" }
+description = "Reword the unwritable-key refusal instead of appending to it, so an `in` assertion cannot see the change"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+            f"{name}={value!r} renders as {rendered!r}, which this engine cannot "
+'''
+new = '''
+            f"{name}={value!r} is not something this template can round trip: "
+'''
+
+[[rows]]
+id = "u27-restore-cli-independent.I_A10_an_off_machine_refusal_is_swallowed"
+source = { table = "u27-restore-cli-independent.json", id = "I_A10_an_off_machine_refusal_is_swallowed" }
+description = "Continue past a refused off-machine half instead of translating it, so the capture half runs over a mirror that never landed"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '''
+            except backup.BackupRefused as exc:
+                raise _refused(exc) from exc'''
+new = '''
+            except backup.BackupRefused:
+                pulled = None'''
+
+[[rows]]
+id = "u27-restore-cli-independent.I_A3_platform_seams_never_reach_the_session"
+source = { table = "u27-restore-cli-independent.json", id = "I_A3_platform_seams_never_reach_the_session" }
+description = "Drop the identity and mount seams from recovery_session, so the volume gate answers from this machine rather than from the caller"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '''
+        analysis_roots=watched,
+        identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator,
+    ) as held:'''
+new = '''
+        analysis_roots=watched,
+    ) as held:'''
+
+[[rows]]
+id = "u27-restore-cli-independent.I_A8_discard_set_never_reaches_the_engine"
+source = { table = "u27-restore-cli-independent.json", id = "I_A8_discard_set_never_reaches_the_engine" }
+description = "Plan with an empty discard set, so the override a person typed is dropped between the verb and the engine"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '''
+        decided = restore.plan(
+            cfg,
+            session_id,
+            held=held,
+            discarding=discarding,
+            process_lister=process_lister,
+        )'''
+new = '''
+        decided = restore.plan(
+            cfg,
+            session_id,
+            held=held,
+            discarding=(),
+            process_lister=process_lister,
+        )'''
+
+[[rows]]
+id = "u27-restore-cli-independent.I_B2_the_named_session_never_reaches_the_engine"
+source = { table = "u27-restore-cli-independent.json", id = "I_B2_the_named_session_never_reaches_the_engine" }
+description = "Pass no session identifier at all, so a named restore performs only the off-machine half"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '''
+        session_id=chosen.session_id if chosen is not None else None,
+        discarding=tuple(ctx.args.discard),'''
+new = '''
+        session_id=None,
+        discarding=tuple(ctx.args.discard),'''
+
+[[rows]]
+id = "u27-restore-cli-independent.I_B3_the_discard_flag_is_dropped_at_the_call"
+source = { table = "u27-restore-cli-independent.json", id = "I_B3_the_discard_flag_is_dropped_at_the_call" }
+description = "Hand the engine an empty discard set from the handler, the argument-side twin of I_A8"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '''
+        session_id=chosen.session_id if chosen is not None else None,
+        discarding=tuple(ctx.args.discard),'''
+new = '''
+        session_id=chosen.session_id if chosen is not None else None,
+        discarding=(),'''
+
+[[rows]]
+id = "u27-restore-cli-independent.I_B7_the_rehearsal_flag_is_dropped_at_the_call"
+source = { table = "u27-restore-cli-independent.json", id = "I_B7_the_rehearsal_flag_is_dropped_at_the_call" }
+description = "Perform for real whatever --dry-run said, the argument-side twin of the author's two in-function rehearsal rows"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '''
+        dry_run=ctx.args.dry_run,
+        from_backup=ctx.args.from_backup,'''
+new = '''
+        dry_run=False,
+        from_backup=ctx.args.from_backup,'''
+
+[[rows]]
+id = "u27-restore-cli-independent.I_C1_discard_stops_being_repeatable"
+source = { table = "u27-restore-cli-independent.json", id = "I_C1_discard_stops_being_repeatable" }
+description = "Take a single discard identifier rather than an appended list, so a person discarding two sessions names one and the string is iterated character by character"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '''
+        "--discard",
+        action="append",
+        default=[],'''
+new = '''
+        "--discard",
+        default="",'''
+
+[[rows]]
+id = "u27-restore-cli-independent.I_C4_the_session_identifier_becomes_required"
+source = { table = "u27-restore-cli-independent.json", id = "I_C4_the_session_identifier_becomes_required" }
+description = "Make the positional mandatory, so a bare crate restore run is a usage error rather than the newest spendable capture"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '''
+        "session_id",
+        nargs="?",
+        default=None,'''
+new = '        "session_id",'
+
+[[rows]]
+id = "u27-restore-cli-independent.I_C6_the_listing_verb_runs_the_restore"
+source = { table = "u27-restore-cli-independent.json", id = "I_C6_the_listing_verb_runs_the_restore" }
+description = "Bind the read-only listing to the destructive handler"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '    parser.set_defaults(_handler=list_restorable)'
+new = '    parser.set_defaults(_handler=perform_restore)'
+
+[[rows]]
+id = "u27-restore-cli-independent.I_E4_the_reason_a_capture_cannot_be_spent_is_blanked"
+source = { table = "u27-restore-cli-independent.json", id = "I_E4_the_reason_a_capture_cannot_be_spent_is_blanked" }
+description = "List an unusable capture with no sentence saying why, which is the silence the field exists to avoid"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '        "unusable": entry.unusable,'
+new = '        "unusable": "",'
+
+[[rows]]
+id = "u27-restore-cli-independent.I_F4_the_refusal_stops_naming_the_identifier"
+source = { table = "u27-restore-cli-independent.json", id = "I_F4_the_refusal_stops_naming_the_identifier" }
+description = "Reword the refusal so it never repeats what was typed, which is what makes a typo diagnosable"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '''
+                f"no write session on this library is recorded under "
+                f"{session_id!r}; the listing verb shows every one that is"'''
+new = '''
+                "no such write session is recorded on this library; the "
+                "listing verb shows every one that is"'''
+
+[[rows]]
+id = "u27-restore-cli-independent.X5_the_refusal_reason_is_flattened"
+source = { table = "u27-restore-cli-independent.json", id = "X5_the_refusal_reason_is_flattened" }
+description = "What the refusal-message zero DOES leave held: fold the off-machine slug into an internal error, which is the half a drive does assert. Paired with I_F1, which replaced the sentence and killed nothing"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py", "tests/test_cli_contract.py"]
+old = '''
+            reason=slug,
+            message=exc.detail,'''
+new = '''
+            reason="internal-error",
+            message=exc.detail,'''
+
+[[rows]]
+id = "u212.M10_left_out"
+source = { table = "u212.json", id = "M10_left_out" }
+description = "missing_cli._listed: drop the staged clause of the left out refusal, so a run with a failed job and every finished row staged refuses"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_favorites_split.py", "tests/test_inbox_refill.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_sync_mark.py"]
+old = '    if left_out and not listed and not unlisted and not staged_rows:'
+new = '    if left_out and not listed and not unlisted:'
+
+[[rows]]
+id = "u212.M1_staged_match"
+source = { table = "u212.json", id = "M1_staged_match" }
+description = "missing_cli._staged: never record a staged row, so a track a staged file carries is listed and downloaded again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_favorites_split.py", "tests/test_inbox_refill.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_sync_mark.py"]
+old = '''
+        if held:
+            found.append((n, held[0].path))'''
+new = '''
+        if held and False:
+            found.append((n, held[0].path))'''
+
+[[rows]]
+id = "u212.M2_own_rows_both"
+source = { table = "u212.json", id = "M2_own_rows_both" }
+description = "missing_cli._staged: drop the own rows rule, so a continued pass subtracts its own staged downloads and its list is refused over its earlier copy"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_favorites_split.py", "tests/test_inbox_refill.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_sync_mark.py"]
+old = '''
+        if (ref and ref in ids) or token in isrcs:
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "u212.M3_own_rows_by_id"
+source = { table = "u212.json", id = "M3_own_rows_by_id" }
+description = "missing_cli._staged: the own rows rule by ISRC alone, the provider id half removed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_favorites_split.py", "tests/test_inbox_refill.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_sync_mark.py"]
+old = '        if (ref and ref in ids) or token in isrcs:'
+new = '        if token in isrcs:'
+
+[[rows]]
+id = "u212.M4_own_rows_by_isrc"
+source = { table = "u212.json", id = "M4_own_rows_by_isrc" }
+description = "missing_cli._staged: the own rows rule by provider id alone, the ISRC half removed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_favorites_split.py", "tests/test_inbox_refill.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_sync_mark.py"]
+old = '        if (ref and ref in ids) or token in isrcs:'
+new = '        if ref and ref in ids:'
+
+[[rows]]
+id = "u212.M5_unread_is_empty"
+source = { table = "u212.json", id = "M5_unread_is_empty" }
+description = "missing_cli._staged: an unreadable staging folder read as one holding nothing, so the staged row says nothing failed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_favorites_split.py", "tests/test_inbox_refill.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_sync_mark.py"]
+old = '        return _Staged(folder, unread=str(exc.strerror or exc))'
+new = '        return _Staged(folder)'
+
+[[rows]]
+id = "u212.M6_absent_folder"
+source = { table = "u212.json", id = "M6_absent_folder" }
+description = "missing_cli._staged: drop the absent folder guard, so a machine with no staging folder yet reports the folder unreadable"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_favorites_split.py", "tests/test_inbox_refill.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_sync_mark.py"]
+old = '        if not folder.exists():'
+new = '        if False:'
+
+[[rows]]
+id = "u212.M7_outcome_staged"
+source = { table = "u212.json", id = "M7_outcome_staged" }
+description = "missing_cli._listed: every row staged answers no_op, so a pass ends before the landing that takes them"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_favorites_split.py", "tests/test_inbox_refill.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_sync_mark.py"]
+old = '        outcome=Outcome.OK if listed or unlisted or staged_rows else Outcome.NO_OP,'
+new = '        outcome=Outcome.OK if listed or unlisted else Outcome.NO_OP,'
+
+[[rows]]
+id = "u212.M8_summary_count"
+source = { table = "u212.json", id = "M8_summary_count" }
+description = "missing_cli._listed: the summary's staged count read as zero, the number the pass reads"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_favorites_split.py", "tests/test_inbox_refill.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_sync_mark.py"]
+old = '        "staged": len(staged_rows),'
+new = '        "staged": 0,'
+
+[[rows]]
+id = "u212.M9_unread_status"
+source = { table = "u212.json", id = "M9_unread_status" }
+description = "missing_cli._staged_check: an unreadable staging folder said on an info row rather than a failing one"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_favorites_split.py", "tests/test_inbox_refill.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_sync_mark.py"]
+old = '''
+            "staged",
+            "fail",'''
+new = '''
+            "staged",
+            "info",'''
+
+[[rows]]
+id = "u152.R13_missing_lift"
+source = { table = "u152.json", id = "R13_missing_lift" }
+description = "_missing: carry none of the listing's failing rows"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''
+    # cannot name exactly above all: it is in no download list, and the pass
+    # would otherwise say nothing of it.
+    _lift_failed_checks(report, envelope)
+'''
+new = '''
+    # cannot name exactly above all: it is in no download list, and the pass
+    # would otherwise say nothing of it.
+'''
+
+[[rows]]
+id = "u152.R14_download_list_match"
+source = { table = "u152.json", id = "R14_download_list_match" }
+description = "_download_job: drop the list match, so another list's download job is read as the pass's"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''
+            and str((job.payload or {}).get(acquire_cli.LIST) or "") == wanted
+'''
+new = ''
+
+[[rows]]
+id = "u152.R15_download_newest"
+source = { table = "u152.json", id = "R15_download_newest" }
+description = "_download_job: read the oldest job over the list, the round two defect"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''
+    for job in jobs.list_jobs(store):
+        if (
+            job.handler_key == key'''
+new = '''
+    for job in reversed(jobs.list_jobs(store)):
+        if (
+            job.handler_key == key'''
+
+[[rows]]
+id = "u152.R16_download_cancelled"
+source = { table = "u152.json", id = "R16_download_cancelled" }
+description = "_download_job: read a cancelled download as the pass's claim on the list"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''
+            and job.state is not jobs.JobState.CANCELLED
+'''
+new = ''
+
+[[rows]]
+id = "u152.R17_download_retry"
+source = { table = "u152.json", id = "R17_download_retry" }
+description = "_download: never retry a download that failed transiently, so a continued pass reads it as settled"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '            job = jobs.retry(store, job.job_id)'
+new = '            pass'
+
+[[rows]]
+id = "u152.R20_nothing_downloaded"
+source = { table = "u152.json", id = "R20_nothing_downloaded" }
+description = "_download: go on to the tail when the download landed nothing"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''
+    if not done:
+        report.check('''
+new = '''
+    if False:
+        report.check('''
+
+[[rows]]
+id = "u152.R2_preflight_backup"
+source = { table = "u152.json", id = "R2_preflight_backup" }
+description = "_preflight: drop the backup driver check, so a pass runs beside a live backup"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''
+        try:
+            jobs.assert_free(job.job_id)
+        except jobs.DriverHeld as exc:'''
+new = '''
+        try:
+            pass
+        except jobs.DriverHeld as exc:'''
+
+[[rows]]
+id = "u152.R6_lift_failed_checks"
+source = { table = "u152.json", id = "R6_lift_failed_checks" }
+description = "_lift_failed_checks: carry no step's failing row, so the withheld hearts and the unnameable tracks are said nowhere"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''
+        if check.get("key") in held:
+            continue
+        report.checks.append(dict(check))'''
+new = '''
+        if check.get("key") in held:
+            continue'''
+
+[[rows]]
+id = "u152.R7_outbound_held"
+source = { table = "u152.json", id = "R7_outbound_held" }
+description = "_lift_failed_checks: lift the unasked outbound write's refusal as a FAIL row on every pass"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''
+        if check.get("key") in held:
+            continue
+'''
+new = ''
+
+[[rows]]
+id = "u152.R8_continue_open_pass"
+source = { table = "u152.json", id = "R8_continue_open_pass" }
+description = "_sync: never continue the one earlier pass sync all left out, so a hand typed pass ends no_op"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '        if len(earlier) == 1:'
+new = '        if False:'
+
+[[rows]]
+id = "u152.R9_open_passes_library"
+source = { table = "u152.json", id = "R9_open_passes_library" }
+description = "_open_intake: drop the library filter, so another library's open pass is continued"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_all.py", "tests/test_cli_contract.py"]
+old = '''
+            if job.handler_key in intake_cli.INTAKE_KEYS
+            and job.library_id == cfg.library.volume_id
+        ]
+
+
+def _run_of'''
+new = '''
+            if job.handler_key in intake_cli.INTAKE_KEYS
+        ]
+
+
+def _run_of'''
+
+[[rows]]
+id = "u190.L10_rest_of_tail_after_a_step_gate"
+source = { table = "u190.json", id = "L10_rest_of_tail_after_a_step_gate" }
+description = "_attended: name nothing after a tail step's own gate, so the rest of the tail is left unsaid"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '        after = tuple(f"then: {one}" for one in _commands(folder, landing, stop.step)[1:])'
+new = '        after = ()'
+
+[[rows]]
+id = "u190.L11_done_keeps_the_go_outcome"
+source = { table = "u190.json", id = "L11_done_keeps_the_go_outcome" }
+description = "label_sync: end a landing that planned nothing as NO_OP, hiding the download the go made"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '        outcome=envelope.outcome,'
+new = '        outcome=Outcome.NO_OP,'
+
+[[rows]]
+id = "u190.L1_no_tail_returns_untouched"
+source = { table = "u190.json", id = "L1_no_tail_returns_untouched" }
+description = "label_sync: run the chain over a go that names no tail"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''
+    if land is None:
+        return envelope
+    cfg'''
+new = '''
+    if land is None:
+        land = {"folder": "/nowhere", "pass": "none"}
+    cfg'''
+
+[[rows]]
+id = "u190.L2_land_of_needs_a_mapping"
+source = { table = "u190.json", id = "L2_land_of_needs_a_mapping" }
+description = "_land_of: read the go's report without its key, so no tail is ever run"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '    land = report.get(go.LAND_KEY) if isinstance(report, Mapping) else None'
+new = '    land = report.get("tail") if isinstance(report, Mapping) else None'
+
+[[rows]]
+id = "u190.L3_landing_carries_manifest"
+source = { table = "u190.json", id = "L3_landing_carries_manifest" }
+description = "_landing_args: drop the manifest, so the landing files the label's rows under no label"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '        *(["--manifest", str(manifest)] if isinstance(manifest, str) and manifest else []),'
+new = '        *([] if isinstance(manifest, str) and manifest else []),'
+
+[[rows]]
+id = "u190.L4_landing_carries_pass"
+source = { table = "u190.json", id = "L4_landing_carries_pass" }
+description = "_landing_args: drop the pass, so the landing's intake file is named for nothing the go named"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''
+        "--pass",
+        str(land["pass"]),
+    ]'''
+new = '    ]'
+
+[[rows]]
+id = "u190.L5_land_stop_rekordbox_visit"
+source = { table = "u190.json", id = "L5_land_stop_rekordbox_visit" }
+description = "_attended: follow the landing's gate with the next tail command rather than the rekordbox visit"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '''
+    if stop.step == tail.LAND:
+        after: Sequence[str] = tail.REKORDBOX_STEPS'''
+new = '''
+    if False:
+        after: Sequence[str] = tail.REKORDBOX_STEPS'''
+
+[[rows]]
+id = "u190.L6_way_on_from_the_stopped_step"
+source = { table = "u190.json", id = "L6_way_on_from_the_stopped_step" }
+description = "_commands: name the whole tail from its first step, so a person reruns steps that succeeded"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = 'tail.STEPS[tail.STEPS.index(step):]'
+new = 'tail.STEPS[0:]'
+
+[[rows]]
+id = "u190.L7_pending_id_names_the_go"
+source = { table = "u190.json", id = "L7_pending_id_names_the_go" }
+description = "_attended: name the pending action for the landing's run rather than the go's"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '        id=f"label-sync-{ctx.run.run_id}",'
+new = '''        id=f"label-sync-{chain.summary.get('gate_run')}",'''
+
+[[rows]]
+id = "u190.L9_verify_verb_by_step"
+source = { table = "u190.json", id = "L9_verify_verb_by_step" }
+description = "_attended: name the landing as the verb to verify whatever step stopped"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_cli_contract.py"]
+old = '        verify_verb=tail.LAND_VERB if stop.step == tail.LAND else ctx.entry.name,'
+new = '        verify_verb=tail.LAND_VERB,'

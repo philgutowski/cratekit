@@ -1,0 +1,1990 @@
+name = "u325-after-l-02"
+pass_kind = "replay"
+
+[[rows]]
+id = "r222-b.B12_warnings_from_the_live_configuration"
+source = { table = "r222-b.json", id = "B12_warnings_from_the_live_configuration" }
+description = "Describe the reported job from the configuration on disk rather than the one it was frozen against"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '            described = cfg if frozen is None else frozen'
+new = '            described = cfg'
+
+[[rows]]
+id = "r222-b.B14_destination_claimed_unread"
+source = { table = "r222-b.json", id = "B14_destination_claimed_unread" }
+description = "Reword the unreadable case to the ordinary sentence's opening, so the warning no longer says the configuration was not rebuilt"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        "its frozen configuration could not be rebuilt, so where it writes is "'
+new = '        "its frozen configuration was not consulted, so where it writes is "'
+
+[[rows]]
+id = "r222-b.B1_always_enqueue"
+source = { table = "r222-b.json", id = "B1_always_enqueue" }
+description = "Never report a twin, which is the finding itself: every ask files another job"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        if found is not None:
+            twin, frozen = found'''
+new = '''
+        if False:
+            twin, frozen = found'''
+
+[[rows]]
+id = "r222-b.B2_any_verb_is_a_twin"
+source = { table = "r222-b.json", id = "B2_any_verb_is_a_twin" }
+description = "Drop the handler key comparison, so another verb's open job is reported as the backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        if job.handler_key != handler_key or job.library_id != cfg.library.volume_id:'
+new = '        if job.library_id != cfg.library.volume_id:'
+
+[[rows]]
+id = "r222-b.B3_any_library_is_a_twin"
+source = { table = "r222-b.json", id = "B3_any_library_is_a_twin" }
+description = "Drop the library comparison, so a job copying another library is reported as this one's backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        if job.handler_key != handler_key or job.library_id != cfg.library.volume_id:'
+new = '        if job.handler_key != handler_key:'
+
+[[rows]]
+id = "r222-b.B4_rehearsal_is_a_twin"
+source = { table = "r222-b.json", id = "B4_rehearsal_is_a_twin" }
+description = "Drop the rehearsal flag comparison, so an open rehearsal answers a request for a real backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        if bool((job.payload or {}).get(DRY_RUN)) != dry_run:
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "r222-b.B5_whole_payload_compared"
+source = { table = "r222-b.json", id = "B5_whole_payload_compared" }
+description = "Compare the whole payload, so a job frozen with one more key is a stranger and a second backup is filed beside it"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        if bool((job.payload or {}).get(DRY_RUN)) != dry_run:'
+new = '        if dict(job.payload or {}) != {DRY_RUN: dry_run}:'
+
+[[rows]]
+id = "r222-b.B6_itemless_job_is_a_twin"
+source = { table = "r222-b.json", id = "B6_itemless_job_is_a_twin" }
+description = "Report a job with no items, which refuses when driven, as the backup asked for"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        if not jobs.items(store, job.job_id):
+            continue
+        try:'''
+new = '''
+        if False:
+            continue
+        try:'''
+
+[[rows]]
+id = "r222-b.B7_unreadable_is_elsewhere"
+source = { table = "r222-b.json", id = "B7_unreadable_is_elsewhere" }
+description = "Read a frozen configuration that cannot be rebuilt as somewhere else, and file a second job beside it"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        except (config.ConfigError, ValueError):
+            return job, None'''
+new = '''
+        except (config.ConfigError, ValueError):
+            continue'''
+
+[[rows]]
+id = "r222-b.B8_every_exception_is_unreadable"
+source = { table = "r222-b.json", id = "B8_every_exception_is_unreadable" }
+description = "Catch every exception from the rebuild, so a defect in it is reported as an open backup with exit zero"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        except (config.ConfigError, ValueError):
+            return job, None'''
+new = '''
+        except Exception:
+            return job, None'''
+
+[[rows]]
+id = "r222-b.B9_mirror_not_compared"
+source = { table = "r222-b.json", id = "B9_mirror_not_compared" }
+description = "Compare only the archive root, so two jobs syncing into one mirror with different archives are strangers"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+            frozen.backup.dest == cfg.backup.dest
+            or frozen.backup.archive_root == cfg.backup.archive_root'''
+new = '            frozen.backup.archive_root == cfg.backup.archive_root'
+
+[[rows]]
+id = "r349-a.A1_failure_write"
+source = { table = "r349-a.json", id = "A1_failure_write" }
+description = "Drop the failure path JSON write: raise the refusal without writing the outcome"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '            raise _with_outcome_recorded(refusal, outcome, outcome_to)'
+new = '            raise refusal'
+
+[[rows]]
+id = "r349-a.A2_success_produced"
+source = { table = "r349-a.json", id = "A2_success_produced" }
+description = "The handler returns nothing on success instead of the staged record"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return jobs.Produced(staged=staged, final=final)'
+new = '    return None'
+
+[[rows]]
+id = "r349-a.A4_envelope_field"
+source = { table = "r349-a.json", id = "A4_envelope_field" }
+description = "The backup run --job envelope stops attaching the outcomes field"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        progress[OUTCOMES] = outcomes'
+new = '        pass'
+
+[[rows]]
+id = "r390-a.A6_backup_transfer_exit_is_permanent"
+source = { table = "r390-a.json", id = "A6_backup_transfer_exit_is_permanent" }
+description = "the flag the review round added: a transfer exit recorded with no retryable flag"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+            retryable=True,
+            origin=("backup", "cli"),
+            detail={"portions": [entry.portion.value for entry in failed]},'''
+new = '''
+            origin=("backup", "cli"),
+            detail={"portions": [entry.portion.value for entry in failed]},'''
+
+[[rows]]
+id = "u45-round-1.A1_unreadable_reported_as_absent"
+source = { table = "u45-round-1.json", id = "A1_unreadable_reported_as_absent" }
+description = "Return an empty list for an unreadable fact file, so a library with a good backup reads as never backed up"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except backup_facts.BackupFactsUnreadable as exc:
+        raise refuse(
+            "backup-facts-unreadable",'''
+new = '''
+    except backup_facts.BackupFactsUnreadable as exc:
+        del exc
+        return []
+        raise refuse(
+            "backup-facts-unreadable",'''
+
+[[rows]]
+id = "u45-round-1.A4_state_collapsed_to_known"
+source = { table = "u45-round-1.json", id = "A4_state_collapsed_to_known" }
+description = "Report every portion as known, so never-recorded and recorded-in-the-future both read as a current backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+            "state": str(entry.state),
+            "age_seconds"'''
+new = '''
+            "state": "known",
+            "age_seconds"'''
+
+[[rows]]
+id = "u45-round-1.C2_refusal_read_as_failure"
+source = { table = "u45-round-1.json", id = "C2_refusal_read_as_failure" }
+description = "Widen the failed predicate to any portion that did not run, so a refused database portion reads as a failed transfer"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '        entry for entry in outcome.portions if not entry.ran and entry.refusal is None'
+new = '        entry for entry in outcome.portions if not entry.ran'
+
+[[rows]]
+id = "u45-round-1.C3_nothing_ran_accepted"
+source = { table = "u45-round-1.json", id = "C3_nothing_ran_accepted" }
+description = "Return None when no portion ran, so a machine with no rclone exits OK over a backup that did not happen"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if any(entry.ran for entry in outcome.portions):
+        return None
+    refusals'''
+new = '''
+    return None
+    refusals'''
+
+[[rows]]
+id = "u45-round-1.C4_uniform_refusal_flattened"
+source = { table = "u45-round-1.json", id = "C4_uniform_refusal_flattened" }
+description = "Drop the uniform pass-through so every no-run refusal becomes the summary slug and rclone-missing loses install-binary"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if len(refusals) == 1:
+        only = next(iter(refusals))'''
+new = '''
+    if False:
+        only = next(iter(refusals))'''
+
+[[rows]]
+id = "u45-round-1.C5_first_refusal_taken"
+source = { table = "u45-round-1.json", id = "C5_first_refusal_taken" }
+description = "Take the first portion's refusal when the reasons differ, rather than naming all of them"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    if len(refusals) == 1:'
+new = '    if refusals:'
+
+[[rows]]
+id = "u45-round-1.C6_partial_run_refused"
+source = { table = "u45-round-1.json", id = "C6_partial_run_refused" }
+description = "Refuse whenever any portion did not run, so a mirror that completed while the database was skipped is reported as a failure"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if any(entry.ran for entry in outcome.portions):
+        return None'''
+new = '''
+    if all(entry.ran for entry in outcome.portions):
+        return None'''
+
+[[rows]]
+id = "u45-round-1.Q1_resume_drops_the_rehearsal"
+source = { table = "u45-round-1.json", id = "Q1_resume_drops_the_rehearsal" }
+description = "Drop --dry-run from the resume argv, so a queued rehearsal respawns as a real transfer that publishes an age"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if payload.get(DRY_RUN):
+        argv.append("--dry-run")'''
+new = '    pass'
+
+[[rows]]
+id = "u45-round-1.Q2_resume_always_rehearses"
+source = { table = "u45-round-1.json", id = "Q2_resume_always_rehearses" }
+description = "Always emit --dry-run, the other direction, so a real backup respawns as a rehearsal that copies nothing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    if payload.get(DRY_RUN):
+        argv.append("--dry-run")'''
+new = '    argv.append("--dry-run")'
+
+[[rows]]
+id = "u45-round-1.Q3_resume_loses_the_job"
+source = { table = "u45-round-1.json", id = "Q3_resume_loses_the_job" }
+description = "Drop --job from the resume argv, so the child queues a second backup instead of continuing the first"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return [*argv, "--job", job.job_id]'
+new = '    return list(argv)'
+
+[[rows]]
+id = "u45-round-1.Q4_payload_key_not_read"
+source = { table = "u45-round-1.json", id = "Q4_payload_key_not_read" }
+description = "Read a key the handler does not freeze, which is the drift the named constant exists to prevent"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    if payload.get(DRY_RUN):'
+new = '    if payload.get("dryrun"):'
+
+[[rows]]
+id = "u45-round-1.R1_reserved_remediation_discarded"
+source = { table = "u45-round-1.json", id = "R1_reserved_remediation_discarded" }
+description = "Replace the reservation table's per-slug remediation with the class default, which is what the first draft did"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '            remediation=reservations.remediation_for(slug),'
+new = '            remediation=Remediation(),'
+
+[[rows]]
+id = "u45-round-1.R2_slug_flattened"
+source = { table = "u45-round-1.json", id = "R2_slug_flattened" }
+description = "Fold every engine refusal into one slug, so nine diagnoses arrive as one and each loses its own fix"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    slug = str(refusal)
+    return CratekitError('''
+new = '''
+    slug = str(backup.Refusal.RCLONE_MISSING)
+    return CratekitError('''
+
+[[rows]]
+id = "u45-round-1.W2_report_from_the_plan"
+source = { table = "u45-round-1.json", id = "W2_report_from_the_plan" }
+description = "Report the PLAN rather than the OUTCOME, which is the shell half of the first-caller defect"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    report = backup.outcome_payload(outcome)'
+new = '    report = backup.plan_payload(plan)'
+
+[[rows]]
+id = "u45-round-1.W3_ages_not_read_back"
+source = { table = "u45-round-1.json", id = "W3_ages_not_read_back" }
+description = "Drop the age read-back, so the verb never reports what a destructive session would see"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    report["ages"] = published_ages(cfg, now=now)'
+new = '    report["ages"] = []'
+
+[[rows]]
+id = "u45-round-1.W4_ages_derived_from_the_outcome"
+source = { table = "u45-round-1.json", id = "W4_ages_derived_from_the_outcome" }
+description = "Derive the published ages from the outcome instead of reading the fact file, the duplicate rule the module argues against"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    report["ages"] = published_ages(cfg, now=now)'
+new = '''
+    report["ages"] = [
+        {"portion": p.portion.value, "state": "known" if p.ran else "never-recorded"}
+        for p in outcome.portions
+    ]'''
+
+[[rows]]
+id = "u45-round-1.W5_publishing_switched_off"
+source = { table = "u45-round-1.json", id = "W5_publishing_switched_off" }
+description = "Pass publish=False, so a successful backup records no age and the write session still sees never-recorded"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    outcome = backup.run_backup(cfg, plan, runner=runner, now=now, dry_run=dry_run)'
+new = '''
+    outcome = backup.run_backup(
+        cfg, plan, runner=runner, now=now, dry_run=dry_run, publish=False
+    )'''
+
+[[rows]]
+id = "u45-round-1.W6_rehearsal_becomes_a_real_run"
+source = { table = "u45-round-1.json", id = "W6_rehearsal_becomes_a_real_run" }
+description = "Ignore the frozen dry-run key, so a rehearsal transfers for real and publishes an age"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    dry_run = bool(payload.get(DRY_RUN))'
+new = '    dry_run = False'
+
+[[rows]]
+id = "u45-round-1.W8_engine_refusal_escapes"
+source = { table = "u45-round-1.json", id = "W8_engine_refusal_escapes" }
+description = "Let BackupRefused escape, so an unconfigured remote reaches the dispatcher as internal-error with report-defect"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except backup.BackupRefused as exc:
+        raise _engine_refusal(
+            exc.refusal, exc.detail, library=str(cfg.library.root)
+        ) from exc'''
+new = '''
+    except backup.BackupRefused:
+        raise'''
+
+[[rows]]
+id = "u45-round-2.A3_age_seconds_always_none"
+source = { table = "u45-round-2.json", id = "A3_age_seconds_always_none" }
+description = "Report no age number even for a known portion, so the value R15's warning quotes never reaches the report"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '            "age_seconds": entry.age.total_seconds() if entry.age is not None else None,'
+new = '            "age_seconds": None,'
+
+[[rows]]
+id = "u45-round-2.C7_failed_detail_dropped"
+source = { table = "u45-round-2.json", id = "C7_failed_detail_dropped" }
+description = "Reword the transfer-failed message so it no longer says a destructive session still sees the previous age"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+            + ". No backup age was published for that portion, so a destructive "
+            "session still sees whatever the last successful run left",'''
+new = '            + ". The run stopped there.",'
+
+[[rows]]
+id = "u50-author.B1_no_items_enqueued"
+source = { table = "u50-author.json", id = "B1_no_items_enqueued" }
+description = "Queue the backup with no items, so the driver has nothing to claim and reports an empty success"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '            item_ids=backup_items(),'
+new = ''
+
+[[rows]]
+id = "u50-author.B3_items_one_portion_only"
+source = { table = "u50-author.json", id = "B3_items_one_portion_only" }
+description = "Queue only the mirror, so the database half of every backup is never claimed"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return tuple(str(portion) for portion in backup_facts.Portion)'
+new = '    return (str(backup_facts.Portion.FILES),)'
+
+[[rows]]
+id = "u50-author.W1_no_narrowing"
+source = { table = "u50-author.json", id = "W1_no_narrowing" }
+description = "Ignore the portion and run the whole plan for every item, so each item does the whole backup"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    if portion is not None:'
+new = '    if False:'
+
+[[rows]]
+id = "u50-author.W5_unknown_portion_unchecked"
+source = { table = "u50-author.json", id = "W5_unknown_portion_unchecked" }
+description = "Let an undeclared item name raise out of the coercion rather than refusing by name"
+file = "src/cratekit/backup/cli.py"
+surface = "maintainer"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        raise refuse(
+            "internal-error",
+            f"this job's item is {named!r}, which is not a backup portion this "
+            f"build declares. The portions are {', '.join(declared)}",'''
+new = '''
+        raise refuse(
+            "internal-error",
+            "the item could not be read",'''
+
+[[rows]]
+id = "u50-author.W6_fresh_config_in_the_handler"
+source = { table = "u50-author.json", id = "W6_fresh_config_in_the_handler" }
+description = "Load the configuration in the handler rather than using the one frozen on the job (KTD9)"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+        cfg=cfg,
+        # RESOLVED AT CALL TIME, not left to the default, so a test can put a
+        # stand-in in front of it. ``perform_backup``'s own default is bound when
+        # this module is imported and cannot be reached any other way.
+        runner=backup.subprocess_runner,'''
+new = '''
+        cfg=_load(),
+        runner=backup.subprocess_runner,'''
+
+[[rows]]
+id = "u50-review-fixes.R2_empty_job_guard_dropped"
+source = { table = "u50-review-fixes.json", id = "R2_empty_job_guard_dropped" }
+description = "Drive a job with no items, so a job queued by the previous build reports SUCCEEDED over a library nothing copied"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '                _refuse_an_empty_job(store, job)'
+new = ''
+
+[[rows]]
+id = "u50-zero-rows.B2_items_hardcoded_pair"
+source = { table = "u50-zero-rows.json", id = "B2_items_hardcoded_pair" }
+description = "Name the two portions instead of deriving them, so a third portion is queued by nobody"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    return tuple(str(portion) for portion in backup_facts.Portion)'
+new = '    return ("files", "database")'
+
+[[rows]]
+id = "u50-zero-rows.W4b_item_ignored_entirely"
+source = { table = "u50-zero-rows.json", id = "W4b_item_ignored_entirely" }
+description = "Back up the mirror whatever the item says, so every item of the job does the same half"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '    named = str(item.item_id or "")'
+new = '    named = str(backup_facts.Portion.FILES)'
+
+[[rows]]
+id = "u188.M5_repeat_kept"
+source = { table = "u188.json", id = "M5_repeat_kept" }
+description = "_mapped_back: keep a repeated pair instead of dropping it, so the refusal names the folder pair twice on a drive that never moved"
+file = "src/cratekit/intake/land_cli.py"
+surface = "maintainer"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    return tuple(
+        dict.fromkeys(
+            (
+                (str(area.staging), str(planned.folder)),
+                (str(scratch_target), str(target)),
+                stored,
+            )
+        )
+    )'''
+new = '''
+    return (
+        (str(area.staging), str(planned.folder)),
+        (str(scratch_target), str(target)),
+        stored,
+    )'''
+
+[[rows]]
+id = "r154-c.C1_digest_the_word"
+source = { table = "r154-c.json", id = "C1_digest_the_word" }
+description = "Digest a constant where the resolved stamp goes, which is R-153 itself: a backup landing between the two acts leaves the digest where it was"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '                "snapshot": snapshot.stamp,'
+new = '                "snapshot": "newest",'
+
+[[rows]]
+id = "r154-c.C2_expected_volume_outside_the_digest"
+source = { table = "r154-c.json", id = "C2_expected_volume_outside_the_digest" }
+description = "Leave the stated volume out of the offer, so an answer given without the flag is honoured against a run carrying it"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '                "expected_volume": snapshot_volume,'
+new = '                "expected_volume": None,'
+
+[[rows]]
+id = "r154-c.C3_hand_down_the_flag"
+source = { table = "r154-c.json", id = "C3_hand_down_the_flag" }
+description = "Hand the engine the flag instead of the stamp that was offered, so it resolves the newest snapshot again after the approval"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '        snapshot=pulling.stamp if pulling is not None else None,'
+new = '        snapshot=ctx.args.snapshot,'
+
+[[rows]]
+id = "r154-c.C4_pull_flags_dropped"
+source = { table = "r154-c.json", id = "C4_pull_flags_dropped" }
+description = "Never refuse a flag about the pull typed without the pull, so it is dropped in silence ahead of a capture rollback"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    _refuse_pull_flags_without_the_pull(ctx.args)
+    requested = ctx.args.session_id'''
+new = '    requested = ctx.args.session_id'
+
+[[rows]]
+id = "r154-c.C5_stated_volume_stops_at_the_verb"
+source = { table = "r154-c.json", id = "C5_stated_volume_stops_at_the_verb" }
+description = "Show and digest the stated volume and never pass it to the engine, so the replaced drive restore is approved and then refused under the gates"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+        snapshot_volume=ctx.args.snapshot_volume,
+        accept_unrecorded=pulling.named if pulling is not None else None,'''
+new = '''
+        snapshot_volume=None,
+        accept_unrecorded=pulling.named if pulling is not None else None,'''
+
+[[rows]]
+id = "r367.G10_the_report_drops_the_absent_field"
+source = { table = "r367.json", id = "G10_the_report_drops_the_absent_field" }
+description = "the off machine half ran and the person is not told the sidecar was missing"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            missing = pulled.absent_sidecars'
+new = '            missing = ()'
+
+[[rows]]
+id = "r368-round-2.G14_the_destination_check_is_equality_only"
+source = { table = "r368-round-2.json", id = "G14_the_destination_check_is_equality_only" }
+description = "re-measured: drop the name-plus-parent half, so a landing path that is not on disk yet passes"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if _same_place(landing, live) or (
+        landing.name == live.name and _same_place(landing.parent, live.parent)
+    ):
+'''
+new = '''
+    if _same_place(landing, live):
+'''
+
+[[rows]]
+id = "r368-round-2.G6_ancestors_not_walked"
+source = { table = "r368-round-2.json", id = "G6_ancestors_not_walked" }
+description = "re-measured: ask samefile of the candidate alone, so a differently cased ancestor is missed"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    return any(_same_place(ancestor, root) for ancestor in (place, *place.parents))
+'''
+new = '''
+    return _same_place(place, root)
+'''
+
+[[rows]]
+id = "r368-round-2.G7_composite"
+source = { table = "r368-round-2.json", id = "G7_composite" }
+description = "what the resolution does hold now that samefile answers the comparison: report the word somebody typed rather than the directory it named"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+            target=str(resolved),
+            library_root=str(root),
+'''
+new = '''
+            target=str(raw),
+            library_root=str(root),
+'''
+
+[[rows]]
+id = "r368-round-2.G7_target_not_resolved"
+source = { table = "r368-round-2.json", id = "G7_target_not_resolved" }
+description = "re-measured: compare the raw argument, leaving samefile to answer for a relative spelling"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    resolved = Path(raw).expanduser().resolve()
+'''
+new = '''
+    resolved = Path(raw).expanduser()
+'''
+
+[[rows]]
+id = "r368-round-2.R1_the_live_root_refusal_is_reworded"
+source = { table = "r368-round-2.json", id = "R1_the_live_root_refusal_is_reworded" }
+description = "re-measured: reword the destination refusal rather than appending to it"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+            f"the database would land on {landing}, which is this library's live "
+            f"database; the target is outside the library root and the database "
+            f"is too, so naming its directory restores over it in place",
+'''
+new = '''
+            f"the chosen folder resolves to somewhere this installation already "
+            f"reads from, so the copy would replace what is there",
+'''
+
+[[rows]]
+id = "r368.A1_the_detail_check_is_one_value"
+source = { table = "r368.json", id = "A1_the_detail_check_is_one_value" }
+description = "an existing guard in the sample: report both destination refusals under one detail, so the two cannot be told apart"
+file = "src/cratekit/session/restore_cli.py"
+surface = "maintainer"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+            check="destination",
+'''
+new = '''
+            check="containment",
+'''
+
+[[rows]]
+id = "r368.G10_the_default_capture_survives_a_target"
+source = { table = "r368.json", id = "G10_the_default_capture_survives_a_target" }
+description = "let a rehearsal roll the newest spendable session back on the live library"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if target is not None:
+        chosen = None
+    elif requested is None:
+'''
+new = '''
+    if requested is None:
+'''
+
+[[rows]]
+id = "r368.G11_the_target_is_dropped_before_the_engine"
+source = { table = "r368.json", id = "G11_the_target_is_dropped_before_the_engine" }
+description = "read the flag, refuse on it, and then restore to the live root anyway"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+        include_mirror=ctx.args.include_mirror,
+        target=target,
+    )
+    return ctx.envelope(data=_performed(report, offered))
+'''
+new = '''
+        include_mirror=ctx.args.include_mirror,
+    )
+    return ctx.envelope(data=_performed(report, offered))
+'''
+
+[[rows]]
+id = "r368.G12_the_target_leaves_the_digest"
+source = { table = "r368.json", id = "G12_the_target_leaves_the_digest" }
+description = "a decision recorded against a rehearsal is honoured against the live restore"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+                "target": str(target) if target is not None else "library",
+'''
+new = ''
+
+[[rows]]
+id = "r368.G13_the_rehearsal_flag_leaves_the_digest"
+source = { table = "r368.json", id = "G13_the_rehearsal_flag_leaves_the_digest" }
+description = "the review's second finding, restored: an approved preview authorises the real run"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+        "digest": digest_of(
+            {"kind": "restore.run", "items": items, "dry_run": dry_run}
+        ),
+'''
+new = '''
+        "digest": digest_of({"kind": "restore.run", "items": items}),
+'''
+
+[[rows]]
+id = "r368.G1_no_live_database_destination_check"
+source = { table = "r368.json", id = "G1_no_live_database_destination_check" }
+description = "the row the brief names: drop the check that the database would land on the live one"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if _same_place(landing, live) or (
+        landing.name == live.name and _same_place(landing.parent, live.parent)
+    ):
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "r368.G2_no_containment_check"
+source = { table = "r368.json", id = "G2_no_containment_check" }
+description = "drop the check that the target is the library root, holds it, or sits inside it"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if _holds_or_is(root, resolved) or _holds_or_is(resolved, root):
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "r368.G3_containment_one_direction_only"
+source = { table = "r368.json", id = "G3_containment_one_direction_only" }
+description = "keep the target inside the root and drop the root inside the target, the mirror over the library's parent"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if _holds_or_is(root, resolved) or _holds_or_is(resolved, root):
+'''
+new = '''
+    if _holds_or_is(root, resolved):
+'''
+
+[[rows]]
+id = "r368.G4_containment_is_equality_only"
+source = { table = "r368.json", id = "G4_containment_is_equality_only" }
+description = "refuse only the root itself, so a directory underneath it passes"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if place == root or place.is_relative_to(root):
+        return True
+    return any(_same_place(ancestor, root) for ancestor in (place, *place.parents))
+'''
+new = '''
+    if place == root:
+        return True
+    return _same_place(place, root)
+'''
+
+[[rows]]
+id = "r368.G5_paths_compared_as_strings"
+source = { table = "r368.json", id = "G5_paths_compared_as_strings" }
+description = "the review's finding, restored: compare spellings rather than places"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    try:
+        return one.samefile(other)
+    except OSError:
+        return one == other
+'''
+new = '''
+    return one == other
+'''
+
+[[rows]]
+id = "r368.G8_target_without_the_off_machine_pull_is_allowed"
+source = { table = "r368.json", id = "G8_target_without_the_off_machine_pull_is_allowed" }
+description = "accept a target with no mirror pull to fill it, which silently becomes a live rollback"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if not args.from_backup:
+        raise _target_invalid(
+'''
+new = '''
+    if False:
+        raise _target_invalid(
+'''
+
+[[rows]]
+id = "r368.G9_target_beside_a_capture_rollback_is_allowed"
+source = { table = "r368.json", id = "G9_target_beside_a_capture_rollback_is_allowed" }
+description = "accept a target next to a named session or a discard, which puts two halves on two volumes"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if args.session_id is not None or args.discard:
+        raise _target_invalid(
+'''
+new = '''
+    if False:
+        raise _target_invalid(
+'''
+
+[[rows]]
+id = "r592-b.B1_step_on_every_failure"
+source = { table = "r592-b.json", id = "B1_step_on_every_failure" }
+description = "_half_failed: give the removal step to a mirror failure too, sending a person to delete files the mirror never lands"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '    if not dry_run and half == DATABASE_HALF:'
+new = '    if not dry_run:'
+
+[[rows]]
+id = "r592-b.B2_step_on_the_wrong_half"
+source = { table = "r592-b.json", id = "B2_step_on_the_wrong_half" }
+description = "_half_failed: give the removal step to the mirror half and not the database half, so a database half that landed part of the fileset says nothing about it"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '    if not dry_run and half == DATABASE_HALF:'
+new = '    if not dry_run and half == MIRROR_HALF:'
+
+[[rows]]
+id = "r592-b.B4_step_names_the_wrong_directory"
+source = { table = "r592-b.json", id = "B4_step_names_the_wrong_directory" }
+description = "rerun_step: name the target rather than the directory the database lands in, so the person looks for it in the wrong place"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '        f"companion of it in {database_target.parent} if one is there, because a "'
+new = '        f"companion of it in {database_target.parent.parent} if one is there, because a "'
+
+[[rows]]
+id = "r592-b.B5_step_names_no_file"
+source = { table = "r592-b.json", id = "B5_step_names_no_file" }
+description = "rerun_step: say the database rather than its file name, so the step does not say which file to remove"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '        f"before running the recovery again, remove {database_target.name} and any "'
+new = '        f"before running the recovery again, remove the database and any "'
+
+[[rows]]
+id = "r592-b.B7_sample_halves_split"
+source = { table = "r592-b.json", id = "B7_sample_halves_split" }
+description = "SAMPLE, existing guard: _halves hands the whole plan to the mirror half, so a failed mirror lands the database behind it"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)'
+new = '    mirror = tuple(decided.commands)'
+
+[[rows]]
+id = "r592-c.C1_step_on_a_rehearsal_remeasured"
+source = { table = "r592-c.json", id = "C1_step_on_a_rehearsal_remeasured" }
+description = "_half_failed: give the removal step to a rehearsal whose database half failed, though a rehearsal landed nothing (B3 of r592-b, re-measured)"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '    if not dry_run and half == DATABASE_HALF:'
+new = '    if half == DATABASE_HALF:'
+
+[[rows]]
+id = "u211.R1_restore_says_what_the_mirror_left"
+source = { table = "u211.json", id = "R1_restore_says_what_the_mirror_left" }
+description = "restore session database half: raise the scan's refusal as it came, without the half, the completed mirror or the rerun step"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+                        raise _absence_unconfirmed(
+                            exc, completed, decided, dry_run=dry_run
+                        ) from exc'''
+new = '                        raise'
+
+[[rows]]
+id = "u27-restore-cli-author.G3_abort_restores_anyway"
+source = { table = "u27-restore-cli-author.json", id = "G3_abort_restores_anyway" }
+description = "Treat an aborted confirmation as an approval"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if option == "abort":
+        return ctx.envelope(data=offered, outcome=Outcome.NO_OP)
+    if chosen is None and not ctx.args.from_backup:'''
+new = '''
+    if option == "never-an-option":
+        return ctx.envelope(data=offered, outcome=Outcome.NO_OP)
+    if chosen is None and not ctx.args.from_backup:'''
+
+[[rows]]
+id = "u27-restore-cli-author.L1_an_unusable_capture_is_filtered_out_of_the_listing"
+source = { table = "u27-restore-cli-author.json", id = "L1_an_unusable_capture_is_filtered_out_of_the_listing" }
+description = "Drop the sessions a person is most likely to be looking for"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            "items": [_listed(entry) for entry in listed],'
+new = '            "items": [_listed(e) for e in listed if e.restorable],'
+
+[[rows]]
+id = "u27-restore-cli-author.N1_the_default_takes_the_newest_unusable_capture"
+source = { table = "u27-restore-cli-author.json", id = "N1_the_default_takes_the_newest_unusable_capture" }
+description = "Choose the newest session regardless of whether its capture can be spent"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    for entry in restore.list_sessions(cfg):
+        if entry.restorable:
+            return entry
+    return None'''
+new = '''
+    for entry in restore.list_sessions(cfg):
+        return entry
+    return None'''
+
+[[rows]]
+id = "u27-restore-cli-author.P1_the_report_recomputes_the_digest"
+source = { table = "u27-restore-cli-author.json", id = "P1_the_report_recomputes_the_digest" }
+description = "Report a digest computed here rather than the one the decision was recorded against"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '    return {"digest": offered["digest"], "items": items, "totals": totals, "chunk": None}'
+new = '    return {"digest": digest_of(items), "items": items, "totals": totals, "chunk": None}'
+
+[[rows]]
+id = "u27-restore-cli-author.P2_a_mirror_pull_is_reported_as_nothing"
+source = { table = "u27-restore-cli-author.json", id = "P2_a_mirror_pull_is_reported_as_nothing" }
+description = "Leave the off-machine transfers out of the report, which is the defect this shape fixed"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    items: list[dict[str, Any]] = [
+        {"half": "off-machine", "transfer": label} for label in report.pulled
+    ]'''
+new = '    items: list[dict[str, Any]] = []'
+
+[[rows]]
+id = "u27-restore-cli-author.P3_convergence_is_reported_for_a_run_that_spent_no_capture"
+source = { table = "u27-restore-cli-author.json", id = "P3_convergence_is_reported_for_a_run_that_spent_no_capture" }
+description = "Answer the capture restore's own question when no capture restore happened"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    if outcome is not None:
+        totals["converged"] = outcome.converged
+        totals["outstanding"] = len(outcome.outstanding)'''
+new = '''
+    totals["converged"] = outcome.converged if outcome is not None else True
+    if outcome is not None:
+        totals["outstanding"] = len(outcome.outstanding)'''
+
+[[rows]]
+id = "u27-restore-cli-author.R1_a_backup_refusal_becomes_an_internal_error"
+source = { table = "u27-restore-cli-author.json", id = "R1_a_backup_refusal_becomes_an_internal_error" }
+description = "Flatten every off-machine diagnosis into report-a-defect"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+            reason=slug,
+            message=exc.detail,
+            remediation=reservations.remediation_for(slug),'''
+new = '''
+            reason="internal-error",
+            message=exc.detail,
+            remediation=Remediation(remedy=Remedy.REPORT_DEFECT),'''
+
+[[rows]]
+id = "u27-restore-cli-author.S6_the_named_decision_is_withdrawn"
+source = { table = "u27-restore-cli-author.json", id = "S6_the_named_decision_is_withdrawn" }
+description = "Tell the off-machine restore no decision exists, which R33 makes it refuse on"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '                    confirmed=True,'
+new = '                    confirmed=False,'
+
+[[rows]]
+id = "u27-restore-cli-author.S8_a_rehearsal_performs_the_capture_restore"
+source = { table = "u27-restore-cli-author.json", id = "S8_a_rehearsal_performs_the_capture_restore" }
+description = "Ignore dry_run on the capture half, so a preview replaces the live database"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+            outcome=restore.run(
+                decided,
+                cfg,
+                held=held,
+                dry_run=dry_run,'''
+new = '''
+            outcome=restore.run(
+                decided,
+                cfg,
+                held=held,
+                dry_run=False,'''
+
+[[rows]]
+id = "u27-restore-cli-round-2.O2_the_discard_set_leaves_the_digest"
+source = { table = "u27-restore-cli-round-2.json", id = "O2_the_discard_set_leaves_the_digest" }
+description = "Digest without the sessions being discarded, so an approval covers a wider destruction"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+                "discarding": list(discarding),
+            }'''
+new = '            }'
+
+[[rows]]
+id = "u27-restore-cli-round-2.R2_the_reserved_remediation_is_replaced_by_the_class_default"
+source = { table = "u27-restore-cli-round-2.json", id = "R2_the_reserved_remediation_is_replaced_by_the_class_default" }
+description = "Discard the per-slug remediation the reservation table holds"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            remediation=reservations.remediation_for(slug),'
+new = '            remediation=Remediation(remedy=Remedy.REPORT_DEFECT),'
+
+[[rows]]
+id = "u27-restore-cli-round-2.S7_a_rehearsal_performs_the_mirror_pull"
+source = { table = "u27-restore-cli-round-2.json", id = "S7_a_rehearsal_performs_the_mirror_pull" }
+description = "Ignore dry_run on the off-machine half, so a preview transfers for real"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+                    pulled,
+                    cfg,
+                    dry_run=dry_run,'''
+new = '''
+                    pulled,
+                    cfg,
+                    dry_run=False,'''
+
+[[rows]]
+id = "u96-a.A12_which_half_failed"
+source = { table = "u96-a.json", id = "A12_which_half_failed" }
+description = "_half_failed: swap the two failure sentences, so a failed mirror is reported as a failed database half"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+    elif half == MIRROR_HALF:
+        message = ('''
+new = '''
+    elif half == DATABASE_HALF:
+        message = ('''
+
+[[rows]]
+id = "u96-a.A13_completed_halves_recorded"
+source = { table = "u96-a.json", id = "A13_completed_halves_recorded" }
+description = "Never record a completed half, so a database failure does not say the mirror arrived"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            completed.append(half)'
+new = '            pass'
+
+[[rows]]
+id = "u96-a.A14_target_is_required"
+source = { table = "u96-a.json", id = "A14_target_is_required" }
+description = "build_bare_metal: make --target optional, so the verb can be typed with no destination"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+        "--target",
+        required=True,
+        metavar="DIRECTORY",'''
+new = '''
+        "--target",
+        metavar="DIRECTORY",'''
+
+[[rows]]
+id = "u96-a.A15_report_names_where_the_database_is"
+source = { table = "u96-a.json", id = "A15_report_names_where_the_database_is" }
+description = "_recovered: always report the rebased database path, so a database that was never recovered is reported at the top of the target"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            "database_target": str(report.database_elsewhere or report.database_target),'
+new = '            "database_target": str(report.database_target),'
+
+[[rows]]
+id = "u96-a.A16_no_absent_companion_for_a_half_that_did_not_run"
+source = { table = "u96-a.json", id = "A16_no_absent_companion_for_a_half_that_did_not_run" }
+description = "Report the plan's absent companions even when the database half was skipped"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            absent=decided.absent_sidecars if elsewhere is None else (),'
+new = '            absent=decided.absent_sidecars,'
+
+[[rows]]
+id = "u96-a.A1_acceptance_reaches_the_engine"
+source = { table = "u96-a.json", id = "A1_acceptance_reaches_the_engine" }
+description = "recover_under_bare_metal_session: hand the engine acknowledged=True whatever the caller accepted, so the replacement is never a person's decision"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '        acknowledged=accepted,'
+new = '        acknowledged=True,'
+
+[[rows]]
+id = "u96-a.A2_flag_reaches_the_function"
+source = { table = "u96-a.json", id = "A2_flag_reaches_the_function" }
+description = "perform_bare_metal: pass accepted=True instead of the flag, so the verb recovers without --accept-replacement"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '        accepted=ctx.args.accept_replacement,'
+new = '        accepted=True,'
+
+[[rows]]
+id = "u96-a.A4_run_inside_the_held_session"
+source = { table = "u96-a.json", id = "A4_run_inside_the_held_session" }
+description = "Drop gates=held.guard from the run_restore call of each half"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+                    portion,
+                    cfg,
+                    dry_run=dry_run,
+                    gates=held.guard,'''
+new = '''
+                    portion,
+                    cfg,
+                    dry_run=dry_run,'''
+
+[[rows]]
+id = "u96-a.A5_the_mirror_is_pulled"
+source = { table = "u96-a.json", id = "A5_the_mirror_is_pulled" }
+description = "Plan with include_mirror=False, so a recovery onto an empty drive brings a database and no music"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '                include_mirror=True,'
+new = '                include_mirror=False,'
+
+[[rows]]
+id = "u96-a.A6_a_half_at_a_time"
+source = { table = "u96-a.json", id = "A6_a_half_at_a_time" }
+description = "_halves: put every command in the mirror half, which is spending the plan whole, so a failed mirror still lands the database"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)'
+new = '    mirror = decided.commands'
+
+[[rows]]
+id = "u96-a.A7_rekordbox_asked_again"
+source = { table = "u96-a.json", id = "A7_rekordbox_asked_again" }
+description = "Disarm the second rekordbox check, the one before the database half"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+                    if running:
+                        raise backup.BackupRefused('''
+new = '''
+                    if False:
+                        raise backup.BackupRefused('''
+
+[[rows]]
+id = "u96-a.A8_database_elsewhere_is_skipped"
+source = { table = "u96-a.json", id = "A8_database_elsewhere_is_skipped" }
+description = "Run the database half even when the configured database was never on the lost volume"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '            if half == DATABASE_HALF and elsewhere is not None:'
+new = '            if False:'
+
+[[rows]]
+id = "u96-a.A9_a_rehearsal_stays_a_rehearsal"
+source = { table = "u96-a.json", id = "A9_a_rehearsal_stays_a_rehearsal" }
+description = "Pass dry_run=False to run_restore whatever was asked, so a rehearsal transfers"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py"]
+old = '''
+                    portion,
+                    cfg,
+                    dry_run=dry_run,'''
+new = '''
+                    portion,
+                    cfg,
+                    dry_run=False,'''
+
+[[rows]]
+id = "r172-a.A1_nothing_collides"
+source = { table = "r172-a.json", id = "A1_nothing_collides" }
+description = "Hold nothing, which is the finding itself: two files rendering to one name are promised two renames and the apply performs one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if not found:
+            return held
+        held.update(found)'''
+new = '        return held'
+
+[[rows]]
+id = "r172-a.A2_one_round_only"
+source = { table = "r172-a.json", id = "A2_one_round_only" }
+description = "Ask once rather than to a fixpoint, so a file whose target a collider still holds reads as a chain sort order would resolve. This is the review's first finding, reintroduced"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if not found:
+            return held
+        held.update(found)'''
+new = '''
+        held.update(found)
+        return held'''
+
+[[rows]]
+id = "r172-a.A3_shared_target_ignored"
+source = { table = "r172-a.json", id = "A3_shared_target_ignored" }
+description = "Stop holding several movers that render to one target, keeping only the occupied target half, so an arbitrary winner in sort order takes the name again"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+            sharing = sorted(
+                other.name for other in holders[_key(str(target))] if other != path
+            )'''
+new = '            sharing = []'
+
+[[rows]]
+id = "r172-a.A4_occupied_target_ignored"
+source = { table = "r172-a.json", id = "A4_occupied_target_ignored" }
+description = "Stop holding a mover whose rendered name a file on disk already carries, which is the collision the U67 table drove"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '            elif _key(str(target)) not in sources and target.exists():'
+new = '            elif False:'
+
+[[rows]]
+id = "r172-a.A5_chain_held_too"
+source = { table = "r172-a.json", id = "A5_chain_held_too" }
+description = "Hold a target another mover still holds, which loses a rename that succeeds whenever sort order reaches the occupant first"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '            elif _key(str(target)) not in sources and target.exists():'
+new = '            elif target.exists():'
+
+[[rows]]
+id = "r172-a.A7_targets_compared_exactly"
+source = { table = "r172-a.json", id = "A7_targets_compared_exactly" }
+description = "Compare targets as written instead of through _key, so two names differing only in case are two names on a volume that treats them as one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        for path, target in moving:
+            holders.setdefault(_key(str(target)), []).append(path)
+        sources = {_key(str(path)) for path, _ in moving}
+        found: dict[str, str] = {}
+        for path, target in moving:
+            sharing = sorted(
+                other.name for other in holders[_key(str(target))] if other != path
+            )
+            if len(sharing) == 1:
+                found[str(path)] = (
+                    f"{sharing[0]} renders to the same name, and neither is renamed"
+                )
+            elif sharing:
+                found[str(path)] = (
+                    f"{', '.join(sharing)} render to the same name, and none of them "
+                    f"is renamed"
+                )
+            elif _key(str(target)) not in sources and target.exists():'''
+new = '''
+        for path, target in moving:
+            holders.setdefault(str(target), []).append(path)
+        sources = {str(path) for path, _ in moving}
+        found: dict[str, str] = {}
+        for path, target in moving:
+            sharing = sorted(
+                other.name for other in holders[str(target)] if other != path
+            )
+            if len(sharing) == 1:
+                found[str(path)] = (
+                    f"{sharing[0]} renders to the same name, and neither is renamed"
+                )
+            elif sharing:
+                found[str(path)] = (
+                    f"{', '.join(sharing)} render to the same name, and none of them "
+                    f"is renamed"
+                )
+            elif str(target) not in sources and target.exists():'''
+
+[[rows]]
+id = "r172-a.A9_collides_reported_as_a_rename"
+source = { table = "r172-a.json", id = "A9_collides_reported_as_a_rename" }
+description = "Mark a collision as an ordinary rename in the plan, so nothing in the report says which file is held and the apply attempts it"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '        elif str(path) in collides:'
+new = '        elif False:'
+
+[[rows]]
+id = "r172-b.B11_collision_step_always"
+source = { table = "r172-b.json", id = "B11_collision_step_always" }
+description = "Tell a person to name a file by hand whatever the reason was, which is the review's second finding reintroduced"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    if collides:
+        steps.append('''
+new = '''
+    if True:
+        steps.append('''
+
+[[rows]]
+id = "r172-b.B12_the_first_file_is_not_named"
+source = { table = "r172-b.json", id = "B12_the_first_file_is_not_named" }
+description = "Report the counts without naming the first outstanding file, which is the half of the recorded cost about nothing naming which file stayed put"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        f"not, the first of them {incomplete[0]['from']}, {incomplete[0]['why']}",'''
+new = '        f"not",'
+
+[[rows]]
+id = "r172-b.B13_detail_carries_nothing"
+source = { table = "r172-b.json", id = "B13_detail_carries_nothing" }
+description = "Drop the outstanding items from the cause detail, so a machine consumer reads a count and no names"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '            "incomplete": incomplete[:INCOMPLETE_SHOWN],'
+new = '            "incomplete": [],'
+
+[[rows]]
+id = "r172-b.B14_diagnostic_surface"
+source = { table = "r172-b.json", id = "B14_diagnostic_surface" }
+description = "Answer on the default surface, which drops the plan and with it every rename that DID land"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        schema=ctx.entry.output_schema or output.current_schema("plan"),
+        data=plan,
+    )'''
+new = '    )'
+
+[[rows]]
+id = "r172-b.B16_referenced_recheck_dropped"
+source = { table = "r172-b.json", id = "B16_referenced_recheck_dropped" }
+description = "A sample of an EXISTING guard: trust the plan's own referenced set instead of reading the collection again after the gate, so a file rekordbox imported while a person decided is renamed out from under its row"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if _is_referenced(path, referenced):
+            _owed('''
+new = '''
+        if False:
+            _owed('''
+
+[[rows]]
+id = "r172-b.B17_claim_dropped"
+source = { table = "r172-b.json", id = "B17_claim_dropped" }
+description = "A sample of an EXISTING guard: rename without claiming the target first, which on this platform replaces the file that holds the name"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+            if not naming.claim_target(target):
+                collided += 1'''
+new = '''
+            if False:
+                collided += 1'''
+
+[[rows]]
+id = "r172-b.B1_ok_whatever_happened"
+source = { table = "r172-b.json", id = "B1_ok_whatever_happened" }
+description = "Answer ok however the sweep went, which is the finding itself: a plan carried out in part is reported as one carried out in full"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    if not incomplete:
+        return ctx.envelope(data=plan, outcome=Outcome.OK)'''
+new = '    return ctx.envelope(data=plan, outcome=Outcome.OK)'
+
+[[rows]]
+id = "r172-b.B2_missing_file_unreported"
+source = { table = "r172-b.json", id = "B2_missing_file_unreported" }
+description = "Skip a file that left while the gate waited in silence, as the shipped verb did"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if not path.is_file():
+            _owed(item, "the file is no longer there")
+            continue'''
+new = '''
+        if not path.is_file():
+            continue'''
+
+[[rows]]
+id = "r172-b.B3_new_row_unreported"
+source = { table = "r172-b.json", id = "B3_new_row_unreported" }
+description = "Hold back a file the collection began referencing after the gate without saying the approved rename did not happen"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+            _owed(
+                item,
+                "the rekordbox collection began referencing it after the plan was "
+                "approved, and renaming it would strand that row",
+            )
+            continue'''
+new = '            continue'
+
+[[rows]]
+id = "r172-b.B5_os_error_unreported"
+source = { table = "r172-b.json", id = "B5_os_error_unreported" }
+description = "Swallow a rename the filesystem refused, leaving a person a clean report over a file that did not move"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+                _owed(item, f"the filesystem refused the rename: {exc.strerror or exc}")
+                continue'''
+new = '                continue'
+
+[[rows]]
+id = "r172-b.B6_tag_write_answer_ignored"
+source = { table = "r172-b.json", id = "B6_tag_write_answer_ignored" }
+description = "Stop reading the answer write_tags returns, so a renamed file whose title never took the head is reported as a rename that happened in full"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if not tags.write_tags(path, {"title": rendered.title_tag}):
+            _owed(item, "it was renamed and its title tag could not be written", at=path)'''
+new = '        tags.write_tags(path, {"title": rendered.title_tag})'
+
+[[rows]]
+id = "r172-b.B8_tag_failure_named_where_it_was"
+source = { table = "r172-b.json", id = "B8_tag_failure_named_where_it_was" }
+description = "Name the tag write failure at the plan's own path, which is the file's name before the rename and a file nobody can go and look at"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '            _owed(item, "it was renamed and its title tag could not be written", at=path)'
+new = '            _owed(item, "it was renamed and its title tag could not be written")'
+
+[[rows]]
+id = "r172-b.B9_renamed_count_is_the_promise"
+source = { table = "r172-b.json", id = "B9_renamed_count_is_the_promise" }
+description = "Count every promised rename as performed rather than counting the ones that were, so totals.renamed is the plan's wish"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        "renamed": renamed,
+        "incomplete": len(incomplete),'''
+new = '''
+        "renamed": len(renames),
+        "incomplete": len(incomplete),'''
+
+[[rows]]
+id = "r500-a.G1_no_refusal"
+source = { table = "r500-a.json", id = "G1_no_refusal" }
+description = "Drop the refusal over dark rows in _referenced, so an unmapped row contributes only a key nothing matches and the file it names is renamed (R-500 as filed)"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    if dark:
+        raise _unmapped_refusal(dark)
+'''
+new = ''
+
+[[rows]]
+id = "r500-a.G2_existence_half_dropped"
+source = { table = "r500-a.json", id = "G2_existence_half_dropped" }
+description = "Drop the existence half of dark, so every unmapped row refuses, including a row whose recorded file is on this machine (the first cut the review rejected)"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):'
+new = '        elif resolved.resolution is locations.Resolution.UNMAPPED:'
+
+[[rows]]
+id = "r500-a.G3_unmapped_half_dropped"
+source = { table = "r500-a.json", id = "G3_unmapped_half_dropped" }
+description = "Drop the UNMAPPED half of dark, so any unresolved row whose text is not a file here refuses, a streaming pseudo-location included"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):'
+new = '        elif not os.path.exists(decoded):'
+
+[[rows]]
+id = "r500-a.G4_lexists"
+source = { table = "r500-a.json", id = "G4_lexists" }
+description = "Ask whether the recorded NAME exists rather than whether it reaches a file, so a link to nothing reads as a row that answered"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = 'not os.path.exists(decoded):'
+new = 'not os.path.lexists(decoded):'
+
+[[rows]]
+id = "r500-a.G5_recorded_key_dropped"
+source = { table = "r500-a.json", id = "G5_recorded_key_dropped" }
+description = "Drop the as recorded key. The existence rule rests on it: an unmapped row whose file exists is excused BECAUSE this key protects the file"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        keys.add(_key(decoded))
+'''
+new = ''
+
+[[rows]]
+id = "r500-b.G9_plural_always"
+source = { table = "r500-b.json", id = "G9_plural_always" }
+description = "Move the singular wording's bound, so one row reads as rows"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '"collection row records" if count == 1 else'
+new = '"collection row records" if count == 0 else'
+
+[[rows]]
+id = "r500-c.G11_prefix_cap_halved"
+source = { table = "r500-c.json", id = "G11_prefix_cap_halved" }
+description = "Halve the cap on the detail's prefix list, a coefficient"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '            "unmapped_prefixes": prefixes[:20],'
+new = '            "unmapped_prefixes": prefixes[:10],'
+
+[[rows]]
+id = "r500-c.G12_remedy_run_doctor"
+source = { table = "r500-c.json", id = "G12_remedy_run_doctor" }
+description = "Carry the deletion pass's run-doctor token, which sends a caller to a report no check of which reads the prefix map"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '        remedy=Remedy.FIX_CONFIG_VALUES,'
+new = '        remedy=Remedy.RUN_DOCTOR,'
+
+[[rows]]
+id = "r500-c.G15_other_host_refuses"
+source = { table = "r500-c.json", id = "G15_other_host_refuses" }
+description = "Existing U67 guard, sampled: a row naming another host raises out of the verb rather than being passed over"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        except locations.LocationDecodeError:
+            continue'''
+new = '''
+        except locations.LocationDecodeError:
+            raise'''
+
+[[rows]]
+id = "u39-author-full.R1_filename_source_dropped"
+source = { table = "u39-author-full.json", id = "R1_filename_source_dropped" }
+description = "Head recovery loses the filename source and keeps only the title fallback"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+new = '''
+    head = (
+        naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+
+[[rows]]
+id = "u39-author-full.R2_title_fallback_dropped"
+source = { table = "u39-author-full.json", id = "R2_title_fallback_dropped" }
+description = "Head recovery loses the title fallback that heals the tag then rename crash window"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+new = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or {}
+    )
+'''
+
+[[rows]]
+id = "u39-author-full.R3_bpm_dropped"
+source = { table = "u39-author-full.json", id = "R3_bpm_dropped" }
+description = "The recovered tempo is discarded, reproducing the head destroying defect"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        bpm=int(head["bpm"]) if "bpm" in head else None,
+'''
+new = '''
+        bpm=None,
+'''
+
+[[rows]]
+id = "u39-author-full.R4_head_key_overrules_tag"
+source = { table = "u39-author-full.json", id = "R4_head_key_overrules_tag" }
+description = "The stale head key wins over a corrected initialkey tag"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+'''
+new = '''
+    key = head.get("key") or tag_key
+'''
+
+[[rows]]
+id = "u39-author-full.R5_junk_tag_admitted"
+source = { table = "u39-author-full.json", id = "R5_junk_tag_admitted" }
+description = "A non Camelot initialkey tag reaches the renderer instead of being ignored"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+'''
+new = '''
+    key = tag_key if tag_key else head.get("key")
+'''
+
+[[rows]]
+id = "u39-author-full.R6_lossy_flag_dropped"
+source = { table = "u39-author-full.json", id = "R6_lossy_flag_dropped" }
+description = "The shared spec loses the lossy flag, recreating the plan and apply disagreement"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=False,
+'''
+
+[[rows]]
+id = "u39-naming-independent.R5_bpm_wrong_type"
+source = { table = "u39-naming-independent.json", id = "R5_bpm_wrong_type" }
+description = "The recovered tempo is coerced to float instead of int"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        bpm=int(head["bpm"]) if "bpm" in head else None,
+'''
+new = '''
+        bpm=float(head["bpm"]) if "bpm" in head else None,
+'''
+
+[[rows]]
+id = "u41-author-full.R1_filename_head_source_dropped"
+source = { table = "u41-author-full.json", id = "R1_filename_head_source_dropped" }
+description = "The filename is no longer a head source, leaving the title as the only one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+'''
+new = '''
+        naming.parse_head(title, template=template)
+'''
+
+[[rows]]
+id = "u41-author-full.R6_head_key_overrules_tag"
+source = { table = "u41-author-full.json", id = "R6_head_key_overrules_tag" }
+description = "Key precedence reversed, so a corrected key tag can no longer move a file"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+'''
+new = '''
+    key = head.get("key") or (tag_key if tag_key and naming.is_camelot(tag_key) else None)
+'''
+
+[[rows]]
+id = "u41-author-full.T1_title_tag_fed_the_filename_body"
+source = { table = "u41-author-full.json", id = "T1_title_tag_fed_the_filename_body" }
+description = "The title tag is rebuilt from the filename body, which stuffs the artist and the album into every tag the apply pass rewrites"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        title=naming.strip_head(title, template=template),
+'''
+new = '''
+        title=naming.strip_head(path.stem, template=template),
+'''
+
+[[rows]]
+id = "u41-author-full.T2_title_field_dropped"
+source = { table = "u41-author-full.json", id = "T2_title_field_dropped" }
+description = "The spec stops carrying a title at all, so render_all falls back to the stem for the tag surface"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        title=naming.strip_head(title, template=template),
+'''
+new = '''
+        title=None,
+'''
+
+[[rows]]
+id = "u41-naming-independent.B1_head_precedence_swapped"
+source = { table = "u41-naming-independent.json", id = "B1_head_precedence_swapped" }
+description = "The title's head is parsed before the filename's, so a stale tag head drags a correct filename backwards"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+'''
+new = '''
+        naming.parse_head(title, template=template)
+        or naming.parse_head(path.name, template=template)
+'''
+
+[[rows]]
+id = "u41-naming-independent.B2_filename_head_source_dropped"
+source = { table = "u41-naming-independent.json", id = "B2_filename_head_source_dropped" }
+description = "The filename is no longer a head source, so only a tag-carried head is recovered"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        naming.parse_head(path.name, template=template)
+'''
+new = '''
+        None
+'''
+
+[[rows]]
+id = "u41-naming-independent.B3_title_head_source_dropped"
+source = { table = "u41-naming-independent.json", id = "B3_title_head_source_dropped" }
+description = "The title is no longer a head source, so the tag-then-rename crash window stops healing"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        or naming.parse_head(title, template=template)
+'''
+new = '''
+        or None
+'''
+
+[[rows]]
+id = "u41-naming-independent.B7_lossy_filename_operand_dropped"
+source = { table = "u41-naming-independent.json", id = "B7_lossy_filename_operand_dropped" }
+description = "U39's K2: the lossy OR loses its filename operand, so a file marked only in its name is renamed to its unmarked form"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=marker in title,
+'''
+
+[[rows]]
+id = "u41-naming-independent.B8_lossy_title_operand_dropped"
+source = { table = "u41-naming-independent.json", id = "B8_lossy_title_operand_dropped" }
+description = "U39's K1: the lossy OR loses its title operand, so a marker surviving only in the tag stops being restored"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=marker in path.stem,
+'''
+
+[[rows]]
+id = "u41-naming-independent.C1_plan_no_op_filter_dropped"
+source = { table = "u41-naming-independent.json", id = "C1_plan_no_op_filter_dropped" }
+description = "Every audio file enters the plan, including the ones already in convention"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+            if rendered.filename != path.name:
+'''
+new = '''
+            if True:
+'''
+
+[[rows]]
+id = "u67-round-2.C1_action_filter_and_recheck"
+source = { table = "u67-round-2.json", id = "C1_action_filter_and_recheck" }
+description = "Composite: apply every plan item AND drop the re-check before the rename"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '    renames = [item for item in plan["items"] if item["action"] == RENAME]'
+new = '''
+    renames = list(plan["items"])
+    _is_referenced = lambda path, referenced: False  # noqa: E731'''
+
+[[rows]]
+id = "u67.M2_nfc"
+source = { table = "u67.json", id = "M2_nfc" }
+description = "Skip NFC normalisation of the compared path"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '    return locations.norm_for_compare(path).casefold()'
+new = '    return path.casefold()'
+
+[[rows]]
+id = "u67.M3_prefix_resolution"
+source = { table = "u67.json", id = "M3_prefix_resolution" }
+description = "Drop the prefix mapped spelling of a row"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if resolved.path is not None:
+            keys.add(_key(resolved.path))'''
+new = '''
+        if False:
+            keys.add(_key(resolved.path))'''
+
+[[rows]]
+id = "u67.M6_remote_host_skip"
+source = { table = "u67.json", id = "M6_remote_host_skip" }
+description = "Let a row naming another host raise instead of being skipped"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        except locations.LocationDecodeError:
+            continue'''
+new = '''
+        except ZeroDivisionError:
+            continue'''
+
+[[rows]]
+id = "u67.M7_absolute_spelling"
+source = { table = "u67.json", id = "M7_absolute_spelling" }
+description = "Ask only the resolved spelling of a candidate"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '    return _key(str(path.absolute())) in referenced or _key(str(path.resolve())) in referenced'
+new = '    return _key(str(path.resolve())) in referenced'
+
+[[rows]]
+id = "u67.M8_resolved_spelling"
+source = { table = "u67.json", id = "M8_resolved_spelling" }
+description = "Ask only the absolute spelling of a candidate"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '    return _key(str(path.absolute())) in referenced or _key(str(path.resolve())) in referenced'
+new = '    return _key(str(path.absolute())) in referenced'
