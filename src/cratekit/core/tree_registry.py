@@ -88,6 +88,18 @@ def _refuse(reason: str, message: str, **fields: Any) -> CratekitError:
     return refuse(reason, message, scope=Scope.RUN, origin=("tree_registry",), **fields)
 
 
+def _cause(reason: str, message: str, remedy: Remedy, detail: dict[str, Any]) -> Cause:
+    """The cause each of this module's own exception types carries, scoped like ``_refuse``."""
+    return Cause(
+        reason=reason,
+        message=message,
+        remediation=Remediation(remedy=remedy),
+        scope=Scope.RUN,
+        origin=("tree_registry",),
+        detail=detail,
+    )
+
+
 def cutover_trees(declared: Taxonomy) -> frozenset[str]:
     """The trees a cutover may record, by stable identifier (R-787).
 
@@ -107,16 +119,7 @@ class TreeRegistryUnreadable(CratekitError):
     """
 
     def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
-        super().__init__(
-            Cause(
-                reason="tree-registry-unusable",
-                message=message,
-                remediation=Remediation(remedy=remedy),
-                scope=Scope.RUN,
-                origin=("tree_registry",),
-                detail={"path": str(path)},
-            )
-        )
+        super().__init__(_cause("tree-registry-unusable", message, remedy, {"path": str(path)}))
         self.path = path
         self.remedy = remedy
 
@@ -137,16 +140,8 @@ class TreeModeRefused(CratekitError):
         attempted: str,
         remedy: Remedy,
     ) -> None:
-        super().__init__(
-            Cause(
-                reason="tree-unconverged",
-                message=message,
-                remediation=Remediation(remedy=remedy),
-                scope=Scope.RUN,
-                origin=("tree_registry",),
-                detail={"tree_id": tree_id, "mode": str(mode), "attempted": str(attempted)},
-            )
-        )
+        detail = {"tree_id": tree_id, "mode": str(mode), "attempted": str(attempted)}
+        super().__init__(_cause("tree-unconverged", message, remedy, detail))
         self.tree_id = tree_id
         self.mode = mode
         self.attempted = attempted
@@ -161,16 +156,8 @@ class RegistrySkew(CratekitError):
     """
 
     def __init__(self, message: str, *, tree_id: str, root_id: str | None) -> None:
-        super().__init__(
-            Cause(
-                reason="tree-unconverged",
-                message=message,
-                remediation=Remediation(remedy=Remedy.RESTORE_FROM_SNAPSHOT),
-                scope=Scope.RUN,
-                origin=("tree_registry",),
-                detail={"tree_id": tree_id, "root_id": root_id},
-            )
-        )
+        detail = {"tree_id": tree_id, "root_id": root_id}
+        super().__init__(_cause("tree-unconverged", message, Remedy.RESTORE_FROM_SNAPSHOT, detail))
         self.tree_id = tree_id
         self.root_id = root_id
         self.remedy = Remedy.RESTORE_FROM_SNAPSHOT
@@ -247,10 +234,7 @@ def by_tree_id(entries, tree_id: str):
 
     A scan, so no reader is handed a mapping to key on a name.
     """
-    for entry in entries:
-        if entry.tree_id == tree_id:
-            return entry
-    return None
+    return next((entry for entry in entries if entry.tree_id == tree_id), None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,8 +290,7 @@ class Registry:
 
         A revert only before the tree has taken a native write.
         """
-        kept = tuple(entry for entry in self.trees if entry.tree_id != tree_id)
-        return Registry(kept)
+        return Registry(tuple(entry for entry in self.trees if entry.tree_id != tree_id))
 
 
 #: The registry every library starts with, and what an absent file resolves to.
@@ -528,14 +511,12 @@ def pending_intake_xml(cfg: config.Config) -> tuple[Path, ...]:
     A Fresh Export is not in the set. The U22 ``*_synced.xml`` stub counts,
     because a cutover over debris starts dirty.
     """
-    roots = (Path(cfg.library.root), Path(cfg.paths.download_staging))
     found: list[Path] = []
-    for root in roots:
+    for root in (Path(cfg.library.root), Path(cfg.paths.download_staging)):
         if not root.is_dir():
             continue
         for path in root.rglob("*.xml"):
-            name = path.name
-            if any(name.endswith(suffix) for suffix in PENDING_XML_SUFFIXES):
+            if any(path.name.endswith(suffix) for suffix in PENDING_XML_SUFFIXES):
                 found.append(path)
     return tuple(sorted(found))
 
@@ -580,14 +561,15 @@ def _whole_log(cfg: config.Config, *, so: str) -> tuple[session.SessionRecord, .
     return parsed
 
 
-def _open_runs(records: tuple[session.SessionRecord, ...]) -> list[session.SessionRecord]:
+def _open_runs(cfg: config.Config) -> list[session.SessionRecord]:
     """The runs that have not reached a terminal state and still owe something.
 
-    A run owing only a deferred placement is not one (R-501).
+    Read off the whole log, or a refusal. A run owing only a deferred placement
+    is not one (R-501).
     """
     return [
         record
-        for record in records
+        for record in _whole_log(cfg, so="whether a run is still open was not established")
         if not record.terminal and not session.owes_only_deferred_routing(record)
     ]
 
@@ -595,9 +577,7 @@ def _open_runs(records: tuple[session.SessionRecord, ...]) -> list[session.Sessi
 def _open_run_refusal(cfg: config.Config, export: Path) -> CratekitError | None:
     """An open run still holds a capture, and possibly an un-imported export."""
     del export
-    open_runs = _open_runs(
-        _whole_log(cfg, so="whether a run is still open was not established")
-    )
+    open_runs = _open_runs(cfg)
     if not open_runs:
         return None
     first = open_runs[0]
@@ -708,10 +688,9 @@ def cutover_precheck(cfg: config.Config, *, export: Path) -> tuple[PrecheckResul
     the guard: :func:`flip` asserts for itself.
     """
     target = Path(export)
-    results: list[PrecheckResult] = []
-    for name, check in CUTOVER_CHECKS:
-        results.append(PrecheckResult(check=name, refusal=check(cfg, target)))
-    return tuple(results)
+    return tuple(
+        PrecheckResult(check=name, refusal=check(cfg, target)) for name, check in CUTOVER_CHECKS
+    )
 
 
 def assert_cutover_ready(cfg: config.Config, *, export: Path) -> None:
@@ -806,9 +785,7 @@ def assert_revertible(cfg: config.Config, tree_id: str) -> None:
             ),
             detail={"tree_id": tree_id, "sessions": list(taken)},
         )
-    open_runs = _open_runs(
-        _whole_log(cfg, so="whether a run is still open was not established")
-    )
+    open_runs = _open_runs(cfg)
     if open_runs:
         raise _refuse(
             "cutover-open-run",
