@@ -307,34 +307,61 @@ def _gate(key, value):
     return lambda gate: gate.__setitem__(key, value)
 
 
-@pytest.mark.parametrize(
-    ("mutate", "said"),
-    [
-        (_published({"kind": "polka"}), "needs all_of, any_of, or equals"),
-        (_published({"any_of": ["polka"]}), "needs a kind"),
-        (_published({"any_of": ["polka"], "kind": "any"}), "cannot be the kind of a word"),
-        (_published({"any_of": "polka", "kind": "polka"}), "any_of must be a list of words"),
-        (_gate("published", {"any_of": ["polka"], "kind": "polka"}), "two pairs of brackets"),
-        (_gate("default_kind", "polka"), "default_kind 'polka' is not a kind"),
-        (_gate("default_kind", 7), "default_kind must be"),
-        (_published({"any_of": ["polka"], "kind": "default"}), "clears a label's kind"),
-        (_published({"any_of": ["polka"], "kind": "hip hop"}), "kind 'hip hop' is not one word"),
-        (_gate("default_kind", "hip hop"), "default_kind must be"),
-    ],
-    ids=[
-        "a-published-rule-with-no-matcher", "a-published-rule-with-no-kind",
-        "a-published-rule-naming-the-reserved-kind", "a-matcher-that-is-not-a-list-of-words",
-        "published-rules-in-one-pair-of-brackets", "a-default-kind-no-rule-names",
-        "a-default-kind-that-is-not-a-word", "the-word-that-clears-a-kind-as-a-words-kind",
-        "a-kind-no-label-could-be-marked-with", "a-default-kind-of-two-words",
-    ],
-)
-def test_a_malformed_label_gate_is_refused(default_raw, mutate, said):
+def _says(default_raw, change, said):
+    """Whether the gate with ``change`` made is refused by a problem saying ``said``."""
+    problems = problems_from(default_raw, lambda data: change(data["label_gate"]))
+    return any(said in p for p in problems)
+
+
+def test_a_published_rule_with_no_matcher_is_refused(default_raw):
+    problems = problems_from(default_raw, lambda data: _published({"kind": "polka"})(
+        data["label_gate"]))
+    assert any(
+        "[[label_gate.published]]" in p and "needs all_of, any_of, or equals" in p
+        for p in problems
+    )
+
+
+def test_a_published_rule_with_no_kind_is_refused(default_raw):
+    assert _says(default_raw, _published({"any_of": ["polka"]}), "needs a kind")
+
+
+def test_a_published_rule_naming_the_reserved_kind_is_refused(default_raw):
+    change = _published({"any_of": ["polka"], "kind": "any"})
+    assert _says(default_raw, change, "cannot be the kind of a word")
+
+
+def test_a_matcher_that_is_not_a_list_of_words_is_refused(default_raw):
+    change = _published({"any_of": "polka", "kind": "polka"})
+    assert _says(default_raw, change, "any_of must be a list of words")
+
+
+def test_published_rules_in_one_pair_of_brackets_are_refused(default_raw):
+    change = _gate("published", {"any_of": ["polka"], "kind": "polka"})
+    assert _says(default_raw, change, "two pairs of brackets")
+
+
+def test_a_default_kind_no_rule_names_is_refused(default_raw):
+    assert _says(default_raw, _gate("default_kind", "polka"), "default_kind 'polka' is not a kind")
+
+
+def test_a_default_kind_that_is_not_a_word_is_refused(default_raw):
+    assert _says(default_raw, _gate("default_kind", 7), "default_kind must be")
+
+
+def test_the_word_that_clears_a_kind_cannot_be_the_kind_of_a_word(default_raw):
+    change = _published({"any_of": ["polka"], "kind": "default"})
+    assert _says(default_raw, change, "clears a label's kind")
+
+
+def test_a_kind_no_label_could_be_marked_with_is_refused(default_raw):
     """The registry stores a kind as one word, so a rule may name no other shape."""
-    problems = problems_from(default_raw, lambda data: mutate(data["label_gate"]))
-    assert any(said in p for p in problems), problems
-    if said.startswith("needs all_of"):
-        assert any("[[label_gate.published]]" in p and said in p for p in problems)
+    change = _published({"any_of": ["polka"], "kind": "hip hop"})
+    assert _says(default_raw, change, "kind 'hip hop' is not one word")
+
+
+def test_a_default_kind_of_two_words_is_refused(default_raw):
+    assert _says(default_raw, _gate("default_kind", "hip hop"), "default_kind must be")
 
 
 def test_a_share_rule_needle_typed_with_a_capital_matches_too(default_raw):
