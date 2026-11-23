@@ -1,50 +1,28 @@
 """Library adoption: map a library somebody already has into their taxonomy.
 
-R26 in one sentence: scan an existing rekordbox library, propose a mapping into
-the user's declared taxonomy, present the whole plan for review, and apply it
-only on approval, incrementally and resumably.
+R26: scan an existing rekordbox library, propose a mapping into the declared
+taxonomy, present the whole plan for review, and apply it only on approval,
+incrementally and resumably.
 
-THE FOUR MODULES, AND THE ONE PROPERTY EACH EXISTS TO HOLD.
+EACH MODULE HOLDS ONE PROPERTY. :mod:`cratekit.adopt.scan` is TOTAL: every row
+lands in exactly one named category, so an unreadable, online-only or unmapped
+file is reported rather than absent (AE12), and the router's fallback is not an
+answer. :mod:`cratekit.adopt.plan` holds EVERY scanned track and turns its open
+questions into persisted review items, which a plan file could not resume.
+:mod:`cratekit.adopt.approval` is R34: an :class:`Approval` names one plan's
+digest and its actor, and nothing truthy stands in for it.
+:mod:`cratekit.adopt.apply` owns the ORDER, approval, then per entry the
+original tag recorded, written, and marked applied, and says what a second run
+does after a crash at each seam. :mod:`cratekit.adopt.revert` is the ledger of
+what each file's tag held before adoption overwrote it, since no XML re-import
+undoes a tag write.
 
-:mod:`cratekit.adopt.scan` is TOTAL. Every row it is handed comes back in exactly
-one named category, so a file that is unreadable, or online-only, or recorded
-under a prefix this installation maps nothing for, is REPORTED rather than
-quietly absent from the plan (AE12). It also gives the third population its
-declared disposition: a track whose genre is blank or too coarse cannot be split
-by tag, and the router's fallback tier is not accepted as an answer here, because
-accepting it files thousands of tracks into one folder on approval given for a
-plan that looked complete.
-
-:mod:`cratekit.adopt.plan` turns that census into a plan holding EVERY scanned
-track, and turns the plan's two open questions into persisted review items in the
-queue U11 declared for them. That is the other half of R26 and the reason the
-plan is not a file: a plan approved thirty percent through and resumed in a later
-session needs verdicts that outlive the process that collected them, which is
-precisely what a file somebody edits cannot give it.
-
-:mod:`cratekit.adopt.approval` is R34. An approval is an :class:`Approval` for
-one plan, carrying that plan's digest and the actor who gave it. There is no
-truthy shape that stands in for it and no environment variable, configuration
-key, or blanket flag anywhere in this package.
-
-:mod:`cratekit.adopt.apply` owns the ORDER: approval, then per entry, record the
-original tag value, write, record applied. Its module docstring states what a
-second run does after a crash at each of those seams, because "idempotent" is
-exactly the kind of claim a green suite cannot check.
-
-:mod:`cratekit.adopt.revert` is the fifth piece and the one with no analogue
-elsewhere in the product: the ledger of what each file's tag held before adoption
-overwrote it. A tag write is the one operation the XML re-import safety net never
-covered, so it is the one operation whose undo has to be written down.
-
-WHAT THIS PACKAGE DOES NOT DO. It performs no library input and no library write.
-The census takes rows, the plan takes the folders the library already has, and
-the apply takes a callable that writes one entry's membership. Every one of those
-boundaries exists for the reason
-:func:`cratekit.core.tree_registry.anchored_root` takes a ``root_exists``
-callable: which medium owns a tree is the registry's answer and how to write it is
-:mod:`cratekit.write.trees`'s, and a second implementation of either here would be
-a third answer to a question that already has two.
+IT PERFORMS NO LIBRARY INPUT AND NO LIBRARY WRITE OF ITS OWN. The census takes
+rows, the plan takes the folders the library has, and the apply takes a callable
+that writes one membership, for the reason
+:func:`cratekit.core.tree_registry.anchored_root` takes ``root_exists``: which
+medium owns a tree is the registry's answer and how to write it is
+:mod:`cratekit.write.trees`'s.
 """
 
 from __future__ import annotations
@@ -65,21 +43,11 @@ from cratekit.adopt.revert import (
     snapshot_before_write,
     write_tag_with_record,
 )
-from cratekit.adopt.scan import (
-    CollectionRow,
-    Disposition,
-    Readability,
-    ScannedTrack,
-    scan_rows,
-)
+from cratekit.adopt.scan import CollectionRow, Disposition, Readability, ScannedTrack, scan_rows
 
-# BOTH HALVES OF THE TAG WRITE ARE EXPORTED, and which one a reader reaches for
-# first is decided here. ``write_tag_with_record`` is the composed call an apply
-# wants, because the record and the write it describes have to be one critical
-# section or a revert can land between them. ``snapshot_before_write`` is the
-# record half and stays public because recording without writing is a real thing
-# to want. This list used to export only the second one, so the surface pointed
-# every reader at the half that is unsafe on its own.
+# BOTH HALVES OF THE TAG WRITE ARE EXPORTED. ``write_tag_with_record`` is the
+# composed call an apply wants, record and write in one critical section;
+# ``snapshot_before_write`` is the record half alone, unsafe as a write.
 __all__ = [
     "APPROVAL_GATE",
     "Approval",

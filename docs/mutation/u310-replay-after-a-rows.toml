@@ -1,0 +1,1009 @@
+name = "u310-replay-after-a"
+pass_kind = "replay"
+
+[[rows]]
+id = "u23-round-8-independent.X9_outstanding_returns_everything"
+source = { table = "u23-round-8-independent.json", id = "X9_outstanding_returns_everything" }
+description = "A resume re-applies every entry from the top"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '    return tuple(entry for entry in plan.applicable() if entry.entry_id not in done)'
+new = '    return tuple(plan.applicable())'
+
+[[rows]]
+id = "u254-m08.M08_never_append"
+source = { table = "u254-m08.json", id = "M08_never_append" }
+description = "mark_applied: rewrite the whole ledger on every mark that misses the cache, the square this card ends"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+            if appendable:
+                config.append_durable_bytes(line, path)'''
+new = '''
+            if False:
+                config.append_durable_bytes(line, path)'''
+
+[[rows]]
+id = "u254.M01_mark_validates_record"
+source = { table = "u254.json", id = "M01_mark_validates_record" }
+description = "mark_applied: drop the reader's field rules on the record before it is written, so a record the reader refuses lands"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+    _record_from(
+        entry.to_json(),
+        path=path,
+        where=f"was refused a record for the entry {entry.entry_id!r}, one",
+    )'''
+new = '    pass'
+
+[[rows]]
+id = "u254.M02_cache_identity_ignored"
+source = { table = "u254.json", id = "M02_cache_identity_ignored" }
+description = "mark_applied: append whenever this process has marked the path before, whatever happened to the file since"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '        if known is not None and known == _as_left(path):'
+new = '        if known is not None:'
+
+[[rows]]
+id = "u254.M03_cache_identity_no_size"
+source = { table = "u254.json", id = "M03_cache_identity_no_size" }
+description = "_as_left: leave the size out of the identity, so a same inode file another hand changed reads as left"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)'
+new = '    return (found.st_dev, found.st_ino, 0, found.st_mtime_ns)'
+
+[[rows]]
+id = "u254.M04_cache_identity_no_mtime"
+source = { table = "u254.json", id = "M04_cache_identity_no_mtime" }
+description = "_as_left: leave the modification time out of the identity"
+file = "src/cratekit/adopt/apply.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)'
+new = '    return (found.st_dev, found.st_ino, found.st_size, 0)'
+
+[[rows]]
+id = "u254.M05_cache_identity_no_inode"
+source = { table = "u254.json", id = "M05_cache_identity_no_inode" }
+description = "_as_left: leave the inode out of the identity, so a replaced file of the same size reads as left"
+file = "src/cratekit/adopt/apply.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)'
+new = '    return (found.st_dev, 0, found.st_size, found.st_mtime_ns)'
+
+[[rows]]
+id = "u254.M06_never_cache"
+source = { table = "u254.json", id = "M06_never_cache" }
+description = "mark_applied: never remember what this process left, so every mark reads the whole ledger again"
+file = "src/cratekit/adopt/apply.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+        if left is not None:
+            _LEFT[key] = left'''
+new = '''
+        if left is not None:
+            pass'''
+
+[[rows]]
+id = "u254.M07_always_append"
+source = { table = "u254.json", id = "M07_always_append" }
+description = "mark_applied: append even to a torn, absent or schema 1 ledger"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+            if appendable:
+                config.append_durable_bytes(line, path)'''
+new = '''
+            if True:
+                config.append_durable_bytes(line, path)'''
+
+[[rows]]
+id = "u254.M09_any_line_torn"
+source = { table = "u254.json", id = "M09_any_line_torn" }
+description = "_read_journal: read a damaged line anywhere as torn and stop, so the records after it are lost"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '            if index == len(body) - 1 and whole:'
+new = '            if whole:'
+
+[[rows]]
+id = "u254.M10_torn_needs_terminated_tail"
+source = { table = "u254.json", id = "M10_torn_needs_terminated_tail" }
+description = "_read_journal: read a damaged last whole line as torn even when an unterminated line follows it"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '            if index == len(body) - 1 and whole:'
+new = '            if index == len(body) - 1:'
+
+[[rows]]
+id = "u254.M11_unterminated_tail_whole"
+source = { table = "u254.json", id = "M11_unterminated_tail_whole" }
+description = "_read_journal: call a journal with an unterminated last line appendable"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    whole = not tail'
+new = '    whole = True'
+
+[[rows]]
+id = "u254.M12_header_upgrade"
+source = { table = "u254.json", id = "M12_header_upgrade" }
+description = "_read_journal: drop the upgrade refusal of a newer journal header"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+            f"{SCHEMA_VERSION}",
+            Remedy.UPGRADE_CRATEKIT,
+        )
+    if version != SCHEMA_VERSION:'''
+new = '''
+            f"{SCHEMA_VERSION}",
+            Remedy.RUN_DOCTOR,
+        )
+    if version != SCHEMA_VERSION:'''
+
+[[rows]]
+id = "u254.M13_header_older_version"
+source = { table = "u254.json", id = "M13_header_older_version" }
+description = "_read_journal: accept a journal header at a schema no build wrote as a journal"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    if version != SCHEMA_VERSION:'
+new = '    if version > SCHEMA_VERSION:'
+
+[[rows]]
+id = "u254.M14_header_unterminated"
+source = { table = "u254.json", id = "M14_header_unterminated" }
+description = "_read_journal: accept a header with no line ending after it"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    if len(lines) < 2:'
+new = '    if len(lines) < 1:'
+
+[[rows]]
+id = "u254.M15_header_string_version"
+source = { table = "u254.json", id = "M15_header_string_version" }
+description = "_read_journal: drop the integer check on the header's schema_version"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+    header = json.loads(lines[0].decode("utf-8"))
+    version = header.get("schema_version")
+    if not isinstance(version, int):'''
+new = '''
+    header = json.loads(lines[0].decode("utf-8"))
+    version = int(header.get("schema_version"))
+    if not isinstance(version, int):'''
+
+[[rows]]
+id = "u254.M16_journal_needs_format"
+source = { table = "u254.json", id = "M16_journal_needs_format" }
+description = "_is_journal: take any object on the first line as a journal header"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    return isinstance(header, dict) and header.get("format") == JOURNAL_FORMAT'
+new = '    return isinstance(header, dict)'
+
+[[rows]]
+id = "u254.M17_document_at_journal_schema"
+source = { table = "u254.json", id = "M17_document_at_journal_schema" }
+description = "_read_document: read a whole document that claims schema 2"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    if version > DOCUMENT_SCHEMA_VERSION:'
+new = '    if version > SCHEMA_VERSION:'
+
+[[rows]]
+id = "u254.M18_remark_first_wins"
+source = { table = "u254.json", id = "M18_remark_first_wins" }
+description = "_read_journal: fold a re-mark first one wins, unlike the document's writer"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '        folded[record.entry_id] = record'
+new = '        folded.setdefault(record.entry_id, record)'
+
+[[rows]]
+id = "u254.M19_already_inverted"
+source = { table = "u254.json", id = "M19_already_inverted" }
+description = "apply_plan: report as already applied the entries the ledger does not hold"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '        entry.entry_id for entry in plan.applicable() if entry.entry_id in done'
+new = '        entry.entry_id for entry in plan.applicable() if entry.entry_id not in done'
+
+[[rows]]
+id = "u254.M21_record_needs_actor"
+source = { table = "u254.json", id = "M21_record_needs_actor" }
+description = "_record_from: drop actor from the fields every record must carry"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    for name in ("entry", "tree", "content", "actor"):'
+new = '    for name in ("entry", "tree", "content"):'
+
+[[rows]]
+id = "r235-b.M25_adoption_refusal_names_no_verb"
+source = { table = "r235-b.json", id = "M25_adoption_refusal_names_no_verb" }
+description = "the adoption refusal on an uncut library is re-raised as it came, with no step"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py", "tests/test_adopt_workers.py"]
+old = '''
+        named = _naming_the_cutover(exc)
+        if named is None:'''
+new = '''
+        named = None
+        if named is None:'''
+
+[[rows]]
+id = "r788-d.A2_vocal_rows_never_written"
+source = { table = "r788-d.json", id = "A2_vocal_rows_never_written" }
+description = "planned_memberships: the vocal additions are left out of the write, so the gate lists memberships the apply never performs"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '    for key, rows in vocal_locations(plan, declared).items():'
+new = '    for key, rows in ():'
+
+[[rows]]
+id = "r788-d.A3_present_rows_handed_over"
+source = { table = "r788-d.json", id = "A3_present_rows_handed_over" }
+description = "vocal_locations: every planned membership is handed to the writer, the present ones too"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '    return _locations(plan.vocal_additions(), declared, lambda entry: entry.vocal_sub)'
+new = '    return _locations(plan.vocal_memberships(), declared, lambda entry: entry.vocal_sub)'
+
+[[rows]]
+id = "u132.W1_every_apply"
+source = { table = "u132.json", id = "W1_every_apply" }
+description = "The adoption runs the Favorites step only when it filed a track"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py", "tests/test_organize.py"]
+old = ' or genre_favorites.favorites_class(declared) is None'
+new = ''
+
+[[rows]]
+id = "u132.W2_coded_note"
+source = { table = "u132.json", id = "W2_coded_note" }
+description = "A skip over an undeclared class carries favorites-skipped, not its cause code"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py", "tests/test_organize.py"]
+old = '''
+    if skipped and cause == genre_favorites.CLASS_UNDECLARED:
+'''
+new = '''
+    if False:
+'''
+
+[[rows]]
+id = "u132.W3_version_from_report"
+source = { table = "u132.json", id = "W3_version_from_report" }
+description = "The job's report does not carry the version the skip saw"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py", "tests/test_organize.py"]
+old = '''
+            "schema_version": declared.schema_version,
+'''
+new = '''
+            "schema_version": None,
+'''
+
+[[rows]]
+id = "u165.A1_scope"
+source = { table = "u165.json", id = "A1_scope" }
+description = "census: ignore the scope and walk the whole collection"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '        rows = tuple(row for row in rows if row.content_id in scope)'
+new = '        rows = tuple(rows)'
+
+[[rows]]
+id = "u165.A2_refuse_unplaced_called"
+source = { table = "u165.json", id = "A2_refuse_unplaced_called" }
+description = "file_plan: skip the unplaced refusal before the ledger is marked"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''
+    refuse_unplaced(membership)
+'''
+new = '''
+    pass
+'''
+
+[[rows]]
+id = "u165.A3_grant_first"
+source = { table = "u165.json", id = "A3_grant_first" }
+description = "file_plan: mint no approval before the memberships are written"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''
+    grant(plan, actor=actor)
+
+    membership = _write_memberships'''
+new = '    membership = _write_memberships'
+
+[[rows]]
+id = "u27-adopt-apply-author.A1_approval_actor_is_the_process"
+source = { table = "u27-adopt-apply-author.json", id = "A1_approval_actor_is_the_process" }
+description = "Mint the approval under a fixed actor, so the record cannot say who asserted it"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adoption.py"]
+old = '            approval=grant(plan, actor=actor),'
+new = '            approval=grant(plan, actor="cli"),'
+
+[[rows]]
+id = "u27-adopt-apply-author.A2_gate_found_by_position"
+source = { table = "u27-adopt-apply-author.json", id = "A2_gate_found_by_position" }
+description = "Take the first declared gate rather than the one digested against the plan"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_cli_contract.py"]
+old = '''
+    for spec in entry.gates:
+        if spec.digest_source == "plan":
+            return spec'''
+new = '''
+    for spec in entry.gates:
+        if True:
+            return spec'''
+
+[[rows]]
+id = "u27-adopt-apply-author.S1_no_session_at_all"
+source = { table = "u27-adopt-apply-author.json", id = "S1_no_session_at_all" }
+description = "Run the apply loop with no destructive session around it (the residual's condition, unchanged)"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''
+    with session.assert_gates(
+        cfg,
+        workflow=WORKFLOW,
+        analysis_roots=watched,
+        identity_provider=identity_provider,
+        mount_enumerator=mount_enumerator,
+    ):'''
+new = '    if True:'
+
+[[rows]]
+id = "u27-adopt-apply-author.S2_analysis_watch_watches_nothing"
+source = { table = "u27-adopt-apply-author.json", id = "S2_analysis_watch_watches_nothing" }
+description = "Arm the analysis watch on no roots, so it reports a clean session either way"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_write_session.py"]
+old = '        analysis_roots=watched,'
+new = '        analysis_roots=(),'
+
+[[rows]]
+id = "u27-adopt-apply-author.S4_workflow_is_not_the_verb"
+source = { table = "u27-adopt-apply-author.json", id = "S4_workflow_is_not_the_verb" }
+description = "Record the session under a name that is not this verb's"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = 'WORKFLOW = "adopt.apply"'
+new = 'WORKFLOW = "adoption"'
+
+[[rows]]
+id = "u55-collection-reader.R10_apply_zero_item_refusal"
+source = { table = "u55-collection-reader.json", id = "R10_apply_zero_item_refusal" }
+description = "The apply queues a job with one item over a plan that can place nothing"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '    if not applicable:'
+new = '    if False:'
+
+[[rows]]
+id = "u55-collection-reader.R12_apply_item_ids"
+source = { table = "u55-collection-reader.json", id = "R12_apply_item_ids" }
+description = "The apply enqueues with no items at all"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '            item_ids=(plan.digest(),),'
+new = '            item_ids=(),'
+
+[[rows]]
+id = "u55-collection-reader.R19_collector_groups_locations"
+source = { table = "u55-collection-reader.json", id = "R19_collector_groups_locations" }
+description = "The collector groups content identifiers again, which is the seam defect U55 found"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '            into.setdefault((folder, sub), []).append(entry.path)'
+new = '            into.setdefault((folder, sub), []).append(entry.content_id)'
+
+[[rows]]
+id = "u55-collection-reader.R20_membership_locations_key"
+source = { table = "u55-collection-reader.json", id = "R20_membership_locations_key" }
+description = "The written mapping groups content identifiers, so the write matches nothing"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '        grouped.setdefault((folder, sub), []).append(entry.path)'
+new = '        grouped.setdefault((folder, sub), []).append(entry.content_id)'
+
+[[rows]]
+id = "u55-collection-reader.R24_worker_digest_check"
+source = { table = "u55-collection-reader.json", id = "R24_worker_digest_check" }
+description = "The worker applies a plan nobody approved, because the frozen digest is not compared"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '    if plan.digest() != frozen_digest:'
+new = '    if False:'
+
+[[rows]]
+id = "u55-collection-reader.R27_apply_no_tag_value"
+source = { table = "u55-collection-reader.json", id = "R27_apply_no_tag_value" }
+description = "A tag_value supplier is installed, so the apply writes a genre onto the person's files"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '    report, gathered = apply_outstanding(cfg, plan, declared, actor=actor)'
+new = '''
+    report, gathered = apply_outstanding(
+        cfg, plan, declared, actor=actor, tag_value=lambda entry, _d: entry.bucket or None
+    )'''
+
+[[rows]]
+id = "u55-round-2.R23_worker_raises_on_failure"
+source = { table = "u55-round-2.json", id = "R23_worker_raises_on_failure" }
+description = "A failed apply returns rather than raising, so the job reaches SUCCEEDED over nothing"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''
+    if report.failed:
+        _commit(produced)
+        raise refuse('''
+new = '''
+    if False:
+        _commit(produced)
+        raise refuse('''
+
+[[rows]]
+id = "r722.P1_level_none"
+source = { table = "r722.json", id = "P1_level_none" }
+description = "The original defect: _sub_for resolves with a level of None for every track"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py"]
+old = '    sub = routing.energy_sub(declared, bucket_id, level, source_genre=genre)'
+new = '    sub = routing.energy_sub(declared, bucket_id, None, source_genre=genre)'
+
+[[rows]]
+id = "r722.P3_verdict_drops_level"
+source = { table = "r722.json", id = "P3_verdict_drops_level" }
+description = "with_verdicts resolves an answered genre with no reading"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py"]
+old = '        sub = _sub_for(declared, chosen, entry.genre, entry.energy)'
+new = '        sub = _sub_for(declared, chosen, entry.genre, None)'
+
+[[rows]]
+id = "r722.P7_tally_counts_excluded"
+source = { table = "r722.json", id = "P7_tally_counts_excluded" }
+description = "The tally counts entries the census never opened"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py"]
+old = '''
+            if entry.category is not Readability.READABLE:
+                continue
+            if entry.energy_unreadable:'''
+new = '            if entry.energy_unreadable:'
+
+[[rows]]
+id = "r722.P8_tally_folds_unreadable"
+source = { table = "r722.json", id = "P8_tally_folds_unreadable" }
+description = "The tally counts an unreadable file as absent"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py"]
+old = '''
+            if entry.energy_unreadable:
+                readings["unreadable"] += 1
+            elif entry.energy is None:'''
+new = '            if entry.energy is None:'
+
+[[rows]]
+id = "r731-a.M01_unread_tree_withholds"
+source = { table = "r731-a.json", id = "M01_unread_tree_withholds" }
+description = "a tree nobody read is treated as read, so held subs a caller carried withhold"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''
+    if not placements.read:
+        return NO_COMPETING_PLACE
+    kind, competing'''
+new = '    kind, competing'
+
+[[rows]]
+id = "r731-a.M02_held_sub_class_competes"
+source = { table = "r731-a.json", id = "M02_held_sub_class_competes" }
+description = "a held sub is no longer filtered to the bucket's competing subs, so a sub class withholds"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '    held = tuple(sorted(set(placements.holds(bucket, content_id)) & competing))'
+new = '    held = tuple(sorted(set(placements.holds(bucket, content_id))))'
+
+[[rows]]
+id = "r731-a.M03_same_sub_withheld"
+source = { table = "r731-a.json", id = "M03_same_sub_withheld" }
+description = "a track already in the sub the plan names is withheld instead of left to the writer"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '    if not held or (sub in held and sub not in unnamed):'
+new = '    if not held:'
+
+[[rows]]
+id = "r731-a.M04_renamed_sub_not_withheld"
+source = { table = "r731-a.json", id = "M04_renamed_sub_not_withheld" }
+description = "a track in the planned sub under another name only is routed, so the writer doubles it"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '    if not held or (sub in held and sub not in unnamed):'
+new = '    if not held or sub in held:'
+
+[[rows]]
+id = "r731-a.M05_unnamed_without_held"
+source = { table = "r731-a.json", id = "M05_unnamed_without_held" }
+description = "an unnamed sub is no longer required to be one the track holds"
+file = "src/cratekit/adopt/plan.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''
+    unnamed = tuple(sorted(set(placements.holds_unnamed(bucket, content_id)) & set(held)))
+    if not held or (sub in held and sub not in unnamed):'''
+new = '''
+    unnamed = tuple(sorted(set(placements.holds_unnamed(bucket, content_id))))
+    if (not held and not unnamed) or (sub in held and sub not in unnamed):'''
+
+[[rows]]
+id = "r731-a.M08_digest_blind_to_unread"
+source = { table = "r731-a.json", id = "M08_digest_blind_to_unread" }
+description = "the digest no longer covers whether the tree was read"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''
+                "placements": self.placements.state,
+                "held_elsewhere": ['''
+new = '                "held_elsewhere": ['
+
+[[rows]]
+id = "r731-a.M11_verdict_withheld_on_the_review_list"
+source = { table = "r731-a.json", id = "M11_verdict_withheld_on_the_review_list" }
+description = "an entry a collision verdict withheld is listed as holding a place"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '        return self.disposition is Disposition.WITHHELD and bool(self.holds)'
+new = '        return self.disposition is Disposition.WITHHELD'
+
+[[rows]]
+id = "r731-b.M23_collision_counts_a_listed_track"
+source = { table = "r731-b.json", id = "M23_collision_counts_a_listed_track" }
+description = "a track the plan withheld and listed is counted a stranger in its own folder"
+file = "src/cratekit/adopt/plan.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''
+            - planned_by_bucket[bucket_id]
+            - named_by_bucket.get(bucket_id, set())'''
+new = '            - planned_by_bucket[bucket_id]'
+
+[[rows]]
+id = "r731-c.M25_planned_sub_outside_the_set"
+source = { table = "r731-c.json", id = "M25_planned_sub_outside_the_set" }
+description = "a planned sub outside the bucket's competing subs is no longer let through unasked"
+file = "src/cratekit/adopt/plan.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''
+    if sub not in competing:
+        return NO_COMPETING_PLACE
+    held'''
+new = '    held'
+
+[[rows]]
+id = "r788-a.P1_untagged_is_added"
+source = { table = "r788-a.json", id = "P1_untagged_is_added" }
+description = "vocal_place: drop the tag check, so every routed track of a calibrated library is filed under the vocal sub"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '    if not vocals.filing or not vocals.carries(content_id):'
+new = '    if not vocals.filing:'
+
+[[rows]]
+id = "r788-a.P2_blind_plan_files"
+source = { table = "r788-a.json", id = "P2_blind_plan_files" }
+description = "vocal_place: drop the filing check, so a tree nobody read, a taxonomy with no vocal sub and an uncalibrated library all file from the tag"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '    if not vocals.filing or not vocals.carries(content_id):'
+new = '    if not vocals.carries(content_id):'
+
+[[rows]]
+id = "r788-a.P3_uncalibrated_files"
+source = { table = "r788-a.json", id = "P3_uncalibrated_files" }
+description = "Vocals.filing: drop the calibration, so tags written from the default cut file a back catalogue"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '        return self.read and self.has_sub and self.calibrated'
+new = '        return self.read and self.has_sub'
+
+[[rows]]
+id = "r788-a.P5_withheld_gains"
+source = { table = "r788-a.json", id = "P5_withheld_gains" }
+description = "vocal_place: a withheld track is added to its vocal sub"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''
+    if disposition is Disposition.WITHHELD:
+        return VOCAL_WITHHELD, sub'''
+new = '''
+    if False:
+        return VOCAL_WITHHELD, sub'''
+
+[[rows]]
+id = "r788-a.P6_present_is_added"
+source = { table = "r788-a.json", id = "P6_present_is_added" }
+description = "vocal_place: a track already in the sub is planned as an addition and handed to the writer"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''
+    if vocals.sits(bucket, content_id):
+        return VOCAL_PRESENT, sub'''
+new = '''
+    if False:
+        return VOCAL_PRESENT, sub'''
+
+[[rows]]
+id = "r788-a.P7_renamed_track_reads_present"
+source = { table = "r788-a.json", id = "P7_renamed_track_reads_present" }
+description = "vocal_place: a track in the sub under another name only reads present, so it joins the digest as a membership the writer may be handed"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''
+    if vocals.sits_unnamed(bucket, content_id):
+        return VOCAL_RENAMED, sub'''
+new = '''
+    if False:
+        return VOCAL_RENAMED, sub'''
+
+[[rows]]
+id = "r788-a.P8_renamed_bucket_doubles"
+source = { table = "r788-a.json", id = "P8_renamed_bucket_doubles" }
+description = "vocal_place: a bucket whose vocal sub answers under another name only is added to, so the writer makes a second playlist beside it"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''
+    if bucket in vocals.renamed:
+        return VOCAL_RENAMED, sub'''
+new = '''
+    if False:
+        return VOCAL_RENAMED, sub'''
+
+[[rows]]
+id = "r788-b.P10_manual_class_is_vocal"
+source = { table = "r788-b.json", id = "P10_manual_class_is_vocal" }
+description = "vocal_sub: a class of the vocal identifier that is not additive is filed under"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '        if not entry.additive or entry.id != VOX_SUB_CLASS:'
+new = '        if entry.id != VOX_SUB_CLASS:'
+
+[[rows]]
+id = "r788-b.P12_name_clash_files_into_a_style"
+source = { table = "r788-b.json", id = "P12_name_clash_files_into_a_style" }
+description = "vocal_sub: a bucket whose own sub or band label carries the vocal sub's display name still has a vocal sub, so vocal tracks are filed into that style"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '        if entry.id in ids or entry.display in displays:'
+new = '        if entry.id in ids:'
+
+[[rows]]
+id = "r788-b.P14_digest_drops_vocal"
+source = { table = "r788-b.json", id = "P14_digest_drops_vocal" }
+description = "digest: no vocal membership is covered, so a plan that gained vocal additions after the approval is applied under it"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '                "vocal": [vocal_id(entry) for entry in self.vocal_memberships()],'
+new = '                "vocal": [],'
+
+[[rows]]
+id = "r788-b.P16_digest_moves_under_its_own_apply"
+source = { table = "r788-b.json", id = "P16_digest_moves_under_its_own_apply" }
+description = "digest: cover the additions only, so the apply's own write moves the digest and a stopped run refuses its own work"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '                "vocal": [vocal_id(entry) for entry in self.vocal_memberships()],'
+new = '                "vocal": [vocal_id(entry) for entry in self.vocal_additions()],'
+
+[[rows]]
+id = "r788-b.P17_withheld_presence_is_planned"
+source = { table = "r788-b.json", id = "P17_withheld_presence_is_planned" }
+description = "PlanEntry.vocal_planned: drop applicable, so a withheld track's vocal membership is one an apply may write"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '        return self.applicable and self.vocal in VOCAL_PLANNED'
+new = '        return self.vocal in VOCAL_PLANNED'
+
+[[rows]]
+id = "r788-b.P9_unplaced_entry_gains"
+source = { table = "r788-b.json", id = "P9_unplaced_entry_gains" }
+description = "vocal_place: only an empty bucket is no bucket, so an entry the plan does not place gains a vocal sub when a caller hands its bucket in"
+file = "src/cratekit/adopt/plan.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''
+    if not bucket or disposition not in (Disposition.ROUTE, Disposition.WITHHELD):
+        return VOCAL_NO_BUCKET, ""'''
+new = '''
+    if not bucket:
+        return VOCAL_NO_BUCKET, ""'''
+
+[[rows]]
+id = "u165.P1_undeclared"
+source = { table = "u165.json", id = "P1_undeclared" }
+description = "predicted_place: route a band the taxonomy declares no sub for"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '        return Predicted(disposition=Disposition.UNDECLARED)'
+new = '        return Predicted(disposition=disposition, bucket=bucket)'
+
+[[rows]]
+id = "u165.P2_vocal_sub"
+source = { table = "u165.json", id = "P2_vocal_sub" }
+description = "predicted_place: give every route the vocal sub, vox or not"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '    vocal = (vocal_sub(declared, bucket) or "") if vox else ""'
+new = '    vocal = vocal_sub(declared, bucket) or ""'
+
+[[rows]]
+id = "r239-b.S10_adopt_apply_key_off"
+source = { table = "r239-b.json", id = "S10_adopt_apply_key_off" }
+description = "adopt apply's write open passes unlock=False"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)'''
+new = '''    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, unlock=False, cfg=cfg)'''
+moved = "the write open's arguments were joined onto one line by the formatter; the mutation adds unlock=False to it as before"
+
+[[rows]]
+id = "r722.A1_gate_drops_tally"
+source = { table = "r722.json", id = "A1_gate_drops_tally" }
+description = "The approval gate's facts omit the reading tally"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adopt_workers.py"]
+old = '''    "counts",
+    "energy",
+'''
+new = '''    "counts",
+'''
+moved = "the gate's facts are now read through the _FACTS key list; dropping energy from it is dropping the energy line from the gate document"
+
+[[rows]]
+id = "r731-b.M13_gate_without_the_review_list"
+source = { table = "r731-b.json", id = "M13_gate_without_the_review_list" }
+description = "the gate's facts no longer carry the list of withheld entries"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_workers.py", "tests/test_adopt_apply_cli.py"]
+old = '''    "withheld_by_placement",
+    "held_elsewhere",
+'''
+new = '''    "withheld_by_placement",
+'''
+moved = "the gate's facts are now read through the _FACTS key list; dropping held_elsewhere from it is the same omission"
+
+[[rows]]
+id = "r731-b.M14_gate_without_the_count"
+source = { table = "r731-b.json", id = "M14_gate_without_the_count" }
+description = "the gate's facts no longer carry the withheld count split by kind"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_workers.py", "tests/test_adopt_apply_cli.py"]
+old = '''    "placements",
+    "withheld_by_placement",
+'''
+new = '''    "placements",
+'''
+moved = "the gate's facts are now read through the _FACTS key list; dropping withheld_by_placement from it is the same omission"
+
+[[rows]]
+id = "r731-b.M15_gate_without_the_read_state"
+source = { table = "r731-b.json", id = "M15_gate_without_the_read_state" }
+description = "the gate's facts no longer say whether the tree was read"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_workers.py", "tests/test_adopt_apply_cli.py"]
+old = '''    "collisions",
+    "placements",
+'''
+new = '''    "collisions",
+'''
+moved = "the gate's facts are now read through the _FACTS key list; dropping placements from it is the same omission"
+
+[[rows]]
+id = "u27-adopt-apply-author.A3_missing_gate_refuses_under_the_wrong_reason"
+source = { table = "u27-adopt-apply-author.json", id = "A3_missing_gate_refuses_under_the_wrong_reason" }
+description = "Report a verb declaring no approval gate as a configuration problem"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_cli.py"]
+old = '''        "internal-error",
+        f"{entry.name} declares no gate digested against the plan, so "'''
+new = '''        "config-unusable",
+        f"{entry.name} declares no gate digested against the plan, so "'''
+moved = "the refusal is now built through core.cause.refuse, whose first argument is the reason; the same reason is swapped"
+
+[[rows]]
+id = "u55-round-2.R8_census_prefix_map"
+source = { table = "u55-round-2.json", id = "R8_census_prefix_map" }
+description = "The census drops the configured volume rewrites, so an older volume name resolves nowhere"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''            rows, declared, root=cfg.library.root, prefix_map=collection.prefix_rules(cfg)'''
+new = '''            rows, declared, root=cfg.library.root, prefix_map=()'''
+moved = "the census's scan_rows arguments were joined onto one line by the formatter; the prefix map is emptied as before"
+
+[[rows]]
+id = "r722.P2_build_drops_level"
+source = { table = "r722.json", id = "P2_build_drops_level" }
+description = "build_adoption_plan passes None instead of the scanned track's reading"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py"]
+old = '''            sub = _sub_for(declared, bucket, track.genre, track.energy)'''
+new = '''            sub = _sub_for(declared, bucket, track.genre, None)'''
+moved = "the resolved sub is now named sub and handed to _destined; the energy level is dropped from the same call"
+
+[[rows]]
+id = "r722.P4_entry_drops_energy"
+source = { table = "r722.json", id = "P4_entry_drops_energy" }
+description = "The plan entry does not carry the census's level"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py"]
+old = '''            energy=track.energy,
+            energy_unreadable=track.energy_unreadable,'''
+new = '''            energy_unreadable=track.energy_unreadable,'''
+moved = "the PlanEntry is now built before _destined routes it, four spaces less indented; the energy field is dropped from it"
+
+[[rows]]
+id = "r722.P5_entry_drops_unreadable"
+source = { table = "r722.json", id = "P5_entry_drops_unreadable" }
+description = "The plan entry does not carry the unreadable flag"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py"]
+old = '''            energy=track.energy,
+            energy_unreadable=track.energy_unreadable,'''
+new = '''            energy=track.energy,'''
+moved = "the PlanEntry is now built before _destined routes it, four spaces less indented; the unreadable flag is dropped from it"
+
+[[rows]]
+id = "r731-a.M06_competing_place_never_withholds"
+source = { table = "r731-a.json", id = "M06_competing_place_never_withholds" }
+description = "the plan reads the competing place and routes the entry anyway"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''        disposition = Disposition.WITHHELD if withheld_by else Disposition.ROUTE'''
+new = '''        disposition = Disposition.WITHHELD if False else Disposition.ROUTE'''
+moved = "a competing place now withholds in _destined, which build_adoption_plan and with_verdicts share; the competing place is ignored as before"
+
+[[rows]]
+id = "r731-a.M07_withheld_entry_loses_its_bucket"
+source = { table = "r731-a.json", id = "M07_withheld_entry_loses_its_bucket" }
+description = "a withheld entry's bucket is blanked, so its identifier and its review row lose it"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''        disposition = Disposition.WITHHELD if withheld_by else Disposition.ROUTE
+'''
+new = '''        disposition = Disposition.WITHHELD if withheld_by else Disposition.ROUTE
+        bucket = "" if withheld_by else bucket
+'''
+moved = "the entry a competing place withholds now keeps its bucket in _destined; the mutation blanks it there, as the old condition did for every withheld entry"
+
+[[rows]]
+id = "r731-a.M09_digest_blind_to_the_review_list"
+source = { table = "r731-a.json", id = "M09_digest_blind_to_the_review_list" }
+description = "the digest no longer covers the rows of the review list"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_placements.py", "tests/test_adopt_workers.py"]
+old = '''                    {"id": entry.entry_id, **review_row(entry)} for entry in self.held_elsewhere()'''
+new = '''                    {"id": entry.entry_id, **review_row(entry)} for entry in ()'''
+moved = "the digest's review list comprehension was joined onto one line by the formatter; it is emptied as before"
+
+[[rows]]
+id = "r788-b.P19_answered_genre_files_nothing"
+source = { table = "r788-b.json", id = "P19_answered_genre_files_nothing" }
+description = "with_verdicts: an answered genre is asked of no vocals, so a tagged track given a bucket is never filed under its vocal sub"
+file = "src/cratekit/adopt/plan.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_vocals.py", "tests/test_adopt_placements.py", "tests/test_adopt_former_place.py", "tests/test_adopt_workers.py"]
+old = '''            _destined(declared, plan.placements, plan.vocals, sub_of, entry, chosen, sub)'''
+new = '''            _destined(declared, plan.placements, NO_VOCALS, sub_of, entry, chosen, sub)'''
+moved = "with_verdicts now routes an answered entry through _destined; the plan's vocals are replaced with none as before"
+
+[[rows]]
+id = "u165.P3_of_vocal"
+source = { table = "u165.json", id = "P3_of_vocal" }
+description = "Predicted.of: read the vocal sub of an entry whatever its vocal state"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_intake_land_native.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        vocal_sub = entry.vocal_sub if entry.vocal == VOCAL_ADD else ""'''
+new = '''        vocal_sub = entry.vocal_sub'''
+moved = "Predicted.of now names the vocal sub before building itself; the condition on it is dropped as before"
+
+[[rows]]
+id = "u23-round-8-independent.X10_entry_id_drops_the_sub"
+source = { table = "u23-round-8-independent.json", id = "X10_entry_id_drops_the_sub" }
+description = "Two pieces of work differing only by sub-folder share one identifier"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''        canonical_json({"tree": tree, "content": content_id, "bucket": bucket, "sub": sub}).encode()'''
+new = '''        canonical_json({"tree": tree, "content": content_id, "bucket": bucket}).encode()'''
+moved = "the identifier's document was joined onto one line by the formatter; the sub is dropped from it as before"

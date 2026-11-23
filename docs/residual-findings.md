@@ -1766,3 +1766,298 @@ read as unusable, so no writer reaches the depth it would misread.
 
 **Closes when:** a test feeds the walk a truncated tag inside an otherwise
 readable playlist section, if such a document can be produced. Ledger only.
+
+---
+
+## R-1873. The outbound suites' less work fixture caches the command tree and syncs nothing, so a later test patching a handler or a store pragma silently misses
+
+**Found:** at the review of #866, U309, 2026-11-22.
+
+**The mechanism.** `_less_work` in `tests/test_outbound_workers.py` is autouse in about fifteen of the card's test files that import it. It makes `os.fsync` a no-op, sets `PRAGMA synchronous=OFF` on every `PrivateStore`, and builds the command tree once per module membership for the life of the worker. The cached tree binds each verb's handler and registry entry when first built, so a test that patches either takes effect only when it happens to build the tree first; the review drove one that read "patch took effect: False" after another test and "True" alone. Its docstring now says so.
+
+**Measured cost.** None today: no test in those files patches a handler, a registry entry or a build time default, and none is about durability or a store's pragmas. The recorded fsync kills on `core/config.py` are killed by files outside the set, and two replayed kills on `core/jobs.py` still die. The fixture halved the files' test time.
+
+**Closes when:** the fixture moves to a shared helper module beside the other suite helpers, and either drops the parser cache or keys it on the handlers it binds. Ledger only.
+
+---
+
+## R-1874. Two names behind a toggle are served by a module __getattr__, so they leave __all__, dir() and resolved type hints
+
+**Found:** at the review of #866, U309, 2026-11-22.
+
+**The mechanism.** Moving organize's and the outbound source's top level imports behind their toggles left two names served lazily: `organize/inspiration.py` answers `PREFIX` and `modules/outbound/source.py` answers `library_export` through a module `__getattr__`. Attribute access, `from ... import` and `monkeypatch.setattr` all work, and the patch `tests/test_outbound_workers.py` makes on `source.library_export.read_export_file` still bites. But `PREFIX` left `inspiration.__all__` (ruff refuses a name there that is not bound at top level), neither name is in `dir()`, `typing.get_type_hints(source.Library)` raises `NameError` where the base resolved it, and patching `inspiration.PREFIX` no longer changes `account_sets`' message, which reads `MARK_PREFIX` itself. `organize/mirror_edits.Change` also gained defaults for `path` through `energy` that the base required.
+
+**Measured cost.** None a person sees: nothing outside the card's files uses any of these, and `inspiration.PREFIX`'s one user is the card's own test.
+
+**Closes when:** `inspiration.PREFIX` is dropped in favour of `folders.MARK_PREFIX` at its one test, and `source.Library`'s annotation names its type under `TYPE_CHECKING` only. Ledger only.
+
+---
+
+## R-1875. The behaviour scenarios record the fake account's writes per kind, not its reads or the order across kinds, and no verb reaches a reservation already taken
+
+**Found:** at the review of #866, U309, 2026-11-22.
+
+**The mechanism.** `tests/behaviour/outbound.py`'s `account_calls` writes `vars(account)` of the suite's fake, which keeps one list per kind of write. Reads (`folders`, `folder_playlists`, `playlist_tracks`, `playlist_listing`) are not recorded, and the order of calls across kinds is not captured, so the card's "the same calls in the same order" is proved by the scenarios for writes within a kind and by the mirror's printed request count, and otherwise by the review's base against branch drives of the account (3,000 trials comparing every request, move, removal and read back). No scenario reaches a reservation already taken through a verb (the rename twin stands in), the INBOX or Favorites mirror, `mirror-downloads`, the inspiration write, a stale answer, or a filing or root failure part way.
+
+**Measured cost.** Not driven: a change of call order across kinds would pass the comparison and be caught only by the suite's own order tests.
+
+**Closes when:** the fake account records every call, reads included, in one ordered log that the capture writes, and a scenario drives a ledger reservation held by another run. Ledger only.
+
+---
+
+## R-1876. Twelve recorded kills on organize, the outbound module and export no longer kill on the base itself
+
+**Found:** at the kill set replay of #866, U309, 2026-11-22.
+
+**The mechanism.** The replay before U309's first edit measured, on the base `c919209`, every recorded kill on the card's 34 source files: 639 rows from `killset.py rows`, in six batches. 627 were killed. Twelve recorded no death at all, so `killset.py check` does not hold the branch to them and they are none of U309's: eight read zero, `u142.S11_read_handle_requires_closed`, `u112-b.A6_exported_not_product_made`, `u51-item-derivation.H1_export_item_not_payload`, `r1308.M10_count_unchecked`, `u116.M13_utc_year`, `u227.R12_tree_filter`, `u214.M12_frozen_pairs` and `u226.M18_waited_unformatted`; four broke collection with no death, `r572.A1_album_rule_gone`, `r572.A3_album_over_two_hearts`, `r572.A6_album_despite_unreadable` and `r356-a.A13_reason_never_stored`. Each row's measurement is in `docs/mutation/u309-replay-before-a.md` to `-f.md`.
+
+**Measured cost.** Unknown per row. A zero is a guard whose test was removed, merged or weakened since its table was measured, or a guard written twice so one mutation no longer bites; a collection error with no death is a mutation that breaks an import, which the driver cannot read as a kill. Either way the guard may hold today with no test that proves it.
+
+**Closes when:** each of the twelve is driven on `main`: a test that kills it written where the guard is user facing, or the row recorded as no longer applying with its reason. Ledger only.
+
+---
+
+## R-1877. Acquire's code lines and its tests' lines and time stop short of U305's targets
+
+**Found:** at the build of #862, U305, 2026-11-22.
+
+**The mechanism.** U305 brought `src/cratekit/acquire/` from 16,426 lines to
+11,283 (target 13,194, met) and its largest file under 1,500, but its
+code lines, not counting blank, comment or docstring lines, from 8,003 to
+7,193 against a target of 6,856, and its twenty test files from 23,654 lines
+to 19,920 against 17,503, measured at the branch's last code commit. The prose went to its rule and its reason and the
+layout was filled to the width; what is left is statements, and removing them
+with behaviour frozen needs the near copies the cli modules hold (the lossy
+policy, the output exists refusal and the staging moves `cli.py`,
+`bandcamp_cli.py` and `fallback_cli.py` each spell) brought to one home, and
+the match suite's parametrised cases merged where two prove one rule. Their summed
+test time fell from 61.4 to 54.3 seconds measured back to back on one
+container, about 12 percent against the 30 the card asked, most of it the
+export guard's parse cache (`docs/restart/u305.md`).
+
+**Measured cost.** None to a person: behaviour is unchanged. The epic's size
+and test bars carry the gap to the audit.
+
+**Closes when:** the final audit, #872 (U315), measures acquire against
+U290's totals, and a further card takes the near copies if the totals need
+them. Ledger only.
+
+---
+
+## R-1878. A comment in another card's file names a match internal that moved in U305
+
+**Found:** at the build of #862, U305, 2026-11-22.
+
+**The mechanism.** The comment above `_RESOLVED` in `src/cratekit/intake/cli.py`
+points a reader at "the note above `match._REMEMBERED`". U305 split
+`acquire/match.py`, and the remembered reads with that note now live in
+`acquire/match_library.py`. `match._REMEMBERED` no longer exists as an
+attribute of `match`. The file is #864's (U307), so U305 left it. A second comment, in
+`src/cratekit/modules/outbound/tidal_account.py`, named ``match._first_named``
+at the build; #866 (U309) rewrote that file and landed before this unit
+merged, and no comment there names it now.
+
+**Measured cost.** A reader following the comment finds nothing on
+`match`; no code reads the name.
+
+**Closes when:** the comment names `match_library._REMEMBERED`, in #864 or
+any later edit of that file. Ledger only.
+
+---
+
+## R-1879. Acquire still reaches core.binary_refusal, a core module off the named interface
+
+**Found:** at the build of #862, U305, 2026-11-22.
+
+**The mechanism.** `acquire/fallback_cli.py` imports `core.binary_refusal`
+for the `yt-dlp-missing` refusal, as `intake/cli.py` does, and the module is
+not on the import rules' interface list, so acquire's import allowance keeps
+the one line `off-interface cratekit.core.binary_refusal`. The module and the
+list belong to #858 (U301) and #869 (U312): folding `yt_dlp_missing` into
+`core.binaries`, which is on the list, empties both packages' lines without a
+copy in either.
+
+**Measured cost.** None to a person; the seam bar of U290's point 4 holds one
+line open in acquire and one in intake.
+
+**Closes when:** the refusal lives in an interface module and acquire's
+allowance is pruned. Ledger only.
+
+---
+
+## R-1880. Seven favourites seam lines stay, four held by the registry declaring the favourites verbs with no toggle and three by outbound names favorites.cli keeps at module level
+
+**Found:** at the build of #865, U308, 2026-11-22.
+
+**The mechanism.** `tests/ratchets/imports/favorites.txt` keeps seven lines U308
+could not clear from its own files. Four read `dangling favorites
+cratekit.favorites.<verb>_cli`: `cli/registry.py` declares `favorites split`,
+`backfill`, `order` and `refresh` with no toggle, so with the `favorites` module
+off the registry still loads them, from a package the toggle owns. Three read
+`dangling export cratekit.modules.outbound.<hearts|shell|source>`:
+`favorites/cli.py`, which builds `sync favorites`, imports outbound's `hearts`,
+`shell` and `source` at module level, because `tests/test_outbound_workers.py`
+patches `favorites_cli.hearts` there, other files read the outbound constants
+it holds (`NO_MATCH`), and `build_sync` takes its default from `source`.
+
+**Measured cost.** None driven: every toggle is on in the shipped profiles. With
+`favorites` off the four verbs still show and run; with `export` off and
+`favorites` on, `sync favorites` cannot build.
+
+**Closes when:** the registry gates the four verbs on `favorites` (the cli card,
+#860, U303, whose file the registry is), and the outbound card (#866, U309)
+moves the patch in `tests/test_outbound_workers.py` to the outbound module so
+`favorites/cli.py` can import outbound under its functions; then
+`refactor_measure.py prune favorites` empties the file. Ledger only.
+
+---
+
+## R-1881. The recorded kill u108-a G05, the go's digest covering the jobs it would resume, survives on main
+
+**Found:** at the review of #865, U308, 2026-11-22.
+
+**The mechanism.** `docs/mutation/u108-a.json` records `G05_digest_covers_resume`
+(in `label/go.py`, `Summary.plan`: the digest leaves out the jobs a go would
+resume) as killed by
+`test_a_second_go_that_waited_for_the_first_refuses_rather_than_queue_its_tracks_again`.
+Applied verbatim to `go.py` on `main` at `c919209`, all 110 tests of
+`tests/test_label_sync_go.py` pass, the named test included, run alone and in
+its file. So the kill was lost before U308, which keeps the row's state as it
+found it; U308's replay before measures it on the base.
+
+The replay before first measured it killed on `main`, by one death on the
+full suite: `tests/test_repair_rows.py`'s inode bound test, which fails on this
+container's disk whatever the code (#702). That batch subtracted the measured
+baseline alone; measured again subtracting the two inode bound tests as well,
+as the other batches did, the row is a zero on `main`, so no kill of it is owed.
+
+**Measured cost.** Not driven to a user: a go whose resumed jobs changed between
+its gate and its write would be approved on the old digest.
+
+**Closes when:** a test drives a second go whose open jobs change after the
+gate and asserts `decision-stale`, killing G05 again. Ledger only.
+
+---
+
+## R-1882. Two label and favourites inconsistencies a person can see, left as they are by the refactor that froze behaviour
+
+**Found:** at the build of #865, U308, 2026-11-22.
+
+**The mechanism.** U308 changed no behaviour, so it left two differences its
+workers saw. `crate label registry remove <unknown>` exits OK reporting
+`removed: false`, where `set` and `rename` refuse an unknown label with
+`label-unknown`. And `crate favorites backfill` and `crate favorites refresh` open
+their approval gate even when the plan writes nothing, where `favorites split`
+and `favorites order` end NO_OP without asking; `favorites.spine.run` keeps the
+difference as its `gate_first` flag, and tests pin both orders.
+
+**Measured cost.** A person removing a misspelt label is told nothing was
+removed rather than that no such label exists; a person running backfill or
+refresh with nothing to do is asked to approve nothing.
+
+**Closes when:** Phillip decides each as a UX cleanup under #847's rule, posted
+on #847 first. Ledger only.
+
+---
+
+## R-1883. The label and favourites suites run faster on three shortcuts a later change could outgrow
+
+**Found:** at the review of #865, U308, 2026-11-22.
+
+**The mechanism.** U308 took about half the summed test time out of its 34
+files with three shortcuts. An autouse `one_parser` fixture in
+`tests/test_label_workers.py`, imported by most of the label and favourites
+suites, keeps one verb parser per module membership in a module global and
+reuses it across drives and tests in a worker, where a real run builds one per
+process; it holds while no label builder reads state beyond membership and no
+test patches a handler after the build (the reviewer ran all fifteen files with a
+fresh parser per drive, 1,037 passed either way). The favourites suites'
+`_landed_hearts` seeds the rows a landing writes instead of driving the two act
+landing, except one test; the seeded rows differ from a landing's in folder,
+playlist membership, device and empty columns, and forcing a real landing in
+every call passed 93 of 93. And `no_disk_flush` in `tests/test_label_sync.py`
+turns SQLite durability and `os.fsync` off for the sync and go suites, none of
+whose tests asserts durability and no recorded kill names fsync.
+
+**Measured cost.** None today, each measured as above. A later builder that
+reads state at build time, a backfill rule that reads what only a landing
+writes, or a durability guard in the sync record would pass these suites
+unseen.
+
+**Closes when:** the suite card (#869, U312) moves the parser cache into the
+shared test support with its rule beside it, or a change that breaks one of the
+three conditions takes its shortcut out. Ledger only.
+
+---
+
+## R-1884. Full suite baselines fail under parallel load on tests no card owns, so a kill set replay cannot run side by side on one container
+
+**Found:** at the kill set replay of #867, U310, 2026-11-22.
+
+**The mechanism.** A replay batch runs the whole suite twice before its first
+row, the baseline and the null control, and refuses the batch on any death.
+With three batches and four build workers on one four core container, five
+tests outside adopt and deletion failed one baseline or control each and
+passed alone: `tests/test_jobs.py::test_two_processes_claiming_the_same_job_never_claim_one_item_twice`,
+`tests/intake/test_set_progress.py::test_the_watcher_reports_the_bytes_written_while_the_download_runs`,
+`tests/test_rb_writer_guard.py::test_second_writer_refuses_while_lock_held`,
+and the two inode bound tests in `tests/test_repair_rows.py`, the first of
+which also failed alone in a clone under the temporary directory (#702).
+Each refusal came after an hour of baselines, and two batches were then cut
+at the two hour limit with about fifteen rows measured each.
+
+**Measured cost.** About five hours of replay time on this card, and the
+before batches moved to helper containers. The replays read a scratch copy of
+the measured known failures naming these five, the same file before and
+after; the measured `.cloud-battery/baseline.txt` was never edited.
+
+**Closes when:** the three load sensitive tests wait on an event rather than
+on time, or a replay batch on a shared container is documented as one at a
+time. Ledger only.
+
+---
+
+## R-1885. Patching digest_of on the revert module reaches nothing since the ledger was split
+
+**Found:** at the review of #867, U310, 2026-11-22.
+
+**The mechanism.** `adopt/revert.py` was split into `revert.py`,
+`revert_record.py` and `revert_changed.py`. `revert.py` re-exports
+`digest_of`, but its only callers are in `revert_changed.py`, which resolves
+its own module global. A test that patches `cratekit.adopt.revert.digest_of`,
+the site every such test used before the split, now changes nothing and
+passes or fails for another reason. The thirteen tests that patch it were
+moved to `revert_changed` and each was shown to bite.
+
+**Measured cost.** None to a person: no production path is affected. Base
+`tests/test_adoption.py` with its patches unchanged, run over the branch's
+source, fails 11 tests beyond the machine set, which is how the review
+measured it.
+
+**Closes when:** a guard refuses a patch of a name a module only re-exports,
+or the re-export is dropped once nothing outside imports it from `revert`.
+Ledger only.
+
+---
+
+## R-1886. A base cannot be captured with a branch's scenarios once the test modules they borrow import a module the branch added
+
+**Found:** at the behaviour comparison of #867, U310, 2026-11-22.
+
+**The mechanism.** `behaviour_compare.py capture --rev` swaps only `src/`,
+so scenarios and fixtures come from the working tree. This card's scenarios
+borrow fixtures from `tests/test_adoption.py` and `tests/test_deletion.py`,
+and after the split those test modules import `cratekit.adopt.revert_changed`,
+which the base does not have. A capture of the base from the branch's tree
+fails at collection, every scenario unrecorded. DEVELOPING's rule that a
+scenario names nothing the base lacks holds for the scenario file and not for
+the test modules it imports.
+
+**Measured cost.** The comparison was read against the base capture taken
+before the first edit, with the base's own fixtures, which holds it more
+strictly; nothing was lost here. A later card that wants to recapture this
+base from its own tree will meet the same refusal.
+
+**Closes when:** the capture refuses with the import named, or scenario
+fixtures live in a module that imports only what every revision has. Ledger
+only.

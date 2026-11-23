@@ -1,18 +1,14 @@
 """R-1313. A 404 whose body is not JSON is still the provider saying it has nothing.
 
-Found at the review of R-1305. The provider client decodes an error answer's
-body inside its own handler of the HTTP error, so a 404 whose body is a page
-never becomes the client's ``ObjectNotFound``: it surfaces as the decode error
-with the 404 three context links down. Four readers of a not found read the
-failure itself alone, so a track or a release the provider had nothing for was
-retried, failed as the provider being unavailable, and asked again every run.
+The provider client decodes an error answer's body inside its own handler of the HTTP
+error, so a 404 whose body is a page surfaces as the decode error with the 404 down its
+context chain. Four readers of a not found must read through that chain, or a track the
+provider had nothing for is retried and called unavailable every run.
 
-Every failure here is raised by the installed client's own request handler
-(``tests.provider_answers``), not built by hand, so the chain is the client's.
-The four readers: ``adapter.classify_unavailable``, the outbound account's
-``_not_found`` (which asks it), ``isrc_cache.said_not_found`` and the
-catalogue's ``_gone``.
-"""
+Every failure is raised by the installed client's own request handler
+(``tests.provider_answers``), not built by hand. The readers: ``adapter.classify_unavailable``,
+the outbound account's ``_not_found``, ``isrc_cache.said_not_found`` and the catalogue's
+``_gone``."""
 
 from __future__ import annotations
 
@@ -45,17 +41,14 @@ from tests.test_provider_rejection_bodies import cyclic
 
 #: A provider saying it has nothing, with a body the client can and cannot read.
 NOT_FOUND = [
-    pytest.param(404, HTML, id="404-html"),
-    pytest.param(404, b"", id="404-empty"),
+    pytest.param(404, HTML, id="404-html"), pytest.param(404, b"", id="404-empty"),
     pytest.param(404, NOT_FOUND_BODY, id="404-json"),
 ]
 
 #: Answers that say nothing about the thing asked for, whatever their body.
 UNAVAILABLE = [
-    pytest.param(503, HTML, id="503-html"),
-    pytest.param(502, HTML, id="502-html"),
-    pytest.param(503, b"", id="503-empty"),
-    pytest.param(500, NOT_FOUND_BODY, id="500-json"),
+    pytest.param(503, HTML, id="503-html"), pytest.param(502, HTML, id="502-html"),
+    pytest.param(503, b"", id="503-empty"), pytest.param(500, NOT_FOUND_BODY, id="500-json"),
 ]
 
 
@@ -65,10 +58,8 @@ def classified(exc: BaseException) -> bool:
 
 #: Each reader of a not found, as the question "is this failure a not found?"
 READERS: dict[str, Callable[[BaseException], bool]] = {
-    "classify_unavailable": classified,
-    "account": tidal_account._not_found,
-    "isrc_cache": isrc_cache.said_not_found,
-    "catalogue": tidal_catalogue._gone,
+    "classify_unavailable": classified, "account": tidal_account._not_found,
+    "isrc_cache": isrc_cache.said_not_found, "catalogue": tidal_catalogue._gone,
 }
 
 READER_IDS = list(READERS)
@@ -77,11 +68,8 @@ READER_IDS = list(READERS)
 def while_handling(first: Callable[[], Exception], later: Callable[[], Exception]) -> Exception:
     """``later``'s failure, raised while ``first``'s is being handled.
 
-    A failure the client already raised is returned as it came, never raised
-    again: raising an exception inside a handler sets its context to the
-    handled one, which would cut the client's own chain off at the top and
-    put ``first`` where the decode error's links were.
-    """
+    A failure the client already raised is returned as it came, since raising inside a handler
+    would reset its context and cut the client's own chain off."""
     try:
         raise first()
     except Exception:  # noqa: BLE001 - the context is the point
@@ -98,11 +86,8 @@ def while_handling(first: Callable[[], Exception], later: Callable[[], Exception
 def inside_a_refusal(later: Callable[[], Exception]) -> Exception:
     """``later``'s failure, raised while a product refusal raised from a 404 page is handled.
 
-    The shape ``core.cause._chain`` refuses to read context over: a handler
-    that caught a refusal and then met an unrelated failure. The refusal is
-    raised FROM the 404, so the 404 is reachable under it and only the walk's
-    refusal limit keeps it out.
-    """
+    The shape ``core.cause._chain`` refuses to read context over: only the walk's refusal limit
+    keeps the 404 under the refusal out."""
     gone = client_failure(404, HTML)
     refusal = outbound_account.provider_failure(gone, "look up the track 8")
     assert isinstance(refusal, CratekitError)
@@ -116,9 +101,7 @@ def inside_a_refusal(later: Callable[[], Exception]) -> Exception:
     raise AssertionError("unreachable")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. Each reader, on the failure the client raises
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("reader", READER_IDS)
@@ -174,13 +157,10 @@ def test_the_nearest_status_is_the_first_the_walk_reaches():
 
 
 def a_wrapper_of_a_404_raised_while_handling_a_503() -> Exception:
-    """A failure met while handling a wrapper raised FROM a 404 page while a 503 page was handled.
+    """A wrapper raised FROM a 404 page while a 503 page was handled.
 
-    The wrapper says it is the 404 and was merely raised while the 503 was
-    being handled, so off the declared chain the walk reads a link's own
-    declared cause before what it was handling (round one's review: the other
-    order read the 503 first and every reader called the not found an outage).
-    """
+    The wrapper says it is the 404, so the walk reads a link's declared cause before what it
+    was handling; the other order reads the 503 first and calls the not found an outage."""
     outage = client_failure(503, HTML)
     gone = client_failure(404, HTML)
     try:
@@ -200,9 +180,7 @@ def test_off_the_declared_chain_a_links_cause_is_nearer_than_what_it_was_handlin
     later = a_wrapper_of_a_404_raised_while_handling_a_503()
 
     assert cause.nearest_status(later) == 404
-    assert {name: reader(later) for name, reader in READERS.items()} == dict.fromkeys(
-        READERS, True
-    )
+    assert {name: reader(later) for name, reader in READERS.items()} == dict.fromkeys(READERS, True)
 
 
 def test_a_name_reached_only_as_context_is_not_a_not_found():
@@ -218,9 +196,7 @@ def test_a_name_reached_only_as_context_is_not_a_not_found():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. Through each seam: answered once and remembered, or retried and never kept
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture

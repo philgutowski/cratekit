@@ -1,25 +1,11 @@
 """U226: an account playlist read after a write reads it as it stands, not the window that lags it.
 
-Sitting 84 measured on the live account that after a move the client's
-unpaged read (``playlist.tracks()`` with no window) returned the new order at
-once, while the window read every listing in the product walks
-(``acquire.listing.playlist_tracks``) returned the old order, and sometimes
-the new, for at least thirteen minutes. ``order_tracks`` refused a move that
-had landed as "still read as it was before the move after 4 readings".
-
-These tests drive the account adapter against the U220 stand in for the
-provider's client with ``window_only`` set: a read with a window lags each
-write, the unpaged read does not. The read the adapter judges is the unpaged
-one when it holds the whole playlist, so the move and the removal are taken
-as done with nothing sent twice; when the unpaged read is a first page only
-and disagrees with the window, it is a lag, read again and then refused.
-
-R-1360: the unpaged read is walked past a capped first page, so a playlist
-longer than the cap is judged by the read the provider serves current too;
-``walk_lags`` makes the walk's later pages lag as the window does, so the
-first page alone is current, which is how the tests above keep a lag.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+Sitting 84 measured the client's unpaged read (``playlist.tracks()``) showing a
+move at once while the window read (``acquire.listing.playlist_tracks``) lagged
+for minutes. Driven against the U220 stand in with ``window_only`` set: an
+unpaged read holding the whole playlist is the one judged; an unpaged first page
+that disagrees with the window is a lag, read again and then refused. R-1360
+walks the unpaged read past a capped first page. D1 applies.
 """
 
 from __future__ import annotations
@@ -29,20 +15,19 @@ from types import SimpleNamespace
 import pytest
 
 from cratekit.acquire import listing
-from cratekit.core.cause import CratekitError
 from cratekit.modules.outbound import tidal_account
-from tests.test_outbound_order import Provider, _adapter
+from tests.test_outbound_order import Provider, _adapter, _lands, _refused
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
 from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture
 
 
 def _window_lagging(
     members: list[str], lag: int, *, unpaged: int | None = None, walk_lags: bool = False
 ) -> Provider:
-    """A provider whose window read lags each write ``lag`` readings and whose unpaged read does not.
+    """A provider whose window read lags each write ``lag`` readings, its unpaged read not.
 
     ``unpaged`` is how many tracks the unpaged read serves, a first page; None
-    serves a hundred. ``walk_lags`` makes its later pages lag as the window
-    does (R-1360), so a read past its first page cannot be taken whole.
+    serves a hundred. ``walk_lags`` makes its later pages lag too (R-1360).
     """
     provider = Provider(members, lag=lag)
     provider.window_only = True
@@ -51,9 +36,19 @@ def _window_lagging(
     return provider
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The judge
-# ═══════════════════════════════════════════════════════════════════════════
+def _moved_by_a_person(now: list[str], before: list[str], lagging: int, **window) -> Provider:
+    """``now`` after a person's change, the window serving ``before`` for ``lagging`` readings."""
+    provider = _window_lagging(now, 0, **window)
+    provider.previous = (before, 0)
+    provider.lagging = lagging
+    return provider
+
+
+#: An unpaged read of a two track first page whose later pages lag as the window does.
+FIRST_PAGE = {"unpaged": 2, "walk_lags": True}
+
+
+# ── the judge ───────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -66,8 +61,7 @@ def _window_lagging(
         (["a", "b", "c"], ["c", "a", "b"], 3, listing.WINDOW_UNPAGED),
         # The window lags a removal; the unpaged read is whole at the new count.
         (["a", "b", "c"], ["a", "c"], 2, listing.WINDOW_UNPAGED),
-        # The unpaged read a first part of a window short of the declared
-        # count, a track the account cannot play left out of both.
+        # The unpaged read a first part of a window short of the declared count.
         (["a", "b", "c"], ["a", "b"], 4, listing.WINDOW_AGREES),
         (["a", "b", "c"], [], 4, listing.WINDOW_AGREES),
         # R-1360. A first part of a window holding every declared track: the
@@ -116,19 +110,14 @@ def test_the_unpaged_read_asks_the_client_with_no_window():
     assert asked == [{}]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A move
-# ═══════════════════════════════════════════════════════════════════════════
+# ── a move ──────────────────────────────────────────────────────────────────
 
 
 def test_a_move_whose_window_lags_and_unpaged_read_does_not_is_taken_as_done(installed):
     """The measured refusal: every move landed, the window read the old order."""
     provider = _window_lagging(["a", "b", "c", "d"], 99)
     slept: list[float] = []
-    account = _adapter(installed, provider, slept)
-    after = account.order_tracks("mine", ("d", "c", "a", "b"))
-    assert after == ("d", "c", "a", "b")
-    assert provider.members == ["d", "c", "a", "b"]
+    _lands(_adapter(installed, provider, slept), ("d", "c", "a", "b"), provider)
     assert len(provider.moves) == 2, "a move was sent twice"
     assert provider.refused == 0
     assert slept == [], "a read back the unpaged read settled was waited on"
@@ -142,22 +131,17 @@ def test_each_move_carries_the_tag_the_unpaged_read_came_with(installed):
 
 
 def test_an_order_planned_after_a_lagging_window_is_planned_from_the_unpaged_read(installed):
-    """A person's move the window has not caught up with: the moves start from where tracks stand."""
-    provider = _window_lagging(["c", "a", "b"], 0)
-    provider.previous = (["a", "b", "c"], 0)
-    provider.lagging = 99
-    after = _adapter(installed, provider).order_tracks("mine", ("a", "c", "b"))
-    assert after == ("a", "c", "b")
-    assert provider.members == ["a", "c", "b"]
+    """A person's move the window has not caught up with: the moves start where tracks stand."""
+    provider = _moved_by_a_person(["c", "a", "b"], ["a", "b", "c"], 99)
+    _lands(_adapter(installed, provider), ("a", "c", "b"), provider)
 
 
 def test_a_window_that_lags_beside_a_first_page_is_not_read_back_between_moves(installed):
-    """U231: a window that lags every move no longer stops the order; its settle reading says so."""
+    """U231: a window lagging every move no longer stops the order; its settle reading says so."""
     provider = _window_lagging(["a", "b", "c", "d"], 99, unpaged=2, walk_lags=True)
     slept: list[float] = []
     account = _adapter(installed, provider, slept)
-    after = account.order_tracks("mine", ("d", "c", "a", "b"))
-    assert after == ("d", "c", "a", "b")
+    assert account.order_tracks("mine", ("d", "c", "a", "b")) == ("d", "c", "a", "b")
     assert len(provider.moves) == 2, "a move was sent twice"
     assert slept == []
     assert account.settled_order("mine") is None
@@ -167,46 +151,36 @@ def test_a_window_that_lags_beside_a_first_page_is_not_read_back_between_moves(i
 def test_a_window_that_catches_up_beside_a_first_page_settles_as_done(installed):
     provider = _window_lagging(["a", "b", "c", "d"], 1, unpaged=2, walk_lags=True)
     account = _adapter(installed, provider)
-    after = account.order_tracks("mine", ("d", "a", "b", "c"))
-    assert after == ("d", "a", "b", "c")
+    assert account.order_tracks("mine", ("d", "a", "b", "c")) == ("d", "a", "b", "c")
     assert len(provider.moves) == 1
     assert account.settled_order("mine") is None, "the first reading after the move lags"
     assert account.settled_order("mine") == ("d", "a", "b", "c")
 
 
 def test_a_first_reading_whose_window_lags_is_read_again_before_any_move(installed):
-    provider = _window_lagging(["c", "a", "b", "d"], 0, unpaged=2, walk_lags=True)
-    provider.previous = (["a", "b", "c", "d"], 0)
-    provider.lagging = 1
+    provider = _moved_by_a_person(["c", "a", "b", "d"], ["a", "b", "c", "d"], 1, **FIRST_PAGE)
     slept: list[float] = []
-    after = _adapter(installed, provider, slept).order_tracks("mine", ("a", "c", "b", "d"))
-    assert after == ("a", "c", "b", "d")
+    _lands(_adapter(installed, provider, slept), ("a", "c", "b", "d"))
     assert slept == [tidal_account.ORDER_PAUSES[0]]
 
 
 def test_a_first_reading_whose_window_never_catches_up_refuses_with_nothing_moved(installed):
-    provider = _window_lagging(["c", "a", "b", "d"], 0, unpaged=2, walk_lags=True)
-    provider.previous = (["a", "b", "c", "d"], 0)
-    provider.lagging = 99
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider).order_tracks("mine", ("a", "c", "b", "d"))
-    cause = refused.value.cause
+    provider = _moved_by_a_person(["c", "a", "b", "d"], ["a", "b", "c", "d"], 99, **FIRST_PAGE)
+    account = _adapter(installed, provider)
+    cause = _refused(lambda: account.order_tracks("mine", ("a", "c", "b", "d")))
     assert cause.detail["problem"] == "window-lags"
     assert cause.detail["lagged"] == "yes"
     assert "no track was moved" in cause.message
     assert provider.moves == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A removal
-# ═══════════════════════════════════════════════════════════════════════════
+# ── a removal ───────────────────────────────────────────────────────────────
 
 
 def test_a_removal_whose_window_lags_and_unpaged_read_does_not_is_taken_as_done(installed):
     provider = _window_lagging(["a", "b", "c", "d"], 99)
     slept: list[float] = []
-    gone = _adapter(installed, provider, slept).remove_tracks("mine", ("b",))
-    assert gone == ("b",)
+    assert _adapter(installed, provider, slept).remove_tracks("mine", ("b",)) == ("b",)
     assert provider.members == ["a", "c", "d"]
     assert provider.removals == [(1,)], "a removal was sent twice"
     assert slept == []
@@ -217,9 +191,7 @@ def test_a_removal_whose_window_lags_beside_a_first_page_refuses_after_the_bound
     # and the walk past it lags as the window does, so it is never whole.
     provider = _window_lagging(["a", "b", "c", "d"], 99, unpaged=2, walk_lags=True)
     slept: list[float] = []
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider, slept).remove_tracks("mine", ("a",))
-    cause = refused.value.cause
+    cause = _refused(lambda: _adapter(installed, provider, slept).remove_tracks("mine", ("a",)))
     assert cause.detail["problem"] == "read-back-differs"
     assert cause.detail["lagged"] == "yes"
     assert "may have landed" in cause.message
@@ -231,23 +203,16 @@ def test_a_removal_whose_window_lags_beside_a_first_page_refuses_after_the_bound
 
 def test_a_removal_planned_from_a_lagging_window_takes_the_track_where_it_stands(installed):
     """A person's move the window has not caught up with: the position is the unpaged read's."""
-    provider = _window_lagging(["b", "a", "c"], 0)
-    provider.previous = (["a", "b", "c"], 0)
-    provider.lagging = 99
-    gone = _adapter(installed, provider).remove_tracks("mine", ("b",))
-    assert gone == ("b",)
+    provider = _moved_by_a_person(["b", "a", "c"], ["a", "b", "c"], 99)
+    assert _adapter(installed, provider).remove_tracks("mine", ("b",)) == ("b",)
     assert provider.removals == [(0,)]
     assert provider.members == ["a", "c"]
 
 
 def test_a_removal_whose_first_reading_lags_beside_a_first_page_sends_nothing(installed):
-    provider = _window_lagging(["b", "a", "c"], 0, unpaged=2, walk_lags=True)
-    provider.previous = (["a", "b", "c"], 0)
-    provider.lagging = 99
+    provider = _moved_by_a_person(["b", "a", "c"], ["a", "b", "c"], 99, **FIRST_PAGE)
     slept: list[float] = []
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider, slept).remove_tracks("mine", ("b",))
-    cause = refused.value.cause
+    cause = _refused(lambda: _adapter(installed, provider, slept).remove_tracks("mine", ("b",)))
     assert cause.detail["problem"] == "window-lags"
     assert cause.detail["readings"] == str(tidal_account.ORDER_REREADS + 1)
     assert "nothing was taken off it" in cause.message
@@ -257,34 +222,23 @@ def test_a_removal_whose_first_reading_lags_beside_a_first_page_sends_nothing(in
 
 def test_a_removal_whose_first_reading_lags_once_is_read_again_and_lands(installed):
     """Round one's review: a lag at the positions read pauses rather than stopping the write."""
-    provider = _window_lagging(["b", "a", "c"], 0, unpaged=2, walk_lags=True)
-    provider.previous = (["a", "b", "c"], 0)
-    provider.lagging = 1
+    provider = _moved_by_a_person(["b", "a", "c"], ["a", "b", "c"], 1, **FIRST_PAGE)
     slept: list[float] = []
-    gone = _adapter(installed, provider, slept).remove_tracks("mine", ("b",))
-    assert gone == ("b",)
+    assert _adapter(installed, provider, slept).remove_tracks("mine", ("b",)) == ("b",)
     assert provider.removals == [(0,)]
     assert provider.members == ["a", "c"]
     assert slept == [tidal_account.ORDER_PAUSES[0]]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The declared total rule stands
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_window_short_of_the_declared_total_still_refuses_with_nothing_sent(installed):
     provider = _window_lagging(["a", "b", "c"], 0)
     provider.declared = 4
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider).remove_tracks("mine", ("b",))
-    assert refused.value.cause.detail["problem"] == "positions-unknown"
+    cause = _refused(lambda: _adapter(installed, provider).remove_tracks("mine", ("b",)))
+    assert cause.detail["problem"] == "positions-unknown"
     assert provider.removals == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The measurement
-# ═══════════════════════════════════════════════════════════════════════════
+# ── the measurement ─────────────────────────────────────────────────────────
 
 
 def test_every_judged_reading_records_its_readings_and_wait(installed):
@@ -307,9 +261,8 @@ def test_every_judged_reading_records_its_readings_and_wait(installed):
 
 def test_the_pause_after_a_412_is_counted_in_the_moves_record(installed):
     """Round two's review of U226: the one pause outside every record is now in one."""
-    provider = Provider(["a", "b", "c"], stale_tags=1)
     slept: list[float] = []
-    account = _adapter(installed, provider, slept)
+    account = _adapter(installed, Provider(["a", "b", "c"], stale_tags=1), slept)
     account.order_tracks("mine", ("c", "a", "b"))
     assert slept == [tidal_account.ORDER_PAUSES[0]]
     assert sum(one["waited"] for one in account.read_backs()) == sum(slept)
@@ -317,22 +270,16 @@ def test_the_pause_after_a_412_is_counted_in_the_moves_record(installed):
     assert account.read_backs()[1]["stale"] == 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# R-1360: past the unpaged read's first page
-# ═══════════════════════════════════════════════════════════════════════════
-#
-# U226 judged a playlist by its unpaged read beside the window, but the
-# client's unpaged read is most likely capped at the provider's page of a
-# hundred, and a first page the window began with agreed with it, so a change
-# past the first hundred the window lagged was planned from and written at a
-# stale position. The unpaged read now walks on past its first page, and a
-# first part read beside a whole window is a lag.
+# ── R-1360: past the unpaged read's first page ──────────────────────────────
+# The client's unpaged read is most likely capped at the provider's page of a
+# hundred, so it walks on past its first page, and a first part read beside a
+# whole window is a lag.
 
 CAP = listing.PAGE_SIZES["playlist_tracks"]
 
 
 class Capped:
-    """A playlist read through the client's shape, its unpaged read capped at ``cap``: every request recorded."""
+    """A playlist in the client's shape, its unpaged read capped at ``cap``, every request kept."""
 
     def __init__(self, members: list[str], cap: int = CAP, *, declared: object = "len") -> None:
         self.members = list(members)
@@ -354,50 +301,50 @@ def _long(count: int) -> list[str]:
     return [f"t{index:03d}" for index in range(count)]
 
 
-def _ids(rows) -> list[str]:
-    return [listing.row_id(row) for row in rows]
+def _unpaged(playlist: Capped, **kwargs) -> list[str]:
+    return [listing.row_id(row) for row in listing.playlist_tracks_unpaged(playlist, **kwargs)]
 
 
 def test_the_unpaged_read_walks_past_a_capped_first_page_one_track_back():
     playlist = Capped(_long(250))
-    assert _ids(listing.playlist_tracks_unpaged(playlist)) == _long(250)
+    assert _unpaged(playlist) == _long(250)
     assert playlist.asked == [{}, {"offset": CAP - 1}, {"offset": 2 * CAP - 2}]
 
 
 @pytest.mark.parametrize("count", [0, 1, CAP - 1, CAP])
 def test_a_playlist_its_first_read_holds_whole_is_read_once(count):
     playlist = Capped(_long(count))
-    assert _ids(listing.playlist_tracks_unpaged(playlist)) == _long(count)
+    assert _unpaged(playlist) == _long(count)
     assert playlist.asked == [{}]
 
 
 @pytest.mark.parametrize("declared", [None, True, -1, "150"])
 def test_a_playlist_declaring_no_count_is_read_once(declared):
     playlist = Capped(_long(150), declared=declared)
-    assert _ids(listing.playlist_tracks_unpaged(playlist)) == _long(CAP)
+    assert _unpaged(playlist) == _long(CAP)
     assert playlist.asked == [{}]
 
 
 def test_a_cap_of_one_track_is_read_once_rather_than_walked_forever():
     playlist = Capped(_long(5), cap=1)
-    assert _ids(listing.playlist_tracks_unpaged(playlist)) == ["t000"]
+    assert _unpaged(playlist) == ["t000"]
     assert playlist.asked == [{}]
 
 
 def test_a_page_that_does_not_start_where_the_last_ended_ends_the_walk_before_it():
-    """A track the account cannot play, or a change between two requests, shifts every later position."""
+    """A track the account cannot play, or a change between requests, shifts later positions."""
 
     class Shifted(Capped):
         def served(self, offset):
             return self.members if not offset else self.members[1:]
 
     playlist = Shifted(_long(250))
-    assert _ids(listing.playlist_tracks_unpaged(playlist)) == _long(CAP)
+    assert _unpaged(playlist) == _long(CAP)
     assert len(playlist.asked) == 2
 
 
 def test_a_page_carrying_another_version_tag_ends_the_walk_before_it():
-    """A later page served from before a write carries the tag it had then, even where its tracks line up."""
+    """A later page served from before a write carries the tag it had then."""
 
     class Stale(Capped):
         def tracks(self, **kwargs):
@@ -406,7 +353,7 @@ def test_a_page_carrying_another_version_tag_ends_the_walk_before_it():
             return super().tracks(**kwargs)
 
     playlist = Stale(_long(250))
-    assert _ids(listing.playlist_tracks_unpaged(playlist)) == _long(CAP)
+    assert _unpaged(playlist) == _long(CAP)
     assert len(playlist.asked) == 2
 
 
@@ -417,8 +364,7 @@ def test_a_page_longer_than_the_first_ends_the_walk_before_it():
                 self.cap = CAP + 1
             return super().tracks(**kwargs)
 
-    playlist = Growing(_long(250))
-    assert _ids(listing.playlist_tracks_unpaged(playlist)) == _long(CAP)
+    assert _unpaged(Growing(_long(250))) == _long(CAP)
 
 
 def test_an_empty_later_page_ends_the_walk():
@@ -427,14 +373,14 @@ def test_an_empty_later_page_ends_the_walk():
             return self.members if not offset else []
 
     playlist = Ends(_long(250))
-    assert _ids(listing.playlist_tracks_unpaged(playlist)) == _long(CAP)
+    assert _unpaged(playlist) == _long(CAP)
     assert len(playlist.asked) == 2
 
 
 def test_a_short_later_page_is_the_last_one_asked_for():
     """A count that declares more than the provider serves stops at the first short page."""
     playlist = Capped(_long(150), declared=400)
-    assert _ids(listing.playlist_tracks_unpaged(playlist)) == _long(150)
+    assert _unpaged(playlist) == _long(150)
     assert len(playlist.asked) == 2
 
 
@@ -455,61 +401,52 @@ def test_each_later_page_goes_through_the_retry_ladder():
             return super().tracks(**kwargs)
 
     slept: list[float] = []
-    playlist = Flaky(_long(150))
-    assert _ids(listing.playlist_tracks_unpaged(playlist, sleep=slept.append)) == _long(150)
+    assert _unpaged(Flaky(_long(150)), sleep=slept.append) == _long(150)
     assert len(slept) == 1
 
 
-def _tail_moved(old: list[str]) -> list[str]:
-    """A person's move past the first hundred: the last track put at position 120."""
+def _long_lagging(*, walk_lags: bool = False) -> Provider:
+    """150 tracks, the unpaged read capped at 100, the window serving the order before a
+    person put the last track at position 120."""
+    old = _long(150)
     moved = list(old)
     moved.insert(120, moved.pop())
-    return moved
+    return _moved_by_a_person(moved, old, 99, unpaged=CAP, walk_lags=walk_lags)
 
 
-def _long_lagging(*, walk_lags: bool = False) -> tuple[Provider, list[str]]:
-    """A hundred and fifty tracks, the unpaged read capped at a hundred, the window serving the order before a person's move past them."""
-    old = _long(150)
-    provider = _window_lagging(_tail_moved(old), 0, unpaged=CAP, walk_lags=walk_lags)
-    provider.previous = (old, 0)
-    provider.lagging = 99
-    return provider, old
+def _t130_first(provider: Provider) -> tuple[str, ...]:
+    return ("t130", *[one for one in provider.members if one != "t130"])
 
 
 def test_an_order_past_the_first_hundred_moves_the_track_where_it_stands(installed):
     """On main the stale window put t130 at 130, where t129 stands: the wrong track was moved."""
-    provider, _old = _long_lagging()
-    asked = ("t130", *[one for one in provider.members if one != "t130"])
-    after = _adapter(installed, provider).order_tracks("mine", asked)
-    assert after == asked
-    assert provider.members == list(asked)
+    provider = _long_lagging()
+    asked = _t130_first(provider)
+    _lands(_adapter(installed, provider), asked, provider)
     assert [indices for indices, _to, _tag in provider.moves] == [(131,)]
 
 
 def test_a_removal_past_the_first_hundred_takes_the_track_where_it_stands(installed):
-    provider, _old = _long_lagging()
-    gone = _adapter(installed, provider).remove_tracks("mine", ("t130",))
-    assert gone == ("t130",)
+    provider = _long_lagging()
+    assert _adapter(installed, provider).remove_tracks("mine", ("t130",)) == ("t130",)
     assert provider.removals == [(131,)], "a track was taken off by its stale position"
     assert "t130" not in provider.members and "t129" in provider.members
 
 
 def test_an_order_whose_later_pages_lag_too_is_held_with_nothing_moved(installed):
-    provider, _old = _long_lagging(walk_lags=True)
-    asked = ("t130", *[one for one in provider.members if one != "t130"])
+    provider = _long_lagging(walk_lags=True)
     slept: list[float] = []
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider, slept).order_tracks("mine", asked)
-    assert refused.value.cause.detail["problem"] == "window-lags"
+    account = _adapter(installed, provider, slept)
+    cause = _refused(lambda: account.order_tracks("mine", _t130_first(provider)))
+    assert cause.detail["problem"] == "window-lags"
     assert provider.moves == []
     assert len(slept) == tidal_account.ORDER_REREADS
 
 
 def test_a_removal_whose_later_pages_lag_too_is_held_with_nothing_taken_off(installed):
-    provider, _old = _long_lagging(walk_lags=True)
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider).remove_tracks("mine", ("t130",))
-    assert refused.value.cause.detail["problem"] == "window-lags"
+    provider = _long_lagging(walk_lags=True)
+    cause = _refused(lambda: _adapter(installed, provider).remove_tracks("mine", ("t130",)))
+    assert cause.detail["problem"] == "window-lags"
     assert provider.removals == []
 
 
@@ -518,6 +455,5 @@ def test_a_long_playlist_nothing_changed_is_read_whole_and_written_once(installe
     provider = Provider(_long(150))
     provider.unpaged_size = CAP
     asked = ("t140", *[one for one in _long(150) if one != "t140"])
-    after = _adapter(installed, provider).order_tracks("mine", asked)
-    assert after == asked
+    assert _adapter(installed, provider).order_tracks("mine", asked) == asked
     assert [indices for indices, _to, _tag in provider.moves] == [(140,)]

@@ -10,7 +10,7 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Mapping
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
@@ -38,18 +38,13 @@ def _load(cfg: config.Config) -> dict[str, str]:
         return {}
     version = raw.get("version")
     if version not in (None, MARKS_VERSION):
-        raise _unusable(
-            path, f"it says version {version!r} and this build writes {MARKS_VERSION}"
-        )
+        raise _unusable(path, f"it says version {version!r} and this build writes {MARKS_VERSION}")
     records = raw.get("labels", raw)
     if not isinstance(records, Mapping):
         raise _unusable(path, "it has no labels map")
     found: dict[str, str] = {}
     for key, value in records.items():
-        if isinstance(value, Mapping):
-            year = value.get("last_pulled")
-        else:
-            year = value
+        year = value.get("last_pulled") if isinstance(value, Mapping) else value
         if year:
             found[str(key)] = str(year)
     return found
@@ -57,27 +52,18 @@ def _load(cfg: config.Config) -> dict[str, str]:
 
 def _write(cfg: config.Config, records: Mapping[str, str]) -> None:
     path = config.state_path("label_watermarks", cfg)
-    payload: dict[str, Any] = {
-        "version": MARKS_VERSION,
-        "labels": {key: {"last_pulled": year} for key, year in sorted(records.items())},
-    }
+    labels = {key: {"last_pulled": year} for key, year in sorted(records.items())}
+    document = {"version": MARKS_VERSION, "labels": labels}
     config.atomic_write_bytes(
-        (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8"),
-        path,
+        (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8"), path
     )
 
 
 def _follow(records: dict[str, str]) -> bool:
     """Move each year the registry's R-381 re-key left behind. True if any moved.
 
-    The registry is installation scoped and cannot reach this library's file,
-    so it records its moves and this side follows them the next time it is
-    read. A new identifier that already has a year keeps it, and the old year
-    stays where it is rather than overwriting it.
-
-    AN UNREADABLE REGISTRY FOLLOWS NOTHING rather than refusing the watermark.
-    Nothing is claimed by not following, the year simply stays under the
-    identifier it was written with, and the registry's own verbs refuse it.
+    A new identifier that already has a year keeps it. AN UNREADABLE REGISTRY
+    FOLLOWS NOTHING, which claims nothing; its own verbs refuse it.
     """
     try:
         renamed = registry.RegistryStore().load().live_renames()
@@ -114,10 +100,8 @@ def _locked(cfg: config.Config, doing: str) -> Iterator[None]:
 def read(cfg: config.Config, label_id: str) -> str | None:
     """The last-pulled year for ``label_id``, or None if never recorded.
 
-    A year the R-381 re-key left under an old identifier is followed and
-    written. If the file cannot be locked the followed year is still the
-    answer, since a read that refused would be a new way for a status view to
-    fail, and the move is made by the next read or advance that can lock.
+    A re-keyed year (R-381) is followed and written; if the file cannot be
+    locked the followed year is still the answer, and the next lock moves it.
     """
     records = _load(cfg)
     if _follow(records):

@@ -1,60 +1,37 @@
 """The owned hearts the account carries, placed where a landing now puts them (U120, U146).
 
-``crate favorites backfill`` is the attended half of the favourites
-placement: the hearts the library owns that are not in All Favorites and
-their month are found, shown, and placed in one guarded session. This module
-gathers them and writes them; ``backfill_cli`` asks. The native landing given
-a pass calls :func:`plan_owned` and :func:`apply` too, for the owned hearts of
-a pass that brought no file (U146).
+``crate favorites backfill`` asks; this module gathers and writes, and the
+native landing calls :func:`plan_owned` and :func:`apply` for a pass that
+brought no file. A heart to place is one a hearts job reported, in any state,
+whose row resolves to a file the library holds, and that All Favorites and a
+dated playlist beside it do not both hold (:func:`placement.filed`).
 
-**WHAT A HEART TO PLACE IS, SINCE U146.** The author answered U120's open
-question on 2026-10-14: a heart on a track the library owns is a favourite,
-whether this product downloaded it or the library held it already. So a heart
-is placed here when a hearts job on this library REPORTED it, in any state,
-and the row resolves to a file the library holds now, by the one match rule.
-U120's two narrowings are gone: the job no longer has to have downloaded it,
-and the file no longer has to sit in a batch folder under the music dir. A
-heart All Favorites holds is placed only when no dated playlist beside it
-holds it (:func:`placement.filed`), the heart a landing put in All Favorites
-with no month; any other is already placed and is counted, not listed.
-
-**THE ACCOUNT IS ASKED ONCE, AND ONLY WHEN A HEART NEEDS PLACING.** Every
-heart to place is checked against the account's hearts, listed once, because
-the backlog is every heart a job ever reported and the author may have taken
-one back since. A heart a whole listing no longer carries is taken back and
-named; one a short listing, or one with no published count, lacks is held
-back and named, since it may be a heart the provider withheld. A heart the
-author took out of All Favorites in rekordbox, a membership marked removed, is
-taken back and named too, run after run.
-
-**THE DATE IS THE JOB'S, ELSE THE ACCOUNT'S.** A job frozen since U120 carries
-each heart's date on its row, and the month is read from there as the landing
-reads it; a row with no date is dated from the listing, and a heart dated
-nowhere goes to ``Undated``, and the screen says how many.
-
-**NOTHING HERE TAKES A HEART OR A MEMBERSHIP AWAY**, R36 and the author's
-"both sides add" of 2026-10-14.
+**THE ACCOUNT IS ASKED ONCE, ONLY WHEN A HEART NEEDS PLACING**: a heart a whole
+listing lacks is taken back, one a short or uncounted listing lacks is held
+back, and one the author took out of All Favorites stays out. **THE DATE IS THE
+JOB'S, ELSE THE ACCOUNT'S**, else ``Undated``. **NOTHING IS TAKEN AWAY** (R36).
 
 Layer: modules.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Iterable, Sequence
 
 from cratekit.acquire import match, match_cli
-from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, jobs, rb_writer, session, tree_registry
-from cratekit.core.cause import CratekitError, refuse
-from cratekit.favorites import colour, placeholders, placement
+from cratekit.core import config, convergence, jobs, rb_writer, session
+from cratekit.core.cause import CratekitError
+from cratekit.favorites import colour, placeholders, placement, spine
 from cratekit.intake import account_playlists, batch_name, native
 from cratekit.intake import cli as intake_cli
-from cratekit.label import catalogue
-from cratekit.label import cli as label_cli
 from cratekit.write import trees
+
+if TYPE_CHECKING:
+    from cratekit.label import catalogue
 
 #: The session workflow the backfill is recorded under, and its plan's kind.
 WORKFLOW = "favorites-placement"
@@ -87,10 +64,13 @@ class OwnedHeart:
     def month(self) -> str:
         return placeholders.month_label(self.hearted)
 
-
-# ---------------------------------------------------------------------------
-# Gathering
-# ---------------------------------------------------------------------------
+    @classmethod
+    def of(cls, row: account_playlists.HeartRow, path: Path, content_id: str) -> OwnedHeart:
+        """The heart a job's row reports, on the library row its file is."""
+        dated_by = "job" if row.hearted is not None else "none"
+        return cls(
+            row.ref, path, content_id, row.title, row.job_id, row.hearted, dated_by, row.known
+        )
 
 
 def hearts_jobs(cfg: config.Config) -> tuple[jobs.Job, ...]:
@@ -104,31 +84,38 @@ def hearts_jobs(cfg: config.Config) -> tuple[jobs.Job, ...]:
     return tuple(sorted(found, key=lambda job: (job.created, job.job_id)))
 
 
+def reported(cfg: config.Config) -> tuple[list[account_playlists.HeartRow], tuple[str, ...]]:
+    """Every row the library's hearts jobs reported, any state, oldest job first, and jobs unread.
+
+    A JOB WHOSE REPORTS CANNOT BE READ IS SKIPPED AND NAMED rather than refusing:
+    the store holds every job ever queued, one queued before U57 has no items,
+    and one old job must not make every later heart unplaceable.
+    """
+    rows: list[account_playlists.HeartRow] = []
+    unreadable: list[str] = []
+    with jobs.open_store() as store:
+        for job in hearts_jobs(cfg):
+            try:
+                rows.extend(account_playlists.carried_hearts(store, job, states=None))
+            except CratekitError:
+                unreadable.append(job.job_id)
+    return rows, tuple(unreadable)
+
+
 def carried(
     cfg: config.Config,
 ) -> tuple[tuple[account_playlists.HeartRow, ...], tuple[str, ...]]:
     """Every heart the library's hearts jobs reported, in any state, a provider identifier once, and the jobs unread.
 
-    EVERY STATE SINCE U146: an owned heart is a heart to place as much as one
-    a job downloaded. THE MENTION THAT KNOWS ITS DATE WINS, else the first, by
-    the rule the landing's claims use. A JOB WHOSE REPORTS CANNOT BE READ IS
-    SKIPPED AND NAMED rather than refusing the whole backfill: the store holds
-    every job ever queued, a job a build before U57 queued has no items, and
-    one old job must not make every later heart unplaceable.
+    THE MENTION THAT KNOWS ITS DATE WINS, else the first, by the rule the
+    landing's claims use.
     """
+    found, unreadable = reported(cfg)
     rows: dict[str, account_playlists.HeartRow] = {}
-    unreadable: list[str] = []
-    with jobs.open_store() as store:
-        for job in hearts_jobs(cfg):
-            try:
-                found = account_playlists.carried_hearts(store, job, states=None)
-            except CratekitError:
-                unreadable.append(job.job_id)
-                continue
-            for row in found:
-                if account_playlists.prefer_dated(rows.get(row.ref), row):
-                    rows[row.ref] = row
-    return tuple(rows.values()), tuple(unreadable)
+    for row in found:
+        if account_playlists.prefer_dated(rows.get(row.ref), row):
+            rows[row.ref] = row
+    return tuple(rows.values()), unreadable
 
 
 def owned_paths(
@@ -136,22 +123,23 @@ def owned_paths(
 ) -> list[tuple[account_playlists.HeartRow, Path]]:
     """Each heart with the library file it resolves to now, hearts the library lacks left out.
 
-    Resolved against the library as the intake worker resolves, tombstones
-    included, so a heart whose file was deleted on purpose is not placed. A
-    heart that resolves to several files, a lossless twin beside a marked
-    copy, is placed on each, since each is the same heart. WHERE THE FILE
-    SITS IS NO LONGER ASKED (U146): a file the source system filed deep is the
-    author's track as much as one a landing put in a batch folder.
+    Resolved as the intake worker resolves, tombstones included. A heart that
+    resolves to several files, a lossless twin beside a marked copy, is placed
+    on each; where the file sits is not asked (U146).
     """
     if not rows:
         return []
-    index, suppresses, identify = match_cli.library_view(cfg)
-    found: list[tuple[account_playlists.HeartRow, Path]] = []
-    for row in rows:
-        resolved = match.resolve_one(row.wanted, index, suppresses=suppresses, suppression_id=identify)
-        if resolved.state is not match.MatchState.MATCHED:
-            continue
-        found.extend((row, Path(said)) for said in resolved.paths)
+    return resolved(match_cli.library_view(cfg), [(row, row.wanted) for row in rows])
+
+
+def resolved(view: tuple[Any, Any, Any], wanted: Iterable[tuple[Any, match.Wanted]]) -> list:
+    """Each ``(key, track)`` with every library file the one match rule resolves the track to."""
+    index, suppresses, identify = view
+    found: list[tuple[Any, Path]] = []
+    for key, track in wanted:
+        hit = match.resolve_one(track, index, suppresses=suppresses, suppression_id=identify)
+        if hit.state is match.MatchState.MATCHED:
+            found.extend((key, Path(said)) for said in hit.paths)
     return found
 
 
@@ -171,104 +159,59 @@ class Listing:
 def listed(cfg: config.Config) -> Listing:
     """The account's hearts, listed once through the one hearts listing.
 
-    A listing that cannot be read refuses with the listing's own reason. A
-    SHORT LISTING IS CARRIED BACK, not discarded: the provider counts hearts
-    it will not serve and leaves them out, so a heart absent from a short
-    listing may be a heart withheld, and the caller holds it back rather than
-    taking it back.
+    A listing that cannot be read refuses with its own reason. A SHORT LISTING
+    IS CARRIED BACK: a heart absent from it may be one the provider withheld,
+    and the caller holds it back rather than taking it back.
     """
+    from cratekit.label import catalogue
+    from cratekit.label import cli as label_cli
+
     found = catalogue.resolve(cfg)
     tracks, short = label_cli.favourite_tracks_or_refuse(found, intake_cli.FAVORITES)
-    # WHOLE ONLY WHEN THE PROVIDER PUBLISHED A COUNT AND THE LISTING REACHED
-    # IT. The count rides on the catalogue after its listing; a catalogue that
-    # knows no count published none.
+    # WHOLE ONLY WHEN THE PROVIDER PUBLISHED A COUNT AND THE LISTING REACHED IT.
     declared = getattr(found, "hearts_declared", None)
     whole = short is None and declared is not None and len(tracks) >= declared
     dates: dict[str, datetime | None] = {}
     for track in tracks:
         ref = str(getattr(track, "id", "") or "")
-        if not ref:
-            # A ROW WITH NO IDENTIFIER IS NO HEART'S EVIDENCE: an empty key
-            # would read as carrying every heart whose own ref is empty.
-            continue
-        when = placeholders.parse_hearted(intake_cli.hearted_on(track))
-        if dates.get(ref) is None:
-            dates[ref] = when
+        # A ROW WITH NO IDENTIFIER IS NO HEART'S EVIDENCE.
+        if ref and dates.get(ref) is None:
+            dates[ref] = placeholders.parse_hearted(intake_cli.hearted_on(track))
     return Listing(dates=dates, short=short, whole=whole)
-
-
-@dataclass(frozen=True, slots=True)
-class Gathered:
-    """The hearts to place, and what finding them left aside."""
-
-    hearts: tuple[OwnedHeart, ...]
-    #: How many dates the account supplied.
-    asked: int
-    #: Hearts a listing that is not known whole did not carry: held back
-    #: unplaced, since a withheld heart is not one taken back.
-    held_back: tuple[OwnedHeart, ...] = ()
-    #: The jobs whose reports could not be read, skipped and named.
-    unreadable: tuple[str, ...] = ()
-    short: catalogue.HeartsShortfall | None = None
-    #: Hearts the author took back: the All Favorites membership exists as
-    #: REMOVED in rekordbox, or the account, listed whole, no longer carries
-    #: the heart. Never placed, and named.
-    taken_back: tuple[OwnedHeart, ...] = ()
-    #: Whether the account was listed and no count was published, so a heart
-    #: it lacks could not be told from one withheld.
-    uncounted: bool = False
-    #: Hearts the library owns that All Favorites and a dated playlist beside
-    #: it already hold: counted, never listed, nothing to write.
-    already: int = 0
-    #: Every live member of the source with its title, for the colour read
-    #: (U153): a member with no colour takes Pink and no membership.
-    members: tuple[tuple[str, str], ...] = ()
 
 
 def source_members(db: Any, home: placement.Home) -> tuple[tuple[str, str], ...]:
     """Every live member of the source playlist with its title, in row order.
 
     THE ROWS THE BACKFILL COLOURS WITHOUT A JOB (U153): a member of All
-    Favorites is a favourite whatever put it there, a landing, the source
-    system or a hand, so the colour read covers every one, and asks the
-    account nothing, since the row's membership is the whole of the claim.
+    Favorites is a favourite whatever put it there.
     """
-    found: list[tuple[str, str]] = []
-    for content_id in _member_order(placement.members(db, home.source_id)):
-        row = db.get_content(ID=content_id)
-        if row is None:
-            continue
-        found.append((content_id, str(getattr(row, "Title", "") or "")))
-    return tuple(found)
+    ordered = _member_order(placement.members(db, home.source_id))
+    rows = ((cid, db.get_content(ID=cid)) for cid in ordered)
+    titled = ((cid, getattr(row, "Title", "")) for cid, row in rows if row is not None)
+    return tuple((cid, str(title or "")) for cid, title in titled)
 
 
 def _member_order(content_ids: Iterable[str]) -> list[str]:
-    """A stable order over content ids that does not assume they are numeric.
-
-    rekordbox numbers content rows, so a numeric sort reads naturally, but a
-    non-numeric id must not take the whole plan down with a ``ValueError``: a
-    numeric id sorts by its value, anything else sorts after, by its text.
-    """
+    """A stable order over content ids: numeric ones by value, anything else after, by its text."""
     return sorted(
         content_ids, key=lambda c: (0, int(c), "") if str(c).isdigit() else (1, 0, str(c))
     )
 
 
-def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> Gathered:
-    """Every owned heart to place with its row and its date, and what was left aside."""
+def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> BackfillPlan:
+    """Every owned heart to place with its row and its date, and what was left aside, unplanned."""
     rows, unreadable = carried(cfg)
     located = owned_paths(cfg, rows)
-    members = source_members(db, home)
+    left = BackfillPlan(hearts=(), unreadable=unreadable, recolour=source_members(db, home))
     if not located:
-        return Gathered(hearts=(), asked=0, unreadable=unreadable, members=members)
+        return left
     by_path = native.content_ids_for(db, cfg, [path for _row, path in located])
-    # THE SOURCE MEMBERS ARE READ ONCE: source_members already walked them for
-    # the colour read, so the membership set this gather needs is their ids.
-    in_source = frozenset(cid for cid, _title in members)
+    # THE SOURCE MEMBERS ARE READ ONCE, by source_members for the colour read.
+    in_source = frozenset(cid for cid, _title in left.recolour)
     filed = placement.filed(db, home)
-    # THE AUTHOR'S DECISION IN REKORDBOX: a heart whose membership in the
-    # source exists as removed, and is not live again, was taken out by hand,
-    # and the backfill never puts it back, run after run.
+    # THE AUTHOR'S DECISION IN REKORDBOX: a membership marked removed and not
+    # live again was taken out by hand, and is never put back.
     removed = placement.members_marked_removed(db, home.source_id) - in_source
     candidates: list[OwnedHeart] = []
     taken: list[OwnedHeart] = []
@@ -282,62 +225,41 @@ def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> Gathered:
         if content_id in in_source and content_id in filed:
             already += 1
             continue
-        heart = OwnedHeart(
-            ref=row.ref,
-            path=path,
-            content_id=content_id,
-            title=row.title,
-            job_id=row.job_id,
-            hearted=row.hearted,
-            dated_by="job" if row.hearted is not None else "none",
-            known=row.known,
-        )
+        heart = OwnedHeart.of(row, path, content_id)
         if content_id in removed:
             taken.append(replace(heart, dated_by=REMOVED_IN_REKORDBOX))
             continue
         candidates.append(heart)
     if not candidates:
-        return Gathered(
-            hearts=(),
-            asked=0,
-            unreadable=unreadable,
-            taken_back=tuple(taken),
-            already=already,
-            members=members,
-        )
+        return replace(left, taken_back=tuple(taken), already=already)
     listing = listed(cfg)
     hearts: list[OwnedHeart] = []
     held: list[OwnedHeart] = []
     asked = 0
     for heart in candidates:
-        # NOT ON THE ACCOUNT NOW: on a listing known whole the author took it
-        # back, and it is named; on a short listing, or one with no published
-        # count, the provider may have withheld it, and it is held back.
+        # NOT ON THE ACCOUNT NOW: taken back off a listing known whole, else
+        # held back, since the provider may have withheld it.
         if not heart.ref or heart.ref not in listing.dates:
             if listing.whole:
                 taken.append(replace(heart, dated_by=OFF_THE_ACCOUNT))
             else:
                 held.append(heart)
             continue
-        # THE JOB'S DATE FIRST, AND ITS "NO DATE" TOO: only a row frozen by a
-        # build before U120, with no key at all, is dated from the listing,
-        # so a heart the job dated nowhere is Undated here as at the landing.
-        if not heart.known:
-            when = listing.dates.get(heart.ref)
-            if when is not None:
-                heart = replace(heart, hearted=when, dated_by="account")
-                asked += 1
+        # THE JOB'S DATE FIRST, AND ITS "NO DATE" TOO: only a row frozen with no
+        # key at all, before U120, is dated from the listing.
+        if not heart.known and (when := listing.dates.get(heart.ref)) is not None:
+            heart = replace(heart, hearted=when, dated_by="account")
+            asked += 1
         hearts.append(heart)
-    return Gathered(
+    return replace(
+        left,
         hearts=tuple(sorted(hearts, key=lambda one: (one.month, one.title))),
         asked=asked,
         held_back=tuple(held),
-        unreadable=unreadable,
-        short=listing.short,
+        withheld=listing.short.withheld if listing.short is not None else 0,
         taken_back=tuple(taken),
         uncounted=not listing.whole and listing.short is None,
         already=already,
-        members=members,
     )
 
 
@@ -346,47 +268,23 @@ def owned_in_library(
 ) -> tuple[OwnedHeart, ...]:
     """A pass's owned hearts with the row each one's report file is, for the landing (U146).
 
-    THE REPORT'S OWN FILES, the first one an active row holds, the rule an
-    owned member of an account playlist is found by (U128): a file two active
-    rows claim answers nothing, and the next file of the report is tried. A
-    ROW WHOSE JOB FROZE NO DATE KEY IS LEFT TO THE BACKFILL, which dates it
-    from the account; the landing has no listing to read and Undated is a
-    placement nothing undoes. A row the job dated nowhere goes to
-    ``Undated``, as the backfill files it. One heart per row, the first
-    mention of a row winning.
+    THE REPORT'S OWN FILES, the first one an active row holds alone (U128). A
+    ROW WHOSE JOB FROZE NO DATE KEY IS LEFT TO THE BACKFILL, which can date it
+    from the account, since Undated is for good. The first mention wins.
     """
     known = [row for row in rows if row.known and row.paths]
     paths = [Path(said) for row in known for said in row.paths]
     if not paths:
         return ()
     by_path = native.single_rows_for(db, cfg, paths)
-    found: list[OwnedHeart] = []
-    seen: set[str] = set()
+    found: dict[str, OwnedHeart] = {}
     for row in known:
         for said in row.paths:
             content_id = by_path.get(str(Path(said)))
-            if content_id is None:
-                continue
-            if content_id not in seen:
-                seen.add(content_id)
-                found.append(
-                    OwnedHeart(
-                        ref=row.ref,
-                        path=Path(said),
-                        content_id=content_id,
-                        title=row.title,
-                        job_id=row.job_id,
-                        hearted=row.hearted,
-                        dated_by="job" if row.hearted is not None else "none",
-                    )
-                )
-            break
-    return tuple(found)
-
-
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
+            if content_id is not None:
+                found.setdefault(content_id, OwnedHeart.of(row, Path(said), content_id))
+                break
+    return tuple(found.values())
 
 
 @dataclass(frozen=True, slots=True)
@@ -394,9 +292,10 @@ class BackfillPlan:
     """The hearts to place against the home as it stands, read on one handle."""
 
     hearts: tuple[OwnedHeart, ...]
-    placements: placement.PlacementPlan
+    #: None until :func:`_planned` places the hearts against the home.
+    placements: placement.PlacementPlan | None = None
     #: How many dates the account supplied for this plan.
-    asked: int
+    asked: int = 0
     digest: str = ""
     #: Hearts a listing not known whole did not carry, held back unplaced (R-504).
     held_back: tuple[OwnedHeart, ...] = ()
@@ -421,12 +320,8 @@ class BackfillPlan:
     @property
     def by_month(self) -> dict[str, int]:
         """How many hearts go to each month, in month order, Undated last."""
-        counts: dict[str, int] = {}
-        for one in self.placements.placements:
-            counts[one.month] = counts.get(one.month, 0) + 1
-        return dict(
-            sorted(counts.items(), key=lambda pair: (pair[0] == placeholders.UNDATED, pair[0]))
-        )
+        counts = Counter(one.month for one in self.placements.placements)
+        return dict(sorted(counts.items(), key=lambda kv: (kv[0] == placeholders.UNDATED, kv[0])))
 
     @property
     def writes(self) -> bool:
@@ -439,20 +334,7 @@ class BackfillPlan:
 def plan(cfg: config.Config, db: Any, *, source: str) -> BackfillPlan:
     """Gather the owned hearts and plan their placement against the home."""
     home = placement.resolve_home(db, source)
-    found = gather(cfg, db, home=home)
-    return _planned(
-        db,
-        home,
-        found.hearts,
-        asked=found.asked,
-        held_back=found.held_back,
-        unreadable=found.unreadable,
-        withheld=found.short.withheld if found.short is not None else 0,
-        taken_back=found.taken_back,
-        uncounted=found.uncounted,
-        already=found.already,
-        recolour=found.members,
-    )
+    return _planned(db, home, gather(cfg, db, home=home))
 
 
 def plan_owned(
@@ -460,79 +342,34 @@ def plan_owned(
 ) -> BackfillPlan:
     """The landing's owned hearts that All Favorites lacks, planned as the backfill plans (U146).
 
-    FOR A LANDING THAT BROUGHT NO FILE, whose pass still listed the account's
-    hearts: the owned ones not live in All Favorites join it and their month,
-    under the landing's gate and through :func:`apply`. A heart taken out of
-    All Favorites by hand and still hearted is not live there, so it joins
-    again, the author's rule of 2026-10-14 that dropping a favourite is
-    un-hearting on the account as well. The account is not listed again: the
-    pass's own job is the listing.
+    FOR A LANDING THAT BROUGHT NO FILE, under the landing's gate and through
+    :func:`apply`. A heart taken out of All Favorites by hand and still hearted
+    joins again: dropping a favourite is un-hearting on the account as well.
+    The account is not listed again; the pass's own job is the listing.
     """
     home = placement.resolve_home(db, source)
     in_source = placement.members(db, home.source_id)
     hearts = tuple(
         one for one in owned_in_library(cfg, db, rows) if one.content_id not in in_source
     )
-    return _planned(db, home, hearts, asked=0)
+    return _planned(db, home, BackfillPlan(hearts=hearts))
 
 
-def _planned(
-    db: Any,
-    home: placement.Home,
-    hearts: Sequence[OwnedHeart],
-    *,
-    asked: int,
-    held_back: Sequence[OwnedHeart] = (),
-    unreadable: Sequence[str] = (),
-    withheld: int = 0,
-    taken_back: Sequence[OwnedHeart] = (),
-    uncounted: bool = False,
-    already: int = 0,
-    recolour: Sequence[tuple[str, str]] = (),
-) -> BackfillPlan:
-    placements = placement.plan_placements(
-        db,
-        home,
-        [(one.content_id, one.hearted, one.title) for one in hearts],
-        recolour=recolour,
-    )
-    planned = BackfillPlan(
-        hearts=tuple(hearts),
-        placements=placements,
-        asked=asked,
-        held_back=tuple(held_back),
-        unreadable=tuple(unreadable),
-        withheld=withheld,
-        taken_back=tuple(taken_back),
-        uncounted=uncounted,
-        already=already,
-        recolour=tuple(recolour),
-    )
-    return replace(planned, digest=digest_of(planned.identity()))
+def _planned(db: Any, home: placement.Home, gathered: BackfillPlan) -> BackfillPlan:
+    """``gathered``'s hearts and recolours planned against ``home`` on this handle, and digested."""
+    hearts = [(one.content_id, one.hearted, one.title) for one in gathered.hearts]
+    placements = placement.plan_placements(db, home, hearts, recolour=gathered.recolour)
+    return spine.digested(replace(gathered, placements=placements))
 
 
 def replan(db: Any, approved: BackfillPlan, *, source: str) -> BackfillPlan:
     """The approved hearts planned again on this handle, so the digest compares the database.
 
-    THE HEARTS ARE NOT GATHERED AGAIN: they are what was approved, and the
-    walk that found them is minutes on a real library. What can move between
-    the approval and the write is the home and what it holds, and each row's
-    colour (U153), and that is what the digest covers: the rows whose colour
-    is read are the approved plan's, their colour is read again here.
+    NOT GATHERED AGAIN: the walk that found them is minutes on a real library,
+    and what can move in between is the home, what it holds and each row's
+    colour, which the digest covers.
     """
-    return _planned(
-        db,
-        placement.resolve_home(db, source),
-        approved.hearts,
-        asked=approved.asked,
-        held_back=approved.held_back,
-        unreadable=approved.unreadable,
-        withheld=approved.withheld,
-        taken_back=approved.taken_back,
-        uncounted=approved.uncounted,
-        already=approved.already,
-        recolour=approved.recolour,
-    )
+    return _planned(db, placement.resolve_home(db, source), approved)
 
 
 def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
@@ -542,16 +379,13 @@ def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
     items = []
     for heart in planned.hearts:
         one = by_row[heart.content_id]
-        try:
-            shown = str(heart.path.relative_to(root))
-        except ValueError:
-            shown = str(heart.path)
+        shown = heart.path.relative_to(root) if heart.path.is_relative_to(root) else heart.path
         items.append(
             {
                 "action": "place",
                 "row": heart.content_id,
                 "title": heart.title,
-                "path": shown,
+                "path": str(shown),
                 "month": one.month,
                 "into_source": one.into_source,
                 "into_month": one.into_month,
@@ -560,51 +394,44 @@ def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
                 "job": heart.job_id,
             }
         )
-    # THE ROWS PLACED ALREADY THAT TAKE PINK (U153), one item each, so the
-    # screen lists every row the write touches and not only the hearts.
+    # THE ROWS PLACED ALREADY THAT TAKE PINK (U153), so the screen lists every row written.
     items.extend(
         {"action": "colour", "row": one.content_id, "title": one.title}
         for one in planned.placements.recolour
     )
-    return {
-        "digest": planned.digest,
-        "items": items,
-        "totals": {
-            "count": len(planned.hearts),
-            "adds": planned.placements.adds,
-            "creates": len(planned.placements.creates),
-            "colours": planned.placements.colours,
-            "colour held": len(planned.placements.held),
-            "undated": planned.undated,
-            "dates from the account": planned.asked,
-            "held back": len(planned.held_back),
-            "taken back": len(planned.taken_back),
-            "jobs unread": len(planned.unreadable),
-            "already placed": planned.already,
-        },
-        "chunk": None,
-    }
+    return spine.shown(planned, items, {
+        "count": len(planned.hearts),
+        "adds": planned.placements.adds,
+        "creates": len(planned.placements.creates),
+        "colours": planned.placements.colours,
+        "colour held": len(planned.placements.held),
+        "undated": planned.undated,
+        "dates from the account": planned.asked,
+        "held back": len(planned.held_back),
+        "taken back": len(planned.taken_back),
+        "jobs unread": len(planned.unreadable),
+        "already placed": planned.already,
+    })
 
 
 def facts(planned: BackfillPlan) -> dict[str, Any]:
     """The facts beside the items on the gate screen, one line per fact."""
     home = planned.placements.home
-    where = f"{home.source_name!r} (row {home.source_id})"
-    if home.folder_name:
-        where += f" under {home.folder_name!r}"
     facts: dict[str, Any] = {
-        "into": where,
+        "into": f"{home.source_name!r} (row {home.source_id})"
+        + (f" under {home.folder_name!r}" if home.folder_name else ""),
         "hearts to place": len(planned.hearts),
         "by month": [f"{month}: {count}" for month, count in planned.by_month.items()],
         "memberships to add": planned.placements.adds,
         "month playlists to create": list(planned.placements.creates),
-        "rows to colour Pink": planned.placements.colours,
+        "rows to colour Pink": (
+            f"none, {skipped}" if (skipped := planned.placements.colour_skipped)
+            else planned.placements.colours
+        ),
         "undated": planned.undated,
         "dates asked of the account": planned.asked,
         "already placed": planned.already,
     }
-    if planned.placements.colour_skipped:
-        facts["rows to colour Pink"] = f"none, {planned.placements.colour_skipped}"
     if planned.placements.held:
         facts["colour held"] = [one.said() for one in planned.placements.held]
     if planned.held_back:
@@ -629,19 +456,14 @@ def facts(planned: BackfillPlan) -> dict[str, Any]:
 def landing_facts(planned: BackfillPlan) -> dict[str, Any]:
     """The facts a landing that brought no file shows over its owned hearts (U146).
 
-    THE BACKFILL'S, LESS WHAT THE LANDING NEVER ASKS: it lists no account and
-    counts no heart already placed, since the pass's own job is its listing.
+    THE BACKFILL'S, less the account and the hearts already placed, which the
+    landing never asks.
     """
     shown = facts(planned)
     for key in ("dates asked of the account", "already placed"):
         shown.pop(key, None)
     shown["files to land"] = 0
     return shown
-
-
-# ---------------------------------------------------------------------------
-# The write
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -659,46 +481,29 @@ def _record_backfill_commit(
     if placed.added <= 0 and not placed.coloured:
         return
     record.detail[placement.PLACED_KEY] = placed.to_json()
-    session.record_commit(
-        record,
-        placement.RECORD_KEY,
-        session.ChangeSummary(
-            (
-                session.TreeChange(
-                    tree=placement.RECORD_KEY,
-                    created=placed.added,
-                    updated=len(placed.coloured),
-                ),
-            )
-        ),
-        cfg,
-    )
+    change = spine.change(placed.added, len(placed.coloured))
+    session.record_commit(record, placement.RECORD_KEY, change, cfg)
 
 
 def _read_back(db: Any, placed: placement.Placed, planned: BackfillPlan) -> tuple[str, ...]:
     """Each playlist that, read live, lacks a heart the plan says is in it.
 
-    EVERY MONTH THE PLAN NAMES, not only those the write touched: a heart
-    already in its month was not written and is read back all the same, by
-    the row the write used or the one the plan found live, so a month row
-    that went between the two acts is a disagreement and not a silence.
+    EVERY MONTH THE PLAN NAMES, by the row the write used or the one the plan
+    found live, so a month row that went between the two acts is a
+    disagreement and not a silence.
     """
     problems: list[str] = []
-    wanted_source = {one.content_id for one in planned.placements.placements}
-    missing = sorted(wanted_source - placement.members(db, placed.source_id))
-    if missing:
-        problems.append(f"{placed.source_name!r} lacks {len(missing)} row(s): {', '.join(missing)}")
-    rows = dict(planned.placements.home.present)
-    rows.update({name: row for name, row, _count in placed.months})
-    for name in sorted({one.month for one in planned.placements.placements}):
-        wanted = {one.content_id for one in planned.placements.placements if one.month == name}
-        row = rows.get(name)
-        held = placement.members(db, row) if row else frozenset()
-        gone = sorted(wanted - held)
+    every = planned.placements.placements
+    rows = {**planned.placements.home.present, **{name: row for name, row, _n in placed.months}}
+    checks = [(placed.source_name, placed.source_id, {one.content_id for one in every})]
+    for name in sorted({one.month for one in every}):
+        wanted = {one.content_id for one in every if one.month == name}
+        checks.append((name, rows.get(name), wanted))
+    for name, row, wanted in checks:
+        gone = sorted(wanted - (placement.members(db, row) if row else frozenset()))
         if gone:
             problems.append(f"{name!r} lacks {len(gone)} row(s): {', '.join(gone)}")
-    # AND EVERY ROW THE PLAN COLOURS READS PINK (U153), by the row, so a
-    # colour the policy declined or the commit dropped is a disagreement.
+    # AND EVERY ROW THE PLAN COLOURS READS PINK (U153).
     pink = planned.placements.pink
     grey = [
         row
@@ -720,90 +525,52 @@ def apply(
 ) -> Backfilled:
     """Place the approved hearts in one guarded commit, then read them back.
 
-    THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST and a digest that moved
-    refuses, since the approved one was read on a handle that has since
-    closed. THE SESSION SPINE IS CALLED, NOT REBUILT, as every membership
-    writer calls it: the gates with a record kept, a capture verified before
-    anything is written, the analysis watch over the roots named, the commit
-    witness, the guarded commit, the record and the fingerprint.
+    THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST and a digest that moved refuses.
     """
-    watched = [Path(root) for root in analysis_roots]
-    if not watched:
-        raise ValueError(
-            "analysis_roots is empty, so the analysis-file watch would watch nothing "
-            "and this session would report itself clean whatever happened to the "
-            "library's grids; name the roots this write could touch"
-        )
-    again = replan(db, approved, source=source)
-    if again.digest != approved.digest:
-        raise refuse(
-            "decision-stale",
-            "the favourites are not as the approved plan read them, so no heart was "
-            "placed; run it again and approve what it shows now",
-            origin=_ORIGIN,
-            detail={"approved": approved.digest, "now": again.digest},
-        )
-    planned = again
-    pairs = [
-        (one.content_id, one.month)
-        for one in planned.placements.placements
-        if one.into_source or one.into_month
-    ]
-    # THE OUT OF BAND RESTORE IS DETECTED BEFORE THE FINGERPRINT IS TOUCHED,
-    # as every writer that records one does: a database recovered from a
-    # backup is compared and every native tree it emptied is marked, so the
-    # fingerprint this write records afterwards blesses nothing. The Favorites
-    # folder is no tree, so the detection marks and never refuses here.
-    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
-    with (
-        session.assert_gates(
-            cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
-        ) as gates,
-        rb_writer.commit_witness(db) as witness,
-    ):
+    watched, planned = spine.prepared(
+        cfg, db, analysis_roots, lambda: replan(db, approved, source=source), approved,
+        "the favourites are not as the approved plan read them, so no heart was placed",
+        _ORIGIN,
+    )
+    shown = planned.placements
+    with session.assert_gates(
+        cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
+    ) as gates:
         record, capture = trees.attached_capture(gates, cfg, db)
         placed: placement.Placed | None = None
-        try:
+
+        def landed() -> None:
+            if placed is not None:
+                _record_backfill_commit(record, placed, cfg)
+
+        with spine.witnessed(db, landed):
             placed = placement.place(
                 db,
-                planned.placements.home,
-                pairs,
-                pink=planned.placements.pink,
-                to_colour=planned.placements.to_colour,
-                held=planned.placements.held,
-                colour_skipped=planned.placements.colour_skipped,
+                shown.home,
+                [(one.content_id, one.month) for one in shown.placements if one.adds],
+                pink=shown.pink,
+                to_colour=shown.to_colour,
+                held=shown.held,
+                colour_skipped=shown.colour_skipped,
             )
             rb_writer.commit_guarded(db)
-        except BaseException:
-            trees.rollback_quietly(db)
-            if witness.landed and placed is not None:
-                _record_backfill_commit(record, placed, cfg)
-            raise
-        _record_backfill_commit(record, placed, cfg)
         if placed.added or placed.coloured:
             convergence.record_fingerprint(cfg, db)
-        disagreements = _read_back(db, placed, planned)
-        session_id = record.session_id
-    return Backfilled(placed=placed, session_id=session_id, disagreements=disagreements)
+        return Backfilled(
+            placed=placed,
+            session_id=record.session_id,
+            disagreements=_read_back(db, placed, planned),
+        )
 
 
 def assert_read_back(done: Backfilled) -> None:
     """Refuse an answer the database does not hold."""
-    if done.disagreements:
-        raise refuse(
-            "session-committed-unverified",
-            "the favourites read back from the database are not the plan's: "
-            + "; ".join(done.disagreements)
-            + "; the commit landed and this answer cannot be vouched for",
-            origin=_ORIGIN,
-            detail={"disagreements": list(done.disagreements), "session": done.session_id},
-        )
+    spine.verified(done, "the favourites read back from the database are not the plan's", _ORIGIN)
 
 
 __all__ = [
     "Backfilled",
     "BackfillPlan",
-    "Gathered",
     "Listing",
     "OFF_THE_ACCOUNT",
     "OwnedHeart",
@@ -819,6 +586,7 @@ __all__ = [
     "listed",
     "owned_in_library",
     "owned_paths",
+    "reported",
     "payload",
     "plan",
     "plan_owned",

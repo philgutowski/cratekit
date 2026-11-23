@@ -24,56 +24,61 @@ KEBAB_LITERALS = {
         'outbound-playlist-record-mismatch',
     ],
     'export/prune_cli.py': ['export-playlist-unknown'],
-    # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
-    # SEVEN kebab literals joined in export/set_cli.py and nothing left,
-    # credential-missing plus the six backfill and export-set codes U129 adds.
-    'export/set_cli.py': [
-        'credential-missing',
+    # 2026-11-22, U309: set_cli.py split along its verbs; each literal moved
+    # with its code to set_archive, set_common, set_match or set_rename, and
+    # set_cli keeps the backfills' codes and the row actions.
+    'export/set_archive.py': [
         'export-archive',
+        'export-archive-changed-since-plan',
+        'internal-error',
+        'sync-mark-record-unusable',
+    ],
+    'export/set_cli.py': [
         'export-archive-backfill',
         'export-archive-backfill-refused',
-        'export-archive-changed-since-plan',
         'export-archive-nothing-built',
-        'export-set',
         'export-set-backfill',
         'export-set-backfill-no-job',
         'export-set-backfill-no-tracks',
-        # 2026-10-13, U140: the set rename's refusal joined.
-        'export-set-rename-unresolved',
         'export-set-tracks-refused',
         'intake-list-unusable',
         'internal-error',
-        'library-isrc',
-        'sync-mark-record-unusable',
         'taken-off',
-        'unavailable-transient',
+    ],
+    'export/set_common.py': ['credential-missing', 'intake-list-unusable', 'internal-error'],
+    'export/set_match.py': ['library-isrc', 'unavailable-transient'],
+    'export/set_rename.py': [
+        'export-set-rename-unresolved',
+        'intake-list-unusable',
+        'internal-error',
     ],
 }
 
 NAMED_WITHOUT_OWN = {
     # 2026-10-13, U140: the set rename's refusal, held in a named constant.
-    'export/set_cli.py': ['export-set-rename-unresolved'],
+    # 2026-11-22, U309: moved with the rename to set_rename.py.
+    'export/set_rename.py': ['export-set-rename-unresolved'],
 }
 
 NAMED_WITH_OWN = {
     # 2026-10-13, U140: the set rename's refusal, held in a named constant.
-    'export/set_cli.py': ['export-set-rename-unresolved'],
+    # 2026-11-22, U309: moved with the rename to set_rename.py.
+    'export/set_rename.py': ['export-set-rename-unresolved'],
 }
 
 LITERAL_HOLDERS = {
     # U270, 2026-11-13: internal-error joined, the one track export answering nothing.
     'export/cli.py': ['export-playlist-unknown', 'internal-error', 'outbound-item-absent'],
     'export/prune_cli.py': ['export-playlist-unknown'],
-    # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
-    # ONE cause literal joined in export/set_cli.py and nothing left,
-    # credential-missing, the soft skip path U129's set backfill names.
-    # 2026-10-13, U140: the set rename's refusal joined.
-    'export/set_cli.py': [
-        'credential-missing',
+    # 2026-11-22, U309: set_cli.py split along its verbs, each literal moved
+    # with its code.
+    'export/set_archive.py': ['internal-error', 'sync-mark-record-unusable'],
+    'export/set_cli.py': ['intake-list-unusable', 'internal-error'],
+    'export/set_common.py': ['credential-missing', 'intake-list-unusable', 'internal-error'],
+    'export/set_match.py': ['unavailable-transient'],
+    'export/set_rename.py': [
         'export-set-rename-unresolved',
         'intake-list-unusable',
         'internal-error',
-        'sync-mark-record-unusable',
-        'unavailable-transient',
     ],
 }
