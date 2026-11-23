@@ -1123,8 +1123,8 @@ def test_the_check_names_adopt_for_the_bare_titles_a_landing_since_u343_leaves(
     (line,) = [c for c in checked["data"]["checks"] if c["key"] == "check.key_agreement"]
     assert line["status"] == "info"
     assert (
-        f"; {len(BARE)} title(s) carry no head, and {check_cli.ADOPT_VERB} stamps "
-        f"rekordbox's key and tempo onto them: "
+        f"; {len(BARE)} title(s) rekordbox keyed carry no head, and {check_cli.ADOPT_VERB} "
+        f"plans each one built from rekordbox's key and tempo: "
     ) in line["detail"]
     for title in BARE.values():
         assert title in line["detail"], title
@@ -1133,6 +1133,50 @@ def test_the_check_names_adopt_for_the_bare_titles_a_landing_since_u343_leaves(
     with plan_handle(cfg) as found:
         stamped = {item.title for item in found.items if item.action == ha.STAMPED}
     assert stamped == set(BARE.values()), "the rows the check names are the rows adopt stamps"
+
+
+def test_a_file_with_no_title_tag_is_titled_by_the_run_so_adopt_stamps_it_after_the_visit(
+    native_library, silence, monkeypatch
+):
+    """U343 review round one: the run writes no head, so it gives a file with no title
+    tag its stem as one, the title the landing lands; adopt then stamps that row, as
+    a run before U343, which wrote a headed title on every file, let it."""
+    import numpy as np
+
+    from cratekit.analysis import energy, light, vocals
+    from tests.test_analysis import _FakeModel
+
+    cfg, _root = native_library
+    monkeypatch.setattr(light, "_DETECT", lambda path: {
+        "path": path, "rate": 124, "energy": 6, "energy_status": energy.STATUS_CALIBRATED,
+    })
+    monkeypatch.setattr(vocals, "_VOCAL_LOADER", _FakeModel)
+    monkeypatch.setattr(vocals, "_DECODER", lambda path: np.full(16000, 0.2, dtype=np.float32))
+    staging = _staging(cfg)
+    untitled = staging / "Probe - Whiskey.flac"
+    titled = staging / "Probe - Xray.flac"
+    for path, fields in ((untitled, {}), (titled, {"title": "Xray"})):
+        shutil.copyfile(silence, path)
+        assert tags.write_tags(path, {"artist": "Probe", "genre": "Deep House", **fields})
+
+    code, ran = drive(["analyze", "run", str(staging)])
+    assert code == int(ExitCode.OK), ran
+    assert tags.read_tag(untitled, "title") == "Probe - Whiskey", "the stem, with no head"
+    assert tags.read_tag(titled, "title") == "Xray", "a title already there is left alone"
+    code, acted, _refused = _land_acts(["intake", "land", "--name", "2026-11-23_untitled"])
+    assert code == int(ExitCode.OK), acted
+    for stem in ("Whiskey", "Xray"):
+        _visit(cfg, stem, scale="6A", bpm=12600)
+
+    code, refused = drive(VERB)
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    with plan_handle(cfg) as found:
+        planned = {item.title: (item.action, item.new_title) for item in found.items}
+    assert planned == {
+        "Probe - Whiskey": (ha.STAMPED, "06A - 126 - Probe - Whiskey"),
+        "Xray": (ha.STAMPED, "06A - 126 - Xray"),
+    }
 
 
 def test_a_headless_title_is_planned_stamped_apart_from_the_corrected_rows(

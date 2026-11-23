@@ -187,18 +187,33 @@ def _calls_in(path: Path) -> set[str]:
     return called
 
 
+def _tonal(name: str) -> bool:
+    """A librosa feature the key is read from: every chroma, and the tonal centroids."""
+    return name.startswith("chroma") or name == "tonnetz"
+
+
 def test_no_shipped_module_reads_a_chroma_or_names_the_key_stage():
-    """Read from source: the key stage cannot return under another caller."""
+    """Read from source: no shipped call reads a chroma or the tonal centroids
+    (every ``chroma_*`` librosa has or adds, review round one) or names the key
+    stage, outside the vendored downloader."""
     package = REPO_ROOT / "src" / "cratekit"
     found: list[str] = []
     for path in sorted(package.rglob("*.py")):
         if "_vendor" in path.parts:
             continue
-        called = _calls_in(path)
-        for name in ("chroma_cqt", "chroma_stft", "chroma_cens", *KEY_SYMBOLS):
-            if name in called:
+        for name in sorted(_calls_in(path)):
+            if _tonal(name) or name in KEY_SYMBOLS:
                 found.append(f"{path.relative_to(package)}: {name}")
     assert found == []
+
+
+@pytest.mark.parametrize(
+    ("name", "tonal"),
+    [("chroma_cqt", True), ("chroma_vqt", True), ("chroma_stft", True), ("tonnetz", True),
+     ("onset_strength", False), ("tempogram", False)],
+)
+def test_the_scan_reads_every_chroma_and_the_tonal_centroids_and_no_tempo_feature(name, tonal):
+    assert _tonal(name) is tonal
 
 
 def _never(*args, **kwargs):

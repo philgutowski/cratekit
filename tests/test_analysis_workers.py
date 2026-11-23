@@ -205,7 +205,7 @@ def test_an_analyze_job_runs_pending_to_done_and_the_files_carry_the_result(
     assert names == ["a.flac", "b.flac"], "the run renames nothing since U343"
     done = folder / "a.flac"
     assert tags.read_tag(done, "initialkey") is None, "the key is rekordbox's, after the visit"
-    assert tags.read_tag(done, "title") is None, "the title is left as it was"
+    assert tags.read_tag(done, "title") == "a", "a file with no title takes its stem, no head"
     assert tags.read_tag(done, "analyzed") == "1", "the resume mark"
     assert tags.read_energy_from_file(done) == 6
     assert tags.read_vox_from_file(done) is not None

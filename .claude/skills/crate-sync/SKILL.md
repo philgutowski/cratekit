@@ -88,7 +88,8 @@ missing list, the download, then the tail of `tag folder`, `tag guess`,
 `analyze run`, `analyze restamp` and `name apply` over the staging folder, and
 the landing planned and stopped at its gate. `analyze run` measures no key and
 writes no head (U343), so every title lands bare and the visit's `crate
-analyze adopt` stamps each with rekordbox's key and tempo. Read `data.summary.stopped_at` and the exit
+analyze adopt` gives each a head built from rekordbox's key and tempo, naming
+any it leaves. Read `data.summary.stopped_at` and the exit
 status:
 
 - **It stopped at `intake.land.native`.** The pass is downloaded, tagged,

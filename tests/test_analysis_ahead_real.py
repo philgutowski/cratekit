@@ -156,10 +156,11 @@ def test_the_shipped_detector_in_workers_leaves_what_it_leaves_in_the_driver(
     assert pooled["data"]["progress"]["analysis"]["by_status"] == {"analyzed": 3}
     assert reports(cfg, pooled) == reports(cfg, serial)
     assert what_is_on_disk(pooled_folder) == what_is_on_disk(serial_folder)
-    # The heads are real ones: each carries a key, a level from the calibration
-    # and a drift verdict, and no file was given a tempo tag by either run.
+    # The heads are real ones: each carries the mark, a level from the calibration
+    # and a drift verdict, and no key (U343); no file was given a tempo tag by either run.
     for path in pooled_folder.iterdir():
-        assert tags.read_tag(path, "initialkey")
+        assert tags.read_tag(path, "analyzed") == "1"
+        assert tags.read_tag(path, "initialkey") is None
         assert tags.read_energy_from_file(path) is not None
         assert tags.read_tag(path, "drift") in ("steady", "variable", "unknown")
     with jobs.open_store() as store:

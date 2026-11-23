@@ -51,8 +51,9 @@ def marked(path: Path) -> bool:
 
     A file whose tags cannot be read reads as unmarked, so it is measured
     again: the safe direction, since the run then refuses its write by name.
+    ``tags.read_tag`` already reads a blank value as absent (review round one).
     """
-    return bool((tags.read_tag(path, MARK_FIELD) or "").strip())
+    return tags.read_tag(path, MARK_FIELD) is not None
 
 
 def already_analyzed(path: Path, *, template: NameTemplate = _RESUME_TEMPLATE) -> bool:

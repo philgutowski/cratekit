@@ -161,9 +161,9 @@ def test_a_pulse_below_the_floor_is_named_by_its_subdivision():
     assert default is not None and abs(default - 140.0) < 1.0
 
 
-def test_the_head_equals_the_known_tempo_and_key_of_a_fixture_set(tmp_path):
-    """The fixture set the brief asks for: files with a known tempo and key,
-    and the head the detector would stamp equals them."""
+def test_the_measure_equals_the_known_tempo_of_a_fixture_set_and_names_no_key(tmp_path):
+    """The fixture set the brief asks for: files with a known tempo and key, and
+    the tempo the detector measures equals it; the key it no longer reads (U343)."""
     cases = [
         ("one.wav", 128.0, A_MINOR, "8A"),
         ("two.wav", 122.0, C_MAJOR, "8B"),
@@ -173,7 +173,7 @@ def test_the_head_equals_the_known_tempo_and_key_of_a_fixture_set(tmp_path):
         path = _write(tmp_path / name, _clicks(tempo) + _chord(pitches))
         found = detect.analyse_file(path)
         assert found is not None and "terminal" not in found, (name, found)
-        assert found["camelot"] == camelot, (name, found)
+        assert "camelot" not in found, (name, camelot, found)
         assert found["rate"] == int(tempo), (name, found)
 
 

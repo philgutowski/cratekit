@@ -582,14 +582,19 @@ class Check:
 
     @property
     def headless(self) -> tuple[Row, ...]:
-        """The analysed rows with no head in the title or the file name, the ones
-        ``analyze adopt`` stamps with rekordbox's key and tempo (U342). Every row
-        a run since U343 landed is one until the visit's adopt. A bare title
-        beside a headed file name is not: adopt leaves it (review round one, R4)."""
+        """The analysed rows with no head in the title or the file name, and both a
+        key and a tempo from rekordbox: the rows ``analyze adopt`` can give a head
+        built from them (U342). Every row a run since U343 landed is one until the
+        visit's adopt. A bare title beside a headed file name is not, nor a row
+        rekordbox answered half: adopt leaves both (review round one, R4, U343)."""
         return tuple(
             row
             for row in self.analysed
-            if not row.headed and row.head_key is None and row.head_tempo is None
+            if not row.headed
+            and row.head_key is None
+            and row.head_tempo is None
+            and row.key is not None
+            and row.tempo is not None
         )
 
     @property

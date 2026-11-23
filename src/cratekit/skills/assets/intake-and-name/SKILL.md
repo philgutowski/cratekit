@@ -154,10 +154,12 @@ segment.
 
 The head, the key and tempo before the title, comes from rekordbox and nothing
 else. `analyze run` writes no head, so a freshly analysed file is named with
-none and lands bare; after the rekordbox visit `analyze adopt` stamps
-rekordbox's key and tempo onto the title tag, and the next pass of this verb
-carries that head onto the file name. A head a file already carries, on its name
-or in its title, is kept and never stripped.
+none and lands bare; after the rekordbox visit `analyze adopt` gives the row's
+title and the file's title tag a head built from rekordbox's key and tempo. The
+file name keeps having none, since a landed file is one the collection
+references and this verb never renames; every reader takes the title tag's head
+first. A head a file already carries, on its name or in its title, is kept and
+never stripped.
 
 A file the rekordbox collection already references is never renamed or
 retagged, whatever folder you point the verb at, because rekordbox records a

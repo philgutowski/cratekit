@@ -258,16 +258,22 @@ def test_keys_that_differ_are_reported_and_never_suspect():
 
 def test_an_analysed_row_with_no_head_in_its_title_is_counted_for_adopt_and_never_suspect():
     """U343: every row a run lands carries no head until the visit's adopt stamps one."""
-    bare = _row(relation=rc.KEY_UNKEYED, headed=False)
+    bare = dataclasses.replace(_row(relation=rc.KEY_UNKEYED, headed=False), tempo=126)
     named = dataclasses.replace(bare, head_key="01A", head_tempo=124)
-    found = rc.Check(scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name="x", content_ids=()),
-                     rows=(bare, named, _row(), _row(state=rc.NOT_ANALYSED, headed=False)))
+    unkeyed = dataclasses.replace(bare, key=None)
+    untimed = dataclasses.replace(bare, tempo=None)
+    found = rc.Check(
+        scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name="x", content_ids=()),
+        rows=(bare, named, unkeyed, untimed, _row(),
+              _row(state=rc.NOT_ANALYSED, headed=False)),
+    )
     assert found.headless == (bare,), (
-        "a row not analysed is not yet adopt's, and one whose file name has a head adopt leaves"
+        "a row not analysed is not yet adopt's, and adopt leaves one whose file name "
+        "has a head and one rekordbox answered half"
     )
     summary = found.summary()
     assert summary["headless"] == 1 and summary["differs"] == 0
-    assert summary["key_agreement"][rc.KEY_UNKEYED] == 2, "the bare row and the one named by its file name"
+    assert summary["key_agreement"][rc.KEY_UNKEYED] == 4
     assert _verdict(bare, _row()) == rc.DONE
 
 

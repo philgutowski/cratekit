@@ -38,7 +38,7 @@ from typing import Any, Iterator, Mapping
 
 from cratekit.analysis import ahead, artifacts, decode, detect, energy, light, run, vocals
 from cratekit.cli.output import Envelope, load_config, no_job
-from cratekit.core import config, discovery, jobs, pool, tags
+from cratekit.core import config, discovery, jobs, naming, pool, tags
 from cratekit.core import drift as drift_words
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
@@ -667,16 +667,37 @@ def _write_or_refuse(path: Path, fields: dict[str, Any], *, untouched: str) -> N
         )
 
 
-def _finalize(path: Path, scored: Mapping[str, Any]) -> None:
+def _untitled(cfg: config.Config, path: Path) -> str | None:
+    """The title a file with no title tag is given, or None for a file that has one.
+
+    The naming engine's title for the file with no head, its stem, so the title
+    the landing lands and the file's title tag are one, the equality ``analyze
+    adopt`` asks of a bare title before it stamps one (review round one): a run
+    before U343 gave every file a title in its headed write.
+    """
+    if (tags.read_tag(path, "title") or "").strip():
+        return None
+    template = _template(cfg)
+    marker = cfg.naming.lossy_marker
+    spec = naming.NameSpec(
+        stem=path.stem, suffix=path.suffix, lossy=bool(marker) and marker in path.stem
+    )
+    return naming.render_all(spec, template=template).title_tag or None
+
+
+def _finalize(cfg: config.Config, path: Path, scored: Mapping[str, Any]) -> None:
     """Write the measured values onto the file, with the mark, in one write.
 
-    NO HEAD, NO TITLE, NO KEY AND NO RENAME (U343): the head comes from
-    rekordbox after the visit, through ``analyze adopt``. The mark rides the
-    same write, so a file is marked exactly when its values landed. An absent
-    level or vocal score writes no tag, which routing reads as unscored. The
-    drift level only when measured, its verdict whenever given (U157).
+    NO HEAD, NO KEY AND NO RENAME (U343): the head comes from rekordbox after
+    the visit, through ``analyze adopt``. A title is written only on a file
+    with none, its stem, so adopt can stamp it (:func:`_untitled`). The mark
+    rides the same write, so a file is marked exactly when its values landed.
+    An absent level or vocal score writes no tag, which routing reads as
+    unscored. The drift level only when measured, its verdict whenever given
+    (U157).
     """
     fields = {
+        "title": _untitled(cfg, path),
         "energylevel": scored.get("energy"),
         "voxlevel": scored.get("voxlevel"),
         "voxgender": scored.get("voxgender"),
@@ -740,7 +761,7 @@ def handle_run(job, item, cfg) -> jobs.Produced:
     # so the tag write below can move it (U344 review): read before and after.
     measured = scored.get("energy") is not None
     before = slice_length(path) if measured else None
-    _finalize(path, scored)
+    _finalize(cfg, path, scored)
     held = measured and before is not None and slice_length(path) == before
     return artifacts.produced(
         cfg,

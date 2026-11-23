@@ -299,10 +299,12 @@ crate inbox analyzed       # take the analysed rows out of INBOX / Analyze
 grid one tempo (or moving on a `dyn` row), Key filled, and how often the
 title's key and tempo agree with rekordbox's. A title that differs never makes
 the visit suspect; the check counts it and names `crate analyze adopt`. It
-also counts the analysed titles with no head in the title or the file name
-(`headless`), every row a landing since U343 added, and names `crate analyze
-adopt` for them, which stamps each with rekordbox's key and tempo. The key
-floor it once held the title keys to went with the run's own key (U343).
+also counts the analysed titles with no head in the title or the file name to
+which rekordbox gave both a key and a tempo (`headless`), every such row a
+landing since U343 added, and names `crate analyze adopt` for them, which
+plans each a head built from them; a row it cannot stamp is left and named
+there. The key floor it once held the title keys to went with the run's own
+key (U343).
 `--pass` or `--session` names one landing.
 
 `analyze adopt` gives each analysed row whose title head names another key or
@@ -1561,8 +1563,10 @@ crate metadata mytags-vocals [--apply]
 - `analyze run` writes energy, vocal scores and a drift to the file's tags
   (`drift` reads `steady`, `variable` or `unknown`; `driftlevel` is the
   spread), and the mark `analyzed` (`TXXX:CratekitAnalyzed`, its MP4 and
-  Vorbis twins) in the same write. Since U343 it measures no key and writes
-  no head, no title and no `initialkey`, and renames nothing: the key and
+  Vorbis twins) in the same write, with a file's stem as its title tag only
+  when it has none, the title the landing lands and `analyze adopt` stamps.
+  Since U343 it measures no key and writes no head and no `initialkey`, and
+  renames nothing: the key and
   the head come only from rekordbox, after the visit, through `analyze
   adopt`. The tempo is still measured, for the drift (and the `dyn` My Tag
   the landing writes from it), and is reported, never written. It skips a
@@ -1598,8 +1602,10 @@ crate metadata mytags-vocals [--apply]
   sample rate), or the ceiling. One worker means the run was
   serial, and the results are the same at any width.
 - `analyze run` reads no key since U343, which took the chroma stage out of
-  the run, about a third of its time on the fixed synthetic set
-  (`scripts/analyze_stages.py stages`). Over 300 library tracks the key it
+  the run: on the fixed synthetic set with no vocal model
+  (`scripts/analyze_stages.py stages --no-vocals`, three passes each on a
+  four core Linux container), 104.8 to 108.3 seconds before and 69.5 to 72.0
+  after, the chroma and key stage 34.0 to 36.5 of them. Over 300 library tracks the key it
   used to read agreed with rekordbox's own 161 times, and rekordbox's key
   replaced it on two titles in three after the visit, so the run now leaves
   the key to rekordbox. The answer's `head_agreement` records how far the
