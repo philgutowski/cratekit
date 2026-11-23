@@ -1,18 +1,9 @@
 """U167: ``crate analyze check`` reads rekordbox's result for the landed rows.
 
-Two halves. The engine's pure parts (the grid read from an analysis file's
-bytes, the key on the Camelot wheel, the verdict over rows) are driven on
-values built here. The verb is driven through the real dispatcher against the
-disposable database the native landing suite builds: files are landed, and
-rekordbox's analysis is simulated by setting the columns it writes, writing an
-analysis file with a beat grid tag where the row says it is, and giving the
-row a key.
-
-The analysis files are built byte by byte from the published layout, and one
-test parses them with pyrekordbox's own file reader as well, so the fixture is
-known to be a file the binding reads and not only one this module reads.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+The engine's pure parts on values built here, and the verb through the real
+dispatcher on the native landing suite's disposable database, rekordbox's
+analysis simulated by its columns, an analysis file and a key. The files are
+built byte by byte, and pyrekordbox's own reader parses one. D1 applies.
 """
 
 from __future__ import annotations
@@ -56,11 +47,6 @@ from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
 
 VERB = ["analyze", "check"]
 FIVE = ("Alpha", "Bravo", "Charlie", "Delta", "Echo")
-
-# ---------------------------------------------------------------------------
-# Analysis files, byte by byte
-# ---------------------------------------------------------------------------
-
 
 def _tag(kind: bytes, header: bytes, body: bytes = b"") -> bytes:
     """One ANLZ tag: its kind, its header length, its whole length, then the rest."""
@@ -180,11 +166,6 @@ def test_a_damaged_file_reads_unreadable_never_absent(tmp_path, damage):
     assert str(path) in grid.why
 
 
-# ---------------------------------------------------------------------------
-# The key, on the Camelot wheel
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     ("head", "reference", "relation"),
     [
@@ -212,11 +193,6 @@ def test_the_key_floor_is_the_recorded_rate_less_three_standard_errors():
     assert rc.key_floor(100) == pytest.approx(recorded - 3 * (recorded * (1 - recorded) / 100) ** 0.5)
     # A handful of rows can never read as suspect: the floor is below zero.
     assert rc.key_floor(5) < 0
-
-
-# ---------------------------------------------------------------------------
-# The verdict over rows
-# ---------------------------------------------------------------------------
 
 
 def _row(
@@ -282,11 +258,6 @@ def test_keys_far_below_the_recorded_agreement_are_suspect_and_near_it_are_not()
 def test_no_row_or_only_gone_rows_is_nothing():
     assert _verdict() == rc.NOTHING
     assert _verdict(_row(state=rc.GONE)) == rc.NOTHING
-
-
-# ---------------------------------------------------------------------------
-# The verb, through the dispatcher
-# ---------------------------------------------------------------------------
 
 
 def _key_id(cfg: config.Config, scale: str) -> str:
@@ -630,11 +601,6 @@ def test_no_file_under_the_library_is_opened_for_writing(native_library, silence
     assert after == before
 
 
-# ---------------------------------------------------------------------------
-# Review round one
-# ---------------------------------------------------------------------------
-
-
 def test_a_row_not_analysed_never_reads_suspect_whatever_grid_it_carries():
     """The state guard on ``suspect_grid``: only an analysed row's grid is judged."""
     waiting = rc.Row(
@@ -963,10 +929,8 @@ def test_a_row_whose_removal_marker_cannot_be_read_refuses_as_it_did(
 def test_a_row_the_binding_cannot_load_after_one_that_refuses_still_refuses_as_it_did(
     native_library, silence, monkeypatch
 ):
-    """Review round one: a batch read loads every row before any is judged, so a
-    row whose date the binding cannot parse would fail the read ahead of an
-    earlier row's refusal. The check then reads the rows one at a time, as it
-    did, and the earlier row's refusal is the answer again.
+    """A batch read loads every row first, so an unparseable later row must not
+    pre-empt an earlier row's refusal.
     """
     cfg, _root = native_library
     _land(cfg, silence, "2026-10-31_five", FIVE)
@@ -1139,10 +1103,7 @@ def test_the_check_reads_the_collection_in_statements_that_do_not_grow_with_it(
 ):
     """The statements one check issues are the same at two sizes, and few (U259).
 
-    Before U259 the unanalysed scope asked for every collection row again by
-    its ID and each row in scope twice more, and a playlist's members twice
-    each, so the count grew by one to three a row. The count is the assertion,
-    not a clock.
+    The count is the assertion, not a clock.
     """
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-31_five", FIVE)

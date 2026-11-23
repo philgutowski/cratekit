@@ -16,21 +16,25 @@ KEBAB_LITERALS = {
         'analysis-check-records-unread',
         'analysis-suspect',
     ],
+    # 2026-11-22, U306: the calibrate verb's body moved to its own module with its literals.
+    'analysis/calibrate.py': [
+        'calibration-partial-sample',
+        'library-volume-unmounted',
+        'vocal-calibration-unreadable',
+        'vocal-cut-out-of-range',
+    ],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    # 2026-11-22, U306: the calibrate verb's body moved to its own module with its literals.
     'analysis/cli.py': [
         'analysis-write-failed',
-        'calibration-partial-sample',
         'db-metadata-not-written',
         'energy-calibration-missing',
         'folder-absent',
         'internal-error',
-        'library-volume-unmounted',
         'module-extras-missing',
         'no-audio',
         'skipped-prefixed',
         'source-missing',
-        'vocal-calibration-unreadable',
-        'vocal-cut-out-of-range',
     ],
     'analysis/decode.py': ['utf-8'],  # 2026-11-12, U263: the one decoder joined.
     # 2026-11-12, U263: a file only ffmpeg decodes, on a machine without it.
@@ -58,23 +62,27 @@ LITERAL_HOLDERS = {
     # 2026-10-31, U167: analyze check, its engine and its verb.
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'analysis/check_cli.py': ['analysis-suspect'],
+    # 2026-11-22, U306: the calibrate verb's body moved to its own module with its literals.
+    'analysis/calibrate.py': [
+        'library-volume-unmounted',
+        'vocal-calibration-unreadable',
+        'vocal-cut-out-of-range',
+    ],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    # 2026-11-22, U306: the calibrate verb's body moved to its own module with its literals.
     'analysis/cli.py': [
         'analysis-write-failed',
         'energy-calibration-missing',
         'internal-error',
-        'library-volume-unmounted',
         'module-extras-missing',
         'source-missing',
-        'vocal-calibration-unreadable',
-        'vocal-cut-out-of-range',
     ],
     'analysis/energy.py': ['analysis-write-failed', 'energy-calibration-unreadable'],
     'analysis/rekordbox_check.py': ['analysis-check-landing-unknown'],  # 2026-10-31, U167
 }
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
-    'analysis/cli.py',
+    'analysis/calibrate.py',  # 2026-11-22, U306: moved from cli with the calibrate verb.
     'analysis/energy.py',
     'analysis/rekordbox_check.py',  # 2026-10-31, U167: the Camelot wheel's twelve.
 })

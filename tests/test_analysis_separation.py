@@ -1,18 +1,9 @@
 """U241: the separation is librosa's, element for element, and sooner.
 
-Half of an ``analyze run`` was two median filters inside
-``librosa.effects.harmonic``. ``cratekit.analysis.separation`` takes the same
-medians through scipy's one dimensional filter and applies the same mask a
-block of columns at a time. The claim is equality, so the assertions are
 ``array_equal`` against librosa's own calls on signals built to hold what a
-median can get wrong: digital silence (every window a tie), a run of one
-repeated value, bursts, and lengths either side of every edge the code has.
-
-Where librosa does not equal itself, a clip of two or three frames, the claim
-is the definition instead, and that is asserted against a median written out
-the long way.
-
-Skipped where the analysis extra is absent, because the reference is librosa.
+median can get wrong: silence, repeated values, bursts, and every edge length.
+Where librosa does not equal itself the claim is the definition. Skipped
+where the analysis extra is absent.
 """
 
 from __future__ import annotations
