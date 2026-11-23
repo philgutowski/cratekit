@@ -271,10 +271,7 @@ def registered_field_policies() -> Mapping[str, FieldPolicy]:
 
 def content_writable_columns() -> frozenset[str]:
     """The union of every registered operation's declared fields, walked, never listed (P3)."""
-    columns: set[str] = set()
-    for policy in _REGISTERED.values():
-        columns.update(policy.fields)
-    return frozenset(columns)
+    return frozenset(column for policy in _REGISTERED.values() for column in policy.fields)
 
 
 reset_field_policies()
