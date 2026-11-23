@@ -1,13 +1,9 @@
 """``crate sync land`` takes a sync pass to its landing gate in one verb (U152).
 
-It runs the existing verbs in their one order, drives every job it meets to a
-settled state, reads each job's answer off the queue, skips a download refused
-for good and stops on anything else, and ends at the landing's gate naming what
-the session does next. The pass, its intake jobs, the missing list and the
-download run through the real dispatcher and workers. The tail and the landing
-need analysis, a rekordbox collection and an adopted intake tree, so they stand
-in through ``cratekit.cli.tail.dispatch``; each stand in queues and drives a
-real job, so every read of a job is a read of the queue.
+It runs the verbs in order, drives each job to a settled state, skips a
+download refused for good, stops on anything else and ends at the landing's
+gate. All is real but the tail and the landing, which stand in through
+``cratekit.cli.tail.dispatch`` and still queue and drive real jobs.
 """
 
 from __future__ import annotations
@@ -70,11 +66,7 @@ def _machine(tmp_path, monkeypatch, profile: str) -> tuple[config.Config, Script
 
 @pytest.fixture(autouse=True)
 def vocal_model(monkeypatch):
-    """A vocal model able to score, so the pass's preflight goes on (U181).
-
-    Bound as a stand in loader, since this machine has no torch; a test of the
-    refusal unbinds it.
-    """
+    """A stand in vocal model able to score, so the pass's preflight goes on (U181)."""
     from cratekit.analysis import vocals
 
     monkeypatch.setattr(vocals, "_VOCAL_LOADER", lambda: object())
@@ -115,12 +107,9 @@ def _gate(run_id: str, gate: str = sync_land.LAND_GATE) -> Cause:
 
 
 class Tail:
-    """The tail and the landing, standing in, every other step real.
+    """The tail and the landing, standing in: each queues and drives a real job, item per file.
 
-    Each queueing command enqueues a REAL job under its verb's own key over the
-    folder it names, one item per file there, and each ``--job`` command drives
-    that job through the engine with ``work`` deciding each item. The landing
-    answers with ``landing``, its gate by default.
+    ``work`` decides each item; the landing answers with ``landing``, its gate by default.
     """
 
     def __init__(self) -> None:
@@ -221,9 +210,7 @@ def _staged(cfg: config.Config) -> Path:
 
 
 def test_the_verb_queues_nothing_of_its_own_and_declares_one_gate_of_its_own():
-    """Every job it drives is queued by its own verb, and every gate a step stops
-    at is the step's own. The one gate the pass declares is asked before anything
-    runs (U181) and answered inline, since it writes nothing a pass would not."""
+    """Every job is queued by its own verb, every gate is its step's, the pass's own is inline."""
     assert ENTRY.landed and not ENTRY.long_running and ENTRY.argv_builder is None
     (gate,) = ENTRY.gates
     assert gate.name == sync_land.WITHOUT_VOCALS
@@ -303,9 +290,7 @@ def test_a_stale_queued_analyze_job_is_replaced_not_resumed(machine, monkeypatch
     _account(monkeypatch, script, "101", "102")
     staging = _staged(cfg)
     staging.mkdir(parents=True, exist_ok=True)
-    # No file of its own in the folder (R-1499): a file no download names would
-    # refuse the pass before its download, and the stale job names its item
-    # whether or not the file is there.
+    # No file of its own in the folder (R-1499), which would refuse the pass first.
     with jobs.open_store() as store:
         stale = jobs.enqueue(
             store,
@@ -725,11 +710,7 @@ def test_a_job_another_driver_holds_ends_the_pass_with_that_drivers_refusal(
 def test_a_pass_queued_by_hand_and_never_driven_is_the_one_this_verb_takes(
     machine, monkeypatch, tail
 ):
-    """A sync all typed by hand, its jobs queued and idle, is the pass this verb takes.
-
-    The second sync all leaves the playlist out as in flight and queues nothing,
-    and that is not a pass with nothing to do.
-    """
+    """A sync all typed by hand, its jobs queued and idle, is the pass this verb takes."""
     cfg, script = machine
     _account(monkeypatch, script, "101", "102")
     passed = exited(drive(["sync", "all"]))
@@ -1013,11 +994,7 @@ def test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask(
 def test_an_earlier_pass_left_open_beside_a_new_one_is_named_with_its_way_on(
     machine, monkeypatch, tail
 ):
-    """A hand typed pass queued one playlist; a new playlist arrives and is passed.
-
-    The new pass drives only its own run, so the earlier job is named, failing,
-    with the command that takes it, rather than left out of every later pass.
-    """
+    """A new pass drives only its own run; an earlier hand typed one is named with its command."""
     cfg, script = machine
     _account(monkeypatch, script, "101")
     earlier = exited(drive(["sync", "all"]))
@@ -1507,9 +1484,7 @@ def test_a_warning_the_landing_plan_carries_rides_the_passes_own_warnings(
 def test_the_tail_asks_the_vocal_model_before_analyze_run_binds_its_loader(
     full, monkeypatch, tail
 ):
-    """The question is asked before ``analyze run`` binds the shipped loader,
-    since a bound loader reads as able and a later question would queue a
-    rescore over a machine with no model."""
+    """The question is asked before ``analyze run`` binds the loader, which reads as able."""
     from cratekit.analysis import vocals
 
     cfg, script = full

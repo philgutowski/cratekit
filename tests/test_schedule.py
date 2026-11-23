@@ -1,19 +1,9 @@
 """U295: ``crate schedule`` installs, shows and removes the night pass on launchd.
 
-WHAT THIS FILE GUARDS. The brief's two merge blockers first: the agent runs
-``crate sync night`` and nothing else, and it is installed only in the
-person's own LaunchAgents directory, loaded into their own GUI domain. Then
-the three verbs' behaviour: install writes one agent and loads it, a second
-install replaces it, a launchctl that fails leaves nothing half installed,
-show reads every state without writing, and remove unloads and deletes.
-
-WHAT STANDS IN. launchd, whole: :class:`Launchd` answers ``print``,
-``bootstrap`` and ``bootout`` as launchctl does, over a set of loaded labels it
-keeps itself, and reads every plist it is handed. The platform is named macOS
-by :func:`mac`, the LaunchAgents directory is a temporary one, and the crate is
-a temporary executable. ``tests/conftest.py`` replaces the shipped launchctl
-seam in every test, so a test that forgets this fixture fails rather than
-reaching launchd.
+The agent runs ``crate sync night`` alone, installed only in the person's own
+LaunchAgents and GUI domain; install, show and remove each leave nothing half
+done. launchd stands in whole (:class:`Launchd`), the platform reads macOS by
+:func:`mac`, and the conftest seam fails a test that reaches the real one.
 """
 
 from __future__ import annotations
@@ -40,11 +30,7 @@ SERVICE = f"{DOMAIN}/{schedule.LABEL}"
 
 
 class Launchd:
-    """launchctl standing in, over the labels it holds loaded.
-
-    ``fail`` maps a launchctl word to the answer it gives instead; ``stuck``
-    makes a bootout answer success and leave the agent loaded.
-    """
+    """launchctl standing in; ``fail`` maps a word to its answer, ``stuck`` keeps one loaded."""
 
     def __init__(self) -> None:
         self.loaded: dict[str, dict[str, Any]] = {}
@@ -142,9 +128,7 @@ def test_each_verb_declares_no_library_write_and_no_gate(name):
 
 
 def test_the_suite_stands_launchd_in_for_every_test(_no_live_launchd):
-    """The conftest guard: the shipped seam is never the one a test reaches,
-    the reach is recorded so a verb that swallowed the error still fails its
-    test, and the platform reads as one with no launchd unless a test says Mac."""
+    """The conftest guard: the shipped seam is never reached, a reach is recorded, no launchd."""
     with pytest.raises(AssertionError, match="launchctl"):
         schedule.launchctl("print", SERVICE)
     assert _no_live_launchd == [f"print {SERVICE}"]

@@ -1,11 +1,9 @@
 """``crate sync land`` lands only its own pass's tracks (R-1499).
 
-Every download stages into the one folder and ``intake land`` lands the whole
-of it, so the pass reads the folder with :func:`cratekit.intake.beside.beside`
-before its download and again before its tail, and refuses beside anything
-that is not its own. The suite's ``Tail`` renames nothing, so
-:class:`RenamingTail` renames at the name step as the real one does; every
-other step is :mod:`tests.test_sync_land`'s.
+``intake land`` lands the whole staging folder, so the pass reads it with
+:func:`cratekit.intake.beside.beside` before its download and its tail and
+refuses beside anything not its own. :class:`RenamingTail` renames as the real
+name step does; every other step is :mod:`tests.test_sync_land`'s.
 """
 
 # ruff: noqa: F811, the fixtures below are imported from the sync land suite by name
@@ -48,11 +46,7 @@ from tests.test_sync_land_staged import ISRC, _rows
 
 
 class RenamingTail(Tail):
-    """The suite's tail, whose ``name apply`` renames every track as the real one does.
-
-    Each audio file not yet renamed becomes ``Artist - <stem>.wav`` when the
-    name step runs, before the landing's gate.
-    """
+    """The suite's tail, whose ``name apply`` renames each file to ``Artist - <stem>.wav``."""
 
     def __call__(self, argv: list[str]) -> tuple[int, dict]:
         if "name" in argv and "apply" in argv:
@@ -459,12 +453,7 @@ def test_a_fresh_go_beside_a_sync_passes_download_names_its_continue_command(
 
 
 class ArrivingTail(RenamingTail):
-    """The renaming tail, with something arriving in the folder while ``analyze run`` runs.
-
-    ``arrive`` runs once, inside the first driven ``analyze run``, as a second
-    terminal finishing a download meanwhile would; the tail's ``name apply``
-    then renames what arrived with the batch's own.
-    """
+    """The renaming tail, with ``arrive`` run once inside the first ``analyze run``."""
 
     def __init__(self, arrive, at: tuple[str, ...] = ("analyze", "run")) -> None:
         super().__init__()

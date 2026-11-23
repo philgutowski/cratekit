@@ -1,8 +1,7 @@
 """U210: a sync stopped part way through its write finishes with a continue of the same run.
 
 The fake account's writes go through a real provider gate, so ``--calls`` stops
-the write on the ceiling as it stops a live one. D1 applies, nothing here names
-a real account, person or track.
+the write on the ceiling as it stops a live one. D1 applies.
 """
 
 from __future__ import annotations
@@ -44,11 +43,9 @@ class Limited:
 
 
 def gate_the_account(account, monkeypatch, *, limited_on: int | None = None) -> None:
-    """Send every write the fake account makes through a real provider gate.
+    """Send every fake account write through a real provider gate, asked before it changes anything.
 
-    The gate is asked before ``_bump`` changes anything, so a refused call
-    changes nothing, as for a live call. ``limited_on`` makes that call answer
-    rate limited, a park that is not the ceiling.
+    ``limited_on`` makes that call answer rate limited, a park that is not the ceiling.
     """
     gate = provider_gate.Gate(
         provider_gate.GateSettings(min_interval_s=0.0), sleep=lambda seconds: None
@@ -104,11 +101,7 @@ def gated(world, monkeypatch):
 
 @pytest.fixture
 def made_world(gated):
-    """Five rekordbox playlists in one folder, each made on the account by the write.
-
-    Three gated writes a pair and one for the folder, sixteen in all, so a
-    ceiling of ten stops on the fourth pair's make.
-    """
+    """Five playlists in one folder, sixteen gated writes: a ceiling of ten stops on the fourth."""
     world = gated
     folder = world.folder("GIG READY")
     playlists = [world.playlist(f"Set {index}", str(index), under=folder) for index in range(1, 6)]

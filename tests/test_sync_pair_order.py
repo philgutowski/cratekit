@@ -1,9 +1,7 @@
 """U220: a pair whose account order is refused stops alone, and a continue of the run finishes it.
 
-Every other pair and the playlist brought into rekordbox are still written,
-the stop names the pair and the run, and a continue puts it in order, handing
-the adapter the check's own listing to agree with first. D1 applies, nothing
-here names a real account, person or track.
+Every other pair is still written, the stop names the pair and the run, and a
+continue orders it from the check's own listing. D1 applies.
 """
 
 from __future__ import annotations
@@ -68,11 +66,7 @@ def _refusing(world, monkeypatch, refused_on: set[str], *, reason: str = "outbou
 
 @pytest.fixture
 def owed(world):
-    """Two pairs synced once in GIG READY, then changed so each owes the account a write.
-
-    Opener owes an order, Second an addition, and an account playlist made in
-    the folder owes rekordbox a new playlist.
-    """
+    """Two pairs in GIG READY owing an order and an addition, and a new account playlist."""
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", under=gig)
     second = world.playlist("Second", "4", "5", under=gig)
@@ -159,11 +153,7 @@ def test_the_order_refusals_that_stop_one_pair_are_the_two_an_order_raises():
 def test_a_continue_after_a_change_no_move_of_the_run_recorded_holds_it_as_moved(
     world, owed, monkeypatch
 ):
-    """R-1420: a change under a refusal that no record names is held as moved.
-
-    The adapter records its moves before the first is sent (U231), so a
-    refusal with none recorded sent none and the change is someone else's.
-    """
+    """R-1420: a change under a refusal no record names is held as moved, since none was sent."""
     _gig, opener, _second = owed
     opener_account = world.titled("GIG READY Opener")
     refused_on = {opener_account}
@@ -223,9 +213,8 @@ def _ids(*content_ids: str) -> list[str]:
 
 @pytest.fixture
 def refused_once(world, monkeypatch):
-    """One pair in GIG READY reordered in rekordbox to 4, 3, 1, 2, its account order refused once.
+    """One pair reordered in rekordbox to 4, 3, 1, 2, its account order refused before any move.
 
-    Refused before any move, so the account stands as the plan read it.
     Answers rekordbox's playlist, the account's, and the refused run.
     """
     gig = world.folder("GIG READY")
@@ -343,11 +332,7 @@ def test_a_continue_of_a_refused_order_that_also_added_holds_a_reorder_made_sinc
 def test_a_continue_of_an_order_stopped_before_any_move_holds_a_reorder_made_since(
     world, cfg, monkeypatch, stop
 ):
-    """R-1420: an order stopped before ``begun`` by a stop that is no order refusal.
-
-    The run carries ``ordering`` and no ``order-refused``; the person's reorder
-    before the continue is held as moved all the same.
-    """
+    """R-1420: an order stopped before ``begun`` by no order refusal still holds a reorder."""
     from cratekit.core import jobs
 
     gig = world.folder("GIG READY")
@@ -393,11 +378,7 @@ def test_a_continue_of_an_order_stopped_before_any_move_holds_a_reorder_made_sin
 def test_a_continue_of_an_order_that_moved_nothing_hands_the_adapter_the_checks_listing(
     world, cfg, monkeypatch, stop
 ):
-    """Whatever stopped the order before any move, the continue agrees first.
-
-    Without ``expect``, a reorder landing between the check and the adapter's
-    reading would be ordered from.
-    """
+    """Whatever stopped the order before any move, the continue agrees (``expect``) first."""
     from cratekit.core import jobs
 
     gig = world.folder("GIG READY")
@@ -446,11 +427,7 @@ def test_a_continue_of_an_order_that_moved_nothing_hands_the_adapter_the_checks_
 def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_listing_first(
     world, cfg, monkeypatch, damage
 ):
-    """The record carried beside the run's steps still says the order began.
-
-    With the steps file lost, the continue reads the carried record and hands
-    the adapter the check's listing to agree with.
-    """
+    """With the steps file lost, the carried record still says the order began."""
     from cratekit.core import held_plan, jobs
 
     gig = world.folder("GIG READY")

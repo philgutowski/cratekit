@@ -1,17 +1,10 @@
 """U293: ``crate sync night`` runs the sync pass unattended, up to its landing gate.
 
-WHAT THIS FILE GUARDS. The brief's limits, each a merge blocker if broken: the
-night pass never approves a gate, never writes the database, never opens
-rekordbox, never runs beside rekordbox, a live job or another pass, never
-spends past its night's budget, and never stages over a pass by hand; and
-whatever it meets, it stops and leaves one line saying so.
-
-WHAT IS REAL AND WHAT STANDS IN. The pass driven to its gate is the real
-``crate sync land`` through the real dispatcher, with the tail and the landing
-standing in through ``cratekit.cli.tail.dispatch`` exactly as
-``tests/test_sync_land.py`` stands them in. The rest stand in the whole of
-``sync land`` at that one seam, so what the night does around the pass is
-read without a pass.
+The night never approves a gate, writes the database, opens or runs beside
+rekordbox, a live job or another pass, spends past its budget or stages over a
+pass by hand; whatever it meets, it stops with one line. The pass to its gate is
+the real ``crate sync land`` with ``tests/test_sync_land.py``'s stand ins; the
+rest stand ``sync land`` in whole at the night's one seam.
 """
 
 from __future__ import annotations
@@ -68,11 +61,7 @@ def _status() -> dict[str, Any]:
 
 
 class Pass:
-    """``crate sync land`` standing in whole, at the night's one seam.
-
-    Records every command the night ran, the night's line and hour as each
-    command saw them, and answers with ``answer``.
-    """
+    """``crate sync land`` standing in whole, recording each command, line and hour it saw."""
 
     def __init__(self, answer: tuple[int, dict[str, Any]] | None = None) -> None:
         self.calls: list[list[str]] = []
@@ -197,10 +186,7 @@ def _imports(source: Path) -> set[str]:
 
 
 def test_the_night_module_reaches_no_launcher_no_decide_and_no_acknowledgment():
-    """Read off the module's own imports and words, so a later edit that reaches
-    any of them fails here by name. The library session is banned with its
-    parts (R-1890), since ``cratekit.core.session_holders`` takes the same lock
-    and does not match ``cratekit.core.session`` followed by a dot."""
+    """Read off the module's imports and words; the session is banned with its parts (R-1890)."""
     from tests._split_modules import names_of
 
     imported = _imports(SOURCE)

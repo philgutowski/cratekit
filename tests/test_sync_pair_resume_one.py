@@ -1,11 +1,7 @@
 """U210: a stop inside one paired playlist's account writes, finished by a continue.
 
-The single pair world of ``tests/test_sync_pair.py``, changed so both sides
-owe a write, with every account write sent through a real provider gate, so
-``--calls`` stops between the removal and the addition, after rekordbox's
-commit.
-
-D1 applies. Nothing here names a real account, person or track.
+``tests/test_sync_pair.py``'s world with both sides owing a write through a real
+provider gate, so ``--calls`` stops between the removal and the addition. D1 applies.
 """
 
 from __future__ import annotations
@@ -34,12 +30,7 @@ from tests.test_sync_pair_resume import CEILING, VERB, gate_the_account, to_the_
 
 @pytest.fixture
 def paired(world, monkeypatch):
-    """A pair synced once, then changed so both sides owe a write.
-
-    The account gains t4 and rekordbox swaps row 2 for row 5, so the account
-    owes a removal, an addition and maybe an order, each one gated call; a
-    ceiling of one stops after the removal.
-    """
+    """A pair synced once, then t4 added on the account and row 2 swapped for 5 in rekordbox."""
     made = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
     assert sync(made.args())[0] == int(ExitCode.OK)
     gate_the_account(made.account, monkeypatch)
@@ -241,10 +232,7 @@ def test_a_stop_in_the_middle_of_an_order_sends_no_move_again_and_a_later_sync_f
 ):
     """U210, U231: a continue resends none of the moves a stop left in doubt.
 
-    How many moves landed is unknown and a move resent from a lagging reading
-    lands wherever its position now holds, so the continue only reads the
-    order, pending. Two later readings that agree finish it from rekordbox, as
-    U225 finishes a stopped write.
+    It reads the order, pending, until two agreeing readings finish it from rekordbox (U225).
     """
     from cratekit.sync import pair_plan
     made = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))

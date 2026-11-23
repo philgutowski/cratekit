@@ -1,10 +1,7 @@
 """U49: the two session verbs, driven through the dispatcher rather than the API.
 
-Every property goes through ``cli.run``: an acknowledgment is minted by driving
-``crate session ack`` and answering its gate, never by calling
-``record_acknowledgment``, and the end to end test spends it on a real
-destructive verb. Every fixture is a temporary directory, shared with
-``tests/test_restore.py`` by assignment.
+An acknowledgment is minted by answering ``crate session ack``'s gate, never by
+``record_acknowledgment``, and spent end to end on a real destructive verb.
 """
 
 from __future__ import annotations
@@ -110,11 +107,7 @@ def _release(option: str = "release") -> tuple[int, dict, dict]:
 
 
 def _a_process_that_is_gone() -> session.Holder:
-    """A holder naming a process this boot really started and that really exited.
-
-    A real finished process, since ``holder_alive`` fails towards alive on a
-    fabricated pid.
-    """
+    """A holder naming a real exited process: ``holder_alive`` reads a made up pid as alive."""
     finished = subprocess.Popen([sys.executable, "-c", "pass"])
     finished.wait()
     assert session.process_exists(finished.pid) is False
@@ -407,11 +400,7 @@ def test_aborting_the_release_clears_nothing(installed):
 
 
 def _hard_killed_gated_write(cfg) -> str:
-    """Enter the gates keeping a record, in a child, and SIGKILL it inside the body.
-
-    A real kill in a forked child, so the kernel drops the child's lock and the
-    record names a dead holder. Every failure in the child ends in ``os._exit``.
-    """
+    """Enter the gates keeping a record in a forked child, and SIGKILL it inside the body."""
     reader, writer = os.pipe()
     child = os.fork()
     if child == 0:  # pragma: no cover - measured by the parent's assertions
@@ -470,8 +459,7 @@ def test_a_cut_off_gated_write_blocks_cutover_until_release_abandons_it(
 ):
     """R-598 and R-647: the open record refuses cutover until the release ends it.
 
-    A SIGKILL is reproduced in a child; a restart cannot be staged, so its lock
-    record and open record from the previous boot are written directly.
+    A restart cannot be staged, so the previous boot's records are written directly.
     """
     from cratekit.core import tree_registry
     from cratekit.core.cause import CratekitError
