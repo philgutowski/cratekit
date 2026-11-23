@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Iterable, Mapping
 
-from cratekit.core.call_time import rb_writer as _writer
+from cratekit.core.rb_call_time import writer as _writer
 from cratekit.core.rb_tables import (
     _DEFAULT_EMPTIES,
     _REGISTERED,

@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, Mapping
 
 from cratekit.core import config, rb_writer
-from cratekit.core.call_time import session as _session
 from cratekit.core.cause import (
     Cause,
     CratekitError,
@@ -33,6 +32,7 @@ from cratekit.core.cause import (
     refuse,
 )
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.session_call_time import session as _session
 
 if TYPE_CHECKING:
     from cratekit.core.session import SessionRecord

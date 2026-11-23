@@ -102,7 +102,10 @@ interface, seam crossing, toggle home and dangling verb.
 
 - `tests/test_duplication.py` fails when a package holds a copied block beyond
   its allowance, `tests/ratchets/duplication/<package>.txt`. Give the lines
-  one home; never add a line to an allowance.
+  one home; never add a line to an allowance. Every allowance is empty since
+  U329. It also fails on a function body of three lines or more, its arguments
+  and statements compared as syntax trees with the docstring dropped, defined
+  identically in two files under `src/cratekit`, which has no allowance.
 - `tests/test_import_rules.py` fails on a new seam crossing beyond
   `tests/ratchets/imports/<package>.txt`, and when feature packages use more
   distinct core names than `CORE_NAMES_CEILING`. `CORE_INTERFACE` and
@@ -206,6 +209,8 @@ already had, through the config and writer suites that drove them before.
 | the capture a guarded database write opens with | `write.trees.attached_capture(gates, cfg, db)` |
 | undo pending work on a handle after a failed write, never masking its cause | `write.trees.rollback_quietly(db)` |
 | the commit a content row write records | `write.row_defaults.record_commit` |
+| the roots a write's analysis-file watch covers, refused when empty | `write.row_defaults.watched_roots`, which `intake.rotate` imports (U329) |
+| a remedy token a configuration failure names | `core.exit_codes.Remedy`, which `core.config` re-exports as `config.Remedy` (U329) |
 
 ## Config and the taxonomy, in parts
 
@@ -235,8 +240,8 @@ parts.
 
 | Module | Its parts |
 |---|---|
-| `core.rb_writer` | `rb_tables` (the whitelist's tables, the column registry), `rb_probes` (the installed version, the processes, the sync setting), `rb_copies` (the snapshot, disposable and read-only copies, the integrity check, prune), `rb_nodes` (playlist, membership and tag primitives, the node move and removal), `rb_changes` (what a session would write, and its judge), `rb_removal` (Remove from Collection's reads and proof) |
-| `core.session` | `session_holders` (the holder and the library lock), `session_ack` (the backup acknowledgment), `session_volumes` (the volume gates), `session_analysis` (the analysis-file fingerprint) |
+| `core.rb_writer` | `rb_tables` (the whitelist's tables, the column registry), `rb_call_time` (the one call time accessor the other parts share), `rb_probes` (the installed version, the processes, the sync setting), `rb_copies` (the snapshot, disposable and read-only copies, the integrity check, prune), `rb_nodes` (playlist, membership and tag primitives, the node move and removal), `rb_changes` (what a session would write, and its judge), `rb_removal` (Remove from Collection's reads and proof) |
+| `core.session` | `session_call_time` (the one call time accessor the other parts share), `session_holders` (the holder and the library lock), `session_ack` (the backup acknowledgment), `session_volumes` (the volume gates), `session_analysis` (the analysis-file fingerprint) |
 | `core.restore` | `restore_perform`, `restore_retention`, `restore_recovery` |
 
 Four rules keep the split invisible:
@@ -245,10 +250,15 @@ Four rules keep the split invisible:
   name defined in the module, in another part, or patched on the module by a
   test is written `_writer().name`, `_session().name` or `_restore().name`
   inside a part, so a `monkeypatch.setattr(rb_writer, ...)` bites there too.
+  The writer's parts bind `_writer` to `rb_call_time.writer` and the
+  session's bind `_session` to `session_call_time.session` (U329), one
+  accessor per family rather than a copy in each part, and the soft delete
+  guard in `tests/_source_guards.py` reads `_writer()` imported from there.
   `restore`'s parts read `os` and `shutil` the same way, since a capacity test
   patches them on `restore`. Of the writer's parts, only `rb_tables`, which
-  reads nothing back, is imported by the others directly; the session's parts
-  import none of each other; `restore_retention` and `restore_recovery`
+  reads nothing back, and `rb_call_time` are imported by the others directly;
+  the session's parts import none of each other but `session_call_time`;
+  `restore_retention` and `restore_recovery`
   import `restore_perform` for its accessor and logger rather than holding
   their own.
 - **What the beat grid suites and the source guards read stays in the module

@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping
 
-from cratekit.core.call_time import rb_writer as _writer
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.rb_call_time import writer as _writer
 from cratekit.core.rb_tables import (
     COLLECTION_REMOVAL_TABLES,
     CONTENT_REFERENCE_COLUMN,

@@ -11,9 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
-from cratekit.core.call_time import rb_writer as _writer
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.rb_call_time import writer as _writer
 from cratekit.core.rb_tables import (
     _MOVED_COLUMNS,
     _SIBLING_COLUMNS,

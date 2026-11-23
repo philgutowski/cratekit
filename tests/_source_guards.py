@@ -1395,14 +1395,31 @@ def _writer_imports(nodes) -> tuple[set[str], set[str]]:
     return module_names, constant_names
 
 
+#: The one home of the writer's call time accessor since U329, and its name there.
+RB_WRITER_ACCESSOR_MODULE = "cratekit.core.rb_call_time"
+RB_WRITER_ACCESSOR = "writer"
+
+
 def _writer_accessors(tree: ast.AST) -> set[str]:
     """Functions that import the writer and return the name they bound it to.
 
     Keyed on what makes a function the writer: its imports bind it and a return
-    hands back that name, plain or dotted, at any depth.
+    hands back that name, plain or dotted, at any depth. And since U329 the
+    accessor's one home, ``from cratekit.core.rb_call_time import writer [as
+    _writer]`` or the relative ``from .rb_call_time import writer`` inside
+    ``core``, binds the same accessor under its local name.
     """
     found: set[str] = set()
     for node in _walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module == RB_WRITER_ACCESSOR_MODULE or (
+                node.level == 1 and module == RB_WRITER_ACCESSOR_MODULE.rsplit(".", 1)[1]
+            ):
+                for alias in node.names:
+                    if alias.name == RB_WRITER_ACCESSOR:
+                        found.add(alias.asname or alias.name)
+            continue
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         bound, _ = _writer_imports(_walk(node))

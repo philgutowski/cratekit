@@ -12,12 +12,12 @@ from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
 from cratekit.core import config, locations, preflight
-from cratekit.core.call_time import session as _session
 from cratekit.core.cause import (
     Scope,
     refuse,
 )
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.session_call_time import session as _session
 
 #: Which refusal slug each mount verdict raises, a table so a new mount state
 #: with no entry fails a test rather than falling to a default.

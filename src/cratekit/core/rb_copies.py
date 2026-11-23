@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping
 
 from cratekit.core import config
-from cratekit.core.call_time import rb_writer as _writer
+from cratekit.core.rb_call_time import writer as _writer
 
 #: The writer's own logger, so a record reads as it did before the split.
 logger = logging.getLogger("cratekit.core.rb_writer")
