@@ -13,6 +13,8 @@ never flags this file and no exemption is needed anywhere.
 from __future__ import annotations
 
 import importlib.util
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -495,3 +497,181 @@ def test_a_cloud_container_detects_no_machine_identity(monkeypatch, tmp_path):
     tokens = scan.machine_identity_tokens(tmp_path)
     assert "zz-cloud-host" not in tokens
     assert {"DeclaredVolume", "DeclaredEnv"} <= tokens
+
+
+# ── U957: a detected ordinary word names the machine only in a path or host ──
+#
+# A machine named by a plain word failed every file using the word in its plain
+# sense, and the release refused. These drive the real detection with the
+# running system's inputs patched, never a hand built token set, so what they
+# pin is what the battery runs.
+
+
+@pytest.fixture
+def detected(monkeypatch, tmp_path):
+    """Detect a hostname and a mounted volume, nothing declared, the cloud exemption off."""
+    monkeypatch.delenv("CLAUDE_CODE_REMOTE", raising=False)
+    monkeypatch.delenv("CRATEKIT_SCAN_IDENTITY", raising=False)
+    # Both too generic to be anyone's, so neither is a token: only what a test names is.
+    monkeypatch.setattr(scan.getpass, "getuser", lambda: "runner")
+    monkeypatch.setattr(scan.Path, "home", lambda: tmp_path / "tmp")
+    mounts = tmp_path / "mounts"
+    mounts.mkdir()
+    monkeypatch.setattr(scan, "MOUNT_ROOTS", (str(mounts),))
+    clone = tmp_path / "clone"
+    clone.mkdir()
+
+    def _detect(hostname: str, volume: str | None = None, declared: str | None = None):
+        monkeypatch.setattr(scan.socket, "gethostname", lambda: hostname)
+        if volume is not None:
+            (mounts / volume).mkdir()
+        if declared is not None:
+            (clone / scan.IDENTITY_FILE).write_text(declared + "\n")
+        return scan.machine_identity_tokens(clone)
+
+    return _detect
+
+
+def _identity_problems(text: str, tokens) -> list[str]:
+    return [p for p in scan.portability_violations(text, identity_tokens=tokens)
+            if "personal identifier" in p]
+
+
+def test_a_detected_ordinary_word_passes_in_prose(detected):
+    """A machine named by a plain word does not fail a file using the word plainly."""
+    tokens = detected("Garden.local", volume="Meadow")
+    assert {"Garden", "Meadow"} <= tokens
+    assert {"Garden", "Meadow"} <= tokens.shape_only
+    for prose in ("water the garden daily", "GARDEN and MEADOW", "a Meadow, a garden."):
+        assert _identity_problems(prose, tokens) == [], prose
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "/" + "Volumes" + "/" + "Garden" + "/Music",
+        "/" + "Users" + "/" + "garden" + "/Music",
+        "/" + "home" + "/" + "GARDEN" + "/.config",
+        "/" + "mnt" + "/" + "garden",
+        "ssh garden.local",
+        "Garden.LOCAL:8080",
+        "open garden.lan",
+        "garden.localdomain",
+        "garden.home.arpa",
+        "http://Garden.local/",
+    ],
+)
+def test_a_detected_ordinary_word_is_caught_where_it_names_the_machine(detected, written):
+    """In a home or mount path segment, or a host name, the plain word is the machine."""
+    tokens = detected("garden")
+    problems = _identity_problems(f"see {written} for the files", tokens)
+    assert problems and "'garden'" in problems[0], problems
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["gardens.local", "garden.locale", "the garden.", "garden-local", "my-garden.localhost"],
+)
+def test_a_host_form_needs_the_whole_name_and_a_whole_suffix(detected, written):
+    """A longer word, a longer suffix, or a hyphenated neighbour is not the host."""
+    tokens = detected("garden")
+    assert _identity_problems(written, tokens) == [], written
+
+
+def test_a_detected_token_that_is_no_word_is_still_caught_bare(detected):
+    """``SomeSpecificDrive`` is on no word list, so it matches bare as it always has."""
+    tokens = detected("zz-host", volume="SomeSpecificDrive")
+    assert "SomeSpecificDrive" in tokens and not tokens.shape_only
+    problems = _identity_problems("the SOMESPECIFICDRIVE volume must be mounted", tokens)
+    assert problems and "'SomeSpecificDrive'" in problems[0]
+    assert _identity_problems("SomeSpecificDriveExtended", tokens) == []
+
+
+def test_a_declared_ordinary_word_is_caught_bare(detected, monkeypatch):
+    """Declared wins: a person who wants the plain word caught declares it, either way."""
+    tokens = detected("Garden", declared="garden")
+    assert "Garden" in tokens and not tokens.shape_only
+    assert _identity_problems("water the GARDEN daily", tokens)
+
+    monkeypatch.setenv("CRATEKIT_SCAN_IDENTITY", "Meadow")
+    tokens = detected("zz-host", volume="meadow")
+    assert {"Meadow", "meadow"} <= tokens and not tokens.shape_only
+    assert _identity_problems("a meadow", tokens)
+
+
+def test_identity_off_stays_off_for_every_tier(tmp_path, monkeypatch):
+    """``check_identity=False`` reads no tier, declared ones included."""
+    monkeypatch.setenv("CRATEKIT_SCAN_IDENTITY", "Garden")
+    (tmp_path / scan.IDENTITY_FILE).write_text("Meadow\n")
+    planted = tmp_path / "notes.md"
+    planted.write_text("the garden and the meadow\n")
+    assert scan.scan_tree(tmp_path, [planted], check_identity=False) == []
+    assert len(scan.scan_tree(tmp_path, [planted])) == 2
+
+
+def test_a_cloud_container_relaxes_nothing(monkeypatch, tmp_path):
+    """Under the cloud exemption nothing is detected, so nothing is shape only."""
+    monkeypatch.setattr(scan.socket, "gethostname", lambda: "garden")
+    monkeypatch.setenv("CLAUDE_CODE_REMOTE", "true")
+    monkeypatch.setenv("CRATEKIT_SCAN_IDENTITY", "meadow")
+    tokens = scan.machine_identity_tokens(tmp_path)
+    assert "garden" not in tokens and "meadow" in tokens
+    assert not tokens.shape_only
+    assert _identity_problems("a meadow", tokens)
+
+
+def test_a_plain_token_set_matches_every_token_bare():
+    """A caller holding a plain set gets the old reach, over reporting rather than passing."""
+    assert _identity_problems("water the garden", {"garden"})
+    assert _identity_problems("water the garden", frozenset({"garden"}))
+
+
+def test_the_repository_is_clean_on_a_machine_named_by_a_word_it_uses(detected, monkeypatch):
+    """The battery on a machine named by a plain word, driven through the real scan.
+
+    The word is one the tree writes hundreds of times, so the clean result
+    means something: declared, the same word is caught in the same files. Only
+    the files that write the word are scanned, since an identity finding for a
+    token needs the token in the file; the whole tree's other classes are
+    ``test_the_repository_itself_is_clean``'s.
+    """
+    word = "window"
+    assert scan.is_ordinary_word(word)
+    listed = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "grep", "-l", "-I", "-i", "-w", "-z", word],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    users = [REPO_ROOT / name for name in listed.split("\0") if name]
+    assert len(users) > 50, "the fixture word no longer exercises the relaxation"
+
+    tokens = detected(word.capitalize() + ".local", volume=word.upper())
+    assert {word.capitalize(), word.upper()} <= tokens.shape_only
+    findings = [f for f in scan.scan_tree(REPO_ROOT, users) if "personal identifier" in f]
+    assert findings == [], "\n".join(findings[:20])
+
+    # scan_tree reads the identity of the root it scans, so declare through the variable.
+    monkeypatch.setenv("CRATEKIT_SCAN_IDENTITY", word)
+    tokens = scan.machine_identity_tokens(REPO_ROOT)
+    assert word in tokens and not tokens.shape_only
+    caught = [f for f in scan.scan_tree(REPO_ROOT, users[:5]) if "personal identifier" in f]
+    assert len({finding.partition(": ")[0] for finding in caught}) == 5
+
+
+def test_the_ordinary_word_list_is_well_formed():
+    """Lower case letters only, four or longer, sorted and unique, and not truncated.
+
+    A digit, a capital inside a token or a separator can therefore never make a
+    detected token ordinary, so a hostname like ``my-laptop`` stays bare.
+    """
+    lines = scan.ORDINARY_WORDS_FILE.read_text(encoding="utf-8").splitlines()
+    words = [line for line in lines if line and not line.startswith("#")]
+    assert words == sorted(set(words))
+    assert all(re.fullmatch(r"[a-z]{4,}", word) for word in words)
+    assert len(words) > 35_000
+    assert scan.ordinary_words() == frozenset(words)
+    for token in ("my-laptop", "SomeSpecificDrive", "Drive2", "zzqhost"):
+        assert not scan.is_ordinary_word(token), token
+    for token in ("Garden", "WINDOW", "meadow"):
+        assert scan.is_ordinary_word(token), token

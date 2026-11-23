@@ -20,6 +20,7 @@ Usage::
 
 from __future__ import annotations
 
+import functools
 import getpass
 import os
 import re
@@ -98,12 +99,52 @@ PLACEHOLDER_SEGMENTS = frozenset({
 # RFC 2606 illustration domains.
 PLACEHOLDER_EMAIL_DOMAINS = ("example.com", "example.org", "example.net", "invalid", "test")
 
-# Tokens too generic to be anyone's identifier; applied only to the runtime identity set.
+# Tokens too generic to be anyone's identifier, dropped from every identity tier.
 _IDENTITY_STOPWORDS = frozenset({
     "root", "runner", "user", "admin", "ubuntu", "build", "ci", "test",
     "docker", "vscode", "home", "none", "null", "data", "temp", "tmp",
     "macos", "linux", "windows", "python", "github", "local", "system",
 })
+
+
+# A DETECTED token that is an ordinary English word (U957) matches only where it
+# names the machine or volume: a home or mount path segment, or a host name. A
+# machine called by a plain word would otherwise fail every file that uses the
+# word. A DECLARED token matches bare whatever the list says, so a person who
+# wants the bare word caught declares it. The list ships beside this file, so
+# macOS and the Linux runner decide alike, with no system dictionary.
+ORDINARY_WORDS_FILE = Path(__file__).resolve().parent / "scan_ordinary_words.txt"
+
+# A host form of a token: the local network suffixes a machine answers on.
+_HOST_SUFFIXES = r"(?:local|lan|localdomain|home\.arpa)"
+
+
+@functools.lru_cache(maxsize=1)
+def ordinary_words() -> frozenset[str]:
+    """The shipped list of ordinary words, lower case; a missing list raises rather than relaxes."""
+    lines = ORDINARY_WORDS_FILE.read_text(encoding="utf-8").splitlines()
+    return frozenset(line.strip() for line in lines if line.strip() and not line.startswith("#"))
+
+
+def is_ordinary_word(token: str) -> bool:
+    """True when ``token``, in any case, is on the shipped list of ordinary words."""
+    return token.lower() in ordinary_words()
+
+
+class IdentityTokens(frozenset):
+    """Every identity token, carrying the detected ordinary words that match only by shape.
+
+    ``shape_only`` is a subset of the tokens. A plain set passed to
+    ``portability_violations`` has none, so every token in it matches bare: a
+    caller that loses this type over reports, it never passes silently.
+    """
+
+    shape_only: frozenset[str]
+
+    def __new__(cls, tokens=(), shape_only=()):
+        self = super().__new__(cls, tokens)
+        self.shape_only = frozenset(shape_only) & frozenset(self)
+        return self
 
 
 def _is_placeholder_segment(segment: str) -> bool:
@@ -126,60 +167,90 @@ def identity_file_tokens(root: Path) -> set[str]:
     return {line for line in lines if line}
 
 
-def machine_identity_tokens(root: Path | None = None) -> set[str]:
+# Where mounted volumes are listed; a module constant so a test can point it at a fixture.
+MOUNT_ROOTS: tuple[str, ...] = ("/Volumes", "/media", "/mnt")
+
+
+def machine_identity_tokens(root: Path | None = None) -> IdentityTokens:
     """Identifiers belonging to this machine and this contributor.
 
     From the declared identity file, the comma separated
     ``CRATEKIT_SCAN_IDENTITY`` variable, and the running system (login account,
     home directory name, short hostname, mounted volume names). Short and
-    generic tokens are dropped, since they would flag ordinary prose.
+    generic tokens are dropped, since they would flag ordinary prose. A
+    detected token that is an ordinary word, and not also declared, is in
+    ``shape_only``: it matches only in a path or host shape (U957).
     """
-    tokens: set[str] = set()
+    declared: set[str] = set()
+    detected: set[str] = set()
 
-    def _add(value: str | None) -> None:
+    def _add(into: set[str], value: str | None) -> None:
         if not value:
             return
         value = value.strip()
         if len(value) < 4 or value.lower() in _IDENTITY_STOPWORDS:
             return
-        tokens.add(value)
+        into.add(value)
 
-    for declared in identity_file_tokens(root if root is not None else REPO_ROOT):
-        _add(declared)
-    for declared in os.environ.get("CRATEKIT_SCAN_IDENTITY", "").split(","):
-        _add(declared)
+    for value in identity_file_tokens(root if root is not None else REPO_ROOT):
+        _add(declared, value)
+    for value in os.environ.get("CRATEKIT_SCAN_IDENTITY", "").split(","):
+        _add(declared, value)
 
     # A cloud session's account, hostname and mounts are the platform's, not a
     # person's, so only the declared tiers apply there.
     if os.environ.get("CLAUDE_CODE_REMOTE"):
-        return tokens
+        return IdentityTokens(declared)
 
     try:
-        _add(getpass.getuser())
+        _add(detected, getpass.getuser())
     except Exception:  # pragma: no cover - getuser can fail with no passwd entry
         pass
-    _add(Path.home().name)
-    _add(socket.gethostname().split(".")[0])
+    _add(detected, Path.home().name)
+    _add(detected, socket.gethostname().split(".")[0])
 
-    for mount_root in ("/Volumes", "/media", "/mnt"):
-        root = Path(mount_root)
+    for mount_root in MOUNT_ROOTS:
+        mounts = Path(mount_root)
         try:
-            entries = list(root.iterdir()) if root.is_dir() else []
+            entries = list(mounts.iterdir()) if mounts.is_dir() else []
         except OSError:  # pragma: no cover - permission-denied mount roots
             entries = []
         for entry in entries:
             if not _is_placeholder_segment(entry.name):
-                _add(entry.name)
+                _add(detected, entry.name)
 
-    return tokens
+    declared_folded = {token.lower() for token in declared}
+    shape_only = {
+        token
+        for token in detected
+        if is_ordinary_word(token) and token.lower() not in declared_folded
+    }
+    return IdentityTokens(declared | detected, shape_only)
+
+
+def _names_the_machine(token: str, text: str, folded: str, segments: set[str]) -> bool:
+    """True when ``token`` is a home or mount path segment in ``text``, or a host name.
+
+    ``folded`` is ``text`` case folded: a file that never writes the token skips
+    the host search, the common case on a machine named by a word.
+    """
+    if token.lower() in segments:
+        return True
+    if token.casefold() not in folded:
+        return False
+    host = rf"(?<![A-Za-z0-9_-]){re.escape(token)}\.{_HOST_SUFFIXES}(?![A-Za-z0-9_-])"
+    return re.search(host, text, re.IGNORECASE) is not None
 
 
 def portability_violations(text: str, *, identity_tokens: set[str] | None = None) -> list[str]:
     """One message per portability violation in ``text``; pure, and the skills lint calls it."""
     problems: list[str] = []
+    # Every home and mount segment, placeholders included, for the shape only tokens below.
+    segments: set[str] = set()
 
     for match in _HOME_DIR.finditer(text):
         segment = match.group(1)
+        segments.add(segment.lower())
         if _is_placeholder_segment(segment):
             continue
         problems.append(
@@ -189,6 +260,7 @@ def portability_violations(text: str, *, identity_tokens: set[str] | None = None
 
     for match in _MOUNT.finditer(text):
         segment = match.group(1)
+        segments.add(segment.lower())
         if _is_placeholder_segment(segment):
             continue
         problems.append(
@@ -206,11 +278,17 @@ def portability_violations(text: str, *, identity_tokens: set[str] | None = None
         problems.append(f"account identifier (email address) {address!r}")
 
     # Case INSENSITIVE: an upper cased volume name is the same drive. This check
-    # denies, so a missed case variant would be a silent pass.
+    # denies, so a missed case variant would be a silent pass. A detected
+    # ordinary word matches only where it names the machine (U957).
+    shape_only = identity_tokens.shape_only if isinstance(identity_tokens, IdentityTokens) else ()
+    folded = text.casefold() if shape_only else ""
     for token in sorted(identity_tokens or ()):
-        if re.search(
-            rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])", text, re.IGNORECASE
-        ):
+        if token in shape_only:
+            found = _names_the_machine(token, text, folded, segments)
+        else:
+            pattern = rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])"
+            found = re.search(pattern, text, re.IGNORECASE) is not None
+        if found:
             problems.append(
                 f"personal identifier {token!r} (a declared or detected account, "
                 f"machine, or volume name); shipped artifacts name no person, "
