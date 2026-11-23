@@ -1348,7 +1348,8 @@ ENTRIES: tuple[Entry, ...] = (
         name="adopt.move",
         summary=(
             "move each track from the energy or style sub it holds to the one "
-            "its own file names, adding before it removes"
+            "its own file names, and a row tag set moved out of its old genre "
+            "folder into the new one, adding before it removes"
         ),
         module="cratekit.adopt.move_cli", builder="build", handler_key="adopt.move",
         feature_rows=(13,), module_id="adoption", argv_builder="adopt_move_argv",
@@ -1804,6 +1805,34 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── A chosen genre over the one a row carries (U339) ────────────────────
+    Entry(
+        name="tag.set",
+        summary=(
+            "give the rows named a genre the taxonomy declares, over the one they "
+            "carry, on the file and the row; writes file and row"
+        ),
+        module="cratekit.tagging.genre_set_cli", builder="build", handler_key="tag.set",
+        # No feature row or source script. Core, as ``tag.suggest``: adoption
+        # files by genre.
+        emits=frozenset({"plan"}), output_schema="plan/1",
+        #: The file and the row, the row as ``tag.rows`` writes it; a genre with
+        #: no lookup row writes nothing, since only a landing may make one.
+        writes=frozenset({"files", "db_metadata"}), destructive=True,
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
+        gates=(
+            GateSpec(
+                name="tag.set.confirm", options=("apply", "abort"),
+                prompt="Give these rows the genre, on their files and in rekordbox?",
+                #: Explicit (R34), for ``tag.rows.confirm``'s reason.
+                explicit=True, digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── A second genre folder beside the genre's own (U340) ─────────────────
     Entry(
         name="tag.second",
@@ -1975,8 +2004,9 @@ ENTRIES: tuple[Entry, ...] = (
         name="analyze.adopt",
         summary=(
             "after the rekordbox visit, give each landed title whose key or tempo "
-            "differs rekordbox's, in the row's title, the file's title tag and its "
-            "key tag; never a key column, a tempo field or a file name"
+            "differs rekordbox's, and each with no head one built from them, in the "
+            "row's title, the file's title tag and its key tag; never a key column, a "
+            "tempo field or a file name"
         ),
         module="cratekit.analysis.head_adopt_cli", builder="build",
         handler_key="analyze.adopt",

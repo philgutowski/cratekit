@@ -1515,6 +1515,9 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # U114. No argument: no row lacks a genre, so the plan is empty, the gate asks
         # and the apply is a no op.
         "tag.suggest": [],
+        # U339. A row no library holds: the plan lists it gone, the gate asks and
+        # the apply is a no op. tests/test_tag_set.py.
+        "tag.set": ["Deep House", "--row", "no-such-row"],
         # U340. A row the collection does not hold: the plan leaves it, the gate asks
         # and the apply is a no op. tests/test_tag_second.py.
         "tag.second": ["Deep House", "--row", "999999"],
@@ -2222,6 +2225,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "tag.suggest": (
         "tests/test_tag_suggest.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "tag.set": (
+        "tests/test_tag_set.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     "tag.campaign": (

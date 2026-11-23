@@ -59,7 +59,8 @@ OPERATIONS: Mapping[str, rb_writer.FieldPolicy] = MappingProxyType(
         ),
         #: Owned, because its one caller lists every row at an explicit gate and
         #: lets a row be held out by name (U327). It splices rekordbox's key and
-        #: tempo into the head's own spans and no other byte; the key and tempo
+        #: tempo into the head's own spans and no other byte, or sets a head built
+        #: from them before a title that had none (U342); the key and tempo
         #: columns it reads stay unwritable, so the answer stays rekordbox's.
         ADOPT_REKORDBOX_HEAD: rb_writer.FieldPolicy(
             owner=ADOPT_REKORDBOX_HEAD,

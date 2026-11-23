@@ -150,17 +150,23 @@ def test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_eac
     assert {change.tree: change.created for change in record.change.trees}[native.DYN_CHANGE_KEY] == 2
     assert _codes(acted) == [land_cli.AWAITING_ANALYSIS]
     message = _warning(acted, land_cli.AWAITING_ANALYSIS)
-    assert (
-        f"on the 3 row(s) without the dyn My Tag with {drift.NORMAL_SETTINGS}" in message
-    ), message
-    assert f"on the 2 row(s) carrying it with {drift.DYNAMIC_SETTINGS}" in message, message
+    dynamic = (
+        f"first on the 2 row(s) carrying the dyn My Tag with {drift.DYNAMIC_SETTINGS} "
+        "as the Normal run's"
+    )
+    normal = f"then last on the 3 row(s) without it with {drift.NORMAL_SETTINGS}"
+    assert dynamic in message and normal in message, message
+    # U954: the Dynamic run first and the Normal run last, so the mode the
+    # next launch's Auto Analysis dialog reads is Normal.
+    assert message.index(dynamic) < message.index(normal), message
+    assert f"{normal}, so the mode the next launch reads is Normal" in message, message
     assert "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on" in message
     assert "Analysis Mode Dynamic" in message
     # U319: both paths, the selections with Auto Analysis off and then the
     # one dialog with it on, before the clear that follows either.
     off = "rekordbox analyses nothing on its own with Auto Analysis off; open rekordbox, select the"
     assert off in message, message
-    selections = message.index(f"on the 2 row(s) carrying it with {drift.DYNAMIC_SETTINGS}")
+    selections = message.index(normal)
     auto = message.index(f"; {land_cli.AUTO_ANALYSIS_STEP}; then crate inbox analyzed takes out")
     assert message.index(off) < selections < auto, message
     assert _shown(refused)["dyn My Tag"] == (
@@ -172,6 +178,26 @@ def test_the_check_reads_the_value_the_landing_writes():
     """One constant and one reader, so the check and the landing cannot drift apart."""
     assert rekordbox_check.DYN_VALUE == native.DYN_VALUE == "dyn"
     assert rekordbox_check.dyn_marked is native.dyn_marked
+
+
+def test_a_landing_whose_every_row_is_dyn_says_the_visit_ends_on_dynamic(writable, silence):
+    """U954: no row is left to run Normal last, so the warning never claims Normal."""
+    cfg = writable
+    _read(cfg, silence, "Live.flac", "6.2", drift.VARIABLE)
+    _read(cfg, silence, "Two.flac", "9.9", drift.VARIABLE)
+
+    code, acted, _refused = _two_acts(_land())
+
+    assert code == int(ExitCode.OK), acted
+    assert len(_marked(cfg)) == 2
+    message = _warning(acted, land_cli.AWAITING_ANALYSIS)
+    assert (
+        "run Analyze Tracks on its 2 row(s), every one carrying the dyn My Tag, with the "
+        f"Normal settings, {drift.NORMAL_SETTINGS}, but Analysis Mode Dynamic; with no row "
+        "left to run Normal last, the visit ends on Dynamic and the visit after it cancels "
+        "its launch dialog; or, with Auto Analysis on"
+    ) in message, message
+    assert "then last on" not in message and "the mode the next launch reads is Normal" not in message
 
 
 # Never a guess
@@ -192,8 +218,13 @@ def test_a_file_with_no_drift_reading_or_no_number_is_counted_unscored_and_untag
     assert "dyn" not in item and "drift" not in item, "an unscored row is the fact line's"
     assert _marked(cfg) == frozenset()
     assert _codes(acted) == [land_cli.AWAITING_ANALYSIS]
-    assert "on the 1 row(s) without the dyn My Tag" in _warning(acted, land_cli.AWAITING_ANALYSIS)
-    assert "on the 0 row(s) carrying it" in _warning(acted, land_cli.AWAITING_ANALYSIS)
+    message = _warning(acted, land_cli.AWAITING_ANALYSIS)
+    # U954: with no dyn row there is one Normal run, and no order to tell.
+    assert (
+        f"run Analyze Tracks on its 1 row(s), none carrying the dyn My Tag, with "
+        f"{drift.NORMAL_SETTINGS}; " in message
+    ), message
+    assert "first on the" not in message and "then last on" not in message, message
 
 
 def test_a_library_with_no_category_to_copy_lands_and_names_the_variable_rows(
@@ -216,6 +247,14 @@ def test_a_library_with_no_category_to_copy_lands_and_names_the_variable_rows(
     message = _warning(acted, land_cli.DYN_NOT_WRITTEN)
     assert "Live.flac" in message and "Straight.flac" not in message
     assert drift.DYNAMIC_SETTINGS in message and native.DYN_NO_CATEGORY in message
+    # U954: the by name Dynamic run keeps its place in the order, said literally.
+    assert (
+        f"{drift.DYNAMIC_SETTINGS}, before any Normal run and left out of it, and with no "
+        "other row to run Normal the visit ends on Dynamic: Live.flac" in message
+    ), message
+    assert native.DYN_NO_CATEGORY.endswith(
+        "with Analysis Mode Dynamic by hand, before any Normal run and left out of it"
+    )
 
 
 def test_a_library_with_no_category_and_no_variable_row_says_nothing_of_it(native_library, silence):
@@ -248,7 +287,7 @@ def test_a_tag_written_under_a_removed_value_is_said_and_never_counted(native_li
     assert item["dyn"] is False
     (warning,) = [w for w in acted["warnings"] if w["code"] == land_cli.DYN_NOT_WRITTEN]
     assert "One.flac" in warning["message"] and "removed" in warning["message"]
-    assert "on the 0 row(s) carrying it" in _warning(acted, land_cli.AWAITING_ANALYSIS)
+    assert "on its 1 row(s), none carrying the dyn My Tag" in _warning(acted, land_cli.AWAITING_ANALYSIS)
 
 
 def test_a_refused_commit_leaves_no_tag(writable, silence, monkeypatch):

@@ -352,14 +352,23 @@ def test_the_two_tables_spell_two_conditions_twice_and_still_agree():
         )
 
 
-def test_upgrade_cratekit_is_declared_three_times_and_this_table_reserves_one_meaning():
-    """``upgrade-cratekit`` means 32 for an unreadable fact file and 30 for config, pinned."""
+def test_upgrade_cratekit_is_declared_twice_and_this_table_reserves_one_meaning():
+    """``upgrade-cratekit`` means 32 for an unreadable fact file and 30 for config, pinned.
+
+    Declared by ``backup_facts.Remedy`` and the canonical vocabulary, which
+    ``config.Remedy`` is since U329, so the distinct declarers are two.
+    """
     declaring = sorted(
-        f"{owner.__module__}.{owner.__qualname__}"
-        for owner in (backup_facts.Remedy, config.Remedy, Remedy)
-        if "upgrade-cratekit" in {str(member.value) for member in owner}
+        {
+            f"{owner.__module__}.{owner.__qualname__}"
+            for owner in (backup_facts.Remedy, config.Remedy, Remedy)
+            if "upgrade-cratekit" in {str(member.value) for member in owner}
+        }
     )
-    assert len(declaring) == 3, f"the collision changed shape: {declaring}"
+    assert declaring == [
+        "cratekit.core.backup_facts.Remedy",
+        "cratekit.core.exit_codes.Remedy",
+    ], f"the collision changed shape: {declaring}"
     assert reserved_codes.code_for("upgrade-cratekit") is ExitCode.ACK_REQUIRED
     assert REASONS["config-unusable"] is ExitCode.PRECONDITION
     assert reserved_codes.code_for("upgrade-cratekit") is not REASONS["config-unusable"]

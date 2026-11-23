@@ -22,7 +22,10 @@ from cratekit.intake import native
 from cratekit.write import metadata
 from tests.cli_drive import drive
 from tests.test_analyze_adopt import (
+    BARE,
     LANDED,
+    STAMPED,
+    _bare_and_visited,
     _file,
     _id,
     _land_headed,
@@ -107,6 +110,28 @@ def test_a_restore_puts_the_row_the_title_tag_and_the_key_tag_back(native_librar
     assert _surfaces(cfg, "Golf")[2] is None
     files = envelope["data"]["totals"]["file_tags"]
     assert files == {"planned": 5, "read_back": 5, "failed": [], "wrong": []}
+
+
+def test_a_restore_puts_a_stamped_row_and_its_file_back_with_no_head(native_library, silence):
+    """U342: a title that had no head and was stamped goes back to having none, on
+    the row, the title tag and the key tag, beside a corrected row."""
+    cfg, _root = native_library
+    _landed_and_visited(cfg, silence)
+    _bare_and_visited(cfg, silence)
+    stems = [*LANDED, *BARE]
+    before = {stem: _surfaces(cfg, stem)[:3] for stem in stems}
+    code, acted, _refused = _two_acts()
+    assert code == int(ExitCode.OK), acted
+    assert _surfaces(cfg, "Tango")[:3] == (STAMPED["Tango"], STAMPED["Tango"], "09A")
+
+    code, envelope = _restore(_adopted(cfg).session_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert {stem: _surfaces(cfg, stem)[:3] for stem in stems} == before
+    assert _surfaces(cfg, "Tango")[:3] == ("[MP3] Tango", "[MP3] Tango", None)
+    assert _surfaces(cfg, "Tango")[3] == "Tango.flac"
+    files = envelope["data"]["totals"]["file_tags"]
+    assert files == {"planned": 9, "read_back": 9, "failed": [], "wrong": []}
 
 
 def test_a_blank_key_tag_is_put_back_absent_never_an_empty_tag(native_library, silence):

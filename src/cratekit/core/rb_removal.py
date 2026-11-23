@@ -14,6 +14,7 @@ from typing import Any, Iterable, Mapping
 
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.rb_call_time import writer as _writer
 from cratekit.core.rb_tables import (
     COLLECTION_REMOVAL_TABLES,
     CONTENT_REFERENCE_COLUMN,
@@ -110,13 +111,6 @@ def counter_at_commit(db: Any) -> int:
 def removal_stamp(db: Any) -> RenumberingStamp:
     """The stamp for this removal's renumbered rows: the count its commit will leave, and now."""
     return RenumberingStamp(_writer().counter_at_commit(db), stamp_time(_now()))
-
-
-def _writer():
-    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import rb_writer
-
-    return rb_writer
 
 
 def _tables(session: Any) -> tuple[str, ...]:

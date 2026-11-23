@@ -32,6 +32,7 @@ from cratekit.core.cause import (
     refuse,
 )
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.session_call_time import session as _session
 
 if TYPE_CHECKING:
     from cratekit.core.session import SessionRecord
@@ -39,13 +40,6 @@ if TYPE_CHECKING:
 
 #: The session logger, so a record reads as it did before the split.
 logger = logging.getLogger("cratekit.core.session")
-
-
-def _session():
-    """``session`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import session
-
-    return session
 
 
 #: Recorded in place of a value this platform cannot answer, so a degraded

@@ -1,0 +1,80 @@
+name = "u954"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_no_dyn_case"
+description = "awaiting_analysis: never take the no dyn branch, so a landing with no dyn row is told a Dynamic run first on 0 rows and a Normal run last"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_rekordbox_visit_skill.py", "tests/test_label_sync_go.py"]
+old = '''    normal = len(collection.added) - dyned
+    if not dyned:'''
+new = '''    normal = len(collection.added) - dyned
+    if False:'''
+
+[[rows]]
+id = "M2_every_row_dyn_case"
+description = "awaiting_analysis: never take the every row dyn branch, so a batch of only dyn rows is told a Normal run last on 0 rows that leaves the mode Normal (round one's blocking finding)"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_rekordbox_visit_skill.py", "tests/test_label_sync_go.py"]
+old = '''    elif not normal:'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "M3_mixed_order"
+description = "awaiting_analysis: the mixed batch told Normal first and Dynamic last, the order that leaves the mode on Dynamic"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_rekordbox_visit_skill.py", "tests/test_label_sync_go.py"]
+old = '''            f"run Analyze Tracks first on the {dyned} row(s) carrying the dyn My Tag "
+            f"with {drift.DYNAMIC_SETTINGS} as the Normal run's, then last on the "'''
+new = '''            f"run Analyze Tracks last on the {dyned} row(s) carrying the dyn My Tag "
+            f"with {drift.DYNAMIC_SETTINGS} as the Normal run's, then first on the "'''
+
+[[rows]]
+id = "M4_sync_stop_exception"
+description = "REKORDBOX_STEPS: the sync stop claims the next launch reads Normal even when every row carries the tag"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_drift.py", "tests/test_intake_land_dyn_native.py", "tests/test_rekordbox_visit_skill.py", "tests/test_label_sync_go.py"]
+old = '''    f"{drift.NORMAL_SETTINGS}, so the mode the next launch reads is Normal unless "
+    f"every row carries the tag; {AUTO_ANALYSIS_STEP}",'''
+new = '''    f"{drift.NORMAL_SETTINGS}, so the mode the next launch reads is Normal even if "
+    f"every row carries the tag; {AUTO_ANALYSIS_STEP}",'''
+
+[[rows]]
+id = "M5_auto_step_condition_landing"
+description = "AUTO_ANALYSIS_STEP in land_native: the closing Normal run told whatever the rows, with no dyn row or no row without it"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_rekordbox_visit_skill.py", "tests/test_label_sync_go.py"]
+old = '''    f"{drift.DYNAMIC_SETTINGS}, and then, when they did and a row lacks the tag, one "'''
+new = '''    f"{drift.DYNAMIC_SETTINGS}, and then, whatever the rows carry, always one "'''
+
+[[rows]]
+id = "M6_auto_step_condition_sync_stop"
+description = "AUTO_ANALYSIS_STEP in tail: the sync stop's copy tells the closing Normal run whatever the rows"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_drift.py", "tests/test_intake_land_dyn_native.py", "tests/test_rekordbox_visit_skill.py", "tests/test_label_sync_go.py"]
+old = '''    f"{drift.DYNAMIC_SETTINGS}, and then, when they did and a row lacks the tag, one "'''
+new = '''    f"{drift.DYNAMIC_SETTINGS}, and then, whatever the rows carry, always one "'''
+
+[[rows]]
+id = "M7_untagged_rows_order"
+description = "dyn_warnings: the untagged variable rows told to run Dynamic after the Normal run, which leaves the mode on Dynamic"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_rekordbox_visit_skill.py", "tests/test_label_sync_go.py"]
+old = '''            f"{drift.DYNAMIC_SETTINGS}, before any Normal run and left out of it, "'''
+new = '''            f"{drift.DYNAMIC_SETTINGS}, after the Normal run and left out of it, "'''
+
+[[rows]]
+id = "M8_no_category_order"
+description = "DYN_NO_CATEGORY: the refusal's by hand Dynamic run placed after the Normal run"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_rekordbox_visit_skill.py", "tests/test_label_sync_go.py"]
+old = '''    "rows this landing names with Analysis Mode Dynamic by hand, before any Normal "'''
+new = '''    "rows this landing names with Analysis Mode Dynamic by hand, after any Normal "'''

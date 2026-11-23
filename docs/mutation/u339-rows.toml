@@ -1,0 +1,248 @@
+name = "u339"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_genre_declared"
+description = "assert_declared: accept any genre, so an undeclared word reaches the plan"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''    if suggest.suggestable(declared, word):
+        return word'''
+new = '''    if True:
+        return word'''
+
+[[rows]]
+id = "M2_path_whole_name"
+description = "_nodes_at: a node whose name is only a prefix of the rest counts as the whole path"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''        if rest == name:
+            found.append((node, here))'''
+new = '''        if rest.startswith(name):
+            found.append((node, here))'''
+
+[[rows]]
+id = "M3_path_two_nodes"
+description = "playlist_members: two nodes at one path no longer refuse"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''    if len(matches) > 1:'''
+new = '''    if len(matches) > 2:'''
+
+[[rows]]
+id = "M4_path_folder"
+description = "playlist_members: a folder or a smart playlist is taken as a playlist"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''    if attribute != 0:'''
+new = '''    if attribute == 9:'''
+
+[[rows]]
+id = "M5_removed_member"
+description = "playlist_members: a removed membership is read as a member"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''        if not rb_writer.membership_removed(song)
+    ]
+    songs.sort'''
+new = '''        if True
+    ]
+    songs.sort'''
+
+[[rows]]
+id = "M6_tombstone_row"
+description = "plan_set: a tombstoned row is planned as live"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''        if content_id in wanted and not trees.soft_delete_marker(row)'''
+new = '''        if content_id in wanted'''
+
+[[rows]]
+id = "M7_multi_valued"
+description = "plan_set: a file holding two genres is written over"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''        elif rows._file_words(Path(path)):'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "M8_held_out"
+description = "plan_set: --leave holds nothing out"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''        elif content_id in held_out:
+            reason = HELD_OUT'''
+new = '''        elif False:
+            reason = HELD_OUT'''
+
+[[rows]]
+id = "M9_already"
+description = "plan_set: a row agreeing on one surface only reads as already that genre"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''        elif file_word == genre and row_word == genre:'''
+new = '''        elif file_word == genre or row_word == genre:'''
+
+[[rows]]
+id = "M10_no_lookup_row"
+description = "plan_set: a genre with no lookup row is planned as a write"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''        elif genre_row is None:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "M11_file_writes"
+description = "plan_set: every write rewrites the file, an agreeing one too"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''                file_writes=file_word != genre, row_writes=row_word != genre,'''
+new = '''                file_writes=True, row_writes=row_word != genre,'''
+
+[[rows]]
+id = "M12_leaves_held"
+description = "_leaves: a row the tree does not hold in its old folder still leaves it"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''    return was if held.holds(was, content_id) else ""'''
+new = '''    return was'''
+
+[[rows]]
+id = "M13_digest_leaves"
+description = "Item.digested: the folder a row leaves is not digested"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''            "leaves": self.leaves,
+        }'''
+new = '''        }'''
+
+[[rows]]
+id = "M14_stale_check"
+description = "assert_plan_unchanged: a plan that moved is applied"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''    if again.digest == approved.digest:
+        return'''
+new = '''    if True:
+        return'''
+
+[[rows]]
+id = "M15_file_reread"
+description = "write_files: a file changed since the plan is written over"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''        if word != item.file or outcome == rows.FILE_UNREADABLE:
+            moved.append'''
+new = '''        if False:
+            moved.append'''
+
+[[rows]]
+id = "M16_record_before"
+description = "apply_set: the record keeps no file's old genre, so a restore puts none back"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''[item.before() for item in writes if item.file_writes]'''
+new = '''[]'''
+
+[[rows]]
+id = "M17_row_needs_file"
+description = "apply_set: a row is written though its file did not take the genre"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''if item.content_id in landed and item.row_writes]'''
+new = '''if item.row_writes]'''
+
+[[rows]]
+id = "M18_judge_word"
+description = "judge: a row not carrying the genre reads back clean"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''        if word != genre:
+            wrong.append'''
+new = '''        if False:
+            wrong.append'''
+
+[[rows]]
+id = "M19_restore_per_field"
+description = "befores: a later record's tag overwrites the earlier record's for a file"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_tag_set.py"]
+old = '''                if held.value(name) is None and kept.value(name) is not None'''
+new = '''                if kept.value(name) is not None'''
+
+[[rows]]
+id = "M20_moved_back_names"
+description = "genre_moved_out_of: a bucket the genre names again is still left"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_former_place.py", "tests/test_adopt_split_place.py", "tests/test_adopt_workers.py"]
+old = '''        and not claims(entry, bucket)
+        and not genre_names(entry, bucket, declared)
+    )'''
+new = '''        and not claims(entry, bucket)
+    )'''
+
+[[rows]]
+id = "M21_cross_add"
+description = "moved_out_of: the target is added again though the track already holds it"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_former_place.py", "tests/test_adopt_split_place.py", "tests/test_adopt_workers.py"]
+old = '''        add="" if target in placements.holds(into, entry.content_id) else target,'''
+new = '''        add=target,'''
+
+[[rows]]
+id = "M22_still_moved_claims"
+description = "still_moved: a bucket another entry of the track claims stays in the moves"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_former_place.py", "tests/test_adopt_split_place.py", "tests/test_adopt_workers.py"]
+old = '''        held -= {bucket for bucket in held if claims(entry, bucket)}
+'''
+new = ''''''
+
+[[rows]]
+id = "M23_worker_into"
+description = "remaining: a frozen move whose folder changed is performed"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_former_place.py", "tests/test_adopt_split_place.py", "tests/test_adopt_workers.py"]
+old = '''        if isinstance(now, move_engine.Move) and now.into != move.into:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M24_discharge_moved"
+description = "handle: an entry is spent though the track was not read back moved"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_former_place.py", "tests/test_adopt_split_place.py", "tests/test_adopt_workers.py"]
+old = '''        if move.target_bucket and move.content_id in found["moved"]:'''
+new = '''        if move.target_bucket:'''
+
+[[rows]]
+id = "M25_record_union"
+description = "record: a second run replaces the folders an entry still waits on"
+file = "src/cratekit/adopt/genre_moves.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''(kept.get(str(content_id), set()) | set(buckets)) - {into}'''
+new = '''set(buckets) - {into}'''

@@ -345,7 +345,8 @@ The verbs run over staged files before a landing, in order: `tag folder`,
 `name apply` (`cratekit.cli.tail`).
 `crate sync land`, `label sync --go` and `sync bandcamp` run it; no landing is
 planned unless every step succeeded, and a stale tail job is replaced, not
-resumed.
+resumed. Its restamp leaves out the files its `analyze run` just scored
+(`--scored-by`, U344).
 
 ### Shelve
 `crate intake shelve` (`intake/shelve.py`): moves a landed batch folder from
@@ -712,8 +713,9 @@ together can form a window that was never there, which is a new copy.
 ### Allowance
 A file of lines, one per place a package may still hold something a rule
 forbids, under `tests/ratchets/`: one file per package for copied blocks and one
-for seam crossings. Lines are only ever removed. A line whose finding is gone
-fails nothing, so a card that removes a copy or a crossing cannot fail another
+for seam crossings. Lines are only ever removed. The copied block allowances
+are all empty since U329 and any line in one fails. An import allowance line
+whose finding is gone fails nothing, so a card that removes a copy or a crossing cannot fail another
 card's package by removing it, and `scripts/refactor_measure.py prune` removes
 such lines and can add none.
 
@@ -891,7 +893,9 @@ beat from its BPM column rounded half up to a whole beat, takes rekordbox's, spl
 spans of the row's `Title`, the file's title tag and its `initialkey`. The file
 name keeps its old head, so every reader that would put it back (`name apply`,
 the library index) reads the title tag's head first. Never writes `KeyID`, the
-BPM column, a grid or a tempo tag.
+BPM column, a grid or a tempo tag. A title with no head is **stamped** (U342):
+given the naming engine's head of rekordbox's key and tempo before the whole
+title, both halves or none.
 
 *Avoid:* adoption, `crate adopt`, which takes a library's playlists over; and
 re-stamping, which is `analyze restamp`'s energy tag alone.
@@ -1141,7 +1145,9 @@ adoption plan holds it: `add`, `present`, `under-another-name`, `no-sub`,
 
 ### Move
 `crate adopt move`: one track leaving the competing subs its reading does not
-name for the one it does, within one bucket. The addition commits before the
+name for the one it does, within one bucket, or, for a row `tag set` gave a new
+genre (U339), leaving every sub of the bucket its old genre filed it in for the
+one its new genre names in another. The addition commits before the
 removal (a soft delete of the membership, the only removal the guarded writer
 admits). With no reading it is Left.
 

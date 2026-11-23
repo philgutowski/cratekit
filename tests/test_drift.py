@@ -98,6 +98,23 @@ def test_the_normal_settings_are_the_visit_standard_the_sync_stop_prints():
     assert "Analysis Mode Dynamic" in drift.DYNAMIC_SETTINGS
 
 
+def test_the_sync_stop_runs_dynamic_first_and_normal_last():
+    """U954: the last Analyze Tracks OK sets the mode the next launch's dialog reads."""
+    from cratekit.cli import tail
+
+    step = tail.REKORDBOX_STEPS[0]
+    dynamic = (
+        "run Analyze Tracks first on its rows carrying the dyn My Tag, if any: "
+        f"{drift.DYNAMIC_SETTINGS} as the Normal run's"
+    )
+    normal = (
+        f"then last on its rows without the dyn My Tag, if any: {drift.NORMAL_SETTINGS}, "
+        "so the mode the next launch reads is Normal unless every row carries the tag"
+    )
+    assert dynamic in step and normal in step, step
+    assert step.index(dynamic) < step.index(normal), step
+
+
 def test_the_sync_stop_offers_the_auto_analysis_path_after_the_selections_it_stands_in_for():
     """U319: one wording, said after the Analyze Tracks selections its "as above" names."""
     from cratekit.cli import tail
@@ -118,7 +135,9 @@ def test_the_auto_analysis_step_cancels_on_any_other_field_and_leaves_dyn_to_dyn
         "its Auto Analysis dialog only when it shows every one of those Normal settings "
         "with Vocal and CUE off and no field set otherwise, else Cancel it and select as "
         "above; Auto Analysis runs on its preference's own mode, so the rows carrying the "
-        f"dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}"
+        f"dyn My Tag, if any, still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}, "
+        "and then, when they did and a row lacks the tag, one row without it takes "
+        f"Analyze Tracks with {drift.NORMAL_SETTINGS} again, so the visit ends on Normal"
     )
     assert drift.NORMAL_SETTINGS == (
         "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on"

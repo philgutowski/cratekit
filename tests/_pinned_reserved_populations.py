@@ -251,6 +251,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'tag-second-unwritten',
     'tag-second-usage',
     'tag-retag-unwritten',  # 2026-11-01, R-1103: a file that would not take its corrected genre.
+    'tag-set-scope-unknown',  # 2026-11-23, U339: the rows tag set was asked about.
+    'tag-set-unwritten',  # 2026-11-23, U339: a file that would not take its set genre.
     'tag-suggest-unwritten',
     'target-lufs-out-of-range',
     # 2026-11-02, U194: the answers to an off taxonomy word joined.
