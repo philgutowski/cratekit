@@ -4487,3 +4487,54 @@ another tree. Reachability is unmeasured beyond that one candidate.
 **Closes when:** the check leaves a playlist signal class out of the newly
 compared playlists on any tree `with_favorites` does not derive. Ledger only:
 no producer reached.
+
+---
+
+## R-1995. A clock stepping back between a removal's plan and its stamp refuses the removal as an unplanned write
+
+**Found:** at review round one of #1002, U955, 2026-11-23.
+
+**The mechanism.** `DatabaseReading.read_at` is the plan's time, read when
+`CollectionRemoval.prepare` reads the database, and the renumbering's
+`updated_at` stamp is read from the same clock at the commit.
+`_stamp_after_plan` refuses a stamp earlier than the plan, so a system clock
+stepped back between the two (an NTP correction, a manual change) refuses
+the whole removal with `whitelist-violation`, "reached rows it did not plan",
+nothing written, and a remedy of changing policy or input where waiting and
+running again is the answer.
+
+**Measured cost.** Driven by the reviewer with `rb_removal._now` patched to
+run 5 ms backward per call: exit 42, nothing written, the message above. The
+producer, a real clock step inside one apply, was not driven. Nothing is
+lost: the verb can be run again.
+
+**Closes when:** the refusal names the clock and is retryable, or the check
+is dropped in favour of the row moving to the stamp's text alone. Ledger
+only: a misleading refusal over nothing lost, on an input not driven.
+
+---
+
+## R-1996. A removal gives every renumbered row one count, the final one, and rekordbox was read on one row of one playlist
+
+**Found:** at review round one of #1002, U955, 2026-11-23.
+
+**The mechanism.** `CollectionRemoval.commit` stamps every membership row it
+renumbers, in every playlist and for every removed track, with one
+`rb_local_usn`, the removal's final `localUpdateCount`, and one `updated_at`.
+A202 at sitting 104 read rekordbox 7.2.19's own Remove from Collection on one
+moved row in one playlist, whose count equalled the final count. That fits
+both one count on every moved row and successive counts ending at the final
+one, and nothing measured several moved rows, several playlists or several
+removed tracks at once. The confinement admits only the shape this product
+writes.
+
+**Measured cost.** Not driven against rekordbox, which no cloud session may
+open. Driven through the verb on the `one_offered` fixture: 7 rows in 3
+playlists moved, all holding the one final count. If rekordbox numbers them
+apart, the library differs from rekordbox's own state in the count of rows
+rekordbox itself does not read for playback.
+
+**Closes when:** an attended sitting reads rekordbox's removal of one track
+with two survivors after it on each of two playlists, column by column on two
+dated copies, and the stamp rule is kept or changed to match. Ledger only: it
+closes only at an attended sitting.
