@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Mapping, Sequence
 
-from cratekit.adopt import apply_cli, artifacts, placements, shell
+from cratekit.adopt import apply_cli, artifacts, genre_moves, placements, shell
 from cratekit.adopt import move as move_engine
 from cratekit.adopt import plan as plan_engine
 from cratekit.cli.output import Envelope, approving_actor, load_config
@@ -71,7 +71,7 @@ _AGAIN = ("run `crate adopt move` again and approve the plan as it is now",)
 def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> move_engine.MovePlan:
     """The move plan over the library as it stands, from adoption's own plan."""
     return move_engine.build_move_plan(
-        apply_cli.current_plan(cfg, declared, vocals=False), declared
+        apply_cli.current_plan(cfg, declared, vocals=False), declared, genre_moves.read(cfg)
     )
 
 
@@ -288,6 +288,7 @@ def remaining(
     approved: Sequence[move_engine.Move],
     current: plan_engine.AdoptionPlan,
     declared: taxonomy.Taxonomy,
+    moved: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[tuple[move_engine.Move, ...], tuple[str, ...]]:
     """What is left of the approved moves over the library as it stands.
 
@@ -302,10 +303,14 @@ def remaining(
     approval covers a track arriving at its target and leaving the subs it was
     shown leaving, in either order, and nothing else. What competes is asked of
     the taxonomy as it is now, so a sub made a sub class since is not removed.
+    A move across buckets (U339) is asked its target in the bucket it files
+    into and its subs left in the bucket it leaves, with ``moved`` as the plan
+    read it.
     """
     entries = move_engine.entries_by_track(current.entries)
     refused = move_engine.refused_buckets(current.entries)
     claimed = move_engine.claimed_buckets(current.entries)
+    moved = move_engine.still_moved(current.entries, declared, moved)
     todo: list[move_engine.Move] = []
     gone: set[str] = set()
     stale: dict[str, str] = {}
@@ -320,20 +325,26 @@ def remaining(
             continue
         # THE READING, ASKED THE WAY THE PLAN ASKED IT (R-780): adoption's sub
         # in the bucket its entry claims, the resolver's answer in any other.
-        if move_engine.reading_target(entry, move.bucket, declared) != move.target:
+        if move_engine.reading_target(entry, move.into, declared) != move.target:
             stale[move.content_id] = "its reading names another place"
             continue
         _kind, competing = routing.competing_subs(declared, move.bucket)
-        if not {move.target, *move.remove} <= competing:
+        _kind, into = routing.competing_subs(declared, move.into)
+        if move.target not in into or not set(move.remove) <= competing:
             stale[move.content_id] = "a sub it names no longer competes"
             continue
         # THE PLAN'S OWN RULE, ASKED OF THE LIBRARY AS IT STANDS.
         now = move_engine.standing_in(
             entry, move.bucket, current.placements, declared, tree=current.tree, refused=refused,
-            elsewhere=move_engine.elsewhere_of(claimed, entry),
+            elsewhere=move_engine.elsewhere_of(claimed, entry), moved=moved,
         )
         if isinstance(now, move_engine.Left):
             stale[move.content_id] = f"the plan as it stands leaves it: {now.reason}"
+            continue
+        # THE FOLDER A MOVE FILES INTO IS PART OF WHAT WAS APPROVED (U339): a
+        # genre given again since names another, and nobody was shown that one.
+        if isinstance(now, move_engine.Move) and now.into != move.into:
+            stale[move.content_id] = "its genre names another folder now"
             continue
         held = set(
             move_engine.held_in(
@@ -341,6 +352,13 @@ def remaining(
                 elsewhere=move_engine.elsewhere_of(claimed, entry),
             )
         )
+        if now is None and move.target_bucket:
+            # ACROSS BUCKETS, DONE IS IN THE TARGET AND OUT OF THE OLD BUCKET.
+            arrived = move.target in current.placements.holds(move.into, move.content_id)
+            if arrived and not held:
+                continue
+            stale[move.content_id] = "the plan as it stands does not move it"
+            continue
         if now is None:
             unnamed = set(current.placements.holds_unnamed(move.bucket, move.content_id))
             if held == {move.target} and not unnamed & held:
@@ -385,7 +403,7 @@ def membership_moves(
     out: list[trees.MembershipMove] = []
     for move in moves:
         try:
-            target = destination(declared, move.bucket, move.target)
+            target = destination(declared, move.into, move.target)
             leaving = tuple(
                 placements.named_place(declared, move.bucket, sub) for sub in move.remove
             )
@@ -434,7 +452,17 @@ def read_back(
         held = move_engine.held_in(
             held_now, declared, move.bucket, move.content_id, elsewhere=elsewhere
         )
-        if not held:
+        if move.target_bucket:
+            # ACROSS BUCKETS (U339): the target is read in the bucket it files
+            # into, and every sub of the bucket left must be gone.
+            arrived = move.target in held_now.holds(move.into, move.content_id)
+            name = (
+                ("in_both" if held else "moved")
+                if arrived
+                else ("untouched" if held else "neither")
+            )
+            found[name].add(move.content_id)
+        elif not held:
             found["neither"].add(move.content_id)
         elif move.target not in held:
             found["untouched"].add(move.content_id)
@@ -475,7 +503,7 @@ def handle(job, item, cfg) -> jobs.Produced:
 
     approved = move_engine.from_rows(document["moves"])
     current = apply_cli.current_plan(cfg, declared, vocals=False)
-    todo, gone = remaining(approved, current, declared)
+    todo, gone = remaining(approved, current, declared, genre_moves.read(cfg))
 
     written: trees.MoveReport | None = None
     interrupted: BaseException | None = None
@@ -494,6 +522,14 @@ def handle(job, item, cfg) -> jobs.Produced:
     found = read_back(
         cfg, declared, approved, gone, move_engine.claimed_buckets(current.entries)
     )
+    # A GENRE MOVE READ BACK OUT OF ITS OLD BUCKET IS SPENT (U339), so the
+    # bucket is never asked again for a track a person later puts there by hand.
+    # EVERY FOLDER A TRACK LEFT, a track leaving two in one job included.
+    left: dict[str, set[str]] = {}
+    for move in approved:
+        if move.target_bucket and move.content_id in found["moved"]:
+            left.setdefault(move.content_id, set()).add(move.bucket)
+    genre_moves.discharge(cfg, left)
     produced = artifacts.produced(
         cfg,
         job,

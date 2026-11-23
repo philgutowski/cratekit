@@ -643,6 +643,14 @@ STATE_FILES: tuple[StateFile, ...] = (
         "applying rebuilds the plan the gate showed. NEVER_RESTORED: replayable from the network.",
     ),
     _library(
+        "genre_moves", "genre_moves.json", SnapshotRole.COUPLED,
+        "The rows tag set gave a genre over another and the bucket each was filed in before "
+        "(U339), which adopt move takes them out of. COUPLED: a restore of the genre write must "
+        "take back the move it asks for, or the next move empties a folder the row is filed in.",
+        # An entry is a question for the next move, and changes nothing outside.
+        rollback_effects=(RollbackEffect.NONE,),
+    ),
+    _library(
         "label_sync_lock", "label_sync.lock", SnapshotRole.NEVER_RESTORED,
         "Serializes answers to the guided label sync's record, so a structured answer beside an "
         "interactive run never discards the other. NEVER_RESTORED for the inode reason.",
