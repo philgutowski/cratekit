@@ -112,7 +112,8 @@ def build_registry(parser, entry) -> None:
             "WORD",
             "the genre every track of this label is tagged with when it has none, "
             "so tag folder asks no catalogue for it; checked against the "
-            "library's taxonomy, and --genre default clears it back to none",
+            "library's taxonomy, and --genre default clears it back to none; "
+            "with list, the one genre whose labels to list",
         ),
         (
             "--bandcamp",
@@ -310,6 +311,50 @@ def _declared_genre(genre: str, accept_fallback: bool) -> tuple[str, dict | None
     }
 
 
+def genre_group_or_refuse(
+    held: labels.Registry, genre: str
+) -> tuple[str, tuple[labels.LabelEntry, ...]]:
+    """The labels of one genre group, as ``--genre`` names it, or a refusal (U341).
+
+    Returns the group's genre as its first label spells it, and its labels in
+    registry order. A genre no followed label carries refuses by name, listing
+    the genres they do carry, and says too when the library's taxonomy routes
+    the word to nothing but its fallback, so a mistyped genre reads as one.
+    """
+    wanted = labels.check_genre(genre)
+    group = held.of_genre(wanted)
+    if group:
+        return str(group[0].genre), group
+    carried = held.genres()
+    said = (
+        f"the followed labels carry {', '.join(carried)}"
+        if carried
+        else "no followed label carries a genre; set one with: crate label registry "
+        "set NAME --genre GENRE"
+    )
+    undeclared = _undeclared(wanted)
+    raise _refused(
+        "label-unknown",
+        f"no followed label carries the genre {wanted!r}{undeclared}, so there is no "
+        f"group to ask about; {said}",
+        "pass --genre with one of the genres the followed labels carry, as "
+        "crate label registry lists them",
+        detail={"genre": wanted, "genres": list(carried)},
+    )
+
+
+def _undeclared(genre: str) -> str:
+    """A clause saying the library's taxonomy routes ``genre`` only to its
+    fallback, or nothing when it routes it, or when the taxonomy cannot be read."""
+    try:
+        declared = active_taxonomy.load(_load())
+    except CratekitError:
+        return ""
+    if routing.resolve_bucket(declared, genre).match is not routing.Match.FALLBACK:
+        return ""
+    return ", and the library's taxonomy declares no bucket for it but its fallback"
+
+
 def _answer(
     ctx, store: labels.RegistryStore, done: dict, label_id: str = "", route: dict | None = None
 ) -> Envelope:
@@ -329,6 +374,20 @@ def _answer(
     return ctx.envelope(data={"checks": _checks_for(held, routed), "summary": summary})
 
 
+def _group(ctx, held: labels.Registry, genre: str) -> Envelope:
+    """``label registry list --genre GENRE``: the one group's labels (U341), as a
+    listing shows them, ``count`` counting the group."""
+    named, group = genre_group_or_refuse(held, genre)
+    summary = {
+        "genre": named,
+        "count": len(group),
+        "registered": len(held.labels),
+        "labels": [entry.to_json() for entry in group],
+    }
+    listed = labels.Registry(labels={entry.label_id: entry for entry in group})
+    return ctx.envelope(data={"checks": _checks_for(listed, {}), "summary": summary})
+
+
 def registry_cmd(ctx) -> Envelope:
     store = labels.RegistryStore()
     args = ctx.args
@@ -336,17 +395,24 @@ def registry_cmd(ctx) -> Envelope:
     kind, genre, bandcamp = args.kind, args.genre, args.bandcamp
     accept_fallback = bool(args.accept_fallback)
     fields_given = (seeds, track_limit, ctx.args.match, offer, kind, genre, bandcamp)
+    # ``list`` reads --genre as the one group to list (U341), and sets nothing.
+    setting = (seeds, track_limit, ctx.args.match, offer, kind, bandcamp) + (
+        (genre,) if action != "list" else ()
+    )
     if action not in ("add", "set") and (
-        accept_fallback or any(given is not None for given in fields_given)
+        accept_fallback or any(given is not None for given in setting)
     ):
         raise _refused(
             "label-name-invalid",
             f"label registry {action} does not set --seed, --track-limit, "
             f"--offer, --kind, --genre, --bandcamp or --match, and ignoring them "
             f"would report a change that was never written",
-            "use label registry set, or add, to change those fields",
+            "use label registry set, or add, to change those fields"
+            + (", or list one genre's labels with --genre alone" if action == "list" else ""),
         )
     if action == "list":
+        if genre is not None:
+            return _group(ctx, store.load(), genre)
         return _answer(ctx, store, {})
     if action == "adopt":
         return adopt_harvested(ctx, store)
