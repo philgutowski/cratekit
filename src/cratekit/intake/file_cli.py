@@ -1,53 +1,19 @@
 """``intake.file``: one audio file already on disk joins the library's intake.
 
-A file already on disk is a plan, not a job: there is no remote work. The verb
-lived beside its three queued siblings in :mod:`cratekit.intake.cli` until it
-gained a second medium, and it is here for the reason the landing has a module
-of its own.
+TWO MEDIA, CHOSEN BY THE INTAKE TREE'S MODE (R-770), through
+:func:`cratekit.intake.ingest.intake_medium`, read before the plan is shown.
+On the xml bridge, with ``--export`` the file is spliced through
+``place_files`` and the verb ends waiting on the import; without, it shows its
+plan and writes nothing. On a native intake tree it plans one content row and
+one batch playlist through :mod:`cratekit.intake.native`, asks
+``intake.file.native`` with no inline answer (R34), in the landing's order
+(``land_cli.ask_then_write``), and refuses ``--export`` by name.
 
-TWO MEDIA, CHOSEN BY THE INTAKE TREE'S MODE (R-770), through the one switch the
-landing reads, :func:`cratekit.intake.ingest.intake_medium`.
-
-* On the xml bridge the verb writes what it always wrote. With no ``--export``
-  it shows its plan and writes nothing; with one it splices the file into that
-  export through ``place_files`` and ends waiting on the import, as a landing
-  does.
-* On a library whose intake tree has cut over there is no export to splice.
-  Before this unit the verb reached the emitter guard and was refused as a
-  defect, over a cutover the person chose. Now it plans one content row and one
-  batch playlist under the adopted intake root through the engine the landing
-  uses, :mod:`cratekit.intake.native`, reads the backup acknowledgment, and asks
-  ``intake.file.native``. ``--export`` is refused by name, as the landing
-  refuses it.
-
-THE FILE STAYS WHERE IT IS ON BOTH MEDIA. This verb has never moved a file. A
-file still under download staging is refused on both, because a path stamped
-from staging dies when staging is cleaned. ON THE NATIVE MEDIUM THE FILE HAS TO
-BE IN THE LIBRARY, which the bridge never asked: a row is matched against the
-collection by resolving its path under the library root, so a file outside it
-could not be asked about again, and its row would be dropped by every reader
-that resolves against the root. The row is planned for the path spelled under
-the configured root, as the native landing spells its targets, so a root
-reached through a link still matches the rows the collection already holds.
-
-THE NATIVE GATE TAKES NO INLINE ANSWER, for the landing's reason: a content row
-in the collection is answered by a separate recorded act with an actor (R34).
-The order around it is the landing's own, ``land_cli.ask_then_write``. The row
-carries a title, a path, a name, a size and a type, and every column an
-analysis pass fills is left for rekordbox. That policy is the engine's and the
-guarded writer's, asserted from SQL before the commit and read back after it.
-
-THE NATIVE PLAYLIST IS NAMED AS THE NATIVE LANDING NAMES ITS OWN, by the bare
-batch, which for one file is the file's stem. On the bridge this verb still
-names the playlist after its intake file, stem and suffix, while a landing
-names it for its batch alone since U110; the native medium has no intake file
-and neither verb adds the suffix there, so a cut over library has one naming
-rule and not one per verb.
-
-THE MEDIUM IS READ BEFORE THE PLAN IS SHOWN, on the bridge too. Which medium
-the verb is on decides whether there is a gate to ask, and that is the
-library's taxonomy and its tree registry, so either one unreadable refuses
-with its own cause where the plan only path used to need the file alone.
+THE FILE NEVER MOVES. A file under download staging is refused on both media.
+On the native medium it must be in the library, since a row is matched by
+resolving its path under the root, and it is spelled under the root as
+configured, as the native landing spells its targets. The native playlist is
+the bare stem, as the native landing names its own batch.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -60,20 +26,17 @@ from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import analysis_store, config, rb_writer
-from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
+from cratekit.core.cause import Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import ingest, land_cli, native, normalize, pipeline
+from cratekit.intake import ingest, land_cli, landing, native, normalize, pipeline
 
-#: The gate the native medium asks. Explicit, and looked up by name. NOT
-#: ``NATIVE_GATE``: the landing shell exports that name for its own gate, and
-#: one symbol holding two gates in two modules is how a test comes to decide
-#: the wrong one.
+#: The gate the native medium asks, looked up by name. Not ``NATIVE_GATE``,
+#: which is the landing's own gate.
 FILE_GATE = "intake.file.native"
 
-#: What a row this run added is marked on the report. The plan's own word for
-#: it is the engine's, ``native.ADD``, and a row the collection already held
-#: keeps the engine's ``native.PRESENT`` on both.
+#: What a row this run added is marked on the report; a row already held keeps
+#: the engine's ``native.PRESENT``.
 ADDED = "added"
 
 _ORIGIN = ("intake.file_cli",)
@@ -100,9 +63,7 @@ def intake_file(ctx) -> Envelope:
     rows = normalize.from_audio_file(path)
     items = [{"path": str(path), "artist": row.artist, "title": row.title} for row in rows]
     plan = intake_cli._plan(items, kind="file")
-    # THE MEDIUM IS THE INTAKE TREE'S MODE, read through the landing's own
-    # switch (R-770). What it read is handed to the writer, so the check and
-    # the write are asked of one read.
+    # What the switch read is handed to the writer: one read for check and write.
     medium = ingest.intake_medium(cfg)
     if medium.native:
         return _file_native(ctx, cfg, path, plan, medium)
@@ -119,10 +80,7 @@ def intake_file(ctx) -> Envelope:
         registry=medium.registry,
     )
     plan["items"][0]["destination"] = str(destination)
-    # THE SAME ENDING A LANDING HAS, because it is the same ``place_files``
-    # (R-501). This used to answer OK over an intake file nobody had imported
-    # and a session nothing would close. The action is the one persisted on the
-    # intake session, read back so the two cannot differ.
+    # THE SAME ENDING A LANDING HAS (R-501), the action read back from the session.
     return ctx.envelope(
         data=plan,
         outcome=Outcome.PENDING,
@@ -131,18 +89,8 @@ def intake_file(ctx) -> Envelope:
     )
 
 
-# ---------------------------------------------------------------------------
-# The native medium (R-770)
-# ---------------------------------------------------------------------------
-
-
 def _in_the_library(path: Path, cfg: config.Config) -> Path:
-    """``path`` spelled under the configured library root, or the refusal.
-
-    Both sides are resolved to compare them and the answer is rebuilt under the
-    root AS CONFIGURED, which is how the native landing spells a target and how
-    the collection's own rows are matched.
-    """
+    """``path`` spelled under the library root AS CONFIGURED, as the native landing spells one."""
     root = Path(cfg.library.root)
     try:
         return root / path.resolve().relative_to(root.resolve())
@@ -161,12 +109,9 @@ def _in_the_library(path: Path, cfg: config.Config) -> Path:
 def _native_payload(plan: dict, rows: native.NativePlan) -> dict:
     """The plan as the approval gate shows it: the file, with the row it becomes.
 
-    EVERY COLUMN THE ROW WOULD CARRY IS ON THE ITEM, and the digest is taken
-    over the file as the verb read it and the collection plan together. The
-    engine's own digest covers the row's columns, the root, the playlist and
-    the library's device and master id, so an answer given for one file, one
-    title, one size or one library is stale for another. The database's path
-    is on the screen and not in the digest (U161).
+    The digest covers the file as read and the engine's plan digest, so an
+    answer for one file or library is stale for another; the database's path
+    is shown, not digested (U161).
     """
     (row,) = rows.rows
     item: dict[str, Any] = {
@@ -205,8 +150,7 @@ def _native_reported(payload: dict, landed: native.NativeLanded) -> dict:
             "left_empty": sorted(row.empty),
         }
     else:
-        # A row the collection already held, at the plan or since it: nothing
-        # was added, and the membership is the whole of what this run wrote.
+        # A row already held: the membership is all this run wrote.
         held = landed.present[0].content_id if landed.present else item.get("content_id")
         item = {**item, "action": native.PRESENT, "content_id": held}
     totals = {
@@ -219,13 +163,7 @@ def _native_reported(payload: dict, landed: native.NativeLanded) -> dict:
 
 
 def _file_native(ctx, cfg: config.Config, path: Path, plan: dict, medium) -> Envelope:
-    """Plan the row against the database, ask, then write it.
-
-    EVERYTHING THAT CAN REFUSE WITHOUT THE DATABASE REFUSES BEFORE IT IS
-    OPENED: an export named for a medium that has none, a file outside the
-    library, a file under staging, a file no declared sub would take, a suffix
-    the database has no type for. The order from there is the landing's.
-    """
+    """Plan the row against the database, ask, then write it; other refusals come first."""
     declared, registry = medium.declared, medium.registry
     tree_id = declared.intake.id
     if ctx.args.export is not None:
@@ -238,8 +176,7 @@ def _file_native(ctx, cfg: config.Config, path: Path, plan: dict, medium) -> Env
             origin=_ORIGIN,
             detail={"tree_id": tree_id, "export": str(ctx.args.export)},
         )
-    # STAGING FIRST, since staging is usually outside the library too and the
-    # sentence that names it is the more useful of the two.
+    # STAGING FIRST: usually outside the library too, and its sentence says more.
     ingest.assert_not_staging(path, cfg)
     target = _in_the_library(path, cfg)
     meta = ingest.read_meta(target, cfg=cfg)
@@ -268,24 +205,13 @@ def _file_native(ctx, cfg: config.Config, path: Path, plan: dict, medium) -> Env
                 cfg, db, rows, analysis_roots=analysis_store.watch_roots(cfg)
             )
         except Exception as exc:
-            # EVERY FAILURE PAST THE GATE SAYS WHAT IT LEAVES, as the landing's
-            # does: the database is all or nothing and the file was never
-            # moved. A cause this product raised keeps its reason and remedy;
-            # anything else is the defect it is, with the same sentence.
-            inner = exc.cause if isinstance(exc, CratekitError) else None
-            raise refuse(
-                inner.reason if inner is not None else "internal-error",
-                f"the collection could not be written "
-                f"({inner.message if inner is not None else exc}); no row was added "
-                f"and {path.name} is where it was",
-                remedy=inner.remediation.remedy if inner is not None else None,
-                steps=inner.remediation.steps if inner is not None else (),
+            # The database is all or nothing and the file never moved.
+            raise landing.refuse_past(
+                exc,
+                "the collection could not be written",
+                f"no row was added and {path.name} is where it was",
                 origin=_ORIGIN,
-                detail={
-                    "source": str(target),
-                    **(dict(inner.detail) if inner is not None else {}),
-                },
-                inner=inner,
+                detail={"source": str(target)},
             ) from exc
 
     payload, landed = land_cli.ask_then_write(
@@ -316,11 +242,3 @@ def _file_native(ctx, cfg: config.Config, path: Path, plan: dict, medium) -> Env
             *land_cli.dyn_warnings(landed),
         ],
     )
-
-
-__all__ = [
-    "ADDED",
-    "FILE_GATE",
-    "build_file",
-    "intake_file",
-]

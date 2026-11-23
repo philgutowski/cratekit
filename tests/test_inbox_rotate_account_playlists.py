@@ -1,19 +1,16 @@
 """U113: the rotation ages an account playlist by its landing record, never by its name.
 
-An account playlist lands as ``Sunset Warmup 2026-10-03`` since U175, its date
-at the end, and before it as ``Sunset Warmup``, neither the batch shape. The
-native landing names it on its record by identifier, which the landing suite
-drives end to end in ``tests/test_intake_land_account_playlists_native.py``.
 An intake file's playlist has no identifier until rekordbox imports it, so its
-record names it and the batch folder it landed in, and these are the rules for
-that name: the import must have been proven, the batch folder must still be
-there, and the latest landing of a name is the one INBOX shows.
+record names it and its batch folder: the import must be proven, the folder
+still there, and the latest landing of a name is the one it is aged by.
 """
 
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from pathlib import Path
+
+import pytest
 
 from cratekit.core import config, session
 from cratekit.intake import ingest, native, rotate
@@ -77,9 +74,7 @@ def test_an_intake_files_playlist_is_recognised_by_its_recorded_name_and_aged_fr
     _node(cfg, "Sunset Warmup", under=root_id, age=0)
     _batch_folder(cfg)
     _intake_record(cfg, TODAY - timedelta(days=40), [{"name": "Sunset Warmup", "batch": BATCH}])
-
     batch = _shown(_plan(cfg))["Sunset Warmup"]
-
     assert isinstance(batch, rotate.Batch)
     assert batch.recognised_by == rotate.BY_RECORDED_NAME
     assert batch.aged_from == rotate.AGED_FROM_RECORD
@@ -87,30 +82,35 @@ def test_an_intake_files_playlist_is_recognised_by_its_recorded_name_and_aged_fr
     assert batch.action == rotate.MOVE
 
 
-def test_a_recorded_name_whose_batch_folder_is_gone_is_left_alone(native_library):
+@pytest.mark.parametrize(
+    ("folder", "imported", "entry"),
+    [
+        (False, True, {}),
+        # It made no playlist, so one of that name under INBOX is somebody's own.
+        (True, False, {}),
+        # A native landing's entry names another row by identifier; a playlist
+        # of the same name a person made is not the landing's.
+        (True, True, {"id": "999999"}),
+    ],
+    ids=["batch-folder-gone", "never-imported", "entry-by-identifier"],
+)
+def test_a_recorded_name_whose_batch_folder_is_gone_is_left_alone(
+    native_library, folder, imported, entry
+):
+    """Nor is an intake file nobody imported, nor an entry with an identifier, read by its name."""
     cfg, root_id = native_library
     _node(cfg, "Sunset Warmup", under=root_id, age=0)
-    _intake_record(cfg, TODAY - timedelta(days=40), [{"name": "Sunset Warmup", "batch": BATCH}])
-
-    left = _shown(_plan(cfg))["Sunset Warmup"]
-
-    assert isinstance(left, rotate.Left)
-    assert left.kind == "playlist"
-
-
-def test_an_intake_file_nobody_imported_names_nothing(native_library):
-    # It made no playlist, so one of that name under INBOX is somebody's own.
-    cfg, root_id = native_library
-    _node(cfg, "Sunset Warmup", under=root_id, age=0)
-    _batch_folder(cfg)
+    if folder:
+        _batch_folder(cfg)
     _intake_record(
         cfg,
         TODAY - timedelta(days=40),
-        [{"name": "Sunset Warmup", "batch": BATCH}],
-        imported=False,
+        [{**entry, "name": "Sunset Warmup", "batch": BATCH}],
+        imported=imported,
     )
-
-    assert isinstance(_shown(_plan(cfg))["Sunset Warmup"], rotate.Left)
+    left = _shown(_plan(cfg))["Sunset Warmup"]
+    assert isinstance(left, rotate.Left)
+    assert left.kind == "playlist"
 
 
 def test_the_latest_landing_of_a_name_is_the_one_it_is_aged_by(native_library):
@@ -125,24 +125,7 @@ def test_the_latest_landing_of_a_name_is_the_one_it_is_aged_by(native_library):
     _intake_record(
         cfg, TODAY - timedelta(days=10), [{"name": "Sunset Warmup", "batch": later}], tag="b"
     )
-
     batch = _shown(_plan(cfg))["Sunset Warmup"]
-
     assert isinstance(batch, rotate.Batch)
     assert batch.age_days == 10
     assert batch.action == rotate.KEEP
-
-
-def test_an_entry_with_an_identifier_is_never_read_by_its_name(native_library):
-    cfg, root_id = native_library
-    # A native landing's entry names another row by identifier; a playlist of
-    # the same name a person made is not the landing's.
-    _node(cfg, "Sunset Warmup", under=root_id, age=0)
-    _batch_folder(cfg)
-    _intake_record(
-        cfg,
-        TODAY - timedelta(days=40),
-        [{"id": "999999", "name": "Sunset Warmup", "batch": BATCH}],
-    )
-
-    assert isinstance(_shown(_plan(cfg))["Sunset Warmup"], rotate.Left)

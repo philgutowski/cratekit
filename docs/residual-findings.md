@@ -2184,3 +2184,51 @@ module's file name, or by every module whose dotted name starts with the
 module's own), the soft-delete guard resolves a call-time accessor, and the
 night ban matches the parts. The writer guard file needs Phillip's leave to
 change, since no card may touch it.
+
+---
+
+## R-1891. Intake still reaches three core modules off the named interface, so its import allowance is not empty
+
+**Found:** at the build and round one review of #864, U307, 2026-11-22.
+
+**The mechanism.** `tests/ratchets/imports/intake.txt` still holds three lines: `off-interface cratekit.core.binary_refusal` (imported by `intake/cli_identify.py` for the missing downloader refusal), `off-interface cratekit.core.drift` (by `native.py` and `native_plan.py`, the dynamics tag) and `off-interface cratekit.core.rehearsal` (by `land_cli.py` and `land_native.py`, the landing's rehearsal). U307's brief asks for the allowance empty. The named interface in `tests/test_import_rules.py` is at its cap of 25, so none of the three can join it without another leaving, and the modules are #857's (`rehearsal`, `drift`) and #858's (`binary_refusal`). Re-exporting them through an interface module from intake would hide the reach rather than remove it, so U307 left them and names them for the audit.
+
+**Measured cost.** None to a person: the imports work and nothing dangles with a toggle off. The cost is point 4 of #847's definition of done read on intake: three seam items left of the fifteen the survey counted.
+
+**Closes when:** the core cards or the final audit (#872) decide where the three live: a module on the interface list that carries what intake needs, the reach moved into intake where only intake uses it (`rehearsal` has no other feature package user), or the list changed by the card that owns it. Then `scripts/refactor_measure.py prune intake` empties the file. Ledger only.
+
+---
+
+## R-1892. A native landing that fails after its commit landed says no row was added, though the rows were committed
+
+**Found:** at the round one review of #864, U307, 2026-11-22.
+
+**The mechanism.** In `native.apply_rows`, a failure raised after `rb_writer.commit_guarded` has committed (the witness reads the commit as landed) is recorded in the session record with the rows the commit wrote, and then raised. The landing's refusal for it reads "the collection could not be written (after the commit); no row was added and N file(s) were already moved". The reviewer drove it on base `c919209` and on the branch by making `commit_guarded` commit and then raise: both printed that sentence while the database held the two landed rows and the session record named them. Behaviour is unchanged by U307; the sentence is the base's.
+
+**Measured cost.** A person reading the refusal is told nothing landed when the rows did, the shape of METHOD's first defect pattern. Reachability is unmeasured beyond the reviewer's fault injection: no producer of a real failure between the commit and the end of the apply was driven.
+
+**Closes when:** the refusal past a landed commit names what the session record holds (the rows committed, the files moved) and a test drives a failure after the commit and reads the sentence. Ledger only, since the reachability is unmeasured.
+
+---
+
+## R-1893. The monkeypatch undo ban reads only files whose text spells the call in ASCII, so an NFKC spelling passes it
+
+**Found:** at the round two review of #864, U307, 2026-11-22.
+
+**The mechanism.** `tests/test_isolation_survives_undo.py` bans a test that calls `monkeypatch.undo()`, which would undo the suite's isolation. U307 narrowed the files its syntax tree walk reads from every test file holding the text "undo" to those matching an ASCII regex (`_CALL`), for speed. Python folds identifiers with NFKC, so `ｍonkeypatch.undo()` (a fullwidth m) or `monkeypatch.ｕndo()` parses to the same attribute; the reviewer planted five files and the base ban flagged three of them, the branch's one. Neither version catches an aliased fixture (`mp = monkeypatch; mp.undo()`) or `pytest.MonkeyPatch().undo()`.
+
+**Measured cost.** None to a person: no test in the repository spells the call that way, and the producer is contrived. The guard is narrower than it was.
+
+**Closes when:** the prefilter folds the text with NFKC before matching, or the walk reads every file again, and a planted fullwidth spelling is refused by the ban's self check. Ledger only.
+
+---
+
+## R-1894. Intake's 42 owned test files are 402 lines over the card's target, the rest in the set verbs' suites
+
+**Found:** at the record of #864, U307, 2026-11-23.
+
+**The mechanism.** U307's brief asks the 42 test files it owns to come to at most 21,521 lines, from 29,083 on `c919209`. They stand at 21,923 on the branch head: 7,160 lines out, 402 short. The shortfall is in the set verbs' suites (`tests/test_set_inspiration_playlist.py`, `tests/test_u129_set_account_playlist.py`, `tests/test_u135_set_inbox_join.py`, `tests/intake/test_set_fetch.py`, `tests/intake/test_set_progress.py` and the three account playlist suites, 5,367 lines before and 4,416 after against 3,971 for their share), where the builder that trimmed them judged the rest to carry assertions the recorded kills need. The last 34 lines came back when `test_a_fetch_that_raises_still_stops_the_watcher` was made deterministic so r924's F5 is killed every time.
+
+**Measured cost.** None to a person and none to a guard: the test time target is met (the summed time of the 42 files down 43 and 38 percent in two alternated runs), every verb's behaviour compares equal, and every recorded kill is kept. The cost is #847's line target read on intake's tests, about two percent over.
+
+**Closes when:** a later card that touches the set verbs' suites folds their remaining repeated setups (the account playlist and inspiration fixtures each file repeats) while the kill set replay stays at zero lost, or the final audit (#872) accepts the figure. Ledger only.
