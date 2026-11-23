@@ -41,7 +41,8 @@ class MeasurementFailure(RuntimeError):
 
 
 class StateLeak(RuntimeError):
-    """A child wrote to the REAL installation state, and the batch stops. Not a
+    """A child wrote to the REAL installation state, or changed an entry directly under
+    the filesystem root (R-1917), and the batch stops. Not a
     ``DriverRefusal``, which ``measure_row`` would file as one refused row."""
 
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
 #: The file under test, run by path from the checkout this suite sits in.
@@ -44,7 +45,9 @@ AIMED_OUTSIDE = (
 )
 
 
-def _run_the_file(tmp_path: Path, name: str, *, broken: bool) -> subprocess.CompletedProcess:
+def _run_the_file(
+    tmp_path: Path, name: str, *, broken: bool
+) -> tuple[subprocess.CompletedProcess, Path]:
     system_temporary = tmp_path / f"{name}-system-temporary"
     system_temporary.mkdir()
     env = os.environ.copy()
@@ -57,28 +60,36 @@ def _run_the_file(tmp_path: Path, name: str, *, broken: bool) -> subprocess.Comp
             each for each in (str(tmp_path), env.get("PYTHONPATH", "")) if each
         )
         command += ["-p", "break_the_guard"]
-    command += ["--tb=line", "-rf", f"--basetemp={tmp_path / f'{name}-base'}", str(TARGET)]
+    report = tmp_path / f"{name}-report.xml"
+    command += ["--tb=line", f"--junitxml={report}", f"--basetemp={tmp_path / f'{name}-base'}"]
+    command.append(str(TARGET))
     done = subprocess.run(
         command, cwd=TARGET.parent.parent, env=env, capture_output=True, text=True,
         check=False, timeout=600,
     )
     left = sorted(each.name for each in system_temporary.iterdir())
     assert left == [], f"the {name} run left {left} in its system temporary folder"
-    return done
+    return done, report
+
+
+def _failed(report: Path) -> set[str]:
+    """The failed or erred test names, read off pytest's own report, never off its output."""
+    cases = ElementTree.parse(report).getroot().iter("testcase")
+    return {
+        case.get("name") for case in cases
+        if case.find("failure") is not None or case.find("error") is not None
+    }
 
 
 def test_a_broken_guard_fails_the_file_leaves_nothing_and_a_later_run_passes(tmp_path):
     root_before = set(os.listdir(os.sep))
 
-    broken = _run_the_file(tmp_path, "broken", broken=True)
+    broken, report = _run_the_file(tmp_path, "broken", broken=True)
     assert broken.returncode == 1, broken.stdout[-3000:] + broken.stderr[-3000:]
-    failed = {
-        line.split(" ")[1].split("::")[1]
-        for line in broken.stdout.splitlines() if line.startswith("FAILED ")
-    }
-    assert set(AIMED_OUTSIDE) <= failed, broken.stdout[-3000:]
+    assert set(AIMED_OUTSIDE) <= _failed(report), broken.stdout[-3000:]
     assert set(os.listdir(os.sep)) - root_before == set()
 
-    intact = _run_the_file(tmp_path, "intact", broken=False)
+    intact, report = _run_the_file(tmp_path, "intact", broken=False)
+    assert _failed(report) == set()
     assert intact.returncode == 0, intact.stdout[-3000:] + intact.stderr[-3000:]
     assert set(os.listdir(os.sep)) - root_before == set()

@@ -42,7 +42,8 @@ Exit codes
     3  a restore did not match git show HEAD
     4  the batch is invalid, the null control killed something
     5  pytest produced nothing readable
-    6  a child reached the real installation state (R-343)
+    6  a child reached the real installation state (R-343), or an entry directly
+       under the filesystem root changed while it ran (R-1917)
 """
 
 from __future__ import annotations
@@ -463,8 +464,9 @@ def take_state_guard(
 
 
 def check_state_guard(guard: StateGuard, *, label: str) -> None:
-    """Raise ``StateLeak`` if the real installation state moved under a child, or under a
-    concurrent writer, which the driver cannot tell apart."""
+    """Raise ``StateLeak`` if the real installation state, or the entries directly under
+    the filesystem root, moved under a child, or under a concurrent writer, which the
+    driver cannot tell apart."""
     for root, before, counted in zip(guard.roots, guard.digests, guard.counts, strict=True):
         now, count_now = state_fingerprint(root)
         if now == before:
@@ -482,14 +484,18 @@ def check_state_guard(guard: StateGuard, *, label: str) -> None:
     now_top = top_level_entries(guard.top)
     if now_top == guard.top_entries:
         return
-    before = dict(entry.split("\t", 1) for entry in guard.top_entries)
-    after = dict(entry.split("\t", 1) for entry in now_top)
-    names = "; ".join(
-        [f"added {name}" for name in sorted(after.keys() - before.keys())]
-        + [f"removed {name}" for name in sorted(before.keys() - after.keys())]
-        + [f"changed {name}" for name in sorted(before.keys() & after.keys())
-           if before[name] != after[name]]
-    )
+    if now_top and now_top[0].startswith(UNREADABLE):
+        # Read as every entry removed, it would name removals that never happened.
+        names = f"it can no longer be listed ({now_top[0].split(chr(9))[-1]})"
+    else:
+        before = dict(entry.split("\t", 1) for entry in guard.top_entries)
+        after = dict(entry.split("\t", 1) for entry in now_top)
+        names = "; ".join(
+            [f"added {name}" for name in sorted(after.keys() - before.keys())]
+            + [f"removed {name}" for name in sorted(before.keys() - after.keys())]
+            + [f"changed {name}" for name in sorted(before.keys() & after.keys())
+               if before[name] != after[name]]
+        )
     raise StateLeak(
         f"the entries directly under {portable(guard.top)} changed while running {label}: "
         f"{names}. A child of this driver that writes outside its temporary folders, as a "
