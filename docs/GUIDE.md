@@ -1425,9 +1425,15 @@ and lists it among the tree's differences as `unexpected:BUCKET/BAND:ROW`, by
 the folder's and band's stable identifiers and the track's row, whether or
 not anything else is filed into that playlist (the line shows the first 20
 differences), and `route resort` lists it as left behind. Under a folder
-renamed in rekordbox it is listed only once a `rebuild` or `route resort` has
-recorded that folder. A Candy playlist, which a person fills by hand, is
-never compared this way.
+renamed in rekordbox it is listed the same way once `adopt apply`, `rebuild`
+or `route resort` has recorded that folder, as each now does for the folders
+it files into. A renamed folder nothing recorded (one adopted before
+`adopt apply` recorded its folders) cannot be read as any genre's, so while a
+playlist under it bears a band's name and holds a filed track, `converge` says
+`not-compared` (or `differing`, beside a difference) and names it as
+`not-compared:FOLDER/PLAYLIST`, and a `rebuild` clears no flag over it; rename
+the folder back to its genre's name and it is compared. A Candy playlist,
+which a person fills by hand, is never compared this way.
 On the account, an edit inside one of the two folders leaves the other
 (below, under Organize).
 
