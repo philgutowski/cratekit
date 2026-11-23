@@ -1,0 +1,1219 @@
+{
+  "name": "u304-replay-after-p3",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "fd78d188",
+  "when": "2026-11-23 01:02 UTC",
+  "valid": true,
+  "invalid_reason": "in progress",
+  "baseline_collected": 22911,
+  "baseline_exit": 1,
+  "pytest_runs": 74,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 251,
+  "known_source": "/tmp/claude-0/-home-user-cratekit/9c4fb6d1-21a5-58b2-b145-6b7e9e36fc05/scratchpad/u304-replay-after-known-failures.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: no battery verdict at `.cloud-battery/verdict.json`",
+  "subset_baselines": 42,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/pair_merge.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/pair_merge.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "92d5fd33423416cd",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22911,
+    "baseline_collected": 22911,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u130-a.A5_new_tracks_appended",
+      "description": "A track only the other side holds goes to the end instead of after its predecessor",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d1ee830e1df25e27",
+      "subset": [
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 126,
+      "baseline_collected": 126,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_base_whose_sides_agree_leaves_the_account_leading_when_neither_side_moved",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_reads_its_order_against_it_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_led_by_rekordbox_places_the_accounts_tracks_after_their_neighbours",
+        "tests/test_sync_pair_merge.py::test_a_run_of_new_tracks_at_the_head_of_the_other_side_keeps_its_own_order",
+        "tests/test_sync_pair_merge.py::test_a_track_added_mid_list_on_the_other_side_keeps_its_place",
+        "tests/test_sync_pair_merge.py::test_a_track_the_account_adds_is_placed_in_the_order_rekordbox_holds",
+        "tests/test_sync_pair_merge.py::test_an_addition_is_kept_when_the_other_side_dropped_its_neighbour"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        anchor += 1\n        result.insert(anchor, key)",
+      "new": "        result.append(key)",
+      "source": {
+        "table": "u130-a.json",
+        "id": "A5_new_tracks_appended"
+      }
+    },
+    {
+      "id": "u130-a.A6_order_change_read_inverted",
+      "description": "Read an unchanged order as changed and a changed one as unchanged",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a6b332eeec1be06f",
+      "subset": [
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 18,
+      "collected": 126,
+      "baseline_collected": 126,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair.py::test_a_whole_sync_after_a_skipped_one_finishes_both_sides_from_the_old_base",
+        "tests/test_sync_pair.py::test_when_both_sides_reorder_the_account_order_wins",
+        "tests/test_sync_pair.py::test_when_rekordbox_alone_reorders_the_account_follows",
+        "tests/test_sync_pair_merge.py::test_a_base_is_read_as_before_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_a_track_the_account_adds_is_placed_in_the_order_rekordbox_holds",
+        "tests/test_sync_pair_merge.py::test_only_the_tracks_both_sides_held_at_the_base_are_read_for_their_order",
+        "tests/test_sync_pair_merge.py::test_order_changed_reads_only_the_tracks_both_held",
+        "tests/test_sync_pair_merge.py::test_rekordbox_reordered_since_a_base_whose_sides_disagree_leads",
+        "tests/test_sync_pair_merge.py::test_rekordbox_reordered_since_the_stopped_write_leads",
+        "tests/test_sync_pair_merge.py::test_the_account_reordered_since_a_base_whose_sides_disagree_still_leads",
+        "tests/test_sync_pair_merge.py::test_the_account_reordered_since_the_stopped_write_leads_whatever_else_moved",
+        "tests/test_sync_pair_merge.py::test_the_stopped_writes_order_is_not_read_against_the_base",
+        "tests/test_sync_pair_merge.py::test_when_both_sides_reordered_the_account_order_wins",
+        "tests/test_sync_pair_merge.py::test_when_rekordbox_alone_reordered_its_order_wins",
+        "tests/test_sync_pair_merge.py::test_when_the_account_alone_reordered_its_order_wins",
+        "tests/test_sync_pair_merge.py::test_with_no_change_since_a_base_whose_sides_disagree_rekordbox_leads",
+        "tests/test_sync_pair_merge.py::test_with_no_change_since_the_stopped_write_the_side_that_led_it_leads_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return [key for key in now if key in held_then] != [key for key in base if key in held_now]",
+      "new": "    return [key for key in now if key in held_then] == [key for key in base if key in held_now]",
+      "source": {
+        "table": "u130-a.json",
+        "id": "A6_order_change_read_inverted"
+      }
+    },
+    {
+      "id": "u202.M1_since",
+      "description": "pair_merge.merge: a moment at or before the base's sync is read as a known moment",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f90e2c1c956c0106",
+      "subset": [
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 164,
+      "baseline_collected": 164,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_a_removal_whose_row_time_predates_the_last_sync_is_no_moment",
+        "tests/test_sync_pair_merge.py::test_a_moment_at_or_before_the_base_sync_is_no_moment"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if since is not None and (since.tzinfo is None or not at > since):\n            return None",
+      "new": "        if False:\n            return None",
+      "source": {
+        "table": "u202.json",
+        "id": "M1_since"
+      }
+    },
+    {
+      "id": "u202.M2_naive",
+      "description": "pair_merge.merge: a moment with no zone is read as a known moment",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "23e7109617e010a0",
+      "subset": [
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 164,
+      "baseline_collected": 164,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_moment_with_no_zone_is_no_moment"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not isinstance(at, datetime) or at.tzinfo is None:",
+      "new": "        if not isinstance(at, datetime):",
+      "source": {
+        "table": "u202.json",
+        "id": "M2_naive"
+      }
+    },
+    {
+      "id": "u202.M3_tie",
+      "description": "Call.outcome: a tie goes to the removal, so a track is lost on equal moments",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3c4ccbef3979b7b8",
+      "subset": [
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 164,
+      "baseline_collected": 164,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_tie_keeps_the_track"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return REMOVAL_LATER if self.removed_at > self.added_at else ADDITION_LATER",
+      "new": "        return REMOVAL_LATER if self.removed_at >= self.added_at else ADDITION_LATER",
+      "source": {
+        "table": "u202.json",
+        "id": "M3_tie"
+      }
+    },
+    {
+      "id": "u202.M4_unknown",
+      "description": "Call.outcome: an unknown moment lets the removal win",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c81a387389af6b14",
+      "subset": [
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 164,
+      "baseline_collected": 164,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair.py::test_a_track_removed_on_the_account_and_put_back_in_rekordbox_is_kept",
+        "tests/test_sync_pair_back.py::test_a_removal_rekordbox_kept_no_moment_for_keeps_the_track_and_names_the_call",
+        "tests/test_sync_pair_back.py::test_a_removal_whose_row_time_predates_the_last_sync_is_no_moment",
+        "tests/test_sync_pair_back.py::test_a_track_put_back_in_rekordbox_after_the_account_took_it_out_stays_and_is_named",
+        "tests/test_sync_pair_merge.py::test_a_moment_at_or_before_the_base_sync_is_no_moment",
+        "tests/test_sync_pair_merge.py::test_a_moment_with_no_zone_is_no_moment",
+        "tests/test_sync_pair_merge.py::test_a_removal_on_one_side_and_a_re_add_on_the_other_keeps_the_track",
+        "tests/test_sync_pair_merge.py::test_a_removal_with_no_moment_never_beats_an_addition_and_is_called_unknown",
+        "tests/test_sync_pair_merge.py::test_an_account_removal_never_beats_a_rekordbox_addition"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if self.added_at is None or self.removed_at is None:\n            return TIME_UNKNOWN",
+      "new": "        if self.added_at is None or self.removed_at is None:\n            return REMOVAL_LATER",
+      "source": {
+        "table": "u202.json",
+        "id": "M4_unknown"
+      }
+    },
+    {
+      "id": "u202.M5_adder",
+      "description": "pair_merge.merge: the adding side is mistaken for the removing one, so the moments are read off the wrong sides",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "de3b936d05f96580",
+      "subset": [
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 164,
+      "baseline_collected": 164,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off_both",
+        "tests/test_sync_pair_back.py::test_a_row_held_as_two_releases_is_put_back_when_its_later_release_was",
+        "tests/test_sync_pair_back.py::test_a_track_put_back_in_rekordbox_after_the_account_took_it_out_stays_and_is_named",
+        "tests/test_sync_pair_back.py::test_a_track_put_back_on_the_account_after_rekordbox_took_it_out_stays_on_both",
+        "tests/test_sync_pair_merge.py::test_a_base_with_no_sync_moment_still_orders_two_known_moments",
+        "tests/test_sync_pair_merge.py::test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off_both",
+        "tests/test_sync_pair_merge.py::test_a_tie_keeps_the_track",
+        "tests/test_sync_pair_merge.py::test_a_track_put_back_on_the_account_after_rekordbox_took_it_out_stays_on_both",
+        "tests/test_sync_pair_merge.py::test_an_account_addition_later_than_a_rekordbox_removal_is_added_back_there",
+        "tests/test_sync_pair_merge.py::test_an_account_removal_never_beats_a_rekordbox_addition"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                (ACCOUNT, account, rekordbox) if added_account else (REKORDBOX, rekordbox, account)",
+      "new": "                (ACCOUNT, account, rekordbox) if not added_account else (REKORDBOX, rekordbox, account)",
+      "source": {
+        "table": "u202.json",
+        "id": "M5_adder"
+      }
+    },
+    {
+      "id": "u202.M6_account_readded",
+      "description": "pair_merge.merge: a track the account put back is not read as added there (R-990 reopened)",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "65cfc5d6bbd16e3d",
+      "subset": [
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 164,
+      "baseline_collected": 164,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off_both",
+        "tests/test_sync_pair_back.py::test_a_removal_rekordbox_kept_no_moment_for_keeps_the_track_and_names_the_call",
+        "tests/test_sync_pair_back.py::test_a_removal_whose_row_time_predates_the_last_sync_is_no_moment",
+        "tests/test_sync_pair_back.py::test_a_row_held_as_two_releases_is_put_back_when_its_later_release_was",
+        "tests/test_sync_pair_back.py::test_a_track_put_back_on_the_account_after_rekordbox_took_it_out_stays_on_both",
+        "tests/test_sync_pair_merge.py::test_a_base_with_no_sync_moment_still_orders_two_known_moments",
+        "tests/test_sync_pair_merge.py::test_a_moment_at_or_before_the_base_sync_is_no_moment",
+        "tests/test_sync_pair_merge.py::test_a_moment_with_no_zone_is_no_moment",
+        "tests/test_sync_pair_merge.py::test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off_both",
+        "tests/test_sync_pair_merge.py::test_a_removal_with_no_moment_never_beats_an_addition_and_is_called_unknown",
+        "tests/test_sync_pair_merge.py::test_a_tie_keeps_the_track",
+        "tests/test_sync_pair_merge.py::test_a_track_put_back_on_the_account_after_rekordbox_took_it_out_stays_on_both"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            key not in then_account or key in account.readded",
+      "new": "            key not in then_account",
+      "source": {
+        "table": "u202.json",
+        "id": "M6_account_readded"
+      }
+    },
+    {
+      "id": "u202.M7_removal_kept",
+      "description": "pair_merge.merge: a call the removal won still keeps the track",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e37fc70e5aa15a2a",
+      "subset": [
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 164,
+      "baseline_collected": 164,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off_both",
+        "tests/test_sync_pair_merge.py::test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off_both"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if call.kept:\n                kept.add(key)",
+      "new": "            if True:\n                kept.add(key)",
+      "source": {
+        "table": "u202.json",
+        "id": "M7_removal_kept"
+      }
+    },
+    {
+      "id": "u225.M1_stopped_ignored",
+      "description": "merge: a stopped write handed in is ignored and the order is read against the base",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7ae3388ab19edf10",
+      "subset": [
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_reads_its_order_against_it_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_rekordbox_reordered_since_the_stopped_write_leads",
+        "tests/test_sync_pair_merge.py::test_the_stopped_writes_order_is_not_read_against_the_base",
+        "tests/test_sync_pair_merge.py::test_with_no_change_since_the_stopped_write_the_side_that_led_it_leads_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if stopped is not None:\n        # U225.",
+      "new": "    if False:\n        # U225.",
+      "source": {
+        "table": "u225.json",
+        "id": "M1_stopped_ignored"
+      }
+    },
+    {
+      "id": "u225.M2_rekordbox_since_dropped",
+      "description": "merge: rekordbox reordered since the stopped write does not lead",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f8bc38aabf9fe7d0",
+      "subset": [
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_rekordbox_reordered_since_the_stopped_write_leads"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if order_changed(rekordbox.keys, stopped.rekordbox) and not account_moved:",
+      "new": "        if False and not account_moved:",
+      "source": {
+        "table": "u225.json",
+        "id": "M2_rekordbox_since_dropped"
+      }
+    },
+    {
+      "id": "u225.M3_rekordbox_over_account",
+      "description": "merge: rekordbox reordered since leads even when the account was reordered since",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d294929b95e3c20d",
+      "subset": [
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_the_account_reordered_since_the_stopped_write_leads_whatever_else_moved"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if order_changed(rekordbox.keys, stopped.rekordbox) and not account_moved:",
+      "new": "        if order_changed(rekordbox.keys, stopped.rekordbox):",
+      "source": {
+        "table": "u225.json",
+        "id": "M3_rekordbox_over_account"
+      }
+    },
+    {
+      "id": "u225.M5_leader_over_account",
+      "description": "merge: the stopped write's leader leads even when the account was reordered since",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "639d8192c97e4078",
+      "subset": [
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_the_account_reordered_since_the_stopped_write_leads_whatever_else_moved"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif not account_moved and stopped.leader == REKORDBOX:",
+      "new": "        elif stopped.leader == REKORDBOX:",
+      "source": {
+        "table": "u225.json",
+        "id": "M5_leader_over_account"
+      }
+    },
+    {
+      "id": "u234.S2_sample_stopped_leader",
+      "description": "sample, U225: the side that led the stopped write is not followed, so the account leads a finish",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "93fd14362ab0ab53",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 313,
+      "baseline_collected": 313,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_the_stopped_writes_order_is_not_read_against_the_base",
+        "tests/test_sync_pair_merge.py::test_with_no_change_since_the_stopped_write_the_side_that_led_it_leads_again",
+        "tests/test_sync_pair_settle.py::test_a_settled_move_of_the_unread_track_alone_still_finishes_the_stopped_write"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif not account_moved and stopped.leader == REKORDBOX:",
+      "new": "        elif False and not account_moved and stopped.leader == REKORDBOX:",
+      "source": {
+        "table": "u234.json",
+        "id": "S2_sample_stopped_leader"
+      }
+    },
+    {
+      "id": "u202-composites.R2_confined",
+      "description": "pair_reverse.create: the twins' confinement check is not run before the commit",
+      "file": "src/cratekit/sync/pair_reverse.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5fdea28ab27f6322",
+      "subset": [
+        "tests/test_sync_pair_back.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 38,
+      "baseline_collected": 38,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_a_write_outside_the_playlist_made_is_refused_with_nothing_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                twins.assert_confined(\n                    db,",
+      "new": "                (lambda *a, **k: None)(\n                    db,",
+      "source": {
+        "table": "u202-composites.json",
+        "id": "R2_confined"
+      }
+    },
+    {
+      "id": "u202.R1_recheck_name",
+      "description": "pair_reverse.recheck: a name taken since the plan is made again",
+      "file": "src/cratekit/sync/pair_reverse.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7a98f37d7402f703",
+      "subset": [
+        "tests/test_sync_pair_back.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 38,
+      "baseline_collected": 38,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_the_write_refuses_a_name_taken_since_the_plan"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if taken:\n        raise _stale(",
+      "new": "    if False:\n        raise _stale(",
+      "source": {
+        "table": "u202.json",
+        "id": "R1_recheck_name"
+      }
+    },
+    {
+      "id": "u202.W1_landed_then_raised",
+      "description": "pair_reverse.create: a commit that lands and then raises no longer tells the caller, so the playlist made stays unpaired (the second review's BLOCKING finding)",
+      "file": "src/cratekit/sync/pair_reverse.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "40df706da1886bc2",
+      "subset": [
+        "tests/test_sync_pair_back.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 38,
+      "baseline_collected": 38,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_a_commit_that_lands_and_then_raises_still_pairs_the_playlist"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    if on_commit is not None and playlist_id:\n                        on_commit(playlist_id)\n                raise",
+      "new": "                raise",
+      "source": {
+        "table": "u202.json",
+        "id": "W1_landed_then_raised"
+      }
+    },
+    {
+      "id": "r1372.K19_passed_by_strict",
+      "description": "passed_by: a write that began at the snapshot's very moment is not passed",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7dfa6cfe51e0a774",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_snapshot_passes_the_carried_records_of_its_pair_that_began_before_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if began is not None and not began > moment:",
+      "new": "            if began is not None and began < moment:",
+      "source": {
+        "table": "r1372.json",
+        "id": "K19_passed_by_strict"
+      }
+    },
+    {
+      "id": "r1372.K20_passed_by_any_pair",
+      "description": "passed_by: a snapshot lets go of every pair's carried records, not its own",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9496883a3d5d357c",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_snapshot_passes_the_carried_records_of_its_pair_that_began_before_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if _account_of(key, steps, new=new, made=made) != account_id:\n                continue\n            began = placeholders.parse_hearted(steps.get(account))\n            if began is not None",
+      "new": "            began = placeholders.parse_hearted(steps.get(account))\n            if began is not None",
+      "source": {
+        "table": "r1372.json",
+        "id": "K20_passed_by_any_pair"
+      }
+    },
+    {
+      "id": "r1372.K21_made_pair_unmapped",
+      "description": "_account_of: a made pair is read under its key, not the account playlist it was made as",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8952c8baf11c11fc",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_made_pair_is_read_under_the_account_playlist_it_was_made_as",
+        "tests/test_sync_pair_stopped.py::test_a_snapshot_passes_the_carried_records_of_its_pair_that_began_before_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if key.startswith(new):\n        return steps.get(made) if isinstance(steps.get(made), str) else \"\"\n    return key",
+      "new": "    return key",
+      "source": {
+        "table": "r1372.json",
+        "id": "K21_made_pair_unmapped"
+      }
+    },
+    {
+      "id": "r1376.F14_finished_filter_gone",
+      "description": "stopped_writes (sample, U225): a stop a later run finished is still read, by a first sync among others",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b4ec5dc6b0963299",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_later_run_that_finished_the_pair_hides_the_stopped_write_in_either_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if account_id not in finished or not finished[account_id] > began",
+      "new": "        if True",
+      "source": {
+        "table": "r1376.json",
+        "id": "F14_finished_filter_gone"
+      }
+    },
+    {
+      "id": "r1394.S10_later_unsent_write_hides_the_pending",
+      "description": "stopped writes: the latest record is read whether or not it sent a move, so a refused finish hides the pending write it was finishing, round two's BLOCKING row",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3ef4a5ed1e0af081",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending",
+        "tests/test_sync_pair_stopped.py::test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if held is None or (write.pending, write.at) > (held[1].pending, held[1].at):",
+      "new": "            if held is None or write.at > held[1].at:",
+      "source": {
+        "table": "r1394.json",
+        "id": "S10_later_unsent_write_hides_the_pending"
+      }
+    },
+    {
+      "id": "r1394.S1_counts_beyond_the_moves_trusted",
+      "description": "stopped write: counts larger than the write's moves are trusted rather than read as nothing known",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "774039ae1dc6ec00",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if sent is None or landed is None or not landed <= sent <= total:",
+      "new": "    if sent is None or landed is None or not landed <= sent:",
+      "source": {
+        "table": "r1394.json",
+        "id": "S1_counts_beyond_the_moves_trusted"
+      }
+    },
+    {
+      "id": "r1394.S2_missing_counts_read_as_none_sent",
+      "description": "stopped write: a moving step with no counts reads as no move sent, so any agreed path reading finishes it, as before R-1394",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f5f5a592b284aaac",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order_it_leaves",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts0]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts1]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts2]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts4]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return 0, total\n    return landed, sent",
+      "new": "        return 0, 0\n    return landed, sent",
+      "source": {
+        "table": "r1394.json",
+        "id": "S2_missing_counts_read_as_none_sent"
+      }
+    },
+    {
+      "id": "r1394.S6_counts_not_wired",
+      "description": "stopped write: the counts read back never reach the stopped write, which keeps none landed and none sent",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8cc1c0acb9ffca32",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending",
+        "tests/test_sync_pair_settle.py::test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after",
+        "tests/test_sync_pair_settle.py::test_a_stop_after_one_of_three_moves_read_as_the_old_order_is_held_however_long_it_agrees",
+        "tests/test_sync_pair_settle.py::test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order_it_leaves",
+        "tests/test_sync_pair_settle.py::test_a_stopped_writes_counts_are_carried_past_its_runs_steps",
+        "tests/test_sync_pair_settle.py::test_every_move_accepted_and_an_agreed_reading_short_of_their_end_is_still_a_lag",
+        "tests/test_sync_pair_stopped.py::test_a_moving_step_reads_back_its_counts",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts0]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts1]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts2]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts4]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]",
+        "tests/test_sync_pair_stopped.py::test_every_move_accepted_reads_as_every_move_landed_whatever_the_counts"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        landed=landed,\n        sent=reached_by,",
+      "new": "        landed=0,\n        sent=0,",
+      "source": {
+        "table": "r1394.json",
+        "id": "S6_counts_not_wired"
+      }
+    },
+    {
+      "id": "r1394.S8_positions_first_only",
+      "description": "positions: only the first count on the path that leaves the order is answered, so a track taken off since hides a later one",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "430e32758eddd6e7",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_an_unread_track_taken_off_the_account_after_the_stop_is_never_put_back",
+        "tests/test_sync_pair_stopped.py::test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return tuple(\n        index\n        for index, state in enumerate(passed(start, target))\n        if [one for one in dict.fromkeys(state) if one in common] == shown\n    )",
+      "new": "    return tuple(\n        index\n        for index, state in enumerate(passed(start, target))\n        if [one for one in dict.fromkeys(state) if one in common] == shown\n    )[:1]",
+      "source": {
+        "table": "r1394.json",
+        "id": "S8_positions_first_only"
+      }
+    },
+    {
+      "id": "r1394.S9_moving_step_counts_dropped",
+      "description": "moving step: the record written carries a sent count of 0 whatever it is told",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a54cbeecc86f96a3",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 19,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_continue_of_a_refused_finish_is_held_to_the_plans_reading_not_the_checks[False]",
+        "tests/test_sync_pair_settle.py::test_a_continue_of_a_refused_finish_is_held_to_the_plans_reading_not_the_checks[True]",
+        "tests/test_sync_pair_settle.py::test_a_finish_keeps_an_unread_track_the_stopped_write_did_not_move_in_its_place",
+        "tests/test_sync_pair_settle.py::test_a_finish_planned_again_in_the_writing_command_is_held_to_its_own_reading",
+        "tests/test_sync_pair_settle.py::test_a_finish_puts_an_unread_track_the_stopped_move_put_in_front_where_the_write_was_taking_it",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_served_as_the_moves_left_it_finishes",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_removes_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending",
+        "tests/test_sync_pair_settle.py::test_a_finish_whose_added_track_the_provider_placed_elsewhere_is_not_refused",
+        "tests/test_sync_pair_settle.py::test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_place",
+        "tests/test_sync_pair_settle.py::test_a_finish_with_no_unread_track_is_put_in_rekordboxs_order",
+        "tests/test_sync_pair_settle.py::test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after",
+        "tests/test_sync_pair_settle.py::test_a_stop_after_one_of_three_moves_read_as_that_move_leaves_it_is_finished",
+        "tests/test_sync_pair_settle.py::test_a_stop_after_one_of_three_moves_read_as_the_old_order_is_held_however_long_it_agrees",
+        "tests/test_sync_pair_settle.py::test_a_stop_part_way_agreed_on_the_moves_path_is_finished_from_rekordbox",
+        "tests/test_sync_pair_settle.py::test_an_unread_track_taken_off_the_account_after_the_stop_is_never_put_back",
+        "tests/test_sync_pair_settle.py::test_two_readings_agree_only_once_minutes_apart",
+        "tests/test_sync_pair_stopped.py::test_a_moving_step_reads_back_its_counts"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        SENT: int(sent),",
+      "new": "        SENT: 0,",
+      "source": {
+        "table": "r1394.json",
+        "id": "S9_moving_step_counts_dropped"
+      }
+    },
+    {
+      "id": "r1418.F7_composite_ordering_start_unread",
+      "description": "what F7 holds: a stopped write with no moving step reads no start from its ordering step, so the start F7 narrows is never read",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b9a5519739385e76",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_unread.py",
+        "tests/test_sync_pair_stopped_order.py",
+        "tests/test_sync_pair_order.py",
+        "tests/test_sync_pair_stopped.py",
+        "tests/test_sync_pair_window_lag.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_root_order.py",
+        "tests/test_sync_twins.py",
+        "tests/test_outbound_order.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 20,
+      "collected": 394,
+      "baseline_collected": 394,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_order.py::test_a_continue_of_a_refused_order_holds_a_reorder_made_on_the_account_since",
+        "tests/test_sync_pair_settle.py::test_a_drag_to_the_top_after_a_write_that_sent_no_move_leads[all-read]",
+        "tests/test_sync_pair_settle.py::test_a_drag_to_the_top_after_a_write_that_sent_no_move_leads[t9-unread]",
+        "tests/test_sync_pair_settle.py::test_a_move_of_the_unread_track_alone_after_a_stop_that_sent_nothing_is_no_reorder",
+        "tests/test_sync_pair_settle.py::test_a_reorder_after_a_finish_stopped_before_its_first_send_leads",
+        "tests/test_sync_pair_settle.py::test_a_reorder_after_a_track_read_at_the_stop_turned_unread_leads",
+        "tests/test_sync_pair_settle.py::test_a_track_unread_at_the_stop_and_read_since_is_read_as_the_persons_when_moved",
+        "tests/test_sync_pair_settle.py::test_an_unread_track_moved_after_a_stop_before_the_first_send_is_kept_where_it_was_put",
+        "tests/test_sync_pair_stopped.py::test_a_write_begun_ordered_and_not_finished_is_read_back_whole",
+        "tests/test_sync_pair_stopped_order.py::test_a_differing_order_that_moves_again_before_it_settles_is_held_again",
+        "tests/test_sync_pair_stopped_order.py::test_a_differing_order_waits_the_agreement_window",
+        "tests/test_sync_pair_stopped_order.py::test_a_move_off_the_path_no_sync_read_before_is_not_read_as_the_persons",
+        "tests/test_sync_pair_stopped_order.py::test_a_move_the_person_made_on_the_account_after_a_sync_read_it_still_leads",
+        "tests/test_sync_pair_stopped_order.py::test_a_reading_that_moved_before_it_settled_starts_again",
+        "tests/test_sync_pair_stopped_order.py::test_a_released_pair_read_off_the_path_on_its_first_sync_keeps_rekordboxs_order",
+        "tests/test_sync_pair_stopped_order.py::test_a_reorder_seen_changing_between_two_syncs_after_the_stop_leads",
+        "tests/test_sync_pair_stopped_order.py::test_a_stop_this_version_recorded_with_no_move_sent_leaves_a_reorder_the_persons",
+        "tests/test_sync_pair_stopped_order.py::test_a_track_the_stopped_write_added_then_taken_off_in_rekordbox_comes_off_the_account",
+        "tests/test_sync_pair_stopped_order.py::test_an_order_held_as_the_one_after_waits_afresh_once_the_settled_order_is_read_between",
+        "tests/test_sync_pair_stopped_order.py::test_the_gate_says_the_account_was_read_off_the_moves_path"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    begin = sent[1] if sent is not None else start",
+      "new": "    begin = sent[1] if sent is not None else ()",
+      "source": {
+        "table": "r1418.json",
+        "id": "F7_composite_ordering_start_unread"
+      }
+    },
+    {
+      "id": "r1434.S2_positions_compare_every_track_listed",
+      "description": "existing guard, U225: the path compares every track listed now, a track added since included, so an addition reads the account off the path",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1b523e4fe083be24",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_unread.py",
+        "tests/test_sync_pair_stopped_order.py",
+        "tests/test_sync_pair_order.py",
+        "tests/test_sync_pair_stopped.py",
+        "tests/test_sync_pair_window_lag.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_root_order.py",
+        "tests/test_sync_twins.py",
+        "tests/test_outbound_order.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 394,
+      "baseline_collected": 394,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_a_track_added_or_taken_off_since_is_left_out_of_the_comparison",
+        "tests/test_sync_pair_stopped.py::test_positions_counts_the_moves_that_leave_each_order_on_the_path"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    common = set(current) & set(start)",
+      "new": "    common = set(current)",
+      "source": {
+        "table": "r1434.json",
+        "id": "S2_positions_compare_every_track_listed"
+      }
+    },
+    {
+      "id": "u225.M6_front_keeps_nothing",
+      "description": "front_moves: no tail is kept, every asked track is moved",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "81d93de340b67f4a",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            keep += 1\n    return list(reversed(wanted[: len(wanted) - keep]))",
+      "new": "            keep += 0\n    return list(reversed(wanted[: len(wanted) - keep]))",
+      "source": {
+        "table": "u225.json",
+        "id": "M6_front_keeps_nothing"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}
