@@ -385,7 +385,8 @@ answered not found a day apart, or that a person retired behind
 the collection as rekordbox's Remove from Collection takes them out (U288): the
 row and every row naming it deleted, the lists left, the live members after it
 in each playlist moved up one place per removed track before them, as rekordbox
-numbers them (R-1830); the session record names
+numbers them (R-1830), each moved row stamped with the removal's update count
+and time as rekordbox stamps it (U955); the session record names
 each one, and `crate delete review` then offers its file.
 
 *Avoid:* a pair removal, which takes a membership and never a track.
