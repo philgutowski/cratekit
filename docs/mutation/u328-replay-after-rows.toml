@@ -87,7 +87,7 @@ source = { table = "r424.json", id = "A2_cloud_gate_absent" }
 description = "Restore the cloud sync decision on a verb that never opens the database"
 file = "src/cratekit/cli/registry_sync.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/cli/registry_sync.py, was in src/cratekit/cli/registry.py"
+moved = "U328 moved sync.favorites' entry to the sync part, which does not import the shared gate's name, so the row as written ended in a NameError and broke collection with no death; the same gate is added to the same entry's gates, spelled out as the equal value"
 tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py"]
 old = '''
                 explicit=True, digest_source="plan",
@@ -97,7 +97,11 @@ old = '''
 new = '''
                 explicit=True, digest_source="plan",
             ),
-            CLOUD_SYNC_UNREADABLE_GATE,
+            GateSpec(
+                name="write.cloudsync.unreadable", options=("proceed", "abort"),
+                prompt="Cloud Library Sync state could not be read; proceed anyway?",
+                explicit=True,
+            ),
         ),
         # Landed (U33, R-130).'''
 
@@ -271,7 +275,7 @@ source = { table = "u27-adopt-apply-author.json", id = "R1_marker_restored" }
 description = "Put planned_in back on the entry, so the conformance suite stops driving the landed verb"
 file = "src/cratekit/cli/registry_modules.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/cli/registry_modules.py, was in src/cratekit/cli/registry.py"
+moved = "U328 moved adopt.move's entry to the modules part, which does not import ADOPT_APPLY_CLI_UNIT, so the row as written ended in a NameError and broke collection for another reason; the same marker is put back on the same entry, by the constant's value, U27"
 tests = ["tests/test_cli_contract.py", "tests/test_adoption.py", "tests/test_pending_units.py"]
 old = '''
             CLOUD_SYNC_UNREADABLE_GATE,
@@ -281,7 +285,7 @@ old = '''
 new = '''
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
-        planned_in=ADOPT_APPLY_CLI_UNIT,
+        planned_in="U27",
     ),
     # ── Deletion: one surface, two modules'''
 
