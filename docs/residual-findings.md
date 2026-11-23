@@ -1814,3 +1814,71 @@ readable playlist section, if such a document can be produced. Ledger only.
 **Measured cost.** Unknown per row. A zero is a guard whose test was removed, merged or weakened since its table was measured, or a guard written twice so one mutation no longer bites; a collection error with no death is a mutation that breaks an import, which the driver cannot read as a kill. Either way the guard may hold today with no test that proves it.
 
 **Closes when:** each of the twelve is driven on `main`: a test that kills it written where the guard is user facing, or the row recorded as no longer applying with its reason. Ledger only.
+
+---
+
+## R-1877. Acquire's code lines and its tests' lines and time stop short of U305's targets
+
+**Found:** at the build of #862, U305, 2026-11-22.
+
+**The mechanism.** U305 brought `src/cratekit/acquire/` from 16,426 lines to
+11,283 (target 13,194, met) and its largest file under 1,500, but its
+code lines, not counting blank, comment or docstring lines, from 8,003 to
+7,193 against a target of 6,856, and its twenty test files from 23,654 lines
+to 19,920 against 17,503, measured at the branch's last code commit. The prose went to its rule and its reason and the
+layout was filled to the width; what is left is statements, and removing them
+with behaviour frozen needs the near copies the cli modules hold (the lossy
+policy, the output exists refusal and the staging moves `cli.py`,
+`bandcamp_cli.py` and `fallback_cli.py` each spell) brought to one home, and
+the match suite's parametrised cases merged where two prove one rule. Their summed
+test time fell from 61.4 to 54.3 seconds measured back to back on one
+container, about 12 percent against the 30 the card asked, most of it the
+export guard's parse cache (`docs/restart/u305.md`).
+
+**Measured cost.** None to a person: behaviour is unchanged. The epic's size
+and test bars carry the gap to the audit.
+
+**Closes when:** the final audit, #872 (U315), measures acquire against
+U290's totals, and a further card takes the near copies if the totals need
+them. Ledger only.
+
+---
+
+## R-1878. A comment in another card's file names a match internal that moved in U305
+
+**Found:** at the build of #862, U305, 2026-11-22.
+
+**The mechanism.** The comment above `_RESOLVED` in `src/cratekit/intake/cli.py`
+points a reader at "the note above `match._REMEMBERED`". U305 split
+`acquire/match.py`, and the remembered reads with that note now live in
+`acquire/match_library.py`. `match._REMEMBERED` no longer exists as an
+attribute of `match`. The file is #864's (U307), so U305 left it. A second comment, in
+`src/cratekit/modules/outbound/tidal_account.py`, named ``match._first_named``
+at the build; #866 (U309) rewrote that file and landed before this unit
+merged, and no comment there names it now.
+
+**Measured cost.** A reader following the comment finds nothing on
+`match`; no code reads the name.
+
+**Closes when:** the comment names `match_library._REMEMBERED`, in #864 or
+any later edit of that file. Ledger only.
+
+---
+
+## R-1879. Acquire still reaches core.binary_refusal, a core module off the named interface
+
+**Found:** at the build of #862, U305, 2026-11-22.
+
+**The mechanism.** `acquire/fallback_cli.py` imports `core.binary_refusal`
+for the `yt-dlp-missing` refusal, as `intake/cli.py` does, and the module is
+not on the import rules' interface list, so acquire's import allowance keeps
+the one line `off-interface cratekit.core.binary_refusal`. The module and the
+list belong to #858 (U301) and #869 (U312): folding `yt_dlp_missing` into
+`core.binaries`, which is on the list, empties both packages' lines without a
+copy in either.
+
+**Measured cost.** None to a person; the seam bar of U290's point 4 holds one
+line open in acquire and one in intake.
+
+**Closes when:** the refusal lives in an interface module and acquire's
+allowance is pruned. Ledger only.
