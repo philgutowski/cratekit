@@ -156,6 +156,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import enum
+import functools
 import importlib
 import pkgutil
 import re
@@ -174,7 +175,7 @@ from cratekit.core import backup_facts, config
 from cratekit.core.cause import REASONS, Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import BANDS, MAX_CODE, ExitCode, Remedy, band_of, meaning_of
 from tests import _source_guards as _guards
-from tests._parse_memo import parsed, shares_parses
+from tests._parse_memo import parsed, shares_parses, sharing_parses
 from tests._pinned_reserved_populations import (
     PINNED_KEBAB_LITERALS_BY_MODULE,
     PINNED_LITERAL_HOLDERS,
@@ -196,6 +197,13 @@ PACKAGE_ROOT = REPO_ROOT / "src" / "cratekit"
 
 #: Where a per module pin is edited, said by every failure that names one (U296).
 _PIN_FILES = "each in its own package's file under tests/ratchets/reserved_causes/"
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _one_parse_per_text():
+    """Every test here shares one tree per text, dropped when the module ends (U312)."""
+    with sharing_parses():
+        yield
 
 #: The only two files in the package that may map a refusal cause to a code.
 #: One is the reservation itself; the other is the closed reason registry that
@@ -955,7 +963,7 @@ def _local_function_names(tree: ast.AST) -> set[str]:
     """
     return {
         node.name
-        for node in ast.walk(tree)
+        for node in _guards._walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
     }
 
@@ -984,7 +992,7 @@ def _handler_uses_what_it_bound(handler: ast.ExceptHandler, helpers: set[str]) -
     claimed and the module-wide version could not make.
     """
     bound = handler.name
-    for node in ast.walk(handler):
+    for node in _guards._walk(handler):
         if (
             isinstance(node, ast.Attribute)
             and isinstance(node.value, ast.Name)
@@ -1014,7 +1022,7 @@ def converting_handlers(tree: ast.AST) -> list[ast.ExceptHandler]:
     helpers = _local_function_names(tree)
     return [
         node
-        for node in ast.walk(tree)
+        for node in _guards._walk(tree)
         if isinstance(node, ast.ExceptHandler)
         and node.name is not None
         and node.type is not None
@@ -1023,6 +1031,11 @@ def converting_handlers(tree: ast.AST) -> list[ast.ExceptHandler]:
 
 
 def _converted_exception_types() -> set[type]:
+    return set(_converted_exception_types_once())
+
+
+@functools.cache
+def _converted_exception_types_once() -> frozenset[type]:
     """Exception CLASSES this package catches and then inspects, resolved for real.
 
     RESOLVED, not name-matched, and the difference is the whole check. The first
@@ -1061,14 +1074,14 @@ def _converted_exception_types() -> set[type]:
         source_file = getattr(module, "__file__", None)
         if source_file is None or "_vendor" in source_file:
             continue
-        tree = ast.parse(Path(source_file).read_text())
+        tree = parsed(Path(source_file).read_text())
         for node in converting_handlers(tree):
             caught = node.type.elts if isinstance(node.type, ast.Tuple) else [node.type]
             for entry in caught:
                 resolved = _resolve_in(module, ast.unparse(entry))
                 if isinstance(resolved, type) and issubclass(resolved, BaseException):
                     found.add(resolved)
-    return found
+    return frozenset(found)
 
 
 A_HANDLER_THAT_READS_AN_ATTRIBUTE = """
@@ -4350,7 +4363,7 @@ def owned_sources() -> list[str]:
     """
     found = set(findings_documents())
     for relative, text in authored_sources():
-        if CITATION.search(text):
+        if "residual" in text and CITATION.search(text):
             found.add(relative)
     return sorted(found)
 
@@ -4461,8 +4474,9 @@ def test_every_residual_this_unit_cites_is_cited_by_title():
     # the declared ones, which is what catches the typo the forward direction
     # cannot see.
     covered = set(owned_sources())
+    authored = authored_sources()
     written: dict[str, set[str]] = {}
-    for relative, source in authored_sources():
+    for relative, source in authored:
         if relative not in covered:
             continue
         for title in CITATION.findall(source):
@@ -4485,7 +4499,7 @@ def test_every_residual_this_unit_cites_is_cited_by_title():
 
     numbered = {}
     documents = set(findings_documents())
-    for relative, source in authored_sources():
+    for relative, source in authored:
         # THE RESIDUAL DOCUMENT IS EXEMPT FROM THE NUMBER BAN, and only from that
         # half. Decided 2026-08-10, when residual numbers became APPEND ONLY: a
         # number never moves again, so the premise this ban rests on, that a number
@@ -4635,7 +4649,7 @@ def modules_holding_a_named_cause(
             table.causes = set(causes)
         hits = {
             slug
-            for node in ast.walk(tree)
+            for node in _guards._walk(tree)
             if isinstance(node, (ast.Name, ast.Attribute))
             for slug in [table.cause_key(node)]
             if slug
@@ -4654,7 +4668,7 @@ def modules_holding_a_cause_literal(
     for relative, source in population_under_measurement(sources):
         hits = {
             node.value
-            for node in ast.walk(parsed(source))
+            for node in _guards._walk(parsed(source))
             if isinstance(node, ast.Constant)
             and isinstance(node.value, str)
             and node.value in causes
@@ -4672,7 +4686,7 @@ def holds_an_in_range_integer(source: str) -> bool:
         and isinstance(node.value, int)
         and not isinstance(node.value, bool)
         and low <= node.value < high
-        for node in ast.walk(parsed(source))
+        for node in _guards._walk(parsed(source))
     )
 
 
@@ -4681,7 +4695,7 @@ def kebab_shaped_literals() -> set[str]:
     return {
         node.value
         for _, source in package_sources()
-        for node in ast.walk(ast.parse(source))
+        for node in _guards._walk(parsed(source))
         if isinstance(node, ast.Constant)
         and isinstance(node.value, str)
         and _guards.CAUSE_SLUG.match(node.value)
@@ -4709,7 +4723,7 @@ def kebab_literals_by_module(sources: list[tuple[str, str]]) -> dict[str, list[s
         hits = sorted(
             {
                 node.value
-                for node in ast.walk(parsed(source))
+                for node in _guards._walk(parsed(source))
                 if isinstance(node, ast.Constant)
                 and isinstance(node.value, str)
                 and _guards.CAUSE_SLUG.match(node.value)
@@ -4868,13 +4882,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     )
 
     widened = frozenset(set(causes) | literals)
-    assert {
+    wide = {
         relative: reserved_code_tables_in(
             parsed(source), widened, RANGE, package_of(relative)
         )
         for relative, source in population_under_measurement(scanned)
-        if reserved_code_tables_in(parsed(source), widened, RANGE, package_of(relative))
-    } == {}, (
+    }
+    assert {relative: hits for relative, hits in wide.items() if hits} == {}, (
         "the wide rule has a headroom problem now: adding every kebab-shaped "
         "literal in the package to the key set reports an offender, and the "
         "argument for one key set rests on it reporting none"
@@ -4999,7 +5013,7 @@ def test_the_static_enum_rule_agrees_with_the_interpreter_over_the_whole_package
     modules, unimportable = imported_package_modules()
     assert not unimportable
     static = {
-        relative: _guards._declared_enum_values(ast.parse(source))
+        relative: _guards._declared_enum_values(parsed(source))
         for relative, source in package_sources()
     }
     missed: dict[str, list[str]] = {}
@@ -5048,12 +5062,12 @@ def test_no_module_in_the_package_keeps_a_second_reservation_table():
     duplicate taxonomy resolvers.
     """
     causes = declared_causes()
-    offenders = {
+    found = {
         relative: reserved_code_tables(source, causes, RANGE, package_of(relative))
         for relative, source in package_sources()
         if relative not in TABLE_OWNERS
-        and reserved_code_tables(source, causes, RANGE, package_of(relative))
     }
+    offenders = {relative: hits for relative, hits in found.items() if hits}
     assert not offenders, f"a second reservation table: {offenders}"
 
 
@@ -5935,11 +5949,8 @@ def test_the_hop_bound_is_the_depth_of_the_deepest_spelling(monkeypatch):
 
 
 def test_no_module_in_the_package_turns_a_bare_integer_into_a_status():
-    offenders = {
-        relative: process_status_literals(source)
-        for relative, source in package_sources()
-        if process_status_literals(source)
-    }
+    found = {relative: process_status_literals(source) for relative, source in package_sources()}
+    offenders = {relative: hits for relative, hits in found.items() if hits}
     assert not offenders, (
         f"these bypass the vocabulary entirely and exit with an integer nobody "
         f"reserved: {offenders}"
