@@ -45,6 +45,7 @@ from tests.test_sync_removed import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
 )
 from tests.test_sync_removed import acknowledged as acknowledged  # noqa: PLC0414
+from tests.test_sync_removed import five_landed as five_landed  # noqa: PLC0414
 from tests.test_sync_removed import fresh_cache as fresh_cache  # noqa: PLC0414
 from tests.test_sync_removed import library as library  # noqa: PLC0414
 from tests.test_sync_removed import machine as machine  # noqa: PLC0414
@@ -144,14 +145,21 @@ def _a179(cfg, silence, monkeypatch) -> Account:
     return account
 
 
+@pytest.fixture
+def a179(native_library, silence, monkeypatch, offline) -> config.Config:
+    """The configuration once :func:`_a179` ran, with no network."""
+    cfg, _root = native_library
+    _a179(cfg, silence, monkeypatch)
+    return cfg
+
+
 # A179's shape, the defect
 
 
 def test_a179s_shape_offers_the_track_once_the_gone_playlist_answers_not_found_a_day_apart(
-    native_library, silence, monkeypatch, offline
+    a179, monkeypatch
 ):
-    cfg, _root = native_library
-    _a179(cfg, silence, monkeypatch)
+    cfg = a179
     clock = Clock(monkeypatch)
     database = Path(cfg.library.db_path)
     before = hashlib.sha256(database.read_bytes()).hexdigest()
@@ -201,10 +209,8 @@ def test_a179s_shape_offers_the_track_once_the_gone_playlist_answers_not_found_a
 
 
 def test_a_sighting_on_a_later_date_but_under_a_day_after_the_first_retires_nothing(
-    native_library, silence, monkeypatch, offline
+    a179, monkeypatch
 ):
-    cfg, _root = native_library
-    _a179(cfg, silence, monkeypatch)
     clock = Clock(monkeypatch, FIRST)
     _run()
     clock.moment = NEXT_DATE
@@ -216,10 +222,9 @@ def test_a_sighting_on_a_later_date_but_under_a_day_after_the_first_retires_noth
 
 
 def test_a_playlist_that_failed_any_other_way_twice_a_day_apart_is_never_retired(
-    native_library, silence, monkeypatch, offline
+    five_landed, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(cfg, silence)
+    cfg = five_landed
     _pair(cfg)
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1"), track("New2"), track("Held2"), track("Held3")])
@@ -236,11 +241,7 @@ def test_a_playlist_that_failed_any_other_way_twice_a_day_apart_is_never_retired
     assert _record() == {}
 
 
-def test_two_runs_the_same_day_with_a_sighting_keep_one_digest(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _a179(cfg, silence, monkeypatch)
+def test_two_runs_the_same_day_with_a_sighting_keep_one_digest(a179, monkeypatch):
     clock = Clock(monkeypatch)
 
     first = _run()
@@ -253,10 +254,8 @@ def test_two_runs_the_same_day_with_a_sighting_keep_one_digest(
 
 
 def test_hearts_short_only_by_what_the_provider_withholds_read_whole_and_still_keep_a_heart(
-    native_library, silence, monkeypatch, offline
+    five_landed, monkeypatch
 ):
-    cfg, _root = native_library
-    _five(cfg, silence)
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1")])
     account.fake.hearts.append(track("New1"))
@@ -331,12 +330,8 @@ def test_hearts_short_by_more_than_a_tenth_of_their_count_stay_partial(declared,
     assert f"{declared} declared, 30 listed" in read.why
 
 
-def test_hearts_a_dropped_window_short_of_a_hearted_track_offer_nothing(
-    native_library, silence, monkeypatch, offline
-):
+def test_hearts_a_dropped_window_short_of_a_hearted_track_offer_nothing(five_landed, monkeypatch):
     """Round one's driven shape: 349 declared and 100 listed, the hearted New1 in the window lost."""
-    cfg, _root = native_library
-    _five(cfg, silence)
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1")])
     withholding(account, 249, served=100)
@@ -457,11 +452,7 @@ def _decide(run_id: str, answer: str) -> tuple[int, dict]:
     return drive(["--run", run_id, *RETIRE])
 
 
-def test_retire_lists_each_playlist_behind_its_gate_and_its_abort_writes_nothing(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _a179(cfg, silence, monkeypatch)
+def test_retire_lists_each_playlist_behind_its_gate_and_its_abort_writes_nothing(a179, monkeypatch):
     Clock(monkeypatch)
     state = config.state_path("sync_unavailable_record", config.load())
 
@@ -480,10 +471,8 @@ def test_retire_lists_each_playlist_behind_its_gate_and_its_abort_writes_nothing
 
 
 def test_retire_answered_retire_records_the_playlist_and_the_next_run_offers_past_it(
-    native_library, silence, monkeypatch, offline
+    a179, monkeypatch
 ):
-    cfg, _root = native_library
-    _a179(cfg, silence, monkeypatch)
     Clock(monkeypatch)
 
     code, asked = drive(RETIRE)
@@ -499,11 +488,8 @@ def test_retire_answered_retire_records_the_playlist_and_the_next_run_offers_pas
     assert "by a person" in _playlists(out)[PAIRED]["why"]
 
 
-def test_retire_offers_no_playlist_whose_id_failed_any_other_way(
-    native_library, silence, monkeypatch, offline
-):
-    cfg, _root = native_library
-    _five(cfg, silence)
+def test_retire_offers_no_playlist_whose_id_failed_any_other_way(five_landed, monkeypatch):
+    cfg = five_landed
     _pair(cfg)
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1")])
@@ -822,10 +808,8 @@ def test_retire_writes_every_reads_answer_with_the_retirement(
     assert _record()[PAIRED].by == unavailable.BY_PERSON
 
 
-def test_the_retire_gate_binds_across_midnight(native_library, silence, monkeypatch, offline):
+def test_the_retire_gate_binds_across_midnight(a179, monkeypatch):
     """Round one: two drives either side of UTC midnight, nothing recorded before."""
-    cfg, _root = native_library
-    _a179(cfg, silence, monkeypatch)
     clock = Clock(monkeypatch, datetime(2026, 11, 21, 23, 55, tzinfo=timezone.utc))
 
     code, asked = drive(RETIRE)
