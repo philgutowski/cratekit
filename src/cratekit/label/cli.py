@@ -327,8 +327,8 @@ def genre_group_or_refuse(
         # The shape check's own step speaks of setting a genre; this one names a group.
         raise _refused(
             "label-name-invalid",
-            f"--genre names one genre group, a line with a letter or a digit in it, "
-            f"not {genre!r}",
+            f"--genre names one genre group, one line of at most {labels.GENRE_MAX} "
+            f"characters with a letter or a digit in it, not {genre!r}",
             "pass --genre with one of the genres the followed labels carry, as "
             "crate label registry lists them",
             detail={"genre": genre},
@@ -346,7 +346,13 @@ def genre_group_or_refuse(
         if carried
         else (
             "no followed label carries a genre",
-            "give a label its genre with: crate label registry set NAME --genre GENRE",
+            "give a followed label its genre with: crate label registry set NAME --genre "
+            "GENRE",
+        )
+        if held.labels
+        else (
+            "no label is followed",
+            "follow a label with its genre: crate label registry add NAME --genre GENRE",
         )
     )
     undeclared = _undeclared(wanted)

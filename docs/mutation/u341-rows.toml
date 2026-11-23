@@ -115,21 +115,21 @@ new = '''        return _next(ctx, cfg, args.label)'''
 
 [[rows]]
 id = "G13_selection_guard_dropped"
-description = "label_sync: drop the refusal of --genre beside --go or --label, so the genre is silently ignored"
+description = "label_sync: drop the refusal of --genre beside --go, --answer or --label, so the genre is silently ignored"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
 tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
-old = '''    if args.genre is not None and (args.go or args.label is not None):'''
-new = '''    if False and (args.go or args.label is not None):'''
+old = '''    if args.genre is not None and (args.go or args.answer is not None or args.label is not None):'''
+new = '''    if False and (args.go or args.answer is not None or args.label is not None):'''
 
 [[rows]]
 id = "G14_selection_guard_without_label"
-description = "label_sync: leave --label out of the selection refusal, so --next --label --genre asks the one label and ignores the genre"
+description = "label_sync: leave --answer out of the selection refusal, so --answer --genre with no label is told to pass --label and then refused again"
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
 tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
-old = '''    if args.genre is not None and (args.go or args.label is not None):'''
-new = '''    if args.genre is not None and args.go:'''
+old = '''    if args.genre is not None and (args.go or args.answer is not None or args.label is not None):'''
+new = '''    if args.genre is not None and (args.go or args.label is not None):'''
 
 [[rows]]
 id = "G15_resume_hint_unnamed"
@@ -137,7 +137,7 @@ description = "_walk: the run stopped with quit is told to run label sync again 
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
 tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
-old = '''    again = "label sync" if named is None else f"label sync --genre {named!r}"'''
+old = '''    again = "label sync" if named is None else f"label sync --genre {shlex.quote(named)}"'''
 new = '''    again = "label sync"'''
 
 [[rows]]
@@ -155,7 +155,7 @@ description = "_answer: never name the answered label's genre in the next hint, 
 file = "src/cratekit/label/sync_cli.py"
 surface = "user"
 tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
-old = '''    group = "" if entry.genre is None else ('''
+old = '''    group = "" if not standing else ('''
 new = '''    group = "" if True else ('''
 
 [[rows]]
@@ -175,3 +175,32 @@ surface = "user"
 tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_provider_budget.py", "tests/modules/test_labels.py"]
 old = '''    return "the followed labels" if genre is None else f"the labels of genre {genre!r}"'''
 new = '''    return "the followed labels"'''
+
+[[rows]]
+id = "G20_hint_into_a_dissolved_group"
+description = "_answer: name the label's genre in the next hint even when the answer stopped the group's last label"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''    standing = entry.genre is not None and labels.RegistryStore().load().of_genre(entry.genre)'''
+new = '''    standing = entry.genre is not None'''
+
+[[rows]]
+id = "G21_hint_quoted_as_repr"
+description = "_walk: quote the genre in the resume hint as Python repr, which a shell cannot read for an apostrophe"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''    again = "label sync" if named is None else f"label sync --genre {shlex.quote(named)}"'''
+new = '''    again = "label sync" if named is None else f"label sync --genre {named!r}"'''
+
+[[rows]]
+id = "G22_empty_registry_step"
+description = "genre_group_or_refuse: with no label followed, tell the person to set a genre on a label that does not exist"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''        if held.labels
+        else ('''
+new = '''        if True
+        else ('''

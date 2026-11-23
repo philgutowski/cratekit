@@ -572,6 +572,19 @@ def test_a_genre_walk_is_refused_in_its_own_words_over_its_group_alone(two_follo
     assert two_followed.asked_for == []
 
 
+def test_a_genre_walk_at_the_terminal_is_refused_over_its_group_alone(two_followed):
+    """U341: the walk's own call site says the group, as ``--next``'s does."""
+    labels.RegistryStore().edit("Tide Works", genre="Deep House")
+    _spent_on_the_account(250)
+    code, envelope = ls.sync("--genre", "Deep House")
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert envelope["cause"]["message"].startswith(
+        "walking the labels of genre 'Deep House' may ask the streaming provider about "
+        "100 calls over 1 label,"
+    )
+    assert two_followed.asked_for == []
+
+
 def test_one_label_named_is_not_held_to_the_sweeps_estimate(two_followed):
     _spent_on_the_account(150)
     code, envelope = ls.sync("--next", "--label", "Tide Works")
