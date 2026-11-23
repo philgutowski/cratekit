@@ -22,6 +22,10 @@ a library folder after the visit; today's landings carry a head from
 `analyze run` before they land, so a stamped file is rare until U343, and the
 reachability on a real library was not measured.
 
+`analyze vocals --unscored` keys on the same file name head
+(`vocals/cli.py`), read at review round one and not driven, so a stamped file
+may be picked as unscored again too.
+
 **Closes when:** U343 (#995) lands, which removes the key stage, the head,
 the `initialkey` write and the rename from `analyze run` and resumes it by a
 tag the run writes. Ledger only: the card that closes it is already queued.

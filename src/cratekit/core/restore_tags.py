@@ -125,7 +125,8 @@ def kept_by(record: session.SessionRecord) -> tuple[FileBefore, ...]:
             raise _unreadable(record, f"entry {index} has no text for {', '.join(missing)}")
         # A PATH THAT IS NOT ABSOLUTE would resolve against wherever the verb ran,
         # and a BLANK TITLE TAG would be cleared: the adopt writes neither, since it
-        # adopts only a title tag with a head on a resolved file (review round one).
+        # writes only a title tag that carries a head, or one equal to a row's title
+        # with no head, on a resolved file (review round one, U342).
         if entry["path"].strip() != entry["path"] or not Path(entry["path"]).is_absolute():
             raise _unreadable(record, f"entry {index} names no absolute path")
         if not entry["tag_title"].strip():

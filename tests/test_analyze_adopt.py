@@ -42,6 +42,7 @@ from tests.test_intake_land_native import (
 from tests.test_intake_land_native import _two_acts as _land_acts
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_no_beatgrid_ever import FORBIDDEN_TAG_KEYS
 
 VERB = ["analyze", "adopt"]
 GATE = head_adopt_cli.CONFIRM_GATE
@@ -1089,6 +1090,9 @@ def _bare_and_visited(cfg: config.Config, silence: Path) -> None:
         pytest.param("", "06A", 124, None, id="nothing-to-follow-the-head"),
         pytest.param("Sierra", "06A", 1000, None, id="a-tempo-no-head-carries"),
         pytest.param("Sierra", "13A", 124, None, id="a-key-off-the-wheel"),
+        pytest.param("Victor - 06A - 124", "06A", 124, None, id="a-head-at-the-end"),
+        pytest.param("[MP3]", "06A", 124, None, id="a-marker-and-nothing-after"),
+        pytest.param("[MP3]  ", "06A", 124, None, id="a-marker-and-blanks"),
     ],
 )
 def test_a_title_with_no_head_is_stamped_and_keeps_every_byte(title, key, tempo, expected):
@@ -1324,4 +1328,51 @@ def test_a_stamped_file_carries_the_tempo_as_text_and_no_tempo_tag_in_any_contai
     handle = mutagen.File(path)
     held = {str(key) for key in (handle.tags or {}).keys()}
     spelled = {key.lower() for key in held} | {key.split(":", 1)[-1].lower() for key in held}
-    assert not spelled & {"bpm", "tbpm", "tmpo", "averagebpm", "beatgrid", "fbpm"}, sorted(held)
+    assert not spelled & {key.lower() for key in FORBIDDEN_TAG_KEYS}, sorted(held)
+
+
+def test_a_stamped_row_is_counted_written_and_never_as_left(native_library, silence, monkeypatch):
+    """The rows left count names only rows left, never a stamped one, and the written
+    message counts a stamped title only when its file took it."""
+    cfg, _root = native_library
+    _bare_and_visited(cfg, silence)
+    _land_bare(cfg, silence, "2026-11-23_one_left", {"Whiskey": "Whiskey"})
+    _visit(cfg, "Whiskey", scale=None, bpm=12400)
+    tango = _file(cfg, "Tango")
+    real = tags.write_tags
+
+    def refuses_tango(path, fields):
+        return False if Path(path) == tango else real(path, fields)
+
+    monkeypatch.setattr(tags, "write_tags", refuses_tango)
+    code, acted, _refused = _two_acts()
+
+    assert acted["cause"]["reason"] == head_adopt_cli.UNWRITTEN, acted
+    said = {warning["code"]: warning["message"] for warning in acted["warnings"]}
+    assert said[head_adopt_cli.ROWS_LEFT].startswith(
+        "1 of 5 row(s) were left alone (1 no-head-unanswered): "
+    ), said[head_adopt_cli.ROWS_LEFT]
+    assert _surfaces(cfg, "Tango")[:2] == ("[MP3] Tango", "[MP3] Tango")
+    assert _surfaces(cfg, "Sierra")[0] == STAMPED["Sierra"]
+    assert acted["data"]["totals"]["outcomes"][ha.STAMPED] == 4
+    assert acted["data"]["totals"]["written"] == 3
+
+
+def test_the_written_message_counts_only_stamped_files_that_took_it():
+    plan_items = (
+        ha.Item("1", ha.STAMPED, title="A", new_title="06A - 124 - A"),
+        ha.Item("2", ha.STAMPED, title="B", new_title="06A - 124 - B"),
+        ha.Item("3", ha.ADOPT, title="01A - 124 - C", new_title="06A - 124 - C"),
+    )
+    plan = ha.AdoptPlan(
+        scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name="INBOX / Analyze", content_ids=("1", "2", "3")),
+        items=plan_items,
+        counts={},
+        notes={},
+    )
+    written = ha.Written(
+        session_id="s", written=2, read_back=2, files=ha.FilesWritten(read_back=("1", "3"))
+    )
+    message = head_adopt_cli._written(plan, written)["message"]
+    assert "2 file(s) carry rekordbox's key and tempo" in message
+    assert "1 of them a title that had no head" in message

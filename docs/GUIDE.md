@@ -295,9 +295,10 @@ is stamped only with both halves: one rekordbox did not key, or whose tempo is
 zero, is left as `no-head-unanswered` naming the half missing. The key is
 the Key column's and wins on any difference, one Camelot step included; the
 tempo is rekordbox's rounded, and wins only when the head is more than one
-beat away. Only those two parts of the head change, in the row's title in
-rekordbox, the file's title tag and the file's key tag; the rest of the title,
-the lossy marker included, keeps every character. It never writes the Key or
+beat away. On a title with a head only those two parts of it change, and on
+one without, only the new head is added, in the row's title in rekordbox, the
+file's title tag and the file's key tag; the rest of the title, the lossy
+marker included, keeps every character. It never writes the Key or
 BPM columns, a grid or a tempo tag, and it never renames a file, so the file
 name keeps its old head, or keeps having none; `name apply` and the library
 index read the title tag's head first, so the old head is never written back. It reads the backup

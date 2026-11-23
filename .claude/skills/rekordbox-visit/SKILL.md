@@ -329,7 +329,8 @@ left is named with why in the warnings. A file it could not write keeps its
 row's old title and is named; report it. With `data.summary.differs` at zero
 and no title without a head the plan writes nothing, and the gate is still
 answered, ending as a no op; `data.totals.outcomes.stamped` counts the titles
-given a head. An
+the plan gives a head, and the `adopt-heads-written` warning how many of them
+took it. An
 `adopt-scope-empty` warning means INBOX / Analyze is absent or holds no row, so
 nothing was planned: after a check whose scope read `analyze` that is a stop,
 so report it. An intake tree that cannot be read refuses before the gate with
