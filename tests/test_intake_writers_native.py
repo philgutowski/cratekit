@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import shutil
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -695,7 +696,8 @@ def test_every_intake_emitter_caller_builds_its_tree_through_the_one_refusing_bu
     for module in sorted(SRC.rglob("*.py")):
         text = module.read_text(encoding="utf-8")
         # Neither name in the text, no node of either: only such modules are parsed.
-        if "intake_tree" not in text and "insert_intake_playlist" not in text:
+        folded = unicodedata.normalize("NFKC", text)
+        if "intake_tree" not in folded and "insert_intake_playlist" not in folded:
             continue
         tree = ast.parse(text)
         for function in ast.walk(tree):

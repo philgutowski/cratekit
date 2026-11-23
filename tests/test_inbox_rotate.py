@@ -9,6 +9,7 @@ from __future__ import annotations
 import collections
 import contextlib
 import sqlite3
+import unicodedata
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -616,7 +617,7 @@ def _removal_callers() -> dict[str, list[str]]:
     for path in sorted(src.rglob("*.py")):
         text = path.read_text(encoding="utf-8")
         # No ``removals`` keyword in the text, none in the tree, so it is not parsed.
-        if "_vendor" in path.parts or "removals" not in text:
+        if "_vendor" in path.parts or "removals" not in unicodedata.normalize("NFKC", text):
             continue
         for node in ast.walk(ast.parse(text)):
             if not isinstance(node, ast.Call):

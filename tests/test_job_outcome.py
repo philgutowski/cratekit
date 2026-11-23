@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import dataclasses
 import functools
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -329,7 +330,7 @@ def _parsed(*spellings: str):
     """Every source module whose text holds one of ``spellings``, the only ones that
     can hold a node naming it."""
     for path in sorted(SRC.rglob("*.py")):
-        if any(spelling in path.read_text() for spelling in spellings):
+        if any(s in unicodedata.normalize("NFKC", path.read_text()) for s in spellings):
             yield path, _tree(path)
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import textwrap
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -191,7 +192,7 @@ def test_exactly_one_place_in_the_package_calls_the_job_driver():
     for path in sorted((SRC_ROOT / "cratekit").rglob("*.py")):
         text = path.read_text()
         # A module that never spells ``drive`` holds no call to it, so it is not parsed.
-        if "_vendor" in path.parts or "drive" not in text:
+        if "_vendor" in path.parts or "drive" not in unicodedata.normalize("NFKC", text):
             continue
         count = _drive_calls(ast.parse(text))
         if count:
