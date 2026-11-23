@@ -1,0 +1,240 @@
+name = "r1924"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_entry_not_a_mapping"
+description = "kept_by: drop the refusal of an entry that is not a mapping, so a malformed record raises an unexplained error after the plan began"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        if not isinstance(entry, dict):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "T2_entry_text_check"
+description = "kept_by: accept any value that is not None, so a number or a list reaches the put back as a tag"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        missing = [name for name in wanted if not isinstance(entry.get(name), str)]'''
+new = '''        missing = [name for name in wanted if entry.get(name) is None]'''
+
+[[rows]]
+id = "T3_absolute_path"
+description = "kept_by: accept a relative path, which would resolve against wherever the verb ran"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        if entry["path"].strip() != entry["path"] or not Path(entry["path"]).is_absolute():'''
+new = '''        if entry["path"].strip() != entry["path"]:'''
+
+[[rows]]
+id = "T4_padded_path"
+description = "kept_by: accept a path padded with spaces"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        if entry["path"].strip() != entry["path"] or not Path(entry["path"]).is_absolute():'''
+new = '''        if not Path(entry["path"]).is_absolute():'''
+
+[[rows]]
+id = "T5_blank_title"
+description = "kept_by: refuse only an empty title tag, so one of spaces is kept and written back over a title"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        if not entry["tag_title"].strip():'''
+new = '''        if not entry["tag_title"]:'''
+
+[[rows]]
+id = "T6_title_from_the_row"
+description = "kept_by: take the row's title rather than the title tag the adopt read off the file"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''                title=entry["tag_title"],'''
+new = '''                title=entry.get("title", entry["tag_title"]),'''
+
+[[rows]]
+id = "T7_first_record_wins"
+description = "befores: let the last record to name a file win, so a file goes back to a later session's before value, the earlier one's after"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''            if where not in seen:'''
+new = '''            if True:'''
+
+[[rows]]
+id = "T8_rebased"
+description = "befores: skip the rebase, so a recorded path is spent as written"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''            where = rebased(kept.path)'''
+new = '''            where = kept.path'''
+
+[[rows]]
+id = "T9_absent_reads_blank"
+description = "_read: read an absent tag as the text None, so a blank before value never matches and every absent key tag reads back wrong"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''    return {name: str(read[name] or "") for name in FIELDS}'''
+new = '''    return {name: str(read[name]) for name in FIELDS}'''
+
+[[rows]]
+id = "T10_blank_is_cleared"
+description = "_write: clear nothing, so a key tag absent before the adopt keeps the adopted key"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''    cleared = [name for name, value in changes.items() if not value]'''
+new = '''    cleared = []'''
+
+[[rows]]
+id = "T11_both_halves_written"
+description = "_write: a successful write of the non-blank values skips the clear"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''            and (not cleared or tags.clear_tags(path, cleared))'''
+new = '''            or (not cleared or tags.clear_tags(path, cleared))'''
+
+[[rows]]
+id = "T12_unknown_container"
+description = "_write: let an unknown container's ValueError escape, so one odd file ends the restore unanswered"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''    except (ValueError, OSError):
+        # An unknown container'''
+new = '''    except OSError:
+        # An unknown container'''
+
+[[rows]]
+id = "T13_dry_run_unreadable"
+description = "put_back: a dry run counts an unreadable file as fine, so the rehearsal passes and the run refuses"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        if dry_run:
+            if now is None:
+                failed.append(shown)'''
+new = '''        if dry_run:
+            if False:
+                failed.append(shown)'''
+
+[[rows]]
+id = "T14_dry_run_writes"
+description = "put_back: ignore the dry run, so a rehearsal writes the files"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        if dry_run:
+            if now is None:'''
+new = '''        if False:
+            if now is None:'''
+
+[[rows]]
+id = "T15_only_what_differs"
+description = "put_back: write both tags whatever the file holds"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''            if now is None or now[name] != before.value(name)'''
+new = '''            if True'''
+
+[[rows]]
+id = "T16_write_failure_counted"
+description = "put_back: a write that fails is not counted failed and falls through to the read back"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        if changes and not _write(before.path, changes):'''
+new = '''        if changes and not _write(before.path, changes) and False:'''
+
+[[rows]]
+id = "T17_key_read_back"
+description = "put_back: read back the title tag alone, so a key tag that did not come back reads as put back"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        if again is None or any(again[name] != before.value(name) for name in FIELDS):'''
+new = '''        if again is None or any(again[name] != before.value(name) for name in FIELDS[:1]):'''
+
+[[rows]]
+id = "T18_unwritten_includes_wrong"
+description = "TagsPutBack.unwritten: name only the files that failed, so one that does not read back ends ok"
+file = "src/cratekit/core/restore_tags.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        return self.failed + self.wrong'''
+new = '''        return self.failed'''
+
+[[rows]]
+id = "R1_later_sessions_read"
+description = "plan: read the restored session's record alone, so a discarded later adopt leaves its files adopted"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        (record, *_later_started(cfg, record)),'''
+new = '''        (record,),'''
+
+[[rows]]
+id = "R2_uncommitted_read"
+description = "_later_started: read only sessions that committed, round one's B1, so an adopt that wrote files and no rows is never read"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''                if entry.session_id != target.session_id and entry.started > target.started
+'''
+new = '''                if entry.session_id != target.session_id and entry.started > target.started
+                and _committed(entry)
+'''
+
+[[rows]]
+id = "R3_after_the_database"
+description = "run: put the files back at the first step, before the database is replaced"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        if step.act is Act.RELEASE:'''
+new = '''        if step.act is Act.RECORD:'''
+
+[[rows]]
+id = "R4_dry_run_passed"
+description = "run: put the files back on a dry run"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''            files = restore_tags.put_back(decided.file_tags, dry_run=dry_run)'''
+new = '''            files = restore_tags.put_back(decided.file_tags, dry_run=False)'''
+
+[[rows]]
+id = "C1_refusal"
+description = "perform_restore: answer ok whatever the files did"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''    if report.outcome is None or not report.outcome.file_tags.unwritten:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "C2_totals"
+description = "_performed: carry no file counts in the answer"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''        totals["file_tags"] = outcome.file_tags.to_json()'''
+new = '''        totals["file_tags"] = {}'''
+
+[[rows]]
+id = "C3_dry_run_message"
+description = "_tags_unwritten: a dry run's refusal says the session was restored"
+file = "src/cratekit/session/restore_cli.py"
+surface = "user"
+tests = ["tests/test_restore_tags.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_analyze_adopt.py"]
+old = '''    if outcome.dry_run:
+        return CratekitError('''
+new = '''    if False:
+        return CratekitError('''
