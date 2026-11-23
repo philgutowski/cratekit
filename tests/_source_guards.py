@@ -2084,17 +2084,77 @@ SOFT_DELETE_CONSTANT = "SOFT_DELETE_COLUMN"
 SOFT_DELETE_COLUMN_LITERAL = "rb_local_deleted"
 
 
+def _writer_imports(nodes) -> tuple[set[str], set[str]]:
+    """The names these import nodes bind to the writer module, and to its constant.
+
+    ``import cratekit.core.rb_writer [as w]``, ``from cratekit.core import
+    rb_writer [as w]``, the relative ``from .core import rb_writer`` and ``from .
+    import rb_writer`` (the spelling inside ``core`` itself, read as the writer
+    since no other package holds one), and ``from ...rb_writer import
+    SOFT_DELETE_COLUMN``.
+    """
+    module_names: set[str] = set()
+    constant_names: set[str] = set()
+    for node in nodes:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == RB_WRITER_MODULE:
+                    module_names.add(alias.asname or RB_WRITER_MODULE)
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            names_the_module = module == RB_WRITER_MODULE or (
+                node.level > 0 and module.split(".")[-2:] == ["core", "rb_writer"]
+            )
+            names_the_package = module == RB_WRITER_PACKAGE or (
+                node.level > 0 and (module == "" or module.split(".")[-1:] == ["core"])
+            )
+            if names_the_module:
+                for alias in node.names:
+                    if alias.name == SOFT_DELETE_CONSTANT:
+                        constant_names.add(alias.asname or alias.name)
+            elif names_the_package:
+                for alias in node.names:
+                    if alias.name == "rb_writer":
+                        module_names.add(alias.asname or "rb_writer")
+    return module_names, constant_names
+
+
+def _writer_accessors(tree: ast.AST) -> set[str]:
+    """Module level functions that import the writer and return the name they bound.
+
+    Narrow on purpose, because this is the one function call the soft-delete
+    guard resolves: the function's own imports must bind the writer, and one of
+    its returns must hand back exactly that name. A function returning anything
+    else, or importing anything else, is not an accessor.
+    """
+    found: set[str] = set()
+    for node in getattr(tree, "body", []):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        bound, _ = _writer_imports(_walk(node))
+        if any(
+            isinstance(inner, ast.Return)
+            and isinstance(inner.value, ast.Name)
+            and inner.value.id in bound
+            for inner in _walk(node)
+        ):
+            found.add(node.name)
+    return found
+
+
 class SoftDeleteNames:
     """Every expression in one source file that NAMES the soft-delete column.
 
-    Four shapes, and the reason each is here rather than left out:
+    Five shapes, and the reason each is here rather than left out:
 
     * the literal ``"rb_local_deleted"``, which is what the defect looked like
       at ``write/metadata.py:195`` and at ``write/routing_pass.py``;
     * ``rb_writer.SOFT_DELETE_COLUMN`` through any import shape, which is what
       correct code SHOULD say and what a guard bound to the literal alone would
       be blind to;
-    * a local constant assigned either of those, one hop, because
+    * ``_writer().SOFT_DELETE_COLUMN``, the call time accessor every part U300
+      split off the writer reads its seams through (R-1890);
+    * a local constant assigned any of those, one hop, because
       ``COLUMN = rb_writer.SOFT_DELETE_COLUMN`` at module level and
       ``getattr(row, COLUMN, 0)`` at the call is the obvious way around a guard
       that only reads the argument;
@@ -2108,31 +2168,16 @@ class SoftDeleteNames:
     """
 
     def __init__(self, tree: ast.AST) -> None:
-        #: Local names that ARE the rb_writer module.
-        self.module_names: set[str] = set()
-        #: Local names bound directly to the constant.
-        self.constant_names: set[str] = set()
-        for node in _walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    if alias.name == RB_WRITER_MODULE:
-                        self.module_names.add(alias.asname or RB_WRITER_MODULE)
-            elif isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                names_the_module = module == RB_WRITER_MODULE or (
-                    node.level > 0 and module.split(".")[-2:] == ["core", "rb_writer"]
-                )
-                names_the_package = module == RB_WRITER_PACKAGE or (
-                    node.level > 0 and module.split(".")[-1:] == ["core"]
-                )
-                if names_the_module:
-                    for alias in node.names:
-                        if alias.name == SOFT_DELETE_CONSTANT:
-                            self.constant_names.add(alias.asname or alias.name)
-                elif names_the_package:
-                    for alias in node.names:
-                        if alias.name == "rb_writer":
-                            self.module_names.add(alias.asname or "rb_writer")
+        #: Local names that ARE the rb_writer module, and names bound directly
+        #: to the constant, from every import in the file.
+        self.module_names, self.constant_names = _writer_imports(_walk(tree))
+        #: Module level functions that import the writer and return it, the
+        #: call time accessor ``def _writer(): from cratekit.core import
+        #: rb_writer; return rb_writer`` every part U300 split off the writer
+        #: holds (R-1890). ``_writer().SOFT_DELETE_COLUMN`` names the column
+        #: exactly as ``rb_writer.SOFT_DELETE_COLUMN`` does, and before this a
+        #: part reading the marker through it with a falsey default passed.
+        self.accessor_names: set[str] = _writer_accessors(tree)
 
         # The one hop. Resolved after the imports so an alias assigned from an
         # imported constant is seen, and iterated to a fixed point over the
@@ -2158,7 +2203,8 @@ class SoftDeleteNames:
                     self.falsey_names.add(name)
                     grew = True
                 dotted = _dotted(value)
-                if dotted in self.module_names and name not in self.module_names:
+                is_module = dotted in self.module_names or self._calls_accessor(value)
+                if is_module and name not in self.module_names:
                     self.module_names.add(name)
                     grew = True
             if not grew:
@@ -2210,8 +2256,24 @@ class SoftDeleteNames:
                 if receiver is not None and receiver.split(".")[0] in local:
                     self.shadowed_gets.add(node)
 
+    def _calls_accessor(self, node: ast.AST) -> bool:
+        """Whether ``node`` is ``_writer()``, a call of the writer's accessor."""
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in self.accessor_names
+            and not node.args
+            and not node.keywords
+        )
+
     def _is_column(self, node: ast.AST) -> bool:
         if isinstance(node, ast.Constant) and node.value == SOFT_DELETE_COLUMN_LITERAL:
+            return True
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr == SOFT_DELETE_CONSTANT
+            and self._calls_accessor(node.value)
+        ):
             return True
         dotted = _dotted(node)
         if dotted is None:
@@ -2647,7 +2709,8 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
     KNOWN LIMITS, written down rather than implied, because a guard whose reach
     is unstated gets trusted past it. Not caught: a row subclass carrying a
     falsey class-level default under a plain attribute read, the column arriving
-    from a function call or a dictionary lookup, and an attribute name computed
+    from a function call (other than the writer's own call time accessor,
+    ``_writer().SOFT_DELETE_COLUMN``, resolved since R-1890) or a dictionary lookup, and an attribute name computed
     at runtime. Each needs type or value inference this does not have. They are
     recorded in the residual
     "What the soft-delete guard cannot see, and two gaps in the gate contract"
