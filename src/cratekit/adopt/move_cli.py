@@ -330,10 +330,12 @@ def remaining(
             continue
         _kind, competing = routing.competing_subs(declared, move.bucket)
         _kind, into = routing.competing_subs(declared, move.into)
-        # A MOVE ACROSS BUCKETS LEAVES THE OLD FOLDER'S DERIVED CLASSES TOO
-        # (R-1965), and no other move ever names one.
+        # A MOVE ACROSS BUCKETS LEAVES THE OLD FOLDER'S PLACES BESIDE THE BAND
+        # TOO (R-1965), and no other move ever names one.
         leavable = competing | (
-            set(plan_engine.derived_classes(declared, move.bucket)) if move.target_bucket else set()
+            set(plan_engine.alongside_places(declared, move.bucket))
+            if move.target_bucket
+            else set()
         )
         if move.target not in into or not set(move.remove) <= leavable:
             stale[move.content_id] = "a sub it names no longer competes"
@@ -359,9 +361,9 @@ def remaining(
         )
         if now is None and move.target_bucket:
             # ACROSS BUCKETS, DONE IS IN THE TARGET AND OUT OF THE OLD BUCKET,
-            # its derived classes included (R-1965).
+            # its places beside the band included (R-1965).
             arrived = move.target in current.placements.holds(move.into, move.content_id)
-            if arrived and not held and not move_engine.derived_left(
+            if arrived and not held and not move_engine.alongside_left(
                 current.placements, declared, move.bucket, move.content_id, leaving=()
             ):
                 continue
@@ -441,9 +443,9 @@ def read_back(
     account of itself. ``moved`` holds its target and no other competing sub,
     ``in_both`` its target and another, ``untouched`` not its target, and
     ``neither`` no competing sub at all, which no path can produce and is
-    listed so it would be seen. A move across buckets counts a derived class
-    of the bucket it left as a sub still held there (R-1965). Each move is read
-    back in its own bucket and
+    listed so it would be seen. A move across buckets is read for what it was
+    approved to remove, a place beside the band included (R-1965). Each move is
+    read back in its own bucket and
     each list names a track once, so a track whose two moves (R-780) ended
     differently is in two lists.
 
@@ -464,12 +466,11 @@ def read_back(
         )
         if move.target_bucket:
             # ACROSS BUCKETS (U339): the target is read in the bucket it files
-            # into, and every sub of the bucket left must be gone, every derived
-            # class it was to leave too (R-1965).
-            held = held | set(
-                move_engine.derived_left(
-                    held_now, declared, move.bucket, move.content_id, leaving=tuple(held)
-                )
+            # into, and every place of the bucket left the move was approved to
+            # leave must be gone, a band or a place beside it (R-1965). A band
+            # another bucket's move settles is that move's to read back.
+            held = (held | set(held_now.holds_alongside(move.bucket, move.content_id))) & set(
+                move.remove
             )
             arrived = move.target in held_now.holds(move.into, move.content_id)
             name = (
@@ -540,11 +541,16 @@ def handle(job, item, cfg) -> jobs.Produced:
     )
     # A GENRE MOVE READ BACK OUT OF ITS OLD BUCKET IS SPENT (U339), so the
     # bucket is never asked again for a track a person later puts there by hand.
-    # EVERY FOLDER A TRACK LEFT, a track leaving two in one job included.
+    # EVERY FOLDER A TRACK LEFT, a track leaving two in one job included, and
+    # only for a track EVERY move of which finished: the lists are per track,
+    # so one move read back moved beside another that did not would otherwise
+    # spend the entry a resume needs (review round one of R-1965).
+    unfinished = sorted({*found["in_both"], *found["untouched"], *found["neither"]})
     left: dict[str, set[str]] = {}
     for move in approved:
         if move.target_bucket and move.content_id in found["moved"]:
-            left.setdefault(move.content_id, set()).add(move.bucket)
+            if move.content_id not in unfinished:
+                left.setdefault(move.content_id, set()).add(move.bucket)
     genre_moves.discharge(cfg, left)
     produced = artifacts.produced(
         cfg,
@@ -563,7 +569,6 @@ def handle(job, item, cfg) -> jobs.Produced:
             "interrupted": interrupted is not None or refused is not None,
         },
     )
-    unfinished = sorted({*found["in_both"], *found["untouched"], *found["neither"]})
     failed = refused is not None or interrupted is not None or unfinished
     if failed and produced.staged is not None and produced.final is not None:
         jobs.commit_artifact(produced.staged, produced.final)

@@ -89,21 +89,21 @@ class Placements:
     second one beside it. ``doubled`` is the part held through more than one
     active row in one playlist (R-781), which a set cannot say.
 
-    ``derived`` maps a bucket to a track to the derived sub classes it sits in
-    there, :func:`derived_classes`, never a competing sub, and
-    ``derived_unnamed`` the part held under another name only. ``others`` maps
-    a bucket to a track to the names of the other playlists of that bucket's
-    own folder holding it, a manual class, a genre sub or one made by hand:
-    what keeps a track in the folder, which the genre Favorites mirror files
-    by. All three are read for the move across genre folders alone (R-1965).
+    ``alongside`` maps a bucket to a track to the places filed beside its band
+    it sits in there, :func:`alongside_places`, never a competing sub, and
+    ``alongside_unnamed`` the part held under another name only. ``others``
+    maps a bucket to a track to the names of the other playlists of that
+    bucket's own folder holding it, a manual class or one made by hand: what
+    keeps a track in the folder, which the genre Favorites mirror files by.
+    All three are read for the move across genre folders alone (R-1965).
     """
 
     read: bool = False
     held: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
     unnamed: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
     doubled: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
-    derived: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
-    derived_unnamed: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
+    alongside: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
+    alongside_unnamed: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
     others: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
 
     def holds(self, bucket: str, content_id: str) -> tuple[str, ...]:
@@ -118,13 +118,13 @@ class Placements:
         """The subs of ``bucket`` this track holds through two or more rows."""
         return tuple(self.doubled.get(bucket, {}).get(content_id, ()))
 
-    def holds_derived(self, bucket: str, content_id: str) -> tuple[str, ...]:
-        """The derived sub classes of ``bucket`` this track sits in, or none."""
-        return tuple(self.derived.get(bucket, {}).get(content_id, ()))
+    def holds_alongside(self, bucket: str, content_id: str) -> tuple[str, ...]:
+        """The places filed beside the band of ``bucket`` this track sits in, or none."""
+        return tuple(self.alongside.get(bucket, {}).get(content_id, ()))
 
-    def holds_derived_unnamed(self, bucket: str, content_id: str) -> tuple[str, ...]:
-        """The derived sub classes of ``bucket`` it holds under another name only."""
-        return tuple(self.derived_unnamed.get(bucket, {}).get(content_id, ()))
+    def holds_alongside_unnamed(self, bucket: str, content_id: str) -> tuple[str, ...]:
+        """The places beside the band of ``bucket`` it holds under another name only."""
+        return tuple(self.alongside_unnamed.get(bucket, {}).get(content_id, ()))
 
     def holds_others(self, bucket: str, content_id: str) -> tuple[str, ...]:
         """The other playlists of ``bucket``'s own folder this track sits in, by name."""
@@ -580,6 +580,19 @@ def derived_classes(declared: taxonomy.Taxonomy, bucket_id: str) -> tuple[str, .
         if entry.id not in ids and entry.display not in displays:
             found.append(entry.id)
     return tuple(found)
+
+
+def alongside_places(declared: taxonomy.Taxonomy, bucket_id: str) -> tuple[str, ...]:
+    """The places one bucket's folder files a track in beside its band, in declared order.
+
+    The derived sub classes, :func:`derived_classes`, and the genre subs
+    (U155), which the source genre picks. Every one is filed by what the track
+    is, its tag, its genre or a playlist, so a track whose genre a person moved
+    out of the bucket belongs in none of them there (R-1965). A manual class is
+    never one.
+    """
+    genre = tuple(sub.id for sub in declared.bucket(bucket_id).genre_subs)
+    return (*derived_classes(declared, bucket_id), *genre)
 
 
 def mirrored_classes(declared: taxonomy.Taxonomy) -> frozenset[str]:

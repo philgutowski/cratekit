@@ -40,7 +40,7 @@ from cratekit.adopt.plan import (
     UNREAD,
     Placements,
     Vocals,
-    derived_classes,
+    alongside_places,
     in_own_folder,
     vocal_sub,
 )
@@ -111,10 +111,10 @@ def placements_from(
     the split place in the declarer, whatever its genre, and which it leaves
     is the move's question.
 
-    THE DERIVED SUB CLASSES AND THE FOLDER'S OTHER PLAYLISTS ARE READ BESIDE
+    THE PLACES BESIDE THE BAND AND THE FOLDER'S OTHER PLAYLISTS ARE READ WITH
     THEM (R-1965), from the same nodes: the move across genre folders leaves a
-    folder's ``with vox`` and Favorites with its band, and a track another
-    playlist of that folder still holds keeps the Favorites there. The folder
+    folder's ``with vox``, Favorites and genre sub with its band, and a track
+    another playlist of that folder still holds keeps the Favorites there. The folder
     is the one the bucket's own places answer from, by identifier, so a
     renamed folder is still the bucket's.
     """
@@ -126,8 +126,8 @@ def placements_from(
     held: dict[str, dict[str, set[str]]] = {}
     unnamed: dict[str, dict[str, set[str]]] = {}
     doubled: dict[str, dict[str, set[str]]] = {}
-    derived: dict[str, dict[str, set[str]]] = {}
-    derived_unnamed: dict[str, dict[str, set[str]]] = {}
+    alongside: dict[str, dict[str, set[str]]] = {}
+    alongside_unnamed: dict[str, dict[str, set[str]]] = {}
     others: dict[str, dict[str, set[str]]] = {}
     for bucket in declared.buckets:
         _kind, competing = routing.competing_subs(declared, bucket.id)
@@ -144,9 +144,10 @@ def placements_from(
             known.update((node.folder_id, node.playlist_id) for node in answering)
             if in_own_folder(declared, bucket.id, sub_id):
                 folders.update(node.folder_id for node in answering)
-        for sub_id in derived_classes(declared, bucket.id):
+        for sub_id in alongside_places(declared, bucket.id):
             answering = _read_place(
-                declared, bucket.id, sub_id, by_display, by_ids, record, derived, derived_unnamed
+                declared, bucket.id, sub_id, by_display, by_ids, record, alongside,
+                alongside_unnamed,
             )
             known.update((node.folder_id, node.playlist_id) for node in answering)
             folders.update(node.folder_id for node in answering)
@@ -163,8 +164,8 @@ def placements_from(
         held=_frozen(held),
         unnamed=_frozen(unnamed),
         doubled=_frozen(doubled),
-        derived=_frozen(derived),
-        derived_unnamed=_frozen(derived_unnamed),
+        alongside=_frozen(alongside),
+        alongside_unnamed=_frozen(alongside_unnamed),
         others=_frozen(others),
     )
 
@@ -181,7 +182,7 @@ def _read_place(
 ) -> list[rebuild.TreeNode]:
     """Who one place of a bucket holds, into ``held``, and under another name
     only, into ``unnamed``; returns the nodes answering for it. ONE BODY for a
-    competing sub and a derived class, so both find a renamed playlist alike."""
+    competing sub and a place beside the band, so both find a renamed playlist alike."""
     under = recorded_under(declared, bucket_id, sub_id)
     recorded = None if record is None else record.node(*under)
     answering, under_the_name, under_another = _answering(

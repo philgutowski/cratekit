@@ -31,9 +31,9 @@ A GENRE A PERSON MOVED (U339) is the one move across buckets. ``tag set``
 records, in :mod:`cratekit.adopt.genre_moves`, the bucket a row's old genre
 filed it in, and that bucket is asked for that row even when the track holds
 it once: the move adds the track to its new bucket's sub when adoption has not,
-and takes it out of every sub of the old one, its derived sub classes too
-(R-1965), ``with vox`` and the genre Favorites, a Favorites kept only where
-another playlist of that folder still holds the track. Nothing else is moved
+and takes it out of every sub of the old one, the places beside its band too
+(R-1965), ``with vox``, the genre Favorites and a genre sub, a Favorites kept
+only where another playlist of that folder still holds the track. Nothing else is moved
 across buckets, so a track a person put in a second genre folder by hand stays.
 
 Layer: modules. It performs no input. Everything it reads is handed in.
@@ -100,8 +100,9 @@ class Move:
 
     ``target`` is the sub the file's reading names. ``add`` is ``target`` when
     the track does not hold it yet and empty when it does. ``remove`` is every
-    competing sub of the bucket the track holds other than ``target``, and is
-    never empty. Stable identifiers throughout (R19, D5).
+    competing sub of the bucket the track holds other than ``target``, and for
+    a move across buckets every place beside the band it leaves there too
+    (R-1965); it is never empty. Stable identifiers throughout (R19, D5).
     """
 
     move_id: str
@@ -699,26 +700,26 @@ def moved_out_of(
     """What a track comes to in a bucket a person moved its genre out of (U339).
 
     EVERY COMPETING SUB IT HOLDS THERE IS LEFT, ONE MEMBERSHIP AS MUCH AS TWO,
-    and every derived sub class :func:`derived_left` names (R-1965), for the
+    and every place beside the band :func:`alongside_left` names (R-1965), for the
     sub its new genre's entry resolved in the bucket that entry claims, added
     when the track is not in it yet. Listed and never moved: a playlist held
     under another name, an entry that claims no bucket (no reading), and a new
     bucket a person's verdict refused or that names a former or split place.
     """
     kind, competing = routing.competing_subs(declared, bucket)
-    held, derived = leaving_moved(entry, bucket, placements, declared, competing)
-    if not held and not derived:
+    held, alongside = leaving_moved(entry, bucket, placements, declared, competing)
+    if not held and not alongside:
         return None
     into = entry.bucket
     unnamed = tuple(
         sorted(
             {
                 *_unnamed(placements, entry, bucket, held),
-                *(set(placements.holds_derived_unnamed(bucket, entry.content_id)) & set(derived)),
+                *(set(placements.holds_alongside_unnamed(bucket, entry.content_id)) & set(alongside)),
             }
         )
     )
-    held = tuple(sorted({*held, *derived}))
+    held = tuple(sorted({*held, *alongside}))
     target = entry.sub if claims(entry, into) else ""
     if target and (
         routing.former_place(declared, into, target) is not None
@@ -759,13 +760,22 @@ def leaving_moved(
     declared: taxonomy.Taxonomy,
     competing: frozenset[str],
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """The competing subs and the derived classes a track leaves a bucket its
-    genre was moved out of by. ONE BODY for the bucket asked and the move."""
+    """The competing subs and the places beside the band a track leaves a
+    bucket its genre was moved out of by. ONE BODY for the bucket asked and the
+    move.
+
+    A PLACE SETTLED IN THE OTHER BUCKET IS LEFT TOO, for the Favorites rule
+    alone: the bucket the entry claims decides it (:func:`standing`), and a
+    split or former place the track's new genre settles is one that bucket's
+    own move takes it out of in the same job, so it does not keep the track in
+    this folder (review round one of R-1965).
+    """
     held = held_in_tree(entry, bucket, placements, declared, competing)
-    return held, derived_left(placements, declared, bucket, entry.content_id, leaving=held)
+    leaving = (*held, *settled_in_the_other_bucket(entry, bucket, declared))
+    return held, alongside_left(placements, declared, bucket, entry.content_id, leaving=leaving)
 
 
-def derived_left(
+def alongside_left(
     placements: Placements,
     declared: taxonomy.Taxonomy,
     bucket: str,
@@ -773,18 +783,19 @@ def derived_left(
     *,
     leaving: Sequence[str],
 ) -> tuple[str, ...]:
-    """The derived sub classes of ``bucket`` a track leaving its subs ``leaving`` leaves too.
+    """The places beside the band of ``bucket`` a track leaving its subs ``leaving`` leaves too.
 
-    Every one it sits in there (R-1965), the vocal sub as much as the genre
-    Favorites, BUT a class that mirrors a playlist while something else keeps
-    the track in the folder: a sub of the folder's own it is not leaving, or
-    any other playlist there, a manual class such as Candy, a genre sub or one
-    made by hand. The mirror files a favourite in every folder it sits in, so
-    the next refresh would put that one back. ONE BODY for the plan, the
-    worker's check of it and the read back.
+    Every one it sits in there (R-1965), :func:`cratekit.adopt.plan.alongside_places`:
+    the vocal sub, the genre Favorites and a genre sub alike, BUT a class that
+    mirrors a playlist while something else keeps the track in the folder: a
+    sub of the folder's own it is not leaving, or any other playlist there, a
+    manual class such as Candy or one made by hand. The mirror files a
+    favourite in every folder it sits in, so the next refresh would put that
+    one back. ONE BODY for the plan, the worker's check of it and the read
+    back.
     """
-    derived = set(placements.holds_derived(bucket, content_id))
-    if not derived:
+    alongside = set(placements.holds_alongside(bucket, content_id))
+    if not alongside:
         return ()
     _kind, competing = routing.competing_subs(declared, bucket)
     stays = {
@@ -793,8 +804,8 @@ def derived_left(
         if in_own_folder(declared, bucket, sub)
     } - set(leaving)
     if stays or placements.holds_others(bucket, content_id):
-        derived -= mirrored_classes(declared)
-    return tuple(sorted(derived))
+        alongside -= mirrored_classes(declared)
+    return tuple(sorted(alongside))
 
 
 def buckets_asked(
