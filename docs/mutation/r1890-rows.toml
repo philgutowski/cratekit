@@ -1,0 +1,197 @@
+name = "r1890"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_bare_runtime_error_in_rb_removal"
+description = "rb_removal, a part, raises a bare RuntimeError where the binding maps no class, so the refusal has no code downstream"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py"]
+old = '''    raise _writer()._unavailable(
+        "whitelist-violation",
+        f"the binding maps no class for {table!r}'''
+new = '''    raise RuntimeError(
+        f"the binding maps no class for {table!r}'''
+
+[[rows]]
+id = "P2_system_exit_in_rb_probes"
+description = "rb_probes, a part, exits the process with SystemExit when a listed process has no probe"
+file = "src/cratekit/core/rb_probes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py"]
+old = '''        if probe_name is None:
+            raise _writer()._running('''
+new = '''        if probe_name is None:
+            raise SystemExit(1)
+            raise _writer()._running('''
+
+[[rows]]
+id = "P3_unreserved_slug_in_rb_nodes"
+description = "rb_nodes, a part, raises the node move's confinement refusal under a slug with no reserved code"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py"]
+old = '''        raise _writer()._unavailable(
+            "whitelist-violation",
+            "the node change reached rows it did not plan'''
+new = '''        raise _writer()._unavailable(
+            "node-change-unconfined",
+            "the node change reached rows it did not plan'''
+
+[[rows]]
+id = "P4_unreadable_slug_in_rb_nodes"
+description = "rb_nodes, a part, raises the confinement refusal with its slug held in a name, which no scan reads"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py"]
+old = '''        raise _writer()._unavailable(
+            "whitelist-violation",
+            "the node change reached rows it did not plan'''
+new = '''        reason = "node-change-unconfined"
+        raise _writer()._unavailable(
+            reason,
+            "the node change reached rows it did not plan'''
+
+[[rows]]
+id = "P5_gate_name_in_rb_nodes"
+description = "rb_nodes, a part, names the cloud sync gate and its flag, the command vocabulary the core may not learn"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "maintainer"
+tests = ["tests/test_cli_contract.py"]
+old = '''def _writer():
+    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
+    from cratekit.core import rb_writer
+
+    return rb_writer
+'''
+new = '''def _writer():
+    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
+    from cratekit.core import rb_writer
+
+    return rb_writer
+
+
+_GATE = ("write.cloudsync.unreadable", "--decision")
+'''
+
+[[rows]]
+id = "P6_permissive_marker_read_through_the_accessor"
+description = "rb_nodes, a part, reads the soft delete marker through _writer() with a default of 0, so a removed row reads as active"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py"]
+old = '''def _writer():
+    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
+    from cratekit.core import rb_writer
+
+    return rb_writer
+'''
+new = '''def _writer():
+    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
+    from cratekit.core import rb_writer
+
+    return rb_writer
+
+
+def _gone(row):
+    return getattr(row, _writer().SOFT_DELETE_COLUMN, 0)
+'''
+
+[[rows]]
+id = "P7_permissive_marker_read_through_an_alias_of_the_accessor"
+description = "rb_copies, a part, binds _writer() to a local name and reads the marker through it with a default of False"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py"]
+old = '''def _writer():
+    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
+    from cratekit.core import rb_writer
+
+    return rb_writer
+'''
+new = '''def _writer():
+    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
+    from cratekit.core import rb_writer
+
+    return rb_writer
+
+
+def _gone(row):
+    w = _writer()
+    return row.get(w.SOFT_DELETE_COLUMN, False)
+'''
+
+[[rows]]
+id = "P8_night_job_imports_the_session_holders"
+description = "The unattended night module imports session_holders, the part that takes the library lock"
+file = "src/cratekit/cli/sync_night.py"
+surface = "user"
+tests = ["tests/test_sync_night.py"]
+old = '''from cratekit.core import config, jobs, night_budget, provider_gate, rb_writer, staging_lock
+'''
+new = '''from cratekit.core import config, jobs, night_budget, provider_gate, rb_writer, staging_lock
+from cratekit.core.session_holders import current_holder as current_holder
+'''
+
+[[rows]]
+id = "P9_sidecar_suffix_typed_in_restore_perform"
+description = "restore_perform, a part, types a SQLite companion suffix instead of reading which sidecars come back from the declaration"
+file = "src/cratekit/core/restore_perform.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '''def _restore():
+    """``restore`` at call time: its seams are patched there, and it imports this module."""
+    from cratekit.core import restore
+
+    return restore
+'''
+new = '''def _restore():
+    """``restore`` at call time: its seams are patched there, and it imports this module."""
+    from cratekit.core import restore
+
+    return restore
+
+
+_COMPANION = "master.db-wal"
+'''
+
+[[rows]]
+id = "P10_heard_path_imports_a_writer_part"
+description = "The heard path imports rb_nodes, the writer part that writes playlists"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_heard.py"]
+old = '''from cratekit.core import config
+'''
+new = '''from cratekit.core import config, rb_nodes  # noqa: F401
+'''
+
+[[rows]]
+id = "P11_process_name_typed_in_the_writer"
+description = "rb_writer, no longer exempt, compares the running list against a typed process name instead of the shared list"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_process_guard.py"]
+old = '''    running = rekordbox_processes_running()
+    if running:
+'''
+new = '''    running = rekordbox_processes_running()
+    if running in ("rekordbox", "rekordboxAgent") or running:
+'''
+
+[[rows]]
+id = "P12_accessor_held_off_the_naming_convention"
+description = "convergence, outside the writer's glob, gains a call time accessor back to the writer, the mark of a part the scans would not read"
+file = "src/cratekit/core/convergence.py"
+surface = "maintainer"
+tests = ["tests/test_split_modules.py"]
+old = '''SOFT_DELETE_COLUMN = "rb_local_deleted"
+'''
+new = '''SOFT_DELETE_COLUMN = "rb_local_deleted"
+
+
+def _writer():
+    from cratekit.core import rb_writer
+
+    return rb_writer
+'''
