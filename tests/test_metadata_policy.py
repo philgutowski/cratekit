@@ -14,6 +14,7 @@ from cratekit.core import naming, rb_writer, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import metadata
+from tests.test_config import parsed
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 
@@ -282,7 +283,7 @@ def _package_modules():
 def key_authoring_violations(source: str, module: str) -> list[str]:
     """Names and assignments that would author a key value."""
     problems: list[str] = []
-    tree = ast.parse(source)
+    tree = parsed(source)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             # DEFINING the resolve-then-create shape counts, not only calling it.
