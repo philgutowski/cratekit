@@ -64,7 +64,7 @@ change to `config.toml` or a lock file, is R-343's shape and the child must be
 found before anything is rerun.
 
 The one caveat the guard already states: it watches the application support
-root only. A child reaching the redirected home or data root is not seen by
+root, and since R-1917 the names directly under the filesystem root, only. A child reaching the redirected home or data root is not seen by
 this check, so a clean count is not proof of isolation, only the absence of
 the one leak it measures.
 

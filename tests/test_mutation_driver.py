@@ -39,6 +39,19 @@ def _load(name: str, filename: str):
 mutate = _load("cratekit_mutate_driver", "mutate.py")
 battery = _load("cratekit_cloud_battery_for_the_driver", "cloud_battery.py")
 
+
+@pytest.fixture(autouse=True)
+def _stand_in_filesystem_root(tmp_path_factory, monkeypatch):
+    """R-1917: in these tests the driver's guard lists a stand in for the filesystem root.
+
+    Tests elsewhere in the suite make and remove a probe at the real root on Linux
+    (``tests/test_doctor.py``), so a guard over the real one would read a parallel
+    worker's probe as a leak. Returns the real root, for the one test that reads it.
+    """
+    real = mutate.FILESYSTEM_ROOT
+    monkeypatch.setattr(mutate, "FILESYSTEM_ROOT", tmp_path_factory.mktemp("filesystem-root"))
+    return real
+
 GUARDS = '''"""Two guards and one function nothing tests."""
 
 
@@ -1823,3 +1836,85 @@ def test_a_status_git_cannot_read_is_never_a_clean_tree(judged):
     result, note = _read_verdict(root, state)
     assert result is None
     assert "git could not read this tree's status" in note
+
+
+def test_an_entry_added_directly_under_the_root_stops_the_batch_at_that_row(
+    leak_repo, monkeypatch, tmp_path
+):
+    """R-1917: a child that leaves a folder at the filesystem root is caught where it ran,
+    though it touched neither watched root. A stand in plays the root."""
+    guarded = _guarded(tmp_path)
+    top = tmp_path / "stand-in-root"
+    (top / "usr").mkdir(parents=True)
+    monkeypatch.setenv("MUTATE_FIXTURE_LEAK_TARGET", str(top / "left-behind"))
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.measure_batch(
+            leak_repo, "leak-top", [_row("LEAKY", "        return limit", "        return value")],
+            guard=mutate.take_state_guard((guarded,), top=top),
+        )
+    message = str(caught.value)
+    assert "row LEAKY" in message
+    assert "added left-behind" in message
+    assert "R-1917" in message
+    assert "the full baseline" not in message
+    _assert_untouched(leak_repo)
+
+
+def test_a_name_added_removed_or_retyped_under_the_root_is_a_leak_and_a_deeper_write_is_not(
+    tmp_path,
+):
+    top = tmp_path / "stand-in-root"
+    (top / "tmp").mkdir(parents=True)
+    (top / "etc").mkdir()
+    guard = mutate.take_state_guard((), top=top)
+    assert guard.describe() == f"the names directly under {top} (2)"
+    (top / "tmp" / "churn").write_text("a child's scratch file", encoding="utf-8")
+    (top / "tmp" / "deeper").mkdir()
+    mutate.check_state_guard(guard, label="a child writing in its temporary folder")
+
+    sentinel = top / "cratekit-r926-outside-every-test-root"
+    sentinel.mkdir()
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.check_state_guard(guard, label="row G1")
+    assert "added cratekit-r926-outside-every-test-root" in str(caught.value)
+    assert "row G1" in str(caught.value)
+
+    guard = mutate.take_state_guard((), top=top)
+    sentinel.rmdir()
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.check_state_guard(guard, label="a child that removed one")
+    assert "removed cratekit-r926-outside-every-test-root" in str(caught.value)
+
+    guard = mutate.take_state_guard((), top=top)
+    (top / "etc").rmdir()
+    (top / "etc").write_text("a file where a folder was", encoding="utf-8")
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.check_state_guard(guard, label="a child that replaced one")
+    assert "changed etc" in str(caught.value)
+
+    guard = mutate.take_state_guard((), top=top)
+    shutil.rmtree(top)
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.check_state_guard(guard, label="a child that took the root away")
+    assert "can no longer be listed (FileNotFoundError)" in str(caught.value)
+    assert "removed tmp" not in str(caught.value)
+
+
+def test_the_guard_lists_the_filesystem_root_by_default(tmp_path, _stand_in_filesystem_root):
+    real = _stand_in_filesystem_root
+    assert real == Path(os.path.abspath(os.sep))
+    assert mutate.top_level_entries(real), "the filesystem root read as empty"
+    (mutate.FILESYSTEM_ROOT / "a-name").mkdir()
+    guard = mutate.take_state_guard((tmp_path,))
+    assert guard.top == mutate.FILESYSTEM_ROOT != real
+    assert guard.top_entries == ("a-name\tdir",)
+
+
+def test_a_root_that_cannot_be_listed_refuses_the_batch_rather_than_reading_as_unchanged(
+    tmp_path,
+):
+    """Two unreadable listings are equal, so a guard taken over one would pass every child."""
+    with pytest.raises(mutate.DriverRefusal) as refused:
+        mutate.take_state_guard((), top=tmp_path / "missing")
+    assert "R-1917" in str(refused.value)
+    assert "FileNotFoundError" in str(refused.value)

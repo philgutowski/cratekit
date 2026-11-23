@@ -41,7 +41,8 @@ class MeasurementFailure(RuntimeError):
 
 
 class StateLeak(RuntimeError):
-    """A child wrote to the REAL installation state, and the batch stops. Not a
+    """A child wrote to the REAL installation state, or changed an entry directly under
+    the filesystem root (R-1917), and the batch stops. Not a
     ``DriverRefusal``, which ``measure_row`` would file as one refused row."""
 
 
@@ -512,8 +513,9 @@ def render_markdown(batch: Batch, added_env, scrubbed_env: dict[str, str]) -> st
             f"them: {batch.state_guarded}. A change would have stopped the batch "
             "at the child that was running. Every child ran with its own throwaway "
             "installation state, so a test that undoes the suite's isolation "
-            "lands there rather than on this machine (R-343). Only those roots "
-            "are watched; the sandbox also redirects HOME and the data root, and "
+            "lands there rather than on this machine (R-343). Only those roots, and "
+            "the names directly under the filesystem root (R-1917), are watched; "
+            "the sandbox also redirects HOME and the data root, and "
             f"a child reaching one of those is not seen by this guard.{reused}",
             "",
         )
