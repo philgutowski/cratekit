@@ -1823,3 +1823,75 @@ def test_a_status_git_cannot_read_is_never_a_clean_tree(judged):
     result, note = _read_verdict(root, state)
     assert result is None
     assert "git could not read this tree's status" in note
+
+
+def test_an_entry_added_directly_under_the_root_stops_the_batch_at_that_row(
+    leak_repo, monkeypatch, tmp_path
+):
+    """R-1917: a child that leaves a folder at the filesystem root is caught where it ran,
+    though it touched neither watched root. A stand in plays the root."""
+    guarded = _guarded(tmp_path)
+    top = tmp_path / "stand-in-root"
+    (top / "usr").mkdir(parents=True)
+    monkeypatch.setenv("MUTATE_FIXTURE_LEAK_TARGET", str(top / "left-behind"))
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.measure_batch(
+            leak_repo, "leak-top", [_row("LEAKY", "        return limit", "        return value")],
+            guard=mutate.take_state_guard((guarded,), top=top),
+        )
+    message = str(caught.value)
+    assert "row LEAKY" in message
+    assert "added left-behind" in message
+    assert "R-1917" in message
+    assert "the full baseline" not in message
+    _assert_untouched(leak_repo)
+
+
+def test_a_name_added_removed_or_retyped_under_the_root_is_a_leak_and_a_deeper_write_is_not(
+    tmp_path,
+):
+    top = tmp_path / "stand-in-root"
+    (top / "tmp").mkdir(parents=True)
+    (top / "etc").mkdir()
+    guard = mutate.take_state_guard((), top=top)
+    assert guard.describe() == f"the names directly under {top} (2)"
+    (top / "tmp" / "churn").write_text("a child's scratch file", encoding="utf-8")
+    (top / "tmp" / "deeper").mkdir()
+    mutate.check_state_guard(guard, label="a child writing in its temporary folder")
+
+    sentinel = top / "cratekit-r926-outside-every-test-root"
+    sentinel.mkdir()
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.check_state_guard(guard, label="row G1")
+    assert "added cratekit-r926-outside-every-test-root" in str(caught.value)
+    assert "row G1" in str(caught.value)
+
+    guard = mutate.take_state_guard((), top=top)
+    sentinel.rmdir()
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.check_state_guard(guard, label="a child that removed one")
+    assert "removed cratekit-r926-outside-every-test-root" in str(caught.value)
+
+    guard = mutate.take_state_guard((), top=top)
+    (top / "etc").rmdir()
+    (top / "etc").write_text("a file where a folder was", encoding="utf-8")
+    with pytest.raises(mutate.StateLeak) as caught:
+        mutate.check_state_guard(guard, label="a child that replaced one")
+    assert "changed etc" in str(caught.value)
+
+
+def test_the_guard_lists_the_real_filesystem_root_by_default(tmp_path):
+    guard = mutate.take_state_guard((tmp_path,))
+    assert guard.top == Path(os.path.abspath(os.sep))
+    assert guard.top_entries == mutate.top_level_entries(guard.top)
+    assert guard.top_entries, "the filesystem root read as empty"
+
+
+def test_a_root_that_cannot_be_listed_refuses_the_batch_rather_than_reading_as_unchanged(
+    tmp_path,
+):
+    """Two unreadable listings are equal, so a guard taken over one would pass every child."""
+    with pytest.raises(mutate.DriverRefusal) as refused:
+        mutate.take_state_guard((), top=tmp_path / "missing")
+    assert "R-1917" in str(refused.value)
+    assert "FileNotFoundError" in str(refused.value)
