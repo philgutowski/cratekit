@@ -1355,9 +1355,15 @@ crate inbox rotate
   before removing. After `tag set` it also takes each row that run gave a new
   genre out of the genre folder the tree filed it in under its old genre, and
   into the new genre folder's energy band when `adopt apply` has not filed it
-  there yet; a `with vox` or Favorites membership in the old folder stays. Only
-  that folder is asked, and only for rows `tag set` changed, so
-  a track you put in another genre folder by hand is otherwise left where it is.
+  there yet. It leaves the old folder's `with vox`, genre sub (Rominimal and
+  the like) and Favorites with the band; a playlist you made there (Candy
+  among them) is never touched, and a track one still holds keeps that
+  folder's Favorites, which mirrors every playlist of its folder. A `with
+  vox`, genre sub or Favorites there that the move would leave, renamed in
+  rekordbox, lists the row as held under another name and moves nothing for
+  it until the name is put back. Only
+  that folder is asked, and only for rows `tag set` changed, so a track you
+  put in another genre folder by hand is otherwise left where it is.
 - `converge` only reports. `rebuild` is the one repair for an unconverged
   tree; naming INBOX asks `rebuild.accept`.
 - Audits and reports are read only. `audit duplicates` never deletes and
@@ -1418,9 +1424,13 @@ take the genre keeps its row's old genre and the run ends refused under
 the rows back and each file's old genre. Then run `crate adopt apply`, which
 files each row in the new genre folder by its energy band, and, where the gate
 showed a row leaving a genre folder, `crate adopt move`, which takes it out of
-that folder's energy band; the run's answer names what applies. A `with vox`
-or Favorites membership the row holds in the old folder stays, and the answer
-says so: remove it in rekordbox.
+that folder's energy band, `with vox`, genre sub and Favorites; the run's
+answer names what applies. Where adoption held a row back (it still sat in a
+band of the old folder that the new genre's folder also claims, as R&B's bands
+are for Soul), `adopt apply` files nothing for it and the move files its band:
+the next `crate adopt apply` then files its `with vox`, and `crate favorites
+refresh` its Favorites. A playlist you made in the old folder, Candy among
+them, keeps the row, and so does that folder's Favorites while one does.
 
 **A second genre folder.** A track can sit in a second genre folder of BY
 GENRE + ENERGY beside the one its genre names, with its energy band in each.
