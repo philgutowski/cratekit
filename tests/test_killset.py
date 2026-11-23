@@ -17,6 +17,9 @@ from pathlib import Path
 import pytest
 
 from tests.test_mutation_driver import GUARDS, GUARDS_FILE, mutate
+from tests.test_mutation_driver import (  # noqa: PLC0414, the guard's stand in root
+    _stand_in_filesystem_root as _stand_in_filesystem_root,
+)
 from tests.test_mutation_driver import green_template as green_template  # noqa: PLC0414
 from tests.test_mutation_driver import repo as repo  # noqa: PLC0414
 
