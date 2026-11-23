@@ -1,6 +1,6 @@
 ---
 name: rekordbox-visit
-description: The one attended step Cratekit may not do itself. Open rekordbox and answer its Auto Analysis dialog when it shows every field of Phillip's standard and nothing else, or else analyse INBOX / Analyze with Analyze Tracks on those settings, wait for the analysis files, quit, check the result with crate analyze check, give the titles that differ rekordbox's key and tempo with crate analyze adopt, and clear the analysed rows. Use in an attended session when a landing has left rows waiting for analysis, when Phillip asks for the rekordbox visit, or when a sync pass stops at the visit.
+description: The one attended step Cratekit may not do itself. Open rekordbox and answer its Auto Analysis dialog when it shows every field of Phillip's standard and nothing else, or else analyse INBOX / Analyze with Analyze Tracks on those settings, wait for the analysis files, quit, check the result with crate analyze check, give the titles that differ, and those with no head, rekordbox's key and tempo with crate analyze adopt, and clear the analysed rows. Use in an attended session when a landing has left rows waiting for analysis, when Phillip asks for the rekordbox visit, or when a sync pass stops at the visit.
 ---
 
 # The rekordbox visit
@@ -369,8 +369,9 @@ Otherwise the exit status is the verdict:
   Tags is never run on these rows, since it puts the file's key over
   rekordbox's.
 
-On done, give every title that differs rekordbox's key and tempo, before the
-clear, while the rows are still in INBOX / Analyze:
+On done, give every title that differs rekordbox's key and tempo, and every
+title with no head one built from them (`stamped`, U342), before the clear,
+while the rows are still in INBOX / Analyze:
 
     crate --output json analyze adopt
 
@@ -391,7 +392,10 @@ answer the live gate as the session:
 Read the answer: `data.totals.written` rows took rekordbox's, and every row
 left is named with why in the warnings. A file it could not write keeps its
 row's old title and is named; report it. With `data.summary.differs` at zero
-the plan writes nothing, and the gate is still answered, ending as a no op. An
+and no title without a head the plan writes nothing, and the gate is still
+answered, ending as a no op; `data.totals.outcomes.stamped` counts the titles
+the plan gives a head, and the `adopt-heads-written` warning how many of them
+took it. An
 `adopt-scope-empty` warning means INBOX / Analyze is absent or holds no row, so
 nothing was planned: after a check whose scope read `analyze` that is a stop,
 so report it. An intake tree that cannot be read refuses before the gate with

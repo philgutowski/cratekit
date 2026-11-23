@@ -1,4 +1,4 @@
-"""Take rekordbox's key and tempo into a landed track's head, after the visit (U327).
+"""Take rekordbox's key and tempo into a landed track's head, after the visit (U327, U342).
 
 Cratekit stamps a head before rekordbox has analysed anything; this corrects it
 afterwards, on Phillip's decision of 2026-11-22 that rekordbox's key and tempo
@@ -7,6 +7,14 @@ wins on any difference, one step included. **The tempo is the BPM column's**,
 rounded half up, and wins only when the head is more than one beat away.
 Only those two spans of the leading head are spliced: every other byte of a
 title, the lossy marker and the body included, stays as it was.
+
+**A TITLE WITH NO HEAD IS STAMPED** (U342), so a landing that wrote no head
+before the visit still ends with one: rekordbox's key and tempo, both, rendered
+by the naming engine (:func:`cratekit.core.naming.stamp_head`) and set before
+the whole title, the lossy marker after them as a lossy render places it. Such
+a row is planned ``stamped``, apart from the corrected ones. It is never
+stamped half: a key without a tempo, or a tempo without a key, leaves the row
+named ``no-head-unanswered`` with the half that is missing.
 
 THREE SURFACES, ONE ANSWER: the database ``Title``, the file's title tag (its
 own head spliced, so a run stopped after the files is continued by planning
@@ -50,7 +58,13 @@ from cratekit.core import (
 )
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.naming import NameTemplate, parse_camelot, parse_head, split_head
+from cratekit.core.naming import (
+    NameTemplate,
+    parse_camelot,
+    parse_head,
+    split_head,
+    stamp_head,
+)
 from cratekit.intake import analyzed, native, refill
 from cratekit.write import metadata, row_defaults, trees
 
@@ -68,11 +82,15 @@ RECORD_KEY = "head_adopt_before"
 
 #: What each row in scope comes to, in the order a summary lists them.
 ADOPT = "adopt"
+#: A title that carried no head, given one built from rekordbox's key and tempo (U342).
+STAMPED = "stamped"
 AGREE = "agree"
 HELD_OUT = "held-out"
 NOT_ANALYSED = "not-analysed"
 GONE = "gone"
 NO_HEAD = "no-head"
+#: A title with no head whose row rekordbox gave no Camelot key or no tempo: never stamped half.
+NO_HEAD_UNANSWERED = "no-head-unanswered"
 NO_REFERENCE = "no-reference"
 TAG_DIFFERS = "title-tag-differs"
 FILE_MISSING = "file-missing"
@@ -81,12 +99,17 @@ PATH_UNMAPPED = "path-unmapped"
 NO_PATH = "no-path"
 
 OUTCOMES: tuple[str, ...] = (
-    ADOPT, AGREE, HELD_OUT, NOT_ANALYSED, GONE, NO_HEAD, NO_REFERENCE, TAG_DIFFERS,
-    FILE_MISSING, FILE_UNREADABLE, PATH_UNMAPPED, NO_PATH,
+    ADOPT, STAMPED, AGREE, HELD_OUT, NOT_ANALYSED, GONE, NO_HEAD, NO_HEAD_UNANSWERED,
+    NO_REFERENCE, TAG_DIFFERS, FILE_MISSING, FILE_UNREADABLE, PATH_UNMAPPED, NO_PATH,
 )
 
+#: The actions that write a row and its file.
+WRITING: tuple[str, ...] = (ADOPT, STAMPED)
+
 #: The outcomes of a row that is left alone, each named with why.
-LEFT: tuple[str, ...] = OUTCOMES[2:]
+LEFT: tuple[str, ...] = tuple(
+    outcome for outcome in OUTCOMES if outcome not in (*WRITING, AGREE)
+)
 
 #: Why one half of rekordbox's answer could not be read: the other half still
 #: counts, so these are notes on an item, never its outcome alone.
@@ -251,7 +274,7 @@ class AdoptPlan:
 
     @property
     def writes(self) -> tuple[Item, ...]:
-        return tuple(item for item in self.items if item.action == ADOPT)
+        return tuple(item for item in self.items if item.action in WRITING)
 
     @property
     def rows(self) -> int:
@@ -349,7 +372,7 @@ def plan_row(
     template: NameTemplate,
     rules: Sequence[Any],
 ) -> Item:
-    """One row's item: left with why, agreeing, or adopting. Reads the row's file."""
+    """One row's item: left with why, agreeing, adopting, or stamped. Reads the row's file."""
     judged = analyzed.judge(content_id, content)
     if judged.why in (analyzed.NO_ROW, analyzed.ROW_REMOVED):
         return Item(content_id, LEAVE_ACTION, reason=GONE, title=judged.title)
@@ -360,20 +383,29 @@ def plan_row(
     key, key_note = reference_key(key_id, keys.get(str(key_id)) if key_id else None)
     hundredths = getattr(content, "BPM", None)
     tempo, tempo_note = reference_tempo(hundredths)
-    parsed = parse_head(title, template=template) or {}
-    head_tempo = int(parsed["bpm"]) if "bpm" in parsed else None
+    parsed = parse_head(title, template=template)
+    fields = parsed or {}
+    head_tempo = int(fields["bpm"]) if "bpm" in fields else None
     common = {
         "title": title,
         "new_title": title,
         "notes": tuple(note for note in (key_note, tempo_note) if note),
-        "head_key": parsed.get("key"),
+        "head_key": fields.get("key"),
         "key": key,
-        "relation": rc.key_relation(parsed.get("key"), key),
+        "relation": rc.key_relation(fields.get("key"), key),
         "head_tempo": head_tempo,
         "tempo_hundredths": int(hundredths) if tempo is not None else None,
         "tempo": tempo,
     }
-    new_title = adopted(title, key=key, tempo=tempo, template=template)
+    if parsed is None:
+        # NO HEAD: STAMPED WHOLE OR NOT AT ALL (U342), never a key without a tempo.
+        if key is None or tempo is None:
+            return Item(content_id, LEAVE_ACTION, reason=NO_HEAD_UNANSWERED, **common)
+        action = STAMPED
+        new_title = stamp_head(title, key=key, bpm=tempo, template=template)
+    else:
+        action = ADOPT
+        new_title = adopted(title, key=key, tempo=tempo, template=template)
     if new_title is None:
         return Item(content_id, LEAVE_ACTION, reason=NO_HEAD, **common)
     if key is None and tempo is None:
@@ -388,10 +420,10 @@ def plan_row(
         return Item(content_id, LEAVE_ACTION, reason=unreadable, path=shown, **common)
     on_file = {"path": shown, "tag_title": tag_title, "new_tag_title": tag_title,
                "initialkey": initialkey, "new_initialkey": initialkey}
-    new_tag = adopted(tag_title, key=key, tempo=tempo, template=template)
-    if new_tag is None or split_head(tag_title, template=template)[1] != split_head(
-        title, template=template
-    )[1]:
+    new_tag = _tag_after(
+        action, tag_title, title, new_title, key=key, tempo=tempo, template=template
+    )
+    if new_tag is None:
         return Item(content_id, LEAVE_ACTION, reason=TAG_DIFFERS, **common, **on_file)
     on_file["new_tag_title"] = new_tag
     if new_title == title and new_tag == tag_title:
@@ -400,7 +432,34 @@ def plan_row(
         return Item(content_id, AGREE, **common, **on_file)
     if key is not None and parse_camelot(initialkey) != parse_camelot(key):
         on_file["new_initialkey"] = key
-    return Item(content_id, ADOPT, **common, **on_file)
+    return Item(content_id, action, **common, **on_file)
+
+
+def _tag_after(
+    action: str,
+    tag_title: str,
+    title: str,
+    new_title: str,
+    *,
+    key: str | None,
+    tempo: int | None,
+    template: NameTemplate,
+) -> str | None:
+    """The file's title tag after the write, or None when it says another title.
+
+    A corrected head splices the tag's own head, over the same body as the
+    row's. A STAMPED TITLE'S TAG MUST READ AS THE ROW'S TITLE, or already as the
+    stamped title, a run stopped after the files and before the rows; a tag
+    carrying a head of its own is another title, never stamped twice.
+    """
+    if action == STAMPED:
+        return new_title if tag_title in (title, new_title) else None
+    new_tag = adopted(tag_title, key=key, tempo=tempo, template=template)
+    if new_tag is None or split_head(tag_title, template=template)[1] != split_head(
+        title, template=template
+    )[1]:
+        return None
+    return new_tag
 
 
 def plan_adopt(
@@ -426,7 +485,7 @@ def plan_adopt(
         item = plan_row(
             cfg, content_id, rows.get(content_id), keys=keys, template=template, rules=rules
         )
-        if item.action == ADOPT and content_id in held:
+        if item.action in WRITING and content_id in held:
             item = _held(item)
         items.append(item)
     counts = dict.fromkeys(OUTCOMES, 0)
@@ -447,7 +506,7 @@ def plan_adopt(
 
 
 def _held(item: Item) -> Item:
-    """An adopting item held out by ``--leave``, its before and after kept for the screen."""
+    """A writing item held out by ``--leave``, its before and after kept for the screen."""
     return Item(
         item.content_id,
         LEAVE_ACTION,
@@ -673,8 +732,8 @@ def assert_read_back(written: Written) -> None:
 __all__: Sequence[str] = (
     "ADOPT", "AGREE", "CHANGE_KEY", "FILE_MISSING", "FILE_UNREADABLE", "GONE", "HELD_OUT",
     "KEY_EMPTY", "KEY_NOT_CAMELOT", "LEAVE_ACTION", "LEFT", "NOTES", "NOT_ANALYSED", "NO_HEAD",
-    "NO_PATH", "NO_REFERENCE", "OUTCOMES", "PATH_UNMAPPED", "RECORD_KEY", "TAG_DIFFERS",
-    "TEMPO_TOLERANCE", "TEMPO_ZERO", "WORKFLOW", "AdoptPlan", "FilesWritten", "Item", "Written",
+    "NO_HEAD_UNANSWERED", "NO_PATH", "NO_REFERENCE", "OUTCOMES", "PATH_UNMAPPED", "RECORD_KEY",
+    "STAMPED", "TAG_DIFFERS", "TEMPO_TOLERANCE", "TEMPO_ZERO", "WORKFLOW", "WRITING", "AdoptPlan", "FilesWritten", "Item", "Written",
     "adopted", "apply_adopt", "assert_plan_unchanged", "assert_read_back", "judge", "plan_adopt",
     "plan_row", "reference_key", "reference_tempo", "resolve_scope", "row_changes",
     "tempo_differs", "write_files",
