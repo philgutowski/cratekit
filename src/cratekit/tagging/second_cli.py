@@ -42,9 +42,10 @@ FILES_FOLLOW = (
     "folder in the band its energy names; a track whose second genre is "
     "cleared here stays in that folder until it is taken out there (a Soul "
     "track's cleared R&B is the one exception, which `crate adopt move` "
-    "takes it out of, as for any Soul track in an R&B band), and "
-    "`crate converge` names it only while that playlist holds another track "
-    "filed into it"
+    "takes it out of, as for any Soul track in an R&B band), and until "
+    "then `crate converge` says differing, listing it as unexpected in "
+    "that folder (under a folder renamed in rekordbox, once a rebuild or "
+    "resort has recorded it)"
 )
 
 

@@ -1,0 +1,245 @@
+name = "r1949"
+pass_kind = "light"
+
+[[rows]]
+id = "N1_no_namesakes"
+description = "check: compare only resolved destinations again, so a playlist nothing derives into is foreign and converge says matching over a cleared second genre (the residual itself)"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''            *namesakes(declared, nodes, destinations, not_compared, record),
+'''
+new = ''''''
+
+[[rows]]
+id = "N2_removed_compared"
+description = "namesakes: compare a playlist rekordbox removed through its names, so a removed playlist reads differing"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        if node.removed or (node.folder_id, node.playlist_id) in resolved:'''
+new = '''        if (node.folder_id, node.playlist_id) in resolved:'''
+
+[[rows]]
+id = "N3_resolved_compared_again"
+description = "namesakes: compare a node a record already resolved again under the names it now bears, so a renamed recorded playlist overwrites its own destination"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        if node.removed or (node.folder_id, node.playlist_id) in resolved:'''
+new = '''        if node.removed:'''
+
+[[rows]]
+id = "N4_covered_compared"
+description = "namesakes: compare a second node bearing a destination's names that this run derived or a record names, so a namesake beside a renamed folder reads unexpected"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        if place is None or place in covered or place[1] in skipped:'''
+new = '''        if place is None or place[1] in skipped:'''
+
+[[rows]]
+id = "N5_uncompared_dimension_compared"
+description = "namesakes: compare a playlist whose dimension this run did not compare, so a with vox playlist on an uncalibrated run reads differing"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        if place is None or place in covered or place[1] in skipped:'''
+new = '''        if place is None or place in covered:'''
+
+[[rows]]
+id = "N6_folder_by_display_only"
+description = "namesakes: read a recorded folder by its display name, so a cleared second genre under a folder renamed in rekordbox reads matching"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''            folder = recorded_folder.get(node.folder_id, folder)'''
+new = '''            folder = folder'''
+
+[[rows]]
+id = "N7_record_bucket_unchecked"
+description = "namesakes: drop the check that a recorded bucket is still declared, so a record naming a bucket the taxonomy dropped raises inside the check"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        if entry.bucket in known
+    }'''
+new = '''    }'''
+
+[[rows]]
+id = "N8_manual_class_compared"
+description = "declared_names: keep the manual classes, so a hand kept Candy playlist reads differing (round one's blocker)"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        if entry.policy is not taxonomy.SubPolicy.MANUAL'''
+new = '''        if True'''
+
+[[rows]]
+id = "N9_no_genre_subs"
+description = "declared_names: leave the genre subs out, so a cleared second genre's genre sub playlist reads matching"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        subs = set(competing) | {genre.id for genre in bucket.genre_subs} | classes'''
+new = '''        subs = set(competing) | classes'''
+
+[[rows]]
+id = "N10_no_classes"
+description = "declared_names: leave every sub class out, so a cleared track left in with vox alone reads matching"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        subs = set(competing) | {genre.id for genre in bucket.genre_subs} | classes'''
+new = '''        subs = set(competing) | {genre.id for genre in bucket.genre_subs}'''
+
+[[rows]]
+id = "N11_no_bands"
+description = "declared_names: leave the competing places out, so the band the residual names is never compared"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        subs = set(competing) | {genre.id for genre in bucket.genre_subs} | classes'''
+new = '''        subs = {genre.id for genre in bucket.genre_subs} | classes'''
+
+[[rows]]
+id = "N12_undeclared_pair_raises"
+description = "declared_names: let a former or split place's KeyError escape, so every check refuses"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''            except KeyError:
+                continue
+            found.setdefault'''
+new = '''            except ValueError:
+                continue
+            found.setdefault'''
+
+[[rows]]
+id = "N18_record_over_a_bucket_name"
+description = "namesakes: read a recorded folder by the record even where its name is another declared genre's, so a leftover there is named under the wrong bucket (round two)"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        if folder not in bucket_names:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "N14_namesake_names_swapped"
+description = "namesakes: name the destination by its playlist and folder swapped, so a leftover names a folder nobody has"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        out.append(Destination(*place, node.folder_display, node.playlist_display, node))'''
+new = '''        out.append(Destination(*place, node.playlist_display, node.folder_display, node))'''
+
+[[rows]]
+id = "N15_vocal_half_dropped"
+description = "_uncompared_subs: drop the vocal half, so with vox reads left behind and differing on an uncalibrated run"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''    if VOCAL_DIMENSION in tuple(not_compared):
+        skipped |='''
+new = '''    if False:
+        skipped |='''
+
+[[rows]]
+id = "N16_favorites_half_dropped"
+description = "_uncompared_subs: drop the favourites half, so a Favorites playlist is compared when its source was not read"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''    skipped = _uncompared_playlist_subs(declared, not_compared)
+    if VOCAL'''
+new = '''    skipped = set()
+    if VOCAL'''
+
+[[rows]]
+id = "N17_vocal_name_moved"
+description = "VOCAL_DIMENSION: a nearby spelling in the module it moved to, so the derivation's gap and the check's filter disagree"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''VOCAL_DIMENSION = "vocal"'''
+new = '''VOCAL_DIMENSION = "vocals"'''
+
+[[rows]]
+id = "E1_missing_never"
+description = "check: never report a declared track the playlist lacks, so a short tree reads matching"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        if content_id not in held:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "E2_inactive_counted"
+description = "check: count a membership on a soft deleted row as unexpected"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        for content_id in sorted((node.content_ids & active) - declared_here):'''
+new = '''        for content_id in sorted(node.content_ids - declared_here):'''
+
+[[rows]]
+id = "E3_doubled_ignored"
+description = "check: never report a playlist holding a track twice"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        for content_id in sorted(node.doubled & active):'''
+new = '''        for content_id in sorted(frozenset()):'''
+
+[[rows]]
+id = "E4_uncompared_filter_dropped"
+description = "check: keep the differences of a playlist dimension the run could not read"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''    if uncompared:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E5_addressable_dropped"
+description = "check: drop the refusal of two nodes on one destination, so the check picks one silently"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''    assert_addressable(tree_id, destinations, nodes)
+    by_key'''
+new = '''    by_key'''
+
+[[rows]]
+id = "E6_empty_derivation_converged"
+description = "ConvergenceReport.converged: drop the zero placements condition, so a derivation that placed nothing reads matching"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        return not self.differences and self.derived > 0 and not self.doubled'''
+new = '''        return not self.differences and not self.doubled'''
+
+[[rows]]
+id = "E7_record_union_dropped"
+description = "resolve_destinations: drop the recorded destinations from the set, so one that lost every track falls into foreign"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''        wanted |= {(entry.bucket, entry.sub) for entry in record.nodes}'''
+new = '''        pass'''
+
+[[rows]]
+id = "E8_favorites_gap_unread"
+description = "_uncompared_playlist_subs: answer the playlist classes whether or not the favourites source was read"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_second_genre.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_genre_sub.py", "tests/test_routing_workers.py", "tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_rebuild_one_open.py"]
+old = '''    if genre_favorites.FAVORITES_DIMENSION not in tuple(not_compared):
+        return set()'''
+new = '''    if False:
+        return set()'''
+
+[[dropped]]
+id = "N13_last_pair_wins"
+description = "declared_names: a pair two destinations share keeps the last, not the first"
+reason = "round two measured it killing nothing; the shipped taxonomy has no two destinations sharing a pair (155 pairs, 0 collisions, driven at round one), so it is a maintainer facing order with no input that reaches it; the row went to round two's guard"
