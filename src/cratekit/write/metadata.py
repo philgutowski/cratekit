@@ -45,8 +45,9 @@ OPERATIONS: Mapping[str, rb_writer.FieldPolicy] = MappingProxyType(
             owner=PAD_CAMELOT,
             fields=MappingProxyType({"Title": rb_writer.Ownership.OWNED}),
         ),
-        #: Owned, because its one caller lists every row at an explicit gate and
-        #: lets a row be held out by name. It links a lookup row, never mints one.
+        #: Owned, because its callers list every row at an explicit gate and
+        #: let a row be held out by name. It links a lookup row; only ``tag set``
+        #: mints one first, through :func:`mint_genre`, on the linking commit.
         RETAG_GENRE: rb_writer.FieldPolicy(
             owner=RETAG_GENRE,
             fields=MappingProxyType({"GenreID": rb_writer.Ownership.OWNED}),
@@ -128,7 +129,7 @@ def enable(owners: Iterable[str] = ()) -> frozenset[str]:
     return rb_writer.content_writable_columns()
 
 
-# Lookup rows: resolve, never create.
+# Lookup rows: resolve, and mint only where a verb asks for it.
 
 #: A row that could not answer, distinct from every value the soft-delete column
 #: can hold, since a plain default would be the permissive answer.
@@ -138,14 +139,38 @@ _MARKER_ABSENT = object()
 def resolve_genre_id(db: Any, genre_name: str) -> Any | None:
     """The identifier of an existing, active genre row, or None.
 
-    Never creates: the taxonomy is the user's, so a miss is skipped and surfaced.
-    The first ACTIVE row wins. A row that cannot report its marker refuses
-    (:func:`first_active_id`), never folded into None, which means "no active
-    genre by that name".
+    Never creates: a miss is skipped and surfaced, and only a verb a person
+    names the genre to mints one (:func:`mint_genre`). The first ACTIVE row
+    wins. A row that cannot report its marker refuses (:func:`first_active_id`),
+    never folded into None, which means "no active genre by that name".
     """
     if not genre_name:
         return None
     return first_active_id(db.get_genre(Name=genre_name), table="djmdGenre", name=genre_name)
+
+
+def mint_genre(db: Any, genre_name: str) -> str:
+    """Make one genre lookup row named ``genre_name``, flushed, and answer its
+    identifier, as text as the stored rows are (U153).
+
+    BY HAND, NOT THROUGH THE BINDING'S ``add_genre``, which refuses a name even
+    a tombstone holds. THE CALLER LINKS IT AND COMMITS ON THE SAME COMMIT, naming
+    ``djmdGenre`` in ``creations`` (``rb_writer.ADMITTABLE_ROW_TABLES``), because
+    rekordbox drops a lookup row nothing references (A4). Flushed at once, so
+    :func:`resolve_genre_id` on the same handle finds it as the first active row.
+    """
+    from uuid import uuid4
+
+    from pyrekordbox.db6 import tables
+
+    if not genre_name.strip():
+        raise ValueError("a genre lookup row needs a name")
+    row = tables.DjmdGenre.create(
+        ID=str(db.generate_unused_id(tables.DjmdGenre)), Name=genre_name, UUID=str(uuid4())
+    )
+    db.add(row)
+    db.flush()
+    return str(row.ID)
 
 
 #: The key a lookup word is named under in a refusal's detail, by table.
@@ -459,6 +484,7 @@ def assert_within_policy(plan: Plan) -> None:
 __all__ = [
     "ADOPT_REKORDBOX_HEAD", "OPERATIONS", "PAD_CAMELOT", "RATING_BACKFILL", "RETAG_GENRE", "UNWRITABLE_FIELDS",
     "Change", "Plan", "PolicyRefused", "Report", "Skipped", "write_plan",
-    "assert_within_policy", "database_stars", "enable", "first_active_id", "plan_genre_retag",
+    "assert_within_policy", "database_stars", "enable", "first_active_id", "mint_genre",
+    "plan_genre_retag",
     "plan_rating_backfill", "plan_title_padding", "rating_for", "resolve_genre_id",
 ]
