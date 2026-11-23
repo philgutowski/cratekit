@@ -91,7 +91,7 @@ def _not_read(plan: rows.RowsPlan) -> list[dict[str, str]]:
 
 def _left(plan: rows.RowsPlan) -> list[dict[str, str]]:
     """The warning, on every path, of differing rows left, naming the act for a
-    word with no lookup row, which only rekordbox makes."""
+    word with no lookup row, which rekordbox or ``tag set`` makes."""
     count = sum(plan.counts[name] for name in rows.LEFT)
     if not count:
         return []
@@ -105,7 +105,9 @@ def _left(plan: rows.RowsPlan) -> list[dict[str, str]]:
         message += (
             f"; the library has no genre row for {named}, and this verb links a "
             f"genre row and never makes one: give one track that genre in "
-            f"rekordbox, which makes the row, then run this again"
+            f"rekordbox, which makes the row, or, for a genre the taxonomy "
+            f"declares, give those rows it with `crate tag set GENRE`, which "
+            f"makes the row on the commit that links it, then run this again"
         )
     return [warning(ROWS_LEFT, message)]
 
