@@ -1,9 +1,7 @@
 """U111: ``crate inbox rotate`` moves stale batches into Old and removes expired ones.
 
-Driven through the real dispatcher against a disposable database whose intake
-tree is cut over, reading the content and membership tables from SQL before and
-after, since the verb's one promise beyond its plan is that no track moves.
-D1 applies: nothing here names a real volume, person or track.
+The content and membership tables are read from SQL before and after, since the
+verb's one promise beyond its plan is that no track moves. D1 applies.
 """
 
 from __future__ import annotations

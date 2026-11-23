@@ -1,8 +1,7 @@
 """U166: every native landing fills INBOX / Analyze, and ``crate inbox analyzed`` empties it.
 
-Files are landed through the real dispatcher on the native landing suite's
-database, rekordbox's analysis is simulated by setting ``Analysed`` and
-``AnalysisDataPath`` from SQL, and the clear is driven over the result. D1 applies.
+rekordbox's analysis is simulated by setting ``Analysed`` and ``AnalysisDataPath``
+from SQL. D1 applies.
 """
 
 from __future__ import annotations

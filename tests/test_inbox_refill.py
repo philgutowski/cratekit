@@ -1,9 +1,7 @@
 """U134: an INBOX account playlist is refilled from its recorded pass.
 
-A pass is swept and landed as U128 lands one on the native landing suite's
-database, its INBOX playlist emptied as sitting 34 emptied four (rows removed,
-files dropped back in under new rows), and ``crate inbox refill`` driven over
-it. D1 applies.
+A pass is landed, its INBOX playlist emptied as sitting 34 emptied four, and
+``crate inbox refill`` driven over it. D1 applies.
 """
 
 from __future__ import annotations

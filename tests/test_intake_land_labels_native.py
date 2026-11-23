@@ -1,8 +1,7 @@
 """U156: a native landing files its label tracks under the Record Labels tree.
 
 A manifest's rows, or ``--label`` and each file's date tag, become ``Record
-Labels / <Label> / <Label> <year>`` in the batch's own commit, read back from
-SQL. The bridge keeps ``tests/test_landing_labels.py``. D1 applies.
+Labels / <Label> / <Label> <year>`` in the batch's own commit. D1 applies.
 """
 
 from __future__ import annotations
@@ -433,8 +432,7 @@ def test_a_blank_label_or_two_label_sources_are_refused_before_the_gate(
 
 def test_a_tree_the_label_write_cannot_take_is_refused_before_the_gate(native_library, silence):
     """A playlist where the label folder belongs, a smart playlist where a year
-    playlist belongs (the binding refuses a membership in one at the write,
-    after the moves), and two Record Labels folders side by side."""
+    playlist belongs, and two Record Labels folders side by side."""
     cfg, _root = native_library
     tree = cutover_fixtures.add_folder(cfg, TREE)
     _playlist(cfg, "PULS", tree)
@@ -480,9 +478,7 @@ def test_a_taxonomy_with_no_catalog_tree_is_refused_by_name(native_library, sile
 def test_a_label_on_an_unreachable_library_names_the_volume_and_not_the_bridge(
     native_library, silence
 ):
-    """The medium was not read, so the refusal must not say the tree is on the
-    bridge or tell the person to drop --label, which would land the batch filed
-    under nothing once the volume is back."""
+    """The medium was not read, so the refusal must not tell the person to drop --label."""
     cfg, _root = native_library
     _labelled(cfg, silence, "One.flac", "PULS", "2021")
     root = Path(cfg.library.root)

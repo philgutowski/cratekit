@@ -1,8 +1,7 @@
 """R-501: a landed batch can be followed to a library the cutover precheck passes.
 
-THE IMPORT IS SIMULATED BY THE ONE THING IT CHANGES: the intake file's own bytes,
-under a name that is not an intake file's, are the Fresh Export rekordbox would
-take after importing it.
+The import is simulated by the one thing it changes: the intake file's bytes,
+under another name, are the Fresh Export rekordbox would take after it.
 """
 
 from __future__ import annotations
@@ -406,9 +405,7 @@ def test_a_placed_call_ends_awaiting_import_with_the_action_persisted(
     # would only say the function returns what it returns.
     first, alone, drag, export_step, verify = record.pending.steps
     assert first == f"import {destination} into rekordbox as a rekordbox xml library"
-    # R-687, measured at the tenth attended sitting: an imported batch playlist
-    # lands at the playlist root, and an existing folder imported from the file
-    # appends a second copy of every child it already held.
+    # R-687: an imported batch lands at the root and duplicates an existing folder's children.
     assert alone == (
         "import the placed_inboxed playlist from it on its own, never the INBOX "
         "folder, which would add a second copy of every batch already in it"
