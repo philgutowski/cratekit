@@ -331,6 +331,8 @@ def test_the_converge_verb_says_differing_over_a_cleared_second_genre(
 
     (before,) = _rebuild_suite._converge()["data"]["checks"]
     assert before["status"] == converge_cli.MATCHING, before
+    # The word a person reads for the dimension an uncalibrated run left out.
+    assert before["detail"].endswith("; not compared: vocal"), before
 
     readings[:] = [replace(track, second_genre=None)]
     (after,) = _rebuild_suite._converge()["data"]["checks"]
