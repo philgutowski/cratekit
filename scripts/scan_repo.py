@@ -114,9 +114,13 @@ _IDENTITY_STOPWORDS = frozenset({
 # wants the bare word caught declares it. The list ships beside this file, so
 # macOS and the Linux runner decide alike, with no system dictionary.
 ORDINARY_WORDS_FILE = Path(__file__).resolve().parent / "scan_ordinary_words.txt"
+# The list's own path in the tree: every ordinary word is on it by definition,
+# so a DECLARED ordinary word is not looked for there (U957). Every other
+# token, and every other class of the scan, still reads it.
+ORDINARY_WORDS_PATH = "scripts/scan_ordinary_words.txt"
 
-# A host form of a token: the local network suffixes a machine answers on.
-_HOST_SUFFIXES = r"(?:local|lan|localdomain|home\.arpa)"
+# The local network suffixes a machine answers on, for ``<token>.<suffix>``.
+_HOST_SUFFIXES = r"(?:local|lan|localdomain|home|home\.arpa|internal)"
 
 
 @functools.lru_cache(maxsize=1)
@@ -127,7 +131,13 @@ def ordinary_words() -> frozenset[str]:
 
 
 def is_ordinary_word(token: str) -> bool:
-    """True when ``token``, in any case, is on the shipped list of ordinary words."""
+    """True when ``token`` is on the shipped list of ordinary words.
+
+    Any case of the word as a whole counts (``Garden``, ``GARDEN``), but a
+    capital inside a mixed case token (``AirPort``) marks a name, never a word.
+    """
+    if token[1:] != token[1:].lower() and not token.isupper():
+        return False
     return token.lower() in ordinary_words()
 
 
@@ -143,7 +153,7 @@ class IdentityTokens(frozenset):
 
     def __new__(cls, tokens=(), shape_only=()):
         self = super().__new__(cls, tokens)
-        self.shape_only = frozenset(shape_only) & frozenset(self)
+        self.shape_only = frozenset(shape_only)
         return self
 
 
@@ -228,31 +238,38 @@ def machine_identity_tokens(root: Path | None = None) -> IdentityTokens:
     return IdentityTokens(declared | detected, shape_only)
 
 
-def _names_the_machine(token: str, text: str, folded: str, segments: set[str]) -> bool:
-    """True when ``token`` is a home or mount path segment in ``text``, or a host name.
+def _host_forms(token: str) -> str:
+    """Where a token is a host: ``<t>.local`` and the like, ``user@<t>``,
+    ``//<t>/`` or ``//<t>:port`` in a URL or share, ``\\\\<t>\\`` in a UNC path, and
+    ``<t>:/path`` or ``<t>:~/path`` as scp and rsync write it."""
+    name = re.escape(token)
+    return "|".join((
+        rf"(?<![A-Za-z0-9_-]){name}\.{_HOST_SUFFIXES}(?![A-Za-z0-9_-])",
+        rf"(?<=[A-Za-z0-9._%+-]@){name}(?![A-Za-z0-9_-])(?!\.[A-Za-z])",
+        rf"(?<=//){name}(?=[:/]|\s|$)",
+        rf"(?<=\\\\){name}(?=\\)",
+        rf"(?<![^\s\"'`(\[]){name}:[~/]",
+    ))
 
-    ``folded`` is ``text`` case folded: a file that never writes the token skips
-    the host search, the common case on a machine named by a word.
-    """
+
+def _names_the_machine(token: str, text: str, segments: set[str]) -> bool:
+    """True when ``token`` is a home or mount path segment in ``text``, or a host."""
     if token.lower() in segments:
         return True
-    if token.casefold() not in folded:
-        return False
-    host = rf"(?<![A-Za-z0-9_-]){re.escape(token)}\.{_HOST_SUFFIXES}(?![A-Za-z0-9_-])"
-    return re.search(host, text, re.IGNORECASE) is not None
+    return re.search(_host_forms(token), text, re.IGNORECASE) is not None
 
 
 def portability_violations(text: str, *, identity_tokens: set[str] | None = None) -> list[str]:
     """One message per portability violation in ``text``; pure, and the skills lint calls it."""
     problems: list[str] = []
-    # Every home and mount segment, placeholders included, for the shape only tokens below.
+    # Every home and mount segment that is not a stand in, for the shape only tokens below.
     segments: set[str] = set()
 
     for match in _HOME_DIR.finditer(text):
         segment = match.group(1)
-        segments.add(segment.lower())
         if _is_placeholder_segment(segment):
             continue
+        segments.add(segment.lower())
         problems.append(
             f"hardcoded home directory {match.group(0)!r}; resolve the user "
             f"directory through the platform library, or write a placeholder"
@@ -260,9 +277,9 @@ def portability_violations(text: str, *, identity_tokens: set[str] | None = None
 
     for match in _MOUNT.finditer(text):
         segment = match.group(1)
-        segments.add(segment.lower())
         if _is_placeholder_segment(segment):
             continue
+        segments.add(segment.lower())
         problems.append(
             f"hardcoded volume path {match.group(0)!r}; the library root is "
             f"configuration, not a literal"
@@ -281,10 +298,9 @@ def portability_violations(text: str, *, identity_tokens: set[str] | None = None
     # denies, so a missed case variant would be a silent pass. A detected
     # ordinary word matches only where it names the machine (U957).
     shape_only = identity_tokens.shape_only if isinstance(identity_tokens, IdentityTokens) else ()
-    folded = text.casefold() if shape_only else ""
     for token in sorted(identity_tokens or ()):
         if token in shape_only:
-            found = _names_the_machine(token, text, folded, segments)
+            found = _names_the_machine(token, text, segments)
         else:
             pattern = rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])"
             found = re.search(pattern, text, re.IGNORECASE) is not None
@@ -731,7 +747,14 @@ def scan_tree(
         text = _read_text(path)
         if text is None:
             continue
-        portable = portability_violations(text, identity_tokens=identity)
+        tokens = identity
+        if relative == ORDINARY_WORDS_PATH:
+            listed = ordinary_words()
+            tokens = IdentityTokens(
+                (token for token in identity if token.lower() not in listed),
+                getattr(identity, "shape_only", ()),
+            )
+        portable = portability_violations(text, identity_tokens=tokens)
         findings += [f"{relative}: {p}" for p in portable]
         findings += [f"{relative}: {p}" for p in secret_violations(text)]
         findings += [f"{relative}: {p}" for p in restart_violations(relative, text)]
