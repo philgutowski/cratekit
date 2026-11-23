@@ -1,0 +1,38 @@
+name = "u339-composites"
+pass_kind = "light"
+
+# The three rows u339-rows.toml measured zero. M24 is measured again over the
+# test written to kill it. M6 and M20 are user facing zeros each covered by
+# another layer; their composites revert that layer: the census's own skip of
+# a tombstone (C6), and still_moved dropping a bucket the genre names (C20).
+
+[[rows]]
+id = "M24_discharge_moved"
+description = "handle: an entry is spent though the track was not read back moved"
+file = "src/cratekit/adopt/move_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_former_place.py", "tests/test_adopt_split_place.py", "tests/test_adopt_workers.py"]
+old = '''        if move.target_bucket and move.content_id in found["moved"]:'''
+new = '''        if move.target_bucket:'''
+
+[[rows]]
+id = "C6_census_tombstone"
+description = "scan_rows: a tombstoned row is read as live by the census, the layer M6's guard sits on"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+pairs_with = "M6_tombstone_row"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''        if row.deleted:
+            continue'''
+new = ''''''
+
+[[rows]]
+id = "C20_still_moved_names"
+description = "still_moved: a bucket the track's genre names again stays in the moves, the layer M20's guard sits behind"
+file = "src/cratekit/adopt/move.py"
+surface = "user"
+pairs_with = "M20_moved_back_names"
+tests = ["tests/test_tag_set_move.py", "tests/test_adopt_move.py", "tests/test_adopt_former_place.py", "tests/test_adopt_split_place.py", "tests/test_adopt_workers.py"]
+old = '''        held -= {bucket for bucket in held if genre_names(entry, bucket, declared)}
+'''
+new = ''''''
