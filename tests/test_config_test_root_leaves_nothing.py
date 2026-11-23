@@ -81,15 +81,24 @@ def _failed(report: Path) -> set[str]:
     }
 
 
+#: The probes ``tests/test_doctor.py`` makes and removes at the real filesystem root
+#: on Linux, which a parallel worker may hold for an instant while this test lists it.
+DOCTOR_PROBES = "cratekit-u27-"
+
+
+def _root_names() -> set[str]:
+    return {name for name in os.listdir(os.sep) if not name.startswith(DOCTOR_PROBES)}
+
+
 def test_a_broken_guard_fails_the_file_leaves_nothing_and_a_later_run_passes(tmp_path):
-    root_before = set(os.listdir(os.sep))
+    root_before = _root_names()
 
     broken, report = _run_the_file(tmp_path, "broken", broken=True)
     assert broken.returncode == 1, broken.stdout[-3000:] + broken.stderr[-3000:]
     assert set(AIMED_OUTSIDE) <= _failed(report), broken.stdout[-3000:]
-    assert set(os.listdir(os.sep)) - root_before == set()
+    assert _root_names() - root_before == set()
 
     intact, report = _run_the_file(tmp_path, "intact", broken=False)
     assert _failed(report) == set()
     assert intact.returncode == 0, intact.stdout[-3000:] + intact.stderr[-3000:]
-    assert set(os.listdir(os.sep)) - root_before == set()
+    assert _root_names() - root_before == set()
