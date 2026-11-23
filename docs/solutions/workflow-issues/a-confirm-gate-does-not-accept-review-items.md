@@ -73,11 +73,11 @@ item that is already there, including a verdict somebody already recorded
 (`run.py:306`). A first offer arrives with `verdict is None`.
 
 The engine tests already knew this contract. `_confirm` at
-`tests/test_deletion.py:984` is three lines that open the store and call
+`tests/test_deletion.py:978` is three lines that open the store and call
 `review.resolve`. Every engine test that moves a file goes through it first.
 `test_a_confirmed_file_is_trashed_and_leaves_a_tombstone` at
-`tests/test_deletion.py:819` is the pattern: `_confirmed_one` (`:791`)
-plans, presents and calls `_confirm`, then `apply` runs at `:821`.
+`tests/test_deletion.py:817` is the pattern: `_confirmed_one` (`:789`)
+plans, presents and calls `_confirm`, then `apply` runs at `:819`.
 
 The leftover U24 shell did not do that. It required the explicit confirm gate
 and then called `apply`. The offered items were still open. `apply` skipped
@@ -90,15 +90,15 @@ green because a first-run baseline has no deletable files, so `apply` is never
 reached. `review_removals` at `src/cratekit/deletion/cli.py:124` returns OK as
 soon as `found.baselined or not found.deletable`.
 `test_delete_review_exits_ok_after_the_recorded_decision` at
-`tests/test_deletion.py:3945` drives the two-act path against that first run
-and asserts `items == []` and `unresolved == 0` (`:3958` and `:3959`). The
+`tests/test_deletion.py:3943` drives the two-act path against that first run
+and asserts `items == []` and `unresolved == 0` (`:3956` and `:3957`). The
 gate fired. The resume exited OK. The trash path was never entered.
 
 The verified fix is on `main` at the U24 leftover merge `ce7f55d`. After the
 gate returns trash, the shell resolves still-open offered items as `ACCEPTED`,
 leaves recorded rejects alone, and only then calls `apply`.
 `test_delete_review_trashes_a_confirmed_file` at
-`tests/test_deletion.py:3974` drives a real file through the dispatcher into
+`tests/test_deletion.py:3972` drives a real file through the dispatcher into
 Trash. That test is the pin. The engine suite was never going to grow it,
 because the engine suite already wrote the verdict itself.
 
@@ -250,7 +250,7 @@ if verdict is None:
 No move. The candidate is treated as unanswered, because it is.
 
 The engine tests never saw this because they do not take that path. They
-write the verdict first, at `tests/test_deletion.py:765`:
+write the verdict first, at `tests/test_deletion.py:763`:
 
 ```python
 def _confirm(cfg, item_id, verdict=review.Verdict.ACCEPTED):
@@ -258,10 +258,10 @@ def _confirm(cfg, item_id, verdict=review.Verdict.ACCEPTED):
         review.resolve(store, item_id, verdict, actor="cli")
 ```
 
-and only then call `apply` (`tests/test_deletion.py:821`).
+and only then call `apply` (`tests/test_deletion.py:819`).
 
 The first-run CLI test also never saw this. After the two-act resume it
-asserts an empty review set (`tests/test_deletion.py:3958`), which is
+asserts an empty review set (`tests/test_deletion.py:3956`), which is
 correct for a baseline and which returns at `cli.py:124` before apply.
 
 The fix on `main` at the U24 leftover merge `ce7f55d`, current text at
@@ -285,7 +285,7 @@ because `resolve` is not called for it and would refuse if it were
 and moves only the accepted files.
 
 The pin that a first-run test cannot be, at
-`tests/test_deletion.py:3974`. It baselines the watermark at sequence 40,
+`tests/test_deletion.py:3972`. It baselines the watermark at sequence 40,
 plants a removed row at sequence 50, drives the real dispatcher, records
 trash through `run decide`, resumes, and asserts the file is gone:
 
@@ -306,11 +306,11 @@ def test_delete_review_trashes_a_confirmed_file(review_cli, tmp_path, monkeypatc
     assert any(home.joinpath(".Trash").iterdir()), "the confirmed file never reached the Trash"
 ```
 
-`_drive` at `tests/test_deletion.py:1205` is `cratekit.cli.run`. The test
+`_drive` at `tests/test_deletion.py:1199` is `cratekit.cli.run`. The test
 does not call `_confirm`. If the resolve loop at `cli.py:129` disappeared,
 this test would fail, and the engine suite would still be green. Its companion,
 `test_delete_review_honours_a_reject_recorded_before_the_gate` at
-`tests/test_deletion.py:4018`, records a reject before the gate and asserts
+`tests/test_deletion.py:4016`, records a reject before the gate and asserts
 that file stays, so a loop that resolved every item, rejected or not, fails
 it too (U310).
 
@@ -329,8 +329,8 @@ it too (U310).
   form and already says deletion's sequence watermark is not that bug.
   The empty success here is a missing `Verdict.ACCEPTED` after the
   confirm gate, not a watermark used as a floor.
-- `tests/test_deletion.py:765` (`_confirm`) and
-  `tests/test_deletion.py:819`
+- `tests/test_deletion.py:763` (`_confirm`) and
+  `tests/test_deletion.py:817`
   (`test_a_confirmed_file_is_trashed_and_leaves_a_tombstone`): the
   engine's correct use of the verdict contract. Companion, not
   substitute. They prove `apply`. They do not prove the shell.

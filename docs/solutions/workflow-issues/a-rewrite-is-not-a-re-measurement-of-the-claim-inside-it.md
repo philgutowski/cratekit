@@ -208,7 +208,7 @@ happened.
    one replaced". At this moment the sentence is true of both copies.
 
 2. **2026-08-03 14:17, U12's branch.** `646a464` lands `_absolute_module`
-   (`tests/_source_guards.py:71` at that commit) and `package_of`. From this
+   (`tests/_source_guards.py:41` at that commit) and `package_of`. From this
    moment U12's walk resolves a relative import against the importing file's
    package and falls back to tail matching only when no package is supplied,
    which is structurally the same design `main` adopts later the same day. The
@@ -395,17 +395,17 @@ both sibling spellings are among them, and the failure shape is a guard reportin
 offenders where there are none.
 
 **What the merge did about it.** Forwarded the argument, and recorded the reason
-where the next reader will be standing, at `tests/_source_guards.py:265` onward.
+where the next reader will be standing, at `tests/_source_guards.py:161` onward.
 That docstring carries the driven result rather than the reasoning, which is the
 right half to keep.
 
 **What the merge did not do, and the cost is live.** The note itself was left
-untouched. At `9b03c0e` it is still at `tests/_source_guards.py:612`, still
+untouched. At `9b03c0e` it is still at `tests/_source_guards.py:419`, still
 present tense about a branch that has merged, and still telling a future reader
 that `ImportsOf` carries a suffix match. The collapse it describes is genuinely
-still outstanding: `main` today holds `ImportsOf` at `:118` and `ExitCodeImports`
-at `:609`, and therefore two relative resolvers in one file, `_absolute_module`
-at `:76` and `_relative_module` at `:533`. R-57 and R-111 both remain open
+still outstanding: `main` today holds `ImportsOf` at `:76` and `ExitCodeImports`
+at `:416`, and therefore two relative resolvers in one file, `_absolute_module`
+at `:41` and `_relative_module` at `:367`. R-57 and R-111 both remain open
 against that collapse. So the note still has a job. It is now describing a two
 copy problem inside one file as a three copy problem across three branches, and
 the next reader will spend this same trip again working out which sentences still
@@ -472,9 +472,9 @@ which is still outstanding on `main`.
   which this document corrects: the note was false the day it was written.
 - `docs/history/wave-state-2026-08-14.md:344`, "U12 merged, and the coordination note that
   had aged": the session narrative, carrying the same correction.
-- `tests/_source_guards.py:258`, `ReviewImports`: the resolved code, whose
+- `tests/_source_guards.py:154`, `ReviewImports`: the resolved code, whose
   docstring records the parameter mismatch and the three failing tests. The
-  neighbouring `ImportsOf` docstring at `:118` explains why the package argument
+  neighbouring `ImportsOf` docstring at `:76` explains why the package argument
   makes the relative half exact rather than approximate.
 - `a-cause-read-from-a-log-is-not-a-cause-driven-by-reproducing-it.md` and
   `a-count-that-moved-by-the-right-amount-is-not-a-measurement-of-what-moved.md`:

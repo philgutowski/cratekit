@@ -124,10 +124,10 @@ puts it in front of the verb path, and `:353` freezes it at queue time:
 ```
 
 **The flag goes before the verb path, not after it.** `--run` is a root parser
-flag, for the reason `tests/test_cli_contract.py:1279` gives about decisions
+flag, for the reason `tests/test_cli_contract.py:1175` gives about decisions
 generally, that they belong to the invocation rather than to the subcommand. The
 shape is `[*resume, *entry.path, *the verb's own arguments]`, and it is the same
-shape `_conformance_3` builds at `tests/test_cli_contract.py:1573`.
+shape `_conformance_3` builds at `tests/test_cli_contract.py:1448`.
 
 **A payload frozen by an older build has no run, and the builder must still
 return a valid command line.** `(job.payload or {}).get("run_id")` returns
@@ -209,24 +209,24 @@ the person who had already approved it had approved it on a run the child could
 not name.
 
 WHY THE SUITE COULD NOT SEE ANY OF THIS, AND THIS IS THE PART THAT GENERALISES.
-`_conformance_3` at `tests/test_cli_contract.py:1544` is the strongest gate
+`_conformance_3` at `tests/test_cli_contract.py:1420` is the strongest gate
 assertion in the repository. It drives every landed gated verb, asserts the set
 of gates reached equals the set declared minus the exempt ones, asserts an
 inline answer to an explicit gate is refused a second time, asserts the refused
 answer was not recorded anyway, then records the decision through
 `run decide --actor a-person` and asserts the verb reaches OK. The parametrised test over it, at
-`tests/test_cli_contract.py:1640`, carries a docstring explaining that an earlier
+`tests/test_cli_contract.py:1508`, carries a docstring explaining that an earlier
 version asserted the opposite of R34 and made every explicitly gated verb
 unlandable by construction. It is a test that has already been wrong once and
 been rewritten with the lesson in it.
 
 It still could not see this defect, and the reason is one line of arithmetic. Its
 argv is built from `_sample_arguments(entry)`
-(`tests/test_cli_contract.py:1276`), whose mapping holds `"adopt.apply": []` at
-`:1355`, and the string `--job` does not appear anywhere in
+(`tests/test_cli_contract.py:1173`), whose mapping holds `"adopt.apply": []` at
+`:1249`, and the string `--job` does not appear anywhere in
 `tests/test_cli_contract.py`. (That helper's own docstring says it returns
 positional arguments, and two of its entries carry flags, `review.resolve` at
-`:1309` and `rebuild` at `:1372`. The overclaim does not affect this verb, whose
+`:1205` and `rebuild` at `:1266`. The overclaim does not affect this verb, whose
 sample is empty either way.) The
 conformance drive therefore always takes the enqueue branch of `apply_adoption`
 (`src/cratekit/adopt/apply_cli.py:312`) and never the `if ctx.args.job` branch
@@ -301,7 +301,7 @@ in it and each row will describe a different, plausible, wrong reason.
   but unreachable, and `adopt.apply` alone clean. The three verbs whose only
   explicit gate is `write.cloudsync.unreadable` are correctly excluded, because
   that gate is the sole member of `UNREACHABLE_GATES`
-  (`tests/test_cli_contract.py:1501`).
+  (`tests/test_cli_contract.py:1382`).
 
   The first version of this predicate tested `"--run" in source`, and it reported
   `sync.favorites` CLEAN, because `--run-id` contains `--run` as a substring. A
@@ -404,7 +404,7 @@ OK by queueing a second record for one piece of work, which is what
 `V1_resume_forgets_the_job` mutates for
 (`docs/mutation/u27-adopt-apply-author.toml:167`) and what it killed on.
 
-Both payload shapes are held directly at `tests/test_adopt_apply_cli.py:452`,
+Both payload shapes are held directly at `tests/test_adopt_apply_cli.py:442`,
 including the older build's:
 
 ```python
@@ -448,7 +448,7 @@ and one of the three was a defect in the verb rather than a gap in its suite.
   a subprocess at all.
 - `src/cratekit/cli/__init__.py:266`, `_run_state_for`, the line that mints a new
   run whenever `--run` is absent.
-- `tests/test_cli_contract.py:1544` for `_conformance_3` and `:1640` for the
+- `tests/test_cli_contract.py:1420` for `_conformance_3` and `:1508` for the
   parametrised test over every landed entry, both of which pass without ever
   constructing a `--job` argument.
 - `src/cratekit/export/cli.py:55` for `export_argv` and `:85` for the enqueue,

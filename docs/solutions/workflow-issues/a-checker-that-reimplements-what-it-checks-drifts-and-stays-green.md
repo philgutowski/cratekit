@@ -44,14 +44,14 @@ repository forbids pull requests by contract, so the commit is the citation and
 there is no PR number to give.
 
 Among the rules U28 added to `tests/test_skills_lint.py` was rule (g), applied at
-`tests/test_skills_lint.py:275`, one line per fenced command in every shipped
+`tests/test_skills_lint.py:246`, one line per fenced command in every shipped
 `SKILL.md`. Its job is one sentence. A `crate` invocation printed in a skill must
 be a command a person can actually type.
 
 It was implemented as a hand rolled token walker. The before is
-`git show c24411c^1:tests/test_skills_lint.py`, where `verb_table()` at `:105`
+`git show c24411c^1:tests/test_skills_lint.py`, where `verb_table()` at `:85`
 walks the assembled parser to build a mapping from verb path to flag table, and
-`_verb_problems` at `:158` walks the tokens of a line against that mapping. That
+`_verb_problems` at `:133` walks the tokens of a line against that mapping. That
 is three of argparse's jobs done by hand, subcommand resolution, option parsing,
 and validation, and it checked NO POSITIONAL ARGUMENT AT ALL.
 
@@ -85,7 +85,7 @@ Zero and eight over the same twelve files, same parser, same rule name. The old
 number is the one `test_real_skills_pass_lint` reported on every run, which is
 why the suite was green while eight shipped commands were broken.
 
-The fix deleted the walker. `_verb_problems` at `tests/test_skills_lint.py:126`
+The fix deleted the walker. `_verb_problems` at `tests/test_skills_lint.py:104`
 now strips a prompt marker, truncates at a shell operator, tokenises with
 `shlex`, and hands the result to `parse_args` on a parser built from the registry,
 trapping `SystemExit`. It caught a ninth defect immediately, in the correction
@@ -151,7 +151,7 @@ is, because the fixture and the walker are two expressions of one model. Two
 implementations can only be compared by running both.
 
 **Replace the fixture table with a real instance of the target, small and
-synthetic but real.** `_fixture_parser` at `tests/test_skills_lint.py:306` is a
+synthetic but real.** `_fixture_parser` at `tests/test_skills_lint.py:277` is a
 tiny `argparse.ArgumentParser` rather than a dictionary, and its docstring states
 the property that matters: "A tiny real argparse parser for the fixture skills,
 so each fixture proves one rule through the same code path the real tree takes."
@@ -182,7 +182,7 @@ building both presets and driving a verb one of them excludes.
 
 **Check what the repository already drives before you build a second model of
 it.** `tests/test_cli_contract.py` has driven every landed registry entry through
-the real dispatcher since long before U28, and `_sample_arguments` at `:1349`
+the real dispatcher since long before U28, and `_sample_arguments` at `:1243`
 already carried the answer to four of the five defective command shapes.
 
 **Keep the anti vacuity guard next to the checker, because a checker with nothing
@@ -262,8 +262,8 @@ files and the symbol is a command line.
 WHY THE GREEN SUITE COULD NOT SEE IT, AND THIS IS THE PART THAT GENERALISES. The
 before file has four fixtures for the verb rule, and two of them assert that the
 walker rejects something, `test_a_command_naming_no_real_verb_fails` at
-`git show c24411c^1:tests/test_skills_lint.py:584` and
-`test_a_command_naming_a_flag_the_verb_does_not_declare_fails` at `:593`. Both
+`git show c24411c^1:tests/test_skills_lint.py:550` and
+`test_a_command_naming_a_flag_the_verb_does_not_declare_fails` at `:559`. Both
 were driven against the walker for this document, with the skill name elided from
 the message, and both genuinely bite:
 
@@ -286,8 +286,8 @@ verdict were never once compared, and a suite cannot compare them by getting
 bigger.
 
 THE CORRECT MODEL ALREADY EXISTED IN THE SAME TEST TREE, WRITTEN DOWN, AND THE
-SECOND MODEL DID NOT CONSULT IT. `tests/test_cli_contract.py:1534` through
-`:1536` give exactly the three verbs an export path:
+SECOND MODEL DID NOT CONSULT IT. `tests/test_cli_contract.py:1410` through
+`:1412` give exactly the three verbs an export path:
 
 ```python
         "audit.coverage": [str(library / "no-such-export.xml")],
@@ -453,7 +453,7 @@ it.
 ## Examples
 
 THE BEFORE, at `git show c24411c^1:tests/test_skills_lint.py`. The walker's body
-at `:181` onward, which is subcommand resolution and option parsing written by
+at `:156` onward, which is subcommand resolution and option parsing written by
 hand:
 
 ```python
@@ -508,7 +508,7 @@ function that could ever have noticed one. The docstring above it, at `:169`,
 argues carefully and correctly for the greedy path consumption, and never
 mentions positionals either, because the model did not contain them.
 
-THE AFTER, at `tests/test_skills_lint.py:143` through `:166`. The whole verdict is
+THE AFTER, at `tests/test_skills_lint.py:118` through `:141`. The whole verdict is
 the target's:
 
 ```python
@@ -584,7 +584,7 @@ driven for this document. The shipped text is now `crate profile set full`,
 `src/cratekit/skills/assets/first-run/SKILL.md`.
 
 THE FIXTURE CHANGE, which is the half that makes the fix durable. Before, at
-`git show c24411c^1:tests/test_skills_lint.py:394`:
+`git show c24411c^1:tests/test_skills_lint.py:363`:
 
 ```python
 def _lint(root: Path, scripts: set[str], **kwargs):
@@ -592,7 +592,7 @@ def _lint(root: Path, scripts: set[str], **kwargs):
     kwargs.setdefault("verbs", _FIXTURE_VERBS)
 ```
 
-After, at `tests/test_skills_lint.py:324`, with `_fixture_parser` at `:306`:
+After, at `tests/test_skills_lint.py:293`, with `_fixture_parser` at `:277`:
 
 ```python
 def _lint(root: Path, scripts: set[str], **kwargs):
@@ -606,7 +606,7 @@ real parser would not recognise.
 THE SIBLING APPLICATION, in the same commit, from a different finding. Two skills
 described a profile disabled verb as refusing with an explanation when it is in
 fact absent from the parser. The correction was not only to the prose. The
-behaviour was pinned against the parser, `tests/test_skills_lint.py:561`, and the
+behaviour was pinned against the parser, `tests/test_skills_lint.py:530`, and the
 docstring names the property:
 
 ```python

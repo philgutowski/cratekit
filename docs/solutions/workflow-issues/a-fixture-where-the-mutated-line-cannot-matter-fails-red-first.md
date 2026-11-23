@@ -108,7 +108,7 @@ title:
 - marker undeclared, parsed title `'Lossy Companion [MP3]'`
 
 The assertion actually shipped is exact set membership,
-`assert "Lossy Companion" in titles` (`tests/test_setbuilder_cli.py:630`). On that
+`assert "Lossy Companion" in titles` (`tests/test_setbuilder_cli.py:625`). On that
 fixture it is FALSE on both trees. So the sequence a person actually walks is:
 write the guard, run it, watch it go red on correct code, conclude the expectation
 was wrong, change it to `'Lossy Companion [MP3]'`, and now hold a guard that is
@@ -364,7 +364,7 @@ same drive:
 
 **What shipped**, in `tests/test_setbuilder_cli.py`. The correction lives in the
 `place` fixture, where the comment states the rule at the point of use
-(`:428` through `:431`):
+(`:427` through `:430`):
 
 ```python
         # The marker goes immediately AFTER the head, which is where the renamer
@@ -416,7 +416,7 @@ either way, because `pool[:2]` and `pool[:8]` union with the same four entry
 sequence to the same five items. The cap assertion held whether or not the cap
 applied.
 
-The fix is a wider fixture, `wide_index` at `tests/test_setbuilder_cli.py:198`.
+The fix is a wider fixture, `wide_index` at `tests/test_setbuilder_cli.py:197`.
 Driven on it:
 
     count=None   pool 8   totals count 8   items 8

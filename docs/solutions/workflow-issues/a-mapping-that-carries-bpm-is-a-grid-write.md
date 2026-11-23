@@ -162,7 +162,7 @@ The same decision already exists at another serialization boundary.
 structured payload field is called `tempo`, not `bpm`, and that this is an
 R17 decision rather than a matter of taste. `as_payload` at `:904` writes
 `"tempo": plan.anchor.bpm`. `_scored_payload` at `:920` does the same.
-`tests/modules/test_tools.py:817-841` imports `FORBIDDEN_TAG_KEYS` from the
+`tests/modules/test_tools.py:799-841` imports `FORBIDDEN_TAG_KEYS` from the
 invariant suite and asserts that no key in the set-builder payload
 intersects that set. When a new serialized mapping leaves `src/`, pick a
 word that is not a tag spelling, and if the mapping is load-bearing, assert
@@ -252,7 +252,7 @@ on a dataclass or an attribute can stay `bpm`. The serialized key cannot.
 Check the candidate key against `FORBIDDEN_TAG_KEYS` at
 `tests/test_no_beatgrid_ever.py:64-72` before it lands. If the mapping is a
 public or CLI payload, import that set in the unit's tests the way
-`tests/modules/test_tools.py:826` does, rather than restating the list.
+`tests/modules/test_tools.py:808` does, rather than restating the list.
 
 Apply it when writing comments, docstrings, or examples under `src/`. The
 U37 neighbour failed on string literals and interpolation in the same
@@ -375,7 +375,7 @@ Read-only detectors. Tempo is measured. It is never emitted as a grid.
   `FORBIDDEN_TAG_KEYS` closed those. The dict-literal rule is the same kind
   of closure for a mapping that never becomes a subscript.
 - `src/cratekit/modules/tools/setbuilder.py:888-897` and
-  `tests/modules/test_tools.py:817-841` already apply the serialized-key
+  `tests/modules/test_tools.py:799-841` already apply the serialized-key
   half of this rule at the set-builder payload boundary, using `tempo`
   rather than `bpm`.
 - `src/cratekit/core/tags.py:40-47` is the structural write-side hole:

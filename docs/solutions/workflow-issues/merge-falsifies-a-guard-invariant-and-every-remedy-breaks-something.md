@@ -38,15 +38,15 @@ tags:
 Cratekit has structural guards that assert an ARGUMENT rather than a behaviour.
 The reports allowlist in `tests/modules/test_reports.py` is the clearest one. It
 carries `ALLOWED_IMPORTS`, the set of modules the reports package may import
-(`tests/modules/test_reports.py:1656`), and a comment block stating why that set
+(`tests/modules/test_reports.py:1499`), and a comment block stating why that set
 is safe. An earlier version of that comment claimed the list alone was the
 argument, that nothing admitted could touch a file except through `pathlib`. U34
 measured the claim and found it false, so the guard was rebuilt around a better
 one: the list is safe because of the list PLUS a named set of every writer the
 admitted modules expose, held in step by
-`test_the_allowlist_admits_no_writer_this_guard_cannot_name` (`:5047`). The
-comment states that argument in terms of `FILESYSTEM_MUTATIONS` (`:1698`); the
-guard enforces it over two sets, because `QUALIFIED_MUTATIONS` (`:1753`) carries
+`test_the_allowlist_admits_no_writer_this_guard_cannot_name` (`:4744`). The
+comment states that argument in terms of `FILESYSTEM_MUTATIONS` (`:1542`); the
+guard enforces it over two sets, because `QUALIFIED_MUTATIONS` (`:1597`) carries
 the writers that must be spelled with the module in front of them, and the
 test's own assertion message names both. That test's docstring states the rule
 and the two ways out of a failure: name the writer in the set, or take the module
@@ -113,9 +113,9 @@ adding anything to the guard.
 information about the design.** It is not a licence to take the third path. The
 third path always exists, is always available, and is always wrong when the guard
 is correct: teach the checker to accept the thing it was written to catch. Here
-that meant widening `_os_open_reads` (`tests/modules/test_reports.py:4109`), a
+that meant widening `_os_open_reads` (`tests/modules/test_reports.py:3852`), a
 helper whose whole job is to decide whether an `os.open` call's flags say read
-only, by comparing every flag name against `_READING_FLAGS` (`:4070`) and
+only, by comparing every flag name against `_READING_FLAGS` (`:3818`) and
 answering true only when all of them read.
 
 **Be precise about WHY it declines, and get the precision by ASKING THE GUARD
@@ -416,7 +416,7 @@ a chance to get one of them differently wrong.
   like one of the four and is not.
 - `docs/history/wave-state-2026-08-14.md`: the session narrative, with U27's independent
   verification numbers and the merge outcome.
-- `tests/modules/test_reports.py:1632` onward: the allowlist's own comment block,
+- `tests/modules/test_reports.py:1480` onward: the allowlist's own comment block,
   a worked example of a guard whose argument was found false once and rebuilt
   around the falsification rather than deleted. Start at 1632 rather than later:
   the sentence that makes it worth reading is the one admitting the earlier

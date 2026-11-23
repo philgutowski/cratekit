@@ -81,7 +81,7 @@ word can sit in the registry for months and never touch argparse.
 
 The marker expires when the module exists.
 `test_a_planned_verb_whose_module_has_landed_must_lose_its_marker`
-(`tests/test_cli_contract.py:1138-1155`) probes with
+(`tests/test_cli_contract.py:1046-1155`) probes with
 `importlib.util.find_spec(entry.module)` and fails the moment the module is
 importable. Creating `cratekit.intake.repair_cli` forced the then-named
 `doctor.repair-paths` entry to land. Clearing `planned_in` put the verb in
@@ -89,9 +89,9 @@ importable. Creating `cratekit.intake.repair_cli` forced the then-named
 
 The first red test was
 `test_status_two_belongs_to_the_argument_parser_and_to_nothing_else`
-(`tests/test_cli_contract.py:190`). That test calls `drive` with an unknown
-flag (`tests/test_cli_contract.py:204`). `drive` is `cli.run`
-(`tests/test_cli_contract.py:134-137`). `run` builds the parser before it
+(`tests/test_cli_contract.py:169`). That test calls `drive` with an unknown
+flag (`tests/test_cli_contract.py:183`). `drive` is `cli.run`
+(`tests/test_cli_contract.py:119-137`). `run` builds the parser before it
 parses anything (`src/cratekit/cli/__init__.py:338-342`). The unknown flag
 is not what failed. Construction is. The new verb never ran.
 
@@ -116,7 +116,7 @@ not a leaf. Do this at declaration, not at the first CLI drive.
 A test that walks landed entries and planned entries for this prefix
 collision would have failed when the name was written, months before the
 module existed. The current countdown only asks whether the module is
-present (`tests/test_cli_contract.py:1138-1155`). It does not ask whether
+present (`tests/test_cli_contract.py:1046-1155`). It does not ask whether
 argparse can build the path. Discharging `planned_in` is what the countdown
 demands. Discharging it is also what makes the tree unstartable. The
 countdown is doing its job. The job is incomplete.
@@ -211,7 +211,7 @@ The planned name was `doctor.repair-paths`. `doctor` had already landed as
 a one-word leaf in module `cratekit.cli.doctor`
 (`src/cratekit/cli/registry.py:523-531`). The repair module was created as
 `cratekit.intake.repair_cli`. The countdown at
-`tests/test_cli_contract.py:1138` went red: the module exists, so
+`tests/test_cli_contract.py:1046` went red: the module exists, so
 `planned_in` must go. Clearing the marker put the verb in
 `landed_entries()`. `build_parser` then did this, in order:
 
@@ -257,7 +257,7 @@ fixed in different places.
 - `src/cratekit/adopt/scan_cli.py:3-6`: U23 split of `adopt.scan` from
   `adopt.apply`. Countdown keyed on the module path, not on the verb
   name. Same landing area, different cause.
-- `tests/test_cli_contract.py:1138-1155`: the `planned_in` expiry test.
+- `tests/test_cli_contract.py:1046-1155`: the `planned_in` expiry test.
   It asks whether the module exists. It does not ask whether the path
   can be built.
 - `src/cratekit/cli/__init__.py:168-239`: `_group_parser` and

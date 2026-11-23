@@ -44,8 +44,8 @@ against an environment variable that is still set when it is rebuilt.** If
 relocate their library root onto that variable's value, and they keep agreeing
 no matter what the saved file says.
 
-The test fixture `cfg` (`tests/test_backup_cli.py:62`, via
-`tests/conftest.py:162`) sets `CRATEKIT_LIBRARY_ROOT` for the whole suite so
+The test fixture `cfg` (`tests/test_backup_cli.py:57`, via
+`tests/conftest.py:120`) sets `CRATEKIT_LIBRARY_ROOT` for the whole suite so
 tests don't depend on a real filesystem layout. That default is exactly what
 defeats a test trying to prove two config readings diverge:
 

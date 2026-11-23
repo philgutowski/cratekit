@@ -56,9 +56,9 @@ asserts every planned module is genuinely still absent, so the marker
 expires the moment its unit lands rather than surviving as a comment
 nobody re-reads. The test that implements that promise is
 `test_a_planned_verb_whose_module_has_landed_must_lose_its_marker`
-(`tests/test_cli_contract.py:1171-1188`). It does not walk the issue
+(`tests/test_cli_contract.py:1079-1188`). It does not walk the issue
 brief. It does not walk `src/`. It calls `importlib.util.find_spec(entry.module)`
-and treats a missing parent as absent (`tests/test_cli_contract.py:1180-1183`).
+and treats a missing parent as absent (`tests/test_cli_contract.py:1088-1183`).
 If that spec is missing, the test stays green and `planned_in` stays.
 If that spec appears, the test goes red and the marker must be cleared
 so the conformance suite starts driving the verb.
@@ -105,7 +105,7 @@ through ranks `cli`, so the module could not have imported the table
 without an upward import. The path moved to `cratekit.cli.reports`,
 and the owner moved to U27, because U34's declared file list was the
 reports engine package and it landed exactly that
-(`src/cratekit/cli/registry.py:349-362`; `tests/_pending.py:191-197`).
+(`src/cratekit/cli/registry.py:349-362`; `tests/_pending.py:162-197`).
 
 U26 is the other face of the same class. The registry string was
 already buildable. The brief Files line was not that string. Following
@@ -173,7 +173,7 @@ parser construction; since U248 it fails on the new verb only, and
 Do not copy `src/cratekit/modules/` from a unit that only owed
 engines. U34 landed engines at `src/cratekit/modules/reports/` because
 that unit never owed a CLI. Its four verb markers were re-pointed so
-they would not name a closed unit (`tests/_pending.py:191-197`). A
+they would not name a closed unit (`tests/_pending.py:162-197`). A
 later unit that does owe verbs does not inherit that directory.
 
 ## Why This Matters
@@ -260,7 +260,7 @@ The landing that would have matched the brief is
 `src/cratekit/modules/labels/`. That package would have been
 `cratekit.modules.labels`. `find_spec("cratekit.label.cli")` would
 still have returned `None`. The countdown at
-`tests/test_cli_contract.py:1171` would have stayed green. The four
+`tests/test_cli_contract.py:1079` would have stayed green. The four
 markers would have stayed. `landed_entries()` would have kept
 omitting `sync.labels`, `label.registry`, `label.import`, and
 `label.harvest`. The product would have shipped the engines and no
@@ -291,7 +291,7 @@ from `cratekit.reports.cli` to `cratekit.cli.reports`, "which
 test_layering ranks modules while the registry it must dispatch
 through ranks cli, so it could not have been built as spelled;
 that is the same correction U10 and U11 each made on landing"
-(`tests/_pending.py:194-197`). U34's own Files line was
+(`tests/_pending.py:165-197`). U34's own Files line was
 `src/cratekit/modules/reports/` and it landed the engines there.
 That was correct for a unit that did not owe a CLI. It is not a
 template for a unit whose verbs already name a different module
@@ -318,7 +318,7 @@ Files tree and hope the countdown will notice.
   Different register. `PENDING` plus `@requires` is collection.
   `planned_in` plus `Entry.module` is verb landing. Do not treat
   them as one lesson.
-- `tests/_pending.py` on `cratekit.cli.reports` (`tests/_pending.py:181-208`):
+- `tests/_pending.py` on `cratekit.cli.reports` (`tests/_pending.py:152-208`):
   the prior instance of this class, not itself a solutions
   document. U34's verbs could not be built as `cratekit.reports.cli`.
   The path moved. The owner moved so four markers would not name a

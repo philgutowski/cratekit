@@ -193,14 +193,14 @@ tool could not read.
 
 WHY THE SUITE COULD NOT SEE IT, AND THIS IS THE PART THAT GENERALISES. There
 were six drives of `run_restore` on `main` before this unit, at
-`tests/modules/test_tools.py:1652`, `:1682` and `:1771`,
+`tests/modules/test_tools.py:1620`, `:1648` and `:1737`,
 `tests/test_restore.py:1210`, and `tests/test_write_session.py:1051` and
 `:1588`. Every one of the six passes a runner returning `returncode=0`. The
 review states it flatly: "No test anywhere returns a nonzero `CommandResult` to
 `run_restore`."
 
 The sharpest detail is that the apparatus for failing existed and was pointed
-somewhere else. `Recorder` at `tests/modules/test_tools.py:129` takes a
+somewhere else. `Recorder` at `tests/modules/test_tools.py:123` takes a
 `fail_labels` set and returns 1 for any command whose label is in it:
 
 ```python
@@ -394,7 +394,7 @@ otherwise, because clearing them first is the safety property the ordering
 exists for and a silent repair is not something this module can make.
 
 THE GUARDS, and the second one is the one that would not have existed without
-the sweep. `tests/test_restore_cli.py:932` drives the real condition, a runner
+the sweep. `tests/test_restore_cli.py:916` drives the real condition, a runner
 that answers the listing and fails the copy, and asserts the state the refusal
 leaves behind rather than only the refusal:
 
@@ -417,7 +417,7 @@ leaves behind rather than only the refusal:
     assert str(wal.name) in cause.message or "companion" in cause.message
 ```
 
-`tests/test_restore_cli.py:987` holds the branch one over, and its last
+`tests/test_restore_cli.py:971` holds the branch one over, and its last
 assertion is the difference between the two paths stated as a property:
 
 ```python
@@ -425,7 +425,7 @@ assertion is the difference between the two paths stated as a property:
     assert wal.exists(), "a rehearsal cleared the live companion files"
 ```
 
-`tests/test_restore_cli.py:1027` then drives the other direction, a transfer
+`tests/test_restore_cli.py:1011` then drives the other direction, a transfer
 that succeeds and is still reported, because a guard that fires on every run is
 indistinguishable from a broken verb.
 
