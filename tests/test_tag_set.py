@@ -1,0 +1,615 @@
+"""U339: ``crate tag set GENRE`` gives the rows named a declared genre over the one they carry.
+
+The plan on a disposable database and real containers, one row per outcome;
+the apply with every column and every other tag compared across the write; the
+lookup row minted on the linking commit; then the verb through the dispatcher,
+the restore of its session, and the record ``adopt move`` reads. The library
+is ``tests/test_tag_rows.py``'s. D1 applies.
+"""
+
+from __future__ import annotations
+
+import ast
+import json
+import sqlite3
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from cratekit.adopt import genre_moves
+from cratekit.core import active_taxonomy, rb_writer, restore_tags, session, tags
+from cratekit.core.cause import CratekitError
+from cratekit.core.exit_codes import ExitCode
+from cratekit.tagging import genre_set as gs
+from cratekit.tagging import genre_set_cli, rows
+from cratekit.write import metadata
+from tests.cli_drive import drive
+from tests.test_rb_writer_db import _row
+from tests.test_tag_rows import (
+    ABSENT,
+    DEEP,
+    MELODIC,
+    OLD,
+    UNREADABLE,
+    Track,
+    _content,
+    _file,
+    _genre_ids,
+    _genre_of,
+    _query,
+    build,
+)
+from tests.test_tag_rows import _field_policies as _field_policies  # noqa: PLC0414
+from tests.test_tag_rows import _platform_seams as _platform_seams  # noqa: PLC0414
+from tests.test_tag_rows import _reader_cache as _reader_cache  # noqa: PLC0414
+from tests.test_tag_rows import _release_process_locks as _release_process_locks  # noqa: PLC0414
+from tests.test_tag_rows import acknowledged as acknowledged  # noqa: PLC0414
+from tests.test_tag_rows import machine as machine  # noqa: PLC0414
+from tests.test_tag_rows import silence as silence  # noqa: PLC0414
+
+GATE = genre_set_cli.CONFIRM_GATE
+
+#: A genre the shipped taxonomy declares and the library here has no lookup row for.
+AFRO = "Afro House"
+
+#: The playlist folder and playlist this file seeds, and its path.
+FOLDER_ID, PICKS_ID = "700", "701"
+PICKS = "INBOX / Picks"
+
+
+def _verb(*argv: str) -> list[str]:
+    return ["tag", "set", *argv]
+
+
+def _plan(cfg, genre: str, ids, *, playlist: str = "", leave=()) -> gs.SetPlan:
+    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
+    try:
+        return gs.plan_set(
+            cfg,
+            db,
+            active_taxonomy.load(cfg),
+            genre,
+            gs.scoped(db, ids, playlist),
+            playlist=playlist,
+            leave=leave,
+        )
+    finally:
+        rb_writer.close_db(db)
+
+
+def _apply(cfg, genre: str, ids, **kwargs) -> tuple[gs.SetPlan, gs.Written]:
+    plan = _plan(cfg, genre, ids, **kwargs)
+    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
+    try:
+        written = gs.apply_set(
+            cfg,
+            db,
+            plan,
+            declared=active_taxonomy.load(cfg),
+            analysis_roots=[Path(cfg.library.root) / "analysis"],
+        )
+    finally:
+        rb_writer.close_db(db)
+    return plan, written
+
+
+def _two_acts(argv: list[str]) -> tuple[int, dict, dict]:
+    """R34's two acts against the explicit gate, then the acting drive."""
+    code, refused = drive(argv)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    detail = refused["cause"]["detail"]
+    assert detail["gate"] == GATE and detail["explicit"] is True
+    run_id = refused["run_id"]
+    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK), envelope
+    code, acted = drive(["--run", run_id, *argv])
+    return code, acted, refused
+
+
+def _genre_rows(cfg, name: str) -> list[tuple]:
+    return _query(
+        cfg, "SELECT ID, rb_local_deleted FROM djmdGenre WHERE Name = ? ORDER BY ID", name
+    )
+
+
+def _tags_of(cfg, content_id: str) -> dict[str, str | None]:
+    path = _file(cfg, content_id)
+    return {name: tags.read_tag(path, name) for name in ("genre", "title", "artist", "album")}
+
+
+def _seed_picks(cfg, *content_ids: str, attribute: int = 0) -> None:
+    """``INBOX / Picks``, holding ``content_ids`` in that order, one removed member too."""
+    from pyrekordbox.db6 import tables
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    engine = create_engine(f"sqlite:///{cfg.library.db_path}")
+    with Session(engine) as db_session:
+        db_session.add(_row(tables.DjmdPlaylist, ID=FOLDER_ID, Seq=1, Name="INBOX",
+                            Attribute=1, ParentID="root", rb_local_deleted=0))
+        db_session.add(_row(tables.DjmdPlaylist, ID=PICKS_ID, Seq=1, Name="Picks",
+                            Attribute=attribute, ParentID=FOLDER_ID, rb_local_deleted=0))
+        for number, content_id in enumerate(content_ids, start=1):
+            db_session.add(_row(tables.DjmdSongPlaylist, ID=f"8{number:02d}",
+                                PlaylistID=PICKS_ID, ContentID=content_id, TrackNo=number,
+                                rb_local_deleted=0))
+        db_session.add(_row(tables.DjmdSongPlaylist, ID="899", PlaylistID=PICKS_ID,
+                            ContentID="99", TrackNo=99, rb_local_deleted=1))
+        db_session.commit()
+    engine.dispose()
+
+
+def _tombstone(cfg, name: str, genre_id: str = "900") -> None:
+    connection = sqlite3.connect(cfg.library.db_path)
+    try:
+        connection.execute(
+            "INSERT INTO djmdGenre (ID, Name, UUID, rb_local_deleted, created_at, updated_at) "
+            "VALUES (?, ?, 'u', 1, '2026-01-01', '2026-01-01')",
+            (genre_id, name),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+# 1. The plan: one item per named row
+
+
+def test_a_row_with_another_genre_is_planned_for_its_file_and_its_row(machine, silence):
+    build(machine, silence, Track("10", MELODIC, MELODIC))
+    plan = _plan(machine, DEEP, ["10"])
+    (item,) = plan.items
+    assert (item.row, item.file, item.action, item.reason) == (MELODIC, MELODIC, gs.WRITE, "")
+    assert item.file_writes and item.row_writes
+    assert plan.genre_row == _genre_ids()[DEEP] and not plan.mints
+
+
+def test_only_the_surface_that_differs_is_planned(machine, silence):
+    build(machine, silence, Track("10", DEEP, MELODIC), Track("11", MELODIC, DEEP))
+    first, second = _plan(machine, DEEP, ["10", "11"]).items
+    assert (first.file_writes, first.row_writes) == (True, False)
+    assert (second.file_writes, second.row_writes) == (False, True)
+
+
+def test_every_named_row_is_one_item_in_the_order_named_and_counted_once(machine, silence):
+    build(
+        machine, silence,
+        Track("10", MELODIC, MELODIC),
+        Track("11", DEEP, DEEP),
+        Track("12", MELODIC, ABSENT),
+        Track("13", MELODIC, UNREADABLE),
+        Track("14", MELODIC, MELODIC, deleted=True),
+        Track("15", "", ""),
+    )
+    plan = _plan(machine, DEEP, ["15", "14", "13", "12", "11", "10", "404", "10"])
+    assert [(item.content_id, item.reason) for item in plan.items] == [
+        ("15", ""), ("14", gs.ROW_GONE), ("13", rows.FILE_UNREADABLE),
+        ("12", rows.FILE_MISSING), ("11", gs.ALREADY), ("10", ""), ("404", gs.ROW_GONE),
+    ]
+    assert dict(plan.counts) == {
+        **dict.fromkeys(gs.OUTCOMES, 0),
+        gs.WRITE: 2, gs.ROW_GONE: 2, rows.FILE_UNREADABLE: 1, rows.FILE_MISSING: 1,
+        gs.ALREADY: 1,
+    }
+    assert sum(plan.counts.values()) == len(plan.items)
+
+
+def test_a_file_holding_two_genres_is_left_and_both_are_shown(machine, silence):
+    build(machine, silence, Track("10", MELODIC, MELODIC))
+    assert tags.write_tag_values(_file(machine, "10"), "genre", [MELODIC, OLD])
+    (item,) = _plan(machine, DEEP, ["10"]).items
+    assert item.reason == gs.FILE_MULTI_VALUED and item.file == f"{MELODIC}; {OLD}"
+
+
+def test_a_row_held_out_is_listed_and_a_held_identifier_naming_none_is_carried(
+    machine, silence
+):
+    build(machine, silence, Track("10", MELODIC, MELODIC), Track("11", MELODIC, MELODIC))
+    plan = _plan(machine, DEEP, ["10", "11"], leave=("11", "77"))
+    assert [(item.content_id, item.reason) for item in plan.items] == [
+        ("10", ""), ("11", gs.HELD_OUT)
+    ]
+    assert plan.leave_unmatched == ("77",)
+    assert plan.digest != _plan(machine, DEEP, ["10", "11"], leave=("11",)).digest
+
+
+def test_a_genre_with_no_lookup_row_is_planned_as_a_mint_and_a_tombstone_is_not_its_row(
+    machine, silence
+):
+    build(machine, silence, Track("10", MELODIC, MELODIC))
+    _tombstone(machine, AFRO)
+    plan = _plan(machine, AFRO, ["10"])
+    assert plan.mints and plan.genre_row == ""
+    assert genre_set_cli._payload(plan)["totals"]["genre_row"] == gs.MINTED
+
+
+def test_the_digest_names_no_path_and_moves_with_a_word(machine, silence, tmp_path):
+    build(machine, silence, Track("10", MELODIC, MELODIC))
+    plan = _plan(machine, DEEP, ["10"])
+    assert str(_file(machine, "10")) not in json.dumps([i.digested() for i in plan.items])
+    assert tags.write_genre(_file(machine, "10"), OLD)
+    assert _plan(machine, DEEP, ["10"]).digest != plan.digest
+
+
+# 2. The scope
+
+
+def test_a_playlist_names_its_live_rows_in_its_order(machine, silence):
+    build(machine, silence, *(Track(cid, MELODIC, MELODIC) for cid in ("10", "11", "12")))
+    _seed_picks(machine, "12", "10")
+    plan = _plan(machine, DEEP, [], playlist=PICKS)
+    assert [item.content_id for item in plan.items] == ["12", "10"]
+    assert plan.playlist == PICKS
+    # THE PLAYLIST IS DIGESTED, so the same rows named another way ask again.
+    assert plan.digest != _plan(machine, DEEP, ["12", "10"]).digest
+
+
+@pytest.mark.parametrize(
+    ("path", "attribute", "said"),
+    [
+        pytest.param("INBOX / Nowhere", 0, "no playlist or folder is at", id="absent"),
+        pytest.param("INBOX", 0, "is a folder", id="a-folder"),
+        pytest.param(PICKS, 4, "is a smart playlist", id="smart"),
+        pytest.param(" / Picks", 0, "is not a playlist path", id="blank-part"),
+    ],
+)
+def test_a_playlist_path_naming_no_plain_playlist_refuses(machine, silence, path, attribute, said):
+    build(machine, silence, Track("10", MELODIC, MELODIC))
+    _seed_picks(machine, "10", attribute=attribute)
+    with pytest.raises(CratekitError) as refused:
+        _plan(machine, DEEP, [], playlist=path)
+    assert refused.value.cause.reason == "tag-set-scope-unknown"
+    assert said in refused.value.cause.message
+
+
+def test_two_nodes_of_one_name_refuse(machine, silence):
+    build(machine, silence, Track("10", MELODIC, MELODIC))
+    _seed_picks(machine, "10")
+    connection = sqlite3.connect(machine.library.db_path)
+    connection.execute(
+        "INSERT INTO djmdPlaylist (ID, Seq, Name, Attribute, ParentID, rb_local_deleted, "
+        "created_at, updated_at) VALUES ('702', 2, 'Picks', 0, ?, 0, '2026-01-01', '2026-01-01')",
+        (FOLDER_ID,),
+    )
+    connection.commit()
+    connection.close()
+    with pytest.raises(CratekitError) as refused:
+        _plan(machine, DEEP, [], playlist=PICKS)
+    assert "2 nodes are named" in refused.value.cause.message
+
+
+def test_the_rows_file_skips_blank_and_comment_lines(tmp_path):
+    listed = tmp_path / "rows.txt"
+    listed.write_text("# the set\n10\n\n  11  \n#12\n", encoding="utf-8")
+    args = SimpleNamespace(rows=["9"], rows_from=str(listed), playlist=None)
+    assert genre_set_cli.named_rows(args) == (["9", "10", "11"], "")
+
+
+def test_no_rows_named_and_an_unreadable_rows_file_refuse(tmp_path):
+    for args in (
+        SimpleNamespace(rows=[], rows_from=None, playlist=None),
+        SimpleNamespace(rows=[], rows_from=str(tmp_path / "absent.txt"), playlist=None),
+    ):
+        with pytest.raises(CratekitError) as refused:
+            genre_set_cli.named_rows(args)
+        assert refused.value.cause.reason == "tag-set-scope-unknown"
+
+
+# 3. The apply
+
+
+def test_the_apply_writes_the_genre_on_file_and_row_and_nothing_else(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", OLD, ""), Track("12", OLD, OLD))
+    assert tags.write_tags(_file(cfg, "10"), {"title": "a title", "artist": "an artist"})
+    before, other = _content(cfg), _tags_of(cfg, "12")
+    tagged = _tags_of(cfg, "10")
+
+    _plan_, written = _apply(cfg, DEEP, ["10", "11"])
+
+    assert (written.written, written.read_back, written.wrong, written.moved) == (2, 2, (), ())
+    assert written.files.read_back == ("10", "11") and written.files.clean
+    assert [_genre_of(cfg, cid) for cid in ("10", "11", "12")] == [DEEP, DEEP, OLD]
+    assert _tags_of(cfg, "10") == {**tagged, "genre": DEEP}
+    assert _tags_of(cfg, "11")["genre"] == DEEP and _tags_of(cfg, "12") == other
+    after = _content(cfg)
+    for content_id, row in before.items():
+        changed = {
+            column for column in row
+            if after[content_id][column] != row[column]
+            and column not in rb_writer.BOOKKEEPING_COLUMNS
+        }
+        assert changed == ({"GenreID"} if content_id in ("10", "11") else set())
+
+
+def test_a_genre_with_no_lookup_row_is_minted_once_for_many_rows_past_a_tombstone(
+    acknowledged, silence
+):
+    cfg = acknowledged
+    build(cfg, silence, *(Track(cid, MELODIC, MELODIC) for cid in ("10", "11", "12")))
+    _tombstone(cfg, AFRO)
+
+    _plan_, written = _apply(cfg, AFRO, ["10", "11", "12"])
+
+    rows_named = dict(_genre_rows(cfg, AFRO))
+    assert rows_named.pop("900") == 1
+    ((minted, live),) = rows_named.items()
+    assert live == 0
+    assert written.minted == minted and written.read_back == 3
+    linked = _query(cfg, "SELECT GenreID FROM djmdContent WHERE ID IN ('10','11','12')")
+    assert {genre_id for (genre_id,) in linked} == {minted}
+    # A SECOND RUN LINKS THE ROW THE FIRST MINTED, and mints none.
+    build_more = _plan(cfg, AFRO, ["10"])
+    assert build_more.genre_row == minted and not build_more.mints
+
+
+def test_nothing_is_minted_when_no_row_is_written(acknowledged, silence, monkeypatch):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC))
+    monkeypatch.setattr(tags, "write_genre", lambda *args: False)
+    _plan_, written = _apply(cfg, AFRO, ["10"])
+    assert written.files.failed == ("10",) and written.written == 0 and written.minted == ""
+    assert _genre_rows(cfg, AFRO) == [] and _genre_of(cfg, "10") == MELODIC
+
+
+def test_a_file_that_moved_since_the_plan_is_named_and_its_row_left(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", MELODIC, MELODIC))
+    plan = _plan(cfg, DEEP, ["10", "11"])
+    assert tags.write_genre(_file(cfg, "11"), OLD)
+    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
+    try:
+        written = gs.apply_set(
+            cfg, db, plan, declared=active_taxonomy.load(cfg),
+            analysis_roots=[Path(cfg.library.root) / "analysis"],
+        )
+    finally:
+        rb_writer.close_db(db)
+    assert written.files.moved == ("11",) and written.written == 1
+    assert _genre_of(cfg, "11") == MELODIC and _tags_of(cfg, "11")["genre"] == OLD
+
+
+def test_the_session_record_keeps_each_written_files_old_genre(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", OLD, ""),
+          Track("12", MELODIC, DEEP))
+    _plan_, written = _apply(cfg, DEEP, ["10", "11", "12"])
+    record = session.read_record(written.session_id, cfg)
+    assert record.detail[restore_tags.GENRE_RECORD_KEY] == [
+        {"content_id": "10", "path": str(_file(cfg, "10")), "genre": MELODIC},
+        {"content_id": "11", "path": str(_file(cfg, "11")), "genre": ""},
+    ]
+    kept = restore_tags.kept_by(record)
+    assert [(f.path.name, f.kept, f.genre) for f in kept] == [
+        ("track-10.flac", ("genre",), MELODIC), ("track-11.flac", ("genre",), "")
+    ]
+    assert record.sources == {gs.CHANGE_KEY: "committed"}
+
+
+def test_the_rows_old_bucket_is_recorded_for_adopt_move(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", "", ""),
+          Track("12", DEEP, MELODIC))
+    _apply(cfg, DEEP, ["10", "11", "12"])
+    # A blank row and a row already carrying the genre leave no bucket behind.
+    assert dict(genre_moves.read(cfg)) == {"10": frozenset({"melodic_house"})}
+
+
+def test_a_second_run_plans_nothing_and_writes_nothing(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC))
+    _apply(cfg, DEEP, ["10"])
+    settled = _content(cfg)
+    plan = _plan(cfg, DEEP, ["10"])
+    assert plan.writes == () and [item.reason for item in plan.items] == [gs.ALREADY]
+    assert _content(cfg) == settled
+
+
+def test_the_policy_registered_is_the_retag_genres_and_the_mint_is_admitted_by_name(
+    acknowledged, silence, monkeypatch
+):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC))
+    asked: list = []
+    real = rb_writer.commit_guarded
+
+    def noting(db, **kwargs):
+        asked.append(tuple(kwargs.get("creations", ())))
+        return real(db, **kwargs)
+
+    monkeypatch.setattr(rb_writer, "commit_guarded", noting)
+    _apply(cfg, AFRO, ["10"])
+    assert asked == [(rb_writer.GENRE_TABLE,)]
+    assert metadata.RETAG_GENRE in rb_writer.registered_field_policies()
+
+
+# 4. The read back
+
+
+def test_a_clean_read_back_raises_nothing_and_a_moved_column_refuses_first():
+    clean = gs.Written(session_id="s", written=1, read_back=1)
+    gs.assert_read_back(clean)
+    with pytest.raises(CratekitError) as moved:
+        gs.assert_read_back(gs.Written("s", 1, 0, wrong=("10: x",), moved=("10: Title",)))
+    assert moved.value.cause.reason == "whitelist-violation"
+    with pytest.raises(CratekitError) as wrong:
+        gs.assert_read_back(gs.Written("s", 1, 0, wrong=("10: reads 'x'",)))
+    assert wrong.value.cause.reason == "internal-error"
+    assert "restore session s" in " ".join(wrong.value.cause.remediation.steps)
+
+
+def test_the_judge_names_a_row_off_its_genre_and_one_with_another_column_moved():
+    item = gs.Item("10", "/x", "t", MELODIC, MELODIC, gs.WRITE, row_writes=True)
+    before = {"10": {"GenreID": "1", "Title": "a"}}
+    after = {"10": {"GenreID": "2", "Title": "b"}}
+    wrong, moved = gs.judge(DEEP, [item], before, after, {"2": OLD})
+    assert wrong == ("10: reads 'Progressive / Melodic', not 'Deep House'",)
+    assert moved == ("10: Title",)
+    assert gs.judge(DEEP, [item], before, {}, {}) == (("10: the row could not be read",), ())
+
+
+# 5. The verb
+
+
+def test_an_undeclared_genre_refuses_before_the_acknowledgment_and_any_read(machine, silence):
+    build(machine, silence, Track("10", MELODIC, MELODIC))
+    code, refused = drive(_verb("Zydeco", "--row", "10"))
+    assert code != int(ExitCode.OK)
+    assert refused["cause"]["reason"] == "review-selection-invalid"
+    assert "'Zydeco'" in refused["cause"]["message"]
+
+
+def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine, silence):
+    build(machine, silence, Track("10", MELODIC, MELODIC))
+    code, refused = drive(_verb(DEEP, "--row", "10"))
+    assert code != int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["reason"] == "backup-acknowledgment-missing"
+    assert _genre_of(machine, "10") == MELODIC
+
+
+def test_planned_written_and_read_back_through_the_two_acts(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", DEEP, DEEP))
+    _seed_picks(cfg, "11", "10")
+
+    code, acted, refused = _two_acts(_verb(AFRO, "--playlist", PICKS))
+
+    assert code == int(ExitCode.OK), acted
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["digest"] == acted["data"]["digest"]
+    assert shown["genre_row"] == gs.MINTED and shown["playlist"] == PICKS
+    totals = acted["data"]["totals"]
+    assert (totals["count"], totals["written"], totals["read_back"]) == (2, 2, 2)
+    assert [_genre_of(cfg, cid) for cid in ("10", "11")] == [AFRO, AFRO]
+    codes = [warning["code"] for warning in acted["warnings"]]
+    assert codes == [genre_set_cli.GENRE_WRITTEN, genre_set_cli.FILE_NEXT]
+    assert "one was made and linked on the same commit" in acted["warnings"][0]["message"]
+    assert "crate adopt move" in acted["warnings"][1]["message"]
+
+
+def test_the_gate_takes_no_inline_answer_and_a_declined_gate_writes_nothing(
+    acknowledged, silence
+):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC))
+    code, refused = drive(_verb(DEEP, "--row", "10"))
+    assert code == int(ExitCode.DECISION_REQUIRED)
+    run_id = refused["run_id"]
+    drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
+    code, acted = drive(["--run", run_id, *_verb(DEEP, "--row", "10")])
+    assert acted["outcome"] == "no_op" and _genre_of(cfg, "10") == MELODIC
+    assert _tags_of(cfg, "10")["genre"] == MELODIC
+
+
+def test_a_file_changed_between_the_gate_and_the_apply_refuses_stale(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC))
+    argv = _verb(DEEP, "--row", "10")
+    _code, refused = drive(argv)
+    run_id = refused["run_id"]
+    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert tags.write_genre(_file(cfg, "10"), OLD)
+
+    code, acted = drive(["--run", run_id, *argv])
+
+    assert code != int(ExitCode.OK)
+    assert acted["cause"]["reason"] in {"decision-stale", "decision-invalidated"}
+    assert _genre_of(cfg, "10") == MELODIC and _tags_of(cfg, "10")["genre"] == OLD
+
+
+def test_a_file_gone_between_the_plan_and_the_apply_writes_nothing(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", MELODIC, MELODIC))
+    plan = _plan(cfg, DEEP, ["10", "11"])
+    _file(cfg, "11").unlink()
+    db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
+    try:
+        again = _plan(cfg, DEEP, ["10", "11"])
+        with pytest.raises(CratekitError) as refused:
+            gs.assert_plan_unchanged(plan, again)
+    finally:
+        rb_writer.close_db(db)
+    assert refused.value.cause.reason == "decision-stale"
+    assert refused.value.cause.detail["moved"] == ["11"]
+    assert _genre_of(cfg, "10") == MELODIC and _tags_of(cfg, "10")["genre"] == MELODIC
+
+
+def test_a_second_run_after_a_clean_one_asks_and_is_a_no_op(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC))
+    code, _acted, _refused = _two_acts(_verb(DEEP, "--row", "10"))
+    assert code == int(ExitCode.OK)
+    code, acted, refused = _two_acts(_verb(DEEP, "--row", "10"))
+    assert acted["outcome"] == "no_op"
+    assert acted["warnings"][0]["code"] == genre_set_cli.NOTHING_TO_WRITE
+    assert refused["cause"]["detail"]["shown"]["items"][0]["reason"] == gs.ALREADY
+
+
+def test_a_file_that_will_not_take_the_genre_refuses_after_the_rest_landed(
+    acknowledged, silence, monkeypatch
+):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", MELODIC, MELODIC))
+    real = tags.write_genre
+    monkeypatch.setattr(
+        tags, "write_genre", lambda path, genre: False if "11" in path.name else real(path, genre)
+    )
+    code, acted, _refused = _two_acts(_verb(DEEP, "--row", "10", "--row", "11"))
+    assert code != int(ExitCode.OK)
+    assert acted["cause"]["reason"] == genre_set_cli.UNWRITTEN
+    assert acted["data"]["totals"]["written"] == 1
+    assert [_genre_of(cfg, cid) for cid in ("10", "11")] == [DEEP, MELODIC]
+
+
+def test_the_restore_puts_the_files_and_rows_back(acknowledged, silence):
+    cfg = acknowledged
+    build(cfg, silence, Track("10", MELODIC, MELODIC), Track("11", OLD, ""))
+    code, acted, _refused = _two_acts(_verb(AFRO, "--row", "10", "--row", "11"))
+    assert code == int(ExitCode.OK), acted
+    (record,) = [one for one in session.records(cfg) if one.workflow == gs.WORKFLOW]
+
+    restore_gate = "restore.run.confirm"
+    verb = ["restore", "run", record.session_id]
+    _code, refused = drive(verb)
+    run_id = refused["run_id"]
+    drive(["run", "decide", run_id, restore_gate, "restore", "--actor", "a-person"])
+    code, restored = drive(["--run", run_id, *verb])
+
+    assert code == int(ExitCode.OK), restored
+    assert [_genre_of(cfg, cid) for cid in ("10", "11")] == [MELODIC, OLD]
+    assert _tags_of(cfg, "10")["genre"] == MELODIC
+    # A GENRE THE FILE NEVER HAD IS PUT BACK ABSENT.
+    assert _tags_of(cfg, "11")["genre"] is None
+    assert restored["data"]["totals"]["file_tags"]["read_back"] == 2
+    assert _genre_rows(cfg, AFRO) == [] and dict(genre_moves.read(cfg)) == {}
+
+
+# 6. What the verb is
+
+
+def test_the_verb_declares_the_files_and_the_row_behind_an_explicit_gate():
+    from cratekit.cli import registry
+
+    entry = registry.entry("tag.set")
+    assert entry.writes == frozenset({"files", "db_metadata"}) and entry.destructive
+    (confirm,) = [gate for gate in entry.gates if gate.name == GATE]
+    assert confirm.explicit and confirm.digest_source == "plan"
+
+
+def test_the_record_key_is_the_one_the_restore_reads():
+    assert gs.RECORD_KEY == restore_tags.GENRE_RECORD_KEY
+
+
+def test_the_engine_writes_no_tag_but_the_genre():
+    tree = ast.parse(Path(gs.__file__).read_text(encoding="utf-8"))
+    writers = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "tags"
+        and node.func.attr.startswith(("write", "clear"))
+    }
+    assert writers == {"write_genre"}

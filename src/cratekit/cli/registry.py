@@ -1804,6 +1804,34 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── A chosen genre over the one a row carries (U339) ────────────────────
+    Entry(
+        name="tag.set",
+        summary=(
+            "give the rows named a genre the taxonomy declares, over the one they "
+            "carry, on the file and the row; writes file and row"
+        ),
+        module="cratekit.tagging.genre_set_cli", builder="build", handler_key="tag.set",
+        # No feature row or source script. Core, as ``tag.suggest``: adoption
+        # files by genre.
+        emits=frozenset({"plan"}), output_schema="plan/1",
+        #: The file and the row, the row as ``tag.rows`` writes it, a genre lookup
+        #: row minted on the linking commit when the library has none.
+        writes=frozenset({"files", "db_metadata"}), destructive=True,
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=(
+            "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
+        ),
+        gates=(
+            GateSpec(
+                name="tag.set.confirm", options=("apply", "abort"),
+                prompt="Give these rows the genre, on their files and in rekordbox?",
+                #: Explicit (R34), for ``tag.rows.confirm``'s reason.
+                explicit=True, digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The needs genre backlog (U292) ──────────────────────────────────────
     Entry(
         name="tag.backlog",
