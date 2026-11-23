@@ -1,0 +1,223 @@
+{
+  "name": "u303-replay-after-c",
+  "pass_kind": "replay",
+  "branch": "cloud/860-replay-after-c",
+  "head": "4197b1db",
+  "when": "2026-11-23 00:32 UTC",
+  "valid": true,
+  "invalid_reason": "in progress",
+  "baseline_collected": 22934,
+  "baseline_exit": 1,
+  "pytest_runs": 44,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 251,
+  "known_source": "docs/mutation/u303-replay-known-failures.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: no battery verdict at `.cloud-battery/verdict.json`",
+  "subset_baselines": 37,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/cli/__init__.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/cli/__init__.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "72ec2ebab1cc3abd",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22934,
+    "baseline_collected": 22934,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "r1334.S18_emit_open_gate_only",
+      "description": "_emit: print the gate screen for an open gate only, as before",
+      "file": "src/cratekit/cli/__init__.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d637fae1c96dc8be",
+      "subset": [
+        "tests/test_gate_stale_screen.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1011,
+      "baseline_collected": 1011,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_stale_screen.py::test_through_the_dispatcher_the_stale_refusal_shows_the_moved_plan_and_a_decide_applies_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if envelope.cause is not None and render.is_gate_screen(envelope.cause):",
+      "new": "    if envelope.cause is not None and envelope.cause.reason == \"decision-required\":",
+      "source": {
+        "table": "r1334.json",
+        "id": "S18_emit_open_gate_only"
+      }
+    },
+    {
+      "id": "r1694.C1_no_warning",
+      "description": "dispatcher: never add the warning, so a verb whose login failed to store says nothing",
+      "file": "src/cratekit/cli/__init__.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f3df8df588989513",
+      "subset": [
+        "tests/test_provider_session_unstored.py",
+        "tests/test_provider_gate.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 134,
+      "baseline_collected": 134,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_session_unstored.py::test_a_verb_whose_login_refreshed_on_the_opt_in_answers_as_before_and_warns",
+        "tests/test_provider_session_unstored.py::test_the_warning_is_this_verbs_alone",
+        "tests/test_provider_session_unstored.py::test_two_failed_stores_in_one_verb_make_one_warning_naming_the_class_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    envelope = _with_unstored(envelope, unstored_before)\n",
+      "new": "",
+      "source": {
+        "table": "r1694.json",
+        "id": "C1_no_warning"
+      }
+    },
+    {
+      "id": "r1694.C2_every_note",
+      "description": "_with_unstored: read every note the process holds, so an earlier verb's failure is reported on every later verb",
+      "file": "src/cratekit/cli/__init__.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "89cf6c4796b37e29",
+      "subset": [
+        "tests/test_provider_session_unstored.py",
+        "tests/test_provider_gate.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 134,
+      "baseline_collected": 134,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_session_unstored.py::test_a_verb_whose_login_refreshed_on_the_opt_in_answers_as_before_and_warns",
+        "tests/test_provider_session_unstored.py::test_the_warning_is_this_verbs_alone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    met = module.unstored()[before:]",
+      "new": "    met = module.unstored()[:]",
+      "source": {
+        "table": "r1694.json",
+        "id": "C2_every_note"
+      }
+    },
+    {
+      "id": "r1694.C3_no_dedupe",
+      "description": "_with_unstored: name a class once per failure, so two failures of one class repeat it",
+      "file": "src/cratekit/cli/__init__.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "014a96e398eaf6ae",
+      "subset": [
+        "tests/test_provider_session_unstored.py",
+        "tests/test_provider_gate.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 134,
+      "baseline_collected": 134,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_session_unstored.py::test_two_failed_stores_in_one_verb_make_one_warning_naming_the_class_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "({', '.join(dict.fromkeys(met))})",
+      "new": "({', '.join(met)})",
+      "source": {
+        "table": "r1694.json",
+        "id": "C3_no_dedupe"
+      }
+    },
+    {
+      "id": "r1694.C4_words_no_next_run",
+      "description": "_with_unstored: reword the warning so it no longer says the next run logs in again",
+      "file": "src/cratekit/cli/__init__.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2050e99e5db8afc6",
+      "subset": [
+        "tests/test_provider_session_unstored.py",
+        "tests/test_provider_gate.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 134,
+      "baseline_collected": 134,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_provider_session_unstored.py::test_a_verb_whose_login_refreshed_on_the_opt_in_answers_as_before_and_warns"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "so the next run logs in again from ",
+      "new": "so a later run signs in afresh from ",
+      "source": {
+        "table": "r1694.json",
+        "id": "C4_words_no_next_run"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}
