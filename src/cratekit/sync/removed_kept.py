@@ -95,14 +95,14 @@ def mark_of(shown: catalogue.AccountPlaylist | None) -> Mark | None:
     return Mark(tracks=tracks, updated=updated)
 
 
-def _instant(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
+def _read_at(entry: Mapping[str, Any]) -> datetime | None:
+    """When a kept entry was read, or ``None`` when it names no instant with a zone."""
+    held = entry.get("read_at")
     try:
-        moment = datetime.fromisoformat(raw)
+        moment = datetime.fromisoformat(held) if isinstance(held, str) else None
     except ValueError:
-        return None
-    return moment if moment.tzinfo is not None else None
+        moment = None
+    return None if moment is None or moment.tzinfo is None else moment
 
 
 def _strings(raw: Any) -> frozenset[str] | None:
@@ -171,7 +171,7 @@ class KeptReads:
         entry = self.entries.get(account)
         if mark is None or shown is None or entry is None:
             return None
-        read_at = _instant(entry.get("read_at"))
+        read_at = _read_at(entry)
         if (
             read_at is None
             or not self._fresh(read_at)
@@ -230,7 +230,7 @@ class KeptReads:
         reads = {
             account: entry
             for account, entry in sorted(self.entries.items())
-            if (read_at := _instant(entry.get("read_at"))) is not None and self._fresh(read_at)
+            if (read_at := _read_at(entry)) is not None and self._fresh(read_at)
         }
         document = {"version": VERSION, "reads": reads}
         try:
