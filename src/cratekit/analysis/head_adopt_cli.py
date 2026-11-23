@@ -6,7 +6,8 @@ gate; the explicit gate over the digest, taking no inline answer, AN EMPTY PLAN
 STILL ASKS; only ``apply`` over a plan that writes opens the database to write,
 takes the plan again on that handle and refuses ``decision-stale`` if it moved.
 ``--leave`` holds a row out, in the plan and its digest. Every path says how
-many rows were left and why.
+many rows were left and why, a partial apply's refusal included. An intake
+tree that cannot be read refuses before the gate with its own reason.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -14,10 +15,12 @@ command-line layer, for the reason ``adopt.apply_cli`` gives.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from cratekit.analysis import head_adopt as ha
 from cratekit.analysis.check_cli import template_of
+from cratekit.cli import output
 from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session, tree_registry
 from cratekit.core.cause import Outcome, refuse
@@ -29,14 +32,15 @@ from cratekit.tagging.plan_verbs import counted, named, warning
 CONFIRM_GATE = "analyze.adopt.confirm"
 
 #: The warnings: nothing to write, what was written and read back, rows left,
-#: answers only half read, a ``--leave`` naming no row this plan writes, and a
-#: scope that could not be read whole, said on every path (review round one).
+#: answers only half read, a ``--leave`` naming no row this plan writes, an
+#: INBOX / Analyze absent or empty, and session records the log could not read,
+#: said on every path (review rounds one and two).
 NOTHING_TO_WRITE = "adopt-nothing-to-write"
 HEADS_WRITTEN = "adopt-heads-written"
 ROWS_LEFT = "adopt-rows-left"
 HALF_READ = "adopt-answer-half-read"
 LEAVE_UNMATCHED = "adopt-leave-unmatched"
-SCOPE_UNREAD = "adopt-scope-unread"
+SCOPE_EMPTY = "adopt-scope-empty"
 RECORDS_UNREAD = "adopt-records-unread"
 
 #: The refusal over the files that did not take, after the rest landed.
@@ -150,14 +154,15 @@ def _unmatched(plan: ha.AdoptPlan) -> list[dict[str, str]]:
 
 
 def _unread(plan: ha.AdoptPlan) -> list[dict[str, str]]:
-    """What the scope could not read, so an empty plan is never read as a clean one."""
+    """Why the scope holds nothing, and what it could not read, so an empty plan
+    says what it stands on."""
     said = []
     passed = "; ".join(why for why in plan.scope.passed_over if why)
     if passed:
         said.append(warning(
-            SCOPE_UNREAD,
-            f"{passed}; so no row of it was planned, and titles there that differ "
-            f"from rekordbox's are not corrected; name a landing with --pass or --session",
+            SCOPE_EMPTY,
+            f"{passed}, so no row was planned; a landing already cleared from it is "
+            f"named with --pass or --session",
         ))
     if plan.scope.unreadable_records:
         said.append(warning(
@@ -176,7 +181,7 @@ def _nothing(plan: ha.AdoptPlan) -> dict[str, str]:
     if not plan.rows:
         return warning(
             NOTHING_TO_WRITE,
-            f"no title is to be written: {plan.scope.name} holds no row to plan",
+            f"no title is to be written: {plan.scope.name} holds no row in scope",
         )
     return warning(
         NOTHING_TO_WRITE,
@@ -276,10 +281,9 @@ def apply_plan(
         written = ha.apply_adopt(cfg, db, again, analysis_roots=analysis_store.watch_roots(cfg))
     finally:
         rb_writer.close_db(db)
-    # THE READ BACK OUTRANKS THE FILES: a row wrong in the database is the worse news.
+    # THE READ BACK OUTRANKS THE FILES: a row wrong in the database is the worse
+    # news. Files that did not take are the caller's to refuse, with its advisories.
     ha.assert_read_back(written)
-    if written.files.failed or written.files.wrong:
-        raise _unwritten_refusal(again, written)
     return written
 
 
@@ -296,19 +300,40 @@ def analyze_adopt(ctx) -> Envelope:
     data = _payload(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))
-    return plan_verbs.applied(
+    held: dict[str, ha.Written] = {}
+
+    def apply() -> ha.Written:
+        held["written"] = apply_plan(cfg, plan, ctx.args, declared=declared, template=template)
+        return held["written"]
+
+    answered = plan_verbs.applied(
         ctx,
         plan,
         data,
         _advisories,
         nothing=_nothing,
-        apply=lambda: apply_plan(cfg, plan, ctx.args, declared=declared, template=template),
+        apply=apply,
         said=lambda written: _written(plan, written),
     )
+    written = held.get("written")
+    if written is None or not (written.files.failed or written.files.wrong):
+        return answered
+    # A PARTIAL APPLY REFUSES, THROUGH ``from_cause``, the one boundary where a
+    # cause becomes a status, its counts and every advisory kept: a row left
+    # because its file could not be read is named here as on every path.
+    refused = output.from_cause(
+        verb=ctx.entry.name,
+        run_id=ctx.run.run_id,
+        started=ctx.started,
+        cause=_unwritten_refusal(plan, written).cause,
+        schema=ctx.entry.output_schema,
+        data=answered.data,
+    )
+    return replace(refused, warnings=answered.warnings)
 
 
 __all__ = [
     "CONFIRM_GATE", "HALF_READ", "HEADS_WRITTEN", "LEAVE_UNMATCHED", "NOTHING_TO_WRITE",
-    "RECORDS_UNREAD", "ROWS_LEFT", "SCOPE_UNREAD", "UNWRITTEN", "analyze_adopt", "apply_plan",
+    "RECORDS_UNREAD", "ROWS_LEFT", "SCOPE_EMPTY", "UNWRITTEN", "analyze_adopt", "apply_plan",
     "build", "read_plan", "scope_and_plan",
 ]

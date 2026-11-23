@@ -26,6 +26,7 @@ from cratekit.core import analysis_store, config, locations, rb_writer, session,
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.naming import NameTemplate
+from cratekit.intake import native
 from cratekit.write import metadata
 from tests.cli_drive import drive
 from tests.test_analyze_check import CONSTANT_GRID, PATH_TAG, _key_id, anlz
@@ -763,6 +764,7 @@ def test_a_file_that_cannot_be_written_keeps_its_row_s_title_and_is_named(
         return False if Path(path) == golf else real(path, fields)
 
     monkeypatch.setattr(tags, "write_tags", refuses_golf)
+    _file(cfg, "Hotel").write_bytes(b"not audio at all")
     code, acted, _refused = _two_acts()
 
     # THE REST LANDED AND THE RUN SAYS IT IS NOT WHOLE: never an ok exit.
@@ -770,8 +772,13 @@ def test_a_file_that_cannot_be_written_keeps_its_row_s_title_and_is_named(
     cause = acted["cause"]
     assert cause["reason"] == head_adopt_cli.UNWRITTEN
     assert "1 could not be written: 01A - 124 - Golf" in cause["message"]
-    assert "4 row(s)" in cause["message"]
+    assert "3 row(s)" in cause["message"]
     assert cause["detail"]["failed"] == [_id(cfg, "Golf")]
+    # EVERY ADVISORY KEPT ON THE REFUSAL (review round two): what was written is
+    # said first, and a row left for its file is named as on every other path.
+    codes = [warning["code"] for warning in acted["warnings"]]
+    assert codes[:2] == [head_adopt_cli.HEADS_WRITTEN, head_adopt_cli.ROWS_LEFT], codes
+    assert "08A - 107 - Hotel (file-unreadable)" in acted["warnings"][1]["message"]
     assert _surfaces(cfg, "Golf")[:3] == ("01A - 124 - Golf", "01A - 124 - Golf", None)
     assert _surfaces(cfg, "Alpha")[:2] == ("07B - 124 - Alpha", "07B - 124 - Alpha")
 
@@ -809,6 +816,8 @@ def test_the_read_back_names_a_title_not_carried_and_a_column_moved():
     assert wrong == ("1: reads '01A - 124 - A', not '07B - 124 - A'",) and moved == ()
     wrong, moved = ha.judge([item], before, now(Title="07B - 124 - A", BPM=12800))
     assert (wrong, moved) == ((), ("1: BPM",))
+    wrong, moved = ha.judge([item], before, now(BPM=12800))
+    assert wrong and moved
     assert ha.judge([item], before, {})[0] == ("1: the row could not be read",)
 
 
@@ -823,33 +832,43 @@ def test_a_read_back_wrong_or_moved_refuses_naming_the_session_that_undoes_it():
             ha.Written(session_id="s-1", written=1, read_back=1, moved=("1: BPM",))
         )
     assert moved.value.cause.reason == "whitelist-violation"
+    # BOTH AT ONCE: the moved column outranks the title not carried.
+    with pytest.raises(CratekitError) as both:
+        ha.assert_read_back(
+            ha.Written(session_id="s-1", written=1, read_back=0, wrong=("1: x",), moved=("1: BPM",))
+        )
+    assert both.value.cause.reason == "whitelist-violation"
 
 
-def test_an_unread_inbox_analyze_is_said_and_never_read_as_nothing_to_write(
-    unacknowledged, monkeypatch
-):
-    """Review round one, B1: the scope's reason reaches the envelope on every path."""
-    cfg = unacknowledged
+def test_an_intake_tree_that_cannot_be_read_refuses_before_the_gate(library, monkeypatch, silence):
+    """Review rounds one and two, B1: INBOX / Analyze that was never read is never an
+    empty plan. The intake tree still on the xml bridge refuses with its own reason."""
+    cfg = _configured(library, monkeypatch, profile="full")
     session.record_acknowledgment(cfg, terminal=lambda: True)
-    monkeypatch.setattr(
-        rc, "_analyze_members", lambda db, declared, registry: ((), "INBOX / Analyze was not read: why")
-    )
+
+    code, refused = drive(VERB)
+
+    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
+    assert "xml bridge" in refused["cause"]["message"], refused
+    assert "gate" not in (refused["cause"].get("detail") or {})
+    assert not gates.run_path(refused["run_id"]).exists()
+
+
+def test_an_empty_inbox_analyze_says_why_nothing_was_planned(native_library):
+    """Read and empty: the plan is empty, the gate asks, and the answer says why."""
     code, acted, refused = _two_acts()
 
     assert code == int(ExitCode.OK) and acted["outcome"] == "no_op", acted
     codes = [warning["code"] for warning in acted["warnings"]]
-    assert codes[:2] == [head_adopt_cli.NOTHING_TO_WRITE, head_adopt_cli.SCOPE_UNREAD]
-    assert "holds no row to plan" in acted["warnings"][0]["message"]
-    assert "INBOX / Analyze was not read: why" in acted["warnings"][1]["message"]
+    assert codes == [head_adopt_cli.NOTHING_TO_WRITE, head_adopt_cli.SCOPE_EMPTY]
+    assert "holds no row in scope" in acted["warnings"][0]["message"]
     (shown,) = refused["cause"]["detail"]["shown"]["unread"]
-    assert "INBOX / Analyze was not read: why" in shown
+    assert f"no {native.ANALYZE} playlist" in shown or "holds no row" in shown
 
 
 def test_session_records_the_log_could_not_read_are_said(native_library, silence, monkeypatch):
     cfg, _root = native_library
     _landed_and_visited(cfg, silence)
-    from cratekit.intake import native
-
     (landing,) = [r.session_id for r in session.records(cfg) if r.workflow == native.WORKFLOW]
     real = rc.resolve_scope
 
@@ -943,3 +962,56 @@ def test_the_check_counts_only_a_title_whose_own_head_differs(native_library, si
     assert checked["data"]["summary"]["differs"] == 0
     detail = [c for c in checked["data"]["checks"] if c["key"] == "check.key_agreement"][0]
     assert check_cli.ADOPT_VERB not in detail["detail"]
+
+
+def test_a_commit_that_lands_and_then_raises_is_still_recorded(native_library, silence, monkeypatch):
+    """The witness, not the exception, says whether the rows landed: a commit that
+    lands and then raises keeps its record, so a restore knows to undo it."""
+    cfg, _root = native_library
+    _landed_and_visited(cfg, silence)
+    real = rb_writer.commit_guarded
+
+    def lands_then_raises(db, *args, **kwargs):
+        real(db, *args, **kwargs)
+        raise RuntimeError("the connection dropped after the commit")
+
+    monkeypatch.setattr(rb_writer, "commit_guarded", lands_then_raises)
+    code, acted, _refused = _two_acts()
+
+    assert code != int(ExitCode.OK), acted
+    (record,) = [r for r in session.records(cfg) if r.workflow == ha.WORKFLOW]
+    assert record.sources == {ha.CHANGE_KEY: str(session.SourceState.COMMITTED)}
+    assert _surfaces(cfg, "Golf")[0] == "09A - 98 - Golf"
+
+
+def test_a_commit_that_raises_before_landing_records_no_commit(native_library, silence, monkeypatch):
+    cfg, _root = native_library
+    _landed_and_visited(cfg, silence)
+
+    def refuses(db, *args, **kwargs):
+        raise RuntimeError("the database is locked")
+
+    monkeypatch.setattr(rb_writer, "commit_guarded", refuses)
+    code, acted, _refused = _two_acts()
+
+    assert code != int(ExitCode.OK), acted
+    (record,) = [r for r in session.records(cfg) if r.workflow == ha.WORKFLOW]
+    assert ha.CHANGE_KEY not in record.sources
+    assert _surfaces(cfg, "Golf")[0] == "01A - 124 - Golf"
+
+
+def test_a_bare_title_s_tempo_is_not_counted_as_differing(native_library, silence):
+    """Review round two: the tempo count is scoped to a title's own head as the
+    differing count is."""
+    cfg, _root = native_library
+    _land_headed(cfg, silence, "2026-11-22_bare", {"Romeo": "01A - 124"})
+    _visit(cfg, "Romeo", scale="1A", bpm=9000)
+    with sqlite3.connect(cfg.library.db_path) as conn:
+        conn.execute("UPDATE djmdContent SET Title = 'Romeo' WHERE ID = ?", (_id(cfg, "Romeo"),))
+    conn.close()
+
+    code, checked = drive(["analyze", "check"])
+
+    assert code == int(ExitCode.OK), checked
+    summary = checked["data"]["summary"]
+    assert (summary["differs"], summary["tempo_differs"]) == (0, 0)

@@ -327,10 +327,13 @@ Read the answer: `data.totals.written` rows took rekordbox's, and every row
 left is named with why in the warnings. A file it could not write keeps its
 row's old title and is named; report it. With `data.summary.differs` at zero
 the plan writes nothing, and the gate is still answered, ending as a no op. An
-`adopt-scope-unread` warning means INBOX / Analyze could not be read and
-nothing was planned: stop and report it. An exit with `analyze-adopt-unwritten`
+`adopt-scope-empty` warning means INBOX / Analyze is absent or holds no row, so
+nothing was planned: after a check whose scope read `analyze` that is a stop,
+so report it. An intake tree that cannot be read refuses before the gate with
+its own reason: stop and report it. An exit with `analyze-adopt-unwritten`
 means the named files could not take their new title, their rows kept the old
-one, and the rest landed: report them and go on to the clear. **The clear's
+one, and the rest landed, with every row left still named in the warnings:
+report them and go on to the clear. **The clear's
 rehearsal copy is taken after the live adopt**, since the clear's digest covers
 each row's title and a copy taken before it rehearses the old titles. Then
 take the analysed rows out of the playlist:

@@ -22,15 +22,6 @@ new = '''TEMPO_TOLERANCE = 0
 '''
 
 [[rows]]
-id = "A3_tempo_strictly_more"
-description = "tempo_differs: more than or equal to the tolerance, so a head one beat off is rewritten"
-file = "src/cratekit/analysis/rekordbox_check.py"
-surface = "user"
-tests = ["tests/test_analyze_adopt.py", "tests/test_analyze_check.py"]
-old = '''    return abs(head - reference) > TEMPO_TOLERANCE'''
-new = '''    return abs(head - reference) >= TEMPO_TOLERANCE'''
-
-[[rows]]
 id = "A4_tempo_rounds_half_up"
 description = "reference_tempo: truncate the column's hundredths, so a dyn average of 124.84 reads 124"
 file = "src/cratekit/analysis/rekordbox_check.py"
@@ -114,15 +105,6 @@ old = '''    if new_title == title and new_tag == tag_title:'''
 new = '''    if False:'''
 
 [[rows]]
-id = "A13_key_tag_by_wheel"
-description = "plan_row: compare the key tag as text, so an unpadded key tag equal to rekordbox's is rewritten"
-file = "src/cratekit/analysis/head_adopt.py"
-surface = "user"
-tests = ["tests/test_analyze_adopt.py"]
-old = '''    if key is not None and parse_camelot(initialkey) != parse_camelot(key):'''
-new = '''    if key is not None and initialkey != key:'''
-
-[[rows]]
 id = "A14_plan_taken_again"
 description = "assert_plan_unchanged: never refuse, so a plan that moved after the gate is written"
 file = "src/cratekit/analysis/head_adopt.py"
@@ -191,15 +173,6 @@ old = '''        if str(now.get("Title") or "") != item.new_title:'''
 new = '''        if False:'''
 
 [[rows]]
-id = "A21_judge_moved"
-description = "judge: excuse the BPM column as planned, so a tempo column moved beside the title passes"
-file = "src/cratekit/analysis/head_adopt.py"
-surface = "user"
-tests = ["tests/test_analyze_adopt.py"]
-old = '''        changed = row_defaults.moved_columns(was, now, planned=("Title",))'''
-new = '''        changed = row_defaults.moved_columns(was, now, planned=("Title", "BPM"))'''
-
-[[rows]]
 id = "A22_read_back_refuses_wrong"
 description = "assert_read_back: refuse only a moved column, so a title that does not read back ends ok"
 file = "src/cratekit/analysis/head_adopt.py"
@@ -241,6 +214,34 @@ tests = ["tests/test_match_states.py"]
 old = '''    written_key = tag_head.get("key") or head.get("key")'''
 new = '''    written_key = head.get("key") or tag_head.get("key")'''
 
+[[rows]]
+id = "B1_unread_intake_refuses"
+description = "head_adopt.resolve_scope: drop the read of the intake root, so an INBOX / Analyze nobody could read plans as empty"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py"]
+old = '''    refill.anchored_root(db, declared.intake.id, registry)
+    members, why = rc._analyze_members(db, declared, registry)'''
+new = '''    members, why = rc._analyze_members(db, declared, registry)'''
+
+[[rows]]
+id = "B2_differs_needs_a_title_head"
+description = "Row.differs: count a row whose title has no head, so the check names adopt for a row it leaves"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_analyze_check.py"]
+old = '''        return self.headed and ('''
+new = '''        return ('''
+
+[[rows]]
+id = "B3_partial_apply_refuses"
+description = "analyze_adopt: end a run whose files did not all take as ok"
+file = "src/cratekit/analysis/head_adopt_cli.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py"]
+old = '''    if written is None or not (written.files.failed or written.files.wrong):'''
+new = '''    if True:'''
+
 [[dropped]]
 id = "D1_operation_fill_if_empty"
 description = "metadata: register the adopt operation fill if empty, so a present title is never written"
@@ -260,3 +261,18 @@ reason = "no realistic head separates the two: a tempo of one to three digits in
 id = "D4_default_scope_falls_back"
 description = "head_adopt.resolve_scope: fall back to every unanalysed row as the check does"
 reason = "ranked below the cap: a scope change the back catalogue test reads, beside A7 which leaves unanalysed rows"
+
+[[dropped]]
+id = "A3_tempo_strictly_more"
+description = "tempo_differs: more than or equal to the tolerance, so a head one beat off is rewritten"
+reason = "ranked below the cap after review round two: the same guard as A2, the tolerance, reached through its comparison"
+
+[[dropped]]
+id = "A13_key_tag_by_wheel"
+description = "plan_row: compare the key tag as text, so an unpadded key tag equal to rekordbox's is rewritten"
+reason = "ranked below the cap after review round two: the same wheel comparison as A1, on the key tag"
+
+[[dropped]]
+id = "A21_judge_moved"
+description = "judge: excuse the BPM column as planned, so a tempo column moved beside the title passes"
+reason = "ranked below the cap after review round two: a column moved beside the title is refused first by the commit guard, which A17 and the gridless suites hold"

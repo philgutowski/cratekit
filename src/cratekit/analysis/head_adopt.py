@@ -51,7 +51,7 @@ from cratekit.core import (
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import NameTemplate, parse_camelot, parse_head, split_head
-from cratekit.intake import analyzed, native
+from cratekit.intake import analyzed, native, refill
 from cratekit.write import metadata, row_defaults, trees
 
 _ORIGIN = ("analysis", "head_adopt")
@@ -287,11 +287,17 @@ def resolve_scope(
     pass_name: str | None = None,
     session_id: str | None = None,
 ) -> rc.Scope:
-    """The check's scope, less its fall back: an empty INBOX / Analyze is an empty scope."""
+    """The check's scope, less its fall back: an empty INBOX / Analyze is an empty scope.
+
+    AN INTAKE TREE THAT CANNOT BE READ REFUSES with its own reason (review round
+    two): an empty plan over a playlist nobody read would read as nothing to
+    correct. An Analyze playlist that is absent or empty is read, and is empty.
+    """
     if pass_name is not None or session_id is not None:
         return rc.resolve_scope(
             cfg, db, declared=declared, registry=registry, pass_name=pass_name, session_id=session_id
         )
+    refill.anchored_root(db, declared.intake.id, registry)
     members, why = rc._analyze_members(db, declared, registry)
     return rc.Scope(
         kind=rc.SCOPE_ANALYZE,

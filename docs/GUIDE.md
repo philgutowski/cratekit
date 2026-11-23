@@ -306,8 +306,10 @@ never stops the tempo, nor a missing tempo the key. The tempo compared is
 rekordbox's rounded half up to a whole beat. A file that cannot take its new
 title keeps its row's old title, and the run ends refused under
 `analyze-adopt-unwritten` naming it, after the rest landed; run it again once
-the file can be written. When INBOX / Analyze cannot be read, the run says so
-(`adopt-scope-unread`) rather than reporting nothing to write. The scope is
+the file can be written, and every row left is named on that answer as on any
+other. An intake tree that cannot be read, one still on the XML bridge, refuses
+before the gate with its own reason; an INBOX / Analyze that is absent or empty
+plans nothing and says why (`adopt-scope-empty`). The scope is
 the check's: INBOX / Analyze by default, `--pass` or `--session` for a landing
 already cleared from it, never the back catalogue. The run's session record
 keeps each file's old title and key tag beside the database capture; a restore

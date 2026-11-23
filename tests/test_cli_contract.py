@@ -1671,10 +1671,10 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # U167. No argument: the check reads a copy of the fixture's database and
         # answers or refuses from the vocabulary. tests/test_analyze_check.py.
         "analyze.check": [],
-        # U327. No argument: the fixture's intake tree holds no Analyze playlist, so
-        # the scope is empty, the plan writes nothing, the gate asks, and the verb
-        # ends NO_OP. It reads the acknowledgment first. tests/test_analyze_adopt.py.
-        "analyze.adopt": [],
+        # U327. Lazy: the intake tree is cut over, since one still on the bridge
+        # refuses; no Analyze playlist, so the scope is empty, the gate asks, and the
+        # verb ends NO_OP. It reads the acknowledgment first. tests/test_analyze_adopt.py.
+        "analyze.adopt": _intake_cut_over,
         # U112. No argument. Its database area reads the acknowledgment first; every
         # step plans nothing or refuses, and both areas still ask.
         "organize": [],

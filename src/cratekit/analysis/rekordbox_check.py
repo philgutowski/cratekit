@@ -644,7 +644,9 @@ class Check:
             "key_equal_floor": None if floor is None else round(floor, 4),
             "key_suspect": self.key_suspect,
             "tempo_differs": sum(
-                1 for row in self.analysed if tempo_differs(row.head_tempo, row.tempo)
+                1
+                for row in self.analysed
+                if row.headed and tempo_differs(row.head_tempo, row.tempo)
             ),
             "differs": len(self.differing),
         }

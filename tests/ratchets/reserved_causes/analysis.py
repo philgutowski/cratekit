@@ -63,7 +63,7 @@ KEBAB_LITERALS = {
         'adopt-nothing-to-write',
         'adopt-records-unread',
         'adopt-rows-left',
-        'adopt-scope-unread',
+        'adopt-scope-empty',
         'analyze-adopt-unwritten',
     ],
     # 2026-11-12, U263: a file only ffmpeg decodes, on a machine without it.
