@@ -233,21 +233,21 @@ new = '''    held = tuple(sorted(set(placements.holds(bucket, content_id)) & com
 
 [[rows]]
 id = "R27_move_split_kept"
-description = "standing: drop the split place the other entry keeps no more, so adopt move takes Soul with R&B out of R&B (B1)"
+description = "held_in: keep no split place for the other entry, so adopt move takes Soul with R&B out of R&B and the worker reads the band as left (B1, round two)"
 file = "src/cratekit/adopt/move.py"
 surface = "user"
 tests = ["tests/test_second_genre.py", "tests/test_adoption.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py"]
-old = '''        sorted((set(placements.holds(entry.bucket, entry.content_id)) & competing) - kept)'''
-new = '''        sorted(set(placements.holds(entry.bucket, entry.content_id)) & competing)'''
+old = '''    return frozenset(held - kept_beside(declared, bucket, elsewhere))'''
+new = '''    return frozenset(held)'''
 
 [[rows]]
 id = "R28_worker_no_elsewhere"
-description = "remaining: check an approved move with no other entry's buckets, so the worker disagrees with the plan for a split pair"
+description = "handle: read the moves back with no other entry's buckets, so a written split pair move is reported in both (round two)"
 file = "src/cratekit/adopt/move_cli.py"
 surface = "user"
 tests = ["tests/test_second_genre.py", "tests/test_adoption.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py"]
-old = '''            elsewhere=move_engine.elsewhere_of(claimed, entry),'''
-new = '''            elsewhere=frozenset(),'''
+old = '''        cfg, declared, approved, gone, move_engine.claimed_buckets(current.entries)'''
+new = '''        cfg, declared, approved, gone, {}'''
 
 [[rows]]
 id = "R29_edit_fallback_taken"
