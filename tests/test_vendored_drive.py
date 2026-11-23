@@ -1,9 +1,8 @@
 """U274: a download job logs in once per drive, four provider calls a track.
 
-The session is materialised, validated and written back once per drive, and the private
-token file goes when the drive ends or fails. The vendored tool is stood in by the smallest
-doubles the real ``authenticate`` and ``fetch`` accept, each asking the provider through
-``request_session.request``, which the real gate wraps, so every call is counted by the gate.
+The session is validated and written back once per drive, and the token file
+goes when the drive ends or fails. The vendored tool is stood in by the
+smallest doubles the real calls accept, asking through the gated request.
 """
 
 from __future__ import annotations

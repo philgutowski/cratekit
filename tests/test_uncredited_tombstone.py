@@ -1,10 +1,9 @@
 """The companion a credited tombstone gains, on the RECORDING side (R-431).
 
-A row that kept a featured credit is also recorded with the credit groups taken
-out, under a kind of its own (the consulting half is in ``test_match_states.py``
-and ``test_intake_missing.py``). A row with no credit gains nothing, the companion
-never lands under the tombstone's own kind, and recording and lifting are each ONE
-write. Every identity asserted is a literal, never one built by the code under test.
+A row that kept a featured credit is also recorded with the credit groups out,
+under a kind of its own (the consulting half is in ``test_match_states.py`` and
+``test_intake_missing.py``). Recording and lifting are each ONE write, and every
+identity asserted is a literal.
 """
 
 from __future__ import annotations
@@ -83,9 +82,7 @@ def test_the_companion_identity_is_the_verbatim_one_with_the_credit_out():
 
 
 def test_the_companion_is_built_from_the_composed_title_not_the_title_column():
-    """The version column is composed in FIRST, the way the tombstone's own
-    identity is, so a row whose mix name sits beside the title strips to the
-    string a provider composes for it."""
+    """The version column is composed in first, as the tombstone's own identity is."""
     assert stores.uncredited_version_of(
         row("Sun Path (feat. Mira)", version="Nightwave Remix")
     ) == {"artist": "aurora bloom", "title": "sun path (nightwave remix)"}
@@ -386,9 +383,7 @@ def test_lifting_the_companion_alone_leaves_the_tombstone_standing(cfg):
 
 
 def test_lifting_a_plain_tombstone_touches_no_companion_it_does_not_own(cfg):
-    """A plain ``Sun Path (Nightwave Remix)`` deletion strips to nothing, so
-    lifting it must leave the credited deletion's companion where it is, even
-    though the two titles are the same string."""
+    """A plain deletion strips to nothing, so lifting it leaves the credited one's companion."""
     stores.record_tombstone(cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion")
     plain = stores.record_tombstone(
         cfg, row("Sun Path (Nightwave Remix)", content_id="9002"), actor="deletion"

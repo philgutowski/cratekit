@@ -1,15 +1,11 @@
 """R-1534, R-1631, R-1636 and R-1646: a title matches only its own recording, in every source.
 
 Two titles match when they name the same words once each has shed what is not
-its title (trailing bracket groups read from the end, a row's version dash
-tail, the file's ``KEY - BPM`` head and its dash parts that are an artist, a
-version or an album, a feature credit, a trailing version run, leading
-groups); "Artist - X" with X ending in a version matches only a row writing
+its title; "Artist - X" with X ending in a version matches only a row writing
 the same split (R-1646). Nothing is compared by characters, and a side with no
-letter or digit matches nothing. A title written only inside the other's
-trailing brackets is a known cost, pinned below. Section L pins the parse
-itself (U280). Nothing here opens a socket: pages are synthetic text handed to
-the injected fetch seam.
+letter or digit matches nothing. A title only inside the other's trailing
+brackets is a known cost, pinned. Section L pins the parse (U280). Pages are
+synthetic text handed to the injected fetch seam.
 """
 
 from __future__ import annotations
@@ -254,18 +250,14 @@ def test_a_files_head_is_never_its_title(searched, found):
     ],
 )
 def test_two_titles_are_compared_by_whole_words_never_by_characters(searched, found):
-    """The pairs R-1534 pinned as a known residual, two cores matched by raw
-    substring. A title is its words, so a word inside another word is no
-    match, and a title is never a part of another title's words."""
+    """R-1534's residual pairs: a word inside another word, or part of a title, is no match."""
     assert not _matches(searched, found)
     assert not _matches(found, searched)
     assert _matches(f"{searched}!", searched)
 
 
 def test_a_catalogue_rows_dash_tail_is_never_its_title():
-    """A catalogue writes a version after a dash; a file writes its head before
-    one. So the row is read by its head and the file from where its title
-    starts, and a tail of version words alone is no title on either side."""
+    """A row is read by its head, a file from its title on; a tail of version words is no title."""
     assert not _matches("Original Mix", f"{OTHER} - Original Mix")
     assert not _matches(f"{OTHER} - Original Mix", "Original Mix")
     assert _matches(f"{OTHER} - Original Mix", OTHER)
@@ -355,9 +347,7 @@ def test_beatport_prefers_its_own_row_over_another_by_the_artist():
 
 
 def test_beatport_never_lets_a_short_row_name_outscore_the_files_own_row():
-    """Round two's BLOCKING: a row named "Love (feat. X)" has the core "love",
-    and a middle tier on cores scored it level with the file's own row, so page
-    order wrote the first row's genre."""
+    """Round two: a core tier scored "Love (feat. X)" level with the file's own row."""
     rows = [
         _beatport_track(ARTIST, "Love (feat. X)", "Techno"),
         _beatport_track(ARTIST, "Love Is The Message", BUCKET_GENRE),
@@ -410,11 +400,10 @@ def test_beatport_prefers_the_headed_files_own_row_over_another_by_the_artist():
 
 
 def test_a_title_written_only_inside_the_rows_trailing_brackets_is_a_known_cost():
-    """Not a property to keep: a known cost of R-1631, recorded as a residual.
-    "How Does It Feel" against "Untitled (How Does It Feel)" carries the same
-    evidence as "Intro" against "Sunrise Mood (Intro)", a title read only inside
-    the other's brackets, and only a list of version words could tell the two
-    apart, so both are refused. Pinned so a change to it is seen."""
+    """A known cost of R-1631, pinned so a change is seen: a title only inside the other's brackets.
+
+    "Untitled (How Does It Feel)" and "Sunrise Mood (Intro)" carry the same evidence.
+    """
     name = "Untitled (How Does It Feel)"
     hit = _beatport_hit("How Does It Feel", [_beatport_track(ARTIST, name, BUCKET_GENRE)])
     assert _beatport_answer(hit) == "miss"
@@ -455,9 +444,7 @@ def test_traxsource_writes_no_genre_off_another_track_by_the_artist(searched, fo
 
 
 def test_bandcamp_never_reads_a_headings_artist_as_its_title():
-    """A heading "Artist - Friday Night Mix" read whole is the artist's name
-    and a version; the file asked by its name "KEY - BPM - Artist - Title"
-    carries the same name, and the two met on it."""
+    """A heading "Artist - Friday Night Mix" read whole met the file on the artist's name."""
     hit = _bandcamp_hit(f"05B - 98 - {ARTIST} - Body", f"{ARTIST} - Friday Night Mix")
     assert hit.genre is None
     assert _bandcamp_hit("Body", f"{ARTIST} - Body (Extended Mix)").genre == BUCKET_GENRE
@@ -577,9 +564,7 @@ R1631_WRITES = [
 def test_a_headed_file_takes_its_own_rows_genre_over_another_listed_first(
     tmp_path, silence, title, other, own, mix
 ):
-    """Round one: the top tier read the head's words too, so a headed title
-    never reached it, and page order chose between the file's own row and
-    another by the artist."""
+    """Round one: the top tier read the head's words too, so page order chose."""
     path = tmp_path / "a.flac"
     path.write_bytes(Path(silence).read_bytes())
     assert tags.write_tags(path, {"artist": ARTIST, "title": title})
@@ -753,9 +738,7 @@ def _beatport_and_discogs(row: str, number: int):
 def test_a_files_title_tag_writes_no_genre_off_a_dash_part_that_is_not_its_title(
     tmp_path, silence, title, other
 ):
-    """The card's shapes as R-1631's review drove them: Beatport's row and
-    Discogs' track are another recording by the artist, and neither may write
-    its genre onto a file whose title tag carries the shape."""
+    """R-1631's review: neither another recording's row nor track writes its genre."""
     path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": title})
 
     result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(other, 46)))
@@ -866,13 +849,10 @@ def test_an_untagged_file_named_with_its_artist_as_written_takes_its_own_genre(
 def test_a_self_titled_tracks_dash_version_the_list_lacks_finds_its_own_row_only_when_it_writes_the_version(
     tmp_path, silence
 ):
-    """Round one's B1 of R-1636, as R-1646 settles it: "Artist - Vocal Mix"
-    is either a title "Vocal Mix" or a self titled track and its version, and
-    nothing but a list tells them apart. Neither is read alone, so the file's
-    own row under another mix and the "Vocal" row are both a miss, on page
-    order or not, and the self titled reading is never taken when the other
-    part does not end in a version. The known cost is the own row under
-    another mix, recorded for Phillip on #788."""
+    """R-1636 B1 as R-1646 settles it: "Artist - Vocal Mix" is read neither way alone.
+
+    The own row under another mix is the known cost, recorded for Phillip on #788.
+    """
     title = f"08A - 124 - {ARTIST} - Vocal Mix"
     assert not _matches(title, ARTIST)
     assert not _matches(title, f"{ARTIST} (Extended Mix)")
@@ -1312,16 +1292,12 @@ def test_a_track_numbered_title_after_a_version_ending_album_is_still_the_title(
     ["Sunrise Mood feat. Tide - Bernard Badie", "Sunrise Mood (feat. Tide) - Bernard Badie"],
 )
 def test_a_title_crediting_a_featured_artist_is_still_read_without_the_credit(title):
-    """Round two: a file searched by the featured artist alone, its first part
-    a title with the credit after it, lost "sunrise mood" when the whole name
-    was read unshed, so the self titled row of the other artist won."""
+    """Round two: read unshed, the name lost "sunrise mood" to another self titled row."""
     assert searchers._title_matches(title, "Sunrise Mood", artist="Tide")
 
 
 def test_a_title_crediting_a_featured_artist_takes_its_own_genre_listed_first(tmp_path, silence):
-    """As on main: listed first, the file's own row wins. Listed second, the
-    other artist's self titled row ties with it and wins on page order, as it
-    did on main (R-1636's residual on the artist's part read as a title)."""
+    """As on main, listed second the other artist's self titled row wins on page order (R-1636)."""
     path = _file(tmp_path, silence, "a", {"artist": "Tide", "title": "Sunrise Mood feat. Tide - Bernard Badie"})
     rows = [("Sunrise Mood", "Original Mix", BUCKET_GENRE), (ARTIST, "Original Mix", "Techno")]
     beatport = searchers.Fetched(
@@ -1357,9 +1333,7 @@ def test_the_self_titled_split_reads_past_a_marker_and_a_feature_credit_together
     ],
 )
 def test_a_bracketed_title_before_a_feature_is_read_without_the_credit(title, own):
-    """Found by the differential after fix round two: the marker strip took
-    the title's brackets too, so the feature word led the part and the whole
-    name was kept unshed, losing the title's own row."""
+    """The marker strip took the title's brackets too, losing the title's own row."""
     assert _matches(title, own)
 
 
@@ -1544,12 +1518,10 @@ def _rendered(chance) -> tuple[str, str, str, str]:
 
 
 def test_every_name_the_naming_verb_renders_finds_its_own_row_and_no_other(monkeypatch):
-    """The card's property: names rendered from the naming verb's own grammar,
-    with random heads, markers, credits, titles, versions, albums and track
-    numbers, each match their own title's row however a catalogue writes its
-    version, and no other title's, nor the artist's self titled row, nor the
-    album, nor a version alone. Through the shipped matcher, with its two pure
-    readers remembered so each side is read once (U306)."""
+    """Names rendered from the naming verb's grammar match their own row only, however written.
+
+    Through the shipped matcher, its two pure readers remembered (U306).
+    """
     monkeypatch.setattr(titles, "read_file", functools.lru_cache(maxsize=None)(titles.read_file))
     monkeypatch.setattr(titles, "read_row", functools.lru_cache(maxsize=None)(titles.read_row))
     chance = random.Random(791)
@@ -1620,10 +1592,7 @@ def test_a_whole_name_is_never_shed_across_its_dashes(artist, title, row):
 
 
 def test_a_lossy_file_named_with_a_track_number_takes_no_self_titled_genre(tmp_path, silence):
-    """Review round one's F1, through the naming verb and tag_one: a lossy
-    file with no key and no tempo is titled "[MP3] 01 - Artist - (Intro)",
-    and the track number read past the marker across a dash left the
-    artist's name, so the self titled row wrote its genre."""
+    """F1: "[MP3] 01 - Artist - (Intro)" read past the marker left the artist's name."""
     rendered = render_all(NameSpec(stem=f"01 - {ARTIST} - (Intro)", suffix=".flac", lossy=True), template=_TEMPLATE)
     path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": rendered.title_tag})
 
@@ -1638,9 +1607,7 @@ def test_a_lossy_file_named_with_a_track_number_takes_no_self_titled_genre(tmp_p
     "title", [f"{ARTIST} - (Intro)", f"{ARTIST} - (Intro) (Live)", f"{ARTIST} - [Intro]", "007 (Intro)"]
 )
 def test_beatport_ranks_no_row_by_brackets_shed_across_a_dash(title):
-    """Review round two: Beatport's middle tier read the title's core across
-    a dash, so "Artist - (Intro)" scored the self titled row above the file's
-    own, in either order on the page."""
+    """Round two: a core read across a dash scored the self titled row above the file's own."""
     rows = [_beatport_track(ARTIST, ARTIST, "Techno"), _beatport_track(ARTIST, "Intro", BUCKET_GENRE)]
     for page in (rows, rows[::-1]):
         assert _beatport_hit(title, page).genre in (BUCKET_GENRE, None)

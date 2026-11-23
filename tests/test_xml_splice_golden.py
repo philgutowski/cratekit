@@ -1,20 +1,13 @@
 """Byte exact golden characterization of every XML splice.
 
-A golden pins the EXACT bytes a splicer emits against a synthetic fixture, so a
-refactor that changes the output fails with a readable diff. Nine are ported
-byte for byte from the source system, whose five duplicated splicers Cratekit
-collapses into one writer, the change most likely to move a byte silently;
-``NOT_PORTED`` names this product's own.
-
-**These pin CURRENT behaviour, bugs included.** When one goes red, decide
-whether the change was intended, then regenerate; never hand edit a ``.bytes``
-file, since the producing code is the source of truth.
+Nine are ported from the source system, whose five splicers Cratekit collapses
+into one writer; ``NOT_PORTED`` names this product's own. **These pin CURRENT
+behaviour, bugs included**: decide whether a change was intended, then
+regenerate, never hand edit a ``.bytes`` file.
 
     REGEN=1 pytest tests/test_xml_splice_golden.py
 
-The integrity half asserts the goldens arrived intact and still carry what the
-table names, because a port truncates or converts a binary file invisibly. The
-producer half drives each writer against its golden.
+The goldens are checked intact, then each writer is driven against its own.
 """
 
 from __future__ import annotations
@@ -116,9 +109,7 @@ def _check(name: str, produced: bytes) -> None:
 
 
 def test_every_declared_golden_is_present_and_no_others():
-    """The table and the directory agree both ways: a golden that failed to copy,
-    and one added without saying what it locks.
-    """
+    """The table and the directory agree both ways."""
     on_disk = {path.stem for path in GOLDEN_DIR.glob("*.bytes")}
     declared = set(GOLDEN_INVARIANTS)
     assert on_disk == declared, (
@@ -132,9 +123,7 @@ def test_every_declared_golden_is_present_and_no_others():
 
 @pytest.mark.parametrize("name", sorted(GOLDEN_INVARIANTS))
 def test_golden_is_crlf_only(name):
-    """A line ending conversion during the port would damage exactly the rule the
-    goldens enforce, invisibly.
-    """
+    """A line ending conversion in the port would damage the rule the goldens enforce."""
     data = (GOLDEN_DIR / f"{name}.bytes").read_bytes()
     assert _no_bare_lf(data), f"golden {name} carries a bare LF; it must be CRLF only"
 
@@ -185,9 +174,7 @@ def test_splice_tracks_into_subplaylist_golden():
 
 
 def test_name_collision_current_behaviour():
-    """Characterizes the collision case. The unique sub name already
-    disambiguates it, so a change here is a behaviour shift, not a bug fix.
-    """
+    """The unique sub name disambiguates the collision, so a change is a behaviour shift."""
     from cratekit.write.rbxml import splice_into_subplaylist
 
     content = bytearray(_routing_xml(collision=True))
@@ -227,9 +214,7 @@ def test_entries_count_matches_tracks_actually_inserted():
 
 
 def test_unplaced_existing_sub_golden():
-    """The bare LF insert's guard: that path once emitted a bare LF while every
-    sibling emitted CRLF.
-    """
+    """That path once emitted a bare LF where every sibling emitted CRLF."""
     from cratekit.write import trees
 
     content = bytearray(_routing_xml())
@@ -276,9 +261,7 @@ def test_rating_write_golden():
 
 
 def test_second_rating_writer_golden():
-    """The source system carried TWO rating writers; both goldens still matching
-    proves one writer lost nothing.
-    """
+    """The source carried two rating writers; both goldens matching proves one lost nothing."""
     from cratekit.write import trees
 
     content = bytearray(_rating_fixture(42, 0))
@@ -343,9 +326,7 @@ def test_label_subtree_golden(tmp_path):
 
 
 def test_label_subtree_written_twice_matches_the_single_write_golden(tmp_path):
-    """R-129: a second write of the same label adds nothing, checked against the
-    single write's golden so any moved byte fails with its diff.
-    """
+    """R-129: a second write of the same label adds nothing, against the single write's golden."""
     from cratekit.write import trees
 
     source = tmp_path / "fresh.xml"

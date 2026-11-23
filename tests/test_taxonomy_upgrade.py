@@ -1,8 +1,6 @@
 """U132: what the shipped template declares that a library's copy lacks, and the copy with it added.
 
-The planner is a function of two texts. Each copy is cut from the shipped text
-with plain string operations, never the planner's own cut, so an expected value
-never comes from the code under test.
+Each copy is cut with plain string operations, never the planner's own cut.
 """
 
 from __future__ import annotations
@@ -359,9 +357,7 @@ def test_every_bucket_of_the_copy_filing_a_word_is_named_not_the_first():
 
 
 def test_a_vocabulary_row_whose_tag_files_where_the_template_shares_the_word_is_not_named():
-    """The row's tag files in the breaks bucket, which the shipped template
-    gives "Trap / Wave" on purpose, so taking R&B's word out leaves it
-    loading; only the bucket that clashes is named, not the row."""
+    """Only the clashing bucket is named, not the row filing in the breaks bucket."""
     copy = _retag(_without(_shipped(), HIP_HOP_START, HIP_HOP_END), "Rap/Hip Hop", "Hip-Hop", "R&B")
     copy = _swap(copy, 'tag_aliases = [\n  "rnb",\n]', 'tag_aliases = [\n  "rnb",\n  "trap / wave",\n]')
     reggae = '  { word = "Reggae", tag = "Caribbean" },\n'

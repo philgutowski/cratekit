@@ -1,9 +1,8 @@
 """The tree writers in both mediums, and the row matching between them (U18).
 
-The goldens in tests/test_xml_splice_golden.py pin the bridge writers' bytes;
-this file covers the paths no golden was made for, and the database half against
-a real database, where the joints are. D1: every name is synthetic, with a space
-and an accented character in both composition forms.
+tests/test_xml_splice_golden.py pins the bridge bytes; this covers the paths no
+golden was made for, and the database half on a real database. D1: names are
+synthetic, with a space and an accent in both composition forms.
 """
 
 from __future__ import annotations

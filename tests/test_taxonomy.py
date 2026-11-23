@@ -1,10 +1,8 @@
 """The template is data, and a template that cannot be trusted is refused at load.
 
-The loader's rules are each proved to bite on a template mutated from the good
-one, so a rule cannot pass by describing itself. The parameterisation claim is
-proved with a second taxonomy sharing nothing with the default, the only honest
-way to show the engine reads its taxonomy rather than remembering one. Parity
-against the old resolvers is in tests/test_routing_parity.py.
+Each rule is proved to bite on a mutated template, and a second taxonomy sharing
+nothing with the default proves the engine reads its taxonomy. Parity against
+the old resolvers is in tests/test_routing_parity.py.
 """
 
 from __future__ import annotations
@@ -473,11 +471,9 @@ def test_a_custom_taxonomy_answers_by_its_own_declaration(second, ask, answer):
 
 
 def test_a_buckets_own_display_name_is_never_reported_off_taxonomy(default, second):
-    """R-650. ``suggest_tag`` has no tier for a display name, so a bucket's own
-    name, which this tagger writes back onto files, passes through the last tier
-    as itself. Routing places it, so reporting it would show the person their
-    own template as something to fix. Both templates, and the second loop shows
-    the check is not vacuous.
+    """R-650: a bucket's own name passes the last tier as itself and routing places it: unreported.
+
+    Both templates; the second loop shows the check is not vacuous.
     """
     for declared in (default, second):
         displays = [bucket.display for bucket in declared.buckets]
@@ -493,10 +489,7 @@ def test_a_buckets_own_display_name_is_never_reported_off_taxonomy(default, seco
 
 
 def test_a_sub_display_and_a_changed_case_are_both_reported(default, second):
-    """The suppression above is the routing tier, not the vocabulary. A sub's
-    display and a bucket display in another case (the Bandcamp picker's own
-    lowercase) both land in the fallback, the cost R-650 names, so both report.
-    """
+    """The suppression is routing's: a sub's display and a recased bucket both report (R-650)."""
     for display in ("Birds", "Water", "Engines"):
         assert routing.suggest_tag(second, display).off_taxonomy is True
         assert routing.resolve_bucket(second, display).bucket_id == second.fallback.bucket

@@ -1,9 +1,7 @@
 """A genre word outside the taxonomy, answered in one command (U194).
 
-The planner, ``core.taxonomy_word``, on the shipped text and copies cut from
-it: which words it answers, the edit it makes, and that nothing else moves.
-Then the two verbs through the real dispatcher, on a library holding a copy and
-real tagged containers: the gate, the stale answer, the writes and the read back.
+The planner, ``core.taxonomy_word``, on the shipped text and copies cut from it,
+then the two verbs through the dispatcher on a copy and real tagged containers.
 """
 
 from __future__ import annotations
@@ -180,9 +178,7 @@ def test_a_declined_word_that_is_a_folders_name_is_a_folder_already_declared():
 
 @pytest.mark.parametrize("word", [BREAKS_LOWER, "nonelectronic", "AFRO HOUSE"])
 def test_a_folders_own_name_in_another_case_is_refused_to_any_other_folder(word):
-    """R-1184: a folder's lowercased name is off taxonomy, and an alias of
-    another folder would retag the exact name too, a folder of its own would be
-    a second of that name, so both refuse saying where the files are filed now."""
+    """R-1184: a folder's lowercased name refuses both verbs, saying where its files are filed."""
     declared = taxonomy.load_taxonomy(_shipped())
     if word != "AFRO HOUSE":
         assert routing.suggest_tag(declared, word).off_taxonomy
@@ -217,9 +213,7 @@ def test_a_folders_own_name_in_another_case_is_answered_by_its_own_folder(name):
 
 
 def test_a_folders_own_name_whose_folder_files_nothing_by_its_name_is_refused_truly():
-    """NonElectronic files by each track's own genre, so its bare name files
-    nothing: refused by its own folder, the one step is a retag by hand, never
-    the folder verb that refuses it too."""
+    """NonElectronic files nothing by its bare name, so the one step is a retag by hand."""
     with pytest.raises(word_edit.Refused) as refused:
         word_edit.alias(_shipped(), "nonelectronic", "NonElectronic")
     assert refused.value.why == word_edit.OWN_NAME

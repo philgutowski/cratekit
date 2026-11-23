@@ -1,10 +1,7 @@
 """U242: the DOWNLOADED prefix is retired, and Cratekit records what it took itself.
 
-THE PRODUCER IS THE PRODUCT. A hand prefixed playlist is listed under the
-prefix with nothing in the cursor or the record, as the live account's 599
-are. A Cratekit marked one is made by the real verbs through
-``tests/test_sync_mark.py``'s helpers; only the two provider seams are faked.
-The fake catalogue does not see the fake account's renames, so each test
+A hand prefixed playlist is listed with no cursor or record; a marked one is
+made by the real verbs; only the provider seams are faked, and each test
 retitles the listing to what the account would list after a strip.
 """
 
@@ -770,11 +767,7 @@ def test_unmark_playlist_narrows_the_releases(slim, monkeypatch):
 
 
 def test_a_release_whose_title_was_retitled_since_stamps_the_pass_mark(slim, monkeypatch):
-    """The strip trims ``Warmup `` to ``Warmup``, which reads retitled since.
-
-    The release still stamps the pass's mark, and neither the next migration
-    nor the next strip takes it again.
-    """
+    """The strip reads ``Warmup`` as retitled since; the release still stamps the pass's mark."""
     record = mark_record.MarkRecord(slim)
     record.record_marked("old-pass", {"pl-a": ("Warmup ", "DOWNLOADED Warmup ")})
     _stripped(slim, monkeypatch, (_playlist("pl-a", "DOWNLOADED Warmup ", 1), _tracks("1")))
