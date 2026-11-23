@@ -1,0 +1,273 @@
+"""What the four favourites verbs and their writers share, written once.
+
+:func:`run` is the verbs' one shape: the backup acknowledgment before anything
+is read (R-733), the plan on a handle opened to read and closed, the gate over
+the digested plan, the write on its own write handle, which takes the plan
+again and refuses a digest that moved, then the read back. The writers share
+their refusals, each in its own wording.
+
+Layer: modules.
+"""
+
+from __future__ import annotations
+
+from contextlib import contextmanager
+from dataclasses import replace
+from pathlib import Path
+from typing import Any, Callable, Iterable, Iterator
+
+from cratekit.cli.output import Envelope, declared_gate, digest_of
+from cratekit.core import analysis_store, config, convergence, rb_writer, session, tree_registry
+from cratekit.core.cause import Outcome, refuse
+from cratekit.write import trees
+
+#: The key every favourites commit is recorded under on the session, as rows
+#: created and rows changed. Not a tree id: the Favorites folder is nobody's tree.
+RECORD_KEY = "favorites"
+
+#: What a playlist row a writer moves may change: its position and the
+#: bookkeeping stamped beside it, as :func:`rb_writer.node_change_violations` admits.
+BOOKKEEPING = frozenset({"Seq", "updated_at", "usn", "rb_local_usn"})
+
+
+@contextmanager
+def handle(cfg: config.Config, *, write: bool = False) -> Iterator[Any]:
+    """The live library on a handle of the caller's own, opened to read or to write, and closed."""
+    path = rb_writer.live_db_path(cfg)
+    if write:
+        db = rb_writer.open_db(path, require_closed=True, cfg=cfg)
+    else:
+        db = rb_writer.open_db(path, require_closed=False, check_app_version=False, cfg=cfg)
+    try:
+        yield db
+    finally:
+        rb_writer.close_db(db)
+
+
+def note(code: str, message: str) -> dict[str, str]:
+    """One warning a verb carries."""
+    return {"code": code, "message": message}
+
+
+def handles(engine: Any, plan: Callable[..., Any] | None = None) -> tuple[Callable, Callable]:
+    """A verb's ``planned`` and ``written``: ``engine``'s plan and apply, each on its own handle.
+
+    ``plan(cfg, db, source)`` stands in for ``engine.plan`` when its signature differs.
+    """
+
+    def planned(cfg: config.Config, *, source: str) -> Any:
+        """The plan over the library as it stands, through a handle opened to read and closed."""
+        with handle(cfg) as db:
+            return plan(cfg, db, source) if plan else engine.plan(cfg, db, source=source)
+
+    def written(cfg: config.Config, approved: Any, *, source: str) -> Any:
+        """Apply the plan through a handle of this function's own, opened to write."""
+        with handle(cfg, write=True) as db:
+            roots = analysis_store.watch_roots(cfg)
+            return engine.apply(cfg, db, approved, source=source, analysis_roots=roots)
+
+    return planned, written
+
+
+def notes(*said: tuple[Any, str, str]) -> list[dict[str, str]]:
+    """Each ``(when, code, message)`` whose ``when`` holds, as a warning, in order."""
+    return [note(code, message) for when, code, message in said if when]
+
+
+def run(
+    ctx,
+    cfg: config.Config,
+    gate: str,
+    engine: Any,
+    *,
+    planned: Callable[[], Any],
+    written: Callable[[Any], Any],
+    idle: Callable[[Any], dict[str, str]],
+    done: Callable[[Any, Any], tuple[dict[str, Any], dict[str, str]]],
+    told: Callable[[Any], list[dict[str, str]]] = lambda plan: [],
+    payload: Callable[[Any], dict[str, Any]] | None = None,
+    gate_first: bool = False,
+) -> Envelope:
+    """Plan, ask, write and read back, through ``engine``'s payload, facts and read back.
+
+    ``idle`` notes a plan with nothing to write, which opens no gate unless
+    ``gate_first`` asks the gate first; ``done`` gives a write's totals and note.
+    """
+    spec = declared_gate(ctx.entry, gate)
+    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    session.assert_backup_acknowledged(cfg)
+
+    plan = planned()
+    data = (payload or engine.payload)(plan)
+    if not (gate_first or plan.writes):
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=[idle(plan)])
+    warnings = told(plan)
+    if ctx.gate.require(spec, plan=data, context=engine.facts(plan)) != "approve":
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
+    if not plan.writes:
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=[*warnings, idle(plan)])
+
+    result = written(plan)
+    engine.assert_read_back(result)
+    totals, said = done(plan, result)
+    return ctx.envelope(
+        data={**data, "totals": {**data["totals"], **totals}},
+        warnings=[*warnings, said],
+    )
+
+
+def watched(analysis_roots: Iterable[Path | str]) -> list[Path]:
+    """The roots the analysis-file watch covers, refused when there are none."""
+    roots = [Path(root) for root in analysis_roots]
+    if not roots:
+        raise ValueError(
+            "analysis_roots is empty, so the analysis-file watch would watch nothing "
+            "and this session would report itself clean whatever happened to the "
+            "library's grids; name the roots this write could touch"
+        )
+    return roots
+
+
+def prepared(
+    cfg: config.Config,
+    db: Any,
+    analysis_roots: Iterable[Path | str],
+    again: Callable[[], Any],
+    approved: Any,
+    said: str,
+    origin: tuple[str, str],
+) -> tuple[list[Path], Any]:
+    """A writer's start: the watched roots, the plan taken again on the write handle, fresh.
+
+    THE OUT OF BAND RESTORE IS DETECTED BEFORE THE FINGERPRINT IS TOUCHED, so
+    the fingerprint a write records blesses no database recovered from a
+    backup; the Favorites folder is no tree, so the detection marks and never refuses.
+    """
+    roots = watched(analysis_roots)
+    planned = fresh(again(), approved, said, origin)
+    convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
+    return roots, planned
+
+
+def fresh(again: Any, approved: Any, said: str, origin: tuple[str, str]) -> Any:
+    """``again``, the plan taken on the write handle, refused when its digest moved."""
+    if again.digest != approved.digest:
+        raise refuse(
+            "decision-stale",
+            f"{said}; run it again and approve what it shows now",
+            origin=origin,
+            detail={"approved": approved.digest, "now": again.digest},
+        )
+    return again
+
+
+def change(created: int, updated: int) -> session.ChangeSummary:
+    """A commit's change under the favourites key, which is nobody's registered tree."""
+    return session.ChangeSummary(
+        (session.TreeChange(tree=RECORD_KEY, created=created, updated=updated),)
+    )
+
+
+@contextmanager
+def witnessed(db: Any, landed: Callable[[], None]) -> Iterator[None]:
+    """A commit witnessed: a raise rolls back, and a commit that landed is recorded either way."""
+    with rb_writer.commit_witness(db) as witness:
+        try:
+            yield
+        except BaseException:
+            trees.rollback_quietly(db)
+            if witness.landed:
+                landed()
+            raise
+    landed()
+
+
+def confined(
+    db: Any,
+    violations_of: Callable[[rb_writer.NodeTables], list[str]],
+    said: str,
+    origin: tuple[str, str],
+) -> None:
+    """Refuse, before the commit, a write that reached what its plan did not name, read from SQL.
+
+    The pending work is flushed DELIBERATELY, inside the transaction, so the
+    second reading sees it and a refusal still rolls back, as
+    :func:`rb_writer.assert_node_changes_confined` does for the same reason.
+    """
+    db.session.flush()
+    violations = violations_of(rb_writer.node_tables(db))
+    if violations:
+        db.rollback()
+        raise refuse(
+            "whitelist-violation",
+            f"{said}, read from SQL before the commit, so nothing was written:\n  - "
+            + "\n  - ".join(violations),
+            origin=origin,
+            detail={"violations": violations},
+        )
+
+
+def digested(planned: Any) -> Any:
+    """``planned`` with the digest of its identity, the one thing its gate approves."""
+    return replace(planned, digest=digest_of(planned.identity()))
+
+
+def shown(planned: Any, items: list[dict[str, Any]], totals: dict[str, Any]) -> dict[str, Any]:
+    """A plan as its gate shows it: its digest, one item per line of the screen, and the totals."""
+    return {"digest": planned.digest, "items": items, "totals": totals, "chunk": None}
+
+
+def drift(
+    before: rb_writer.NodeTables,
+    after: rb_writer.NodeTables,
+    *,
+    touches: str,
+    made: Iterable[str],
+    written: list[str],
+    moves: Callable[[str], bool],
+    explains: str,
+) -> list[str]:
+    """What two readings differ in that a playlist writer's plan does not explain, bar memberships.
+
+    No content row changes and no playlist row disappears; a playlist row is
+    added only when ``made``; ``written`` is the caller's own reading of the rows
+    it wrote, put next; an existing row changes only its :data:`BOOKKEEPING`, and
+    only when it ``moves``.
+    """
+    violations: list[str] = []
+    if before.content != after.content:
+        violations.append(
+            f"a {rb_writer.CONTENT_TABLE} row changed, and {touches} touches no track"
+        )
+    for key in sorted(set(before.playlists) - set(after.playlists)):
+        violations.append(f"the {rb_writer.PLAYLIST_TABLE} row {key!r} disappeared")
+    for key in sorted(set(after.playlists) - set(before.playlists) - set(made)):
+        violations.append(f"an unplanned {rb_writer.PLAYLIST_TABLE} row {key!r} was added")
+    violations.extend(written)
+    for key in sorted(set(before.playlists) & set(after.playlists)):
+        moved = changed(before.playlist_columns, before.playlists[key], after.playlists[key])
+        moved -= BOOKKEEPING if moves(key) else frozenset()
+        if moved:
+            violations.append(
+                f"the {rb_writer.PLAYLIST_TABLE} row {key!r} changed "
+                f"{sorted(moved)}, which {explains}"
+            )
+    return violations
+
+
+def changed(columns: Iterable[str], before: Iterable[Any], after: Iterable[Any]) -> set[str]:
+    """The columns one row's two readings differ in."""
+    return {name for name, old, new in zip(columns, before, after) if old != new}
+
+
+def verified(done: Any, said: str, origin: tuple[str, str], *, commits: str = "commit") -> None:
+    """Refuse an answer the database does not hold."""
+    if done.disagreements:
+        raise refuse(
+            "session-committed-unverified",
+            f"{said}: "
+            + "; ".join(done.disagreements)
+            + f"; the {commits} landed and this answer cannot be vouched for",
+            origin=origin,
+            detail={"disagreements": list(done.disagreements), "session": done.session_id},
+        )

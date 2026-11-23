@@ -42,8 +42,8 @@ KEBAB_LITERALS = {
         'refused-by-policy',
     ],
     'label/harvest.py': ['harvested-label'],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
     'label/heard.py': [
-        'internal-error',
         'label-heard',
         'label-heard-ambiguous',
         'label-heard-invalid',
@@ -52,11 +52,11 @@ KEBAB_LITERALS = {
         'label-heard-not-in-playlist',
         'label-heard-not-product-made',
     ],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
     'label/heard_cli.py': [
         'label-heard',
         'label-heard-tracks-refused',
         'label-heard-tree-unchanged',
-        'label-playlists-not-followed',
     ],
     'label/held_cli.py': ['review-item-unknown', 'review-selection-invalid'],
     'label/judge_cli.py': [
@@ -71,35 +71,31 @@ KEBAB_LITERALS = {
         'no-op',
         'unavailable-transient',
     ],
-    # 2026-11-01, R-1091: the kept release reads and their refusal.
-    'label/kept_listing.py': ['label-listing-kept-unusable', 'utf-8'],  # 2026-11-05, U217.
+    # 2026-11-22, U308: the literal left with the helper it moved to.
+    'label/kept_listing.py': ['label-listing-kept-unusable'],
     'label/kept_reads.py': ['label-playlists-reads-unusable', 'utf-8'],
-    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    # 2026-11-22, U308: the literal left with the helper it moved to.
     'label/mark_cli.py': [
-        'internal-error',
         'label-mark',
         'label-mark-changed-since-plan',
         'label-mark-nothing-built',
-        'label-mark-nothing-filed',  # 2026-11-01, R-1056: a batch that filed no built year.
-        'label-playlists-not-followed',
+        'label-mark-nothing-filed',
         'not-in-batch',
         'retitled-since-built',
         'sync-mark-record-unusable',
     ],
     'label/marks.py': ['label-watermark-unusable', 'utf-8'],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
     'label/playlists_cli.py': [
-        'internal-error',
         'label-playlists',
         'label-playlists-incomplete',
         'label-playlists-not-followed',
-        # 2026-10-31, U191: the releases build's two warnings and its gate lookup.
         'label-playlists-nothing-left',
         'label-playlists-nothing-taken',
-        'label-playlists-reads-unkept',  # 2026-11-01, R-1091: reads not written.
+        'label-playlists-reads-unkept',
         'label-playlists-tracks-refused',
         'refused-by-policy',
     ],
-    'label/prune_cli.py': ['label-playlists-not-followed'],
     'label/registry.py': [
         'label-intent-unusable',
         'label-name-invalid',
@@ -118,7 +114,6 @@ KEBAB_LITERALS = {
         'review-selection-invalid',
         'utf-8',
     ],
-    'label/verify.py': ['utf-8'],
 }
 
 NAMED_WITHOUT_OWN = {
@@ -156,8 +151,8 @@ LITERAL_HOLDERS = {
     'label/dated.py': ['internal-error', 'label-new-playlists-no-folder'],
     # 2026-11-11, R-1467: a staging folder the go cannot list refuses.
     'label/go.py': ['decision-stale', 'refused-by-policy'],  # 2026-11-11, R-1499: one lifted out.
+    # 2026-11-22, U308: the literal left with the helper it moved to.
     'label/heard.py': [
-        'internal-error',
         'label-heard-ambiguous',
         'label-heard-invalid',
         'label-heard-no-releases',
@@ -175,15 +170,11 @@ LITERAL_HOLDERS = {
     # 2026-11-01, R-1091: the kept reads' refusal.
     'label/kept_listing.py': ['label-listing-kept-unusable'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable'],
-    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
-    'label/mark_cli.py': ['internal-error', 'sync-mark-record-unusable'],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
+    'label/mark_cli.py': ['sync-mark-record-unusable'],
     'label/marks.py': ['label-watermark-unusable'],
-    # 2026-10-31, U191: the gate lookup refuses a missing declaration.
-    'label/playlists_cli.py': [
-        'internal-error',
-        'label-playlists-incomplete',
-        'refused-by-policy',
-    ],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
+    'label/playlists_cli.py': ['label-playlists-incomplete', 'refused-by-policy'],
     'label/registry.py': ['label-intent-unusable', 'label-name-invalid', 'label-unknown'],
     'label/sync_cli.py': [
         'label-registry-empty',

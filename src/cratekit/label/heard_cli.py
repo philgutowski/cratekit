@@ -1,23 +1,10 @@
 """``label.heard``: a label's dated playlist heard, merged and removed (U123).
 
-``crate label heard <label> <year> <date>`` names one dated playlist,
-``<Label> <year> new <date>``, the way :mod:`cratekit.label.dated` named it.
-The verb plans what hearing it writes, shows every release and both playlists
-at one explicit gate, and on ``apply`` puts the dated playlist's tracks in the
-year playlist, removes the dated playlist, and records its releases heard.
-``--release`` names some of them instead of all. The engine is
-:mod:`cratekit.label.heard`, and its docstring says what each step holds.
-
-EXPLICIT, as every other write to the account is (R34), and more so: this
-verb removes a playlist from it. AN EMPTY PLAN STILL ASKS, on ``label
-prune``'s precedent, so a second run is a question answered over nothing.
-
-THE CATALOGUE IS READ AS ``label playlists`` READS IT, through
-:func:`cratekit.label.playlists_cli.read_catalogue`, because a release's year
-is the catalogue's and the dated plan read it there.
-
-A LABEL THAT IS NOT FOLLOWED IS A PLAN OF NOTHING, still gated, decided before
-a credential is asked for, on ``label playlists``' precedent.
+``crate label heard <label> <year> <date>`` plans what hearing one dated
+playlist writes, shows it at one explicit gate (an empty plan still asks), and
+on ``apply`` merges it into the year, removes it and records its releases
+heard; ``--release`` names some of them. The engine is
+:mod:`cratekit.label.heard`. A label nobody follows is a plan of nothing.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -29,7 +16,7 @@ from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core.cause import Outcome
-from cratekit.label import catalogue, heard, playlists_cli, sync_cli
+from cratekit.label import catalogue, dated, heard, playlists_cli, sync_cli
 from cratekit.label import cli as label_cli
 from cratekit.label import registry as labels
 
@@ -39,11 +26,7 @@ TREE_UNCHANGED = "label-heard-tree-unchanged"
 
 def build_heard(parser, entry) -> None:
     del entry
-    parser.add_argument(
-        "name",
-        metavar="LABEL",
-        help="a followed label, by its name or its registry identifier",
-    )
+    playlists_cli.label_argument(parser)
     parser.add_argument("year", metavar="YEAR", help="the dated playlist's release year")
     parser.add_argument(
         "day", metavar="DATE", help="the dated playlist's date, as its name carries it"
@@ -65,7 +48,7 @@ def build_heard(parser, entry) -> None:
 def _shown(planned: heard.HeardPlan | None, *, name: str) -> dict[str, Any]:
     if planned is None:
         return {"label": name, "nothing to hear": playlists_cli.NOT_FOLLOWED_SAID}
-    shown: dict[str, Any] = {
+    return {
         "label": planned.label,
         "dated playlist": f"{planned.name}: {planned.action}",
         "releases": (
@@ -90,7 +73,6 @@ def _shown(planned: heard.HeardPlan | None, *, name: str) -> dict[str, Any]:
         ),
         "rekordbox": heard.TREE_SAID,
     }
-    return shown
 
 
 def _tree_warning() -> dict[str, str]:
@@ -100,20 +82,12 @@ def _tree_warning() -> dict[str, str]:
 def _applied_warnings(planned: heard.HeardPlan, done: heard.Heard) -> list[dict[str, str]]:
     warnings = [_tree_warning()]
     if done.missing:
-        warnings.append(
-            {
-                "code": "label-heard-tracks-refused",
-                "message": (
-                    f"the provider would not add {len(done.missing)} track(s) of "
-                    f"{planned.name!r} to the year, so "
-                    + (
-                        "the playlist was left on the account with them"
-                        if done.kept
-                        else "they stay on the playlist"
-                    )
-                ),
-            }
+        left = "the playlist was left on the account with them"
+        message = (
+            f"the provider would not add {len(done.missing)} track(s) of {planned.name!r} "
+            f"to the year, so {left if done.kept else 'they stay on the playlist'}"
         )
+        warnings.append({"code": "label-heard-tracks-refused", "message": message})
     return warnings
 
 
@@ -135,45 +109,20 @@ def label_heard(ctx) -> Envelope:
         planned = heard.plan(
             cfg, read, remote, document, year=year, day=day, named=ctx.args.releases
         )
-    if planned is not None:
-        payload = planned.payload()
-    else:
-        payload = {
-            "digest": digest_of({"kind": "label-heard", "label": name, "year": year, "day": day}),
-            "items": [],
-            "totals": {"count": 0, "heard": 0, "add": 0, "remove": 0, "take off": 0, "writes": False},
-            "chunk": None,
-        }
+    payload = planned.payload() if planned is not None else dated.gate_plan(
+        digest_of({"kind": "label-heard", "label": name, "year": year, "day": day}),
+        [],
+        {"heard": 0, "add": 0, "remove": 0, "take off": 0, "writes": False},
+    )
     option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=_shown(planned, name=name))
     if planned is None:
-        return ctx.envelope(
-            data=payload,
-            outcome=Outcome.NO_OP,
-            warnings=[
-                {
-                    "code": "label-playlists-not-followed",
-                    "message": f"{name}: {playlists_cli.NOT_FOLLOWED_SAID}",
-                }
-            ],
-        )
+        return playlists_cli.not_followed(ctx, payload, name)
     if option != "apply" or not planned.writes:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=[_tree_warning()])
     done = heard.apply(cfg, remote, planned)
-    totals = {
-        **payload["totals"],
-        "applied": {
-            "added": done.added,
-            "taken off": done.taken_off,
-            "removed": done.removed,
-            "kept": done.kept,
-            "heard": done.recorded,
-        },
-    }
-    return ctx.envelope(
-        data={**payload, "totals": totals},
-        outcome=Outcome.OK,
-        warnings=_applied_warnings(planned, done),
-    )
+    written = {"added": done.added, "taken off": done.taken_off, "removed": done.removed}
+    written.update(kept=done.kept, heard=done.recorded)
+    return playlists_cli.applied(ctx, payload, written, _applied_warnings(planned, done))
 
 
 __all__ = ["TREE_UNCHANGED", "build_heard", "label_heard"]
