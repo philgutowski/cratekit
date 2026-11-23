@@ -36,8 +36,8 @@ correct, asserted the right thing, and could not fail.
 `jobs.frozen_config(job)` rebuilds a `Config` by calling
 `config.from_dict(tomllib.loads(job.config_toml))` (`src/cratekit/core/jobs.py:891`),
 and `config.from_dict` applies environment overrides first, unconditionally,
-before anything else is read (`src/cratekit/core/config.py:2902`,
-`_apply_env_overrides`). That is true of every call to `from_dict`, live or
+before anything else is read (`config.from_dict`, through
+`_apply_env_overrides` in `src/cratekit/core/config_validate.py`). That is true of every call to `from_dict`, live or
 frozen: **a frozen configuration is frozen against its own bytes changing, not
 against an environment variable that is still set when it is rebuilt.** If
 `CRATEKIT_LIBRARY_ROOT` is set, both the live config and a job's frozen config

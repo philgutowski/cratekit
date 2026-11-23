@@ -1,0 +1,333 @@
+name = "u299-replay-before-5"
+pass_kind = "replay"
+
+[[rows]]
+id = "u247.M9_unmounted_guard_sample"
+source = { table = "u247.json", id = "M9_unmounted_guard_sample" }
+description = "active_taxonomy.read_text: drop the unmounted volume refusal, a sample of the existing guard the memo sits behind"
+file = "src/cratekit/core/active_taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_active_taxonomy.py", "tests/test_adopt_workers.py", "tests/test_tag_workers.py"]
+old = '        if not cfg.library.root.is_dir():'
+new = '        if False:'
+
+[[rows]]
+id = "r388-c.M14_status_registration_dropped"
+source = { table = "r388-c.json", id = "M14_status_registration_dropped" }
+description = "Remove the slug from core.cause REASONS, the P5 registration beside the reservation"
+file = "src/cratekit/core/cause.py"
+surface = "maintainer"
+tests = ["tests/intake/test_collection_xml.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_set_fetch.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/modules/test_outbound.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/test_acquire_workers.py", "tests/test_adapter_listing.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_catalogue_searcher.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_discovery.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_incremental_sync.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_job_outcome.py", "tests/test_jobs.py", "tests/test_label_approved.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_landing.py", "tests/test_landing_labels.py", "tests/test_listdoc.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_metadata_cli.py", "tests/test_metadata_policy.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_reserved_causes.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_review_queue.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_setbuilder_cli.py", "tests/test_skills_install.py", "tests/test_snapshot.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tombstones.py", "tests/test_tree_writer.py", "tests/test_uncredited_tombstone.py", "tests/test_vocals_cli.py", "tests/test_write_session.py"]
+old = '''
+        "snapshot-listing-failed": ExitCode.PRECONDITION,
+'''
+new = ''
+
+[[rows]]
+id = "u27-round-8-independent.C1_immutable_valueerror"
+source = { table = "u27-round-8-independent.json", id = "C1_immutable_valueerror" }
+description = "Drop the ValueError catch in _immutable, so an embedded-null path raises out of the refusal handler"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_metadata_policy.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''
+        flags = getattr(os.lstat(path), "st_flags", 0)
+    except (OSError, ValueError):'''
+new = '''
+        flags = getattr(os.lstat(path), "st_flags", 0)
+    except OSError:'''
+
+[[rows]]
+id = "r345.A10_spelled_remote_wins"
+source = { table = "r345.json", id = "A10_spelled_remote_wins" }
+description = "derived_backup_remote: derive even when the file spells a remote, so the file's own spelling is overwritten"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''
+    if isinstance(remote, str) and remote.strip():
+        return None
+    for key in BACKUP_DESTINATION_KEYS:'''
+new = '''
+    if False:
+        return None
+    for key in BACKUP_DESTINATION_KEYS:'''
+
+[[rows]]
+id = "r744.C2_bool_accepted"
+source = { table = "r744.json", id = "C2_bool_accepted" }
+description = "a boolean is accepted as a bound, since bool is an int to isinstance"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_head_agreement.py"]
+old = '        if isinstance(value, bool) or not isinstance(value, int) or value < 1:'
+new = '        if not isinstance(value, int) or value < 1:'
+
+[[rows]]
+id = "u197.M6_config_default"
+source = { table = "u197.json", id = "M6_config_default" }
+description = "AcquisitionConfig: default to the retired key, so a fresh configuration names it"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '    adapter: str = "vendored"'
+new = '    adapter: str = "tidal_dl_ng"'
+
+[[rows]]
+id = "u298.H7_held_translates_acquisition"
+source = { table = "u298.json", id = "H7_held_translates_acquisition" }
+description = "held: a lock another holder has leaves as the lock error, not the store's own refusal"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''
+    except ConfigLockUnavailable as exc:
+        raise refused(exc) from exc'''
+new = '''
+    except ConfigLockUnavailable:
+        raise'''
+
+[[rows]]
+id = "u39-naming-independent.E2_wheel_letter_widened"
+source = { table = "u39-naming-independent.json", id = "E2_wheel_letter_widened" }
+description = "Existing guard sample: the Camelot letter class admits C, not just A/B"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+_CAMELOT_LETTER = r"[AB]"
+'''
+new = '''
+_CAMELOT_LETTER = r"[ABC]"
+'''
+
+[[rows]]
+id = "r118-a.A4_wrong_shape_returns_empty"
+source = { table = "r118-a.json", id = "A4_wrong_shape_returns_empty" }
+description = "A payload whose recorded key is not a list of names answers nothing recorded"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+    if not isinstance(names, Iterable) or isinstance(names, str):
+        raise _damaged(path, "does not carry a list of recorded credential names", left)'''
+new = '''
+    if not isinstance(names, Iterable) or isinstance(names, str):
+        return frozenset()'''
+
+[[rows]]
+id = "r799-a.L4_a_word_declared_twice_is_refused"
+source = { table = "r799-a.json", id = "L4_a_word_declared_twice_is_refused" }
+description = "loader: let the second row for one word replace the first"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_vocabulary.py", "tests/test_published_genre.py", "tests/test_tag_remap.py"]
+old = '            if word.lower() in seen:'
+new = '            if False:'
+
+[[rows]]
+id = "u155.T11_shape_check"
+source = { table = "u155.json", id = "T11_shape_check" }
+description = "_build_buckets: read a genre_sub of the wrong shape as rows, not a problem"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/intake/test_collection_xml.py", "tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_active_taxonomy.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_jazz_folder.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_split_place.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py", "tests/test_analysis_workers.py", "tests/test_catalogue_searcher.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_placement.py", "tests/test_foreign_tree.py", "tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py", "tests/test_genre_retag.py", "tests/test_genre_sub.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py", "tests/test_label_genre_gate.py", "tests/test_landing_labels.py", "tests/test_metadata_policy.py", "tests/test_no_beatgrid_ever.py", "tests/test_organize.py", "tests/test_published_genre.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_report_genres.py", "tests/test_reports_cli.py", "tests/test_routing_parity.py", "tests/test_routing_workers.py", "tests/test_setbuilder_cli.py", "tests/test_skills_lint.py", "tests/test_sync_pair.py", "tests/test_tag_remap.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tagging_engine.py", "tests/test_taxonomy.py", "tests/test_taxonomy_upgrade.py", "tests/test_tree_registry.py", "tests/test_tree_writer.py", "tests/test_vocabulary.py", "tests/test_xml_splice_golden.py"]
+old = '''
+        if not isinstance(genre_raw, list) or not all(
+            isinstance(row, Mapping) for row in genre_raw
+        ):'''
+new = '        if False:'
+
+[[rows]]
+id = "u88-b.X1_bound_below_one"
+source = { table = "u88-b.json", id = "X1_bound_below_one" }
+description = "_build_long_tracks: accept a zero bound"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_routing_workers.py"]
+old = 'or seconds < 1:'
+new = 'or seconds < 0:'
+
+[[rows]]
+id = "u133-a.P9_keyword_note_gone"
+source = { table = "u133-a.json", id = "P9_keyword_note_gone" }
+description = "The plan never carries the sentence about the copy's keyword rule"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+tests = ["tests/test_taxonomy_upgrade.py"]
+old = '''
+        keywords=_keyword_rules(tuple(added[BUCKET]), active, shipped),
+'''
+new = '''
+        keywords=(),
+'''
+
+[[rows]]
+id = "u194.W13_inline_joiner"
+source = { table = "u194.json", id = "W13_inline_joiner" }
+description = "_with_tag_alias: join an inline array without a comma"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '            joiner = "" if body.endswith("[") else ", " if not body.endswith(",") else " "'
+new = '            joiner = "" if body.endswith("[") else " "'
+
+[[rows]]
+id = "r1313.N2_failure_alone"
+source = { table = "r1313.json", id = "N2_failure_alone" }
+description = "nearest_status: read the failure alone, as before R-1313, so a 404 whose body is a page is an outage again at all four readers"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py"]
+old = '''
+    for link, _declared in failure_links(exc):
+        status = answered_status(link)'''
+new = '''
+    for link, _declared in [(exc, True)]:
+        status = answered_status(link)'''
+
+[[rows]]
+id = "u27-r80-write-probe-replacement.W1_permission_branch"
+source = { table = "u27-r80-write-probe-replacement.json", id = "W1_permission_branch" }
+description = "Drop the os.access branch, so a mode or ACL refusal is not attributed"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_metadata_policy.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''
+        if not os.access(path, os.W_OK, effective_ids=effective):
+            return AccessRefusal(kind=AccessKind.PERMISSION, path=path)
+'''
+new = ''
+
+[[rows]]
+id = "u67.R5_exit_code"
+source = { table = "u67.json", id = "R5_exit_code" }
+description = "Map collection-unreadable to PRECONDITION rather than LIBRARY_UNREADABLE"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '        "collection-unreadable": ExitCode.LIBRARY_UNREADABLE,'
+new = '        "collection-unreadable": ExitCode.PRECONDITION,'
+
+[[rows]]
+id = "r44-a.C1_rule_identity_may_be_a_path"
+source = { table = "r44-a.json", id = "C1_rule_identity_may_be_a_path" }
+description = "Accept a mount path as a rule's volume identity"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py"]
+old = '                problems += _mount_path_problem(key, identity)'
+new = '                pass'
+
+[[rows]]
+id = "r926.P1_config_path_leaves_root"
+source = { table = "r926.json", id = "P1_config_path_leaves_root" }
+description = "The brief's path resolution mutant: config_path answers a folder outside every temporary root, as a missed redirect would"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '    return state_path("config")'
+new = '    return Path(os.sep, "cratekit-r926-mutant", "config.toml")'
+
+[[rows]]
+id = "u272.C2_full_flush_error_swallowed"
+source = { table = "u272.json", id = "C2_full_flush_error_swallowed" }
+description = "_flush_descriptor: fall back to the plain sync on every error of the full flush, an I/O error included"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+            if exc.errno not in _FULL_FLUSH_UNSUPPORTED:
+                raise'''
+new = '''
+            if False:
+                raise'''
+
+[[rows]]
+id = "r740-b.E1_library_name_from_stem"
+source = { table = "r740-b.json", id = "E1_library_name_from_stem" }
+description = "existing guard sample: render_all derives the library name from the filename stem instead of the title tag"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_naming.py", "tests/test_landing_head.py", "tests/test_landing.py", "tests/intake/test_pipeline.py"]
+old = '        library_name=title_tag,'
+new = '        library_name=head + spec.stem,'
+
+[[rows]]
+id = "u41-naming-independent.E5_truncation_tail_not_reserved"
+source = { table = "u41-naming-independent.json", id = "E5_truncation_tail_not_reserved" }
+description = "The disambiguating tail's bytes are not reserved, so the assembled name overshoots the ceiling by its length"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    avail = max_stem - len(tail)
+'''
+new = '''
+    avail = max_stem
+'''
+
+[[rows]]
+id = "r797-a.T2_shape_is_checked_before_a_row_is_read"
+source = { table = "r797-a.json", id = "T2_shape_is_checked_before_a_row_is_read" }
+description = "_build_buckets: drop the shape check on formerly, so one pair of brackets in a hand edit raises out of the loader"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '''
+        if not isinstance(formerly_raw, list) or not all(
+            isinstance(row, Mapping) for row in formerly_raw
+        ):'''
+new = '        if False:'
+
+[[rows]]
+id = "u118-a.L6_unique_id"
+source = { table = "u118-a.json", id = "L6_unique_id" }
+description = "A split place id shared with a former or split place is accepted"
+file = "src/cratekit/core/taxonomy.py"
+surface = "maintainer"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
+old = '            if place.id in seen:'
+new = '            if False:'
+
+[[rows]]
+id = "u155.T8_empty_sources"
+source = { table = "u155.json", id = "T8_empty_sources" }
+description = "_check_genre_subs: accept a genre sub with no sources"
+file = "src/cratekit/core/taxonomy.py"
+surface = "user"
+tests = ["tests/intake/test_collection_xml.py", "tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_active_taxonomy.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_jazz_folder.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_split_place.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py", "tests/test_analysis_workers.py", "tests/test_catalogue_searcher.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_placement.py", "tests/test_foreign_tree.py", "tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py", "tests/test_genre_retag.py", "tests/test_genre_sub.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py", "tests/test_label_genre_gate.py", "tests/test_landing_labels.py", "tests/test_metadata_policy.py", "tests/test_no_beatgrid_ever.py", "tests/test_organize.py", "tests/test_published_genre.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_report_genres.py", "tests/test_reports_cli.py", "tests/test_routing_parity.py", "tests/test_routing_workers.py", "tests/test_setbuilder_cli.py", "tests/test_skills_lint.py", "tests/test_sync_pair.py", "tests/test_tag_remap.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tagging_engine.py", "tests/test_taxonomy.py", "tests/test_taxonomy_upgrade.py", "tests/test_tree_registry.py", "tests/test_tree_writer.py", "tests/test_vocabulary.py", "tests/test_xml_splice_golden.py"]
+old = '            if not genre.sources:'
+new = '            if False:'
+
+[[rows]]
+id = "u133-a-rerun.P5_vocabulary_owner"
+source = { table = "u133-a-rerun.json", id = "P5_vocabulary_owner" }
+description = "A vocabulary row is named by its tag alone, whichever bucket files that tag"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+tests = ["tests/test_taxonomy_upgrade.py"]
+old = '''
+            if (row.bucket, row.tag.casefold().strip()) in clashing:
+'''
+new = '''
+            if row.tag.casefold().strip() in {word for _owner, word in clashing}:
+'''
+
+[[rows]]
+id = "r1184.M3_files_by_name"
+source = { table = "r1184.json", id = "M3_files_by_name" }
+description = "files_by_name: say every folder's name files a track by itself, so nonelectronic is retagged NonElectronic"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''
+    return declared.named_folder(bucket.display) == (bucket.id, None)
+
+
+def _filed_now'''
+new = '''
+    return True
+
+
+def _filed_now'''

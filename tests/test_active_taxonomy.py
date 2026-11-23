@@ -9,6 +9,7 @@ from __future__ import annotations
 import ast
 import shutil
 import tomllib
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ from cratekit.core import active_taxonomy, config, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
 from tests._taxonomy_parses import counted, renamed_in_place, rewrite_keeping_time, unique
-from tests.test_config import valid_data
+from tests.test_config import parsed, valid_data
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "cratekit"
 LOADER = SRC / "core" / "active_taxonomy.py"
@@ -55,11 +56,8 @@ def _shipped_text() -> str:
 
 
 def shipped_without(section: str) -> str:
-    """The shipped template's text with one top level table taken out.
-
-    The shape of an active copy made before the shipped template gained that
-    table, which is how the tenth sitting's library came to lack ``[long_tracks]``.
-    """
+    """The shipped text with one top level table out, as a copy made before the
+    template gained it has it. Other suites use it."""
     text = _shipped_text()
     header = f"\n[{section}]\n"
     assert text.count(header) == 1, section
@@ -68,30 +66,15 @@ def shipped_without(section: str) -> str:
     return head + "\n[" + rest
 
 
-# ---------------------------------------------------------------------------
-# The guard: no verb reads the shipped template directly
-# ---------------------------------------------------------------------------
-
-
-# Each way a module could come to route by a template that is not the library's,
-# and the only modules that may take it. Setup writes the active copy from the
-# shipped text, and doctor parses the active copy to report on it. Doctor
-# compares the copy against the shipped template by a fingerprint the definer
-# computes (R-689), and stays OFF the shipped text list on purpose: a module
-# holding the shipped text and the parser is one line from routing by it.
-#
-# THE UPGRADE PLANNER HOLDS BOTH, and is the one module besides the two that
-# define them that may (U132). It writes the active copy from the shipped text
-# as setup does, and parses each candidate copy to refuse one that would not
-# load; it returns names and text, never a parsed taxonomy, so nothing routes
-# by what it reads.
+# The guard: no verb reads the shipped template directly. Each way a module
+# could route by a template that is not the library's, and the only modules
+# that may. Setup writes the copy from the shipped text; doctor parses the copy
+# and compares it by the definer's fingerprint (R-689), so it stays off the
+# shipped text list: a module holding the shipped text and the parser is one
+# line from routing by it. The upgrade planner (U132) holds both, and the off
+# taxonomy word answers (U194) parse the copy; both return text, never a parsed
+# taxonomy, so nothing routes by what they read.
 UPGRADER = SRC / "core" / "taxonomy_upgrade.py"
-#
-# THE ANSWERS TO AN OFF TAXONOMY WORD PARSE AS WELL, and never the shipped text
-# (U194). They edit the active copy's text the caller read through
-# active_taxonomy, and parse it before and after the edit to refuse an answer
-# the copy cannot take; like the upgrader they return text, so nothing routes
-# by what they parse. They are kept off the shipped text list on purpose.
 ANSWERER = SRC / "core" / "taxonomy_word.py"
 READERS = {
     "default_taxonomy": frozenset({LOADER, DEFINER}),
@@ -101,8 +84,17 @@ READERS = {
 
 
 def _reader_calls(path: Path) -> list[tuple[str, int]]:
-    """Every call in ``path`` to a name in READERS, aliased imports resolved."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    """Every call in ``path`` to a name in READERS, aliased imports resolved.
+
+    A file naming none of them is skipped unparsed: every call the walk finds
+    needs a READERS name written in the source, as an attribute or an import,
+    compared after the NFKC folding the parser applies to identifiers.
+    """
+    source = path.read_text(encoding="utf-8")
+    folded = unicodedata.normalize("NFKC", source)
+    if not any(name in folded for name in READERS):
+        return []
+    tree = parsed(source)
     bound = {name: name for name in READERS}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
@@ -122,13 +114,8 @@ def _reader_calls(path: Path) -> list[tuple[str, int]]:
 
 
 def test_no_module_but_the_loader_reads_the_shipped_template():
-    """Every verb reads the ACTIVE copy, so a template is parsed nowhere else.
-
-    An AST walk over every call, not a grep, with ``from ... import X as Y``
-    resolved, so an alias or a line break does not hide one. Three spellings
-    are watched, because routing by the shipped template can be written as the
-    default loader, or as the shipped text handed to the parser.
-    """
+    """Every verb reads the ACTIVE copy. An AST walk, not a grep, with aliased
+    imports resolved, watching the default loader and the shipped text parsed."""
     offenders = []
     for path in sorted(SRC.rglob("*.py")):
         for name, line in _reader_calls(path):
@@ -163,9 +150,7 @@ def test_the_guard_sees_every_spelling_it_should_refuse(tmp_path):
     ]
 
 
-# ---------------------------------------------------------------------------
-# The loader's answers
-# ---------------------------------------------------------------------------
+# The loader's answers.
 
 
 def test_an_edited_active_copy_is_the_answer(cfg):
@@ -209,46 +194,45 @@ def test_the_fallback_is_the_template_the_configuration_names(cfg, monkeypatch):
     assert asked == ["friend"]
 
 
-def test_a_named_template_nothing_ships_refuses(cfg):
-    named = config.from_dict(valid_data(cfg.library.root, taxonomy={"template": "nothing_ships"}))
-    with pytest.raises(CratekitError) as caught:
-        active_taxonomy.load(named)
-    assert caught.value.cause.reason == "config-unusable"
-    assert caught.value.cause.remediation.remedy is Remedy.RUN_SETUP
+def _named_nothing_ships(cfg):
+    return config.from_dict(valid_data(cfg.library.root, taxonomy={"template": "nothing_ships"}))
 
 
-def test_an_absent_library_root_refuses_rather_than_falling_back(cfg):
-    """An unmounted volume is "could not look", never "no active copy"."""
+def _unmounted(cfg):
     cfg.library.root.rmdir()
+    return cfg
+
+
+def _holding(content):
+    def put(cfg):
+        if isinstance(content, bytes):
+            _active(cfg).parent.mkdir(parents=True)
+            _active(cfg).write_bytes(content)
+        else:
+            write_active(cfg, content)
+        return cfg
+
+    return put
+
+
+@pytest.mark.parametrize(
+    ("arrange", "reason", "remedy"),
+    [
+        (_named_nothing_ships, "config-unusable", Remedy.RUN_SETUP),
+        # An unmounted volume is "could not look", never "no active copy".
+        (_unmounted, "library-volume-unmounted", Remedy.MOUNT_LIBRARY_VOLUME),
+        (_holding("this is = = not toml"), "config-unusable", Remedy.RUN_SETUP),
+        (_holding("schema_version = 1\n"), "config-unusable", None),
+        (_holding(b"\xff\xfe\x00bad"), "config-unusable", Remedy.REPORT_DEFECT),
+    ],
+    ids=["named-template-nothing-ships", "library-root-absent", "copy-not-toml", "copy-not-a-taxonomy", "copy-not-text"],
+)
+def test_a_copy_that_cannot_be_read_refuses_rather_than_falling_back(cfg, arrange, reason, remedy):
     with pytest.raises(CratekitError) as caught:
-        active_taxonomy.load(cfg)
-    assert caught.value.cause.reason == "library-volume-unmounted"
-    assert caught.value.cause.remediation.remedy is Remedy.MOUNT_LIBRARY_VOLUME
-
-
-def test_an_active_copy_that_does_not_parse_refuses_rather_than_falling_back(cfg):
-    write_active(cfg, "this is = = not toml")
-    with pytest.raises(CratekitError) as caught:
-        active_taxonomy.load(cfg)
-    assert caught.value.cause.reason == "config-unusable"
-    assert caught.value.cause.remediation.remedy is Remedy.RUN_SETUP
-
-
-def test_an_active_copy_that_is_not_a_taxonomy_refuses(cfg):
-    write_active(cfg, "schema_version = 1\n")
-    with pytest.raises(CratekitError) as caught:
-        active_taxonomy.load(cfg)
-    assert caught.value.cause.reason == "config-unusable"
-
-
-def test_an_active_copy_that_is_not_text_refuses(cfg):
-    path = _active(cfg)
-    path.parent.mkdir(parents=True)
-    path.write_bytes(b"\xff\xfe\x00bad")
-    with pytest.raises(CratekitError) as caught:
-        active_taxonomy.load(cfg)
-    assert caught.value.cause.reason == "config-unusable"
-    assert caught.value.cause.remediation.remedy is Remedy.REPORT_DEFECT
+        active_taxonomy.load(arrange(cfg))
+    assert caught.value.cause.reason == reason
+    if remedy is not None:
+        assert caught.value.cause.remediation.remedy is remedy
 
 
 def test_an_active_copy_this_account_cannot_read_refuses_with_the_access_remedy(cfg):
@@ -263,9 +247,7 @@ def test_an_active_copy_this_account_cannot_read_refuses_with_the_access_remedy(
     assert caught.value.cause.remediation.remedy is not Remedy.REPORT_DEFECT
 
 
-# ---------------------------------------------------------------------------
-# Parsed once per text, read on every call (U247)
-# ---------------------------------------------------------------------------
+# Parsed once per text, read on every call (U247).
 
 
 def test_a_copy_read_again_with_the_same_text_is_not_parsed_again(cfg, monkeypatch):
@@ -281,11 +263,8 @@ def test_a_copy_read_again_with_the_same_text_is_not_parsed_again(cfg, monkeypat
 
 def test_a_copy_rewritten_between_two_loads_is_read_and_judged_again(cfg, monkeypatch):
     """A person's edit between two items is what the second item is judged by.
-
-    THE EDIT KEEPS THE LENGTH, THE TIME AND THE INODE, so a memo keyed on the
-    path with any of those would answer the second load with the first text's
-    declaration. Only the text tells the two apart, and the text is the key.
-    """
+    The edit keeps the length, the time and the inode, so only the text, the
+    key, tells the two apart."""
     display = taxonomy.load_taxonomy(_shipped_text()).buckets[0].display
     before = unique(_shipped_text())
     after, renamed = renamed_in_place(before, display)

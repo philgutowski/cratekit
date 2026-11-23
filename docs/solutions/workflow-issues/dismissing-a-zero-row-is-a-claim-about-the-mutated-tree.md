@@ -179,7 +179,7 @@ The row that was dismissed was the one that loses data.
 ```
 
 `marker` is `cfg.naming.lossy_marker`, whose default is the literal `[MP3]`
-(`src/cratekit/core/config.py:2239`), and the template attaches it as a marker
+(`NamingConfig` in `src/cratekit/core/config_schema.py`), and the template attaches it as a marker
 rule on the `lossy` field (`src/cratekit/write/naming_cli.py:35` through `:38`).
 `lossy` is the only markable flag the engine has, `MARKED_FLAGS = ("lossy",)`
 at `src/cratekit/core/naming.py:141`, and marking it is not optional.

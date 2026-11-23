@@ -1,39 +1,21 @@
 """What the shipped template declares that a library's active copy lacks, and the copy with it added (U132).
 
-A THIRD KIND, A SOURCE'S VOCABULARY TABLE (U244). A ``[vocabulary.SOURCE]``
-table the shipped template declares and the copy lacks is appended whole, its
-comments with it, on the same terms as an entry: held when the copy does not
-load with it or when anything else the copy holds would move, and never added
-over a table of that source the copy already declares, edited or not. Discogs'
-styles reach a library's copy this way, and so does the general catalogue's
-table for a copy made before R-799.
+Every verb reads the copy setup made (R-685), so a later shipped entry reaches
+no library on its own; doctor and the upgrade verb share this answer.
 
-WHY THIS MODULE EXISTS. Setup copies the shipped template beside the database
-once, and every verb reads that copy (R-685). A class or a bucket the shipped
-template gains afterwards therefore reaches no library on its own: the live
-library's copy stated ``schema_version = 2`` with no genre Favorites class long
-after U119 shipped one, and every Favorites step refused or skipped over it.
-This module answers the question doctor asks and the upgrade verb acts on: which
-classes and buckets the copy lacks, and what the copy would be with each added.
+It only adds. A ``[[sub_class]]``, ``[[bucket]]`` or ``[vocabulary.SOURCE]``
+table (U244) the copy lacks is cut verbatim from the shipped text with its
+comments, and ``schema_version`` is raised. Nothing the copy declares is
+changed, since a person's edit and a stale entry cannot be told apart.
 
-IT ONLY ADDS. A ``[[sub_class]]`` or a ``[[bucket]]`` whose id the copy does not
-declare is appended, cut verbatim from the shipped text with its comments and
-its child tables, and the stated ``schema_version`` is raised to the shipped
-one. Nothing the copy already declares is changed, whether a person edited it
-or it fell behind, because the two cannot be told apart entry by entry and a
-change to a bucket that holds a person's tracks is theirs to make.
+An addition the copy cannot take is held with the hand edit that would let it
+in: when the copy would not load, when anything else would move, or, for a
+bucket, when one of its words is already filed elsewhere in the copy. The
+loader cannot catch that last case, since a new bucket's tagging word wins
+over another bucket's routing word.
 
-AN ADDITION THE COPY CANNOT TAKE IS HELD, NOT FORCED. Each candidate is tried
-on top of what was already accepted and kept only when the copy still loads and,
-for a bucket, when none of its words is one the copy already files somewhere.
-The second test is the one the loader cannot make: a tagging word a new bucket
-lists for itself wins over a routing word another bucket holds, so a bucket that
-loads cleanly can still take tracks away from a bucket of the person's without a
-word of warning. A held entry carries the hand edit that would let it in.
-
-IT READS THE SHIPPED TEXT AND THE PARSER, which ``tests/test_active_taxonomy.py``
-allows only the loader, the definer, setup and this module. It returns names and
-text, never a parsed shipped taxonomy, so nothing can come to route by it.
+It returns names and text, never a parsed shipped taxonomy, so nothing routes
+by it (``tests/test_active_taxonomy.py``).
 
 Layer: core. Every function here is a function of its arguments except
 :func:`read`, which resolves the two texts for a configured library.
@@ -60,16 +42,14 @@ BUCKET = "bucket"
 #: The third kind: a source's own vocabulary table, ``[vocabulary.SOURCE]``.
 VOCABULARY = "vocabulary"
 
-#: The verb a person runs, named in every sentence that tells them to.
+#: The verb a person runs, as the sentences that tell them to name it.
 VERB = "crate taxonomy upgrade"
 
-#: The line the appended region opens with, so a reader of the copy can see
-#: which entries came from the shipped template rather than from them.
+#: The line the appended region opens with, marking what came from the shipped template.
 MARKER = "# Added by {verb} from the shipped {template!r} template, schema_version {version}."
 
-# A table or array of tables header at the start of a line, as the shipped
-# template writes every one. The shipped text is packaged data this repository
-# controls, so the cut is checked against the parse rather than trusted.
+# A table or array of tables header at the start of a line. Every cut is
+# checked against the parse rather than trusted.
 _HEADER = re.compile(r"^\[\[?\s*([A-Za-z0-9_.-]+)\s*\]\]?\s*(?:#.*)?$")
 _VERSION = re.compile(r"^schema_version\s*=\s*(\d+)(\s*(?:#.*)?)$")
 
@@ -97,9 +77,8 @@ class Plan:
     held: tuple[Held, ...]
     before: str
     after: str
-    #: A sentence for each keyword rule the shipped template points at a bucket
-    #: this adds that the copy points elsewhere or lacks. Never changed: a
-    #: keyword rule is an entry the copy holds.
+    #: A sentence per shipped keyword rule pointing at an added bucket that the
+    #: copy points elsewhere or lacks. The copy's rule is never changed.
     keywords: tuple[str, ...] = ()
     #: The vocabulary tables appended, by source, in the shipped order (U244).
     vocabularies: tuple[str, ...] = ()
@@ -134,16 +113,11 @@ class Plan:
         )
 
 
-# ---------------------------------------------------------------------------
-# Cutting an entry out of the shipped text
-# ---------------------------------------------------------------------------
-
-
 def _blocks(text: str) -> list[tuple[str, int, int]]:
     """Every header in ``text`` as (name, first line, header line).
 
-    The first line is the start of the run of comment lines directly above the
-    header, so an entry carries the paragraph that explains it.
+    The first line starts the comment run directly above the header, so an
+    entry carries the paragraph that explains it.
     """
     lines = text.splitlines(keepends=True)
     out: list[tuple[str, int, int]] = []
@@ -164,8 +138,7 @@ def cut(shipped_text: str, kind: str, entry_id: str) -> str:
     """The text of one shipped ``[[kind]]`` entry, its comments and child tables included.
 
     Raises ``ValueError`` when the cut does not parse back to the shipped
-    entry, so a template reshaped in a way the cut cannot follow fails here by
-    name rather than appending half an entry to a person's copy.
+    entry, rather than appending half an entry to a person's copy.
     """
     lines = shipped_text.splitlines(keepends=True)
     blocks = _blocks(shipped_text)
@@ -194,12 +167,7 @@ def cut(shipped_text: str, kind: str, entry_id: str) -> str:
 
 
 def cut_table(shipped_text: str, source: str) -> str:
-    """The text of the shipped ``[vocabulary.SOURCE]`` table, its comments included.
-
-    From the comment paragraph directly above its header to the next header.
-    Raises ``ValueError`` when what was cut does not parse back to the shipped
-    table, as :func:`cut` does for an entry.
-    """
+    """The shipped ``[vocabulary.SOURCE]`` table's text and comments, checked as :func:`cut` is."""
     shipped = (tomllib.loads(shipped_text).get(VOCABULARY) or {}).get(source)
     if not isinstance(shipped, dict):
         raise ValueError(f"the shipped template declares no [{VOCABULARY}.{source}] table")
@@ -222,14 +190,7 @@ def cut_table(shipped_text: str, source: str) -> str:
 def _table_appended(
     text: str, source: str, table: Mapping[str, Any], block: str, marker: str
 ) -> str | None:
-    """``text`` with the table appended at its end, or None when that moves anything.
-
-    AT THE END, because a table's place in the file is not behaviour the way a
-    bucket's declared order is. Parsed back and refused unless the copy's every
-    other key is exactly as it was and its vocabulary gained this one source's
-    table and nothing else: a copy that declares its vocabulary inline cannot
-    take a table header after it, and that is a hold for the person's hand.
-    """
+    """``text`` with the table appended, or None unless the vocabulary gained only this table."""
     head = text if text.endswith("\n") or not text else text + "\n"
     gap = "" if not head or head.endswith("\n\n") else "\n"
     joined = head + gap + marker + "\n" + block
@@ -248,20 +209,11 @@ def _table_appended(
     return joined
 
 
-# ---------------------------------------------------------------------------
-# The words a bucket files
-# ---------------------------------------------------------------------------
-
-
 def _words(bucket: taxonomy.Bucket) -> dict[str, list[tuple[str, str]]]:
     """Every source or tag word a bucket answers to, folded, with each spelling and place that files it.
 
-    EVERY PLACE AND EVERY SPELLING, NOT THE FIRST. One word can be filed by a
-    bucket's alias, a sub's tagging word and a source map row at once, as the
-    non electronic bucket filed "Jazz" before U133, and one place can file it
-    under two spellings, an alias "Jazz" and a tagging word "jazz". A hold that
-    named only the first sent a person to take out one line, run the verb
-    again, and be held on the next.
+    Every place and spelling, not the first, so one hold names every line a
+    person must take out (U133).
     """
     found: dict[str, list[tuple[str, str]]] = {}
 
@@ -287,16 +239,10 @@ def _collisions(
 ) -> list[str]:
     """The sentences naming each place of the copy's that already files one of the candidate's words.
 
-    A WORD THE SHIPPED TEMPLATE ITSELF FILES IN BOTH PLACES IS NOT A CLASH. The
-    template routes "Trap / Wave" to the breaks bucket and tags it as Hip-Hop on
-    purpose, so a copy whose breaks bucket still files that word is the shipped
-    shape, and holding Hip-Hop over it would name a hand edit that changes
-    routing the template never changed.
-
-    A VOCABULARY ROW THAT WRITES A CLASHING WORD IS NAMED TOO. The loader
-    refuses a row whose tag no exact declaration files, so a copy with the
-    words taken out and the row left does not load, and the verb refuses it
-    before it can add the bucket (U133, the catalogue's "Jazz" row).
+    A word the shipped template itself files in both places is not a clash,
+    since that is the shipped shape. A vocabulary row writing a clashing word is
+    named too, since the copy would not load with the word out and the row left
+    (U133).
     """
     designed = {bucket.id: set(_words(bucket)) for bucket in shipped.buckets}
     filed: dict[str, list[tuple[str, str, str]]] = {}
@@ -329,11 +275,6 @@ def _collisions(
     return out
 
 
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
-
-
 def _raise_version(text: str, version: int) -> str | None:
     """``text`` stating ``version``, or None when its one top level line cannot be found."""
     lines = text.splitlines(keepends=True)
@@ -364,10 +305,9 @@ def _loads(text: str) -> taxonomy.Taxonomy | list[str]:
 def _kept_whole(before: str, after: str, kind: str, entry: Mapping[str, Any]) -> bool:
     """True when ``after`` is ``before`` with ``entry`` added to ``kind`` and nothing else moved.
 
-    False when ``after`` does not parse: a copy that declares its entries
-    inline cannot take an ``[[entry]]`` table at its end, and that is a hold
-    for the person's hand, not a defect in the shipped template, which is what
-    a ``ValueError`` escaping the planner is read as.
+    False, never a ``ValueError``, when ``after`` does not parse: an inline
+    declaration is a hold for the person's hand, while a ``ValueError`` from the
+    planner is read as a defect in the shipped template.
     """
     old = tomllib.loads(before)
     try:
@@ -388,13 +328,11 @@ def _placed(
 ) -> str | None:
     """``text`` with ``block`` where the shipped template places it among the copy's entries.
 
-    BEFORE THE COPY'S ENTRY THAT FOLLOWS IT IN THE SHIPPED ORDER, or after the
-    copy's last entry of its kind when none does, so an added bucket sits where
-    a fresh setup would put it. Declared order is behaviour: review menus list
-    buckets in it and a tie between two buckets' words goes to the first
-    declared. When the copy's headers cannot be matched to its entries the
-    block is appended at the end, and either way the result is parsed back and
-    refused unless every entry the copy held is exactly as it was.
+    Before the copy's entry that follows it in the shipped order, or after its
+    last of that kind, since declared order is behaviour: menus list buckets in
+    it and a tie between words goes to the first declared. Falls back to the
+    end of the text, and returns None unless every entry the copy held is
+    unchanged.
     """
     piece = marker + "\n" + block
     lines = text.splitlines(keepends=True)
@@ -431,10 +369,9 @@ def _placed(
 def plan(active_text: str, shipped_text: str, *, template: str) -> Plan:
     """What the copy lacks and the copy with every entry it can take added.
 
-    Raises ``taxonomy.TaxonomyError`` when the active copy does not load, which
-    is doctor's ``taxonomy.active`` failure and not a question this answers, and
-    a plain ``ValueError`` when the SHIPPED text does not load or cannot be cut,
-    which is a defect in packaged data and never the person's copy.
+    Raises ``taxonomy.TaxonomyError`` when the active copy does not load, and a
+    plain ``ValueError`` when the shipped text does not load or cannot be cut,
+    a defect in packaged data and never the person's copy.
     """
     active = taxonomy.load_taxonomy(active_text)
     try:
@@ -532,10 +469,7 @@ def _vocabularies(
 ) -> tuple[str, tuple[str, ...]]:
     """``text`` with every shipped vocabulary table it lacks appended, and their sources.
 
-    A TABLE THE COPY DECLARES FOR THAT SOURCE IS NEVER TOUCHED, whatever rows
-    it holds, since a row a person edited and a row that fell behind cannot be
-    told apart. A table the copy cannot take is held with the loader's words,
-    so the person reads which row names a folder their copy does not hold.
+    A table the copy already declares for that source is never touched.
     """
     shipped_tables = shipped_data.get(VOCABULARY) or {}
     added: list[str] = []
@@ -585,12 +519,7 @@ def _keyword_rules(
 ) -> tuple[str, ...]:
     """The keyword rules the shipped template sends to an added bucket and the copy does not.
 
-    U133 MOVED ONE. The shipped template sends a partial "jazz" match to the
-    Jazz bucket, and a copy made before it sends one to the non electronic
-    bucket. The upgrade adds the bucket and leaves the rule, since it changes
-    no entry the copy holds, so the copy files "Acid Jazz" where it always did
-    while a fresh setup files it in Jazz. Said, so the difference is a choice
-    a person makes by hand rather than one nobody saw.
+    The copy's rule is left for a person to repoint by hand (U133).
     """
     copy_rules = {rule.keyword.casefold(): rule.bucket for rule in active.fuzzy}
     out = []
@@ -612,9 +541,7 @@ def _keyword_rules(
     return tuple(out)
 
 
-# ---------------------------------------------------------------------------
-# The words a person reads, one wording for doctor and the verb
-# ---------------------------------------------------------------------------
+# The words a person reads, one wording for doctor and the verb.
 
 
 def _named(ids: tuple[str, ...]) -> str:
@@ -662,17 +589,11 @@ def remedy(found: Plan) -> str:
     return "; ".join(parts)
 
 
-# ---------------------------------------------------------------------------
-# The two texts for a configured library
-# ---------------------------------------------------------------------------
-
-
 class NoCopy(CratekitError):
     """The library holds no active copy, so there is nothing to upgrade.
 
-    Its own type so doctor can tell an absent copy, which routes by the
-    shipped template and so is current, from one that is behind or unusable,
-    without reading the cause's detail, which is never read for control flow.
+    Its own type so doctor can tell an absent copy, which is current, from one
+    behind or unusable without reading the cause's detail for control flow.
     """
 
 
@@ -683,10 +604,7 @@ class ShippedUnreadable(CratekitError):
 def read(cfg: config.Config) -> tuple[Path, str, str]:
     """The active copy's path and text, and the shipped text the configuration names.
 
-    Through the loader's own read, so an unmounted library and an unreadable
-    copy refuse as every verb refuses them, and an absent copy is refused
-    rather than fallen back from: there is nothing to upgrade, and setup is
-    what makes one.
+    Through the loader's read, but an absent copy refuses rather than falls back.
     """
     path, active_text = active_taxonomy.read_text(cfg)
     if active_text is None:
@@ -731,9 +649,7 @@ def planned(cfg: config.Config) -> tuple[Path, Plan]:
             detail={"path": str(path)},
         ) from exc
     except ValueError as exc:
-        # THE SHIPPED TEXT, NOT THE PERSON'S COPY: a packaged template that does
-        # not load or cannot be cut is a defect to report, and naming the copy
-        # would send someone to edit a file that is correct.
+        # A defect in the shipped text, not the person's copy, which is correct.
         raise refuse(
             "internal-error",
             f"the shipped {cfg.taxonomy.template!r} template could not be compared with "
@@ -744,10 +660,8 @@ def planned(cfg: config.Config) -> tuple[Path, Plan]:
         ) from exc
 
 
-# THE THREE PIECES ANOTHER EDIT OF THE COPY REUSES (U194): the headers, the
-# placement of a new ``[[entry]]`` among the copy's own, and the parse that
-# names every problem. Public names for the same functions, so the answers to
-# an off taxonomy word edit the copy's text by the rules this module keeps.
+# Public names for the pieces the off taxonomy word answers reuse (U194), so
+# they edit the copy by this module's rules.
 blocks = _blocks
 placed = _placed
 loads = _loads

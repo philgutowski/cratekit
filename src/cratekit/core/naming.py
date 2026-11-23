@@ -1,54 +1,18 @@
 """The one name builder and the one head parser.
 
-Every renamer in the source system agreed on the name shape by convention and
-disagreed at the edges by accident. Eight independent regexes read or wrote the
-``{key} - {bpm} - `` head, and two independent call sites hand-assembled the head
-string used for byte-budget measurement. The drift was not theoretical: it is how
-the 2026-07-04 import rejections happened, and the file-length rule below records
-what that cost.
+One module, because independent copies of the ``{key} - {bpm} - `` head drifted
+and caused the 2026-07-04 import rejections. Three rules:
 
-Three rules this module exists to hold, each with the failure it prevents:
+1. The budget is measured with the widest form the name will ever take, the
+   padded key, so a later widening cannot push a fitted name over the ceiling.
+2. Truncation is deterministic: a shortened stem carries a hash of the
+   original, so distinct titles cannot collide and a resumed run re-derives the
+   same path, which the resume marker depends on.
+3. Absent fields are omitted, never rendered empty (R20); an empty head is junk
+   the parser cannot strip.
 
-1. **Budget measurement uses the WIDEST form the name will ever take, not the
-   form being written now.** The library convention emits a single-digit Camelot
-   key and a separate later stage zero-pads it, growing every filename by exactly
-   one byte. A name fitted to exactly the ceiling therefore *exceeds* it the
-   moment padding runs, and the padding stage is a pure rename with no budget
-   check of its own, so nothing downstream catches it. rekordbox then refuses the
-   import. Measuring with the padded key pre-reserves that byte.
-
-2. **Truncation is deterministic.** A shortened stem carries a hash of the
-   original, so two distinct long titles that share a prefix cannot collapse onto
-   one filename, and a killed run re-derives the identical path on resume. The
-   resume marker for the whole analysis pass is the presence of the head on disk,
-   so a nondeterministic name would orphan the previous run's claim stub and
-   accumulate one more stub on every relaunch.
-
-3. **Absent fields are omitted, never rendered empty.** A naive template with no
-   key and no tempo emits ``"None - None - Title"`` or ``" -  - Title"``, and that
-   string is then baked into the filename AND the tag. The head parser does not
-   recognize it, so nothing ever removes it, and every downstream matcher sees the
-   junk as part of the title and stops matching the track against its own library
-   copy. This is R20's real content.
-
-**This module takes configuration as PARAMETERS and imports no configuration**
-(seam decision S3). Config owns the values: the marker text, the path byte budget,
-the filename byte budget. This module owns the mechanism. The separation is not
-tidiness. A function that reads global configuration cannot be exercised against
-two different templates in one process, and proving that a second template renders
-and parses correctly with no code change is the only evidence that this engine is
-template-driven rather than convention-driven with a settings file bolted on.
-
-Pure functions only, with one exception: ``claim_target``, the no-overwrite rename
-claim. No clock, no randomness, no environment, no configuration.
-
-LIVE-LIBRARY EVIDENCE (2026-08-01, an export of 10,070 collection rows). 98.28% of
-names carry a head this parser reads. The remaining 1.72% are 169 names with no
-head at all (never analyzed), 3 titles that merely begin with a digit, and 1 name
-carrying a key with no tempo. Zero names matched only the looser deleted parser:
-no lowercase key, no off-wheel key, and no decimal tempo exists in the library, so
-deleting that parser removes nothing real. All 15 marked names carry the marker in
-head position, which is the coupling rule below asserted against production.
+Configuration arrives as parameters, never imported (S3), so two templates can
+be exercised in one process. Pure functions only, except ``claim_target``.
 """
 
 from __future__ import annotations
@@ -60,37 +24,25 @@ import re
 from dataclasses import dataclass, replace
 from functools import lru_cache
 
-# Audio formats a renamer will consider. Lossy extensions are present because a
-# fallback acquisition still has to be analyzed, renamed, and repaired like any
-# other file.
-#
-# KNOWN DRIFT, recorded rather than silently reproduced: the source system has
-# five independent copies of this tuple with three different memberships, so a
-# format one tool renames is invisible to another. The live library today holds
-# only .flac, .aiff, .mp3 and .wav, which means every other entry here is
-# untested by production. ``.alac`` in particular is inert: ALAC ships inside an
-# .m4a container and no file carries that extension. It is kept so that a library
-# adopted from another tool is not silently skipped, not because it is expected.
+# Audio formats a renamer will consider, lossy included for fallback
+# acquisitions. ``.alac`` is inert (ALAC ships in .m4a) but kept so an adopted
+# library is not skipped.
 AUDIO_EXTS = (
     ".flac", ".aiff", ".aif", ".wav", ".alac",
     ".mp3", ".m4a", ".aac", ".opus", ".ogg", ".webm",
 )
 
 
-# ---------------------------------------------------------------------------
 # The head field vocabulary
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class HeadField:
     """One field a name head may carry.
 
-    ``pattern`` and ``anchorable`` are what make render and parse two views of one
-    declaration rather than two implementations that drift. A field type is added
-    in code, deliberately: each new field needs a pattern that a parser can read
-    back and a judgement about whether its shape can safely LEAD a head, and
-    neither of those is something a configuration file can be trusted to assert.
+    ``pattern`` and ``anchorable`` make render and parse two views of one
+    declaration. Fields are added in code, since each needs a pattern a parser
+    reads back and a judgement whether it can lead a head.
     """
 
     name: str
@@ -100,20 +52,13 @@ class HeadField:
     describe: str
 
 
-# The wheel bound, written once. Private copies elsewhere in the source used a
-# bare two-digit class and accepted 13, 0, and 99, so a harmonic lookup returned a
-# confident answer for a key that does not exist on the wheel.
+# The wheel bound, written once, so 0, 13 and 99 are never keys.
 _CAMELOT_NUMBER = r"(?:[1-9]|1[0-2])"
 _CAMELOT_LETTER = r"[AB]"
 
-# The Camelot code, padded or unpadded. Case-SENSITIVE inside a head, and the
-# asymmetry with `parse_camelot` below is deliberate rather than an oversight:
-# a code READ from a detector or a user may be lowercase and is normalized, but a
-# name already written to disk in lowercase was written by something that was not
-# following the convention, and silently accepting it lets that writer keep
-# existing. The deleted duplicate parser accepted lowercase, which is how a
-# marked lossy copy and its lossless twin normalized to different match keys and
-# both landed in the same playlist as duplicates.
+# The Camelot code, padded or unpadded. Case-sensitive inside a head, unlike
+# `parse_camelot`, on purpose: a lowercase name on disk was written off
+# convention and must not be accepted as a head.
 _KEY_FIELD = HeadField(
     name="key",
     pattern=rf"0?{_CAMELOT_NUMBER}{_CAMELOT_LETTER}",
@@ -121,11 +66,8 @@ _KEY_FIELD = HeadField(
     describe="a Camelot code, 1A..12B, padded or not",
 )
 
-# Integer tempo, 1 to 3 digits. NOT anchorable: a bare integer at the start of a
-# name is indistinguishable from a title that begins with a number, and the live
-# library contains three of those. A head led by tempo could not be parsed back,
-# so a template declaring one is refused at construction rather than emitting
-# names that no consumer can strip.
+# Integer tempo, 1 to 3 digits. Not anchorable: a leading integer cannot be told
+# from a title that starts with a number, so a tempo-led head is refused.
 _BPM_FIELD = HeadField(
     name="bpm",
     pattern=r"\d{1,3}",
@@ -135,31 +77,22 @@ _BPM_FIELD = HeadField(
 
 HEAD_FIELDS: dict[str, HeadField] = {f.name: f for f in (_KEY_FIELD, _BPM_FIELD)}
 
-#: Spec flags that a template may attach a marker to. R21 makes marking mandatory
-#: whenever the flag is set, so this list is also the list of flags whose marking
-#: is enforced at render time.
+#: Spec flags a template may mark; R21 makes the marker mandatory when set.
 MARKED_FLAGS = ("lossy",)
 
-#: Key padding policies, ordered by the width they produce. Ordering is what lets
-#: a template be validated: the form measured for the budget must never be
-#: narrower than the form actually written, or the budget under-measures and the
-#: 2026-07-04 failure returns by a different route.
+#: Key padding policies, ordered by width, so a template can check the budget
+#: form is never narrower than the written form.
 KEY_PADS = ("none", "camelot2")
 
 
-# ---------------------------------------------------------------------------
 # The declarations: template, budget, spec
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class MarkerRule:
     """A flag on the spec that becomes a literal inside the head.
 
-    ``literal`` has no default. Config owns the marker text (S3), and a default
-    here would be a second place for it to live, which is the drift this whole
-    module exists to end. The template references the marker by FIELD NAME; the
-    text arrives as data.
+    ``literal`` has no default: config owns the marker text (S3).
     """
 
     field: str
@@ -171,43 +104,30 @@ class MarkerRule:
 class NameTemplate:
     """The declared shape of a name.
 
-    Defaults describe STRUCTURE only: which fields, in what order, joined by what.
-    No value config owns appears here, which is why a template can be constructed
-    in a test without a config file and why two templates can coexist in one
-    process.
+    Defaults describe structure only; no value config owns appears here.
     """
 
     head_fields: tuple[str, ...] = ("key", "bpm")
     #: Head fields that may be absent while the head still renders. Empty by
-    #: default, which reproduces the source convention exactly: the head is
-    #: all-or-nothing. Declaring a field optional widens BOTH render and parse
-    #: together, because they are derived from the same shape table below. That
-    #: coupling is the point: a name shape that can be written but not read is
-    #: how a head ends up permanently glued to a title.
+    #: default (all or nothing). Widens render and parse together, via one
+    #: shape table, so every written shape can be read back.
     head_optional: frozenset[str] = frozenset()
     head_sep: str = " - "
     head_term: str = " - "
-    #: The separator between segments of the body. Distinct from ``head_sep``
-    #: even though both are " - " today, because the dedupe rule parses on this
-    #: one and a template that changes the head must not silently change dedupe.
+    #: The body segment separator, distinct from ``head_sep`` so changing the
+    #: head cannot change dedupe, which parses on this one.
     segment_sep: str = " - "
     markers: tuple[MarkerRule, ...] = ()
-    #: How the key is WRITTEN. Padded at write time (U39): the library holds
-    #: the two-digit form, and writing it here is what absorbed the source
-    #: system's separate padding sweep. The budget below was measured against
-    #: this form from the start, so the flip widens nothing.
+    #: How the key is written: padded, the library's two-digit form (U39).
     key_pad: str = "camelot2"
-    #: How the key is MEASURED. The widest form the key will ever take, so a later
-    #: padding stage cannot push a fitted name over the ceiling.
+    #: How the key is measured: the widest form it will ever take.
     budget_key_pad: str = "camelot2"
 
     @classmethod
     def lossy(cls, marker: str) -> NameTemplate:
         """The library's shape: the lossy marker inside the head, in config's text.
 
-        One constructor for every caller, since this module imports no
-        configuration and each of them built the rule for itself. An empty
-        marker is refused, by the template's own check of its marker rules.
+        An empty marker is refused by the template's own check.
         """
         return cls(markers=(MarkerRule(field="lossy", literal=marker),))
 
@@ -215,12 +135,9 @@ class NameTemplate:
     def lossy_if_marked(cls, marker: str | None) -> NameTemplate:
         """:meth:`lossy`, or the plain shape when configuration holds no marker text.
 
-        THE MARKER IS THE POINT. R21 makes a lossy copy carry a marker inside
-        its name, and a template that does not declare the marker cannot strip
-        it, so the marked copy and its lossless twin fold to two recordings. A
-        configuration with no marker text is one where no file carries a
-        marker, and refusing a whole run over it would turn a naming policy
-        into a reason a match cannot happen at all.
+        A template must declare the marker to strip it (R21). With no marker
+        text configured no file carries one, so the plain shape is right rather
+        than a refusal.
         """
         text = (marker or "").strip()
         return cls.lossy(text) if text else cls()
@@ -273,19 +190,15 @@ class NameTemplate:
 class NameBudget:
     """The two byte ceilings, both required.
 
-    Neither has a default, on purpose. Config owns both values (S3), and a default
-    here would let a caller silently measure against a number nobody configured.
-    Bytes, not characters: 170 characters of Japanese pass any character count and
-    are 510 bytes on disk.
+    No defaults: config owns both values (S3). Bytes, not characters, since
+    multibyte text passes a character count and still overflows on disk.
     """
 
     #: Ceiling on the UTF-8 byte length of the whole absolute path.
     path_budget_bytes: int
     #: Per-component cap. Independent of the path ceiling; both are enforced.
     filename_max_bytes: int
-    #: Hex characters of the truncation disambiguator. Mechanism, not policy, so
-    #: it lives here with a default: 6 hex characters is 24 bits of collision
-    #: space against a population of one library's long titles.
+    #: Hex characters of the truncation disambiguator; mechanism, so defaulted.
     hash_len: int = 6
 
     @classmethod
@@ -301,9 +214,8 @@ class NameBudget:
 class NameSpec:
     """Everything a name is built from. Analysis results arrive as VALUES.
 
-    ``lossy`` is a boolean the caller supplies, never something this module
-    probes. Probing means running an external binary, which would make naming
-    non-deterministic and destroy the resume guarantee above.
+    ``lossy`` is supplied, never probed: probing runs a binary and would make
+    naming non-deterministic.
     """
 
     stem: str
@@ -321,13 +233,7 @@ class NameSpec:
 class RenderedName:
     """The three surfaces a name occupies, produced together.
 
-    They are returned as one value because R21 requires the marker to appear in
-    all three or in none, and in the source system only two of the three were
-    structurally coupled. The library name was coupled by data flow alone: it
-    happened to be copied from the title tag, with nothing asserting it. Any
-    future intake path that built the library name from the filename stem, or from
-    a service response, would have silently dropped the marker from the one
-    surface the dashboard counts, and no test would have failed.
+    One value because R21 requires the marker in all three or in none.
     """
 
     filename: str
@@ -335,18 +241,15 @@ class RenderedName:
     library_name: str
 
 
-# ---------------------------------------------------------------------------
 # Shape derivation: one table drives both render and parse
-# ---------------------------------------------------------------------------
 
 
 @lru_cache(maxsize=None)
 def head_shapes(template: NameTemplate) -> tuple[tuple[str, ...], ...]:
     """Head field combinations this template can emit, longest first.
 
-    Longest first is load-bearing for parsing: a shorter shape is a prefix of a
-    longer one, so trying the short one first would match the key of a full head
-    and leave the tempo stranded at the front of the title.
+    Longest first, because a shorter shape is a prefix of a longer one and
+    would leave the tempo stranded at the front of the title.
     """
     required = [f for f in template.head_fields if f not in template.head_optional]
     shapes: list[tuple[str, ...]] = []
@@ -360,9 +263,8 @@ def head_shapes(template: NameTemplate) -> tuple[tuple[str, ...], ...]:
 def _marker_pattern(template: NameTemplate) -> str:
     """Markers are optional in a parse and strip WITH the head.
 
-    A stripper that left the marker behind is why a marked lossy copy and its
-    lossless twin produced different match keys, so both landed in one playlist as
-    duplicates instead of deduping against each other.
+    Left behind, a marker gives a lossy copy and its lossless twin different
+    match keys.
     """
     return "".join(rf"(?:{re.escape(r.literal)}\s*)?" for r in template.markers)
 
@@ -371,11 +273,9 @@ def _marker_pattern(template: NameTemplate) -> str:
 def _leading_head_res(template: NameTemplate) -> tuple[re.Pattern[str], ...]:
     """One compiled pattern per emittable shape, longest first.
 
-    The last entry is the MARKER-ONLY head, present whenever the template declares
-    a marker at all. It exists because R21 does not stop applying when analysis is
-    off: a lossy file still has to be marked, and with no key and no tempo the
-    marker is the entire head. Without this pattern that name could be written and
-    never stripped, so the marker would leak into every match key downstream.
+    The last entry is the marker-only head, present whenever a marker is
+    declared: with analysis off a lossy file is still marked (R21), and that
+    name must strip.
     """
     sep = rf"\s*{re.escape(template.head_sep.strip() or template.head_sep)}\s*"
     term = rf"\s*{re.escape(template.head_term.strip() or template.head_term)}\s*"
@@ -385,8 +285,7 @@ def _leading_head_res(template: NameTemplate) -> tuple[re.Pattern[str], ...]:
         body = sep.join(rf"(?P<{n}>{HEAD_FIELDS[n].pattern})" for n in shape)
         out.append(re.compile(rf"^\s*{body}{term}{markers}"))
     if template.markers:
-        # The lookahead is what stops this from matching the empty string and so
-        # reporting a head on every name in the library.
+        # The lookahead stops this matching the empty string on every name.
         first = "|".join(re.escape(r.literal) for r in template.markers)
         out.append(re.compile(rf"^\s*(?={first}){markers}"))
     return tuple(out)
@@ -396,11 +295,8 @@ def _leading_head_res(template: NameTemplate) -> tuple[re.Pattern[str], ...]:
 def _trailing_head_res(template: NameTemplate) -> tuple[re.Pattern[str], ...]:
     """The same head written at the END of a name.
 
-    Some catalog and scraper paths carry the key and tempo as a suffix rather than
-    a prefix. The source stripped that shape with a private regex sitting one line
-    below a call to the canonical parser, accepting off-wheel keys the canonical
-    parser rejects. Deriving it from the same template is what stops that copy
-    from surviving consolidation.
+    Some catalog and scraper paths carry it as a suffix. Derived from the same
+    template so it accepts exactly what the leading parser does.
     """
     sep = rf"\s*{re.escape(template.head_sep.strip() or template.head_sep)}\s*"
     out = []
@@ -410,14 +306,10 @@ def _trailing_head_res(template: NameTemplate) -> tuple[re.Pattern[str], ...]:
     return tuple(out)
 
 
-# ---------------------------------------------------------------------------
 # The Camelot code: the ONE code parser
-# ---------------------------------------------------------------------------
 
-# Case-INSENSITIVE, unlike the head parser above. A code arriving from a detector,
-# a user, or a foreign library is normalized; a code already written into a
-# filename is held to the convention. Both halves are tested so the asymmetry is a
-# recorded choice rather than an accident waiting to be "fixed".
+# Case-insensitive, unlike the head parser: a code arriving as data is
+# normalized, one written in a filename is held to convention. Both are tested.
 _CAMELOT_RE = re.compile(rf"^0?({_CAMELOT_NUMBER})({_CAMELOT_LETTER})$", re.IGNORECASE)
 
 
@@ -441,9 +333,7 @@ def pad_camelot(code: str) -> str:
     return f"{number:02d}{letter}"
 
 
-# ---------------------------------------------------------------------------
 # The head: parse, strip, split, pad
-# ---------------------------------------------------------------------------
 
 
 def _match_leading(name: str, template: NameTemplate) -> re.Match[str] | None:
@@ -457,15 +347,10 @@ def _match_leading(name: str, template: NameTemplate) -> re.Match[str] | None:
 def parse_head(name: str, *, template: NameTemplate) -> dict[str, str] | None:
     """Head field values as written, or None when there is no head.
 
-    Values keep their on-disk form: an unpadded key stays unpadded. Normalizing
-    here would make the parse lossy, and the repair path needs the head back
-    byte-for-byte because the padding stage, not the repair, owns padding.
-
-    A marker-only head carries no field values, so it reports None here even
-    though ``strip_head`` removes it. The two questions are genuinely different:
-    "what did analysis find" and "what has to come off the front of this name".
-    Collapsing them would make an empty result mean both "no head" and "a head
-    with nothing in it", and a caller cannot act on that.
+    Values keep their on-disk form, unpadded stays unpadded, so the repair path
+    gets the head back byte for byte. A marker-only head reports None, though
+    ``strip_head`` removes it: field values and what to strip are different
+    questions.
     """
     m = _match_leading(name, template)
     if m is None:
@@ -476,15 +361,9 @@ def parse_head(name: str, *, template: NameTemplate) -> dict[str, str] | None:
 def has_head(name: str, *, template: NameTemplate) -> bool:
     """True when ``name`` carries a COMPLETE head, the longest this template emits.
 
-    This is the idempotency and crash-resume marker for any pass that renames: a
-    file already carrying a full head has been processed, and re-processing it
-    would prepend a second one. It is deliberately stricter than ``strip_head``,
-    which removes any declared head shape. A name carrying only the marker, or
-    only a key with the tempo detection having failed, is NOT finished, and
-    treating it as finished would strand it unprocessed forever.
-
-    The source ran this guard off the looser parser, so it also skipped files
-    whose "head" was an off-wheel key that no writer here can emit.
+    The idempotency and resume marker for a renaming pass. Stricter than
+    ``strip_head`` on purpose: a name with only a marker, or only a key, is not
+    finished and must not be skipped.
     """
     patterns = _leading_head_res(template)
     return bool(patterns) and patterns[0].match(name) is not None
@@ -493,9 +372,7 @@ def has_head(name: str, *, template: NameTemplate) -> bool:
 def split_head(name: str, *, template: NameTemplate) -> tuple[str, str]:
     """(head verbatim including any marker, remainder). No head gives ("", name).
 
-    Verbatim matters: a repair that re-fits a name to the budget must re-emit the
-    existing head unchanged, padded or not, because padding belongs to a different
-    stage and a repair that quietly padded would race it.
+    Verbatim, so a repair re-emits the existing head unchanged, padded or not.
     """
     m = _match_leading(name, template)
     if m is None:
@@ -525,11 +402,8 @@ def strip_heads(name: str, *, template: NameTemplate) -> str:
 def pad_head(name: str, *, template: NameTemplate) -> str:
     """Zero-pad the key inside a leading head, leaving every other byte alone.
 
-    The two hand-rolled copies of this in the source disagreed with each other and
-    with the canonical parser: one silently no-opped on an already-padded key and
-    padded a lowercase key while leaving its case alone. Splicing only the key's
-    own span is what lets a byte-level rewrite of an export use the same rule as a
-    filename rename without a second pattern.
+    Splices only the key's own span, so a byte-level export rewrite and a
+    filename rename share one rule.
     """
     m = _match_leading(name, template)
     if m is None or "key" not in (m.groupdict() or {}) or m.group("key") is None:
@@ -542,9 +416,7 @@ def pad_head(name: str, *, template: NameTemplate) -> str:
     return name[:start] + padded + name[end:]
 
 
-# ---------------------------------------------------------------------------
 # Body helpers: sanitize, trim, dedupe
-# ---------------------------------------------------------------------------
 
 _DANGLING_RE = re.compile(r"[\s\-(\[]+$")
 
@@ -552,10 +424,8 @@ _DANGLING_RE = re.compile(r"[\s\-(\[]+$")
 def sanitize_segment(s: str) -> str:
     """A tag value in the form it takes inside a filename stem.
 
-    Deliberately NOT the same normalizer as the one for playlist names, which
-    turns a slash into a spaced dash. Two normalizers exist because the acquisition
-    tools strip slashes to a bare dash in filenames while playlist names keep the
-    spaced form; collapsing them into one corrupts whichever side loses.
+    Not the playlist name normalizer: filenames turn a slash into a bare dash,
+    playlist names into a spaced one, and merging them corrupts one side.
     """
     no_slash = re.sub(r"[\\/]+", "-", s)
     return re.sub(r"\s+", " ", no_slash).strip()
@@ -569,12 +439,9 @@ def trim_dangling(s: str) -> str:
 def compose_body(artist: str | None, title: str | None, *, sep: str = " - ") -> str:
     """``Artist - Title`` from tag values, each in its segment form, empties dropped.
 
-    THE ONE COMPOSER. The fallback acquisition path built this join for the stem
-    it commits a fetched upload under, and the naming verb built it again for an
-    acquired file named for its provider identifier (R-669), with a different
-    rule set, so one track could take two stems by the path it arrived through.
-    What each caller requires of its inputs, both tags or nothing, a length cap,
-    is the caller's; the join is not.
+    The one composer, so a track takes one stem whichever path it arrived by
+    (R-669). Input requirements, such as both tags or a length cap, are the
+    caller's; the join is not.
     """
     return sep.join(
         part for part in (sanitize_segment(artist or ""), sanitize_segment(title or "")) if part
@@ -590,15 +457,9 @@ def dedupe_stem(
 ) -> str:
     """Drop a trailing segment that merely repeats the title.
 
-    Two rules, tried in order. The structural rule works with no tags at all,
-    which is required because one acquisition path fabricates a stem and writes no
-    album tag. The tag-confirmed rule catches titles that themselves contain the
-    separator, which structure cannot see.
-
-    AMBIGUITY MEANS IDENTITY. Anything that does not match exactly passes through
-    byte-identical. That is what keeps a legitimate ``"Track - Artist - Track
-    (Deluxe Edition)"`` from being mutilated, and it is the rule that makes this
-    safe to run on every file unconditionally.
+    Two rules in order: a structural one needing no tags, then a tag-confirmed
+    one for titles containing the separator. Anything ambiguous passes through
+    byte-identical, which makes this safe to run on every file.
     """
     parts = stem.split(sep)
     if len(parts) >= 3:
@@ -617,17 +478,13 @@ def dedupe_stem(
     return stem
 
 
-# ---------------------------------------------------------------------------
 # The byte budget
-# ---------------------------------------------------------------------------
 
 
 def _truncate_utf8(s: str, max_bytes: int) -> str:
     """Cut to at most ``max_bytes`` on a codepoint boundary.
 
-    ``errors="ignore"`` is what makes the cut safe: a partial multibyte sequence
-    at the boundary is dropped rather than decoded into a lone surrogate that no
-    filesystem call will accept.
+    ``errors="ignore"`` drops a partial multibyte sequence at the boundary.
     """
     raw = s.encode("utf-8")
     if len(raw) <= max_bytes:
@@ -646,14 +503,9 @@ def fit_stem_to_budget(
 ) -> str:
     """Return ``stem``, shortened if needed so the assembled path fits both ceilings.
 
-    ``head`` must be the BUDGET head, from ``budget_head``, not the head being
-    written. ``hash_source`` must be the original pre-dedupe stem: without it, two
-    sources that dedupe to the same visible stem also hash to the same value,
-    which defeats the disambiguator at exactly the point it is needed.
-
-    Raises ValueError when the directory, head, and suffix alone leave no room.
-    Nothing this function can cut would help, so the caller has to report it
-    rather than emit a name that will be rejected on import.
+    ``head`` must be the budget head from ``budget_head``. ``hash_source`` must
+    be the original pre-dedupe stem, or two stems that dedupe alike hash alike.
+    Raises ValueError when directory, head and suffix alone leave no room.
     """
     fixed_path = (
         len(parent_dir.encode("utf-8"))
@@ -683,9 +535,7 @@ def fit_stem_to_budget(
     return visible + tail
 
 
-# ---------------------------------------------------------------------------
 # Rendering
-# ---------------------------------------------------------------------------
 
 
 def _field_value(name: str, spec: NameSpec) -> object | None:
@@ -697,17 +547,13 @@ def _format_field(name: str, spec: NameSpec, key_pad: str) -> str:
     if name == "key":
         rendered = str(value)
         if key_pad == "camelot2" and parse_camelot(rendered) is not None:
-            # Padding owns normalization for a code arriving as DATA. A value
-            # the wheel does not hold falls through unchanged so the refusal
-            # below stays the one refusal for every unwritable key.
+            # An off-wheel value falls through to the one refusal below.
             rendered = pad_camelot(rendered)
     else:
         rendered = str(value)
     field = HEAD_FIELDS[name]
     if not re.fullmatch(field.pattern, rendered):
-        # Refusing here rather than emitting is the point. A head this engine
-        # cannot parse back is a head that no consumer will ever strip, and it is
-        # written into the filename and the tag at the same moment.
+        # Refuse a head this engine could not parse back, so never strip.
         raise ValueError(
             f"{name}={value!r} renders as {rendered!r}, which this engine cannot "
             f"read back; expected {field.describe}"
@@ -727,10 +573,7 @@ def _render_markers(spec: NameSpec, template: NameTemplate) -> str:
     declared = {rule.field for rule in template.markers}
     for flag in MARKED_FLAGS:
         if getattr(spec, flag) and flag not in declared:
-            # R21: there is no configuration in which a marked condition goes
-            # unmarked. A template that permits the condition without declaring
-            # its marker is a configuration error, and the file it would produce
-            # is indistinguishable on disk from a lossless one.
+            # R21: a marked condition never goes unmarked.
             raise ValueError(
                 f"spec sets {flag}=True but the template declares no marker for it; "
                 f"R21 makes marking mandatory whenever the condition is permitted"
@@ -744,9 +587,7 @@ def _render_head(spec: NameSpec, template: NameTemplate, key_pad: str) -> str:
     shape = _shape_for(spec, template)
     markers = _render_markers(spec, template)
     if not shape:
-        # No field survived, so the head TERMINATOR is omitted with them. This is
-        # the whole of R20's graceful degradation: with analysis off the name is
-        # just the body, not a skeleton of separators around nothing.
+        # No field survived, so the terminator goes too (R20).
         return markers
     parts = [_format_field(name, spec, key_pad) for name in shape]
     return template.head_sep.join(parts) + template.head_term + markers
@@ -755,10 +596,7 @@ def _render_head(spec: NameSpec, template: NameTemplate, key_pad: str) -> str:
 def budget_head(spec: NameSpec, *, template: NameTemplate) -> str:
     """The WIDEST head this name will ever carry.
 
-    The one call every caller must make instead of assembling a head string. Two
-    call sites in the source hand-assembled it independently and disagreed, in a
-    repository whose shared naming module exists because exactly that drift caused
-    a wave of import rejections.
+    Every caller uses this rather than assembling a head string.
     """
     return _render_head(spec, template, template.budget_key_pad)
 
@@ -766,27 +604,15 @@ def budget_head(spec: NameSpec, *, template: NameTemplate) -> str:
 def normalize_spec(spec: NameSpec, *, template: NameTemplate) -> NameSpec:
     """Strip any head already present on the stem and title, keeping what it said.
 
-    Rendering is then idempotent, which fixes a real decoupling window in the
-    source: when the tag write succeeds and the rename then fails, the file is
-    left with the head in its title and not in its filename. The next run does not
-    skip it, because the filename has no head, and the title gets a SECOND head
-    prepended. Normalizing the inputs makes the second pass converge instead of
-    compounding.
+    Makes rendering idempotent, so a run after a tag write whose rename failed
+    does not prepend a second head.
 
-    A STRIPPED HEAD FILLS THE FIELDS THE SPEC LEFT EMPTY (R-740). The head is
-    all or nothing by default, and the tempo has no tag field at all, so a spec
-    built from tags carries a key and no tempo. Stripping the head and rendering
-    from that spec wrote the bare title, and every landed track reached rekordbox
-    without the head its own file carried. The title's head is read first and the
-    stem's second. The head is text in a name here, never a tempo tag.
-
-    A HEAD IS TAKEN WHOLE OR NOT AT ALL. It fills only a spec whose every
-    supplied value agrees with it, so a fresh key is never paired with the tempo
-    of the head it replaces, and a key tag the wheel does not hold is never
-    completed into a shape the renderer refuses. A spec that disagrees renders
-    from its own values, as it always did. A marker inside a stripped head marks
-    the spec whatever the fields say, so R21 cannot be undone by a caller that
-    forgot to pass the flag; a marker in the body is the body's and marks nothing.
+    A stripped head fills the fields the spec left empty (R-740), title's head
+    first, then the stem's; a spec built from tags has no tempo. The head is
+    text in a name, never a tempo tag. A head is taken whole or not at all: it
+    fills only a spec whose every supplied value agrees with it. A marker inside
+    a stripped head marks the spec regardless (R21); one in the body marks
+    nothing.
     """
     title_head, title_fields, title = (
         _split_fields(spec.title, template) if spec.title else ("", {}, spec.title)
@@ -835,9 +661,8 @@ def _agrees(name: str, supplied: object | None, written: object) -> bool:
 def render_all(spec: NameSpec, *, template: NameTemplate) -> RenderedName:
     """The three surfaces, built once from one head.
 
-    The title tag prefers the title over the stem, and the library name is derived
-    HERE rather than re-read from the tag later, so the marker cannot go missing
-    from one surface without going missing from all three.
+    The title tag prefers the title over the stem. The library name is derived
+    here, not re-read from the tag, so the marker is on all three or none.
     """
     spec = normalize_spec(spec, template=template)
     head = _render_head(spec, template, template.key_pad)
@@ -859,9 +684,8 @@ def fit_to_budget(
 ) -> NameSpec:
     """Dedupe the stem, then shorten it so the final path fits.
 
-    ``parent_dir`` is the FINAL directory. The rename happens after the move, so
-    the destination is known at name time, which is the only reason a total-path
-    budget can be enforced at all rather than guessed at.
+    ``parent_dir`` is the final directory, known because the rename follows the
+    move, so the total path budget can be enforced.
     """
     spec = normalize_spec(spec, template=template)
     deduped = dedupe_stem(spec.stem, spec.title, spec.album, sep=template.segment_sep)
@@ -888,19 +712,15 @@ def build(
                                     parent_dir=parent_dir), template=template)
 
 
-# ---------------------------------------------------------------------------
 # The module's single filesystem primitive
-# ---------------------------------------------------------------------------
 
 
 def claim_target(path) -> bool:
     """Atomically reserve a rename target. True when this call created the claim.
 
-    An ``exists()`` check followed by a rename is racy, and POSIX ``rename``
-    silently overwrites, so under any concurrency the loser of the race destroys
-    the winner's audio. Claiming first degrades that to a reported collision. The
-    caller owns unlinking the zero-byte claim on any failure after a True, or the
-    stub is left behind as a phantom track.
+    POSIX ``rename`` overwrites silently, so claiming first turns a race into a
+    reported collision. After True, the caller unlinks the zero-byte claim on
+    any failure, or it is left as a phantom track.
     """
     try:
         fd = os.open(path, os.O_CREAT | os.O_EXCL)
