@@ -1,0 +1,782 @@
+name = "u306-replay-before-c3"
+pass_kind = "replay"
+
+[[rows]]
+id = "u264.M13_float64_halving"
+source = { table = "u264.json", id = "M13_float64_halving" }
+description = "_mean_of_two: add and halve in float64 and round once, so a finite pair whose float32 sum overflows mixes to a finite value"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    out = np.add(stereo[0], stereo[1])
+    # numpy's reduction starts from plus zero: minus zero plus minus zero is
+    # minus zero here and plus zero in the mean, and no other sum changes.
+    out += out.dtype.type(0)
+    out /= out.dtype.type(2)'''
+new = '''
+    out = ((stereo[0].astype(np.float64) + stereo[1]) / 2).astype(stereo.dtype)
+    out += out.dtype.type(0)'''
+
+[[rows]]
+id = "u264.M2_leading_zero_dropped"
+source = { table = "u264.json", id = "M2_leading_zero_dropped" }
+description = "_mean_of_two: drop the plus zero numpy's reduction starts from, so two minus zero channels mix to minus zero"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    out = np.add(stereo[0], stereo[1])
+    # numpy's reduction starts from plus zero: minus zero plus minus zero is
+    # minus zero here and plus zero in the mean, and no other sum changes.
+    out += out.dtype.type(0)'''
+new = '    out = np.add(stereo[0], stereo[1])'
+
+[[rows]]
+id = "u264.M3_trailing_zero_dropped"
+source = { table = "u264.json", id = "M3_trailing_zero_dropped" }
+description = "_mean_of_two: drop librosa 1.0's buffer of zeros, so a half sum that rounds to minus zero stays minus zero on 1.0"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    if zero_after:
+        # librosa 1.0 adds the mean into zeros: a half sum that rounds to
+        # minus zero, minus the smallest subnormal and zero, is plus zero.
+        out += out.dtype.type(0)'''
+new = '''
+    if zero_after:
+        pass'''
+
+[[rows]]
+id = "u264.M4_table_rule_1_0"
+source = { table = "u264.json", id = "M4_table_rule_1_0" }
+description = "_MEASURED_MIX: give 1.0.0 the rule of the releases before it"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '    "1.0.0": True,'
+new = '    "1.0.0": False,'
+
+[[rows]]
+id = "u264.M5_halving"
+source = { table = "u264.json", id = "M5_halving" }
+description = "_mean_of_two: return the sum of the two channels, not its half"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '    out /= out.dtype.type(2)'
+new = '    out /= out.dtype.type(1)'
+
+[[rows]]
+id = "u264.M6_any_release_measured"
+source = { table = "u264.json", id = "M6_any_release_measured" }
+description = "_measured_zero_rule: treat a release not measured as measured, with the 1.0 rule"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '    return _MEASURED_MIX.get(version)'
+new = '    return _MEASURED_MIX.get(version, True)'
+
+[[rows]]
+id = "u114.M10_file_has_genre"
+source = { table = "u114.json", id = "M10_file_has_genre" }
+description = "A row whose file carries a genre is offered a suggestion instead of being left to tag rows"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+        if word:
+            counts[FILE_HAS_GENRE] += 1
+            # IT VOTES WITH ITS FILE'S WORD. The row lags its file, which is
+            # what ``tag rows`` repairs, and the file is the newer of the two.
+            live[track.content_id].genre = word
+            continue
+'''
+new = ''
+
+[[rows]]
+id = "u114.M11_file_word_votes"
+source = { table = "u114.json", id = "M11_file_word_votes" }
+description = "A row whose file carries a genre its row lacks no longer votes with the file's word"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+            live[track.content_id].genre = word
+'''
+new = ''
+
+[[rows]]
+id = "u114.M12_below_band"
+source = { table = "u114.json", id = "M12_below_band" }
+description = "The band threshold is ignored and every suggestion with a band is written"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        elif not _at_or_above(earned, band):'
+new = '        elif not _at_or_above(earned, LOW):'
+
+[[rows]]
+id = "u114.M13_band_order"
+source = { table = "u114.json", id = "M13_band_order" }
+description = "The band comparison is reversed, so a weaker band passes a stronger threshold"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    return BANDS.index(band) <= BANDS.index(least)'
+new = '    return BANDS.index(band) >= BANDS.index(least)'
+
+[[rows]]
+id = "u114.M14_genre_unknown"
+source = { table = "u114.json", id = "M14_genre_unknown" }
+description = "A genre with no lookup row is planned as a write with an empty identifier"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+                replace(item, action=LEAVE, reason=GENRE_UNKNOWN)
+                if genre_id is None
+                else replace(item, genre_id=genre_id)'''
+new = '                replace(item, genre_id=genre_id or "")'
+
+[[rows]]
+id = "u114.M15_file_moved"
+source = { table = "u114.json", id = "M15_file_moved" }
+description = "A file that carries a genre by the time the write reaches it is written over"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        if word or outcome != rows.FILE_BLANK:'
+new = '        if outcome == rows.FILE_UNREADABLE:'
+
+[[rows]]
+id = "u114.M16_file_read_back"
+source = { table = "u114.json", id = "M16_file_read_back" }
+description = "A file is not read back after the write, so its row is written whatever the file holds"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+        if rows._file_word(target)[0] != item.genre:
+            wrong.append(item.content_id)
+            continue
+'''
+new = ''
+
+[[rows]]
+id = "u114.M17_rows_follow_files"
+source = { table = "u114.json", id = "M17_rows_follow_files" }
+description = "Every planned row is written, the ones whose file did not take the genre included"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+        if item.content_id in wanted
+'''
+new = ''
+
+[[rows]]
+id = "u114.M1_suggestable_routes_only"
+source = { table = "u114.json", id = "M1_suggestable_routes_only" }
+description = "suggestable accepts any word adoption routes, a keyword or catch all placement included, so Dance is suggested"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    return disposition is adopt_scan.Disposition.ROUTE and declared.named_folder(word) is not None'
+new = '    return disposition is adopt_scan.Disposition.ROUTE'
+
+[[rows]]
+id = "u114.M21_kept_days"
+source = { table = "u114.json", id = "M21_kept_days" }
+description = "A kept catalogue answer lives five times as long"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    if not 0 <= age < CATALOGUE_DAYS:'
+new = '    if not 0 <= age < CATALOGUE_DAYS * 5:'
+
+[[rows]]
+id = "u114.M22_unread_day"
+source = { table = "u114.json", id = "M22_unread_day" }
+description = "An unread answer is kept the whole week, so a later day never asks again"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    if answer.said == UNREAD and age != 0:'
+new = '    if answer.said == UNREAD and age > CATALOGUE_DAYS:'
+
+[[rows]]
+id = "u114.M23_breaker"
+source = { table = "u114.json", id = "M23_breaker" }
+description = "The walk stops asking after four unread rows in a row and not three"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '            self.stopped = self._unread_running >= STOP_AFTER_UNREAD'
+new = '            self.stopped = self._unread_running > STOP_AFTER_UNREAD'
+
+[[rows]]
+id = "u114.M24_retry_unread"
+source = { table = "u114.json", id = "M24_retry_unread" }
+description = "A catalogue that could not be read is asked again, the behaviour before the review"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        if first.said != DECLINED or first.source_genre:'
+new = '        if first.said == MATCHED or first.source_genre:'
+
+[[rows]]
+id = "u114.M25_settled_not_asked"
+source = { table = "u114.json", id = "M25_settled_not_asked" }
+description = "A row held out or picked is looked up anyway"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        if catalogue is not None and not settled_by_person:'
+new = '        if catalogue is not None:'
+
+[[rows]]
+id = "u114.M2_high_share"
+source = { table = "u114.json", id = "M2_high_share" }
+description = "The high band's share bound drops from 0.8 to 0.7"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '((HIGH, 0.8, 6), (MEDIUM, 0.6, 3))'
+new = '((HIGH, 0.7, 6), (MEDIUM, 0.6, 3))'
+
+[[rows]]
+id = "u114.M3_high_votes"
+source = { table = "u114.json", id = "M3_high_votes" }
+description = "The high band's least vote count halves from 6 to 3"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '((HIGH, 0.8, 6), (MEDIUM, 0.6, 3))'
+new = '((HIGH, 0.8, 3), (MEDIUM, 0.6, 3))'
+
+[[rows]]
+id = "u114.M4_split"
+source = { table = "u114.json", id = "M4_split" }
+description = "A two way tie at the top is no longer a split and the first tied genre becomes the default"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    if len(tied) > 1:'
+new = '    if len(tied) > 2:'
+
+[[rows]]
+id = "u114.M5_total_declared_only"
+source = { table = "u114.json", id = "M5_total_declared_only" }
+description = "The total counts only declared votes, so an undeclared word no longer lowers the agreement"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    total = sum(votes.values())'
+new = '    total = sum(weight for word, weight in votes.items() if suggestable(declared, word))'
+
+[[rows]]
+id = "u114.M6_folder_weight"
+source = { table = "u114.json", id = "M6_folder_weight" }
+description = "A folder neighbour votes at the artist's weight"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        weights[other] = FOLDER_WEIGHT'
+new = '        weights[other] = ARTIST_WEIGHT'
+
+[[rows]]
+id = "u114.M7_votes_once"
+source = { table = "u114.json", id = "M7_votes_once" }
+description = "A neighbour by the artist in the same folder votes twice, its weights added"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        weights[other] = max(weights.get(other, 0), ARTIST_WEIGHT)'
+new = '        weights[other] = weights.get(other, 0) + ARTIST_WEIGHT'
+
+[[rows]]
+id = "u114.M9_catalogue_declared"
+source = { table = "u114.json", id = "M9_catalogue_declared" }
+description = "A catalogue answer is a vote whether or not the taxonomy declares it"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '''
+        and suggestable(declared, asked.genre)
+'''
+new = ''
+
+[[rows]]
+id = "u244.M03_kept_passed_over_reasked"
+source = { table = "u244.json", id = "M03_kept_passed_over_reasked" }
+description = "KeptCatalogue.answer: keep the day's answer that passed over Discogs after a token is recorded, round two's B2"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        if kept is not None and not self._askable_now(kept):'
+new = '        if kept is not None:'
+
+[[rows]]
+id = "u114.M19_write_intent"
+source = { table = "u114.json", id = "M19_write_intent" }
+description = "The apply opens the database without write intent, so a running rekordbox is not refused by the opener"
+file = "src/cratekit/tagging/suggest_cli.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)'
+new = '    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=False, cfg=cfg)'
+
+[[rows]]
+id = "u114.M20_pick_declared"
+source = { table = "u114.json", id = "M20_pick_declared" }
+description = "A --set genre the taxonomy does not declare is accepted"
+file = "src/cratekit/tagging/suggest_cli.py"
+surface = "user"
+tests = ["tests/test_tag_suggest.py"]
+old = '        if not suggest.suggestable(declared, genre):'
+new = '        if not genre.strip():'
+
+[[rows]]
+id = "r796-c.V1_the_worker_hands_the_seam_over"
+source = { table = "r796-c.json", id = "V1_the_worker_hands_the_seam_over" }
+description = "handle: stop passing the general catalogue's seam to tag_one, so the verb never asks it"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '        published=published.for_taxonomy(declared),'
+new = '        published=None,'
+
+[[rows]]
+id = "r796-c.V2_blocked_warning_is_the_shops_only"
+source = { table = "r796-c.json", id = "V2_blocked_warning_is_the_shops_only" }
+description = "_unread_warnings: name every source blocked throughout, the general catalogue included, so one refusal is said under two codes"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''
+    for source in searchers.SOURCES:
+        counted = answers.get(source) or {}'''
+new = '''
+    for source in answers:
+        counted = answers.get(source) or {}'''
+
+[[rows]]
+id = "r796-c.V3_some_unread_is_said"
+source = { table = "r796-c.json", id = "V3_some_unread_is_said" }
+description = "_published_warnings: warn only when the catalogue was unread on every file asked about, so a partial block is counts and no sentence"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''
+    if failed:
+        seen = "; ".join(f"{word} on {count}" for word, count in unread.items() if count)'''
+new = '''
+    if failed and failed == asked:
+        seen = "; ".join(f"{word} on {count}" for word, count in unread.items() if count)'''
+
+[[rows]]
+id = "r796-c.V4_no_isrc_is_warned_about"
+source = { table = "r796-c.json", id = "V4_no_isrc_is_warned_about" }
+description = "_published_warnings: never warn about files with no ISRC"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '    if bare:'
+new = '    if False:'
+
+[[rows]]
+id = "r796-c.V5_parse_break_sentence_said_once"
+source = { table = "r796-c.json", id = "V5_parse_break_sentence_said_once" }
+description = "_unread_warnings: read the general catalogue's parse break into the shops' sentence too"
+file = "src/cratekit/tagging/cli.py"
+surface = "maintainer"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''
+            for source in searchers.SOURCES
+        )'''
+new = '''
+            for source in answers
+        )'''
+
+[[rows]]
+id = "r796-a.L1_no_data_is_a_miss"
+source = { table = "r796-a.json", id = "L1_no_data_is_a_miss" }
+description = "_error: stop reading the catalogue's 'no data' as a miss, so an ISRC it does not know is an error nobody recognises"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '    if code == _NO_DATA:'
+new = '    if False:'
+
+[[rows]]
+id = "r796-a.L2_quota_is_blocked"
+source = { table = "r796-a.json", id = "L2_quota_is_blocked" }
+description = "_error: stop reading the quota error as a refusal, so a rate limit in a 200 body is a parse break"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '    if code == _QUOTA:'
+new = '    if False:'
+
+[[rows]]
+id = "r796-a.L3_unknown_error_is_not_a_miss"
+source = { table = "r796-a.json", id = "L3_unknown_error_is_not_a_miss" }
+description = "_error: answer MISS for an error this reader does not know, the guess the module forbids"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''
+    return _said(
+        Answer.PARSE_BREAK,
+        f"the catalogue answered with an error this reader does not know, {described}",'''
+new = '''
+    return _said(
+        Answer.MISS,
+        f"the catalogue answered with an error this reader does not know, {described}",'''
+
+[[rows]]
+id = "r796-a.L4_refusal_check_on_a_200"
+source = { table = "r796-a.json", id = "L4_refusal_check_on_a_200" }
+description = "_read: run the refusal check only on a page with no text, so a challenge page served with 200 is parsed as JSON"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '    refused = searchers.unread_outcome(SOURCE, page)'
+new = '    refused = None if page.text is not None else searchers.unread_outcome(SOURCE, page)'
+
+[[rows]]
+id = "r796-a.L5_answer_is_about_the_isrc_asked"
+source = { table = "r796-a.json", id = "L5_answer_is_about_the_isrc_asked" }
+description = "_ask: accept a track answer naming another ISRC, or none, as this track's"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '    if isrc_token(track.get("isrc")) != isrc:'
+new = '    if False:'
+
+[[rows]]
+id = "r796-a.L6_album_id_is_a_positive_integer"
+source = { table = "r796-a.json", id = "L6_album_id_is_a_positive_integer" }
+description = "_ask: let any album identifier that is not None become a URL"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '    if not isinstance(album_id, int) or isinstance(album_id, bool) or album_id <= 0:'
+new = '    if album_id is None:'
+
+[[rows]]
+id = "r796-a.L7_a_refusal_is_remembered"
+source = { table = "r796-a.json", id = "L7_a_refusal_is_remembered" }
+description = "genre_lookup: forget a BLOCKED answer, so the next file asks a catalogue that said stop"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''
+        if said.answer == Answer.BLOCKED.value:
+            refusals.append(said)'''
+new = '''
+        if False:
+            refusals.append(said)'''
+
+[[rows]]
+id = "r796-a.L8_only_a_refusal_is_remembered"
+source = { table = "r796-a.json", id = "L8_only_a_refusal_is_remembered" }
+description = "genre_lookup: remember every unread answer, so one outage or parse break ends the catalogue's part in the run"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''
+        if said.answer == Answer.BLOCKED.value:
+            refusals.append(said)'''
+new = '''
+        if said.answer in UNREAD:
+            refusals.append(said)'''
+
+[[rows]]
+id = "r796-b.O3_a_usable_answer_is_never_replaced"
+source = { table = "r796-b.json", id = "O3_a_usable_answer_is_never_replaced" }
+description = "second_opinion: ask the general catalogue about a hit that already has a genre (R4)"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '        if hit.genre or isrc is None:'
+new = '        if isrc is None:'
+
+[[rows]]
+id = "r796-b.O5_a_declined_beatport_match_is_asked_about"
+source = { table = "r796-b.json", id = "O5_a_declined_beatport_match_is_asked_about" }
+description = "_BEATPORT_ANSWERED: count only a miss, so a track Beatport calls by a catch-all is never asked about (R1, AE2)"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '_BEATPORT_ANSWERED = (Answer.MATCHED.value, Answer.MISS.value)'
+new = '_BEATPORT_ANSWERED = (Answer.MISS.value,)'
+
+[[rows]]
+id = "r796-b.O6_unread_joins_the_unread_names"
+source = { table = "r796-b.json", id = "O6_unread_joins_the_unread_names" }
+description = "second_opinion: leave the general catalogue out of the hit's unread names when it could not be read"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '            unread = (*hit.unread, SOURCE) if said.answer in UNREAD else hit.unread'
+new = '            unread = hit.unread'
+
+[[rows]]
+id = "r796-c.V6_one_lookup_per_process"
+source = { table = "r796-c.json", id = "V6_one_lookup_per_process" }
+description = "for_lookup: build a fresh lookup per call, so a refusal on one file is forgotten by the next file's seam"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '''
+    if not _shared:
+        _shared.append(genre_lookup())
+    return _shared[0]'''
+new = '    return genre_lookup()'
+
+[[rows]]
+id = "r796-c.V7_the_request_names_this_tool"
+source = { table = "r796-c.json", id = "V7_the_request_names_this_tool" }
+description = "genre_lookup: build the default fetch without this module's headers, so the API is asked under the browser identity"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '    touch = searchers.default_fetch(sleep=naps, headers=HEADERS) if fetch is None else fetch'
+new = '    touch = searchers.default_fetch(sleep=naps) if fetch is None else fetch'
+
+[[rows]]
+id = "r796-d.L9_first_isrc_of_several_again"
+source = { table = "r796-d.json", id = "L9_first_isrc_of_several_again" }
+description = "re-measure of r796-a L9 after the second review round rewrote the line: _first_isrc never looks inside a value, so two ISRCs in one field read as no ISRC"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '    for found in _ISRC_WITHIN.finditer(str(value or "")):'
+new = '    for found in ():'
+
+[[rows]]
+id = "r796-d.O7_a_decline_keeps_the_shops_word_again"
+source = { table = "r796-d.json", id = "O7_a_decline_keeps_the_shops_word_again" }
+description = "re-measure of r796-b O7 after the second review round rewrote the line: a declined answer always takes over the file's source, over Beatport's word and when it published no word at all"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '        if picked is None and (hit.source_genre or not word):'
+new = '        if False:'
+
+[[rows]]
+id = "r796-b.O9_no_isrc_is_not_no_hit"
+source = { table = "r796-b.json", id = "O9_no_isrc_is_not_no_hit" }
+description = "tag_one: drop the no-isrc skip reason, so a file the general catalogue could not be asked about is no-hit (AE4)"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_published_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_catalogue_searcher.py"]
+old = '        elif any(said.answer == NO_ISRC for said in hit.answers):'
+new = '        elif False:'
+
+[[rows]]
+id = "r1476.M10_no_name_slug_step"
+source = { table = "r1476.json", id = "M10_no_name_slug_step" }
+description = "_label_seam: drop the name slug step, so Some*Label no longer names Some Label"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '            named = tuple(entry for entry in held.labels.values() if _name_slug(entry.name) == wanted)'
+new = '            named = ()'
+
+[[rows]]
+id = "r1476.M11_slug_step_beats_exact_name"
+source = { table = "r1476.json", id = "M11_slug_step_beats_exact_name" }
+description = "_label_seam: run the name slug step even when a label is called the tag exactly"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+        if not named and wanted:
+            named = tuple(entry for entry in held.labels.values() if _name_slug(entry.name) == wanted)'''
+new = '''
+        if wanted:
+            named = tuple(entry for entry in held.labels.values() if _name_slug(entry.name) == wanted)'''
+
+[[rows]]
+id = "r1476.M12_no_identifier_fallback"
+source = { table = "r1476.json", id = "M12_no_identifier_fallback" }
+description = "_label_seam: drop the identifier step, so a renamed label's old name reaches nothing"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '            named = tuple(entry for entry in (held.labels.get(wanted),) if entry is not None)'
+new = '            named = ()'
+
+[[rows]]
+id = "r1476.M13_needles_not_held"
+source = { table = "r1476.json", id = "M13_needles_not_held" }
+description = "_frozen_labels: hold only the labels with a genre, so a lookup falls through to another label"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '    for rows in (needles if isinstance(needles, Mapping) else {}, frozen):'
+new = '    for rows in (frozen,):'
+
+[[rows]]
+id = "r1476.M14_genre_join_by_name"
+source = { table = "r1476.json", id = "M14_genre_join_by_name" }
+description = "_frozen_labels: give each frozen label the genre of the first label with a genre sharing its name"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '                    genre=genres.get(str(label_id)),'
+new = '                    genre=next((genres[other] for other, them in frozen.items() if other in genres and isinstance(them, Mapping) and them.get("name") == row.get("name")), None),'
+
+[[rows]]
+id = "r1476.M15_answer_without_genre"
+source = { table = "r1476.json", id = "M15_answer_without_genre" }
+description = "_answered: answer a label with no genre as one"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+    if entry is None or not entry.genre:
+        return None
+    return tag_engine.LabelAnswer'''
+new = '''
+    if entry is None:
+        return None
+    return tag_engine.LabelAnswer'''
+
+[[rows]]
+id = "r1476.M16_unsluggable_raises"
+source = { table = "r1476.json", id = "M16_unsluggable_raises" }
+description = "_name_slug: let a name that could never be a label raise rather than read as none"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+    except CratekitError:
+        return ""
+
+
+def _label_seam'''
+new = '''
+    except CratekitError:
+        raise
+
+
+def _label_seam'''
+
+[[rows]]
+id = "r1476.M17_remedy_names_display_name"
+source = { table = "r1476.json", id = "M17_remedy_names_display_name" }
+description = "_label_payload: the no genre remedy names the label by its display name"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '            handle = entry.label_id'
+new = '            handle = entry.name'
+
+[[rows]]
+id = "r1476.M18_remedy_head_never_shared"
+source = { table = "r1476.json", id = "M18_remedy_head_never_shared" }
+description = "_label_payload: never name the identifier beside a shared display name in the warning's head"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '            shared = len(held.named(entry.name)) > 1'
+new = '            shared = False'
+
+[[rows]]
+id = "r1476.M19_outranked_wording"
+source = { table = "r1476.json", id = "M19_outranked_wording" }
+description = "_label_warnings: the outranked warning no longer says a tag can name two labels"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = 'names two labels or "'
+new = 'names a retired label "'
+
+[[rows]]
+id = "r1476.M1_identifier_not_frozen"
+source = { table = "r1476.json", id = "M1_identifier_not_frozen" }
+description = "_label_payload: freeze the label's display name where its identifier goes, so the sweep answers --label by a name another label may share"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        frozen["label_id"] = entry.label_id'
+new = '        frozen["label_id"] = entry.name'
+
+[[rows]]
+id = "r1476.M2_folder_seam_by_name"
+source = { table = "r1476.json", id = "M2_folder_seam_by_name" }
+description = "_folder_seam: look the folder's label up again by the name the engine hands it, the card's defect"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        return _answered(held.labels.get(wanted))'
+new = '        return _answered(held.by_name(_name) or held.labels.get(wanted))'
+
+[[rows]]
+id = "r1476.M3_folder_seam_with_no_identifier"
+source = { table = "r1476.json", id = "M3_folder_seam_with_no_identifier" }
+description = "_folder_seam: hand a seam for a job frozen with no identifier, so its --label answers nothing"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '    if held is None or not wanted:'
+new = '    if held is None:'
+
+[[rows]]
+id = "r1476.M6_worker_hands_no_folder_seam"
+source = { table = "r1476.json", id = "M6_worker_hands_no_folder_seam" }
+description = "handle: hand the engine no folder seam"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        folder_genre=_folder_seam(payload),'
+new = '        folder_genre=None,'
+
+[[rows]]
+id = "r1476.M7_worker_hands_identifier_as_label"
+source = { table = "r1476.json", id = "M7_worker_hands_identifier_as_label" }
+description = "handle: hand the engine the frozen identifier as the folder's label text, round one's shape"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        label=str(payload.get("label") or "") or None,'
+new = '        label=str(payload.get("label_id") or "") or None,'
+
+[[rows]]
+id = "r1476.M8_shared_name_takes_first"
+source = { table = "r1476.json", id = "M8_shared_name_takes_first" }
+description = "_label_seam: a name two labels hold answers the first holder"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        return _answered(named[0]) if len(named) == 1 else None'
+new = '        return _answered(named[0]) if named else None'
+
+[[rows]]
+id = "r1476.M9_identifier_first"
+source = { table = "r1476.json", id = "M9_identifier_first" }
+description = "_label_seam: read a tag as an identifier before a name, round one's blockers"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''
+        named = held.named(name)
+        wanted = _name_slug(name)'''
+new = '''
+        named = tuple(entry for entry in (held.labels.get(name),) if entry is not None) or held.named(name)
+        wanted = _name_slug(name)'''
+
+[[rows]]
+id = "r1476.M4_engine_ignores_folder_seam"
+source = { table = "r1476.json", id = "M4_engine_ignores_folder_seam" }
+description = "_by_label: answer --label through the tag seam, never the folder seam"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '        return _Labelled((folder_genre or label_genre)(typed), own, NAMED_BY_FOLDER)'
+new = '        return _Labelled(label_genre(typed), own, NAMED_BY_FOLDER)'

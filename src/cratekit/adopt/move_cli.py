@@ -1,31 +1,21 @@
 """``crate adopt move``: move a track to the sub its own file names.
 
-WHY THIS IS A VERB OF ITS OWN (R-758). ``route resort`` exists and is additive,
-"the old membership stays and is named", and giving it a removing mode was the
-other choice. It was not taken, for two reasons. A gate is declared per verb
-and every declared gate has to fire, so an approval asked in one mode only is a
-gate the registry cannot state. And what is moved is decided by the reading
-adoption's census took off the file, over adoption's own plan: the entries
-``adopt apply`` withholds over a place the track already holds, the ones it
-finds already placed beside a stale sub, and, since R-780, every band bucket
-the tree holds a track in twice whether or not its genre names that bucket.
-So it sits beside ``adopt apply`` and is switched by the same module.
+A VERB OF ITS OWN, NOT A MODE OF ``route resort`` (R-758). A gate is declared
+per verb and every declared gate has to fire, so an approval asked in one mode
+only is a gate the registry cannot state. What is moved is decided by the
+reading adoption's census took, over adoption's own plan, so it sits beside
+``adopt apply`` and is switched by the same module.
 
-THIS IS THE FIRST VERB THAT REMOVES A MEMBERSHIP, and it is treated as the
-cutover was: plan, gate, snapshot, read back.
-
-THE BACKUP ACKNOWLEDGMENT IS READ BEFORE THE GATE IS ASKED (R-733). An approval
-is the one way door, and ``adopt apply`` was measured taking one that the
-session behind it then refused for want of an acknowledgment. Here a person
-with none is refused before they read a plan, with the mint as the remedy.
+THE FIRST VERB THAT REMOVES A MEMBERSHIP, treated as the cutover was: plan,
+gate, snapshot, read back. The backup acknowledgment is read before the gate
+(R-733), so a person with none is refused before they read a plan.
 
 THE APPROVED MOVES ARE FROZEN IN THE JOB, and adoption's plan is not. A move
-changes what the tree holds, so a run stopped after its additions rebuilds to
-a different plan, and a worker that compared digests would refuse to finish
-its own work. The worker acts on the rows the approval was recorded against
-and checks each against the library as it stands: a track whose reading moved,
-or that sits somewhere nobody was shown, refuses the whole run, and a track
-already where it belongs is done.
+changes the tree, so a run stopped after its additions rebuilds to another
+plan, and a worker that compared digests would refuse to finish its own work.
+The worker acts on the approved rows and checks each against the library as it
+stands: a track whose reading moved, or that sits somewhere nobody was shown,
+refuses the whole run, and a track already where it belongs is done.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -33,6 +23,7 @@ command-line layer, for the reason ``adopt.apply_cli`` gives.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Mapping, Sequence
 
 from cratekit.adopt import apply_cli, artifacts, placements, shell
@@ -50,13 +41,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import (
-    Cause,
-    CratekitError,
-    Outcome,
-    Remediation,
-    refuse,
-)
+from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import trees
 from cratekit.write.routing_pass import destination
@@ -78,6 +63,9 @@ HANDLER_KEY = "adopt.move"
 NOTHING_TO_MOVE = "move-nothing-planned"
 
 _ORIGIN = ("adopt", "move_cli")
+
+#: The one step every stale refusal names.
+_AGAIN = ("run `crate adopt move` again and approve the plan as it is now",)
 
 
 def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> move_engine.MovePlan:
@@ -114,44 +102,37 @@ def _approval_gate(entry):
     for spec in entry.gates:
         if spec.digest_source == "plan":
             return spec
-    raise CratekitError(
-        Cause(
-            reason="internal-error",
-            message=(
-                f"{entry.name} declares no gate digested against the plan, so "
-                f"there is no question to ask before moving anything"
-            ),
-            remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
-            origin=("adopt.move_cli",),
-            detail={"verb": entry.name},
-        )
+    raise refuse(
+        "internal-error",
+        f"{entry.name} declares no gate digested against the plan, so "
+        f"there is no question to ask before moving anything",
+        remedy=Remedy.REPORT_DEFECT,
+        origin=("adopt.move_cli",),
+        detail={"verb": entry.name},
     )
 
 
-def _digested(document: Mapping[str, Any]) -> tuple[dict, dict]:
-    """A plan document as the gate shows it: every move, and the facts beside them.
+def _declined(ctx, spec, document: Mapping[str, Any]) -> Envelope | None:
+    """Ask ``spec`` over a plan document: the declined envelope on an abort.
 
-    THE ITEMS ARE THE MOVES, EVERY ONE, each with the membership to add, the
-    memberships to remove and the reading that decides it. The tracks left
-    where they are ride beside them in full, with the counts by kind. The
-    digest covers all of it.
+    Every move is an item, and the tracks left ride beside them in full with
+    the counts. The digest covers all of it.
     """
-    return (
-        {"digest": document["digest"], "items": list(document["moves"])},
-        {
-            "tree": document["tree"],
-            "placements": document["placements"],
-            "counts": document["counts"],
-            "left": list(document["left"]),
-        },
-    )
+    shown = {"digest": document["digest"], "items": list(document["moves"])}
+    facts = {key: document[key] for key in ("tree", "placements", "counts")}
+    if (
+        ctx.gate.require(spec, plan=shown, context={**facts, "left": list(document["left"])})
+        == "abort"
+    ):
+        return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
+    return None
 
 
 def move_adoption(ctx) -> Envelope:
     """Read the acknowledgment, ask the approval gate against this plan, then queue.
 
     AN EMPTY PLAN STILL ASKS, for the reason ``adopt apply`` gives, and then
-    queues nothing: a second approved run plans nothing and writes nothing.
+    queues nothing.
     """
     cfg = load_config(("adopt.move_cli",))
     declared = active_taxonomy.load(cfg)
@@ -164,25 +145,17 @@ def move_adoption(ctx) -> Envelope:
     plan = current_plan(cfg, declared)
     document = move_engine.to_json(plan)
     spec = _approval_gate(ctx.entry)
-    digested, facts = _digested(document)
-    if ctx.gate.require(spec, plan=digested, context=facts) == "abort":
-        return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
+    if (declined := _declined(ctx, spec, document)) is not None:
+        return declined
 
     if not plan.moves:
-        return ctx.envelope(
-            data=shell.no_op("no-op"),
-            outcome=Outcome.NO_OP,
-            warnings=(
-                {
-                    "code": NOTHING_TO_MOVE,
-                    "message": (
-                        f"no track sits in a sub its own reading does not name, "
-                        f"and {len(plan.left)} are left where they are, each "
-                        f"listed with its reason, so there is nothing to queue"
-                    ),
-                },
-            ),
+        message = (
+            f"no track sits in a sub its own reading does not name, "
+            f"and {len(plan.left)} are left where they are, each "
+            f"listed with its reason, so there is nothing to queue"
         )
+        warning = {"code": NOTHING_TO_MOVE, "message": message}
+        return ctx.envelope(data=shell.no_op("no-op"), outcome=Outcome.NO_OP, warnings=(warning,))
 
     with jobs.open_store() as store:
         job = jobs.enqueue(
@@ -204,44 +177,38 @@ def move_adoption(ctx) -> Envelope:
 def _frozen(job) -> Mapping[str, Any]:
     """The plan document this job froze, PROVEN, or a refusal naming the job.
 
-    THREE THINGS ARE ASKED BEFORE ANYTHING IS SHOWN OR PERFORMED. The job is
-    this verb's own, so a job another verb queued is never driven through this
-    gate. It carries a plan. And the digest of the rows it carries, taken
-    again here, is the digest the job was queued under and the one the
-    document states, so the gate is never shown rows under a digest that does
-    not describe them. The worker and the resume both come through here.
+    Asked before anything is shown or performed, by the worker and the resume
+    alike: the job is this verb's own, it carries a plan, and the digest of its
+    rows taken again here is the one it was queued under and the one the
+    document states, so the gate is never shown rows a digest does not describe.
     """
+
+    def defect(message: str, **detail: Any) -> CratekitError:
+        detail = {"job_id": job.job_id, **detail}
+        return refuse(
+            "internal-error", message, remedy=Remedy.REPORT_DEFECT, origin=_ORIGIN, detail=detail
+        )
+
     if job.handler_key != HANDLER_KEY:
-        raise refuse(
-            "internal-error",
+        raise defect(
             f"job {job.job_id} was queued by {job.handler_key!r} and is not a "
             f"move, so this verb has nothing to continue in it",
-            remedy=Remedy.REPORT_DEFECT,
-            origin=_ORIGIN,
-            detail={"job_id": job.job_id, "handler_key": job.handler_key},
+            handler_key=job.handler_key,
         )
     payload = job.payload or {}
     document = payload.get(PLAN_KEY)
     if not isinstance(document, Mapping):
-        raise refuse(
-            "internal-error",
+        raise defect(
             f"job {job.job_id} carries no plan, so there is nothing anybody "
-            f"approved for it to perform",
-            remedy=Remedy.REPORT_DEFECT,
-            origin=_ORIGIN,
-            detail={"job_id": job.job_id},
+            f"approved for it to perform"
         )
     try:
         taken = move_engine.document_digest(document)
         stated = str(document["digest"])
     except (KeyError, TypeError) as exc:
-        raise refuse(
-            "internal-error",
+        raise defect(
             f"job {job.job_id} carries a plan short of {exc}, so it cannot be "
-            f"shown whole and nothing is performed from it",
-            remedy=Remedy.REPORT_DEFECT,
-            origin=_ORIGIN,
-            detail={"job_id": job.job_id},
+            f"shown whole and nothing is performed from it"
         ) from exc
     queued_under = str(payload.get("digest") or "")
     if not (taken == stated == queued_under):
@@ -249,7 +216,7 @@ def _frozen(job) -> Mapping[str, Any]:
             "decision-stale",
             "the plan this job carries is not the plan its approval was "
             "recorded against, so nothing was written",
-            steps=("run `crate adopt move` again and approve the plan as it is now",),
+            steps=_AGAIN,
             origin=_ORIGIN,
             detail={"approved": queued_under, "stated": stated, "job_id": job.job_id},
         )
@@ -259,18 +226,16 @@ def _frozen(job) -> Mapping[str, Any]:
 def _resume(ctx, cfg: config.Config) -> Envelope:
     """Answer the gate from the plan the job froze, then drive its one item.
 
-    AGAINST THE FROZEN PLAN AND NOT A REBUILT ONE, which is where this differs
-    from ``adopt apply`` and why. A move that has begun has changed the tree
-    the plan is built from, so a rebuilt digest would be stale by this verb's
-    own hand. Whether the library still agrees with each approved row is the
-    worker's question and it asks it row by row.
+    AGAINST THE FROZEN PLAN AND NOT A REBUILT ONE, unlike ``adopt apply``: a
+    move that has begun has changed the tree, so a rebuilt digest would be
+    stale by this verb's own hand. Whether the library still agrees with each
+    approved row is the worker's question, asked row by row.
     """
     with jobs.open_store() as store:
         job = jobs.get(store, ctx.args.job)
         spec = _approval_gate(ctx.entry)
-        digested, facts = _digested(_frozen(job))
-        if ctx.gate.require(spec, plan=digested, context=facts) == "abort":
-            return ctx.envelope(data=shell.no_op("declined"), outcome=Outcome.NO_OP)
+        if (declined := _declined(ctx, spec, _frozen(job))) is not None:
+            return declined
         job, warnings = shell.advance(
             ctx,
             store,
@@ -279,14 +244,13 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
             nothing_to_run="report a move over a library it never touched",
         )
         return ctx.envelope(
-            data=shell.reported(store, job, {"move": _summary(cfg, job.job_id)}),
-            warnings=warnings,
+            data=shell.reported(store, job, {"move": _summary(cfg, job.job_id)}), warnings=warnings
         )
 
 
 #: The fields of a committed report that are lists of content identifiers.
-#: ``neither`` is here so that the one outcome no path should produce is on
-#: the screen if one ever does, and the first version left it off.
+#: ``neither`` is here so the one outcome no path should produce is on the
+#: screen if one ever does.
 _LISTED = ("moved", "in_both", "untouched", "neither", "gone", "skipped", "held_back")
 
 #: The fields of a committed report that are counts.
@@ -296,9 +260,8 @@ _COUNTED = ("added", "already_present", "removed", "already_absent")
 def _summary(cfg: config.Config, job_id: str) -> dict:
     """What this job's LAST committed report says the library holds.
 
-    THE LAST ONE, and never a sum. Each report is a read back of every
-    approved track, so the latest is the whole truth and adding an earlier
-    attempt to it would count a track once as in both and once as moved.
+    Never a sum: each report reads back every approved track, so adding an
+    earlier attempt would count a track once as in both and once as moved.
     """
     reports = artifacts.committed(cfg, job_id)
     if not reports:
@@ -315,7 +278,7 @@ def _stale(approved: Sequence[move_engine.Move], detail: Mapping[str, Any]) -> C
         f"the library has changed under {len(detail)} track(s) of the {len(approved)} "
         f"approved move(s), so what this job would perform is not what anybody "
         f"agreed to, and nothing was written: {', '.join(sorted(detail))}",
-        steps=("run `crate adopt move` again and approve the plan as it is now",),
+        steps=_AGAIN,
         origin=_ORIGIN,
         detail={"moved_under": dict(detail)},
     )
@@ -330,28 +293,15 @@ def remaining(
 
     Returns the moves still to perform, each narrowed to what is left of it,
     and the tracks the collection no longer carries. A track already in its
-    target and nowhere else is done and is in neither.
+    target and nowhere else is done, whatever its disposition, once its reading
+    is proven to still name that target.
 
     IT REFUSES THE WHOLE RUN, ``decision-stale``, when any approved track has
-    moved in a way nobody was shown: its reading now names another sub, the
-    plan as it stands would leave it or would not move it, it holds a
-    competing sub that was neither its target nor one it was leaving, or it
-    was approved as already in its target and is not there now. What the plan
-    would do now is asked of :func:`cratekit.adopt.move.standing_in`, the body
-    the plan was built from, for the bucket the move names, which since R-780
-    need not be the bucket the track's genre names. Nothing is narrowed to
-    fit. The approval covers a track arriving at its target and leaving the
-    subs it was shown leaving, in either order, and nothing else.
-
-    A TRACK ALREADY IN ITS TARGET AND NOWHERE ELSE IS DONE, whatever its
-    disposition, once its reading is proven to still name that target above.
-    The first version asked for ``route`` here as well, which only an entry
-    claiming the bucket can carry, and a tree path move is over a bucket no
-    entry claims.
-
-    WHAT COMPETES IS ASKED AGAIN, of the taxonomy as it is now, so a sub a
-    taxonomy edit turned into a sub class since the approval is not removed
-    from.
+    moved in a way nobody was shown, asked of
+    :func:`cratekit.adopt.move.standing_in` for the bucket the move names: the
+    approval covers a track arriving at its target and leaving the subs it was
+    shown leaving, in either order, and nothing else. What competes is asked of
+    the taxonomy as it is now, so a sub made a sub class since is not removed.
     """
     entries = {entry.content_id: entry for entry in current.entries}
     refused = move_engine.refused_buckets(current.entries)
@@ -388,17 +338,14 @@ def remaining(
             unnamed = set(current.placements.holds_unnamed(move.bucket, move.content_id))
             if held == {move.target} and not unnamed & held:
                 continue
-            if held == {move.target}:
-                # Its one place is a playlist the writer cannot see, which
-                # nobody was shown. The first check asked for a routed entry
-                # here and refused this shape by accident; it is refused on
-                # purpose now.
-                stale[move.content_id] = "it holds its target under another name only"
-                continue
+            # A target held under another name only is a playlist the writer
+            # cannot see, which nobody was shown.
             stale[move.content_id] = (
-                "it holds no sub of its bucket any more"
-                if not held
+                "it holds its target under another name only"
+                if held == {move.target}
                 else "the plan as it stands does not move it"
+                if held
+                else "it holds no sub of its bucket any more"
             )
             continue
         if set(now.remove) - set(move.remove):
@@ -407,28 +354,10 @@ def remaining(
         if now.add and not move.add:
             stale[move.content_id] = "it has left the sub it was approved as holding"
             continue
-        todo.append(
-            move_engine.Move(
-                move_id=move.move_id,
-                content_id=move.content_id,
-                location=move.location,
-                bucket=move.bucket,
-                kind=move.kind,
-                target=move.target,
-                add=now.add,
-                remove=now.remove,
-                holds=now.holds,
-                energy=move.energy,
-                genre=move.genre,
-            )
-        )
+        todo.append(replace(move, add=now.add, remove=now.remove, holds=now.holds))
     if stale:
         raise _stale(approved, stale)
     return tuple(todo), tuple(sorted(gone))
-
-
-def _summary_of(found: dict[str, set[str]]) -> dict[str, list[str]]:
-    return {name: sorted(ids) for name, ids in found.items()}
 
 
 def membership_moves(
@@ -436,17 +365,15 @@ def membership_moves(
 ) -> tuple[trees.MembershipMove, ...]:
     """The moves as the writer takes them, in the names the taxonomy declares.
 
-    A DESTINATION THE TAXONOMY DOES NOT DECLARE REFUSES, and is not skipped
-    the way ``adopt apply`` skips one. There a skipped entry is a track not
-    added. Here it would be a removal made with its addition dropped.
+    A DESTINATION THE TAXONOMY DOES NOT DECLARE REFUSES rather than being
+    skipped as ``adopt apply`` skips one: here a skip would be a removal made
+    with its addition dropped.
 
     THE TARGET AND THE PLACES LEFT ARE RESOLVED BY TWO FUNCTIONS, ON PURPOSE
-    (R-797). A place a track leaves may be a former place, the playlist its
-    bucket's tracks sat in before the bucket had a folder, which sits in
-    another bucket's folder and is found by :func:`placements.named_place`.
-    The target is asked of ``destination``, which knows no former place and
-    refuses one, so a track is never filed into a playlist the taxonomy
-    stopped declaring, whatever a frozen row says.
+    (R-797). A place left may be a former place in another bucket's folder,
+    found by :func:`placements.named_place`. The target is asked of
+    ``destination``, which refuses a former place, so a track is never filed
+    into a playlist the taxonomy stopped declaring, whatever a frozen row says.
     """
     out: list[trees.MembershipMove] = []
     for move in moves:
@@ -460,13 +387,11 @@ def membership_moves(
                 "decision-stale",
                 f"the taxonomy no longer declares a place the approved move of "
                 f"{move.content_id} names, so nothing was written",
-                steps=("run `crate adopt move` again and approve the plan as it is now",),
+                steps=_AGAIN,
                 origin=_ORIGIN,
                 detail={"content_id": move.content_id, "bucket": move.bucket},
             ) from exc
-        out.append(
-            trees.MembershipMove(content_id=move.content_id, target=target, remove=leaving)
-        )
+        out.append(trees.MembershipMove(content_id=move.content_id, target=target, remove=leaving))
     return tuple(out)
 
 
@@ -478,22 +403,17 @@ def read_back(
 ) -> dict[str, list[str]]:
     """Where every approved track sits now, read off the database afresh.
 
-    READ BACK RATHER THAN TAKEN FROM THE WRITER'S REPORT, which is the
-    writer's own account of itself. ``moved`` holds its target and no other
-    competing sub. ``in_both`` holds its target and at least one other.
-    ``untouched`` does not hold its target. ``neither`` holds no competing sub
-    at all, which no path here can produce and is listed so that it would be
-    seen.
-
-    EACH LIST NAMES A TRACK ONCE. Since R-780 a track may carry a move in each
-    of two buckets, and each move is read back in its own bucket, so a track
-    whose two moves ended differently is in two lists, and one whose two
-    ended the same is in that list once.
+    READ BACK RATHER THAN TAKEN FROM THE WRITER'S REPORT, the writer's own
+    account of itself. ``moved`` holds its target and no other competing sub,
+    ``in_both`` its target and another, ``untouched`` not its target, and
+    ``neither`` no competing sub at all, which no path can produce and is
+    listed so it would be seen. Each move is read back in its own bucket and
+    each list names a track once, so a track whose two moves (R-780) ended
+    differently is in two lists.
     """
     held_now = placements.read_placements(cfg, declared)
-    found: dict[str, set[str]] = {
-        "moved": set(), "in_both": set(), "untouched": set(), "neither": set(), "gone": set(gone)
-    }
+    found: dict[str, set[str]] = {name: set() for name in ("moved", "in_both", "untouched")}
+    found.update(neither=set(), gone=set(gone))
     for move in approved:
         if move.content_id in found["gone"]:
             continue
@@ -507,24 +427,20 @@ def read_back(
             found["moved"].add(move.content_id)
         else:
             found["in_both"].add(move.content_id)
-    return _summary_of(found)
+    return {name: sorted(ids) for name, ids in found.items()}
 
 
 def handle(job, item, cfg) -> jobs.Produced:
     """Perform one approved move plan and read it back. The ``adopt.move`` worker.
 
-    THE ORDER.
+    THE ORDER: prove the frozen rows are the rows approved and that somebody
+    approved them; check each against the library as it stands,
+    :func:`remaining`, refusing with nothing opened; one guarded session, a
+    capture, the additions and their commit, then the removals and theirs;
+    read every approved track back through a fresh handle; commit the report,
+    and only then raise if any track is not moved.
 
-    1. Prove the frozen rows are the rows the approval was recorded against,
-       by taking their digest again, and that somebody approved them.
-    2. Check each against the library as it stands, :func:`remaining`. A
-       library that moved refuses here, with nothing opened.
-    3. One guarded session: a capture, the additions and their commit, then
-       the removals and theirs.
-    4. Read every approved track back through a fresh handle.
-    5. Commit the report, and only then raise if any track is not moved.
-
-    A RUN STOPPED BETWEEN THE ADDITIONS AND THE REMOVALS SAYS SO. The report
+    A RUN STOPPED BETWEEN THE ADDITIONS AND THE REMOVALS SAYS SO: the report
     lists the tracks in both subs, the job fails on a cause a resume retries,
     and the resume finds the additions present and makes the removals.
     """
@@ -536,17 +452,14 @@ def handle(job, item, cfg) -> jobs.Produced:
     if not actor.strip():
         raise refuse(
             "decision-required",
-            "a move records WHO approved it, and this job names nobody, so "
-            "nothing was written",
+            "a move records WHO approved it, and this job names nobody, so nothing was written",
             steps=("run `crate adopt move` again and answer its gate as a separate act",),
             origin=_ORIGIN,
             detail={"job_id": job.job_id},
         )
 
     approved = move_engine.from_rows(document["moves"])
-    todo, gone = remaining(
-        approved, apply_cli.current_plan(cfg, declared, vocals=False), declared
-    )
+    todo, gone = remaining(approved, apply_cli.current_plan(cfg, declared, vocals=False), declared)
 
     written: trees.MoveReport | None = None
     interrupted: BaseException | None = None
@@ -557,10 +470,9 @@ def handle(job, item, cfg) -> jobs.Produced:
         except trees.MoveInterrupted as exc:
             written, interrupted = exc.report, exc.__cause__ or exc
         except CratekitError as exc:
-            # A REFUSAL KEEPS ITS OWN TYPE AND ITS OWN REMEDY. It is held only
-            # long enough to read the library back and commit what it says,
-            # since a refusal at the second commit is over additions that
-            # landed, and it is raised again below as it came.
+            # A REFUSAL KEEPS ITS OWN TYPE AND REMEDY. Held only to read the
+            # library back and commit what it says, since a refusal at the
+            # second commit is over additions that landed, then raised as it came.
             refused = exc
 
     found = read_back(cfg, declared, approved, gone)
@@ -573,24 +485,21 @@ def handle(job, item, cfg) -> jobs.Produced:
             "actor": actor,
             "digest": frozen_digest,
             **found,
-            "added": written.added if written else 0,
-            "already_present": written.already_present if written else 0,
-            "removed": written.removed if written else 0,
-            "already_absent": written.already_absent if written else 0,
-            "held_back": list(written.held_back) if written else [],
-            "skipped": list(written.skipped) if written else [],
-            "playlists": list(written.playlists) if written else [],
+            **{name: getattr(written, name) if written else 0 for name in _COUNTED},
+            **{
+                name: list(getattr(written, name)) if written else []
+                for name in ("held_back", "skipped", "playlists")
+            },
             "interrupted": interrupted is not None or refused is not None,
         },
     )
     unfinished = sorted({*found["in_both"], *found["untouched"], *found["neither"]})
+    failed = refused is not None or interrupted is not None or unfinished
+    if failed and produced.staged is not None and produced.final is not None:
+        jobs.commit_artifact(produced.staged, produced.final)
     if refused is not None:
-        if produced.staged is not None and produced.final is not None:
-            jobs.commit_artifact(produced.staged, produced.final)
         raise refused
     if interrupted is not None or unfinished:
-        if produced.staged is not None and produced.final is not None:
-            jobs.commit_artifact(produced.staged, produced.final)
         raise refuse(
             "adopt-entries-failed",
             f"{len(unfinished)} track(s) of {len(approved)} approved move(s) did "
@@ -633,20 +542,3 @@ def _write(
         )
     finally:
         rb_writer.close_db(handle_)
-
-
-__all__ = [
-    "ACTOR_KEY",
-    "HANDLER_KEY",
-    "NOTHING_TO_MOVE",
-    "PLAN_KEY",
-    "WORKFLOW",
-    "adopt_move_argv",
-    "build",
-    "current_plan",
-    "handle",
-    "membership_moves",
-    "move_adoption",
-    "read_back",
-    "remaining",
-]

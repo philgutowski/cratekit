@@ -7,13 +7,12 @@ modules that moved, and put a dated comment on those entries.
 
 KEBAB_LITERALS = {
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    # 2026-11-22, U306: the empty and absent folder refusals are analysis.cli's shared walk now.
     'vocals/cli.py': [
         'analysis-write-failed',
-        'folder-absent',
         'internal-error',
         'job-unknown',
         'module-extras-missing',
-        'no-audio',
         'none-unscored',  # 2026-11-01, U181
         'source-missing',
     ],

@@ -19,7 +19,7 @@ tags: [conformance, gate, read-handle, write-handle, mutation, zero-row, covered
 ## What bites, twice
 
 **First, at the conformance suite.** `crate intake inspiration` was first
-written on `land_cli.ask_then_write`, which opens the database WITH WRITE
+written on `land_native.ask_then_write` (read through `land_cli` too), which opens the database WITH WRITE
 INTENT before the plan so a running rekordbox refuses before anything is shown.
 Conformance 3 drives every gated verb to OK on the conformance fixture, and that
 fixture has no rekordbox pin recorded, so the write intent open refused with

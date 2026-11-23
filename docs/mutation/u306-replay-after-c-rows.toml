@@ -1,0 +1,477 @@
+name = "u306-replay-after-c"
+pass_kind = "replay"
+
+[[rows]]
+id = "r650-a.B5_artifact_drops_the_key"
+source = { table = "r650-a.json", id = "B5_artifact_drops_the_key" }
+description = "The committed item report stops carrying the flag, so the summary reads it back as absent"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '            "off_taxonomy": result.off_taxonomy,'
+new = ''
+
+[[rows]]
+id = "r650-a.C1_summary_counts_nothing"
+source = { table = "r650-a.json", id = "C1_summary_counts_nothing" }
+description = "The report stops counting the strings, leaving the map empty on a folder that has them"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+            if report.get("off_taxonomy") and source_genre:
+                off_taxonomy[source_genre] = off_taxonomy.get(source_genre, 0) + 1'''
+new = ''
+
+[[rows]]
+id = "r650-a.C3_summary_drops_the_key"
+source = { table = "r650-a.json", id = "C3_summary_drops_the_key" }
+description = "The payload stops carrying the map at all"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '        "off_taxonomy": off_taxonomy,'
+new = ''
+
+[[rows]]
+id = "r650-a.C4_warning_fires_on_a_clean_sweep"
+source = { table = "r650-a.json", id = "C4_warning_fires_on_a_clean_sweep" }
+description = "The empty check goes, so an ordinary folder is warned about a gap it does not have"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+    if not counted:
+        return ()'''
+new = ''
+
+[[rows]]
+id = "r650-a.C6_warning_names_no_strings"
+source = { table = "r650-a.json", id = "C6_warning_names_no_strings" }
+description = "The warning says a gap exists and not which word, which is the R24 mistake one verb over"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '                f"these catalogue answers: {words}. Each word was written onto "'
+new = '                f"these catalogue answers. Each word was written onto "'
+
+[[rows]]
+id = "r650-a.C7_warning_order_is_the_walk_order"
+source = { table = "r650-a.json", id = "C7_warning_order_is_the_walk_order" }
+description = "The strings are listed in commit order, so two runs over one folder disagree"
+file = "src/cratekit/tagging/cli.py"
+surface = "maintainer"
+tests = ["tests/test_tag_workers.py"]
+old = '    words = ", ".join(sorted(counted))'
+new = '    words = ", ".join(counted)'
+
+[[rows]]
+id = "r650-a.C8_warning_code_reworded"
+source = { table = "r650-a.json", id = "C8_warning_code_reworded" }
+description = "The code a log filter reads is reworded, never appended to"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = 'OFF_TAXONOMY = "tag-folder-off-taxonomy"'
+new = 'OFF_TAXONOMY = "tag-folder-unknown-word"'
+
+[[rows]]
+id = "r650-a.C9_warning_counts_the_wrong_total"
+source = { table = "r650-a.json", id = "C9_warning_counts_the_wrong_total" }
+description = "The warning names the file count as the sweep's whole tagged total"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '    files = sum(counted.values())'
+new = '    files = summary.get("tagged", 0)'
+
+[[rows]]
+id = "r650-a.D3_unresolved_is_fed_by_declines"
+source = { table = "r650-a.json", id = "D3_unresolved_is_fed_by_declines" }
+description = "Existing: the unresolved map is filled from unmapped-genre and from nothing else"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '        if reason == tag_engine.UNMAPPED_GENRE and source_genre:'
+new = '        if source_genre:'
+
+[[rows]]
+id = "u281.C2_challenge_never_named"
+source = { table = "u281.json", id = "C2_challenge_never_named" }
+description = "_summary: never count a Cloudflare challenge, so the warning cannot name one"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+                if searchers.CLOUDFLARE_CHALLENGE in note:
+                    challenged[source] += 1'''
+new = '''
+                if False:
+                    challenged[source] += 1'''
+
+[[rows]]
+id = "u281.C3_unsent_never_counted"
+source = { table = "u281.json", id = "C3_unsent_never_counted" }
+description = "_summary: never count a file a catalogue was not sent"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+                if note.startswith(searchers.NOT_SENT):
+                    not_sent[source] += 1'''
+new = '''
+                if False:
+                    not_sent[source] += 1'''
+
+[[rows]]
+id = "u281.C4_source_blocked_counts_unsent_as_sent"
+source = { table = "u281.json", id = "C4_source_blocked_counts_unsent_as_sent" }
+description = "_unread_warnings: count the unsent files among the searches sent, so the warning claims searches never made"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '        sent = asked - held'
+new = '        sent = asked'
+
+[[rows]]
+id = "u281.C5_partial_challenge_called_whole"
+source = { table = "u281.json", id = "C5_partial_challenge_called_whole" }
+description = "_unread_phrase: call every refusal a challenge when any one was"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '    if challenged >= count:'
+new = '    if challenged:'
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R19_folder_queues_no_items"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R19_folder_queues_no_items" }
+description = "The zero item rule broken at its source: a job with nothing to claim drives straight to SUCCEEDED over a folder nothing walked"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '            item_ids=tuple(str(path.relative_to(folder)) for path in files),'
+new = '            item_ids=(),'
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R20_unnamed_folder_sweeps_cwd"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R20_unnamed_folder_sweeps_cwd" }
+description = "Path(\"\") is the current directory, so an unnamed folder writes genres into whatever the person is standing in"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+    named = str(ctx.args.folder or "")
+    if not named.strip():'''
+new = '''
+    named = str(ctx.args.folder or "")
+    if False:'''
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R21_two_zeroes_read_as_one"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R21_two_zeroes_read_as_one" }
+description = "A mistyped path reports as a folder with nothing to tag, which is the answer most likely to stop somebody looking"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+            if folder.is_dir()
+            else _empty(
+                "tag-folder-absent",'''
+new = '''
+            if True
+            else _empty(
+                "tag-folder-absent",'''
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R22_vanished_file_reports_done"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R22_vanished_file_reports_done" }
+description = "An item whose file is gone reports done having tagged nothing, which is the clean report over unreadable state the merge bar names"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+    path = folder / item.item_id
+    if not path.is_file():'''
+new = '''
+    path = folder / item.item_id
+    if False:'''
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R23_summary_from_the_queue"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R23_summary_from_the_queue" }
+description = "The report counts what was queued rather than what ran, so a half finished sweep reports every file as handled"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+    for report in artifacts.committed(cfg, job_id):
+        reason = str(report.get("skipped") or "")
+        source_genre = str(report.get("source_genre") or "")'''
+new = '''
+    for report in []:
+        reason = str(report.get("skipped") or "")
+        source_genre = str(report.get("source_genre") or "")'''
+
+[[rows]]
+id = "u84-b.C1_artifact_carries_status"
+source = { table = "u84-b.json", id = "C1_artifact_carries_status" }
+description = "The item artifact drops the repair status, so nothing on disk records what the repair did"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+            "art_repair": result.art_repair,
+'''
+new = ''
+
+[[rows]]
+id = "u84-b.C2_summary_zero_filled"
+source = { table = "u84-b.json", id = "C2_summary_zero_filled" }
+description = "The summary lists only the statuses it saw, so none repaired and not counted read the same"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '        "art_repair": art_repair,'
+new = '        "art_repair": {key: value for key, value in art_repair.items() if value},'
+
+[[rows]]
+id = "u84-b.C3_old_reports_uncounted"
+source = { table = "u84-b.json", id = "C3_old_reports_uncounted" }
+description = "A report committed before the repair existed is counted as ok, a status nobody measured"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '        status = str(report.get("art_repair") or "")'
+new = '        status = str(report.get("art_repair") or art.REPAIR_OK)'
+
+[[rows]]
+id = "u85-a.A15_worker_hands_in_the_fetch"
+source = { table = "u85-a.json", id = "A15_worker_hands_in_the_fetch" }
+description = "The worker passes no image fetch, so the verb never embeds art"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+        fetch_image=searchers.for_images(),
+'''
+new = ''
+
+[[rows]]
+id = "u85-a.A16_summary_counts_art"
+source = { table = "u85-a.json", id = "A16_summary_counts_art" }
+description = "The job summary never counts an art status"
+file = "src/cratekit/tagging/summary.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
+tests = ["tests/test_tag_workers.py"]
+old = '            art_fetch[fetched] += 1'
+new = '            pass'
+
+[[rows]]
+id = "r1103.H3_message_names_no_file"
+source = { table = "r1103.json", id = "H3_message_names_no_file" }
+description = "handle: reword the refusal so it names no file"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '            f"{path} would not take the genre {result.proposed!r}, so it still "'
+new = '            f"the file would not take the genre {result.proposed!r}, so it still "'
+
+[[rows]]
+id = "r1103.H4_detail_path"
+source = { table = "r1103.json", id = "H4_detail_path" }
+description = "handle: the refusal's detail loses the file's path"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '                "path": str(path),'
+new = '                "path": "",'
+
+[[rows]]
+id = "r1103.H5_detail_genre"
+source = { table = "r1103.json", id = "H5_detail_genre" }
+description = "handle: the refusal's detail names the genre the file still carries as the one it would not take"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '                "genre": result.proposed,'
+new = '                "genre": result.current,'
+
+[[rows]]
+id = "r1103.H6_detail_current"
+source = { table = "r1103.json", id = "H6_detail_current" }
+description = "handle: the refusal's detail loses the genre the file still carries"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '                "current": result.current,'
+new = '                "current": "",'
+
+[[rows]]
+id = "r816-e.E1_retag_names_the_verb"
+source = { table = "r816-e.json", id = "E1_retag_names_the_verb" }
+description = "library_row_warning: name no verb, reworded"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+because this verb writes the file half only; run `crate tag "
+            f"rows` so the rows catch up'''
+new = '''
+because this verb writes the file half only; run the row "
+            f"verb so the rows catch up'''
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R28_worker_trusts_the_frozen_row"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R28_worker_trusts_the_frozen_row" }
+description = "The genre is not re-read at drive time, so a file somebody corrected by hand between the confirmation and the drive is corrected again"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+    current = tags.read_genre_from_file(path) or ""
+    if not current:'''
+new = '''
+    current = tags.read_genre_from_file(path) or ""
+    if False:'''
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R29_blank_genre_is_corrected"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R29_blank_genre_is_corrected" }
+description = "The retag writes into a field tag.folder owns under fill if empty, which is one field under two policies"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+    if not current:
+        result = retag.RetagResult(path=path, current=current, reason=retag.NO_GENRE)'''
+new = '''
+    if current == "\\u0000":
+        result = retag.RetagResult(path=path, current=current, reason=retag.NO_GENRE)'''
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R30_specific_genre_is_overwritten"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R30_specific_genre_is_overwritten" }
+description = "A queued job overwrites somebody's own curation, which is the write this verb exists to avoid making"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '    elif not declared.is_too_coarse_as_source(current):'
+new = '    elif False:'
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R31_artifact_drops_the_previous_value"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R31_artifact_drops_the_previous_value" }
+description = "R-185's only record: without the previous genre the artifacts stop naming which library rows went stale, so the deferred database half has no population to read"
+file = "src/cratekit/tagging/retag_cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+            "current": result.current,
+            "written": result.written,'''
+new = '            "written": result.written,'
+
+[[rows]]
+id = "u263.D10_first_stream"
+source = { table = "u263.json", id = "D10_first_stream" }
+description = "_ffmpeg_samples: drop the map to the first audio stream"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+        "-map", "0:a:0",
+'''
+new = ''
+
+[[rows]]
+id = "u263.D11_mono_shape"
+source = { table = "u263.json", id = "D11_mono_shape" }
+description = "_ffmpeg_samples: keep a mono file two dimensional"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+    if channels == 1:
+        native = native[0]'''
+new = ''
+
+[[rows]]
+id = "u263.D12_channels_first"
+source = { table = "u263.json", id = "D12_channels_first" }
+description = "_ffmpeg_samples: leave the samples frames first, not librosa's channels first"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '    native = frames.reshape(-1, channels).T'
+new = '    native = frames.reshape(channels, -1)'
+
+[[rows]]
+id = "u263.D13_extensible"
+source = { table = "u263.json", id = "D13_extensible" }
+description = "_parse_float_wav: read the extensible tag without its sub format"
+file = "src/cratekit/analysis/decode.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''
+            if fmt_tag == _WAVE_FORMAT_EXTENSIBLE:
+                (fmt_tag,) = struct.unpack("<H", blob[body + 24 : body + 26])'''
+new = ''
+
+[[rows]]
+id = "u263.D14_whole_frames"
+source = { table = "u263.json", id = "D14_whole_frames" }
+description = "_parse_float_wav: keep a stray sample past the last whole frame"
+file = "src/cratekit/analysis/decode.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '            whole = available - available % (4 * channels)'
+new = '            whole = available - available % 4'
+
+[[rows]]
+id = "u263.D15_chunk_padding"
+source = { table = "u263.json", id = "D15_chunk_padding" }
+description = "_parse_float_wav: skip an odd sized chunk without its pad byte"
+file = "src/cratekit/analysis/decode.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '        position = body + size + (size & 1)'
+new = '        position = body + size'
+
+[[rows]]
+id = "u263.D23_cover_lines"
+source = { table = "u263.json", id = "D23_cover_lines" }
+description = "_audio_faults: keep the cover decoders' lines, so a cover ffmpeg cannot read fails a whole track"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '        if line.strip() and not line.startswith(tuple(f"[{name} @ " for name in _COVER_DECODERS))'
+new = '        if line.strip()'
+
+[[rows]]
+id = "u263.D7_stderr_fails"
+source = { table = "u263.json", id = "D7_stderr_fails" }
+description = "_ffmpeg_samples: trust the exit code alone, so a mid file error yields the first half"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '    if proc.returncode != 0 or said:'
+new = '    if proc.returncode != 0:'
+
+[[rows]]
+id = "u263.D9_file_protocol"
+source = { table = "u263.json", id = "D9_file_protocol" }
+description = "_ffmpeg_samples: pass the path bare, so a name with a colon is read as a protocol"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '        "-i", f"file:{path}",'
+new = '        "-i", f"{path}",'

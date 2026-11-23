@@ -1,14 +1,8 @@
-"""U211, from review round two: a job is never offered as a run to continue.
+"""U211, review round two: a backup job is never offered as a run to continue.
 
-The dispatcher keeps the run of the scan's own refusal, so ``--run`` continues
-it with its answers. A backup job whose database item met the same refusal
-records the reason on the failed item and summarises it on the job's cause,
-and running the verb again under ``--run`` cannot retake that item, so the
-job's cause is answered as the job's verdict, never as a kept run. Driven
-through the dispatcher over the fake process table of
-``tests/test_process_scan.py``. The fixtures are ``tests/test_backup_cli.py``'s,
-in a file of their own because that suite's library and the sync pair suite's
-both answer to the name ``cfg``.
+A job's database item that met the scan's refusal cannot be retaken under
+``--run``, so its cause is the job's verdict, never a kept run. The fixtures
+are ``tests/test_backup_cli.py``'s, apart because both suites name one ``cfg``.
 """
 
 from __future__ import annotations
@@ -39,9 +33,7 @@ def test_a_backup_job_refused_by_the_scan_is_not_offered_as_a_run_to_continue(
     table(FakeProcess(300, raises=DYING), finder())
     code, first = _drive(["backup", "run"])
     job_id = first["data"]["job_id"]
-
     code, ran = _drive(["backup", "run", "--job", job_id])
-
     cause = ran["cause"]
     assert cause["reason"] == processes.UNCONFIRMED, ran
     assert ran["resumable"] is False, ran
@@ -59,9 +51,7 @@ def test_a_fresh_backup_takes_the_snapshot_once_the_process_has_exited(
     table(FakeProcess(300, raises=DYING), finder())
     code, first = _drive(["backup", "run"])
     _drive(["backup", "run", "--job", first["data"]["job_id"]])
-
     table(finder())
     code, fresh = _drive(["backup", "run"])
     code, done = _drive(["backup", "run", "--job", fresh["data"]["job_id"]])
-
     assert code == int(ExitCode.OK), done

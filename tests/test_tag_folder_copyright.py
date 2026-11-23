@@ -1,22 +1,11 @@
 """U240: tag folder tags each file by the registered label its copyright line names.
 
-The attended label pass of 2026-11-10 measured the cost this unit removes.
-``tag folder`` over 106 staged files of five registered labels failed every
-item ``catalogue-unreachable``: Beatport answered 403, Traxsource 403 and
-Bandcamp a client challenge, so no catalogue was left. Every label carried a
-genre in the registry, and ``tag folder --label`` would have tagged a folder of
-one label with no catalogue asked, but the batch was five labels in one folder,
-so a person split it by hand. The label go's tail queues ``tag folder`` with no
-``--label`` at all.
-
-So a file with no label tag, swept with no ``--label``, is matched to the
-registry by its copyright line, the line the downloader writes on every file
-it delivers. Exactly one registered label named, and it carries a genre: the
-file takes that genre and no catalogue is asked. Anything else is asked of the
-catalogues as before.
-
-Four sections: the copyright line read off each container, the engine's tier,
-the sweep through the real dispatcher, and the label go's tail step.
+A file with no label tag, swept with no ``--label``, is matched to the
+registry by the copyright line the downloader writes. Exactly one registered
+label named, carrying a genre: the file takes it and no catalogue is asked;
+anything else is asked of the catalogues as before. Four sections: the line
+read off each container, the engine's tier, the sweep through the real
+dispatcher, and the label go's tail step.
 """
 
 from __future__ import annotations
@@ -30,7 +19,7 @@ from cratekit.cli import tail
 from cratekit.core import config, jobs, tags
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.tagging import artifacts, searchers, tag
+from cratekit.tagging import artifacts, searchers, summary, tag
 from cratekit.tagging import cli as tag_cli
 from cratekit.tagging.tag import LabelAnswer, SearchHit
 from tests._containers import synth_container
@@ -89,10 +78,9 @@ def downloaded(
 ) -> Path:
     """One FLAC file as the vendored downloader leaves it, with a picture.
 
-    THE COPYRIGHT LINE IS WRITTEN UNDER THE DOWNLOADER'S OWN KEY, upper case
-    ``COPYRIGHT`` through mutagen, never through Cratekit's writer, so what is
-    read is what a real download carries rather than what this unit's own
-    table writes.
+    The copyright line is written under the downloader's own key, ``COPYRIGHT``
+    through mutagen, never Cratekit's writer, so what is read is what a real
+    download carries rather than what this unit's own table writes.
     """
     from mutagen.flac import FLAC
 
@@ -407,10 +395,7 @@ def test_each_named_label_carries_its_own_genre():
 
 @pytest.mark.parametrize(
     ("needle", "line"),
-    [
-        ("2020 Vision", "\u2117 2020 Vision Quest"),
-        ("1985 Music", "(P) 1985 Music For Nations"),
-    ],
+    [("2020 Vision", "\u2117 2020 Vision Quest"), ("1985 Music", "(P) 1985 Music For Nations")],
 )
 def test_a_lines_year_never_completes_a_needle(needle, line):
     """Review round two: matched on the raw line, the year completed the needle."""
@@ -444,8 +429,8 @@ def test_a_sublabel_beside_a_third_label_settles_nothing():
 
 def test_two_labels_sharing_a_display_name_are_two_in_the_ambiguous_count():
     counted: dict[str, int] = {}
-    tag_cli._count_ambiguous(counted, ["Alpha", "Alpha"])
-    tag_cli._count_ambiguous(counted, ["Gettraum"])
+    summary._count_ambiguous(counted, ["Alpha", "Alpha"])
+    summary._count_ambiguous(counted, ["Gettraum"])
     assert counted == {"Alpha, Alpha": 1}
 
 

@@ -1,38 +1,31 @@
-"""R-745: ``crate export collection``, and every verb that reads what it writes.
+"""``crate export collection`` and every verb that reads what it writes (R-745).
 
-WHAT THIS FILE IS FOR. The verb's claim is that the file it writes is one the
-other verbs take, so the file is never judged by the module that wrote it. It is
-read back three ways: by a real XML parser, which is what rekordbox is; by the
-strict reader the reports and the outbound verbs share; and by each verb that
-takes an export, driven through the shipped command line.
-
-THE DATABASE IS SEEDED BY HAND AND THE EXPECTATIONS ARE SPELLED OUT. Every
-expected path, count and order below is written as a literal beside the rows
-that produce it, so no assertion is the emitter asked twice.
-
-THE REPOSITORY HOLDS NO REKORDBOX EXPORT OF A REAL LIBRARY, so the comparison
-the brief asks for is against the byte fixtures the splice suites already use,
-which were cut from one, and against what each reader requires. The comparison
-with an export taken the same minute is the attended verification.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The file is never judged by the module that wrote it: a real XML parser, the
+strict reader and each verb taking an export read it back, against literals
+beside the hand seeded rows. D1: nothing here names a real volume, person or track.
 """
 
 from __future__ import annotations
 
+import argparse
+import importlib
 import re
 import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from pyrekordbox.db6 import tables
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session
 
 from cratekit import __version__
 from cratekit.cli import export_collection, registry
 from cratekit.core import (
     config,
+    jobs,
     locations,
     preflight,
     rb_writer,
@@ -45,8 +38,10 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import collection_xml
 from cratekit.modules.outbound import account as account_module
+from cratekit.modules.outbound import ledger
 from cratekit.modules.outbound import source as outbound_source
 from cratekit.modules.reports import export as library_export
+from cratekit.sync import cli as sync_cli
 from cratekit.write import collection_export, metadata_cli, rbxml
 from tests import cutover_fixtures, outbound_fakes
 from tests._containers import synth_container
@@ -62,13 +57,11 @@ INTAKE = DECLARED.intake.display
 TREE = DECLARED.tree.display
 WRITTEN = datetime(2026, 9, 29, 12, 0, 0, tzinfo=timezone.utc)
 
-#: The tempo every seeded row stores, in the database's hundredths. Chosen so
-#: that neither spelling of it can appear in the file by accident.
+#: The tempo every seeded row stores, in hundredths, that no spelling of can appear by accident.
 STORED_TEMPO = 98765
 TEMPO_SPELLINGS = ("98765", "987.65", "987")
 
-#: The rows the fixture builder seeds before anything here is added. They carry
-#: no path and no tempo. Named, since every count below includes them.
+#: The rows the fixture builder seeds, with no path and no tempo, in every count below.
 BASELINE = ("1", "2")
 
 #: A title and a file name carrying the three characters the brief names.
@@ -95,8 +88,7 @@ READINGS = {
 BATCH = "2026-09-18 batch"
 CRATE = "Night Crate"
 
-#: Every playlist the export must carry, as its path under the root and the
-#: keys it holds in stored order. Spelled out, never derived.
+#: Every playlist the export must carry, by path under the root, with its keys in stored order.
 EXPECTED_PLAYLISTS = {
     (INTAKE, BATCH): ("11", "12", "13"),
     (TREE, "Deep House", "Low"): (),
@@ -120,22 +112,19 @@ EXPECTED_FOLDERS = {
 }
 ROOT_CHILDREN = (INTAKE, TREE, "Crates", outbound_fakes.FAVORITES)
 
-#: The drive a moved library's database was made on, as a folder name beside
-#: the library. Nothing is ever created there, which is the point, since
-#: rekordbox keeps recording a path under a drive this machine no longer
-#: mounts (R-773).
+#: The drive a moved library was made on, which rekordbox keeps recording and nothing mounts (R-773).
 BASE_DRIVE = "former-drive"
 
-#: The two ways a library's rows are recorded, as the ids of a parametrized
-#: fixture: where the library is mounted, or under the base drive with the one
-#: rule setup offers.
+#: The two ways a library's rows are recorded: where mounted, or under the base drive.
 UNDER_THE_ROOT = "recorded-under-the-root"
 UNDER_A_BASE_DRIVE = "recorded-under-a-base-drive"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
+def _exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
+    """The envelope of a drive that exited ``expected``, OK unless told otherwise."""
+    code, envelope = result
+    assert code == int(expected), envelope
+    return envelope
 
 
 @pytest.fixture(autouse=True)
@@ -174,12 +163,8 @@ def _forget_libraries():
 
 
 def _machine(tmp_path, monkeypatch, *, moved: bool = False, rule: bool = True) -> config.Config:
-    """A set-up machine, every module on, whose database holds the seeded library.
-
-    ``moved`` records every row under the base drive and says so in the
-    database's own drive row, which is a library whose drive was renamed.
-    ``rule`` records the prefix rule that joins the two, as setup offers it.
-    """
+    """A set-up machine, every module on, holding the seeded library; ``moved`` records the rows
+    under the base drive, and ``rule`` the prefix rule setup offers for it."""
     root = tmp_path / "library"
     (root / "db").mkdir(parents=True)
     (root / "Music").mkdir(parents=True)
@@ -245,11 +230,7 @@ def _under_base(cfg: config.Config, path: Path) -> Path:
 
 
 def _is_moved(cfg: config.Config) -> bool:
-    """Whether this library's own drive row names a base drive.
-
-    READ OFF THE DATABASE, never off the configuration. A moved library with no
-    rule recorded is still a moved library, and that one is sitting 19's.
-    """
+    """Whether the drive row names a base drive; a moved library with no rule is still moved."""
     conn = sqlite3.connect(cfg.library.db_path)
     try:
         (base,) = conn.execute("SELECT BaseDBDrive FROM djmdProperty").fetchone()
@@ -265,10 +246,6 @@ def _as_recorded(cfg: config.Config, path: Path) -> Path:
 
 def _content(cfg: config.Config, rows) -> None:
     """Add collection rows the way rekordbox records them: a plain path, stars."""
-    from pyrekordbox.db6 import tables
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
     engine = create_engine(f"sqlite:///{cfg.library.db_path}")
     with Session(engine) as db_session:
         if db_session.get(tables.DjmdArtist, "900") is None:
@@ -293,18 +270,40 @@ def _content(cfg: config.Config, rows) -> None:
     engine.dispose()
 
 
+#: Each worker's seeded database per layout and schema pin, with the folder it was seeded
+#: under; a copy with those paths moved is the same library (U256).
+_SEEDED: dict[tuple[bool, str], tuple[str, bytes]] = {}
+
+
 def _seed(cfg: config.Config, *, moved: bool = False) -> None:
-    """The library every test reads: five rows, four trees, one of everything odd.
-
-    THE FILES ARE ALWAYS UNDER THE MOUNTED ROOT. A moved library differs in
-    what its rows and its drive row say, and in nothing on disk.
-    """
-    from pyrekordbox.db6 import tables
-
-    _build_disposable_database(Path(cfg.library.db_path), with_tag_category=False)
+    """Five rows, four trees, one of everything odd; the files are always under the mounted root."""
     music = _music(cfg)
     for _identifier, filename, *_rest in TRACKS:
         (music / filename).write_bytes(b"")
+    database = Path(cfg.library.db_path)
+    here = str(Path(cfg.library.root).parent)
+    key = (moved, rb_writer.pinned_db_version(cfg))
+    if key in _SEEDED:
+        seeded_under, image = _SEEDED[key]
+        database.write_bytes(image)
+        conn = sqlite3.connect(database)
+        conn.execute("UPDATE djmdContent SET FolderPath = replace(FolderPath, ?, ?)", (seeded_under, here))
+        conn.execute(
+            "UPDATE djmdProperty SET BaseDBDrive = replace(BaseDBDrive, ?, ?), "
+            "CurrentDBDrive = replace(CurrentDBDrive, ?, ?)",
+            (seeded_under, here, seeded_under, here),
+        )
+        conn.commit()
+        conn.close()
+        return
+    _seed_from_nothing(cfg, moved=moved)
+    if not any(Path(f"{database}{suffix}").exists() for suffix in ("-wal", "-shm", "-journal")):
+        _SEEDED[key] = (here, database.read_bytes())
+
+
+def _seed_from_nothing(cfg: config.Config, *, moved: bool) -> None:
+    _build_disposable_database(Path(cfg.library.db_path), with_tag_category=False)
+    music = _music(cfg)
     recorded = _under_base(cfg, music) if moved else music
     _content(
         cfg,
@@ -314,8 +313,7 @@ def _seed(cfg: config.Config, *, moved: bool = False) -> None:
         ],
     )
     if moved:
-        # rekordbox's own record of the rename, with the trailing separator it
-        # stores. The export does not read it; setup offers the rule from it.
+        # rekordbox's record of the rename, which setup offers the rule from.
         conn = sqlite3.connect(cfg.library.db_path)
         conn.execute(
             "UPDATE djmdProperty SET BaseDBDrive = ?, CurrentDBDrive = ?",
@@ -359,11 +357,15 @@ def _seed(cfg: config.Config, *, moved: bool = False) -> None:
         rb_writer.close_db(handle)
 
 
+def _drive_collection(cfg: config.Config, name: str) -> tuple[Path, dict]:
+    destination = Path(cfg.library.root) / "exports" / name
+    envelope = _exited(drive(["export", "collection", str(destination)]))
+    return destination, envelope
+
+
 def _export(cfg: config.Config, name: str = "collection.xml") -> Path:
     """Write one export under the library's own folder and answer its path."""
-    destination = Path(cfg.library.root) / "exports" / name
-    code, envelope = drive(["export", "collection", str(destination)])
-    assert code == int(ExitCode.OK), envelope
+    destination, envelope = _drive_collection(cfg, name)
     assert envelope["data"]["summary"]["export"] == str(destination)
     return destination
 
@@ -386,9 +388,31 @@ def _tree(path: Path) -> dict[tuple[str, ...], ET.Element]:
     return dict(_walk(root))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The shape, read by a parser and by the strict reader
-# ═══════════════════════════════════════════════════════════════════════════
+def _tracks(document: bytes) -> dict[str, ET.Element]:
+    """Each collection row by its identifier, by a real parser."""
+    return {
+        track.get("TrackID"): track
+        for track in ET.fromstring(document).find("COLLECTION").findall("TRACK")
+    }
+
+
+def _approved(verb: list[str], gate: str, answer: str) -> tuple[int, dict]:
+    """Drive a gated verb to its gate, answer it as a person, and drive it again."""
+    refused = _exited(drive(verb), ExitCode.DECISION_REQUIRED)
+    assert refused["cause"]["detail"]["gate"] == gate
+    decided, envelope = drive(["run", "decide", refused["run_id"], gate, answer, "--actor", "a-person"])
+    assert decided == int(ExitCode.OK), envelope
+    return drive(["--run", refused["run_id"], *verb])
+
+
+def _land(export: Path, batch: str) -> dict:
+    """Land the staged files as ``batch`` against ``export``, left waiting on the import."""
+    code, landed = drive(
+        ["-d", "intake.land.confirm=apply", "intake", "land", "--export", str(export),
+         "--name", batch]
+    )  # fmt: skip
+    assert code == int(ExitCode.PENDING_HUMAN), landed
+    return landed
 
 
 def test_the_export_nests_as_the_database_nests_and_omits_what_was_deleted(machine):
@@ -445,10 +469,8 @@ def test_the_strict_reader_takes_the_file_and_sees_the_same_library(machine):
 
 
 def test_the_envelope_counts_what_the_file_holds_and_names_what_it_left_out(machine):
-    destination = Path(machine.library.root) / "exports" / "counted.xml"
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert code == int(ExitCode.OK), envelope
+    """And says that no tempo data was written."""
+    destination, envelope = _drive_collection(machine, "counted.xml")
     summary = envelope["data"]["summary"]
     assert summary["tracks"] == len(LIVE)
     assert summary["folders"] == len(EXPECTED_FOLDERS)
@@ -468,6 +490,8 @@ def test_the_envelope_counts_what_the_file_holds_and_names_what_it_left_out(mach
     assert summary["tracks_without_a_file"] == len(BASELINE)
     assert "'1', '2'" in warned["export-location-not-a-file"]
     assert summary["rows_normalised"] == 0
+    (tempo,) = [c for c in envelope["data"]["checks"] if c["key"] == "export.tempo"]
+    assert "no tempo data was written" in tempo["detail"]
 
 
 def test_every_line_ends_in_a_carriage_return_and_a_line_feed(machine):
@@ -486,10 +510,6 @@ def test_a_folder_with_nothing_in_it_has_a_body_a_landing_could_insert_into(mach
     assert not hollow.self_closing
     assert content[hollow.close_start :].startswith(b"</NODE>\r\n")
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. Field by field, against what the readers require
-# ═══════════════════════════════════════════════════════════════════════════
 
 #: Every attribute a collection row of a rekordbox export carries, as the byte
 #: fixtures cut from one spell them, in order.
@@ -510,20 +530,13 @@ def test_a_row_carries_the_attributes_the_intake_emitter_writes_in_its_order(mac
     )
     assert spelled == REKORDBOX_TRACK_ATTRIBUTES
 
-    theirs = collection_xml.build_track_xml(
-        1,
-        {"name": "n", "artist": "a", "location": "/library/n.flac"},
-        "2026-09-18",
-        declared=DECLARED,
-    ).encode()
+    row = {"name": "n", "artist": "a", "location": "/library/n.flac"}
+    theirs = collection_xml.build_track_xml(1, row, "2026-09-18", declared=DECLARED).encode()
     assert spelled == tuple(key.decode() for key, _value in rbxml._ATTR_PAIR.findall(theirs))
 
 
 def test_a_row_says_what_the_database_row_says(machine):
-    track = {
-        element.get("TrackID"): element
-        for element in _parsed(_export(machine)).find("COLLECTION").findall("TRACK")
-    }["12"]
+    track = _tracks(_export(machine).read_bytes())["12"]
 
     assert track.get("Name") == "Mid Track"
     assert track.get("Artist") == "Probe & Co"
@@ -535,24 +548,14 @@ def test_a_row_says_what_the_database_row_says(machine):
 
 
 def test_each_star_count_is_spelled_as_the_export_byte(machine):
-    rows = {
-        element.get("TrackID"): element.get("Rating")
-        for element in _parsed(_export(machine)).find("COLLECTION").findall("TRACK")
-    }
+    rows = {key: track.get("Rating") for key, track in _tracks(_export(machine).read_bytes()).items()}
     assert rows == {"1": "0", "2": "0", "11": "0", "12": "153", "13": "255", "31": "204"}
 
 
 def test_a_rating_on_neither_scale_is_written_unrated_and_said_so(machine):
     _content(machine, [("51", "Odd.flac", "Odd", 7, False, _music(machine) / "Odd.flac")])
-    destination = Path(machine.library.root) / "exports" / "odd.xml"
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert code == int(ExitCode.OK), envelope
-    rows = {
-        element.get("TrackID"): element.get("Rating")
-        for element in _parsed(destination).find("COLLECTION").findall("TRACK")
-    }
-    assert rows["51"] == "0"
+    destination, envelope = _drive_collection(machine, "odd.xml")
+    assert _tracks(destination.read_bytes())["51"].get("Rating") == "0"
     (warning,) = [w for w in envelope["warnings"] if w["code"] == "export-rating-unreadable"]
     assert "'51'" in warning["message"]
 
@@ -561,11 +564,7 @@ def test_an_ampersand_a_quote_and_an_accent_survive_the_readers(machine):
     exported = _export(machine)
     content = exported.read_bytes()
 
-    parsed = {
-        element.get("TrackID"): element
-        for element in _parsed(exported).find("COLLECTION").findall("TRACK")
-    }["31"]
-    assert parsed.get("Name") == AWKWARD_TITLE
+    assert _tracks(content)["31"].get("Name") == AWKWARD_TITLE
 
     span = rbxml.find_collection_track(content, "31")
     read = rbxml.attributes(content, span)
@@ -579,27 +578,12 @@ def test_an_ampersand_a_quote_and_an_accent_survive_the_readers(machine):
     assert entry.artist == "Probe & Co"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. No beat grid, and no tempo the database held
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_no_tempo_the_database_holds_reaches_the_file(either):
-    """Every seeded row stores a tempo. The file carries the gridless constant.
-
-    ON BOTH LAYOUTS, since a row a prefix rule places is rebuilt on its way to
-    the emitter and must gain nothing on the way.
-    """
-    from pyrekordbox.db6 import tables
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
-
+    """Every seeded row stores a tempo; the file carries the gridless constant on both layouts."""
     machine = either
     engine = create_engine(f"sqlite:///{machine.library.db_path}")
     with Session(engine) as db_session:
-        stored = {
-            row.ID: row.BPM for row in db_session.query(tables.DjmdContent).all() if row.BPM
-        }
+        stored = {row.ID: row.BPM for row in db_session.query(tables.DjmdContent).all() if row.BPM}
     engine.dispose()
     assert set(stored) >= {"11", "12", "13", "31"}, "no row stores a tempo to leak"
     assert set(stored.values()) == {STORED_TEMPO}
@@ -621,20 +605,6 @@ def test_no_tempo_the_database_holds_reaches_the_file(either):
         assert token not in content, token
     assert content.count("AverageBpm=") == len(LIVE)
     assert content.count(f'AverageBpm="{GRIDLESS_AVERAGE_BPM}"') == len(LIVE)
-
-
-def test_the_envelope_says_no_tempo_was_written(machine):
-    code, envelope = drive(
-        ["export", "collection", str(Path(machine.library.root) / "exports" / "said.xml")]
-    )
-    assert code == int(ExitCode.OK), envelope
-    (tempo,) = [c for c in envelope["data"]["checks"] if c["key"] == "export.tempo"]
-    assert "no tempo data was written" in tempo["detail"]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. Who wrote it
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_file_says_cratekit_wrote_it_and_what_it_knows_of_the_database(machine):
@@ -671,43 +641,20 @@ def test_a_provenance_value_cannot_close_the_comment_it_sits_in():
     assert '"y"' not in line
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. The refusals
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def test_rekordbox_running_is_refused_and_nothing_is_written(machine, monkeypatch):
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
-    destination = Path(machine.library.root) / "exports" / "refused.xml"
+@pytest.mark.parametrize("probe", ["rekordbox_running", "rekordbox_agent_running"])
+def test_rekordbox_or_its_agent_running_is_refused_and_nothing_is_written(
+    machine, monkeypatch, probe
+):
+    """Under one slug, and with no folder of the destination's made."""
+    monkeypatch.setattr(rb_writer, probe, lambda: True)
+    destination = Path(machine.library.root) / "new" / "deeper" / "out.xml"
 
     code, envelope = drive(["export", "collection", str(destination)])
 
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "rekordbox-running"
     assert not destination.exists()
-    assert not destination.parent.exists()
-
-
-def test_the_agent_running_is_refused_under_the_same_slug(machine, monkeypatch):
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
-    destination = Path(machine.library.root) / "exports" / "refused.xml"
-
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert envelope["cause"]["reason"] == "rekordbox-running"
-    assert code != int(ExitCode.OK)
-    assert not destination.exists()
-
-
-def test_an_existing_file_is_refused_and_left_as_it_was(machine):
-    destination = Path(machine.library.root) / "kept.xml"
-    destination.write_bytes(b"somebody kept this")
-
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "output-exists"
-    assert destination.read_bytes() == b"somebody kept this"
+    assert not (Path(machine.library.root) / "new").exists()
 
 
 def test_a_file_that_appears_after_the_check_is_refused_by_the_write(machine, tmp_path):
@@ -740,9 +687,7 @@ def test_a_file_that_came_and_went_is_still_refused_as_taken(tmp_path, monkeypat
     assert not destination.exists()
 
 
-def test_a_write_that_fails_part_way_leaves_no_file_and_no_folder_it_made(
-    tmp_path, monkeypatch
-):
+def test_a_write_that_fails_part_way_leaves_no_file_and_no_folder_it_made(tmp_path, monkeypatch):
     kept = tmp_path / "kept"
     kept.mkdir()
     destination = kept / "made" / "deeper" / "torn.xml"
@@ -772,36 +717,29 @@ def _copies(monkeypatch) -> list[Path]:
     return taken
 
 
-def test_a_folder_that_is_a_file_is_refused_before_the_database_is_copied(
-    machine, monkeypatch
-):
+def test_a_folder_that_is_a_file_is_refused_before_the_database_is_copied(machine, monkeypatch):
     blocked = Path(machine.library.root) / "not-a-folder"
     blocked.write_bytes(b"a file")
     taken = _copies(monkeypatch)
 
-    code, envelope = drive(["export", "collection", str(blocked / "deep" / "out.xml")])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(drive(["export", "collection", str(blocked / "deep" / "out.xml")]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "path-permission-denied"
     assert envelope["cause"]["detail"]["blocked"] == str(blocked.resolve())
-    # The reason it gives is the true one. A file also fails the next question,
-    # whether it can be written into, and that answer would send a person to
-    # its permissions.
+    # The true reason; "cannot be written into" would send a person to its permissions.
     assert "is not a folder" in envelope["cause"]["message"]
     assert taken == []
     assert blocked.read_bytes() == b"a file"
 
 
 def test_an_existing_file_is_refused_before_the_database_is_copied(machine, monkeypatch):
-    """The exclusive create would refuse it too, after the whole database was read."""
+    """And left as it was. The exclusive create would refuse it too, after the read."""
     destination = Path(machine.library.root) / "kept.xml"
     destination.write_bytes(b"somebody kept this")
     taken = _copies(monkeypatch)
 
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(drive(["export", "collection", str(destination)]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "output-exists"
+    assert destination.read_bytes() == b"somebody kept this"
     assert taken == []
 
 
@@ -823,23 +761,11 @@ def test_a_folder_nobody_may_write_to_is_refused_before_the_database_is_copied(
     assert list(locked.iterdir()) == []
 
 
-def test_a_refused_read_leaves_no_folder_behind(machine, monkeypatch):
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
-    destination = Path(machine.library.root) / "new" / "deeper" / "out.xml"
-
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert envelope["cause"]["reason"] == "rekordbox-running", (code, envelope)
-    assert not (Path(machine.library.root) / "new").exists()
-
-
 @pytest.mark.parametrize("suffix", tree_registry.PENDING_XML_SUFFIXES)
 def test_a_name_the_pending_scan_reads_as_an_intake_file_is_refused(machine, suffix):
     destination = Path(machine.library.root) / f"2026-09-29{suffix}"
 
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(drive(["export", "collection", str(destination)]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "library-export-unusable"
     assert not destination.exists()
     assert tree_registry.pending_intake_xml(machine) == ()
@@ -849,17 +775,13 @@ def test_an_identifier_that_is_not_digits_is_refused_and_nothing_is_written(mach
     _content(machine, [("r-one", "R.flac", "R", 0, False, _music(machine) / "R.flac")])
     destination = Path(machine.library.root) / "exports" / "refused.xml"
 
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(drive(["export", "collection", str(destination)]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "library-export-unusable"
     assert envelope["cause"]["detail"]["identifier"] == "r-one"
     assert not destination.exists()
 
 
-def test_the_configured_database_is_never_opened_and_is_left_byte_for_byte(
-    machine, monkeypatch
-):
+def test_the_configured_database_is_never_opened_and_is_left_byte_for_byte(machine, monkeypatch):
     """The copy is what is opened. The configured path is only ever copied from."""
     database = Path(machine.library.db_path)
     before = database.read_bytes()
@@ -889,16 +811,8 @@ def test_the_verb_declares_one_xml_no_database_surface_and_asks_nothing():
     assert "library.paths_resolved" in entry.doctor_checks
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. Every verb that takes an export, driven against one this verb wrote
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_the_population_of_verbs_that_take_an_export_is_the_one_driven_here():
     """Derived off the shipped parsers, so a new verb taking one fails here."""
-    import argparse
-    import importlib
-
     taking: set[str] = set()
     for entry in registry.ENTRIES:
         if not entry.landed:
@@ -942,21 +856,9 @@ def _stage(cfg: config.Config, silence: Path, name: str) -> Path:
     return path
 
 
-def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_second(
-    either, silence
-):
-    """``intake.land`` and ``intake.imported``, with the import done by hand.
-
-    THE IMPORT IS SIMULATED BY WHAT IT CHANGES: rekordbox importing an intake
-    file adds one collection row per file, recording the path. So the rows are
-    added to the database, and the proof is read off a SECOND export written by
-    this verb, which is the workflow the finding asks for.
-
-    ON A MOVED LIBRARY THE ROW IS RECORDED UNDER THE BASE DRIVE, which is what
-    rekordbox stores, and the proof still comes back with no edit between the
-    two verbs (R-773). Sitting 19 measured the other outcome on the file this
-    verb wrote before it applied the prefix rule.
-    """
+def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_second(either, silence):
+    """The import, simulated by its one row per file, is proved off a second export, on a
+    moved library too, with no edit between the verbs (R-773)."""
     machine = either
     cutover_fixtures.verified_snapshot(machine)
     first = _export(machine, "before-landing.xml")
@@ -964,11 +866,7 @@ def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_seco
         _stage(machine, silence, name)
 
     batch = "2026-09-29_landed"
-    code, landed = drive(
-        ["-d", "intake.land.confirm=apply", "intake", "land", "--export", str(first),
-         "--name", batch]
-    )  # fmt: skip
-    assert code == int(ExitCode.PENDING_HUMAN), landed
+    landed = _land(first, batch)
 
     intake_file = Path(landed["pending_human_action"]["artifact"])
     spliced = ET.fromstring(intake_file.read_bytes())
@@ -984,22 +882,15 @@ def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_seco
     assert collection_export.provenance_of(intake_file.read_bytes()) is not None
 
     landed_in = Path(machine.library.root) / machine.library.music_dir / batch
+    imported = enumerate(sorted(landed_in.glob("*.flac")))
     _content(
         machine,
-        [
-            (
-                str(9000 + index), path.name, path.stem, 0, False,
-                _as_recorded(machine, path.resolve()),
-            )
-            for index, path in enumerate(sorted(landed_in.glob("*.flac")))
-        ],
+        [(str(9000 + i), p.name, p.stem, 0, False, _as_recorded(machine, p.resolve())) for i, p in imported],
     )
     second = _export(machine, "after-import.xml")
     before = second.read_bytes()
 
-    code, proved = drive(["intake", "imported", "--export", str(second)])
-
-    assert code == int(ExitCode.OK), proved
+    proved = _exited(drive(["intake", "imported", "--export", str(second)]))
     (item,) = proved["data"]["items"]
     assert item["action"] == "imported"
     assert item["count"] == 2
@@ -1008,22 +899,14 @@ def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_seco
     tree_registry.assert_cutover_ready(machine, export=second)
 
 
-def test_the_import_proof_is_withheld_against_an_export_taken_before_the_import(
-    machine, silence
-):
+def test_the_import_proof_is_withheld_against_an_export_taken_before_the_import(machine, silence):
     """The other direction. A file this verb wrote is not proof by being one."""
     first = _export(machine, "before-landing.xml")
     _stage(machine, silence, "One.flac")
-    code, landed = drive(
-        ["-d", "intake.land.confirm=apply", "intake", "land", "--export", str(first),
-         "--name", "2026-09-29_unproved"]
-    )  # fmt: skip
-    assert code == int(ExitCode.PENDING_HUMAN), landed
+    landed = _land(first, "2026-09-29_unproved")
     stale = _export(machine, "still-before-import.xml")
 
-    code, withheld = drive(["intake", "imported", "--export", str(stale)])
-
-    assert code == int(ExitCode.PENDING_HUMAN), withheld
+    _exited(drive(["intake", "imported", "--export", str(stale)]), ExitCode.PENDING_HUMAN)
     assert Path(landed["pending_human_action"]["artifact"]).exists()
 
 
@@ -1032,25 +915,16 @@ def test_a_single_file_intake_splices_into_the_file(either, silence):
     exported = _export(machine)
     path = _music(machine) / "Single.flac"
     shutil.copyfile(silence, path)
-    assert tags.write_tags(
-        path, {"title": "Single", "artist": "Probe", "genre": "Deep House", "energylevel": 7}
-    )
+    assert tags.write_tags(path, {"title": "Single", "artist": "Probe", "genre": "Deep House", "energylevel": 7})
 
-    code, envelope = drive(["intake", "file", str(path), "--export", str(exported)])
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _exited(drive(["intake", "file", str(path), "--export", str(exported)]), ExitCode.PENDING_HUMAN)
     spliced = ET.fromstring(Path(envelope["pending_human_action"]["artifact"]).read_bytes())
     collection = spliced.find("COLLECTION")
     assert int(collection.get("Entries")) == len(collection.findall("TRACK")) == len(LIVE) + 1
 
 
 def test_a_cutover_takes_the_file_as_its_fresh_export(either):
-    """The precheck asks that the export is a file holding something, and no more.
-
-    So it holds for this file with no rule of its own, and the file is a better
-    answer to what the check is for than the one it was written against: it is
-    the tree as the database held it the minute the cutover was planned.
-    """
+    """The precheck asks only that the export is a file holding something, which this one is."""
     machine = either
     cutover_fixtures.verified_snapshot(machine)
     exported = _export(machine)
@@ -1059,16 +933,11 @@ def test_a_cutover_takes_the_file_as_its_fresh_export(either):
     assert {result.check: result.passed for result in results}["fresh-export"] is True
     assert all(result.passed for result in results), [r.cause for r in results if r.cause]
 
-    verb = ["tree", "cutover", DECLARED.tree.id, "--export", str(exported)]
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["gate"] == "tree.cutover.approve"
-    run_id = refused["run_id"]
-    decided, envelope = drive(
-        ["run", "decide", run_id, "tree.cutover.approve", "approve", "--actor", "a-person"]
+    code, recorded = _approved(
+        ["tree", "cutover", DECLARED.tree.id, "--export", str(exported)],
+        "tree.cutover.approve",
+        "approve",
     )
-    assert decided == int(ExitCode.OK), envelope
-    code, recorded = drive(["--run", run_id, *verb])
 
     assert code == int(ExitCode.OK), recorded
     assert recorded["data"]["totals"]["recorded"] is True
@@ -1078,10 +947,7 @@ def test_a_cutover_takes_the_file_as_its_fresh_export(either):
 
 @pytest.fixture
 def tagged(monkeypatch):
-    """The tag readings the routing rules ask for, served from the file name.
-
-    Served at the tag reader, so the production ``read_truth`` runs (U250).
-    """
+    """The routing rules' tag readings, served by file name at the tag reader (U250)."""
     serve_readings(
         monkeypatch,
         genre=lambda path: READINGS.get(path.name, (None, None))[0],
@@ -1099,11 +965,7 @@ def test_the_inbox_routing_reads_the_file_and_routes_its_intake(either, tagged):
     machine = either
     exported = _export(machine)
 
-    code, envelope = drive(
-        ["-d", "route.inbox.apply=apply", "route", "inbox", "--export", str(exported)]
-    )
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = _exited(drive(["-d", "route.inbox.apply=apply", "route", "inbox", "--export", str(exported)]))
     assert envelope["data"]["totals"]["inserted"] == 3
     written = Path(envelope["data"]["totals"]["output"]).read_bytes()
     assert _sub_keys(written, "Deep House", "Low") == ("11",)
@@ -1116,9 +978,7 @@ def test_the_unplaced_sweep_reads_the_file_and_places_what_no_sub_holds(either, 
     machine = either
     exported = _export(machine)
 
-    code, envelope = drive(["route", "unplaced", "--export", str(exported)])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = _exited(drive(["route", "unplaced", "--export", str(exported)]))
     placed = {item["track_id"]: item["destination"] for item in envelope["data"]["items"]}
     assert placed["11"] == "Deep House/Low"
     assert placed["12"] == "Deep House/Med"
@@ -1131,112 +991,77 @@ def _bind(monkeypatch, account) -> None:
     monkeypatch.setattr(account_module, "resolve", outbound_fakes.account_factory(account))
 
 
-def test_a_playlist_export_reads_the_file_and_queues_the_playlists_tracks(
-    either, monkeypatch
+@pytest.mark.parametrize(
+    ("verb", "gate", "queued"),
+    [
+        (["export", "playlist", CRATE], "export.playlist.confirm", ["13", "31", "11"]),
+        (["sync", "favorites"], "sync.favorites.confirm", ["12", "13"]),
+    ],
+    ids=["playlist-export", "favourites-sweep"],
+)
+def test_a_queueing_verb_reads_the_file_and_queues_its_tracks(
+    either, monkeypatch, verb, gate, queued
 ):
-    machine = either
-    from cratekit.core import jobs
-
-    exported = _export(machine)
+    exported = _export(either)
     _bind(monkeypatch, outbound_fakes.FakeAccount(catalog={}))
 
-    _run, job_id = approve_and_queue(
-        ["export", "playlist", CRATE, "--export", str(exported)], "export.playlist.confirm"
-    )
+    _run, job_id = approve_and_queue([*verb, "--export", str(exported)], gate)
 
     with jobs.open_store() as store:
-        assert [item.item_id for item in jobs.items(store, job_id)] == ["13", "31", "11"]
+        assert [item.item_id for item in jobs.items(store, job_id)] == queued
 
 
 def test_a_playlist_prune_reads_the_file_and_takes_off_only_what_left_it(either, monkeypatch):
-    """R-836. The crate's three rows in the file match three recorded tracks, and
-    the fourth recorded track, which no row matches any more, is the one taken off."""
+    """R-836: the recorded track no row in the file matches any more is the one taken off."""
     machine = either
-    from cratekit.modules.outbound import ledger
-
     exported = _export(machine)
     account = outbound_fakes.FakeAccount(catalog={"13": "tid-13", "31": "tid-31", "11": "tid-11"})
     _bind(monkeypatch, account)
-    from cratekit.modules.outbound import source
-
-    key = source.resolve(source.read_library(exported), CRATE).key
+    key = outbound_source.resolve(outbound_source.read_library(exported), CRATE).key
     remote = ledger.reserve_playlist(machine, key, lambda: account.create_playlist(CRATE)).remote_id
     for one in ("tid-13", "tid-31", "tid-11", "tid-gone"):
         account.add_to_playlist(remote, one)
         ledger.record_playlist_track(machine, key, one)
-    verb = ["export", "prune", CRATE, "--export", str(exported)]
 
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    decided, envelope = drive(
-        ["run", "decide", refused["run_id"], "export.prune.confirm", "apply", "--actor", "a-person"]
+    code, done = _approved(
+        ["export", "prune", CRATE, "--export", str(exported)], "export.prune.confirm", "apply"
     )
-    assert decided == int(ExitCode.OK), envelope
-    code, done = drive(["--run", refused["run_id"], *verb])
 
     assert code == int(ExitCode.OK), done
     assert account.playlist_tracks(remote) == ("tid-13", "tid-31", "tid-11")
     assert account.taken == [(remote, ("tid-gone",))]
 
 
-def test_the_favourites_sweep_reads_the_file_and_queues_the_favourites(either, monkeypatch):
-    machine = either
-    from cratekit.core import jobs
-
-    exported = _export(machine)
-    _bind(monkeypatch, outbound_fakes.FakeAccount(catalog={}))
-
-    _run, job_id = approve_and_queue(
-        ["sync", "favorites", "--export", str(exported)], "sync.favorites.confirm"
-    )
-
-    with jobs.open_store() as store:
-        assert [item.item_id for item in jobs.items(store, job_id)] == ["12", "13"]
-
-
 def test_the_composed_sync_reads_the_file_and_queues_the_favourites(either, monkeypatch):
     machine = either
-    from cratekit.core import jobs
-    from cratekit.sync import cli as sync_cli
-
     exported = _export(machine)
     _bind(monkeypatch, outbound_fakes.FakeAccount(catalog={}))
-    verb = ["sync", "all", "--export", str(exported)]
 
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["gate"] == sync_cli.CONFIRM
-    decided, envelope = drive(
-        ["run", "decide", refused["run_id"], sync_cli.CONFIRM, "sync", "--actor", "a-person"]
-    )
-    assert decided == int(ExitCode.OK), envelope
-    code, passed = drive(["--run", refused["run_id"], *verb])
-
-    assert code == int(ExitCode.OK), passed
+    _exited(_approved(["sync", "all", "--export", str(exported)], sync_cli.CONFIRM, "sync"))
     with jobs.open_store() as store:
         favourites = [job for job in jobs.list_jobs(store) if job.handler_key == "sync.favorites"]
         (job,) = favourites
         assert [item.item_id for item in jobs.items(store, job.job_id)] == ["12", "13"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 7. What the review found, each driven
-# ═══════════════════════════════════════════════════════════════════════════
-
 NOBODY = collection_export.Provenance(writer="cratekit test", written="2026-09-29T12:00:00Z")
+_Track = collection_export.TrackRow
+_Node = collection_export.NodeRow
 
 
 def _rendered(tracks, nodes=(), *, root="/library", prefix_map=()) -> collection_export.Document:
-    return collection_export.render(
-        tuple(tracks), tuple(nodes), NOBODY, root=root, prefix_map=tuple(prefix_map)
-    )
+    return collection_export.render(tuple(tracks), tuple(nodes), NOBODY, root=root, prefix_map=tuple(prefix_map))
+
+
+def _rows(document: collection_export.Document) -> dict[str, str]:
+    return {key: track.get("Location") for key, track in _tracks(document.content).items()}
 
 
 def test_an_identifier_is_spelled_one_way_in_the_collection_and_in_a_playlist():
     """A leading zero. The row and the key naming it have to be the same string."""
     document = _rendered(
-        [collection_export.TrackRow(track_id="007", location="/library/a.flac")],
-        [collection_export.NodeRow("1", "root", "Held", 0, 1, ("007",))],
+        [_Track(track_id="007", location="/library/a.flac")],
+        [_Node("1", "root", "Held", 0, 1, ("007",))],
     )
     view = library_export.read_export(document.content)
 
@@ -1248,10 +1073,10 @@ def test_an_identifier_is_spelled_one_way_in_the_collection_and_in_a_playlist():
 def test_two_identifiers_that_are_one_number_are_two_rows_the_reader_takes():
     document = _rendered(
         [
-            collection_export.TrackRow(track_id="7", location="/library/a.flac"),
-            collection_export.TrackRow(track_id="007", location="/library/b.flac"),
+            _Track(track_id="7", location="/library/a.flac"),
+            _Track(track_id="007", location="/library/b.flac"),
         ],
-        [collection_export.NodeRow("1", "root", "Held", 0, 1, ("007", "7"))],
+        [_Node("1", "root", "Held", 0, 1, ("007", "7"))],
     )
     view = library_export.read_export(document.content)
 
@@ -1259,32 +1084,28 @@ def test_two_identifiers_that_are_one_number_are_two_rows_the_reader_takes():
     assert view.playlists[0].track_ids == ("007", "7")
 
 
-def test_one_identifier_held_twice_is_refused():
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [
+            _Track(track_id="7", location="/library/a.flac"),
+            _Track(track_id="7", location="/library/b.flac"),
+        ],
+        [_Track(track_id='7" Evil="1', location="/a.flac")],
+    ],
+    ids=["held-twice", "handed-straight-to-the-emitter-not-digits"],
+)
+def test_an_identifier_the_readers_would_lose_is_refused_by_the_emitter(rows):
     with pytest.raises(CratekitError) as caught:
-        _rendered(
-            [
-                collection_export.TrackRow(track_id="7", location="/library/a.flac"),
-                collection_export.TrackRow(track_id="7", location="/library/b.flac"),
-            ]
-        )
-    assert caught.value.cause.reason == "library-export-unusable"
-
-
-def test_a_row_handed_straight_to_the_emitter_is_held_to_digits_as_well():
-    with pytest.raises(CratekitError) as caught:
-        _rendered([collection_export.TrackRow(track_id='7" Evil="1', location="/a.flac")])
+        _rendered(rows)
     assert caught.value.cause.reason == "library-export-unusable"
 
 
 @pytest.mark.parametrize("bad", ["\x01", "\x00", "\x1f", "\t", "\n", "\r", "\ufffe"])
 def test_a_character_no_document_may_carry_is_written_as_a_space_and_counted(bad):
     document = _rendered(
-        [
-            collection_export.TrackRow(
-                track_id="7", name=f"Left{bad}Right", comments="plain", location="/library/a.flac"
-            )
-        ],
-        [collection_export.NodeRow("1", "root", f"Crate{bad}Name", 0, 1, ("7",))],
+        [_Track(track_id="7", name=f"Left{bad}Right", comments="plain", location="/library/a.flac")],
+        [_Node("1", "root", f"Crate{bad}Name", 0, 1, ("7",))],
     )
 
     parsed = ET.fromstring(document.content)
@@ -1298,29 +1119,20 @@ def test_a_character_no_document_may_carry_is_written_as_a_space_and_counted(bad
 
 
 def test_a_row_with_nothing_to_clean_is_not_counted_as_cleaned():
-    document = _rendered(
-        [collection_export.TrackRow(track_id="7", name=AWKWARD_TITLE, location="/library/a.flac")]
-    )
+    document = _rendered([_Track(track_id="7", name=AWKWARD_TITLE, location="/library/a.flac")])
     assert document.omitted.normalised_text == ()
 
 
 def test_a_streamed_track_is_not_dressed_as_a_file_on_this_machine():
     document = _rendered(
         [
-            collection_export.TrackRow(track_id="7", location="tidal:tracks:123"),
-            collection_export.TrackRow(track_id="8", location=""),
-            collection_export.TrackRow(track_id="9", location="/library/Music/a b.flac"),
-            collection_export.TrackRow(
-                track_id="10", location="file://localhost/library/Music/c%20d.flac"
-            ),
+            _Track(track_id="7", location="tidal:tracks:123"),
+            _Track(track_id="8", location=""),
+            _Track(track_id="9", location="/library/Music/a b.flac"),
+            _Track(track_id="10", location="file://localhost/library/Music/c%20d.flac"),
         ]
     )
-    rows = {
-        track.get("TrackID"): track.get("Location")
-        for track in ET.fromstring(document.content).find("COLLECTION").findall("TRACK")
-    }
-
-    assert rows == {
+    assert _rows(document) == {
         "7": "tidal:tracks:123",
         "8": "",
         "9": "file://localhost/library/Music/a%20b.flac",
@@ -1368,10 +1180,6 @@ def test_a_kind_that_cannot_be_read_is_never_written_as_a_playlist(unreadable):
 
 def test_the_lookup_tables_are_read_once_each_and_not_once_per_row(machine):
     """Forty rows, forty artists. The statements must not grow with the rows."""
-    from pyrekordbox.db6 import tables
-    from sqlalchemy import create_engine, event
-    from sqlalchemy.orm import Session
-
     engine = create_engine(f"sqlite:///{machine.library.db_path}")
     with Session(engine) as db_session:
         for index in range(40):
@@ -1395,9 +1203,7 @@ def test_the_lookup_tables_are_read_once_each_and_not_once_per_row(machine):
     statements: list[str] = []
     try:
         bound = handle.session.get_bind()
-        event.listen(
-            bound, "before_cursor_execute", lambda *args: statements.append(args[2])
-        )
+        event.listen(bound, "before_cursor_execute", lambda *args: statements.append(args[2]))
         tracks, _unrated = collection_export.read_tracks(handle)
     finally:
         rb_writer.close_db(handle)
@@ -1409,8 +1215,6 @@ def test_the_lookup_tables_are_read_once_each_and_not_once_per_row(machine):
 
 
 def test_the_day_added_falls_back_to_the_day_on_this_machines_clock():
-    from datetime import timedelta
-
     class Row:
         StockDate = ""
         created_at = datetime(2026, 9, 29, 1, 0, tzinfo=timezone.utc)
@@ -1464,11 +1268,7 @@ class _Songs(_Handle):
 
 
 def test_members_come_out_in_their_stored_order_whatever_order_the_rows_arrive_in():
-    songs = [
-        _Song("c", "1", "30", 3),
-        _Song("a", "1", "10", 1),
-        _Song("b", "1", "20", 2),
-    ]
+    songs = [_Song("c", "1", "30", 3), _Song("a", "1", "10", 1), _Song("b", "1", "20", 2)]
     (node,) = collection_export.read_nodes(_Songs([_Row("1", 0)], songs))
     assert node.members == ("10", "20", "30")
 
@@ -1477,9 +1277,9 @@ def test_siblings_come_out_in_their_sequence_and_not_in_identifier_order():
     document = _rendered(
         [],
         [
-            collection_export.NodeRow("1", "root", "Third", 0, 3),
-            collection_export.NodeRow("2", "root", "First", 0, 1),
-            collection_export.NodeRow("3", "root", "Second", 1, 2),
+            _Node("1", "root", "Third", 0, 3),
+            _Node("2", "root", "First", 0, 1),
+            _Node("3", "root", "Second", 1, 2),
         ],
     )
     root = ET.fromstring(document.content).find("PLAYLISTS").find("NODE")
@@ -1494,13 +1294,7 @@ def test_a_membership_somebody_removed_is_not_written_back_into_the_playlist():
     (node,) = collection_export.read_nodes(_Songs([_Row("1", 0)], songs))
     assert node.members == ("10", "30")
 
-    document = _rendered(
-        [
-            collection_export.TrackRow(track_id=key, location=f"/library/{key}.flac")
-            for key in ("10", "20", "30")
-        ],
-        [node],
-    )
+    document = _rendered([_Track(track_id=key, location=f"/library/{key}.flac") for key in ("10", "20", "30")], [node])
     view = library_export.read_export(document.content)
     assert view.playlists[0].track_ids == ("10", "30")
     assert document.omitted.dangling_members == 0
@@ -1513,10 +1307,6 @@ def test_a_membership_that_cannot_say_whether_it_was_removed_refuses():
         collection_export.read_nodes(_Songs([_Row("1", 0)], [unreadable]))
     assert caught.value.cause.reason == "soft-delete-marker-unreadable"
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 8. Where the library is mounted, and what no rule places (R-773)
-# ═══════════════════════════════════════════════════════════════════════════
 
 #: The seeded file names as the one encoder spells them, written out by hand.
 ENCODED = {
@@ -1531,30 +1321,16 @@ _PLAIN = re.compile(r"[A-Za-z0-9/_.-]+")
 
 def _locations(path: Path) -> dict[str, str]:
     """Each collection row's location, by a real parser."""
-    return {
-        track.get("TrackID"): track.get("Location")
-        for track in _parsed(path).find("COLLECTION").findall("TRACK")
-    }
+    return {key: track.get("Location") for key, track in _tracks(path.read_bytes()).items()}
 
 
 def _recorded_paths(cfg: config.Config) -> dict[str, str]:
     """What the database itself holds for the seeded rows, read with no binding."""
     conn = sqlite3.connect(cfg.library.db_path)
     try:
-        return dict(
-            conn.execute(
-                "SELECT ID, FolderPath FROM djmdContent WHERE ID IN ('11', '12', '13', '31')"
-            ).fetchall()
-        )
+        return dict(conn.execute("SELECT ID, FolderPath FROM djmdContent WHERE ID IN ('11', '12', '13', '31')"))
     finally:
         conn.close()
-
-
-def _drive_collection(cfg: config.Config, name: str) -> tuple[Path, dict]:
-    destination = Path(cfg.library.root) / "exports" / name
-    code, envelope = drive(["export", "collection", str(destination)])
-    assert code == int(ExitCode.OK), envelope
-    return destination, envelope
 
 
 def test_the_moved_fixture_is_a_library_whose_base_drive_is_not_its_mounted_root(moved):
@@ -1633,11 +1409,7 @@ def test_with_no_rule_each_location_is_written_as_the_database_holds_it_and_coun
 
 
 def test_the_export_and_doctor_count_the_same_rows_as_under_no_rule(unruled):
-    """Two surfaces and one survey, so the number doctor reports is the number warned of.
-
-    One row is added under the mounted root, so the two counts cannot agree by
-    both being every row.
-    """
+    """Two surfaces, one survey; a row under the mounted root stops both counting every row."""
     _content(unruled, [("61", "Here.flac", "Here", 0, False, _music(unruled) / "Here.flac")])
     (_music(unruled) / "Here.flac").write_bytes(b"")
 
@@ -1650,32 +1422,18 @@ def test_the_export_and_doctor_count_the_same_rows_as_under_no_rule(unruled):
 
 
 def test_the_import_proof_is_withheld_on_a_moved_library_with_no_rule(unruled, silence):
-    """Sitting 19, reproduced. With nothing joining the two spellings, no proof.
-
-    The landed file is under the mounted root and the imported row is recorded
-    under the base drive. No rule says they are one place, so the export names
-    the row as the database holds it and the run stays waiting, and the export
-    said why when it was written.
-    """
+    """Sitting 19: no rule joins the landed file and the imported row, so the run stays waiting."""
     machine = unruled
     first = _export(machine, "before-landing.xml")
     _stage(machine, silence, "One.flac")
     batch = "2026-09-30_unjoined"
-    code, landed = drive(
-        ["-d", "intake.land.confirm=apply", "intake", "land", "--export", str(first),
-         "--name", batch]
-    )  # fmt: skip
-    assert code == int(ExitCode.PENDING_HUMAN), landed
+    landed = _land(first, batch)
     (path,) = sorted((_music(machine) / batch).glob("*.flac"))
-    _content(
-        machine, [("9000", path.name, path.stem, 0, False, _as_recorded(machine, path.resolve()))]
-    )
+    _content(machine, [("9000", path.name, path.stem, 0, False, _as_recorded(machine, path.resolve()))])
     second, envelope = _drive_collection(machine, "after-import.xml")
     assert envelope["data"]["summary"]["tracks_under_no_rule"] == 5
 
-    code, withheld = drive(["intake", "imported", "--export", str(second)])
-
-    assert code == int(ExitCode.PENDING_HUMAN), withheld
+    _exited(drive(["intake", "imported", "--export", str(second)]), ExitCode.PENDING_HUMAN)
     assert Path(landed["pending_human_action"]["artifact"]).exists()
 
 
@@ -1686,24 +1444,19 @@ def test_each_recorded_spelling_is_placed_or_left_by_the_one_resolver():
     """One row per way a row can resolve, with the written value spelled out."""
     document = _rendered(
         [
-            collection_export.TrackRow(track_id="1", location="/former/Music/a b.flac"),
-            collection_export.TrackRow(
-                track_id="2", location="file://localhost/former/Music/c%20d.flac"
-            ),
+            _Track(track_id="1", location="/former/Music/a b.flac"),
+            _Track(track_id="2", location="file://localhost/former/Music/c%20d.flac"),
             # Decomposed on the way in, composed and lowercase on the way out.
-            collection_export.TrackRow(track_id="3", location="/former/Music/Café.flac"),
+            _Track(track_id="3", location="/former/Music/Café.flac"),
             # A different folder that shares the rule's spelling, so no rule places it.
-            collection_export.TrackRow(track_id="4", location="/formerly/Music/e.flac"),
-            collection_export.TrackRow(track_id="5", location="/library/Music/f.flac"),
-            collection_export.TrackRow(track_id="6", location="tidal:tracks:123"),
-            collection_export.TrackRow(
-                track_id="7", location="file://elsewhere/former/Music/g.flac"
-            ),
-            collection_export.TrackRow(track_id="8", location=""),
-            # Two more under no rule, recorded later and under one prefix, so
-            # the prefix with the most rows is not the one met first.
-            collection_export.TrackRow(track_id="9", location="/elsewhere/Music/h.flac"),
-            collection_export.TrackRow(track_id="10", location="/elsewhere/Music/i.flac"),
+            _Track(track_id="4", location="/formerly/Music/e.flac"),
+            _Track(track_id="5", location="/library/Music/f.flac"),
+            _Track(track_id="6", location="tidal:tracks:123"),
+            _Track(track_id="7", location="file://elsewhere/former/Music/g.flac"),
+            _Track(track_id="8", location=""),
+            # Two more under no rule and one prefix, so the most rows are not met first.
+            _Track(track_id="9", location="/elsewhere/Music/h.flac"),
+            _Track(track_id="10", location="/elsewhere/Music/i.flac"),
         ],
         prefix_map=RULE,
     )
@@ -1727,19 +1480,12 @@ def test_each_recorded_spelling_is_placed_or_left_by_the_one_resolver():
     assert document.omitted.not_file_paths == ("6", "8")
 
 
-def _rows(document: collection_export.Document) -> dict[str, str]:
-    return {
-        track.get("TrackID"): track.get("Location")
-        for track in ET.fromstring(document.content).find("COLLECTION").findall("TRACK")
-    }
-
-
 def test_the_rules_are_walked_in_the_order_they_were_recorded():
     """First match wins, so a rule that is another's prefix has to come first."""
     document = _rendered(
         [
-            collection_export.TrackRow(track_id="1", location="/former/Music/a.flac"),
-            collection_export.TrackRow(track_id="2", location="/former/Sets/b.flac"),
+            _Track(track_id="1", location="/former/Music/a.flac"),
+            _Track(track_id="2", location="/former/Sets/b.flac"),
         ],
         prefix_map=(
             locations.PrefixRule("/former/Music", "/library/Deep"),
@@ -1762,81 +1508,48 @@ def _read_back(location: str, *, root: str, prefix_map) -> str | None:
 
 
 def test_a_rule_onto_a_second_volume_is_left_to_the_reader_that_follows_it():
-    """Written there, the row would resolve under no rule. As recorded, it resolves.
-
-    THE READERS RESOLVE AN EXPORT'S LOCATION THROUGH THE SAME RULES, so the
-    target of a rule that is not under the library root reads back as a path
-    nothing maps, and a track on a second drive would lose the file it had.
-    """
+    """Rewritten, the row would resolve under no rule; as recorded, the readers resolve it."""
     onto_second = (locations.PrefixRule("/former", "/second"),)
-    document = _rendered(
-        [collection_export.TrackRow(track_id="1", location="/former/Music/a.flac")],
-        prefix_map=onto_second,
-    )
+    document = _rendered([_Track(track_id="1", location="/former/Music/a.flac")], prefix_map=onto_second)
 
     written = _rows(document)["1"]
     assert written == "file://localhost/former/Music/a.flac"
     assert _read_back(written, root="/library", prefix_map=onto_second) == "/second/Music/a.flac"
     # What the rewritten spelling would have read back as, which is the reason.
-    assert (
-        _read_back("file://localhost/second/Music/a.flac", root="/library", prefix_map=onto_second)
-        is None
-    )
+    assert _read_back("file://localhost/second/Music/a.flac", root="/library", prefix_map=onto_second) is None
     assert document.remapped == 0
     assert document.omitted.left_to_rule == ("1",)
     assert document.omitted.unmapped_paths == ()
 
 
-def test_a_rule_onto_a_second_volume_that_maps_onto_itself_places_the_row():
-    """The identity rule is how a folder outside the root is declared readable."""
-    rules = (
-        locations.PrefixRule("/former", "/second"),
-        locations.PrefixRule("/second", "/second"),
-    )
-    document = _rendered(
-        [collection_export.TrackRow(track_id="1", location="/former/Music/a.flac")],
-        prefix_map=rules,
-    )
+@pytest.mark.parametrize(
+    ("rules", "written", "read_back", "remapped", "left"),
+    [
+        # The identity rule is how a folder outside the root is declared readable.
+        (
+            (("/former", "/second"), ("/second", "/second")),
+            "/second/Music/a.flac", "/second/Music/a.flac", 1, (),
+        ),
+        # Written at the first target, the row would read back at the second.
+        (
+            (("/former", "/middle"), ("/middle", "/library")),
+            "/former/Music/a.flac", "/middle/Music/a.flac", 0, ("1",),
+        ),
+        # A target that is not a path is left to its rule, not under no rule, as doctor counts it.
+        ((("/former", "Music"),), "/former/Music/a.flac", "Music/Music/a.flac", 0, ("1",)),
+    ],
+    ids=["onto-itself", "moved-again", "target-not-a-path"],
+)  # fmt: skip
+def test_a_rule_places_a_row_only_where_it_reads_back_as_itself(
+    rules, written, read_back, remapped, left
+):
+    prefix_map = tuple(locations.PrefixRule(source, target) for source, target in rules)
+    document = _rendered([_Track(track_id="1", location="/former/Music/a.flac")], prefix_map=prefix_map)
 
-    written = _rows(document)["1"]
-    assert written == "file://localhost/second/Music/a.flac"
-    assert _read_back(written, root="/library", prefix_map=rules) == "/second/Music/a.flac"
-    assert document.remapped == 1
-    assert document.omitted.left_to_rule == ()
-
-
-def test_a_target_a_later_rule_moves_again_is_left_as_recorded():
-    """Written at the first target, the row would read back at the second."""
-    chained = (
-        locations.PrefixRule("/former", "/middle"),
-        locations.PrefixRule("/middle", "/library"),
-    )
-    document = _rendered(
-        [collection_export.TrackRow(track_id="1", location="/former/Music/a.flac")],
-        prefix_map=chained,
-    )
-
-    written = _rows(document)["1"]
-    assert written == "file://localhost/former/Music/a.flac"
-    assert _read_back(written, root="/library", prefix_map=chained) == "/middle/Music/a.flac"
-    assert document.omitted.left_to_rule == ("1",)
-
-
-def test_a_rule_whose_target_is_not_a_path_places_nothing():
-    """The configuration takes any text as a target. The file takes only a path.
-
-    LEFT TO ITS RULE AND NOT COUNTED AS UNDER NO RULE, because a rule did match
-    and doctor's survey counts the row as mapped. Two surfaces naming one row
-    two ways is how a person is sent to a report that says nothing is wrong.
-    """
-    document = _rendered(
-        [collection_export.TrackRow(track_id="1", location="/former/Music/a.flac")],
-        prefix_map=(locations.PrefixRule("/former", "Music"),),
-    )
-
-    assert _rows(document) == {"1": "file://localhost/former/Music/a.flac"}
-    assert document.remapped == 0
-    assert document.omitted.left_to_rule == ("1",)
+    assert _rows(document) == {"1": f"file://localhost{written}"}
+    assert _read_back(f"file://localhost{written}", root="/library", prefix_map=prefix_map) == read_back
+    assert document.remapped == remapped
+    assert document.omitted.left_to_rule == left
     assert document.omitted.unmapped_paths == ()
 
 

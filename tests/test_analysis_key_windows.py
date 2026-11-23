@@ -1,12 +1,7 @@
 """U241: where the windowed key reads, and how a profile becomes a key.
 
-The windowed key is one of two cheaper ways to take the key's chroma, built
-and NOT shipped as the default: its bar is agreement with rekordbox's own keys
-on the library, read at an attended sitting. What is held here needs no
-audio: the geometry of the windows, which is what makes "a key that changes
-late is still heard" and "a stinger is read whole" true by construction, and
-the profile to key step both methods share. The audio side is
-``tests/test_analysis_key_methods.py``, skipped without the analysis extra.
+The window geometry and the profile to key step, with no audio. The audio
+side is ``tests/test_analysis_key_methods.py``.
 """
 
 from __future__ import annotations

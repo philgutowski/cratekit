@@ -1,54 +1,29 @@
 """A native landing files its label tracks under the Record Labels tree (U156).
 
-A label batch landed on the xml bridge files its tracks under ``Record Labels
-/ <Label> / <Label> <year>`` inside the intake file the landing writes. The
-native medium writes no intake file, so until this module a native landing
-refused ``--manifest`` (R-771) and a label batch reached INBOX filed under
-nothing. Bandcamp purchases made that common: a label's releases are bought
-from the label's own account, so the label is known at download time and no
-``label approved`` manifest exists for them.
+The native medium writes no intake file, so this module files a label batch
+under ``Record Labels / <Label> / <Label> <year>`` in the database itself.
 
 AN APPENDED TREE, NOT A CUTOVER. The catalogue tree stays on the xml bridge in
-the registry, because a catalogue crawl is not rebuildable (R39), and nothing
-here records a cutover or rebuilds a node. This writer only appends: it finds
-or makes the tree's folder at the playlist root, the label's folder under it
-and the ``<Label> <year>`` playlist under that, and adds the memberships a
-playlist lacks. Nothing it finds is renamed, moved, emptied or removed. It is
-reached from the native landing alone, which runs only once the intake tree
-is database native, and that is when the tree's one xml writer, the bridge
-landing, can no longer run; :func:`plan` refuses by name on a library whose
-intake tree is still on the bridge, so no caller can append beside an intake
-file that will be imported over it.
+the registry, since a catalogue crawl is not rebuildable (R39). This writer
+finds or makes the tree folder, each label folder and each year playlist, and
+adds missing memberships; nothing it finds is renamed, moved or removed. It
+runs only beside a database native intake tree, when the bridge landing that
+writes this tree into an intake file can no longer run.
 
-THREE SOURCES OF A LABEL AND ITS YEAR. A manifest's rows carry both, and each
-row is tied to a staged file by the bridge's own rule
-(:func:`cratekit.intake.landing.match_label_rows`) over exactly the files the
-landing planned, so a near match or a row no file answers is named and never
-filed. ``--label NAME`` names the label for every file, and each file's year is
-the leading four digits of its date tag: a file with no date tag, or one that
-names no year, is named on the gate screen and filed nowhere, never given a
-year on a guess. ``--label-from-tags`` (U177) reads each file's own label tag
-for its label and its date tag for its year, so one batch holding several
-labels' releases, as a Bandcamp fetch from several sellers does, files each
-under its own and a file with no label tag under none, named. Either way the
-file still lands in its INBOX batch.
+A label and year come from a manifest's rows (matched by
+:func:`cratekit.intake.landing.match_label_rows` over the planned files only),
+from ``--label NAME`` with each file's date tag year, or from each file's own
+label and date tags (U177). A file with no year or label is named and filed
+nowhere, never guessed; it still lands in its INBOX batch.
 
-THE NAMES ARE COMPARED THE BRIDGE'S WAY, under canonical Unicode equivalence
-and not case (R-453), and two siblings of one name refuse, as does a node of
-the other kind, since whichever the query yielded first is not an answer
-(R-129). A new node goes last among its siblings: inserting one at a position
-renumbers every sibling after it, which is a write to rows this landing has no
-business touching, so the order is the one thing this writer gives up beside
-the bridge's newest first. A label folder this write makes gets its years
-newest first, since it makes them in that order.
+Names compare under NFC and not case, the bridge's rule (R-453); two siblings
+of one name, or a node of the other kind, refuse (R-129). A new node goes last
+among its siblings, since inserting one renumbers rows this landing must not
+touch. The write is inside the landing's one session and commit, and read back
+after it.
 
-THE WRITE IS THE GUARDED WRITER'S, inside the landing's one session and one
-commit, after the batch, the account playlists, the hearts and the set's
-playlist, and every playlist it wrote is read back from SQL after the commit.
-
-THE BRIDGE'S REASONS AND ITS MATCH RULE ARE IMPORTED WHERE THEY ARE USED, from
-:mod:`cratekit.intake.landing`, which imports the native engine that imports
-this module, so a module level import would be a cycle.
+The bridge's reasons and match rule are imported where used, since
+:mod:`cratekit.intake.landing` imports the native engine that imports this.
 
 Layer: modules.
 """
@@ -58,14 +33,15 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from cratekit.acquire import match, match_cli
-from cratekit.core import config, rb_writer, session, tags, taxonomy
-from cratekit.core.cause import Remedy, refuse
+from cratekit.core import cause, config, rb_writer, session, tags, taxonomy
+from cratekit.core.cause import Remedy
 from cratekit.intake import ingest
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -78,12 +54,10 @@ LABEL = "label"
 TAGS = "tags"
 
 #: The session record field naming every year playlist a commit filed into,
-#: which is what a later ``label mark`` of a native batch reads (R-916).
+#: read by a later ``label mark`` of a native batch (R-916).
 RECORD_KEY = "labels"
-#: The session record field mapping each landed content row a manifest row
-#: was tied to onto that row's provider track (U150), so the account mirror
-#: fills a label batch's INBOX playlist from the batch's own tracks rather
-#: than asking the provider to match each row by its ISRC.
+#: The session record field mapping each landed content row to its manifest
+#: row's provider track (U150), so the account mirror needs no ISRC match.
 PROVIDER_KEY = "provider_tracks"
 
 #: A date tag's year: its leading four digits, ``2021`` or ``2021-03-05``.
@@ -91,15 +65,13 @@ _YEAR = re.compile(r"^\s*(\d{4})(?!\d)")
 
 _ORIGIN = ("intake.label_filing",)
 
+#: Every refusal here carries this module's origin.
+refuse = partial(cause.refuse, origin=_ORIGIN)
+
 
 def _folded(name: str) -> str:
     """A node name as two sibling names are compared, the bridge writer's rule."""
     return unicodedata.normalize("NFC", name)
-
-
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,11 +132,9 @@ class LabelPlan:
     folders: tuple[tuple[str, str], ...]
     years: tuple[YearPlan, ...]
     unfiled: tuple[Unfiled, ...]
-    #: Each filed target and the provider track its manifest row names, for
-    #: the record (U150). Empty for ``--label``, whose files name no track. A
-    #: target two rows naming two tracks tie is left out: which one the file
-    #: is, is not something either row decides. Not in the digest, since it
-    #: is written to no table.
+    #: Each filed target and the one provider track its manifest rows name
+    #: (U150); a target tied to two tracks is left out, since neither row
+    #: decides which it is. Not in the digest: it is written to no table.
     refs: tuple[tuple[str, str], ...] = ()
 
     def folder_of(self, label: str) -> str:
@@ -193,11 +163,7 @@ def identity(plan: LabelPlan) -> dict[str, Any]:
 
 
 def _catalog_node(medium: ingest.IntakeMedium) -> taxonomy.Node:
-    """The declared catalogue tree, refused by name when there is none or it is not appendable.
-
-    THE MEDIUM IS THE ONE SWITCH'S ANSWER (R-770), handed in by the verb that
-    read it, never a second reading of the registry here.
-    """
+    """The declared catalogue tree, refused by name when there is none or it is not appendable."""
     declared = medium.declared
     node = declared.catalog if declared is not None else None
     if node is None:
@@ -208,12 +174,9 @@ def _catalog_node(medium: ingest.IntakeMedium) -> taxonomy.Node:
             "tree and the intake flow, and this landing will not invent one, "
             "nothing was moved",
             remedy=Remedy.FIX_CONFIG_VALUES,
-            origin=_ORIGIN,
         )
-    # APPENDED ONLY BESIDE A NATIVE INTAKE TREE. While the intake tree is on
-    # the bridge, its landing writes this tree into an intake file the person
-    # imports, and an import of a playlist this writer appended to would land
-    # over it. No caller reaches here then; a defect that did is refused.
+    # APPENDED ONLY BESIDE A NATIVE INTAKE TREE: on the bridge an intake file
+    # import would land over what this appended, so reaching here is a defect.
     if declared is None or not medium.native:
         raise refuse(
             "internal-error",
@@ -221,7 +184,6 @@ def _catalog_node(medium: ingest.IntakeMedium) -> taxonomy.Node:
             f"landing files labels into the intake file it writes and the "
             f"{node.display!r} tree is not appended to natively; nothing was moved",
             remedy=Remedy.REPORT_DEFECT,
-            origin=_ORIGIN,
             detail={"tree_id": declared.intake.id, "catalog": node.id},
         )
     return node
@@ -247,9 +209,8 @@ def _kind_of(row: Any) -> str:
 def _of_kind(row: Any, *, folder: bool) -> bool:
     """Whether a node is a folder, or for ``folder=False`` a plain playlist.
 
-    A SMART PLAYLIST IS NEITHER. The binding refuses a membership in one at
-    the write, after the files have moved, so it is refused here, before the
-    gate, as a node of the other kind.
+    A smart playlist is neither, since the binding refuses a membership in one
+    only at the write, after the files have moved.
     """
     return _kind_of(row) == ("folder" if folder else "playlist")
 
@@ -267,7 +228,6 @@ def _sole(children: Sequence[Any], name: str, *, folder: bool, where: str) -> st
                 f"a {other} named {name!r} sits {where} where the label filing "
                 f"needs a {kind}, and replacing one with the other would lose what "
                 f"it holds; rename it in rekordbox, nothing was moved",
-                origin=_ORIGIN,
                 detail={"name": name, "row": str(row.ID)},
             )
     if len(named) > 1:
@@ -276,16 +236,13 @@ def _sole(children: Sequence[Any], name: str, *, folder: bool, where: str) -> st
             f"{len(named)} {kind}s named {name!r} sit side by side {where}, so the "
             f"label filing has no one {kind} to add to; merge or rename them in "
             f"rekordbox, nothing was moved",
-            origin=_ORIGIN,
             detail={"name": name, "rows": [str(row.ID) for row in named]},
         )
     return str(named[0].ID) if named else ""
 
 
 def _resolve(
-    db: Any,
-    node: taxonomy.Node,
-    filed: Mapping[str, Mapping[int, Sequence[str]]],
+    db: Any, node: taxonomy.Node, filed: Mapping[str, Mapping[int, Sequence[str]]]
 ) -> tuple[str, tuple[tuple[str, str], ...], tuple[YearPlan, ...]]:
     """The tree folder, each label's folder and each year's playlist, as the database holds them now."""
     tree_folder = _sole(
@@ -296,10 +253,7 @@ def _resolve(
     for label in sorted(filed):
         folder = (
             _sole(
-                _live_children(db, tree_folder),
-                label,
-                folder=True,
-                where=f"under {node.display!r}",
+                _live_children(db, tree_folder), label, folder=True, where=f"under {node.display!r}"
             )
             if tree_folder
             else ""
@@ -308,9 +262,7 @@ def _resolve(
         held = _live_children(db, folder) if folder else []
         for year in sorted(filed[label], reverse=True):
             name = f"{label} {year}"
-            playlist = (
-                _sole(held, name, folder=False, where=f"under {label!r}") if folder else ""
-            )
+            playlist = _sole(held, name, folder=False, where=f"under {label!r}") if folder else ""
             years.append(
                 YearPlan(
                     label=label,
@@ -322,17 +274,44 @@ def _resolve(
     return tree_folder, tuple(folders), tuple(years)
 
 
-#: The first year a release can carry. A date tag below it, ``0000`` the commonest,
-#: is a placeholder and not a year, and a year after next is a typing slip.
+def _planned(
+    db: Any,
+    node: taxonomy.Node,
+    filed: Mapping[str, Mapping[int, Sequence[str]]],
+    unfiled: Sequence[Unfiled],
+    **given: Any,
+) -> LabelPlan:
+    """The plan over ``filed`` as the database holds its nodes now, ``given`` naming its source."""
+    tree_folder, folders, years = _resolve(db, node, filed)
+    return LabelPlan(
+        tree_id=node.id,
+        tree_display=node.display,
+        tree_folder=tree_folder,
+        folders=folders,
+        years=years,
+        unfiled=tuple(unfiled),
+        **{"label": "", "manifest": "", "manifest_digest": "", **given},
+    )
+
+
+def _unwritten(target: str, because: str) -> Unfiled:
+    """A planned file filed under no label after all, and why."""
+    from cratekit.intake import landing
+
+    return Unfiled(
+        target=target,
+        reason=landing.NOT_WRITTEN,
+        sentence=f"{Path(target).name} was filed under no label playlist, because {because}",
+    )
+
+
+#: The first year a release can carry: below it (``0000``) is a placeholder, and
+#: a year after next is a typing slip.
 FIRST_YEAR = 1900
 
 
 def _read_year(path: Path) -> tuple[int | None, str]:
-    """The year a file's date tag names and, when there is none, why, in a person's words.
-
-    A TAG THAT COULD NOT BE READ IS NOT A TAG THAT IS ABSENT (pattern 1), so the
-    two are said apart: one is a fact about the file, the other about the read.
-    """
+    """The year a file's date tag names, or why not, an unreadable tag apart (pattern 1)."""
     try:
         stored = tags.read_tags_checked(path, ("date",))["date"]
     except tags.TagReadFailed as exc:
@@ -358,18 +337,9 @@ def year_of(path: Path) -> int | None:
 
 
 def plan_for_label(
-    db: Any,
-    medium: ingest.IntakeMedium,
-    *,
-    label: str,
-    files: Sequence[tuple[Path, Path]],
+    db: Any, medium: ingest.IntakeMedium, *, label: str, files: Sequence[tuple[Path, Path]]
 ) -> LabelPlan:
-    """Every file under ``label`` and the year its date tag names, on this handle.
-
-    A FILE WITH NO YEAR IS NAMED, NOT GUESSED. The date tag is the only year a
-    ``--label`` landing has, and a file whose tag is absent or opens with no
-    four digit year is listed as filed nowhere; it still lands in INBOX.
-    """
+    """Every file under ``label`` in its date tag's year; one with none is named."""
     from cratekit.intake import landing
 
     node = _catalog_node(medium)
@@ -391,27 +361,11 @@ def plan_for_label(
             )
             continue
         filed.setdefault(name, {}).setdefault(year, []).append(str(target))
-    tree_folder, folders, years = _resolve(db, node, filed)
-    return LabelPlan(
-        tree_id=node.id,
-        tree_display=node.display,
-        tree_folder=tree_folder,
-        source=LABEL,
-        label=name,
-        manifest="",
-        manifest_digest="",
-        folders=folders,
-        years=years,
-        unfiled=tuple(unfiled),
-    )
+    return _planned(db, node, filed, unfiled, source=LABEL, label=name)
 
 
 def _read_label(path: Path) -> tuple[str, str]:
-    """The label a file's own label tag names, NFC and stripped, or empty and why.
-
-    A TAG THAT COULD NOT BE READ IS NOT A TAG THAT IS ABSENT (pattern 1), said
-    apart as :func:`_read_year` says a date it could not read.
-    """
+    """The label a file's own label tag names, NFC and stripped, or empty and why (pattern 1)."""
     try:
         stored = tags.read_tags_checked(path, ("label",))["label"]
     except tags.TagReadFailed as exc:
@@ -423,17 +377,12 @@ def _read_label(path: Path) -> tuple[str, str]:
 
 
 def plan_for_tags(
-    db: Any,
-    medium: ingest.IntakeMedium,
-    *,
-    files: Sequence[tuple[Path, Path]],
+    db: Any, medium: ingest.IntakeMedium, *, files: Sequence[tuple[Path, Path]]
 ) -> LabelPlan:
     """Every file under the label its own label tag names, in its date tag's year (U177).
 
-    A FILE WITH NO LABEL TAG IS NAMED, NOT GUESSED, as a file with no year is:
-    it is filed nowhere and still lands in INBOX. That is what keeps a seller
-    no registered label names out of another label's folder when one batch
-    holds both, which one ``--label`` for the whole batch could not.
+    A file with no label tag is named as filed nowhere, so one batch of several
+    sellers files no file under another's label.
     """
     from cratekit.intake import landing
 
@@ -459,19 +408,7 @@ def plan_for_tags(
             )
             continue
         filed.setdefault(label, {}).setdefault(year, []).append(str(target))
-    tree_folder, folders, years = _resolve(db, node, filed)
-    return LabelPlan(
-        tree_id=node.id,
-        tree_display=node.display,
-        tree_folder=tree_folder,
-        source=TAGS,
-        label="",
-        manifest="",
-        manifest_digest="",
-        folders=folders,
-        years=years,
-        unfiled=tuple(unfiled),
-    )
+    return _planned(db, node, filed, unfiled, source=TAGS)
 
 
 def plan_for_manifest(
@@ -484,9 +421,8 @@ def plan_for_manifest(
 ) -> LabelPlan:
     """Every manifest row tied to a planned file by the bridge's rule, on this handle.
 
-    THE INDEX IS OF THE PLANNED FILES ONLY, the bridge's rule for its batch
-    folder: download staging also holds what other attempts left, and a row
-    tied to a file this landing does not move is a row filed under nothing.
+    THE INDEX IS OF THE PLANNED FILES ONLY, since staging also holds other
+    attempts' files, which this landing does not move.
     """
     from cratekit.intake import landing
 
@@ -495,27 +431,22 @@ def plan_for_manifest(
     index = match.index_paths(sources, template=match_cli.library_template(cfg))
     ids = {source.resolve(): str(target) for source, target in files}
     matched, unmatched = landing.match_label_rows(manifest.rows, index, ids)
-    # ONE LABEL UNDER ITS FOLDED NAME: two rows spelling one label composed and
-    # decomposed are one folder, never two siblings that fold to one name.
+    # ONE LABEL UNDER ITS FOLDED NAME, never two siblings that fold to one.
     filed: dict[str, dict[int, list[str]]] = {}
     for label, by_year in matched.items():
         for year, rows in by_year.items():
             filed.setdefault(_folded(label), {}).setdefault(year, []).extend(
                 target for _row, targets in rows for target in targets
             )
-    tree_folder, folders, years = _resolve(db, node, filed)
-    return LabelPlan(
-        refs=_refs(matched),
-        tree_id=node.id,
-        tree_display=node.display,
-        tree_folder=tree_folder,
+    return _planned(
+        db,
+        node,
+        filed,
+        [Unfiled(target="", reason=one.reason, sentence=one.sentence) for one in unmatched],
         source=MANIFEST,
-        label="",
         manifest=str(manifest.path),
         manifest_digest=manifest.digest,
-        folders=folders,
-        years=years,
-        unfiled=tuple(Unfiled(target="", reason=one.reason, sentence=one.sentence) for one in unmatched),
+        refs=_refs(matched),
     )
 
 
@@ -541,24 +472,15 @@ def _restated(
 ) -> tuple[Unfiled, ...]:
     """Every unfiled file whose file will not reach INBOX said so, in place of the plan's words.
 
-    A FILE WITH NO YEAR IS STILL SAID TO BE IN THE INTAKE PLAYLIST by its plan,
-    which is true of a file that lands and false of one left in staging or
-    refused at the move. Rows a manifest names with no file carry no target and
-    keep their words, and so does a file already said not to be written.
+    The plan says a file with no year is in the intake playlist, false of one
+    left in staging or refused at the move. A row with no target keeps its words.
     """
     from cratekit.intake import landing
 
     return tuple(
         one
         if not one.target or one.target in held or one.reason == landing.NOT_WRITTEN
-        else Unfiled(
-            target=one.target,
-            reason=landing.NOT_WRITTEN,
-            sentence=(
-                f"{Path(one.target).name} was filed under no label playlist, because "
-                f"{because}"
-            ),
-        )
+        else _unwritten(one.target, because)
         for one in unfiled
     )
 
@@ -566,44 +488,26 @@ def _restated(
 def supported_only(plan: LabelPlan, kept: set[str]) -> LabelPlan:
     """The plan without the targets the landing will leave in staging, each named as unfiled.
 
-    ``kept`` is every target the landing makes or finds a row for. A file whose
-    suffix the database has no type for stays in staging, so a year playlist
-    that named it would plan a membership no row will ever answer.
+    ``kept`` is every target the landing makes or finds a row for; a file of a
+    suffix the database has no type for stays in staging, and no row answers it.
     """
-    from cratekit.intake import landing
-
     left: list[Unfiled] = []
     years: list[YearPlan] = []
     for one in plan.years:
         held = tuple(target for target in one.targets if target in kept)
         left.extend(
-            Unfiled(
-                target=target,
-                reason=landing.NOT_WRITTEN,
-                sentence=(
-                    f"{Path(target).name} was filed under no label playlist, because "
-                    f"its file stays in staging"
-                ),
-            )
+            _unwritten(target, "its file stays in staging")
             for target in one.targets
             if target not in kept
         )
         if held:
-            years.append(
-                YearPlan(label=one.label, year=one.year, playlist_id=one.playlist_id, targets=held)
-            )
+            years.append(replace(one, targets=held))
     restated = _restated(plan.unfiled, kept, "its file stays in staging")
     if not left and restated == plan.unfiled:
         return plan
     labels = {one.label for one in years}
-    return LabelPlan(
-        tree_id=plan.tree_id,
-        tree_display=plan.tree_display,
-        tree_folder=plan.tree_folder,
-        source=plan.source,
-        label=plan.label,
-        manifest=plan.manifest,
-        manifest_digest=plan.manifest_digest,
+    return replace(
+        plan,
         folders=tuple(one for one in plan.folders if one[0] in labels),
         years=tuple(years),
         unfiled=(*restated, *left),
@@ -611,17 +515,8 @@ def supported_only(plan: LabelPlan, kept: set[str]) -> LabelPlan:
     )
 
 
-# ---------------------------------------------------------------------------
-# What a person is shown and told
-# ---------------------------------------------------------------------------
-
-
 def label_of(plan: LabelPlan) -> dict[str, str]:
-    """Each filed target and every playlist it goes in, for the gate screen's items.
-
-    EVERY ONE, since two manifest rows can tie one file to two years, and a
-    column naming the first would hide the second write.
-    """
+    """Each filed target and every playlist it goes in, which can be two years, for the gate."""
     named: dict[str, list[str]] = {}
     for one in plan.years:
         for target in one.targets:
@@ -653,8 +548,7 @@ def facts(plan: LabelPlan) -> dict[str, Any]:
     }
     made = [label for label, folder in plan.folders if not folder]
     if made:
-        # Named, since a folder this write makes beside one spelled with
-        # another case (R-453) is visible here and nowhere else.
+        # Named: a folder made beside one of another case (R-453) shows only here.
         shown["label folders made"] = made
     if plan.unfiled:
         shown["filed under no label"] = [one.sentence for one in plan.unfiled]
@@ -664,11 +558,6 @@ def facts(plan: LabelPlan) -> dict[str, Any]:
 def unfiled_warning(left: Sequence[Unfiled]) -> list[dict[str, str]]:
     """One warning per file or row filed under no label, in the words the screen showed."""
     return [{"code": one.reason, "message": one.sentence} for one in left]
-
-
-# ---------------------------------------------------------------------------
-# The write
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -726,7 +615,6 @@ def _live_row(db: Any, row_id: str, *, folder: bool, what: str) -> Any:
             "decision-stale",
             f"the {what} (row {row_id}) the plan files into is not live any more, so "
             f"nothing was written",
-            origin=_ORIGIN,
             detail={"row": row_id},
         )
     return row
@@ -735,15 +623,10 @@ def _live_row(db: Any, row_id: str, *, folder: bool, what: str) -> Any:
 def write(db: Any, plan: LabelPlan, *, by_target: Mapping[str, str]) -> Written:
     """Find or make every planned node and add every member, pending on ``db``.
 
-    INSIDE THE LANDING'S SESSION, which commits or rolls back. ``by_target``
-    maps a landing's targets to the rows it made or found; a member whose file
-    made no row, because the move refused it, is left and named, and the rest
-    are added. A year with no member left writes nothing, and a label with no
-    year writes no folder, so the tree gains no empty node. ``add_memberships``
-    adds only what a playlist lacks and removes nothing.
+    Inside the landing's session, which commits or rolls back. ``by_target``
+    maps targets to the rows made or found; a member with no row is left and
+    named. No empty node is made, and ``add_memberships`` removes nothing.
     """
-    from cratekit.intake import landing
-
     left: list[Unfiled] = []
     wanted: list[tuple[YearPlan, tuple[str, ...]]] = []
     for one in plan.years:
@@ -753,31 +636,16 @@ def write(db: Any, plan: LabelPlan, *, by_target: Mapping[str, str]) -> Written:
             if held:
                 ids.append(held)
             else:
-                left.append(
-                    Unfiled(
-                        target=target,
-                        reason=landing.NOT_WRITTEN,
-                        sentence=(
-                            f"{Path(target).name} was filed under no label playlist, "
-                            f"because its file did not land"
-                        ),
-                    )
-                )
+                left.append(_unwritten(target, "its file did not land"))
         if ids:
             wanted.append((one, tuple(dict.fromkeys(ids))))
     provider = tuple(
         (by_target[target], ref) for target, ref in plan.refs if by_target.get(target, "")
     )
+    left = [*_restated(plan.unfiled, by_target, "its file did not land"), *left]
+    nothing = Written(plan.tree_id, plan.tree_folder, False, (), (), tuple(left), provider)
     if not wanted:
-        return Written(
-            tree_id=plan.tree_id,
-            tree_folder=plan.tree_folder,
-            tree_created=False,
-            folders_created=(),
-            years=(),
-            left=(*_restated(plan.unfiled, by_target, "its file did not land"), *left),
-            provider=provider,
-        )
+        return nothing
     if plan.tree_folder:
         tree = _live_row(db, plan.tree_folder, folder=True, what=f"{plan.tree_display!r} folder")
         tree_created = False
@@ -805,30 +673,19 @@ def write(db: Any, plan: LabelPlan, *, by_target: Mapping[str, str]) -> Written:
             created = True
         added = rb_writer.add_memberships(db, playlist, ids)
         written.append(
-            WrittenYear(
-                label=one.label,
-                year=one.year,
-                playlist_id=str(playlist.ID),
-                created=created,
-                ids=ids,
-                added=len(added),
-            )
+            WrittenYear(one.label, one.year, str(playlist.ID), created, ids, added=len(added))
         )
-    return Written(
-        tree_id=plan.tree_id,
+    return replace(
+        nothing,
         tree_folder=str(tree.ID),
         tree_created=tree_created,
         folders_created=tuple(made),
         years=tuple(written),
-        left=(*_restated(plan.unfiled, by_target, "its file did not land"), *left),
-        provider=provider,
     )
 
 
 def read_back(db: Any, written: Written) -> Written:
     """The same answer with every year playlist's live members read from SQL."""
-    from dataclasses import replace
-
     from cratekit.intake import set_playlist
 
     return replace(
@@ -852,7 +709,6 @@ def assert_read_back(written: Written) -> None:
                 f"the database holds {len(one.read_back)} live track(s), "
                 f"{len(missing)} of the {len(one.ids)} the plan named not among "
                 f"them; the commit landed and this answer cannot be vouched for",
-                origin=_ORIGIN,
                 detail={
                     "playlist_id": one.playlist_id,
                     "planned": list(one.ids),
@@ -865,9 +721,8 @@ def assert_read_back(written: Written) -> None:
 def record_commit(record: session.SessionRecord, written: Written, cfg: config.Config) -> None:
     """Name every year playlist filed on the record, and count it under the tree's id (R19).
 
-    ONLY WHEN SOMETHING WAS ADDED OR MADE, the landing's rule for its own tree.
-    The year playlists are named by id, label and year, which is what a later
-    ``label mark`` of a native batch reads in place of an intake file (R-916).
+    Only when something was added or made. A later ``label mark`` of a native
+    batch reads the entries in place of an intake file (R-916).
     """
     if not written.changed():
         return
@@ -888,17 +743,11 @@ def record_commit(record: session.SessionRecord, written: Written, cfg: config.C
 def years_filed(record: session.SessionRecord, label: str) -> frozenset[str] | None:
     """The years one native landing's record says it filed a track under ``label``.
 
-    WHAT ``label mark --pass`` READS IN PLACE OF AN INTAKE FILE (R-1056): the
-    entries :func:`record_commit` wrote under :data:`RECORD_KEY`, one per year
-    playlist the commit filed into. A year counts only when its entry held a
-    track, the bridge's rule for a ``<Label> <year>`` playlist in the intake
-    file, and the label is compared under the landing's own fold, so a name
-    spelled decomposed on either side is the folder the landing filed into.
-
-    A RECORD THAT FILED NOTHING ANSWERS EMPTY, since :func:`record_commit`
-    writes the key only when the commit added or made something. ``None`` is
-    a key this build cannot read, which is not the same answer: a caller that
-    read it as nothing filed would say so of a batch that filed years.
+    What ``label mark --pass`` reads in place of an intake file (R-1056). A
+    year counts only when its entry held a track, the bridge's rule, and the
+    label compares under the landing's fold. A record that filed nothing
+    answers empty; ``None`` is a key this build cannot read, which a caller
+    must not take for nothing filed.
     """
     filed = record.detail.get(RECORD_KEY, [])
     if not isinstance(filed, list):
@@ -934,30 +783,3 @@ def item(written: WrittenYear, *, tree: str, session_id: str) -> dict[str, Any]:
         "added": written.added,
         "session": session_id,
     }
-
-
-__all__ = [
-    "LABEL",
-    "MANIFEST",
-    "PROVIDER_KEY",
-    "RECORD_KEY",
-    "LabelPlan",
-    "Unfiled",
-    "Written",
-    "WrittenYear",
-    "YearPlan",
-    "assert_read_back",
-    "facts",
-    "identity",
-    "item",
-    "label_of",
-    "plan_for_label",
-    "plan_for_manifest",
-    "read_back",
-    "record_commit",
-    "supported_only",
-    "unfiled_warning",
-    "write",
-    "year_of",
-    "years_filed",
-]

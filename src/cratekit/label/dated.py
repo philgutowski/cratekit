@@ -1,34 +1,13 @@
 """New label releases kept apart from the ones already heard (U117).
 
-A followed label's year playlist on the account, ``<Label> <year>``, holds
-every track of that year's confirmed catalogue (R-835), so a release a go just
-downloaded lands among the ones the author has already listened to. This
-module plans, for each followed label, a dated playlist beside the year,
-``<Label> <year> new <date>``, in the label's folder, holding the tracks of the
-releases a go took that the author has not yet said he has heard.
-
-WHAT A GO TOOK is read from the label review store, ``label_sync.json``: every
-``all`` or ``pick`` answer for the label that a go has settled, and the
-releases it took. The date is the local calendar day of the settling, which is
-written when the go plans and queues, so the name in the plan is the name on
-the account, and a second go the same day lands in the same playlist.
-
-HEARD is the per label ``heard`` list of release identifiers in that record,
-written only by ``crate label heard`` (U123, :mod:`cratekit.label.heard`); an
-absent list is nothing heard. Nothing here writes the record.
-
-THE YEAR PLAYLIST IS LEFT AS IT IS. The dated playlist is one more playlist in
-the label's folder, reused by its exact name, and only ever added to. No merge
-into the year and no removal happen here; ``label heard`` does both. A dated
-playlist older than ``labels.new_playlist_age_days`` is reported and nothing
-moves.
-
-ONE THIS PLAN CREATES IS RECORDED IN THE OUTBOUND LEDGER (U123), the ledger's
-lock taken before the create, because a removal is asked of a playlist the
-ledger vouches for and of no other. One reused by its name is never recorded.
-
-A WRITE THE ACCOUNT REFUSES PART WAY is raised naming what was written first,
-and the next plan finds the dated playlist by its name and adds only the rest.
+For each followed label, a dated playlist ``<Label> <year> new <date>`` in the
+label's folder holds the tracks of the releases a go took (``all`` or ``pick``
+answers it settled, dated by the local day of the settling) that the record's
+``heard`` list does not name. It is reused by its exact name and only added to;
+``label heard`` merges and removes it (U123), and one past
+``labels.new_playlist_age_days`` is reported. One this plan creates is recorded
+in the outbound ledger, which vouches for it before any removal. A write
+refused part way names what was written first.
 
 Layer: modules.
 """
@@ -36,16 +15,19 @@ Layer: modules.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
-from typing import Any
+from functools import partial
+from typing import TYPE_CHECKING, Any
 
 from cratekit.cli.output import digest_of
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.label import sync_cli
-from cratekit.modules.outbound import folders, ledger
+
+if TYPE_CHECKING:
+    from cratekit.modules.outbound import folders
 
 _ORIGIN = ("label.dated",)
 
@@ -55,21 +37,17 @@ TAKING = frozenset({sync_cli.ALL, sync_cli.PICK})
 #: The per label key in ``label_sync.json`` read as the releases heard.
 HEARD = "heard"
 
-CREATE = folders.CREATE
-REUSE = folders.REUSE
-AMBIGUOUS = folders.AMBIGUOUS
-
-#: How many tracks one add carries, the year build's own chunk.
-CHUNK = folders.CHUNK
+#: The year plan's actions by value, so the outbound package loads only to write.
+CREATE = "create"
+REUSE = "reuse"
+AMBIGUOUS = "ambiguous"
 
 
 def dated_name(label: str, year: str, day: str) -> str:
     """The dated playlist's title, ``<Label> <year> new <YYYY-MM-DD>``."""
+    from cratekit.modules.outbound import folders
+
     return f"{folders.year_name(label, year)} new {day}"
-
-
-def _pattern(label: str) -> re.Pattern[str]:
-    return re.compile(rf"^{re.escape(label)} (\d{{4}}) new (\d{{4}}-\d{{2}}-\d{{2}})$")
 
 
 def _text(value: Any) -> str:
@@ -97,10 +75,7 @@ def heard(document: Mapping[str, Any], label_id: str) -> frozenset[str]:
 
 
 def taken_by_goes(document: Mapping[str, Any], label_id: str) -> dict[str, str]:
-    """Every release a go took for the label, mapped to the day the go took it.
-
-    A release taken by two goes keeps the first day, so it is filed once.
-    """
+    """Every release a go took for the label, mapped to the first day one took it."""
     days: dict[str, str] = {}
     for entry in document.get("answers") or ():
         if not isinstance(entry, Mapping) or _text(entry.get("label_id")) != label_id:
@@ -124,10 +99,25 @@ def taken_by_goes(document: Mapping[str, Any], label_id: str) -> dict[str, str]:
                 if isinstance(one, Mapping) and _text(one.get("identity"))
             ]
         for identity in identities:
-            held = days.get(identity)
-            if held is None or day < held:
-                days[identity] = day
+            days[identity] = min(day, days.get(identity, day))
     return days
+
+
+def playlist_item(step, *, early: Mapping[str, Any] = {}, late: Mapping[str, Any] = {}):
+    """One planned playlist step as a gate shows it, ``early`` keys before its
+    name and ``late`` ones after its action."""
+    return {
+        "id": step.remote_id,
+        "kind": "playlist",
+        "year": step.year,
+        **early,
+        "name": step.name,
+        "action": step.action,
+        **late,
+        "add": len(step.add),
+        "tracks": step.tracks,
+        **({"why": step.why} if step.why else {}),
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,20 +178,7 @@ class DatedPlan:
         }
 
     def items(self) -> list[dict[str, Any]]:
-        items: list[dict[str, Any]] = [
-            {
-                "id": step.remote_id,
-                "kind": "playlist",
-                "year": step.year,
-                "date": step.day,
-                "name": step.name,
-                "action": step.action,
-                "add": len(step.add),
-                "tracks": step.tracks,
-                **({"why": step.why} if step.why else {}),
-            }
-            for step in self.steps
-        ]
+        items = [playlist_item(step, early={"date": step.day}) for step in self.steps]
         items.extend(
             {
                 "id": one.remote_id,
@@ -240,8 +217,7 @@ class DatedApplied:
     """What an apply wrote, for the report and for a failure part way."""
 
     created: list[str] = field(default_factory=list)
-    #: Each created dated playlist's identifier by its name, recorded the
-    #: moment the create returns, before the move into the folder.
+    #: Each created playlist's identifier by name, recorded before its move.
     ids: dict[str, str] = field(default_factory=dict)
     #: Created playlists not yet in the label's folder.
     unplaced: list[str] = field(default_factory=list)
@@ -249,10 +225,8 @@ class DatedApplied:
     refused: dict[str, int] = field(default_factory=dict)
 
 
-def _aged(
-    label: str, inside: Mapping[str, str], today: date, limit: int
-) -> tuple[Aged, ...]:
-    pattern = _pattern(label)
+def _aged(label: str, inside: Mapping[str, str], today: date, limit: int) -> tuple[Aged, ...]:
+    pattern = re.compile(rf"^{re.escape(label)} (\d{{4}}) new (\d{{4}}-\d{{2}}-\d{{2}})$")
     found: list[Aged] = []
     for remote_id, title in sorted(inside.items(), key=lambda kv: kv[1]):
         matched = pattern.match(title or "")
@@ -279,12 +253,8 @@ def plan(
     *,
     today: date | None = None,
 ) -> DatedPlan:
-    """Decide each dated playlist against the record and the account.
-
-    ``folder_id`` is the label's folder as the year plan decided it, empty
-    when that plan creates the folder, in which case every dated playlist is
-    created once the folder exists.
-    """
+    """Decide each dated playlist against the record and the account; an empty
+    ``folder_id`` is a folder the year plan creates, so each is created."""
     today = today or date.today()
     gone = heard(document, catalogue.label_id)
     took = taken_by_goes(document, catalogue.label_id)
@@ -302,10 +272,7 @@ def plan(
         if not year:
             left_out["undated"] += 1
             continue
-        # ONLY WHAT THE YEAR PATH WOULD ASK FOR. ``by_release`` carries every
-        # track, playable or not, for the prune; ``years`` holds only the ones
-        # the provider will play. A track it will not play would be refused
-        # on every add, so the step would read planned on every run.
+        # ONLY TRACKS THE PROVIDER WILL PLAY, or a step is planned every run.
         playable = set(catalogue.years.get(year, ()))
         held = wanted.setdefault((year, day), [])
         held.extend(one for one in tracks if one in playable and one not in held)
@@ -315,38 +282,19 @@ def plan(
     for (year, day), tracks in sorted(wanted.items()):
         name = dated_name(catalogue.name, year, day)
         matching = sorted(pid for pid, title in inside.items() if title == name)
+        step_of = partial(DatedStep, year=year, day=day, name=name, tracks=len(tracks))
         if len(matching) > 1:
-            steps.append(
-                DatedStep(
-                    year=year,
-                    day=day,
-                    name=name,
-                    action=AMBIGUOUS,
-                    tracks=len(tracks),
-                    why=(
-                        f"the folder holds {len(matching)} playlists named {name!r}, "
-                        f"so which one is the dated playlist is not something a name decides"
-                    ),
-                )
+            why = (
+                f"the folder holds {len(matching)} playlists named {name!r}, "
+                f"so which one is the dated playlist is not something a name decides"
             )
-            continue
-        if matching:
+            steps.append(step_of(action=AMBIGUOUS, why=why))
+        elif matching:
             have = set(account.playlist_tracks(matching[0]))
-            steps.append(
-                DatedStep(
-                    year=year,
-                    day=day,
-                    name=name,
-                    action=REUSE,
-                    remote_id=matching[0],
-                    add=tuple(one for one in tracks if one not in have),
-                    tracks=len(tracks),
-                )
-            )
-            continue
-        steps.append(
-            DatedStep(year=year, day=day, name=name, action=CREATE, add=tuple(tracks), tracks=len(tracks))
-        )
+            add = tuple(one for one in tracks if one not in have)
+            steps.append(step_of(action=REUSE, remote_id=matching[0], add=add))
+        else:
+            steps.append(step_of(action=CREATE, add=tuple(tracks)))
     return DatedPlan(
         label_id=catalogue.label_id,
         label=catalogue.name,
@@ -355,6 +303,18 @@ def plan(
         aged=_aged(catalogue.name, inside, today, cfg.labels.new_playlist_age_days),
         left_out={key: value for key, value in left_out.items() if value},
     )
+
+
+def gate_plan(
+    digest: str, items: list[dict[str, Any]], totals: Mapping[str, Any]
+) -> dict[str, Any]:
+    """A plan as the label verbs' gates show it, its totals counted first."""
+    return {
+        "digest": digest,
+        "items": items,
+        "totals": {"count": len(items), **totals},
+        "chunk": None,
+    }
 
 
 def _no_folder(planned: DatedPlan) -> CratekitError:
@@ -369,22 +329,55 @@ def _no_folder(planned: DatedPlan) -> CratekitError:
     )
 
 
+def refused_part_way(
+    exc: Exception,
+    wrote: str,
+    again: str,
+    detail: Mapping[str, Any],
+    *,
+    failed: str,
+    origin: Sequence[str],
+    scope: Scope = Scope.RUN,
+    steps: bool = True,
+) -> CratekitError:
+    """A label write failed part way, with what was written first named in it: a
+    refusal keeps its reason and remedy, ``again`` added to its steps, and
+    anything else is this build's own defect, ``failed`` naming what failed."""
+    if isinstance(exc, CratekitError):
+        cause = exc.cause
+        return refuse(
+            cause.reason,
+            f"{wrote}. {cause.message}",
+            remedy=cause.remediation.remedy,
+            steps=(*cause.remediation.steps, again),
+            scope=scope,
+            retryable=cause.retryable,
+            origin=origin,
+            detail={**dict(cause.detail), **detail},
+            inner=cause,
+        )
+    return refuse(
+        "internal-error",
+        f"{wrote}. {failed} failed in a way this build does not expect "
+        f"({type(exc).__name__}: {exc})",
+        steps=(again,) if steps else (),
+        scope=scope,
+        origin=origin,
+        detail={**detail, "kind": type(exc).__name__},
+    )
+
+
 def _failed_part_way(exc: Exception, done: DatedApplied, planned: DatedPlan) -> CratekitError:
     """The failure, with what was already written named in it."""
-    if done.created or done.added:
-        wrote = (
-            f"before this failed {len(done.created)} dated playlist(s) were created "
-            f"and {sum(done.added.values())} track(s) added"
-        )
-    else:
-        wrote = "nothing was written before this failed"
-    detail = {
-        "label_id": planned.label_id,
-        "created": list(done.created),
-        "ids": dict(done.ids),
-        "unplaced": [[name, done.ids[name]] for name in done.unplaced],
-        "added": dict(done.added),
-    }
+    wrote = (
+        f"before this failed {len(done.created)} dated playlist(s) were created "
+        f"and {sum(done.added.values())} track(s) added"
+        if done.created or done.added
+        else "nothing was written before this failed"
+    )
+    detail = {"label_id": planned.label_id, **asdict(done)}
+    detail["unplaced"] = [[name, done.ids[name]] for name in done.unplaced]
+    del detail["refused"]
     again = "run crate organize again; a dated playlist is found by its name and only the rest is added"
     if done.unplaced:
         wrote += ", and " + ", ".join(
@@ -395,32 +388,13 @@ def _failed_part_way(exc: Exception, done: DatedApplied, planned: DatedPlan) -> 
             "move each playlist named above into the label's folder on the account "
             "before running crate organize again, or the next run makes a second one"
         )
-    if isinstance(exc, CratekitError):
-        cause = exc.cause
-        return refuse(
-            cause.reason,
-            f"{wrote}. {cause.message}",
-            remedy=cause.remediation.remedy,
-            steps=(*cause.remediation.steps, again),
-            scope=Scope.RUN,
-            retryable=cause.retryable,
-            origin=_ORIGIN,
-            detail={**dict(cause.detail), **detail},
-            inner=cause,
-        )
-    return refuse(
-        "internal-error",
-        f"{wrote}. The dated playlists failed in a way this build does not expect "
-        f"({type(exc).__name__}: {exc})",
-        steps=(again,),
-        scope=Scope.RUN,
-        origin=_ORIGIN,
-        detail={**detail, "kind": type(exc).__name__},
-    )
+    return refused_part_way(exc, wrote, again, detail, failed="The dated playlists", origin=_ORIGIN)
 
 
 def apply(cfg: config.Config, account, planned: DatedPlan) -> DatedApplied:
     """Make and fill what the plan names, or raise naming what was written first."""
+    from cratekit.modules.outbound import folders, ledger
+
     done = DatedApplied()
     folder_id = planned.folder_id or ledger.label_shape(cfg, planned.label_id).folder_id
     if not folder_id:
@@ -431,23 +405,21 @@ def apply(cfg: config.Config, account, planned: DatedPlan) -> DatedApplied:
                 continue
             remote_id = step.remote_id
             if step.action == CREATE:
-                # VOUCHED FOR IN THE LEDGER AS IT IS MADE (U123), the lock
-                # taken before the create, so ``label heard`` may remove it.
+                # VOUCHED FOR IN THE LEDGER AS IT IS MADE (U123).
                 remote_id = ledger.reserve_label_dated(
                     cfg,
                     planned.label_id,
                     step.name,
                     lambda name=step.name: account.create_playlist(name),
                 )
-                # RECORDED BEFORE THE MOVE, so a refusal between the two
-                # names the playlist now at the account root and its id.
+                # RECORDED BEFORE THE MOVE, so a refusal names it at the root.
                 done.created.append(step.name)
                 done.ids[step.name] = remote_id
                 done.unplaced.append(step.name)
                 account.move_to_folder(remote_id, folder_id)
                 done.unplaced = [one for one in done.unplaced if one != step.name]
-            for start in range(0, len(step.add), CHUNK):
-                chunk = step.add[start : start + CHUNK]
+            for start in range(0, len(step.add), folders.CHUNK):
+                chunk = step.add[start : start + folders.CHUNK]
                 held = set(account.add_tracks(remote_id, chunk))
                 added = sum(1 for one in chunk if one in held)
                 done.added[step.name] = done.added.get(step.name, 0) + added
@@ -459,11 +431,8 @@ def apply(cfg: config.Config, account, planned: DatedPlan) -> DatedApplied:
 
 
 def add_step(cfg, area, entry, year_plan: folders.Plan, remote_of) -> None:
-    """Append the label's dated playlist step to ``crate organize``'s account area.
-
-    The one call ``organize``'s label step makes (U117). A record or an
-    account that cannot be read refuses this step alone.
-    """
+    """Append the label's dated playlist step to ``crate organize``'s account area;
+    a record or an account that cannot be read refuses this step alone."""
     from cratekit.organize.steps import NOTHING, PLANNED, Step, refused
 
     key = f"label-new:{entry.label_id}"
@@ -478,9 +447,7 @@ def add_step(cfg, area, entry, year_plan: folders.Plan, remote_of) -> None:
     totals = payload["totals"]
     said = []
     if planned.writes:
-        said.append(
-            f"create {totals['create']} dated playlist(s) and add {totals['add']} track(s)"
-        )
+        said.append(f"create {totals['create']} dated playlist(s) and add {totals['add']} track(s)")
     if planned.aged:
         said.append(
             f"{len(planned.aged)} dated playlist(s) older than "
@@ -499,21 +466,16 @@ def add_step(cfg, area, entry, year_plan: folders.Plan, remote_of) -> None:
         def run() -> dict[str, Any]:
             done = apply(cfg, remote_of.get(), planned)
             if done.refused:
-                step.warnings.append(
-                    {
-                        "code": "label-new-playlists-tracks-refused",
-                        "message": (
-                            f"the provider would not add {sum(done.refused.values())} "
-                            f"track(s) to {len(done.refused)} dated playlist(s)"
-                        ),
-                    }
+                message = (
+                    f"the provider would not add {sum(done.refused.values())} "
+                    f"track(s) to {len(done.refused)} dated playlist(s)"
                 )
-            return {
-                "created": list(done.created),
-                "ids": dict(done.ids),
-                "added": dict(done.added),
-                "refused": dict(done.refused),
-            }
+                warning = {"code": "label-new-playlists-tracks-refused", "message": message}
+                step.warnings.append(warning)
+            # EVERY FIELD WRITTEN, copied, but the moves still owed.
+            written = asdict(done)
+            del written["unplaced"]
+            return written
 
         step.apply = run
     area.steps.append(step)

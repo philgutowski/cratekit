@@ -1,19 +1,8 @@
 """U173: the rekordbox visit skill says what the code it drives says.
 
-The skill is the procedure an attended session follows for the one step
-Cratekit may not do itself: open rekordbox, analyse INBOX / Analyze, wait,
-quit, check, clear. It is text, so nothing breaks when it rots. Every value it
-spells (the playlist, the mark the second run is for, the process names it
-waits on, the gate it answers, the exit codes it branches on, the JSON fields
-it reads, the settings it sets) is a value some module owns, and a skill that
-spells last month's value sends a session to click the wrong playlist or to
-read a verdict backwards. So each one is read here from the module that owns
-it and compared with the text, and the skill is put through the shipped
-skills lint, whose rule (g) parses every ``crate`` line with the real parser.
-
-The settings table is pinned against the brief as well as against the step
-``crate sync land`` prints, because the two are the same standard written
-twice and either can move alone.
+Every value it spells is read from the module that owns it, it passes the
+shipped skills lint, and its settings table is pinned to the brief and to
+``crate sync land``.
 """
 
 from __future__ import annotations
@@ -38,13 +27,8 @@ SKILL = SKILL_DIR / "SKILL.md"
 
 #: Phillip's standard, as the brief gives it (U173, filed 2026-10-27).
 STANDARD = {
-    "Analysis Mode": "Normal",
-    "High precision": "off",
-    "BPM / Grid": "on",
-    "Phrase": "on",
-    "KEY": "on",
-    "Vocal": "off",
-    "CUE": "off",
+    "Analysis Mode": "Normal", "High precision": "off", "BPM / Grid": "on", "Phrase": "on",
+    "KEY": "on", "Vocal": "off", "CUE": "off",
 }
 
 _FENCED = re.compile(r"(?:```|~~~)[^\n]*\n(.*?)(?:```|~~~)", re.DOTALL)
@@ -59,7 +43,7 @@ def text() -> str:
 @pytest.fixture(scope="module")
 def flat(text) -> str:
     """The text with every run of white space one space, for phrases a line wraps."""
-    return re.sub(r"\s+", " ", text)
+    return _flat(text)
 
 
 def _commands(text: str) -> list[str]:
@@ -75,8 +59,11 @@ def _settings(text: str) -> dict[str, str]:
     return {field: value for field, value in rows if field != "Field" and not set(field) <= {"-"}}
 
 
-def _normal(field: str) -> str:
-    return re.sub(r"\s+", "", field).lower()
+def _summary(*rows: rc.Row) -> dict:
+    """The summary ``crate analyze check`` emits over these rows of INBOX / Analyze."""
+    ids = tuple(row.content_id for row in rows)
+    scope = rc.Scope(kind=rc.SCOPE_ANALYZE, name=sync_land.ANALYZE_PLAYLIST, content_ids=ids)
+    return check_cli.payload(rc.Check(scope=scope, rows=rows))["summary"]
 
 
 def test_the_skill_passes_the_shipped_skills_lint(tmp_path):
@@ -97,12 +84,7 @@ def test_the_settings_are_the_brief_s_standard(text):
 
 
 def test_the_settings_agree_with_the_step_crate_sync_land_prints(text):
-    """The sync stop's settings clause is the table's, rendered the way it words it.
-
-    Rendered whole rather than read field by field, so a step that turns one
-    field the other way (KEY off against a table saying KEY on) fails here
-    whichever side moved.
-    """
+    """The sync stop's settings clause is the table's, rendered whole, so either side moving fails."""
     table = _settings(text)
     assert table["BPM / Grid"] == table["Phrase"] == table["KEY"]
     clause = (
@@ -168,11 +150,7 @@ def test_the_exit_codes_it_branches_on_are_the_check_s(flat):
 def test_the_json_fields_it_reads_are_the_check_s(flat):
     """Driven: the payload the verb emits carries every field the skill reads."""
     row = rc.Row(content_id="1", title="t", state=rc.NOT_ANALYSED, dyn=True)
-    found = rc.Check(
-        scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name=sync_land.ANALYZE_PLAYLIST, content_ids=("1",)),
-        rows=(row,),
-    )
-    summary = check_cli.payload(found)["summary"]
+    summary = _summary(row)
     assert summary["scope"] == rc.SCOPE_ANALYZE
     assert summary["rows"] == 1 and summary["not_analysed"] == 1
     assert summary["items"][0]["dyn"] is True
@@ -191,9 +169,7 @@ def test_the_json_fields_it_reads_are_the_check_s(flat):
 
 def test_the_clear_s_gate_is_answered_by_its_own_name_and_option(text):
     spec = next(
-        gate
-        for entry in registry.ENTRIES
-        for gate in entry.gates
+        gate for entry in registry.ENTRIES for gate in entry.gates
         if gate.name == analyzed_cli.APPROVE_GATE
     )
     decide = [line for line in _commands(text) if line.startswith("crate run decide")]
@@ -220,19 +196,15 @@ def test_the_acknowledgment_it_mints_is_the_sessions_one_command(flat):
     """U184: minted as the session in one command, a flag the verb takes."""
     from cratekit.cli import build_parser
     from cratekit.core import session as core_session
-
     named = re.search(r"`crate session ack --as ([a-z]+)`", flat)
     assert named and named.group(1) == core_session.SESSION_ACTOR
     args = build_parser().parse_args(["session", "ack", "--as", named.group(1)])
     assert args.as_actor == core_session.SESSION_ACTOR
 
 
-# ---------------------------------------------------------------------------
 # U319: the Auto Analysis path, first, and the Analyze Tracks path behind it
-# ---------------------------------------------------------------------------
 
-#: The preference sitting 101 read back (A33), the fields beyond the table
-#: the launch dialog may show and what each must read.
+#: The fields beyond the table the launch dialog may show, as sitting 101 read them (A33).
 BEYOND_THE_TABLE = ("BPM range 78 to 155", "Cloud Analysis off", "Radar Analysis on")
 
 
@@ -271,11 +243,7 @@ def test_the_auto_analysis_path_comes_before_the_analyze_tracks_path(text):
         "answer its Auto Analysis dialog when it shows every field of Phillip's standard "
         "and nothing else, or else analyse INBOX / Analyze with Analyze Tracks"
     ) in description
-
-
-def test_today_the_visit_is_the_analyze_tracks_path_until_phillip_chooses(text):
-    """The brief: his decision, and until it the visit keeps today's path."""
-    head = _flat(text.split("\n## 1.", 1)[0])
+    # Today the visit keeps the Analyze Tracks path, until Phillip decides.
     assert "**Phillip has not yet chosen to keep Auto Analysis on**" in head
     assert "so today the launch raises no dialog and the visit is the Analyze Tracks path" in head
     assert "the visit itself never does" in head
@@ -354,13 +322,10 @@ def test_no_dialog_and_a_cancel_each_take_the_analyze_tracks_path(text):
 
 def test_the_auto_analysis_wait_counts_the_rows_not_analysed(text, flat):
     """Auto Analysis leaves an analysed row alone, so the batch would stall the wait."""
-    row = rc.Row(content_id="1", title="t", state=rc.NOT_ANALYSED, dyn=False)
-    done = rc.Row(content_id="2", title="u", state=rc.ANALYSED, dyn=False)
-    found = rc.Check(
-        scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name=sync_land.ANALYZE_PLAYLIST, content_ids=("1", "2")),
-        rows=(row, done),
+    summary = _summary(
+        rc.Row(content_id="1", title="t", state=rc.NOT_ANALYSED, dyn=False),
+        rc.Row(content_id="2", title="u", state=rc.ANALYSED, dyn=False),
     )
-    summary = check_cli.payload(found)["summary"]
     assert summary["not_analysed"] == 1 and summary["analysed"] + summary["not_analysed"] == 2
     assert "with `expected` the `data.summary.not_analysed` count from step 1.5, not the batch" in flat
     assert "On the Auto Analysis path `expected` is `data.summary.not_analysed`" in flat
@@ -377,15 +342,12 @@ def test_a_cancel_rekordbox_ignores_is_counted_from_before_the_launch(text, flat
     assert "Wait as step 4 says with `marker` the path step 2.1 printed" in flat
 
 
-def test_the_marker_is_written_before_each_ok(text):
-    three = _flat(_step(text, 3))
-    assert three.index("Just before pressing OK, write the marker") < three.index("Then press OK.")
-    assert "On the Auto Analysis path the same line is run just before that dialog's OK." in three
-
-
 def test_a_wrong_run_restarts_from_the_check(text):
     """Restarting at step 2 would meet a stale check and the Auto path's OK."""
     three = _flat(_step(text, 3))
+    # The marker is written before each OK.
+    assert three.index("Just before pressing OK, write the marker") < three.index("Then press OK.")
+    assert "On the Auto Analysis path the same line is run just before that dialog's OK." in three
     assert "and start again from step 1.5, so the check is read again before step 2" in three
     assert "start again from step 2." not in three
 
@@ -399,12 +361,7 @@ def test_the_dynamic_run_follows_either_path(text):
 
 def test_done_reads_the_key_column_before_the_clear(text):
     """An Auto run with KEY off reads done to the check, which reports Key and judges nothing."""
-    keyless = rc.Row(content_id="1", title="t", state=rc.ANALYSED, dyn=False)
-    found = rc.Check(
-        scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name=sync_land.ANALYZE_PLAYLIST, content_ids=("1",)),
-        rows=(keyless,),
-    )
-    summary = check_cli.payload(found)["summary"]
+    summary = _summary(rc.Row(content_id="1", title="t", state=rc.ANALYSED, dyn=False))
     assert summary["key_filled"] == 0 and summary["analysed"] == 1
     seven = _flat(_step(text, 7))
     assert "`data.summary.key_filled` must equal `data.summary.analysed`" in seven

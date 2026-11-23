@@ -1,54 +1,20 @@
 """A job's heads, measured ahead of the driver in the pool the machine affords (U241).
 
-``analyze run`` is a job, and a job settles one item at a time: the worker
-measures a file, the engine makes its report durable, the row flips to done,
-and only then is the next item claimed. That order is what makes a kill
-resumable and it does not change. What changes is WHERE THE MEASURING
-HAPPENS. A head, the key, tempo, drift and energy of one file, is a pure read
-of that file, so while the driver is scoring one track's vocals and writing
-its tags, workers are already measuring the tracks behind it, and the driver
-reads each head when it reaches that item.
-
-EVERY WRITE STAYS IN THE DRIVER. A worker here opens a file for reading,
-returns a mapping and writes nothing: no tag, no rename, no report, no row.
-The tag write, the rename and its recorded intent, the staged report and the
-item's state are the driver's, in item order, under the driver lock, exactly
-as before. Nothing in this module writes a beat grid or anything else.
+A job settles one item at a time, which makes a kill resumable and does not
+change. What changes is WHERE THE MEASURING HAPPENS: a head is a pure read of
+one file, so workers measure the tracks behind the one the driver is on.
+EVERY WRITE STAYS IN THE DRIVER, in item order, under the driver lock.
 
 A HEAD MEASURED AHEAD IS USED ONLY IF IT IS THE HEAD THE DRIVER WOULD MEASURE
-NOW, and three things can make it not so, each checked when the head is read:
+NOW. It is measured again here when the FILE changed (its device, inode, size
+and modification time from before the read), when the SETTINGS changed (the
+pool is then stopped, as a serial run reads the calibration per item), or
+when the POOL failed. Every fallback is the serial line in this process, safe
+since ``analysis.warm``. A head measured here while workers run costs one more
+light worker's memory, which the plan's headroom carries.
 
-* the FILE changed after it was measured. The worker returns the file's
-  identity as it stood just before the read, its device, inode, size and
-  modification time, and the driver compares it with the file in front of it.
-  A file replaced under the same name while it waited is measured again.
-* the SETTINGS changed. The calibration, the tempo window and the drift cut
-  the workers were started with are compared with the ones this item binds.
-  The serial run reads the calibration per item, so a calibration written
-  mid run reaches the next item, and it does here too: the pool is stopped
-  and the rest is measured in this process.
-* the POOL failed. A worker that died, or anything raised on the way to its
-  result, says nothing about the item, so the item is measured here, and
-  whatever the file itself raises is raised here as it always was.
-
-In every one of those the fallback is the one line the worker ran before
-this module existed, in this process, so a run that loses its pool is the
-serial run. That holds because two workers starting together no longer fill
-librosa's kernel cache together: before ``analysis.warm`` they could damage
-it, and then the fallback died in the driver exactly where the worker had.
-
-WHAT THE FALLBACK COSTS IN MEMORY, SAID OUT LOUD. A head measured here while
-the workers are still running, a changed file or a file a worker raised on,
-holds one more light worker's memory than the plan counted, in the driver,
-for the length of that one track. The plan's headroom is what carries it. A
-pool that broke or was stopped has no workers left, so the rest of the run is
-the serial run's memory exactly.
-
-WHEN NO POOL RUNS AT ALL. A plan of one worker, which is what a machine under
-memory pressure and a machine that affords only one are both given; a
-detector bound by a test, a closure no child could receive; an analysis
-extra that is not installed; a job nobody opened a session for. Each is the
-serial path, and :func:`report` says which it was.
+No pool runs for a plan of one worker, a test's detector, a missing extra, or
+a job with no session; :func:`report` says which.
 
 Layer: modules. The heavy stack is imported in the workers and never here.
 """
@@ -80,9 +46,8 @@ STOPPED_SETTINGS = (
 class Settings:
     """What a head is measured under. Equal settings, interchangeable heads.
 
-    The calibration travels as the mapping its state file holds rather than as
-    the object, so two readings of one file compare equal and a worker rebuilds
-    exactly the calibration the driver read.
+    The calibration travels as its state file's mapping, so two readings
+    compare equal and a worker rebuilds exactly what the driver read.
     """
 
     calibration: Mapping[str, Any] | None
@@ -99,10 +64,8 @@ class Settings:
 
 
 #: What binds the detector in a worker: an importable function and its
-#: arguments. None is the shipped binding, built from the run's settings. A
-#: test that drives the pool binds an importable fake here, beside the one it
-#: binds in its own process, because the fake the suite usually binds is a
-#: closure and a closure cannot reach a spawned child.
+#: arguments, None for the shipped binding. A test binds an importable fake
+#: here, since a closure cannot reach a spawned child.
 _WORKER_BINDING: tuple[Callable[..., None], tuple[Any, ...]] | None = None
 
 
@@ -135,9 +98,8 @@ def bind_shipped(
 def identity_of(path: str) -> tuple[int, int, int, int] | None:
     """Which file sits at ``path`` right now, or None when none can be read.
 
-    Device and inode say which file, size and modification time say whether it
-    was written since. One field alone is not an identity: a rewrite in place
-    keeps the inode, and a replacement of the same length keeps the size.
+    Device and inode say which file, size and modification time whether it was
+    written since: a rewrite keeps the inode, a same length replacement the size.
     """
     try:
         found = os.stat(path)
@@ -149,8 +111,8 @@ def identity_of(path: str) -> tuple[int, int, int, int] | None:
 def measure(path: str) -> tuple[tuple[int, int, int, int] | None, dict[str, Any]]:
     """What a worker runs: the file's identity BEFORE the read, then the head.
 
-    Before, so a file replaced while it was being read does not carry the
-    replacement's identity beside the original's head.
+    Before, so a file replaced mid read does not carry the replacement's
+    identity beside the original's head.
     """
     found = identity_of(path)
     return found, light.analyse(path)
@@ -200,12 +162,9 @@ def open_session(
 ) -> Session:
     """Plan the light pool over ``paths`` and stand ready to measure them ahead.
 
-    Nothing is spawned here: the stream starts its workers when the first head
-    is asked for. ``reserve_bytes`` is what the planner keeps back, raised by a
-    caller that will hold a vocal model in this process, and
-    ``reserved_cores`` the cores kept from the pool, the shipped figure unless
-    a measurement asks otherwise. A session already open for the job is closed
-    first.
+    Nothing is spawned until the first head is asked for. ``reserve_bytes`` is
+    what the planner keeps back, raised by a caller holding a vocal model. A
+    session already open for the job is closed first.
     """
     close_session(job_id)
     ordered = [str(path) for path in paths]
@@ -247,10 +206,7 @@ def close_session(job_id: str) -> Session | None:
 def head(job_id: str, path: str, settings: Settings | None = None) -> dict[str, Any]:
     """The head of ``path``: the one measured ahead when it still stands, else measured here.
 
-    ``settings`` is what this item binds now. The head a worker measured is
-    used only under equal settings and over the same file; see the module
-    docstring for each way out and why every one of them ends in the serial
-    line.
+    ``settings`` is what this item binds now; see the module docstring.
     """
     session = _SESSIONS.get(job_id)
     if session is None:
@@ -293,8 +249,7 @@ def _from_the_pool(
 def report(session: Session | None) -> dict[str, Any]:
     """What the run's pool was, as plain data the job records beside its reports.
 
-    ``workers`` is how many processes measured heads at once. ``detail`` is the
-    sentence a person reads: the count, and what held it there.
+    ``detail`` is the sentence a person reads: the count, and what held it there.
     """
     if session is None:
         return {"workers": 1, "planned": False, "status": "info", "detail": _alone(WHY_NOT_OPENED)}

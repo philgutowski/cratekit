@@ -1,15 +1,10 @@
 """U281: Beatport's refusal is read as one, and a run stops asking a catalogue that refused it.
 
-Measured at sitting 97 on 2026-11-13: every Beatport lookup since 03:49Z that
-day answered HTTP 403 with ``Cf-Mitigated: challenge`` and Cloudflare's "Just a
-moment..." page, 190 of 190 across five runs, and each one was recorded
-``unreachable``, a paced request per file. These are the searcher's half of the
-card: the read of the refusal, the per run count that stops asking, and the two
-rules that must hold through both, that a refused file is never a miss and that
-a catalogue which answered is never stopped. The sweep's half, the worker's run
-scope and the warning's words, is in ``tests/test_tag_workers.py``.
-
-Every page here is a fake or a recorded shape. Nothing touches the network.
+Sitting 97 measured every Beatport lookup answering 403 with ``Cf-Mitigated:
+challenge``, each recorded ``unreachable``. This is the searcher's half: the
+read of the refusal, the run count that stops asking, a refused file never a
+miss, and a catalogue that answered never stopped. The sweep's half is in
+``tests/test_tag_workers.py``. Nothing touches the network.
 """
 
 from __future__ import annotations
@@ -56,8 +51,8 @@ def _over_the_wire(beatport, *, discogs=None, seen: list[str] | None = None):
     """The shipped fetch over a getter answering Beatport and Discogs by URL.
 
     ``beatport`` is one reply, or a list taken one per Beatport request.
-    ``discogs`` answers the search, and the one release it names, and is a
-    miss when not given.
+    ``discogs`` answers the search and the one release it names, and is a miss
+    when not given.
     """
     replies = list(beatport) if isinstance(beatport, list) else None
     search = discogs if discogs is not None else _Response(200, results())
@@ -105,9 +100,7 @@ REFUSED = _Response(403, CHALLENGE_PAGE, CHALLENGE_HEADERS)
 MISSED = _Response(200, _beatport_page([]))
 
 
-# ---------------------------------------------------------------------------
 # A. Beatport's answer, read the way the fallbacks' is
-# ---------------------------------------------------------------------------
 
 
 def test_a_403_carrying_cloudflares_challenge_header_is_blocked_and_named():
@@ -145,9 +138,8 @@ def test_another_mitigation_is_not_called_a_challenge():
 
 
 def test_a_200_just_a_moment_page_is_blocked_not_a_parse_break():
-    """R-794: the challenge carries no ``__NEXT_DATA__``, so parsed first it
-    was a parser defect and, beside an unread Discogs, a refusal telling the
-    person to report one."""
+    """R-794: the challenge carries no ``__NEXT_DATA__``, so parsed first it was a parser defect
+    and, beside an unread Discogs, a refusal telling the person to report one."""
     hit = _searcher(_over_the_wire(_Response(200, CHALLENGE_PAGE)))(ARTIST, TITLE)
 
     said = _beatport(hit)
@@ -169,10 +161,9 @@ def test_a_200_page_carrying_only_cloudflares_script_is_blocked():
 
 
 def test_a_results_page_carrying_cloudflares_script_is_read_as_results():
-    """A page that carries Beatport's payload is a results page, whatever
-    script Cloudflare put on it, so a match or a miss is never read as a
-    refusal (U281's review): a bot managed site can carry the detection
-    script on every ordinary page."""
+    """A page that carries Beatport's payload is a results page, whatever script Cloudflare put
+    on it, so a match or a miss is never read as a refusal (U281's review): a bot managed site
+    can carry the detection script on every ordinary page."""
     script = '<script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>'
     found = _beatport_page([_beatport_track(ARTIST, TITLE, BUCKET_GENRE)]) + script
     empty = _beatport_page([]) + script
@@ -257,16 +248,14 @@ def test_a_beatport_answer_with_results_still_matches():
     assert _beatport(hit).answer == "matched"
 
 
-# ---------------------------------------------------------------------------
 # B. Three refusals in a row stop the run asking, and nothing else does
-# ---------------------------------------------------------------------------
 
 
 def _sweep(replies, *, refusals, discogs=None, count: int | None = None):
     """``count`` files searched as a worker searches them, one searcher per file.
 
-    One searcher per file is the worker's shape, and the reason the count is
-    handed in: a count kept by the searcher would start again at every file.
+    That is why the count is handed in: a count kept by the searcher would
+    start again at every file.
     """
     seen: list[str] = []
     fetch = _over_the_wire(list(replies), discogs=discogs, seen=seen)
@@ -419,9 +408,8 @@ def test_a_stopped_catalogue_is_answered_without_a_wait():
 
 
 def test_the_count_is_per_catalogue_so_a_refusing_one_never_stops_an_answering_one():
-    """The scraped walk, where three catalogues are scraped: Traxsource refuses
-    every search and is stopped, Beatport and Bandcamp answer and are asked on
-    every file."""
+    """The scraped walk, where three catalogues are scraped: Traxsource refuses every search and
+    is stopped, Beatport and Bandcamp answer and are asked on every file."""
     seen: list[str] = []
     empty_bandcamp = "<html><ul class='result-items'></ul></html>"
 
@@ -473,9 +461,7 @@ def test_the_limit_is_three():
     assert searchers.REFUSALS_BEFORE_STOP == 3
 
 
-# ---------------------------------------------------------------------------
 # C. The run's count, found by the run
-# ---------------------------------------------------------------------------
 
 
 def test_one_run_name_is_one_count_and_another_name_a_fresh_one():
@@ -520,9 +506,7 @@ def test_the_binder_hands_the_run_count_to_the_searcher(monkeypatch):
     assert _beatport_requests(seen) == 3
 
 
-# ---------------------------------------------------------------------------
 # D. The general catalogue's gate is unchanged
-# ---------------------------------------------------------------------------
 
 
 def _never_asked(isrc: object) -> published.Published:

@@ -83,8 +83,8 @@ Every one of these holds, or the visit does not start.
      visit to go on, or 27 with a `data.summary.grids` count above zero under
      `variable`, `absent`, `missing` or `unreadable`, which is a run on the
      wrong settings that the visit's Normal run analyses again. A 27 for key
-     agreement alone, with none of those grids, is not the visit's to fix:
-     stop and report its message.
+     agreement alone, with none of those grids, means the rows are analysed
+     and were never cleared: skip to step 7, which clears them.
    - Exit 0 means nothing waits. With `data.summary.rows` above zero the rows
      are analysed, or gone from the collection (`data.summary.gone`), and
      were never cleared, so skip to the clear in step 7; with none there is
@@ -298,8 +298,17 @@ Otherwise the exit status is the verdict:
   names. Nothing is cleared, and the playlist keeps them for the next visit.
 - **27, suspect.** What rekordbox wrote looks wrong: a variable grid on a row
   not marked `dyn`, a grid the check could not read, or keys agreeing far
-  below the rate. Stop and report its message and its steps. Nothing is
-  cleared.
+  below the rate. For either grid, stop and report its message and its
+  steps, and clear nothing. **For the keys alone it is not a stop**: Phillip
+  decided on 2026-11-22 that where a title's key or tempo differs from
+  rekordbox's, rekordbox's wins. It is the keys alone when
+  `data.summary.key_suspect` is true and `data.summary.not_analysed`,
+  `data.summary.variable_not_dyn` and the `data.summary.grids` counts
+  `absent`, `missing` and `unreadable` are all zero. Read the Key column as
+  done does, `data.summary.key_filled` against `data.summary.analysed`,
+  record the agreement, and go on to the clear below. The titles keep
+  Cratekit's answer until U327's verb lands, and Reload Tags is never run on
+  these rows, since it puts the file's key over rekordbox's.
 
 On done, take the analysed rows out of the playlist:
 

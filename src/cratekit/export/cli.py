@@ -1,41 +1,15 @@
 """``crate export playlist``: confirm, then queue the outbound write, then run it.
 
-Builders take an untyped ``entry`` so this file does not import the CLI
-registry (KTD23). Long-running work queues a job, and since U51 this shell also
-DRIVES one: ``handle`` below is the per item worker behind the ``export.playlist``
-handler key, and it is the first caller in ``src`` of
-``cratekit.modules.outbound.export``'s ``plan`` and ``apply``.
+``handle`` is the per item worker behind ``export.playlist`` (U51). ONE ITEM IS
+ONE TRACK, so a failed write redoes one track and an empty playlist is an empty
+job; since U270 the driver hands :func:`handle_batch` a hundred at a time, added
+in one request. THE CONFIRM DIGEST COVERS THE RESOLVED KEY, THE ABSOLUTE EXPORT
+PATH AND THE TRACKS (R34), so a decision recorded against one collection
+document authorises no other, and the resumed child, rebuilt from the frozen
+payload, digests the same. ``outbound_export`` writes, ``source`` reads.
 
-**TWO MODULES HERE ARE CALLED ``export`` AND THEY ARE ALIASED FOR IT.**
-``outbound_export`` writes the remote playlist; ``source`` reads the local one
-out of a rekordbox collection export. This file is a third thing called export.
-The aliases are not decoration: one symbol meaning two things in two modules is
-the defect ``docs/METHOD.md`` says to hunt once the suite is green, and this file
-is where three of them meet.
-
-**WHAT AN ITEM IS, AND WHY IT IS NOT THE PLAYLIST.** One item is one track. A job
-whose single item is the whole playlist would redo every track when one write
-failed, which throws away the engine's resume guarantee, and it could never be
-empty however empty the playlist was, which throws away the zero item rule. The
-cost of the per item shape was a request and a ledger write per track, so since
-U270 the driver hands :func:`handle_batch` a hundred items at a time and their
-tracks go to the account in one add, each item still settled on its own. The
-collection document is read once per batch, and ``modules.outbound.source``
-memoizes it per process besides.
-
-**THE CONFIRM DIGEST COVERS THE EXPORT DOCUMENT, NOT JUST THE NAME.** R34 makes
-this gate answerable only by a separate act recorded against a run, so the
-decision is taken in one invocation and read in another. Digesting only the
-playlist name would let a decision recorded against one collection document
-authorise a queue built from a different one, with a different track set, written
-to somebody's streaming account. Digesting what the person TYPED is the opposite
-failure: the resumed child rebuilds its command line from the frozen payload, so
-a relative path typed once would never match again and the job would meet
-``DecisionStale`` on every respawn. So the digest is taken over the RESOLVED
-playlist key and the ABSOLUTE export path, which both invocations and the resume
-all produce identically.
-
-Layer: modules.
+Layer: modules. Builders take an untyped ``entry`` so this file does not
+import the CLI registry (KTD23).
 """
 
 from __future__ import annotations
@@ -52,31 +26,24 @@ from cratekit.core.exit_codes import Remedy
 from cratekit.modules.outbound import account, artifacts, kinds, ledger, shell, source
 from cratekit.modules.outbound import export as outbound_export
 
-#: The two payload keys both outbound verbs freeze, spelled once in
-#: :mod:`cratekit.modules.outbound.shell` because the shared resume branch reads
-#: them to rebuild the confirm digest. A key one shell spells differently is a
-#: resume that quietly does different work from the run it continues.
+#: The payload keys both outbound verbs freeze, spelled once in the shell,
+#: whose resume reads them to rebuild the confirm digest.
 PLAYLIST = shell.PLAYLIST
 EXPORT = shell.EXPORT
 
-#: The remote playlist's display name, frozen so the worker never rebuilds it by
-#: splitting the key. Two name builders for one remote playlist is how it comes
-#: to be created under a name nobody chose.
+#: The remote playlist's display name, frozen so the worker never rebuilds it
+#: by splitting the key, which would create it under a name nobody chose.
 NAME = "name"
 
 #: The recorded ledger key this crate used to live under, frozen when the verb
-#: recognised one and a person confirmed it (R-229). Empty or absent means none,
-#: and a job frozen before this key existed carries none, which reads the same.
+#: recognised one and a person confirmed it (R-229); empty or absent is none.
 ADOPTS = "adopts"
 
-#: The remote playlist the gate showed this write landing on, or none when it
-#: showed a create. It is the one stable identifier an outbound job has, and the
-#: worker finds the ledger record by it when the record has moved to the crate's
-#: new path since the job was confirmed.
+#: The remote playlist the gate showed this write landing on, or none for a
+#: create: the worker finds the ledger record by it if the crate has moved.
 REMOTE = "remote_id"
 #: Where a playlist this export creates is filed, the Exports folder decision
-#: :func:`kinds.token` spells, frozen with the job and covered by the digest
-#: (U131). Empty when the write creates nothing.
+#: :func:`kinds.token` spells, frozen and digested (U131); empty for no create.
 FILING = "filing"
 #: A playlist created and left at the account root, with the reason (U131).
 UNFILED_WARNING = "export-playlist-unfiled"
@@ -86,11 +53,7 @@ ACTION_CREATE = "create"
 ACTION_UPDATE = "update"
 ACTION_ADOPT = "adopt"
 
-
-#: What an unmatched row is said to be when the account gave no reason for it.
-#: The engine records the slug ``unmatched`` for that row, which is a key to
-#: grep the artifacts for and not a sentence a person can act on (R-850).
-#: Spelled in the shell, which the favourites sweep shares.
+#: What an unmatched row is said to be when the account gave no reason (R-850).
 NO_MATCH = shell.NO_MATCH
 
 #: The warning a finished export carries when any of its tracks went unwritten.
@@ -100,30 +63,12 @@ UNMATCHED_WARNING = "export-tracks-unmatched"
 def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     """What this job's committed artifacts say it wrote, in one summary.
 
-    DERIVED FROM WHAT RAN, NOT FROM WHAT WAS PLANNED. The engine reports the
-    tracks it could not match, and until this function existed the only place
-    that report reached was a JSON file under the queue root that no verb read.
-    A person exporting thirty tracks against a provider that matched one of them
-    would have seen thirty of thirty items done and been told nothing, which is
-    METHOD's named cost of a clean report over state the tool could not read.
-
-    READ OFF DISK RATHER THAN ACCUMULATED, because a job driven over two sessions
-    has some of its reports in this process and all of them on the filesystem,
-    and the person asking what the export did means all of them.
-
-    COUNTED PER ITEM, AND EVERY UNMATCHED TRACK LISTED (R-850). The lists above
-    were in the envelope and nowhere a person reads, so a live export of eight
-    tracks answered ``ok`` and ``8 of 8 settled`` over a playlist holding four.
-    ``counts`` is what was written, what was already there or written before
-    and what was left out, and ``unmatched_tracks`` names each one left out with its reason,
-    including a row the account said nothing about, which ``reasons`` omits.
-    One item writes one track, so each report adds one to exactly one count, and
-    an item is one committed file whichever run settled it, so a resumed job is
-    counted across both runs and nothing in it twice.
+    READ OFF DISK, so a job driven over two sessions counts each item once.
+    ``unmatched_tracks`` names every track left out with its reason (R-850);
+    ``reasons`` only those the account said something about.
     """
     added: list[str] = []
     already: list[str] = []
-    unmatched: list[str] = []
     reasons: list[str] = []
     left_out: list[dict[str, str]] = []
     unfiled: list[str] = []
@@ -133,37 +78,23 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
         added.extend(str(item) for item in report.get("added") or ())
         already.extend(str(item) for item in report.get("already") or ())
         for item in report.get("unmatched") or ():
-            # THE IDENTITY, NOT THE ROW. An unmatched entry is a mapping carrying
-            # the library identity, the title and the artist, because a person
-            # reading the ARTIFACT needs a name to recognise. Stringifying the
-            # mapping here put a Python dict repr in a JSON envelope, which is a
-            # value nothing downstream can key on. Measured by the first drive of
-            # this summary. ONE ROW BUILT ONCE, and the identity list and the
-            # reason sentences read off it, so the three cannot disagree.
+            # ONE ROW BUILT ONCE, the identity and the reason read off it, so
+            # the lists cannot disagree; a reason only for a row the account
+            # said something about (R-356), named as the library shows it.
             listed = _left_out(item)
             left_out.append(listed)
-            unmatched.append(listed["identity"])
-            # WHAT THE ACCOUNT SAID ABOUT A ROW IT WOULD NOT CHOOSE FOR (R-356),
-            # one sentence per row and only for a row it said something about. A
-            # row the provider has three releases of and a row it has never heard
-            # of are both unmatched, and only the first is something a person can
-            # act on. NAMED AS THE LIBRARY SHOWS THE ROW, since nobody finds a
-            # track by its row number.
             if _said(item):
                 reasons.append(
                     f"{listed['artist']} - {listed['title']} "
                     f"(row {listed['identity']}): {listed['reason']}"
                 )
+    unmatched = [listed["identity"] for listed in left_out]
     return {
         "added": added,
         "already": already,
         "unmatched": unmatched,
         "reasons": reasons,
-        "counts": {
-            "written": len(added),
-            "already": len(already),
-            "unmatched": len(unmatched),
-        },
+        "counts": {"written": len(added), "already": len(already), "unmatched": len(unmatched)},
         "unmatched_tracks": left_out,
         "unfiled": unfiled,
     }
@@ -179,7 +110,7 @@ def _left_out(row: Any) -> dict[str, str]:
     """One unmatched row as the answer lists it, named as the library shows it."""
     named = row if isinstance(row, dict) else {}
     return {
-        "identity": _identity(row),
+        "identity": str(row.get("identity") or "") if isinstance(row, dict) else str(row),
         "artist": str(named.get("artist") or ""),
         "title": str(named.get("title") or ""),
         "reason": _said(row) or NO_MATCH,
@@ -187,55 +118,31 @@ def _left_out(row: Any) -> dict[str, str]:
 
 
 def concluded(outbound: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
-    """The warning a finished export carries when it left tracks out, or none.
+    """The warnings a finished export carries when it left tracks out or unfiled.
 
-    THE OUTCOME STAYS ``ok`` AND THIS IS WHAT STOPS IT BEING A BARE ONE (R-850).
-    ``ok`` with a warning is what the other job verbs answer for a partial
-    result: ``sync`` says ``ok`` with ``sync-source-not-queued`` when one source
-    refused, and the intake jobs say ``ok`` with a ``missing`` count. The outcome
-    vocabulary has no partial word. Every outcome but ``ok`` and ``no_op`` must
-    carry a cause and a non zero exit, which would make a job that finished every
-    item and has nothing to retry read as failed, and ``pending`` needs a human
-    action with a verb that verifies it, which nothing here has. The warning is
-    the line a script reading only the outcome and the warnings can key on.
+    THE OUTCOME STAYS ``ok`` (R-850): any other needs a cause and a non zero exit,
+    reading a job with nothing to retry as failed.
     """
     said = tuple(
-        {
-            "code": UNFILED_WARNING,
-            "message": (
-                f"the remote playlist was written and left at the account root, not "
-                f"filed in the {outbound_export.KIND} folder: {reason}. crate "
-                f"organize files it on its next pass"
-            ),
-        }
+        {"code": UNFILED_WARNING, "message": (
+            f"the remote playlist was written and left at the account root, not "
+            f"filed in the {outbound_export.KIND} folder: {reason}. crate "
+            f"organize files it on its next pass"
+        )}
         for reason in outbound.get("unfiled") or ()
     )
     tally = shell.unmatched_tally(outbound)
     if tally is None:
         return said
     missed, total = tally
-    # "WERE NOT WRITTEN", NOT "ARE NOT ON THE PLAYLIST". A track counted as
-    # already there may be counted so off the ledger rather than the account
-    # (R-855), so the missing set on the account can be larger than this one,
-    # and only what the provider could not match is this warning's to state.
-    return (
-        {
-            "code": UNMATCHED_WARNING,
-            "message": (
-                f"{missed} of the {total} track(s) in this export were not written "
-                f"to the remote playlist, because the provider could not match "
-                f"them; each is listed with its reason in this answer"
-            ),
-        },
-        *said,
+    # "WERE NOT WRITTEN", NOT "ARE NOT ON THE PLAYLIST": a track counted as
+    # already there may be counted off the ledger rather than the account (R-855).
+    message = (
+        f"{missed} of the {total} track(s) in this export were not written "
+        f"to the remote playlist, because the provider could not match "
+        f"them; each is listed with its reason in this answer"
     )
-
-
-def _identity(row: Any) -> str:
-    """The library identity of one unmatched row, however the report spelled it."""
-    if isinstance(row, dict):
-        return str(row.get("identity") or "")
-    return str(row)
+    return ({"code": UNMATCHED_WARNING, "message": message}, *said)
 
 
 def build(parser, entry) -> None:
@@ -243,14 +150,10 @@ def build(parser, entry) -> None:
     del entry
     parser.add_argument("playlist", help="stable identifier of the library playlist")
     parser.add_argument(
-        "--job",
-        default=None,
-        metavar="JOB_ID",
-        help="continue the export already queued under this identifier",
+        "--job", metavar="JOB_ID", help="continue the export already queued under this identifier"
     )
     parser.add_argument(
         "--export",
-        default=None,
         metavar="EXPORT",
         help=(
             "the rekordbox collection export holding the playlist to write; the "
@@ -260,7 +163,6 @@ def build(parser, entry) -> None:
     parser.add_argument(
         "--new-playlist",
         action="store_true",
-        default=False,
         help=(
             "create a new remote playlist even when a recorded one looks like "
             "this playlist under an earlier name or folder"
@@ -270,41 +172,22 @@ def build(parser, entry) -> None:
 
 
 def confirm_digest(
-    playlist_key: str,
-    export_path: str,
-    tracks: list[str] | tuple[str, ...],
-    *,
-    adopts: str = "",
-    filing: str = "",
+    playlist_key: str, export_path: str, tracks: Sequence[str], *, adopts="", filing=""
 ) -> str:
-    """The identity the confirm decision is recorded against.
+    """The identity the confirm decision is recorded against, for enqueue and resume alike.
 
-    ONE FUNCTION RATHER THAN TWO CALL SITES SPELLING A DICT, because the enqueue
-    path builds it from a freshly resolved playlist and the resume path builds it
-    from the frozen payload, and the whole point is that those two produce the
-    same string. Two literals would be two chances to disagree, and the symptom
-    would be a confirmed job that refuses its own resume for ever.
-
-    ``adopts`` IS IN THE DIGEST, BECAUSE IT CHANGES WHERE THE TRACKS GO (R-229).
-    The decision is recorded in one invocation and the queue is built in another,
-    and the ledger can change between them, so a confirmation shown "updates the
-    playlist recorded for X" must not authorise a queue that creates a new one,
-    or the reverse. IT JOINS ONLY WHEN SET, so an export that adopts nothing
-    digests exactly as it did before this key existed and a job frozen by an
-    older build still resumes.
+    ``adopts`` (R-229) and ``filing`` (U131) change where the tracks go, and each
+    JOINS ONLY WHEN SET, so a job frozen by an older build still resumes.
     """
     covered: dict[str, Any] = {
         "kind": "export.playlist",
         "playlist": playlist_key,
         "export": export_path,
-        # THE TRACK SET, not just the file it came from. A path names where
-        # the answer was read; only this names what will be written.
+        # THE TRACK SET, not just the file it came from.
         "tracks": list(tracks),
     }
     if adopts:
         covered["adopts"] = adopts
-    # THE EXPORTS FOLDER A NEW PLAYLIST GOES IN (U131), the move and any folder
-    # made, joined only when set for ``adopts``'s reason.
     if filing:
         covered["filing"] = filing
     return digest_of(covered)
@@ -319,18 +202,10 @@ def _frozen_adoption(payload) -> dict[str, str]:
 
 
 def planned_filing(cfg: config.Config, found: ledger.Recognition) -> str:
-    """The Exports folder decision for a write that creates, read before the gate.
+    """The Exports folder decision for a write that creates, read before the gate (U131).
 
-    Empty when the write lands on a recorded playlist, which is filed already
-    or left where a person put it. Otherwise the account's root folders are
-    read once, so the gate shows and its digest covers the move and any
-    folder the apply would create (U131).
-
-    AN ACCOUNT THAT CANNOT BE READ HERE PLANS NO FILING rather than refusing
-    the gate: the gate has never needed the account, the write
-    resolves it again and refuses there with its own cause, and a playlist
-    created with no filing planned is left at the root, said in a warning, for
-    ``crate organize`` to file.
+    Empty for a recorded playlist. AN ACCOUNT THAT CANNOT BE READ PLANS NO FILING:
+    the write refuses with its own cause, and a playlist left at the root is warned of.
     """
     if found.own_remote_id or found.adopts:
         return ""
@@ -344,16 +219,9 @@ def planned_filing(cfg: config.Config, found: ledger.Recognition) -> str:
 def recognition_warnings(
     resolved: source.ResolvedPlaylist, found: ledger.Recognition
 ) -> tuple[dict[str, str], ...]:
-    """What a person is told about the remote playlist, when there is something.
+    """What a person is told about the remote playlist, AT MOST ONE warning (R-229).
 
-    AT MOST ONE, which :func:`shown_playlist` relies on. Adopting is said out
-    loud because it writes onto a playlist the account already holds, and the
-    way to decline it is named in the same sentence, since a wrong offer with no
-    way round it would leave this crate unexportable. Ambiguity is said because
-    the write then CREATES, which is the second playlist R-229 is about, and the
-    person is the only one who can tell which recorded playlist was this one. A
-    mismatch is said because the write lands on a playlist made from different
-    music, which is what a path reused for a new crate does.
+    An adoption, with how to decline it; an ambiguity, which creates; a mismatch.
     """
     if found.adopts:
         evidence = (
@@ -363,32 +231,22 @@ def recognition_warnings(
             else "which was recorded under the same name before this build "
             "recorded what a playlist holds"
         )
-        return (
-            {
-                "code": "outbound-playlist-adopted",
-                "message": (
-                    f"{resolved.key!r} has no recorded remote playlist, and "
-                    f"{found.adopts!r} has one and is no longer in this export, "
-                    f"{evidence}. This write updates that remote playlist "
-                    f"{found.remote_id} rather than creating a second one. Pass "
-                    f"--new-playlist to create a new one instead"
-                ),
-            },
+        code, message = "outbound-playlist-adopted", (
+            f"{resolved.key!r} has no recorded remote playlist, and "
+            f"{found.adopts!r} has one and is no longer in this export, "
+            f"{evidence}. This write updates that remote playlist "
+            f"{found.remote_id} rather than creating a second one. Pass "
+            f"--new-playlist to create a new one instead"
         )
-    if found.ambiguous:
-        return (
-            {
-                "code": "outbound-playlist-adoption-ambiguous",
-                "message": (
-                    f"{resolved.key!r} has no recorded remote playlist, and "
-                    f"{len(found.candidates)} recorded playlists that are no "
-                    f"longer in this export could each be it: "
-                    f"{', '.join(found.candidates)}. None is adopted, so this "
-                    f"write creates a new remote playlist"
-                ),
-            },
+    elif found.ambiguous:
+        code, message = "outbound-playlist-adoption-ambiguous", (
+            f"{resolved.key!r} has no recorded remote playlist, and "
+            f"{len(found.candidates)} recorded playlists that are no "
+            f"longer in this export could each be it: "
+            f"{', '.join(found.candidates)}. None is adopted, so this "
+            f"write creates a new remote playlist"
         )
-    if found.mismatched:
+    elif found.mismatched:
         elsewhere = (
             f" It looks like the playlist now at {', '.join(found.claimed_by)}, "
             f"and exporting that one first moves the remote playlist to it and "
@@ -396,19 +254,16 @@ def recognition_warnings(
             if found.claimed_by
             else ""
         )
-        return (
-            {
-                "code": "outbound-playlist-record-mismatch",
-                "message": (
-                    f"the remote playlist {found.own_remote_id} recorded for "
-                    f"{resolved.key!r} was last written from a playlist that "
-                    f"shared fewer than half its tracks with this one, so it may "
-                    f"belong to a playlist that has since been renamed. This "
-                    f"write updates it anyway.{elsewhere}"
-                ),
-            },
+        code, message = "outbound-playlist-record-mismatch", (
+            f"the remote playlist {found.own_remote_id} recorded for "
+            f"{resolved.key!r} was last written from a playlist that "
+            f"shared fewer than half its tracks with this one, so it may "
+            f"belong to a playlist that has since been renamed. This "
+            f"write updates it anyway.{elsewhere}"
         )
-    return ()
+    else:
+        return ()
+    return ({"code": code, "message": message},)
 
 
 def shown_playlist(
@@ -416,28 +271,12 @@ def shown_playlist(
 ) -> dict[str, Any]:
     """What the confirm gate shows about the REMOTE playlist this write lands on.
 
-    SHOWN EVERY TIME, for the reason ``shell.shown_export`` gives: a block that
-    appeared only on an adoption would make its absence the only thing saying
-    "this creates a playlist". The warning's sentence rides here as well as on
-    the envelope because a refusal carries no warnings, and the gate's first
-    answer IS a refusal, so on the envelope alone a person would learn of the
-    adoption only after confirming it.
-
-    A PURE FUNCTION OF ONE READING OF THE LEDGER. It takes the recognition and
-    the warnings already built from it, so the gate, the envelope and the
-    frozen payload cannot describe three different ledgers.
+    SHOWN EVERY TIME, its warning too, since the gate's refusal carries none.
     """
     if found.own_remote_id:
-        block: dict[str, Any] = {
-            "action": ACTION_UPDATE,
-            "remote_id": found.own_remote_id,
-        }
+        block: dict[str, Any] = {"action": ACTION_UPDATE, "remote_id": found.own_remote_id}
     elif found.adopts:
-        block = {
-            "action": ACTION_ADOPT,
-            "remote_id": found.remote_id,
-            "recorded_as": found.adopts,
-        }
+        block = {"action": ACTION_ADOPT, "remote_id": found.remote_id, "recorded_as": found.adopts}
     else:
         block = {"action": ACTION_CREATE, "remote_id": None}
     for warning in warnings:
@@ -448,33 +287,14 @@ def shown_playlist(
 def export_argv(job) -> list[str]:
     """The command line that continues one queued export.
 
-    IT CARRIES ``--run``, AND WITHOUT IT THIS JOB COULD NEVER BE DRIVEN. The
-    confirm gate is ``explicit``, so R34 makes it answerable only by a separate
-    act recorded against a run. The child :mod:`cratekit.core.jobs` spawns is a
-    fresh process, and ``cli.run`` mints a NEW run whenever ``--run`` is absent,
-    so a resume naming only the job met the gate with nothing recorded and exited
-    DECISION_REQUIRED. Every respawn did the same, so a confirmed export sat in
-    the queue for ever. Measured by driving this function's own output through
-    the dispatcher on 2026-08-23.
-
-    The flag goes BEFORE the verb path because ``--run`` belongs to the root
-    parser: a decision belongs to the invocation rather than to the subcommand.
-
-    IT ALSO CARRIES ``--export``, AND THE POSITIONAL IS THE RESOLVED KEY rather
-    than whatever the person typed. Both are the same requirement wearing two
-    hats. The resumed child recomputes the confirm digest, and the digest is
-    taken over the resolved key and the absolute path, so emitting the original
-    argument would produce a different digest and meet ``DecisionStale``.
-
-    A job frozen by a build older than this one carries no gate run and resumes
-    without the flag, which returns it to the refusal it was already in rather
-    than crashing the driver on a missing key.
+    IT CARRIES ``--run``, before the verb, so the respawned child names the run its
+    explicit gate's decision was recorded against, and ``--export`` and the resolved
+    key, so its digest matches. A job frozen without a gate run resumes without it.
     """
     payload = job.payload or {}
-    playlist = str(payload.get(PLAYLIST) or "")
     gate_run = payload.get(jobs.GATE_RUN_KEY)
     resume = ["--run", str(gate_run)] if gate_run else []
-    argv = [*resume, "export", "playlist", playlist]
+    argv = [*resume, "export", "playlist", str(payload.get(PLAYLIST) or "")]
     exported = payload.get(EXPORT)
     if exported:
         argv += ["--export", str(exported)]
@@ -486,15 +306,9 @@ def export_playlist(ctx) -> Envelope:
     spec = ctx.entry.gates[0]
     if ctx.args.job:
         return shell.resume(
-            ctx,
-            spec,
-            ctx.args.job,
-            digest=confirm_digest,
-            summary=summary,
-            frozen_extra=_frozen_adoption,
-            concluded=concluded,
+            ctx, spec, ctx.args.job, digest=confirm_digest, summary=summary,
+            frozen_extra=_frozen_adoption, concluded=concluded,
         )
-
     playlist = str(ctx.args.playlist or "")
     if not playlist:
         raise refuse(
@@ -503,50 +317,30 @@ def export_playlist(ctx) -> Envelope:
             steps=("pass the playlist identifier after the verb",),
             origin=("export.cli",),
         )
-    # RESOLVED BEFORE THE GATE, so a person is never asked to confirm an export
-    # that is about to refuse, and so the digest can name what they confirmed.
+    # RESOLVED BEFORE THE GATE, so nobody confirms an export about to refuse,
+    # and the configuration with it, since the age is judged by its limit (R-227).
     exported = source.required_path(getattr(ctx.args, "export", None))
     library = source.read_library(exported)
     resolved = source.resolve(library, playlist)
-    # THE CONFIGURATION IS LOADED BEFORE THE GATE NOW (R-227), because the age
-    # the gate shows is judged against a day count the person owns. It also
-    # means a configuration that cannot be read refuses before a person is asked
-    # to confirm a write that could not have queued, which is the rule the
-    # resolution above already follows.
     cfg = shell.load_config("export.cli")
     age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
     # RECOGNISED BEFORE THE GATE (R-229), so the person confirms the playlist the
-    # write lands on and not only the tracks. ``--new-playlist`` takes the offer
-    # off the reading rather than skipping the read, because the gate still has
-    # to say whether this key has a record of its own.
+    # write lands on; ``--new-playlist`` takes the offer off the reading.
     found = ledger.recognise(
-        cfg,
-        resolved.key,
-        name=resolved.name,
-        track_ids=resolved.track_ids,
+        cfg, resolved.key, name=resolved.name, track_ids=resolved.track_ids,
         live=source.playlist_contents(library),
     )
     if getattr(ctx.args, "new_playlist", False):
         found = found.without_offer()
     said = recognition_warnings(resolved, found)
     filing = planned_filing(cfg, found)
-
-    # THE TRACKS THE DIGEST COVERS ARE SHOWN (R-693), through the gate layer,
-    # beside the export's age and the remote playlist. The resume shows the
-    # same tracks off the frozen payload, so one gate has one plan on either
-    # screen; only the age, which the resume may not read, is the first ask's.
+    # THE TRACKS THE DIGEST COVERS ARE SHOWN (R-693), as the resume shows them.
+    digest = confirm_digest(
+        resolved.key, str(exported), resolved.track_ids, adopts=found.adopts, filing=filing
+    )
     option = ctx.gate.require(
         spec,
-        plan={
-            "digest": confirm_digest(
-                resolved.key,
-                str(exported),
-                resolved.track_ids,
-                adopts=found.adopts,
-                filing=filing,
-            ),
-            "items": list(resolved.track_ids),
-        },
+        plan={"digest": digest, "items": list(resolved.track_ids)},
         context={
             shell.PLAYLIST: resolved.key,
             shell.EXPORT_PATH: str(exported),
@@ -557,16 +351,13 @@ def export_playlist(ctx) -> Envelope:
         },
     )
     if option == "abort":
-        # THE DECLARED SHAPE, and nothing about the playlist. See
-        # ``shell.declined``: this verb declares ``job_state/1`` and the payload
-        # that named the playlist carried none of that surface's four fields.
+        # THE DECLARED SHAPE, and nothing about the playlist: see ``shell.declined``.
         return ctx.envelope(data=shell.declined(), outcome=Outcome.NO_OP)
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            # THE GATE RUN IS FROZEN so the respawned child can name the run
-            # the confirmation was recorded against. See ``export_argv``.
+            # THE GATE RUN IS FROZEN for the respawned child, see ``export_argv``.
             payload={
                 PLAYLIST: resolved.key,
                 NAME: resolved.name,
@@ -577,36 +368,21 @@ def export_playlist(ctx) -> Envelope:
                 shell.TRACKS: list(resolved.track_ids),
                 jobs.GATE_RUN_KEY: ctx.run.run_id,
             },
-            # ONE TRACK IS ONE ITEM. Without these the queue holds a job with
-            # nothing to claim, and the driver reports an empty success over
-            # work it never did.
+            # ONE TRACK IS ONE ITEM, or the driver reports an empty success.
             item_ids=resolved.track_ids,
             cfg=cfg,
         )
-        return ctx.envelope(
-            data=shell.reported(store, job, cfg, summary),
-            warnings=(
-                *shell.queue_warnings(resolved, noun="track", age=age),
-                *said,
-            ),
-        )
+        data = shell.reported(store, job, cfg, summary)
+        warnings = (*shell.queue_warnings(resolved, noun="track", age=age), *said)
+        return ctx.envelope(data=data, warnings=warnings)
 
 
-def run_export_item(
-    payload: dict[str, Any], track_id: str, cfg: config.Config, remote
-) -> dict:
+def run_export_item(payload: dict[str, Any], track_id: str, cfg: config.Config, remote) -> dict:
     """Write ONE library track to the remote playlist, and report what happened.
 
-    PURE OF THE JOB ENGINE ON PURPOSE, taking the payload and an account rather
-    than a job and a store. The properties that matter most about it, that a
-    second run adds nothing and that an unmatched row is reported rather than
-    dropped, are then drivable without a queue.
-
-    One item of :func:`run_export_items`, raising what that item met, so a
-    one track run is judged by the code a batch is (U270).
+    Pure of the job engine; one item of :func:`run_export_items`, raising what it met.
     """
-    answered = run_export_items(payload, (track_id,), cfg, remote) or {}
-    outcome = answered.get(track_id)
+    outcome = (run_export_items(payload, (track_id,), cfg, remote) or {}).get(track_id)
     if isinstance(outcome, Exception):
         raise outcome
     if not isinstance(outcome, dict):
@@ -626,21 +402,14 @@ def _absent(payload: Mapping[str, Any], track_id: str) -> CratekitError:
         f"the export at {Path(str(payload[EXPORT])).name} no longer carries "
         f"track {track_id!r}, which this job queued, so there is nothing to "
         f"write for this item and nothing was written",
-        steps=(
-            "export the collection again and queue a new export rather than "
-            "resuming this one",
-        ),
+        steps=("export the collection again and queue a new export rather than resuming this one",),
         origin=("export", "cli"),
         detail={"track": track_id},
     )
 
 
 def _refused(track: str, remote_id: str) -> CratekitError:
-    """The cause an item whose track the provider would not add fails with.
-
-    The same cause ``add_to_playlist`` raised for it before U270, so a one
-    track item is judged as it was.
-    """
+    """The cause ``add_to_playlist`` raised for a track the provider would not add (U270)."""
     return account.provider_failure(
         LookupError(f"the provider added nothing for the track {track!r}"),
         f"add the track {track} to the playlist {remote_id}",
@@ -656,26 +425,10 @@ def run_export_items(
 ) -> dict[str, dict | Exception] | None:
     """Write several library tracks to the remote playlist in one add (U270).
 
-    EACH TRACK IS PLANNED ON ITS OWN, so a row the export no longer carries or
-    a match the provider refused fails that track alone, as it failed that item
-    before. The tracks planned are then written by ONE :func:`apply`, which
-    reserves the playlist once, reads it once and sends what it lacks in one
-    request, and each track's report is cut from that apply's outcomes. A raise
-    out of the apply is the outcome of every track it was writing. A
-    :class:`jobs.Parked` is raised, never answered, since it stops the run.
-
-    ``stop`` is asked between tracks while planning; when it answers true
-    nothing is written and None is returned, so the driver releases the batch
-    whole.
-
-    THE PLAYLIST NAME COMES OFF THE PAYLOAD, never from splitting the key here.
-    The key is a display path and the name is its last element, and rebuilding
-    one from the other in a second place is how the remote playlist comes to be
-    created under a name nobody chose.
-
-    ``apply`` REUSES THE RECORDED REMOTE PLAYLIST, which is what makes the per
-    item shape safe: the first batch creates the remote playlist and records it,
-    and every batch after it reads that record rather than creating a second one.
+    EACH TRACK IS PLANNED ON ITS OWN, so a missing row or refused match fails that
+    track alone; the rest go in ONE :func:`apply`, whose raise is all their
+    outcomes. A :class:`jobs.Parked` is raised. ``stop`` is asked between tracks,
+    and when true nothing is written and None returned.
     """
     exported = Path(str(payload[EXPORT]))
     library = source.read_library(exported)
@@ -707,9 +460,8 @@ def run_export_items(
             answered[track_id] = exc
     if not planned:
         return answered
-    first = next(iter(planned.values()))
     together = replace(
-        first,
+        next(iter(planned.values())),
         matched=tuple(pair for one in planned.values() for pair in one.matched),
         unmatched=tuple(row for one in planned.values() for row in one.unmatched),
     )
@@ -724,13 +476,15 @@ def run_export_items(
     for track_id, one in planned.items():
         rows = {local for local, _remote in one.matched}
         mine = [row for row in report.outcomes if row[0] in rows]
-        refused = [remote_track for _local, remote_track, said in mine if said == outbound_export.REFUSED]
+        said = {
+            kind: [remote_track for _local, remote_track, how in mine if how == kind]
+            for kind in (outbound_export.REFUSED, outbound_export.ADDED, outbound_export.ALREADY)
+        }
+        refused = said[outbound_export.REFUSED]
         if refused:
             answered[track_id] = _refused(refused[0], report.remote_id)
             continue
-        # WHAT THE APPLY DID ONCE IS SAID ONCE, on the first track reported:
-        # the create, the adoption and the filing are the batch's, not each
-        # track's, and the summary would list a filing warning per track.
+        # WHAT THE APPLY DID ONCE IS SAID ONCE, on the first track reported.
         first_said = not reported
         reported = True
         answered[track_id] = {
@@ -740,8 +494,8 @@ def run_export_items(
             "created": report.created and first_said,
             "adopted_from": report.adopted_from if first_said else "",
             "unfiled": report.unfiled if first_said else "",
-            "added": [r for _l, r, said in mine if said == outbound_export.ADDED],
-            "already": [r for _l, r, said in mine if said == outbound_export.ALREADY],
+            "added": said[outbound_export.ADDED],
+            "already": said[outbound_export.ALREADY],
             "unmatched": [
                 {
                     "identity": row.identity,
@@ -764,20 +518,8 @@ def exported_on(path: Path, cfg: config.Config) -> str:
 def handle(job, item, cfg) -> jobs.Produced:
     """Export one queued track. The per item worker behind ``export.playlist``.
 
-    THE ITEM NAMES THE TRACK, not the payload. They differ for every job this
-    shell queues, since it freezes one playlist and enqueues one item per track,
-    and reading the payload instead would make every item write the same track.
-    ``master/cli.py`` measured that exact defect on a four item job.
-
-    ``cfg`` is the configuration this job was FROZEN against (KTD9), and it is
-    used rather than merely accepted: the artifact root is resolved from it, so
-    a queue that moved between enqueue and drive does not scatter one job's
-    reports across two directories.
-
-    THE ACCOUNT IS RESOLVED AT CALL TIME through the module attribute, so a test
-    can put a stand in in front of it. It is the only route to a provider in this
-    file. Since U63 it opens the provider account from the stored session, and it
-    refuses with a named cause when there is none.
+    THE ITEM NAMES THE TRACK, not the payload; ``cfg`` is the frozen configuration
+    (KTD9); the account is resolved at call time through the module attribute.
     """
     payload = dict(job.payload or {})
     report = run_export_item(payload, str(item.item_id), cfg, account.resolve(cfg))
@@ -789,14 +531,9 @@ BATCH = outbound_export.BATCH
 
 
 def handle_batch(job, items, cfg, stop) -> dict[str, jobs.Produced | Exception]:
-    """Export up to :data:`BATCH` queued tracks in one add. The driver's batch form of :func:`handle`.
+    """Export up to :data:`BATCH` queued tracks in one add, :func:`handle`'s batch form.
 
-    ONE ITEM IS STILL ONE TRACK, decided by Phillip on 2026-11-13: the job keeps
-    an item per track, so a resume knows which tracks landed and an empty
-    playlist is still an empty job, and the driver hands this worker a batch of
-    them so their adds go in one request. Each item gets its own artifact or its
-    own failure, exactly what :func:`handle` would have produced for it, and
-    ``cfg`` is the frozen configuration :func:`handle` is given.
+    Each item gets the artifact or failure :func:`handle` would give it.
     """
     payload = dict(job.payload or {})
     answered = run_export_items(
@@ -810,11 +547,10 @@ def handle_batch(job, items, cfg, stop) -> dict[str, jobs.Produced | Exception]:
         if got is None:
             # LEFT FOR THE DRIVER, which fails an item given no outcome.
             continue
-        if isinstance(got, Exception):
-            outcomes[item.item_id] = got
-            continue
         try:
-            outcomes[item.item_id] = artifacts.produced(cfg, job, item, got)
+            outcomes[item.item_id] = (
+                got if isinstance(got, Exception) else artifacts.produced(cfg, job, item, got)
+            )
         except Exception as exc:  # noqa: BLE001 - this item's outcome
             outcomes[item.item_id] = exc
     return outcomes
@@ -826,21 +562,7 @@ handle.batched = (handle_batch, BATCH)  # type: ignore[attr-defined]
 
 
 __all__ = [
-    "NO_MATCH",
-    "FILING",
-    "UNFILED_WARNING",
-    "UNMATCHED_WARNING",
-    "build",
-    "concluded",
-    "confirm_digest",
-    "export_argv",
-    "export_playlist",
-    "BATCH",
-    "handle",
-    "handle_batch",
-    "recognition_warnings",
-    "run_export_item",
-    "run_export_items",
-    "shown_playlist",
-    "summary",
+    "NO_MATCH", "FILING", "UNFILED_WARNING", "UNMATCHED_WARNING", "build", "concluded",
+    "confirm_digest", "export_argv", "export_playlist", "BATCH", "handle", "handle_batch",
+    "recognition_warnings", "run_export_item", "run_export_items", "shown_playlist", "summary",
 ]

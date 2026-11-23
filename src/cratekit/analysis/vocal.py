@@ -1,12 +1,8 @@
 """Vocal frame inference and the reduction to a presence score.
 
-Chunked inference under a no-gradient context is the memory lever the
-source system named and did not land. A whole-track forward pass holds
-activations for the entire file. Chunks bound that tensor. torch.no_grad
-drops the autograd graph that the source pass never needed.
-
-This module is pure on the reduction side: numpy arrays in, a score out.
-The model object is injected so a test can prove chunked and unchunked
+Chunks bound the activations a whole track forward pass would hold, and
+torch.no_grad drops the autograd graph. The reduction is pure, arrays in and a
+score out, and the model is injected so a test can prove chunked and unchunked
 paths agree without loading PANNs.
 """
 
@@ -23,45 +19,27 @@ DEFAULT_FRAME_FLOOR = 0.05
 DEFAULT_GENDER_MARGIN = 0.20
 _EPS = 1e-9
 
-#: The rate the model was trained at. The light pass decodes at 22050 for key
-#: and tempo, and a signal at that rate fed to this model is a signal the model
-#: hears at two thirds speed, so the vocal pass decodes for itself at its own
-#: rate rather than borrowing the head's samples (U58).
+#: The rate the model was trained at, so the vocal pass decodes for itself
+#: rather than borrowing the head's samples at another rate (U58).
 MODEL_SAMPLE_RATE = 32000
 DEFAULT_CHUNK_SAMPLES = MODEL_SAMPLE_RATE * 8
 
-#: The shortest piece the network will take. Its time axis is pooled by two
-#: five times, so a piece under about a third of a second pools to nothing
-#: and the forward pass raises. A tail shorter than this is folded into the
-#: piece before it, and a whole signal shorter than this is padded, because
-#: the alternative was one track in thirty six failing on the length of its
-#: last quarter second (R-371).
+#: The shortest piece the network takes before its pooling raises. A shorter
+#: tail is folded into the piece before it, and a shorter signal padded (R-371).
 MIN_CHUNK_SAMPLES = MODEL_SAMPLE_RATE
 
-#: The AudioSet leaf classes the scorer reads, resolved to columns BY NAME from
-#: the model's own label table. Columns 0, 1 and 2 of that table are Speech,
-#: Male speech and Female speech, which is what the first version read on a
-#: real model, so a sung lead scored as an instrumental (R-370). There is no
-#: numeric fallback: a model with no label table is not scored, and every
-#: fake in the suite carries a table naming these at the columns it fills.
+#: The AudioSet classes the scorer reads, resolved to columns BY NAME from the
+#: model's label table, with no numeric fallback (R-370).
 TARGET_LABELS = ("Singing", "Male singing", "Female singing")
 
 
 def decode(path: Any) -> np.ndarray | None:
     """The samples the model scores, decoded at the model's own rate.
 
-    None when the extra is absent or the file cannot be decoded, and the CALLER
-    decides what None means. ``vocals.analyse`` reports it as vocal inactive
-    with the reason, never as a score of zero: a zero is a track the model
-    heard and found instrumental, and a track the model never heard is not
-    that (U58, the wav defect).
-
-    Raises :class:`cratekit.analysis.decode.DecoderMissing` for a file only
-    ffmpeg could decode on a machine without it (U263), which ``vocals``
-    reports as ``vocal-no-decoder``: the decoder is the fault, not the file.
-
-    librosa is imported inside the function so a slim install can still import
-    the package.
+    None when the extra is absent or the file cannot be decoded, which the
+    caller reports as vocal inactive, never a zero (U58). Raises
+    :class:`cratekit.analysis.decode.DecoderMissing` for a file only ffmpeg
+    could decode on a machine without it (U263).
     """
     try:
         import librosa  # noqa: F401 - asked for so its absence is the extra's absence
@@ -83,18 +61,10 @@ def decode(path: Any) -> np.ndarray | None:
 def default_loader() -> Any:
     """Load the pretrained FRAME level model, behind the extra.
 
-    ``SoundEventDetection`` is the wrapper whose ``inference`` returns one row
-    per frame, which is what ``infer_frames`` reduces. ``AudioTagging``, the
-    wrapper the first version built, returns a clip level pair, has no frame
-    output, and defaults to a different checkpoint (R-370).
-
-    Raises when the extra is absent or the checkpoint is not on disk, which
-    ``vocals._load`` records as a failed load and reports as vocal inactive.
-    It does not return None, because a loader that returns None on a missing
-    extra and a loader that returns None because the checkpoint is corrupt
-    are the same None to the caller. The checkpoint is checked HERE, before
-    the library is asked for it, because the library's answer to a missing
-    checkpoint is a shell out to wget.
+    ``SoundEventDetection`` returns one row per frame, what ``infer_frames``
+    reduces (R-370). Raises, never None, when anything is missing, which
+    ``vocals._load`` records; checked HERE because the library's answer to a
+    missing checkpoint is a shell out to wget.
     """
     from cratekit.analysis import vocals as scoring
 
@@ -112,10 +82,8 @@ def default_loader() -> Any:
 def class_indices(model: Any) -> tuple[int, int, int]:
     """The columns of ``TARGET_LABELS`` in the model's frame output.
 
-    Resolved by name from the label table the wrapper carries, so the columns
-    follow the model rather than a number typed here. A model with no table,
-    or a table that does not name a target, raises, and ``vocals._load``
-    records that as a failed load rather than scoring the wrong column.
+    Resolved by name from the wrapper's label table; a model with no table or
+    a table missing a target raises rather than scoring the wrong column.
     """
     labels = getattr(model, "labels", None)
     if labels is None:
@@ -160,9 +128,7 @@ def _as_batch(wav: Any) -> np.ndarray:
 def _without_a_short_tail(slices: list[np.ndarray], *, floor: int) -> list[np.ndarray]:
     """Fold a last piece shorter than ``floor`` into the one before it.
 
-    A lone piece shorter than the floor is padded with silence to the floor
-    instead, so a very short clip still reaches the network as something it
-    can pool.
+    A lone piece shorter than the floor is padded with silence to it instead.
     """
     if not slices or floor <= 0:
         return slices
@@ -185,13 +151,10 @@ def infer_frames(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return (vocals, male, female) frame arrays for wav.
 
-    chunk_samples None is the unchunked path, kept so a fixture can prove
-    the chunked path agrees with it. A positive chunk size walks the
-    signal and concatenates frames. Both paths run under no_grad, both
-    apply the same floor, and a signal padded to the floor has the frames
-    the padding added trimmed off again, so a short clip is scored on its
-    own length. ``class_idx`` None resolves the columns from the model's
-    label table; there is no positional default (R-370).
+    chunk_samples None is the unchunked path, kept so a fixture can prove the
+    chunked one agrees. Both run under no_grad with the same floor, and frames
+    the padding added are trimmed off again. ``class_idx`` None resolves the
+    columns from the label table (R-370).
     """
     if class_idx is None:
         class_idx = class_indices(model)
@@ -232,11 +195,9 @@ def infer_frames(
 def presence_score(vocals: np.ndarray, *, frame_floor: float = DEFAULT_FRAME_FLOOR) -> float:
     """The percentage of frames whose Singing score reaches ``frame_floor``.
 
-    Coverage, not loudness: a sung lead heard for most of a track scores high,
-    and a hook heard for a few seconds of seven minutes scores under one. On a
-    dense electronic mix the model's Singing often never reaches the floor at
-    all, which is a 0 the model meant rather than a frame lost on the way
-    (U171, A64's measurement of the zeros, ``tests/test_vocal_zeros.py``).
+    Coverage, not loudness. On a dense electronic mix the Singing score often
+    never reaches the floor, a 0 the model meant (U171,
+    ``tests/test_vocal_zeros.py``).
     """
     series = np.asarray(vocals, dtype=float)
     if series.size == 0:

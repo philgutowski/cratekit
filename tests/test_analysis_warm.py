@@ -1,20 +1,9 @@
 """U241: librosa's kernels are compiled by one process at a time.
 
-The review of U241 drove a fresh numba cache with two light workers starting
-together: five runs in seven ended in a segmentation fault, and the cache was
-left damaged for every later analysis. ``cratekit.analysis.warm`` makes every
-process run one head of its own, alone under a lock, before its first real
-one. What is held here:
-
-1. the lock holds two processes apart, and a lock that cannot be taken never
-   stops a worker from starting;
-2. a process warms once, before its first decode, and never where the
-   analysis extra is absent;
-3. with the real stack: the warm up reaches every kernel real heads reach, so
-   nothing is left to be compiled by two workers later, and two workers
-   starting together on an empty cache finish.
-
-The last two need the analysis extra and are skipped without it.
+The lock holds two processes apart and never stops a worker; a process warms
+once, before its first decode, never without the extra; and with the real
+stack the warm up reaches every kernel real heads reach, and two workers on an
+empty cache finish (those skip without the extra).
 """
 
 from __future__ import annotations
@@ -50,10 +39,6 @@ def _environment(**extra: str) -> dict[str, str]:
     environment.update(extra)
     return environment
 
-
-# ---------------------------------------------------------------------------
-# The lock
-# ---------------------------------------------------------------------------
 
 _HOLDER = """
 import sys, time
@@ -124,11 +109,6 @@ def test_a_holder_that_died_does_not_hold_the_lock(tmp_path):
     assert time.monotonic() - started < 5
 
 
-# ---------------------------------------------------------------------------
-# Once, alone, and only with the extra
-# ---------------------------------------------------------------------------
-
-
 def test_a_process_warms_once(monkeypatch):
     heads: list[int] = []
     monkeypatch.setattr(detect, "heavy_available", lambda: True)
@@ -156,11 +136,9 @@ def test_the_warm_up_runs_inside_the_lock(monkeypatch):
 
 
 def test_the_warm_ups_own_head_does_not_wait_on_the_lock_it_holds(monkeypatch):
-    """The warm up measures through the detector, which asks to be warmed like any caller.
+    """The warm up's own head must not wait on the lock it holds.
 
-    The lock here is one that refuses a second entry out loud. The real one
-    would wait on itself for ever, so a regression would hang the suite and
-    name no test (the review of U241 measured exactly that).
+    This lock refuses a second entry out loud; the real one would hang the suite.
     """
     inner: list[bool] = []
     held: list[bool] = []
@@ -203,11 +181,8 @@ def test_nothing_is_warmed_and_no_lock_is_taken_without_the_extra(monkeypatch):
 
 
 def test_the_detector_asks_for_the_warm_up_before_it_decodes(tmp_path, monkeypatch):
-    """The one call that keeps two processes out of the kernel cache together.
-
-    Against a stand in for librosa, so it runs where the analysis extra is
-    not installed, which is where the merge gate runs: the review of U241
-    removed the call and nothing failed without the extra.
+    """The one call that keeps two processes out of the kernel cache together,
+    against a stand in for librosa so it runs where the merge gate does.
     """
     import types
 
@@ -224,11 +199,6 @@ def test_the_detector_asks_for_the_warm_up_before_it_decodes(tmp_path, monkeypat
     found = detect.analyse_file(tmp_path / "missing.flac")
     assert found == {"path": tmp_path / "missing.flac", "terminal": detect.TERMINAL_UNDECODABLE}
     assert order == ["warmed", "decoded"]
-
-
-# ---------------------------------------------------------------------------
-# With the real stack: every kernel is reached, and a cold pool finishes
-# ---------------------------------------------------------------------------
 
 
 def _audio(folder: Path) -> list[Path]:
@@ -294,11 +264,8 @@ for path in sys.argv[1:]:
 def test_the_warm_up_reaches_every_kernel_a_real_head_reaches(tmp_path):
     """Warm an empty cache, measure real files against it, and the cache must not move.
 
-    A kernel the warm up missed would be compiled by the first real head, and
-    with two workers that is two processes filling the cache together again.
-    Every key method, a calibrated energy and the vocal pass's decode are
-    measured, over a stinger, a drum track, a pad and a track long enough for
-    the windowed key.
+    Every key method, a calibrated energy and the vocal decode, over a stinger, a
+    drum track, a pad and a track long enough for the windowed key.
     """
     pytest.importorskip("librosa")
     files = _audio(tmp_path)
@@ -361,12 +328,8 @@ _COLD_POOL = textwrap.dedent(
 
 @pytest.mark.parametrize("attempt", [1, 2, 3])
 def test_two_workers_starting_together_on_an_empty_cache_finish(tmp_path, attempt):
-    """The review's crash, as a test. THREE ATTEMPTS, BECAUSE THE DEFECT IS A RACE.
-
-    Without the warm up this run ended in a segmentation fault on 5 of the
-    review's 7 cold runs and on 2 of the author's 4, so one clean pass proves
-    little; with it, 12 of 12 were clean through the real verb. Each attempt
-    has an empty cache of its own.
+    """The review's crash, as a test. THREE ATTEMPTS, BECAUSE THE DEFECT IS A RACE,
+    each with an empty cache of its own.
     """
     pytest.importorskip("librosa")
     files = _audio(tmp_path)[:3]

@@ -1,30 +1,11 @@
 """U289: a tag sweep asks Discogs with the title read past its ``KEY - BPM`` head.
 
-Measured at sitting 100: twenty library files, their genres cleared and four
-of them stripped of title and artist, swept with ``tag folder``. Discogs was
-asked about nineteen and matched none, because the title tag the naming verb
-writes, ``03B - 83 - That's the Way of the World``, went into its structured
-``track`` field as written, and a file with no tags was asked by its whole
-stem with an empty artist. Asked again with the head off the title, and the
-untagged names split into artist and title, fifteen of twenty matched.
-
-WHAT THIS SUITE GUARDS, the card's merge blockers first:
-
-* A HEADED TITLE IS ASKED PAST ITS HEAD, and past the ``[MP3]`` marker the
-  naming verb writes after it, of Discogs and of the record shops' free text
-  query alike, so the sitting's matches are reproduced.
-* AN UNTAGGED FILE IS ASKED BY THE ARTIST AND TITLE ITS NAME READS TO, only
-  when the name reads to exactly one split; a name that does not is asked
-  with no artist, as before, and its record says so.
-* A TITLE WITH NO HEAD IS ASKED EXACTLY AS BEFORE, byte for byte, so a
-  freshly downloaded file sees no change.
-* THE MATCH IS UNCHANGED. Only the question changes: a release is still taken
-  only when the shared matcher reads one of its tracks as the file's own.
-
-THE FETCH BELOW ANSWERS LIKE A CATALOGUE A PERSON TYPES INTO. It returns a
-release only for the artist and title a person would type, never for a head,
-so a question carrying one misses as it did at the sitting. Nothing here
-touches the network, and the token is a fixture word.
+At sitting 100 Discogs matched none of nineteen files asked with the naming
+verb's head in the title, and fifteen of twenty without. Guarded: a headed
+title is asked past its head and marker, of every source; an untagged file is
+asked by the one split its name reads to, or with no artist; a title with no
+head is asked exactly as before; and the match is unchanged. The fetch answers
+only what a person would type. Nothing touches the network.
 """
 
 from __future__ import annotations
@@ -66,9 +47,9 @@ def _typed(value: str) -> str:
 def typed_fetch(seen: list[str] | None = None, *, beatport: str | None = None):
     """A fetch answering Discogs as a catalogue a person types into.
 
-    The search answers a release only when its ``artist`` and ``track`` are
-    one of :data:`CATALOGUE`'s, as typed, and nothing otherwise. Beatport, if
-    asked, answers an empty page unless ``beatport`` is given.
+    The search answers a release only when its ``artist`` and ``track`` are one
+    of :data:`CATALOGUE`'s as typed. Beatport, if asked, answers an empty page
+    unless ``beatport`` is given.
     """
     by_question = {(_typed(artist), _typed(title)): number for artist, title, number, _ in CATALOGUE}
     pages = {
@@ -139,9 +120,7 @@ def tagged(tmp_path: Path, silence: Path, name: str, **fields: str) -> Path:
     return target
 
 
-# ---------------------------------------------------------------------------
 # A. The card's scenarios, through tag_one and the shipped searcher
-# ---------------------------------------------------------------------------
 
 
 def test_a_headed_title_tag_asks_discogs_past_its_head_and_takes_its_match(tmp_path, silence):
@@ -167,9 +146,9 @@ def test_a_headed_title_tag_asks_discogs_past_its_head_and_takes_its_match(tmp_p
 
 
 def test_the_same_title_asked_with_its_head_misses_as_it_did_at_the_sitting():
-    """The fixture answers a person's question and not the head's: the asker
-    handed the title tag as its question misses, as sitting 100 measured, and
-    handed the title past the head matches the same release."""
+    """The fixture answers a person's question and not the head's: the asker handed the title
+    tag as its question misses, as sitting 100 measured, and handed the title past the head
+    matches the same release."""
     seen: list[str] = []
     asker = searchers.discogs_asker(token=SENT, fetch=typed_fetch(seen), sleep=lambda _s: None)
     headed = "03B - 83 - That's the Way of the World"
@@ -276,9 +255,7 @@ def test_the_record_shops_free_text_query_carries_no_head():
         assert "Lane+8+Aba" in url
 
 
-# ---------------------------------------------------------------------------
 # B. A title with no head is asked exactly as before
-# ---------------------------------------------------------------------------
 
 
 #: Titles a freshly downloaded file carries, and what each was asked as
@@ -329,9 +306,7 @@ def test_an_untagged_name_with_no_head_is_asked_as_before(tmp_path, silence):
     assert (result.asked_artist, result.asked_read) == ("", titles.Read.AS_WRITTEN.value)
 
 
-# ---------------------------------------------------------------------------
 # C. Every earlier matcher case: the question changes, the verdict does not
-# ---------------------------------------------------------------------------
 
 
 #: The shared matcher's own corpus of file titles and rows, both ways round
@@ -386,9 +361,7 @@ def test_the_headed_cases_are_asked_past_their_head():
     assert asked["01 Sunrise Mood"] == "01 Sunrise Mood"
 
 
-# ---------------------------------------------------------------------------
 # D. The reader's two halves
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -434,9 +407,7 @@ def test_a_name_splits_only_when_it_reads_to_exactly_one_artist_and_title(stem, 
         assert split.title.startswith("On My Way")
 
 
-# ---------------------------------------------------------------------------
 # E. The sweep's record says what was asked
-# ---------------------------------------------------------------------------
 
 
 def test_the_sweeps_record_names_the_question_each_file_was_asked(cfg, tmp_path, silence, monkeypatch):  # noqa: F811
@@ -470,9 +441,7 @@ def test_the_sweeps_record_names_the_question_each_file_was_asked(cfg, tmp_path,
     assert reports["8A - 122 - Kerri Chandler - On My Way.flac"]["genre_written"] == genre_of("House")
 
 
-# ---------------------------------------------------------------------------
 # F. The guards round one found unpinned
-# ---------------------------------------------------------------------------
 
 
 def test_a_title_tag_with_no_artist_tag_is_never_split_by_its_name(tmp_path, silence):

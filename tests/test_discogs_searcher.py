@@ -1,21 +1,11 @@
 """U244: a track Beatport misses gets its genre from the Discogs API, with a person's own token.
 
-WHAT THIS SUITE GUARDS, in the order a wrong answer would cost a library:
-
-* ABSENCE IS NEVER READ AS AN ANSWER. No token, a rejected token, a refusal, an
-  outage and a reshaped answer each say something other than MISS, so a folder
-  swept without Discogs is never recorded as tracks no catalogue carries.
-* A WRONG RELEASE IS WORSE THAN A MISS. A release is taken only when one of its
-  tracks, or its own title for a single, and an artist match the file.
-* THE TOKEN GOES IN ONE PLACE. The Authorization header, and nowhere a person or
-  a log can read it: no URL, note, record, log line or refusal.
-* THE GENRE IS THE RESOLVER'S. A style becomes a tag only through
-  ``routing.suggest_tag``, and only when it names a folder that is not the
-  fallback's.
-
-NOTHING HERE TOUCHES THE NETWORK OR A REAL TOKEN. Every answer is recorded JSON
-handed to the fetch seam, or to the shipped fetch through an injected getter,
-and the token is a fixture word.
+Guarded, in the order a wrong answer would cost a library: absence is never
+read as an answer (no token, a rejection, a refusal, an outage, a reshape);
+a wrong release is worse than a miss; the token goes only in the
+Authorization header; and a style becomes a tag only through the resolver,
+naming a folder that is not the fallback's. Nothing touches the network, and
+the token is a fixture word.
 """
 
 from __future__ import annotations
@@ -34,6 +24,7 @@ from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import default_taxonomy
 from cratekit.tagging import cli as tag_cli
 from cratekit.tagging import published, searchers, tag
+from cratekit.tagging.discogs import _discogs_name, _remaining
 from tests._containers import synth_container
 from tests.test_catalogue_searcher import (
     ARTIST,
@@ -80,9 +71,7 @@ BRIEF_STYLES = (
 )
 
 
-# ---------------------------------------------------------------------------
 # Recorded answers, in the shapes Discogs' database search and release read serve
-# ---------------------------------------------------------------------------
 
 
 def results(*numbers: int, kind: str = "release") -> str:
@@ -183,9 +172,25 @@ def discogs_answer(hit):
     return one
 
 
-# ---------------------------------------------------------------------------
+def _releases(*pages, seen: list[str] | None = None):
+    """A fetch whose Discogs search names releases 1, 2 and so on, read as ``pages``."""
+    numbers = range(1, len(pages) + 1)
+    return routed(search=results(*numbers), releases=dict(zip(numbers, pages)), seen=seen)
+
+
+def _track(title: str, *, artist: str | None = None, kind: str = "track", **more) -> dict:
+    row = {"position": "1", "type_": kind, "title": title, **more}
+    if artist is not None:
+        row["artists"] = [{"name": artist}]
+    return row
+
+
+GONE = searchers.Fetched(note="HTTP 404", status=404)
+BAD_GATEWAY = searchers.Fetched(note="HTTP 502", status=502)
+DOWN = searchers.Fetched(note="HTTP 503", status=503)
+
+
 # A. The walk: Discogs first since U282, Beatport when it gives no genre
-# ---------------------------------------------------------------------------
 
 
 def test_the_default_walk_is_discogs_then_beatport_and_names_no_scraped_shop():
@@ -270,52 +275,64 @@ def test_an_empty_result_set_is_a_miss_and_two_misses_are_no_hit():
     assert hit.genre is None and hit.source == "" and hit.unread == ()
 
 
-def test_a_release_whose_artist_matches_and_title_does_not_is_no_match():
-    other = [{"position": "A1", "type_": "track", "title": "Completely Different Song"}]
-    fetch = routed(
-        search=results(9), releases={9: release(9, title="Another Record", tracks=other)}
-    )
-    hit = searcher(fetch)(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "miss"
-    assert hit.genre is None
+BRACKETED = "(Not Just) Knee Deep (Part 1)"
 
 
-def test_a_release_whose_title_matches_and_artist_does_not_is_no_match():
-    fetch = routed(search=results(9), releases={9: release(9, artist="Somebody Else Entirely")})
-    hit = searcher(fetch)(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "miss"
-
-
-def test_a_compilation_matches_on_the_tracks_own_credit():
-    tracks = [
-        {"position": "1", "type_": "track", "title": "Not This", "artists": [{"name": "Nobody"}]},
-        {"position": "2", "type_": "track", "title": TITLE, "artists": [{"name": ARTIST}]},
-    ]
-    fetch = routed(
-        search=results(11), releases={11: release(11, artist="Various", tracks=tracks)}
-    )
-    hit = searcher(fetch)(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "matched"
-
-
-def test_a_compilation_track_credited_to_another_artist_is_not_a_match():
-    tracks = [{"position": "1", "type_": "track", "title": TITLE, "artists": [{"name": "Nobody"}]}]
-    fetch = routed(search=results(12), releases={12: release(12, tracks=tracks)})
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "miss"
-
-
-def test_a_single_matches_on_its_own_title():
-    fetch = routed(
-        search=results(13),
-        releases={13: release(13, title=TITLE, tracks=[{"position": "A", "title": "Dub"}])},
-    )
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "matched"
-
-
-def test_a_heading_and_an_index_row_are_not_tracks():
-    tracks = [{"position": "", "type_": "heading", "title": TITLE}]
-    fetch = routed(search=results(14), releases={14: release(14, tracks=tracks)})
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "miss"
+@pytest.mark.parametrize(
+    ("artist", "title", "pages", "answer"),
+    [
+        (ARTIST, TITLE, [release(1, title="Another", tracks=[_track("Different Song")])], "miss"),
+        (ARTIST, TITLE, [release(1, artist="Somebody Else Entirely")], "miss"),
+        (
+            ARTIST,
+            TITLE,
+            [
+                release(
+                    1,
+                    artist="Various",
+                    tracks=[_track("Not This", artist="Nobody"), _track(TITLE, artist=ARTIST)],
+                )
+            ],
+            "matched",
+        ),
+        (ARTIST, TITLE, [release(1, tracks=[_track(TITLE, artist="Nobody")])], "miss"),
+        (ARTIST, TITLE, [release(1, title=TITLE, tracks=[{"position": "A", "title": "Dub"}])], "matched"),
+        (ARTIST, TITLE, [release(1, tracks=[_track(TITLE, kind="heading")])], "miss"),
+        (
+            ARTIST,
+            TITLE,
+            [release(1, tracks=[_track("Suite", kind="index", sub_tracks=[_track(TITLE)])])],
+            "matched",
+        ),
+        (ARTIST, TITLE, [release(1, tracks=[_track("(Skit)")])], "miss"),
+        ("Funkadelic", BRACKETED, [release(1, artist="Funkadelic", tracks=[_track("(Not Just) Knee Deep")])], "matched"),
+        ("The Orb", "Higher", [release(1, artist="Various", tracks=[_track("Higher", artist="Prodigy, The")])], "miss"),
+        ("Moodymann", TITLE, [release(1, artist="Moodymann (2)")], "matched"),
+        (ARTIST, TITLE, [json.dumps({"id": 1, "styles": ["Disco"]})], "parse-break"),
+        (ARTIST, TITLE, [BAD_GATEWAY, release(2, artist="Somebody Else Entirely")], "unreachable"),
+        (ARTIST, TITLE, [BAD_GATEWAY, release(2)], "matched"),
+        (ARTIST, TITLE, [GONE, release(2)], "matched"),
+        (ARTIST, TITLE, [GONE], "miss"),
+        (ARTIST, TITLE, [release(1, styles=()), DOWN], "unreachable"),
+    ],
+    ids=[
+        "title differs", "artist differs", "compilation credit", "compilation other credit",
+        "single's own title", "heading row", "index row's track", "skit row",
+        "title of brackets", "article filed last", "disambiguation numeral",
+        "no tracklist", "unread beside misses", "unread then a match", "gone then a match",
+        "only gone", "styleless beside unread",
+    ],
+)
+def test_a_release_is_taken_only_when_a_track_and_its_artist_match(artist, title, pages, answer):
+    """A wrong release is worse than a miss, a release unread is no miss, and a
+    gone one is passed over (R4: "Prodigy, The" is one artist; round two: an
+    unread pressing outranks a styleless match)."""
+    hit = searcher(_releases(*pages))(artist, title)
+    assert discogs_answer(hit).answer == answer
+    if answer == "miss":
+        assert hit.genre is None
+    if answer == "unreachable":
+        assert hit.unread == (searchers.DISCOGS,)
 
 
 def test_the_search_asks_by_artist_and_the_title_without_its_mix():
@@ -356,9 +373,7 @@ def test_a_walk_names_known_sources_once():
         searchers.catalogue_searcher(TAXONOMY, walk=(searchers.BEATPORT, searchers.BEATPORT))
 
 
-# ---------------------------------------------------------------------------
 # B. What is not an answer: no token, a rejection, refusals, outages, reshapes
-# ---------------------------------------------------------------------------
 
 
 def test_no_token_is_not_asked_with_how_to_record_one_and_never_no_hit():
@@ -447,82 +462,33 @@ def test_a_token_that_is_not_one_printable_word_is_refused_and_never_sent():
     assert not any(url.startswith(searchers.DISCOGS_API) for url in seen)
 
 
-def test_a_403_or_a_challenge_is_blocked_not_a_miss():
-    for page in (
-        searchers.Fetched(note="HTTP 403", status=403),
-        searchers.Fetched(text="<html><title>Just a moment...</title></html>", status=200),
-    ):
-        hit = searcher(routed(search=page))(ARTIST, TITLE)
-        assert discogs_answer(hit).answer == "blocked"
-        assert hit.unread == (searchers.DISCOGS,)
-
-
-def test_a_5xx_or_a_body_that_is_not_json_is_unreachable():
-    for page in (
-        searchers.Fetched(note="HTTP 503", status=503),
-        searchers.Fetched(note="transport failure: timed out"),
-        searchers.Fetched(text="<html>captive portal</html>", status=200),
-    ):
-        hit = searcher(routed(search=page))(ARTIST, TITLE)
-        assert discogs_answer(hit).answer == "unreachable"
-        assert hit.unread == (searchers.DISCOGS,)
-
-
-def test_json_in_a_shape_this_reader_does_not_know_is_a_parse_break():
-    for page in (
-        json.dumps({"pagination": {}}),
-        json.dumps([1, 2, 3]),
-        json.dumps({"results": [{"title": "no number here"}]}),
-    ):
-        hit = searcher(routed(search=page))(ARTIST, TITLE)
-        assert discogs_answer(hit).answer == "parse-break", page
-        assert hit.unread == (searchers.DISCOGS,)
-
-
-def test_a_release_without_a_tracklist_is_held_as_a_parse_break_not_a_miss():
-    broken = json.dumps({"id": 1, "styles": ["Disco"]})
-    hit = searcher(routed(search=results(1), releases={1: broken}))(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "parse-break"
-
-
-def test_a_release_that_could_not_be_read_beside_misses_is_not_a_miss():
-    fetch = routed(
-        search=results(1, 2),
-        releases={
-            1: searchers.Fetched(note="HTTP 502", status=502),
-            2: release(2, artist="Somebody Else Entirely"),
-        },
-    )
-    hit = searcher(fetch)(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "unreachable"
-
-
-def test_a_release_read_that_could_not_be_had_gives_way_to_a_later_match():
-    fetch = routed(
-        search=results(1, 2),
-        releases={1: searchers.Fetched(note="HTTP 502", status=502), 2: release(2)},
-    )
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "matched"
-
-
-def test_a_gone_release_is_passed_over():
-    fetch = routed(
-        search=results(1, 2),
-        releases={1: searchers.Fetched(note="HTTP 404", status=404), 2: release(2)},
-    )
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "matched"
-    only_gone = routed(search=results(1), releases={1: searchers.Fetched(note="HTTP 404", status=404)})
-    assert discogs_answer(searcher(only_gone)(ARTIST, TITLE)).answer == "miss"
+@pytest.mark.parametrize(
+    ("page", "answer"),
+    [
+        (searchers.Fetched(note="HTTP 403", status=403), "blocked"),
+        (searchers.Fetched(text="<html><title>Just a moment...</title></html>", status=200), "blocked"),
+        (DOWN, "unreachable"),
+        (searchers.Fetched(note="transport failure: timed out"), "unreachable"),
+        (searchers.Fetched(text="<html>captive portal</html>", status=200), "unreachable"),
+        (GONE, "unreachable"),
+        (json.dumps({"pagination": {}}), "parse-break"),
+        (json.dumps([1, 2, 3]), "parse-break"),
+        (json.dumps({"results": [{"title": "no number here"}]}), "parse-break"),
+    ],
+)
+def test_a_search_nobody_can_read_a_result_off_is_unread_and_never_a_miss(page, answer):
+    """A refusal is blocked; an outage, a body that is not JSON, or a search that
+    is gone is unreachable; JSON in an unknown shape is a parse break."""
+    hit = searcher(routed(search=page))(ARTIST, TITLE)
+    assert discogs_answer(hit).answer == answer
+    assert hit.unread == (searchers.DISCOGS,)
 
 
 def test_a_block_on_a_release_read_ends_the_walk_over_releases():
     seen: list[str] = []
-    fetch = routed(
-        search=results(1, 2),
-        releases={1: searchers.Fetched(note="HTTP 403", status=403), 2: release(2)},
-        seen=seen,
+    hit = searcher(_releases(searchers.Fetched(note="HTTP 403", status=403), release(2), seen=seen))(
+        ARTIST, TITLE
     )
-    hit = searcher(fetch)(ARTIST, TITLE)
     assert discogs_answer(hit).answer == "blocked"
     assert f"{searchers.DISCOGS_RELEASE}2" not in seen
 
@@ -554,9 +520,7 @@ def test_a_walk_that_asked_nothing_is_a_decline_naming_what_it_passed_over():
     assert hit.genre is None and hit.unread == (searchers.DISCOGS,)
 
 
-# ---------------------------------------------------------------------------
 # C. The rate limit: one pacer, the remaining count, the ladder, the memory
-# ---------------------------------------------------------------------------
 
 
 class Reply:
@@ -571,8 +535,8 @@ class Reply:
 def over_the_wire(replies: dict, *, sent: list | None = None, naps: list[float] | None = None):
     """The shipped asker over the shipped fetch, its getter answering by URL.
 
-    ``replies`` maps a URL prefix to a reply or to a list of replies served in
-    turn. ``sent`` records every (url, headers) pair the getter was handed.
+    ``replies`` maps a URL prefix to a reply or to a list served in turn.
+    ``sent`` records every (url, headers) pair the getter was handed.
     """
     queues = {key: list(value) if isinstance(value, list) else value for key, value in replies.items()}
     naps = naps if naps is not None else []
@@ -679,9 +643,7 @@ def test_the_shipped_fetch_carries_the_answer_headers_lowercased():
     assert dict(refused.headers) == {}
 
 
-# ---------------------------------------------------------------------------
 # D. The token goes in one place
-# ---------------------------------------------------------------------------
 
 
 def test_the_token_is_sent_in_the_authorization_header_and_the_agent_names_cratekit():
@@ -753,9 +715,7 @@ def test_the_token_reaches_no_url_note_record_log_or_refusal(caplog, tmp_path, s
         assert SENT not in text, text
 
 
-# ---------------------------------------------------------------------------
 # E. The token's keychain read, and the worker's process wide asker
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -833,9 +793,7 @@ def test_for_taxonomy_hands_the_worker_asker_to_the_searcher(monkeypatch):
     assert said(hit) == [(searchers.DISCOGS, "miss"), (searchers.BEATPORT, "miss")]
 
 
-# ---------------------------------------------------------------------------
 # F. The taxonomy files every listed style, through the resolver
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("style", BRIEF_STYLES)
@@ -902,9 +860,7 @@ def test_the_general_catalogue_chooses_by_the_same_chooser(monkeypatch):
     assert calls == [(("Rock",), {"source": published.SOURCE, "named_only": True})]
 
 
-# ---------------------------------------------------------------------------
 # G. The reports: old records still summarise, a missing token is said
-# ---------------------------------------------------------------------------
 
 
 def _summarised(monkeypatch, reports: list[dict]) -> dict:
@@ -983,12 +939,7 @@ def test_a_discogs_blocked_on_every_search_is_named_like_any_shop():
     assert searchers.DISCOGS in blocked[0]["message"]
 
 
-# ---------------------------------------------------------------------------
 # H. Round one's fixes
-# ---------------------------------------------------------------------------
-
-
-BRACKETED = "(Not Just) Knee Deep (Part 1)"
 
 
 def test_a_title_of_brackets_is_searched_whole_and_matches_no_other_track():
@@ -1004,18 +955,6 @@ def test_a_title_of_brackets_is_searched_whole_and_matches_no_other_track():
     assert hit.genre is None
     (asked,) = [url for url in seen if url.startswith(searchers.DISCOGS_SEARCH)]
     assert "track=%28Not+Just%29+Knee+Deep&" in asked
-
-
-def test_a_title_of_brackets_still_matches_its_own_track():
-    tracks = [{"position": "A1", "type_": "track", "title": "(Not Just) Knee Deep"}]
-    fetch = routed(search=results(32), releases={32: release(32, artist="Funkadelic", tracks=tracks)})
-    assert discogs_answer(searcher(fetch)("Funkadelic", BRACKETED)).answer == "matched"
-
-
-def test_a_skit_row_matches_no_searched_title():
-    tracks = [{"position": "A1", "type_": "track", "title": "(Skit)"}]
-    fetch = routed(search=results(33), releases={33: release(33, tracks=tracks)})
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "miss"
 
 
 def test_an_empty_title_on_either_side_matches_nothing():
@@ -1059,14 +998,9 @@ def test_the_general_catalogue_waits_for_a_discogs_that_was_asked_and_unread():
 
 def test_discogs_names_are_read_as_a_tag_spells_them():
     """R4. "Prodigy, The" is one artist, so The Orb does not match it."""
-    assert searchers._discogs_name("Prodigy, The") == "The Prodigy"
-    assert searchers._discogs_name("Moodymann (2)") == "Moodymann"
-    assert searchers._discogs_name("Theo Parrish*") == "Theo Parrish"
-    tracks = [{"position": "1", "type_": "track", "title": "Higher", "artists": [{"name": "Prodigy, The"}]}]
-    fetch = routed(search=results(34), releases={34: release(34, artist="Various", tracks=tracks)})
-    assert discogs_answer(searcher(fetch)("The Orb", "Higher")).answer == "miss"
-    fetch = routed(search=results(35), releases={35: release(35, artist="Moodymann (2)")})
-    assert discogs_answer(searcher(fetch)("Moodymann", TITLE)).answer == "matched"
+    assert _discogs_name("Prodigy, The") == "The Prodigy"
+    assert _discogs_name("Moodymann (2)") == "Moodymann"
+    assert _discogs_name("Theo Parrish*") == "Theo Parrish"
 
 
 def test_a_pressing_with_no_style_gives_way_to_one_with_styles():
@@ -1077,19 +1011,6 @@ def test_a_pressing_with_no_style_gives_way_to_one_with_styles():
     )
     hit = searcher(fetch)(ARTIST, TITLE)
     assert hit.source_genre == "Deep House" and hit.genre is not None
-
-
-def test_a_track_under_an_index_row_is_read():
-    tracks = [
-        {
-            "position": "A",
-            "type_": "index",
-            "title": "Suite",
-            "sub_tracks": [{"position": "A.1", "type_": "track", "title": TITLE}],
-        }
-    ]
-    fetch = routed(search=results(38), releases={38: release(38, tracks=tracks)})
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "matched"
 
 
 def test_a_file_searched_only_for_its_picture_is_not_counted_as_owed_discogs(monkeypatch):
@@ -1116,14 +1037,9 @@ def test_the_token_is_not_in_the_askers_repr():
 
 
 def test_a_remaining_count_that_is_not_ascii_digits_is_no_count():
-    assert searchers._remaining({searchers.DISCOGS_REMAINING_HEADER: "²"}) is None
-    assert searchers._remaining({searchers.DISCOGS_REMAINING_HEADER: " 7 "}) == 7
-    assert searchers._remaining({}) is None
-
-
-def test_a_search_answering_404_is_unreachable_not_a_miss():
-    hit = searcher(routed(search=searchers.Fetched(note="HTTP 404", status=404)))(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "unreachable"
+    assert _remaining({searchers.DISCOGS_REMAINING_HEADER: "²"}) is None
+    assert _remaining({searchers.DISCOGS_REMAINING_HEADER: " 7 "}) == 7
+    assert _remaining({}) is None
 
 
 def test_the_shipped_asker_sends_the_token_to_discogs_only(monkeypatch):
@@ -1168,22 +1084,10 @@ def test_discogs_chooses_only_a_named_folder_even_on_a_copy_with_no_table():
     assert searcher(fetch)(ARTIST, TITLE).genre is None
 
 
-def test_a_styleless_match_beside_an_unread_pressing_is_unread_not_a_match():
-    """Round two: what the unread pressing held is unknown, and a match with no
-    style would let the general catalogue write over it."""
-    fetch = routed(
-        search=results(40, 41),
-        releases={40: release(40, styles=()), 41: searchers.Fetched(note="HTTP 503", status=503)},
-    )
-    hit = searcher(fetch)(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "unreachable"
-    assert hit.unread == (searchers.DISCOGS,)
-
-
 def test_a_word_resolving_to_the_fallback_is_passed_over_where_its_name_is_not_too_coarse():
-    """The fallback check stands alone on a copy whose fallback name is not in
-    its too coarse list: the shipped template's lists it, which covered the
-    check and left it killing nothing (the mutation table's M19)."""
+    """The fallback check stands alone on a copy whose fallback name is not in its too coarse
+    list: the shipped template's lists it, which covered the check and left it killing nothing
+    (the mutation table's M19)."""
     from cratekit.core.taxonomy import load_taxonomy, shipped_template_text
 
     text = shipped_template_text("default")

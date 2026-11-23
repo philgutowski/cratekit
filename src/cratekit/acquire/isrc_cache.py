@@ -1,75 +1,11 @@
 """What the streaming provider answered for an ISRC, kept so it is not asked again (U206).
 
-WHAT WENT WRONG. The attended sitting that ran ``crate sync pair`` live for the
-first time rehearsed it on a disposable library copy with library state
-redirected, which is the rule ``docs/solutions`` gives for a copy run. Every
-ISRC the rehearsal matched was thrown away with the copy's state, and the live
-run asked the provider every one of them again, so the first sync paid for its
-lookups twice. A mirror after a pair, or an intake after a sync, paid a third
-time for the same answers.
-
-ONE FILE OF THE INSTALLATION, NEVER OF THE LIBRARY. What the provider files
-under an ISRC is a fact about its catalogue, not about any library, so the
-file sits beside ``provider_gate.json`` under the installation's state
-directory. A copy run that redirects ``library.state_dirname`` therefore
-shares it with the live run, which is the whole saving.
-
-AND A COPY RUN THAT REDIRECTS THE INSTALLATION STATE TOO KEEPS IT. Every copy
-run since sitting 39 also copies the installation state and redirects
-``CRATEKIT_STATE_DIR``, and so does ``core.rehearsal``, which would put this
-file in the scratch area and throw its answers away with it. So
-``CRATEKIT_ISRC_CACHE_DIR``, when set, names the directory the file and its
-lock live in: ``core.rehearsal.redirected`` sets it to the live one for the
-body it redirects, and a copy run by hand sets it the same way.
-
-READ AND WRITTEN AT TWO SEAMS AND NOWHERE ELSE: the outbound account's
-``match_track`` and the catalogue's ``tracks_for_isrc``. No caller above them
-learns the cache exists, and ``sync pair``'s links and remembered misses on
-the pairs document sit above it, unchanged.
-
-ONLY AN ANSWER IS KEPT. A list of tracks is an answer, and so is a not found
-the client said in so many words (its ``ObjectNotFound``, or a 404). An
-outage, a rejected session, a rate limit and an ``InvalidISRC`` are never
-kept: at the client version this product pins, ``InvalidISRC`` is what every
-HTTP error but 404 and 429 arrives as, so it may hide any of the others
-(``docs/solutions``, the InvalidISRC entry). Each seam decides what was an
-answer, because each reads its client's failures its own way, and hands this
-module only the answers.
-
-AND ONLY AN ANSWER EVERY TRACK OF WHICH CAN BE READ. A track with no
-identifier, or naming no artist or no title as the matcher reads it, is
-something the provider may still fill in, and the callers already refuse to
-choose beside one (``tidal_account._among``, ``intake.missing_cli``) and
-``sync pair`` and the mirror never remember such an answer (R-988, U198). So
-the answer is asked again next time rather than kept with the gap in it.
-
-KEYED BY THE FOLDED ISRC AND THE COUNTRY THE CATALOGUE WAS ASKED IN, since one
-recording can be filed differently in two countries. A spelling that is not
-already its own fold is asked and never kept: the provider may answer a lower
-case spelling differently from the folded one, and keeping that answer under
-the folded key would answer the folded spelling with it.
-
-HOW LONG. A found answer is reused for ``[provider] isrc_cache_days`` days,
-thirty unless set. A not found for :data:`NOT_FOUND_DAYS`, or for the setting
-when that is shorter, since a person who shortened the one wants the other no
-staler. Zero turns the cache off: nothing is read and nothing is written. An
-expired entry, or one stamped later than now, is asked again and replaced.
-
-A SAVING, NEVER A GATE. Every write takes the sibling lock, reads the file
-again, merges its one entry and replaces the file atomically, so two
-processes never lose each other's answers or leave half a file. A lock not had
-within :data:`LOCK_WAIT_S` skips the write. A file that does not parse is set
-aside beside itself, named by ``crate doctor``, and rebuilt; a file that
-cannot be read at all is left where it is and every lookup asks the provider.
-No verb is refused over this file.
-
-WHAT IT KEEPS OF A TRACK is what the callers read: the identifier, the title,
-the version, the lead artist and every billed artist by name, the album's
-name, whether the provider will play it, and its ISRC. A remembered track is a
-:class:`Remembered`, which answers those attributes as the client's own track
-does; a caller that starts reading another field off an ISRC answer adds it
-here, or it reads ``None`` off every remembered one. The suite builds a real
-client track offline and checks the two read alike.
+The file belongs to the installation, since it holds facts about the catalogue, so
+a copy run shares it; ``CRATEKIT_ISRC_CACHE_DIR`` names its directory when
+installation state is redirected too. Only an answer is kept, a list of readable
+tracks or a not found the client said in so many words, keyed by the folded ISRC and
+the country. It is a saving, never a gate: writes merge under a lock, and no verb is
+refused over the file. :class:`Remembered` keeps only the fields callers read.
 
 Layer: acquire.
 """
@@ -94,21 +30,16 @@ from cratekit.core.cause import answered_not_found
 STATE_KEY = "isrc_cache"
 LOCK_KEY = "isrc_cache_lock"
 
-#: The file's own shape version. A file of another version is set aside like
-#: one that does not parse, since reading it as this one is a guess.
+#: The file's own shape version; another version is set aside like a bad parse.
 SCHEMA = 1
 
-#: How many days an answer that the provider has no track under is kept,
-#: unless ``isrc_cache_days`` is shorter.
+#: Days a not found is kept, unless ``isrc_cache_days`` is shorter.
 NOT_FOUND_DAYS = 7
 
 #: Seconds in a day, the unit the setting is written in.
 DAY_S = 86_400
 
-#: How long a write waits for the lock before it gives up and writes nothing.
-#: A holder holds it for one read, one merge and one replace, so a wait this
-#: long means the holder is not making progress, and the cache is not worth
-#: holding a lookup up for.
+#: How long a write waits for the lock before it writes nothing.
 LOCK_WAIT_S = 5.0
 
 #: How often a waiting write asks for the lock again.
@@ -117,15 +48,11 @@ LOCK_POLL_S = 0.05
 #: What a file that could not be parsed is renamed to, before a stamp.
 SET_ASIDE = ".unreadable-"
 
-#: What :meth:`Cache.count` answers for a file it cannot open, and for one it
-#: opens that does not parse.
+#: What :meth:`Cache.count` answers for a file it cannot open, and one that does not parse.
 UNREADABLE = "unreadable"
 UNPARSED = "unparsed"
 
-#: This process's own counts, across every cache it built: lookups a
-#: remembered answer settled, and lookups that went to the provider. The
-#: dispatcher reads the difference over one verb and reports it, as it does
-#: the provider spend.
+#: This process's lookups settled from the cache and asked of the provider.
 _PROCESS_HITS = 0
 _PROCESS_ASKED = 0
 
@@ -160,9 +87,7 @@ class Named:
 class Remembered:
     """One track out of a remembered answer, read the way the client's track is read.
 
-    ``available`` keeps ``None`` for a track that never said, which
-    ``tidal_account._streamable`` reads as playable, exactly as it reads the
-    client's object with the attribute missing.
+    ``available`` keeps ``None`` for a track that never said, read as playable.
     """
 
     id: str
@@ -197,14 +122,11 @@ def _kept(track: Any) -> dict[str, Any]:
     available = getattr(track, "available", None)
     found_isrc = match.row_isrc(track)
     return {
-        "id": str(getattr(track, "id", "") or ""),
-        "title": _text(getattr(track, "title", None)),
+        "id": str(getattr(track, "id", "") or ""), "title": _text(getattr(track, "title", None)),
         "name": _text(getattr(track, "name", None)),
-        "version": _text(getattr(track, "version", None)),
-        "artist": _name_of(lead),
+        "version": _text(getattr(track, "version", None)), "artist": _name_of(lead),
         "artists": [_name_of(entry) or "" for entry in getattr(track, "artists", None) or ()],
-        "album": _name_of(album),
-        "available": available if isinstance(available, bool) else None,
+        "album": _name_of(album), "available": available if isinstance(available, bool) else None,
         "isrc": str(found_isrc) if found_isrc else None,
     }
 
@@ -239,15 +161,9 @@ def _remembered(kept: Any) -> Remembered:
     if available is not None and not isinstance(available, bool):
         raise ValueError("a remembered track's availability is not a flag")
     return Remembered(
-        id=identifier,
-        title=kept.get("title"),
-        name=kept.get("name"),
-        version=kept.get("version"),
-        artist=None if lead is None else Named(lead),
-        artists=tuple(Named(one) for one in artists),
-        album=None if album is None else Named(album),
-        available=available,
-        isrc=kept.get("isrc"),
+        id=identifier, title=kept.get("title"), name=kept.get("name"), version=kept.get("version"),
+        artist=None if lead is None else Named(lead), artists=tuple(Named(one) for one in artists),
+        album=None if album is None else Named(album), available=available, isrc=kept.get("isrc"),
     )
 
 
@@ -260,21 +176,7 @@ def _key(isrc: str, country: str) -> str | None:
 
 
 def said_not_found(exc: BaseException) -> bool:
-    """Whether a failure is a not found the client said in so many words.
-
-    THE ONE RULE BOTH SEAMS KEEP A NOT FOUND BY, and narrower than either
-    seam's own reading of a failure as no track, on purpose: the account reads
-    ``InvalidISRC`` as no match (R-477), and the catalogue reads any class
-    whose name holds "notfound" as gone, which a ``FileNotFoundError`` or a
-    ``ModuleNotFoundError`` raised inside a lookup would satisfy. Either seam
-    may go on answering those as it did; only the client's own not found
-    class, by its exact name, or a 404 status is kept for a week.
-
-    The class is read off the failure alone, and the status off the one
-    nearest it, ``core.cause.answered_not_found`` (R-1313): a 404 whose body is
-    a page reaches here as the client's decode error with the 404 three context
-    links down, and read off the failure alone it was asked again every run.
-    """
+    """Whether a failure is the client's own ``ObjectNotFound`` or a 404 (R-1313)."""
     if type(exc).__name__ == "ObjectNotFound":
         return True
     return answered_not_found(exc)
@@ -287,12 +189,7 @@ def country_of(session: Any) -> str:
 
 
 def _resolved(key: str) -> Path:
-    """Where one of the two entries lives: under ``CRATEKIT_ISRC_CACHE_DIR`` when
-    it is set, else where the state inventory puts it.
-
-    The override keeps the entry's own file name, so the two never disagree
-    about what the file is called, and only its directory moves.
-    """
+    """Where one of the two entries lives, under ``CRATEKIT_ISRC_CACHE_DIR`` when set."""
     override = os.environ.get(config.ENV_ISRC_CACHE_DIR)
     if override:
         return Path(override) / config.state_file(key).relative
@@ -305,18 +202,14 @@ def _stamp(epoch: float) -> str:
 
 @dataclass
 class Cache:
-    """The ISRC answers file, its lock, and how long an answer is good for.
-
-    ``clock`` is injectable so a suite ages an entry without waiting a week.
-    """
+    """The ISRC answers file, its lock, and how long an answer is good for."""
 
     days: int = field(default_factory=lambda: int(config.DEFAULT_PROVIDER_ISRC_CACHE_DAYS))
     path: Path | None = None
     lock_path: Path | None = None
     clock: Callable[[], float] = time.time
     sleep: Callable[[float], None] = time.sleep
-    #: The parsed file and the stat it was read at, so a run of a thousand
-    #: lookups parses the file once rather than once per lookup.
+    #: The parsed file and the stat it was read at, so a run parses it once.
     _held: tuple[tuple[int, int, int], dict[str, Any]] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
@@ -327,11 +220,7 @@ class Cache:
 
     @classmethod
     def from_config(cls, cfg: Any) -> Cache:
-        """The cache the ``[provider]`` section sets, off a loaded configuration.
-
-        Read with a fallback rather than required, because a job queued before
-        this setting existed carries a frozen configuration that never had it.
-        """
+        """The cache the ``[provider]`` section sets, falling back for an older frozen config."""
         provider = getattr(cfg, "provider", None)
         days = getattr(provider, "isrc_cache_days", None)
         if not isinstance(days, int) or isinstance(days, bool) or days < 0:
@@ -367,12 +256,8 @@ class Cache:
     def _entries(self, *, locked: bool = False) -> dict[str, Any] | None:
         """Every entry, or ``None`` when the file cannot be read at all.
 
-        A file that reads and does not parse is set aside and read as empty. A
-        file that cannot be read is left alone and answers nothing, since a
-        rename over a file nobody could read is a guess about what is in it.
-        ``locked`` says the caller holds the lock already, so the set aside
-        does not ask for it a second time: a second ``flock`` from this same
-        process on a fresh descriptor waits on the first.
+        A file that does not parse is set aside and read as empty. ``locked`` says the
+        caller holds the lock, since a second ``flock`` would wait on the first.
         """
         try:
             signature = self._signature()
@@ -422,11 +307,7 @@ class Cache:
             return None
 
     def recall(self, isrc: str, country: str) -> tuple[Remembered, ...] | None:
-        """The remembered answer for one ISRC in one country, or ``None`` to ask.
-
-        An empty tuple is a remembered not found. Counted as a lookup the
-        cache settled; a ``None`` is counted by the seam when it asks.
-        """
+        """The remembered answer, ``()`` for a not found, or ``None`` to ask."""
         global _PROCESS_HITS
         if not self.enabled:
             return None
@@ -442,11 +323,7 @@ class Cache:
         return held
 
     def holds(self, isrc: str, country: str) -> bool:
-        """Whether :meth:`recall` would answer this code now, counting nothing.
-
-        For a caller deciding what is worth asking about at all, U207's batch
-        screen among them: a code the cache answers needs no batch either.
-        """
+        """Whether :meth:`recall` would answer this code now, counting nothing."""
         if not self.enabled:
             return False
         key = _key(isrc, country)
@@ -471,11 +348,7 @@ class Cache:
             return self._set_aside_held() if had else None
 
     def _set_aside_held(self) -> Path | None:
-        """Rename a file that does not parse out of the way; the caller holds the lock.
-
-        Read again under the lock, so a file another process already replaced
-        with a good one is never set aside on an old reading of it.
-        """
+        """Rename a file that still does not parse under the caller's lock out of the way."""
         try:
             text = self.path.read_text(encoding="utf-8")
         except FileNotFoundError:
@@ -495,16 +368,7 @@ class Cache:
         return aside
 
     def remember(self, isrc: str, country: str, tracks: Iterable[Any]) -> bool:
-        """Keep one answer, ``()`` for a not found. True when it was written.
-
-        An answer holding a track that cannot be read is not kept, see the
-        module's docstring.
-
-        Under the lock the file is read again and only this entry changes, so
-        another process's answers written since this one read survive. Entries
-        past their time are dropped in the same write, so the file holds what
-        can still answer and nothing else.
-        """
+        """Keep one answer, ``()`` for a not found, merged under the lock; True when written."""
         if not self.enabled:
             return False
         key = _key(isrc, country)
@@ -535,8 +399,7 @@ class Cache:
             except OSError:
                 self._held = None
                 return False
-            # Held as written, so the next lookup in this run reads it without
-            # parsing it again; another process's write changes the signature.
+            # Held as written, so the next lookup reads it without parsing again.
             self._held = (written, merged) if written is not None else None
             return True
 
@@ -550,13 +413,7 @@ class Cache:
             return ()
 
     def count(self) -> int | str:
-        """How many entries can still answer, or why none can be counted.
-
-        :data:`UNREADABLE` for a file that cannot be opened, which answers
-        nothing until it can be, and :data:`UNPARSED` for one that opens and
-        does not parse, which the next lookup sets aside and rebuilds. Two
-        states, because one heals itself and the other needs a person.
-        """
+        """How many entries can still answer, or :data:`UNREADABLE` or :data:`UNPARSED`."""
         try:
             text = self.path.read_text(encoding="utf-8")
         except FileNotFoundError:
@@ -571,20 +428,7 @@ class Cache:
 
 
 __all__ = [
-    "DAY_S",
-    "LOCK_KEY",
-    "NOT_FOUND_DAYS",
-    "SCHEMA",
-    "SET_ASIDE",
-    "STATE_KEY",
-    "UNPARSED",
-    "UNREADABLE",
-    "Cache",
-    "Lookups",
-    "Named",
-    "Remembered",
-    "asked",
-    "country_of",
-    "process_lookups",
-    "said_not_found",
+    "DAY_S", "LOCK_KEY", "NOT_FOUND_DAYS", "SCHEMA", "SET_ASIDE", "STATE_KEY", "UNPARSED",
+    "UNREADABLE", "Cache", "Lookups", "Named", "Remembered", "asked", "country_of",
+    "process_lookups", "said_not_found",
 ]
