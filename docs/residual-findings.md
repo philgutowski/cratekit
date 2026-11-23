@@ -3980,3 +3980,81 @@ another way would escape every scan that reads through
 **Closes when:** the derivation resolves an imported accessor by value (the
 function it binds, however reached), with a fixture per family and spelling;
 or a test holds every accessor import to the absolute spelling. Ledger only.
+
+---
+
+## R-1975. A rekordbox visit over a batch whose every row is dyn ends on Dynamic, so the next launch's Auto Analysis dialog is cancelled
+
+**Found:** at the review of #997, U954, 2026-11-23.
+
+**The mechanism.** The brief asks that every visit end with the shared
+Analysis Mode on Normal. U954 ends it on Normal by making the last Analyze
+Tracks OK a Normal run on rows without `dyn`; a batch whose every row carries
+`dyn` has no such row, and the visit may touch no track outside INBOX /
+Analyze, so it ends on Dynamic. The skill and the landing's warning say so,
+and the next launch's dialog is cancelled by the skill's step 2 for that
+known cause. A visit that stops between its Dynamic OK and its last Normal
+one ends the same way.
+
+**Measured cost.** Driven as a landing of one and of two variable tracks: the
+warning now says the visit ends on Dynamic. The next visit then takes the
+Analyze Tracks path, which costs its selection by hand and nothing analysed
+wrong.
+
+**Closes when:** a way to leave Normal set with no row of the batch to
+analyse is settled at an attended sitting: sitting 104 put the mode back by
+analysing a throwaway AIFF alone on Normal, under CLAUDE.md's clause for a
+probe, and whether a visit may do that routinely, or whether a Normal
+Analyze Tracks dialog answered Cancel keeps its mode, is unmeasured; or
+Phillip accepts the exception. Ledger only: it closes at an attended
+sitting.
+
+---
+
+## R-1976. A variable row the landing could not tag dyn is counted among the rows the visit runs Normal, while another warning sends it to Dynamic by name
+
+**Found:** at the review of #997, U954, 2026-11-23.
+
+**The mechanism.** When a landing cannot give a variable row the `dyn` My
+Tag (no My Tag category to copy, a removed value, a tag that does not read
+back), `dyn-not-written` names it for a Dynamic run by name, before any
+Normal run and left out of it. The `rows-await-analysis` warning counts rows
+by the tag alone, so it counts that row among "the rows without it" for the
+Normal run, and the skill's status line check and wait (the batch less the
+`dyn` count) are off by the rows named. With every row such a row, the
+awaiting warning tells of a Normal run on rows the other warning says to
+leave out.
+
+**Measured cost.** Driven at the review through the landing fixtures, a
+library with no My Tag category and a removed `dyn` value; both states are
+made by a person in rekordbox and were seeded here, so reachability on the
+live library, which carries the category, is unmeasured. The cost is a count
+that disagrees by the named rows, and the visit's mode left on Dynamic.
+
+**Closes when:** the awaiting warning counts a variable row the landing could
+not tag with the Dynamic rows (or names it apart), and the skill's counts
+follow. Ledger only.
+
+---
+
+## R-1977. The rekordbox visit's Normal run selection is checked by its count alone, so a wrong row clicked out keeps the count
+
+**Found:** at the review of #997, U954, 2026-11-23.
+
+**The mechanism.** U954's Analyze Tracks path selects the rows without `dyn`
+by selecting all and Command clicking each `dyn` row out, then checks that
+the status line reads the batch less the `dyn` count. A plain row clicked out
+in place of a `dyn` one keeps that count, so the Normal run can take a `dyn`
+row and overwrite its Dynamic grid while leaving a plain row unanalysed by
+Normal. The Dynamic selection before it was count checked the same way.
+
+**Measured cost.** Not driven in rekordbox, which no cloud session opens. The
+reviewer drove `crate analyze check` over the outcome: on a fresh batch the
+plain row left out reads waiting, so it is caught; on a second visit, where
+that row was already analysed, a `dyn` row left with a one tempo grid reads
+done.
+
+**Closes when:** the visit checks the selection's rows, not only their count
+(the My Tag column read off the screenshot, or a check of each `dyn` row's
+grid after the visit), or an attended sitting shows the count check enough.
+Ledger only: it closes at an attended sitting.
