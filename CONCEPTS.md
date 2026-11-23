@@ -339,6 +339,17 @@ How far a track's tempo moves over its length, as a percent, written by
 variable row the `dyn` My Tag, so the rekordbox visit analyses it Dynamic and
 `analyze check` accepts a variable grid. "Unscored" means a file with no drift.
 
+### Analysed mark
+The tag `analyze run` writes on every file it measured, `analyzed`
+(`TXXX:CratekitAnalyzed`), in the same write as its measures, and its resume
+marker since U343, when the run stopped writing a head (`analysis/run.py`). A
+file is **measured** when it carries the mark or a name carrying a head, what
+a run before U343 left; `analyze vocals --unscored` picks the measured files
+with no `voxlevel`.
+
+*Avoid:* reading the mark as a key or a tempo: it says only that the run
+measured the file. The head comes from rekordbox through `analyze adopt`.
+
 ### The tail
 The verbs run over staged files before a landing, in order: `tag folder`,
 `tag guess`, `analyze run` (then `analyze vocals --unscored`), `analyze restamp`,
@@ -869,14 +880,15 @@ and fails `calibrate.sample` unless `--accept-partial`
 stride sample (500 by default) is drawn from, not that every track was measured.
 
 ### Rename intent
-A record a worker writes before renaming its item's file, naming the target
+A record a worker wrote before renaming its item's file, naming the target
 (`analysis/artifacts.py`). On resume a missing source with an existing target is
 the finished item; otherwise the source is missing. Never recovered by scanning.
+Only a run before U343 renamed, so only a job such a run left half done holds one.
 
 ### Run ahead
 How `analyze run` uses a pool without changing the job's order
 (`analysis/ahead.py`, U241). Worker processes measure the waiting files' heads
-(key, tempo, drift, energy) through the pool's **work stream**
+(tempo, drift, energy, and no key since U343) through the pool's **work stream**
 (`core/pool.py`, results read one position at a time), and the driver reads
 each head when it reaches that item, then scores vocals and writes. A head
 measured ahead is used only if the file's identity and the settings it was

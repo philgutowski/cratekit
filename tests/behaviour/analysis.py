@@ -85,7 +85,9 @@ def place(folder: Path, silence: Path, relative: str, **fields) -> Path:
 
 
 def detector(keyless: tuple[str, ...] = ()):
-    """A head finding the same key on every file, and no key on the files named."""
+    """A head finding the same tempo on every file, and no answer on the files named.
+
+    It still hands in a key, which the run ignores since U343."""
 
     def detect_(path: Path):
         if Path(path).stem in keyless:
@@ -142,11 +144,9 @@ def test_run_analyses_a_folder_and_then_skips_it(stage, machine, silence, tmp_pa
 
     settled = stage.crate("analyze", "run", str(folder))
     assert settled.code == OK, settled.stderr
-    assert sorted(path.name for path in folder.iterdir()) == [
-        "08A - 124 - a.flac",
-        "08A - 124 - b.flac",
-    ]
-    # Again: every name carries its head, so nothing is read.
+    # Since U343 the run renames nothing and leaves its mark instead.
+    assert sorted(path.name for path in folder.iterdir()) == ["a.flac", "b.flac"]
+    # Again: every file carries the mark, so nothing is read.
     again = stage.json("analyze", "run", str(folder))
     assert again.code == OK, again.stdout
 
@@ -166,7 +166,7 @@ def test_run_queued_then_driven_with_a_keyless_file_and_a_gone_one(
     driven = stage.json("analyze", "run", str(folder), "--job", queued.envelope["data"]["job_id"])
     assert driven.code != OK, driven.stdout
     assert (folder / "drone.flac").is_file()
-    assert (folder / "08A - 124 - fresh.flac").is_file()
+    assert (folder / "fresh.flac").is_file()
 
     empty = tmp_path / "empty"
     empty.mkdir()
