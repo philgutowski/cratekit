@@ -27,7 +27,7 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
 from tests import _mounts
 from tests.test_config import valid_data
-from tests.test_restore import _refusal
+from tests.test_restore import _refusal, _refusal_entering
 
 UTC = timezone.utc
 
@@ -163,15 +163,14 @@ def test_the_gates_admit_a_session_once_all_three_pass(cfg):
 def test_the_volume_is_judged_before_any_library_path_is_resolved(cfg):
     """The volume is judged first, or the lock is read off somebody else's disk."""
     acknowledge(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        with session.assert_gates(
-            cfg,
-            workflow="a-destructive-workflow",
-            identity_provider=foreign_identity,
-            mount_enumerator=lambda: (),
-        ):
-            pass
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    cause = _refusal_entering(
+        session.assert_gates,
+        cfg,
+        workflow="a-destructive-workflow",
+        identity_provider=foreign_identity,
+        mount_enumerator=lambda: (),
+    )
+    assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
     assert not session.lock_path(cfg).exists(), "the lock was created before the volume check"
 
 
@@ -546,10 +545,7 @@ def test_a_second_process_refuses_and_names_the_holder(cfg):
 
         # A separate handle is a second process to the kernel.
         session._HELD.discard(str(session.lock_path(cfg).absolute()))
-        with pytest.raises(CratekitError) as excinfo:
-            with session.session_lock(cfg):
-                pass
-    cause = excinfo.value.cause
+        cause = _refusal_entering(session.session_lock, cfg)
     assert cause.code is ExitCode.LIBRARY_BUSY
     assert str(os.getpid()) in cause.message
 
@@ -1465,12 +1461,11 @@ def test_a_recovery_session_is_exempt_from_the_latch_and_from_nothing_else(cfg):
     assert no_ack.value.cause.code is ExitCode.ACK_REQUIRED
 
     acknowledge(cfg)
-    with pytest.raises(CratekitError) as wrong_disk:
-        with session.assert_gates(
-            cfg, **recovery, identity_provider=foreign_identity, mount_enumerator=lambda: ()
-        ):
-            pass
-    assert wrong_disk.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    wrong_disk = _refusal_entering(
+        session.assert_gates,
+        cfg, **recovery, identity_provider=foreign_identity, mount_enumerator=lambda: ()
+    )
+    assert wrong_disk.code is ExitCode.LIBRARY_UNAVAILABLE
 
     contender = open(session.lock_path(cfg), "a+")
     try:
@@ -2012,9 +2007,7 @@ def test_the_sweep_ends_only_the_orphans_it_was_shown(cfg):
 
 def test_a_refused_gate_keeps_no_record(cfg):
     """No acknowledgment is minted, so the gates refuse, and a refusal writes nothing."""
-    with pytest.raises(CratekitError):
-        with recording_gates(cfg):
-            raise AssertionError("the gates admitted a session they should have refused")
+    _refusal_entering(recording_gates, cfg)
     assert session.records(cfg) == ()
 
 

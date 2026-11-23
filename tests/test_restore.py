@@ -131,6 +131,22 @@ def _refusal(call, /, *arguments, **keywords):
     return excinfo.value.cause
 
 
+def _refusal_entering(manager, /, *arguments, **keywords):
+    """The cause of the ``CratekitError`` entering ``manager(...)`` raises, failing
+    when the manager admits the body instead."""
+    with pytest.raises(CratekitError) as excinfo:
+        with manager(*arguments, **keywords):
+            raise AssertionError(f"{manager.__name__} admitted what it should refuse")
+    return excinfo.value.cause
+
+
+def _sweep_refusal(cfg):
+    """The cause refusing an ordinary library sweep at the real gates."""
+    return _refusal_entering(
+        session.assert_gates, cfg, workflow="library-sweep", **gate_seams(cfg)
+    )
+
+
 def _refused(call, /, *arguments, **keywords) -> CratekitError:
     """The ``CratekitError`` that ``call`` raises, failing if none is."""
     with pytest.raises(CratekitError) as excinfo:
@@ -294,9 +310,10 @@ def test_the_override_has_to_name_exactly_the_sessions_it_discards(cfg, held):
     older, _ = completed_session(cfg, started="2026-08-01T09:00:00+00:00", stamp="older")
     newer, _ = completed_session(cfg, started="2026-08-02T09:00:00+00:00", stamp="newer")
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.plan(cfg, older.session_id, held=held, discarding=["not-that-session"])
-    assert excinfo.value.cause.reason == "restore-discards-committed-work"
+    cause = _refusal(
+        restore.plan, cfg, older.session_id, held=held, discarding=["not-that-session"]
+    )
+    assert cause.reason == "restore-discards-committed-work"
 
     decided = restore.plan(cfg, older.session_id, held=held, discarding=[newer.session_id])
 
@@ -379,12 +396,10 @@ def test_an_unreconciled_restore_refuses_the_next_ordinary_session(cfg):
     acknowledge(cfg)
     _one_effect_marker(cfg)
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)):
-            raise AssertionError("the gates admitted a session they should have refused")
+    cause = _sweep_refusal(cfg)
 
-    assert excinfo.value.cause.reason == "restore-reconciliation-outstanding"
-    assert excinfo.value.cause.code is ExitCode.UNCONVERGED
+    assert cause.reason == "restore-reconciliation-outstanding"
+    assert cause.code is ExitCode.UNCONVERGED
 
 
 def test_a_recovery_is_not_refused_by_the_latch_whose_remedy_it_is(cfg):
@@ -475,10 +490,7 @@ def _assert_the_next_write_is_refused_over(cfg, tree_id: str) -> None:
     asserted unconditionally.
     """
     if tree_id in reconcile.unconverged_trees(cfg):
-        with pytest.raises(CratekitError) as excinfo:
-            with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)):
-                raise AssertionError("the gates admitted a session over a short tree")
-        cause = excinfo.value.cause
+        cause = _sweep_refusal(cfg)
         assert cause.reason == "restore-reconciliation-outstanding"
         assert cause.detail["unconverged_trees"] == [tree_id]
         return
@@ -522,19 +534,16 @@ def test_an_unconverged_tree_refuses_the_next_sync_and_the_next_close(cfg):
         cfg, reconcile.tree_markers(["routing"], session_id="s", capture_stamp="c")
     )
 
-    with pytest.raises(CratekitError) as sync_refusal:
-        with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)):
-            raise AssertionError("the gates admitted a session over a short tree")
+    sync_refusal = _sweep_refusal(cfg)
 
     stranded = session.open_session(cfg, workflow="library-sweep")
-    with pytest.raises(CratekitError) as close_refusal:
-        session.close_session(stranded, cfg, **_close_seams(cfg))
+    close_refusal = _refusal(session.close_session, stranded, cfg, **_close_seams(cfg))
 
     for refusal in (sync_refusal, close_refusal):
-        assert refusal.value.cause.reason == "restore-reconciliation-outstanding"
-        assert refusal.value.cause.code is ExitCode.UNCONVERGED
-    assert "never by a decision" in close_refusal.value.cause.message
-    assert close_refusal.value.cause.detail["unconverged_trees"] == ["routing"]
+        assert refusal.reason == "restore-reconciliation-outstanding"
+        assert refusal.code is ExitCode.UNCONVERGED
+    assert "never by a decision" in close_refusal.message
+    assert close_refusal.detail["unconverged_trees"] == ["routing"]
 
 
 def test_a_pre_cutover_restore_leaves_the_next_session_refused(cfg, held):
@@ -1076,11 +1085,9 @@ def test_a_restore_refuses_without_each_of_the_three_gates(cfg):
 
     def refuse_with(**arguments) -> ExitCode:
         before = _fingerprint(cfg.library.root)
-        with pytest.raises(CratekitError) as excinfo:
-            with restore.recovery_session(cfg, **arguments):
-                raise AssertionError("the gates admitted a recovery they should have refused")
+        cause = _refusal_entering(restore.recovery_session, cfg, **arguments)
         assert _fingerprint(cfg.library.root) == before
-        return excinfo.value.cause.code
+        return cause.code
 
     wrong_volume = refuse_with(
         identity_provider=lambda _path: _ELSEWHERE, mount_enumerator=lambda: ()
@@ -1141,24 +1148,26 @@ def _volume_is_gone(cfg) -> dict:
     }
 
 
+def _session_onto(cfg, target, seams, *, acknowledged=True, terminal=True):
+    """A bare-metal session onto ``target`` through the volume seams ``seams``."""
+    return restore.bare_metal_session(
+        cfg,
+        target=target,
+        acknowledged=acknowledged,
+        terminal=lambda: terminal,
+        **seams,
+    )
+
+
 def test_bare_metal_recovery_is_refused_while_the_library_is_reachable(cfg, tmp_path):
     target = tmp_path / "recovered"
     target.mkdir()
 
-    with pytest.raises(CratekitError) as excinfo:
-        with restore.bare_metal_session(
-            cfg,
-            target=target,
-            acknowledged=True,
-            terminal=lambda: True,
-            # The probe answers yes so only the identity gate can refuse, asserted
-            # on a phrase the stub refusal lacks (U96 mutation row C5).
-            mount_probe=lambda _path: True,
-            **gate_seams(cfg),
-        ):
-            raise AssertionError("unreachable")
+    # The probe answers yes so only the identity gate can refuse, asserted on a
+    # phrase the stub refusal lacks (U96 mutation row C5).
+    seams = {**gate_seams(cfg), "mount_probe": lambda _path: True}
+    cause = _refusal_entering(_session_onto, cfg, target, seams)
 
-    cause = excinfo.value.cause
     assert cause.reason == "recovery-target-refused"
     assert "nothing to recover from bare metal" in cause.message
 
@@ -1175,13 +1184,9 @@ def test_a_volume_mounted_elsewhere_is_not_the_same_as_a_volume_that_is_gone(cfg
     target = tmp_path / "recovered"
     target.mkdir()
 
-    with pytest.raises(CratekitError) as excinfo:
-        with restore.bare_metal_session(
-            cfg, target=target, acknowledged=True, terminal=lambda: True, **seams
-        ):
-            raise AssertionError("unreachable")
+    cause = _refusal_entering(_session_onto, cfg, target, seams)
 
-    assert "not absent" in excinfo.value.cause.message
+    assert "not absent" in cause.message
 
 
 def test_a_platform_that_cannot_report_an_identity_is_not_a_volume_that_is_gone(cfg, tmp_path):
@@ -1190,13 +1195,9 @@ def test_a_platform_that_cannot_report_an_identity_is_not_a_volume_that_is_gone(
     target = tmp_path / "recovered"
     target.mkdir()
 
-    with pytest.raises(CratekitError) as excinfo:
-        with restore.bare_metal_session(
-            cfg, target=target, acknowledged=True, terminal=lambda: True, **seams
-        ):
-            raise AssertionError("unreachable")
+    cause = _refusal_entering(_session_onto, cfg, target, seams)
 
-    assert "not absent" in excinfo.value.cause.message
+    assert "not absent" in cause.message
 
 
 def test_bare_metal_recovery_refuses_the_stub_an_unmounted_volume_leaves_behind(cfg, tmp_path):
@@ -1207,13 +1208,9 @@ def test_bare_metal_recovery_refuses_the_stub_an_unmounted_volume_leaves_behind(
     stub = Path(cfg.library.root)
     stub.mkdir(parents=True)
 
-    with pytest.raises(CratekitError) as excinfo:
-        with restore.bare_metal_session(
-            cfg, target=stub, acknowledged=True, terminal=lambda: True, **seams
-        ):
-            raise AssertionError("unreachable")
+    cause = _refusal_entering(_session_onto, cfg, stub, seams)
 
-    assert "empty folder an unmounted volume leaves behind" in excinfo.value.cause.message
+    assert "empty folder an unmounted volume leaves behind" in cause.message
 
 
 @pytest.mark.parametrize(
@@ -1241,13 +1238,9 @@ def test_bare_metal_recovery_refuses_the_stubs_beside_and_beneath_the_mount_poin
     target = tmp_path / name
     target.mkdir(parents=True)
 
-    with pytest.raises(CratekitError) as excinfo:
-        with restore.bare_metal_session(
-            cfg, target=target, acknowledged=True, terminal=lambda: True, **seams
-        ):
-            raise AssertionError("unreachable")
+    cause = _refusal_entering(_session_onto, cfg, target, seams)
 
-    assert "unmounted volume leaves behind" in excinfo.value.cause.message, why
+    assert "unmounted volume leaves behind" in cause.message, why
 
 
 def test_bare_metal_recovery_refuses_a_target_holding_a_library_in_a_subdirectory(
@@ -1260,13 +1253,9 @@ def test_bare_metal_recovery_refuses_a_target_holding_a_library_in_a_subdirector
     (target / "db").mkdir(parents=True)
     (target / "db" / "master.db").write_bytes(b"somebody else's library")
 
-    with pytest.raises(CratekitError) as excinfo:
-        with restore.bare_metal_session(
-            cfg, target=target, acknowledged=True, terminal=lambda: True, **seams
-        ):
-            raise AssertionError("unreachable")
+    cause = _refusal_entering(_session_onto, cfg, target, seams)
 
-    assert "named for replacement" in excinfo.value.cause.message
+    assert "named for replacement" in cause.message
 
 
 def test_bare_metal_recovery_opens_over_databases_it_would_not_replace(cfg, tmp_path):
@@ -1283,9 +1272,7 @@ def test_bare_metal_recovery_opens_over_databases_it_would_not_replace(cfg, tmp_
         (target / relative).parent.mkdir(parents=True, exist_ok=True)
         (target / relative).write_bytes(body)
 
-    with restore.bare_metal_session(
-        cfg, target=target, acknowledged=True, terminal=lambda: True, **seams
-    ) as open_session:
+    with _session_onto(cfg, target, seams) as open_session:
         assert open_session.authorises == target
 
     assert {r: (target / r).read_bytes() for r in left} == left
@@ -1321,13 +1308,9 @@ def test_bare_metal_recovery_refuses_a_target_that_already_holds_a_library(cfg, 
     (target / "db").mkdir(parents=True)
     (target / "db" / "master.db-wal").write_bytes(b"somebody else's library")
 
-    with pytest.raises(CratekitError) as excinfo:
-        with restore.bare_metal_session(
-            cfg, target=target, acknowledged=True, terminal=lambda: True, **seams
-        ):
-            raise AssertionError("unreachable")
+    cause = _refusal_entering(_session_onto, cfg, target, seams)
 
-    assert "named for replacement" in excinfo.value.cause.message
+    assert "named for replacement" in cause.message
 
     with restore.bare_metal_session(
         cfg,
@@ -1360,19 +1343,11 @@ def test_bare_metal_recovery_needs_a_terminal_and_an_explicit_decision(cfg, tmp_
     target = tmp_path / "recovered"
     target.mkdir()
 
-    with pytest.raises(CratekitError) as no_terminal:
-        with restore.bare_metal_session(
-            cfg, target=target, acknowledged=True, terminal=lambda: False, **seams
-        ):
-            raise AssertionError("unreachable")
-    assert "no controlling terminal" in no_terminal.value.cause.message
+    no_terminal = _refusal_entering(_session_onto, cfg, target, seams, terminal=False)
+    assert "no controlling terminal" in no_terminal.message
 
-    with pytest.raises(CratekitError) as not_accepted:
-        with restore.bare_metal_session(
-            cfg, target=target, acknowledged=False, terminal=lambda: True, **seams
-        ):
-            raise AssertionError("unreachable")
-    assert "explicit decision" in not_accepted.value.cause.message
+    not_accepted = _refusal_entering(_session_onto, cfg, target, seams, acknowledged=False)
+    assert "explicit decision" in not_accepted.message
 
 
 def test_bare_metal_recovery_takes_the_installation_lock_not_the_library_one(cfg, tmp_path):
@@ -1381,9 +1356,7 @@ def test_bare_metal_recovery_takes_the_installation_lock_not_the_library_one(cfg
     target = tmp_path / "recovered"
     target.mkdir()
 
-    with restore.bare_metal_session(
-        cfg, target=target, acknowledged=True, terminal=lambda: True, **seams
-    ) as open_session:
+    with _session_onto(cfg, target, seams) as open_session:
         assert open_session.lock == restore.recovery_lock_path()
         assert _lock_taken_in_another_process(restore.recovery_lock_path()) != 0
 
@@ -1689,10 +1662,8 @@ def test_blocking_1_a_bare_metal_session_cannot_be_spent_on_the_library_it_refus
         key: value for key, value in seams.items() if key != "mount_probe"
     }
 
-    with pytest.raises(CratekitError) as ordinary:
-        with restore.recovery_session(cfg, **library_seams):
-            raise AssertionError("the ordinary restore admitted a foreign volume")
-    assert ordinary.value.cause.reason == "library-volume-mismatch"
+    ordinary = _refusal_entering(restore.recovery_session, cfg, **library_seams)
+    assert ordinary.reason == "library-volume-mismatch"
 
     replacement = tmp_path / "replacement"
     replacement.mkdir()
@@ -1708,9 +1679,8 @@ def test_blocking_1_a_bare_metal_session_cannot_be_spent_on_the_library_it_refus
         assert bare_metal.authorises == replacement
         assert not bare_metal.authorises_path(cfg.library.root)
 
-        refused = _refusal(restore.plan, cfg, record.session_id, held=bare_metal)
+        cause = _refusal(restore.plan, cfg, record.session_id, held=bare_metal)
 
-    cause = refused
     assert "no session is recorded" in cause.message
     assert str(replacement) in cause.message
     assert str(cfg.library.root) not in cause.message
@@ -1908,9 +1878,9 @@ def test_u95_a_plan_built_for_the_library_is_refused_under_a_bare_metal_session(
 
     with _bare_metal(cfg, replacement) as bare_metal:
         for dry_run in (True, False):
-            with pytest.raises(CratekitError) as refused:
-                restore.run(for_the_library, cfg, held=bare_metal, dry_run=dry_run)
-            cause = refused.value.cause
+            cause = _refusal(
+                restore.run, for_the_library, cfg, held=bare_metal, dry_run=dry_run
+            )
             assert "authorises" in cause.message
             assert cause.detail["authorises"] == str(replacement)
             assert _under(cause.detail["writing"], cfg.library.root)
@@ -1930,10 +1900,9 @@ def test_u95_a_plan_built_for_the_target_is_refused_under_a_library_session(cfg,
     with restore.recovery_session(cfg, **gate_seams(cfg)) as library_session:
         # Compared inside the block, since the session writes its own record.
         inside = _tree_bytes(cfg.library.root)
-        refused = _refusal(restore.run, for_the_target, cfg, held=library_session)
+        cause = _refusal(restore.run, for_the_target, cfg, held=library_session)
         assert _tree_bytes(cfg.library.root) == inside
 
-    cause = refused
     assert "authorises" in cause.message
     assert cause.detail["authorises"] == str(cfg.library.root)
     assert _under(cause.detail["writing"], replacement)
@@ -1955,9 +1924,8 @@ def test_u95_a_library_session_still_refuses_a_configuration_for_another_library
         ),
     )
 
-    refused = _refusal(restore.plan, elsewhere, record.session_id, held=held)
+    cause = _refusal(restore.plan, elsewhere, record.session_id, held=held)
 
-    cause = refused
     assert "authorises" in cause.message
     assert cause.detail["writing"] == str(other)
     assert cause.detail["authorises"] == str(cfg.library.root)
@@ -1979,13 +1947,10 @@ def test_u95_a_database_outside_the_library_refuses_a_bare_metal_plan_by_name(
     replacement_before = _tree_bytes(replacement)
 
     with _bare_metal(apart, replacement) as bare_metal:
-        with pytest.raises(CratekitError) as refused:
-            restore.plan(apart, "no-such-session", held=bare_metal)
-        with pytest.raises(CratekitError) as refused_run:
-            restore.plan(apart, record.session_id, held=bare_metal)
+        refused = _refusal(restore.plan, apart, "no-such-session", held=bare_metal)
+        refused_run = _refusal(restore.plan, apart, record.session_id, held=bare_metal)
 
-    for caught in (refused, refused_run):
-        cause = caught.value.cause
+    for cause in (refused, refused_run):
         assert cause.reason == "recovery-target-refused"
         assert cause.detail["database"] == str(outside)
         assert cause.remediation.steps
@@ -2307,12 +2272,10 @@ def test_blocking_5_an_interrupted_restore_in_a_none_effect_window_latches(cfg, 
     for step in decided.steps[:-1]:
         restore._perform(step, decided, cfg)
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)):
-            raise AssertionError("the gates admitted a session after a half restore")
+    cause = _sweep_refusal(cfg)
 
-    assert excinfo.value.cause.reason == "restore-reconciliation-outstanding"
-    assert "never seen to finish" in excinfo.value.cause.message
+    assert cause.reason == "restore-reconciliation-outstanding"
+    assert "never seen to finish" in cause.message
 
 
 def test_blocking_5_a_restore_that_completes_retracts_its_own_latch(cfg):
@@ -2884,9 +2847,7 @@ def test_round2_a_held_rebuilt_around_a_live_token_is_refused(cfg, tmp_path):
     replacement = tmp_path / "replacement"
     replacement.mkdir()
 
-    with restore.bare_metal_session(
-        cfg, target=replacement, acknowledged=True, terminal=lambda: True, **seams
-    ) as bare_metal:
+    with _session_onto(cfg, replacement, seams) as bare_metal:
         laundered = restore.Held(
             workflow=restore.CAPTURE_RESTORE_WORKFLOW,
             lock=bare_metal.lock,
@@ -2952,10 +2913,11 @@ def test_round2_a_write_against_a_husk_does_not_rebuild_the_state_tree(cfg):
     for child in root.iterdir():
         shutil.rmtree(child) if child.is_dir() else child.unlink()
 
-    with pytest.raises(CratekitError) as excinfo:
-        reconcile.record_markers(cfg, [reconcile.in_flight_marker(capture_stamp="c")])
+    cause = _refusal(
+        reconcile.record_markers, cfg, [reconcile.in_flight_marker(capture_stamp="c")]
+    )
 
-    assert excinfo.value.cause.reason == "restore-record-unusable"
+    assert cause.reason == "restore-record-unusable"
     assert not config.library_state_dir(cfg).exists()
 
 
@@ -2975,13 +2937,9 @@ def test_round2_the_real_mount_probe_is_armed_by_default(cfg, tmp_path):
     sibling = tmp_path / "library 1"
     sibling.mkdir()
 
-    with pytest.raises(CratekitError) as excinfo:
-        with restore.bare_metal_session(
-            cfg, target=sibling, acknowledged=True, terminal=lambda: True, **seams
-        ):
-            raise AssertionError("unreachable")
+    cause = _refusal_entering(_session_onto, cfg, sibling, seams)
 
-    assert "unmounted volume leaves behind" in excinfo.value.cause.message
+    assert "unmounted volume leaves behind" in cause.message
 
 
 def test_round3_an_unwritable_coupled_directory_refuses_at_the_rehearsal(cfg, held):
