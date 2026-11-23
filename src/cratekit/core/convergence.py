@@ -905,36 +905,3 @@ def assert_tree_writable(
         return
     detect_out_of_band_restore(cfg, db, registry, now=now)
 
-
-__all__ = [
-    "EMPTY",
-    "LOCK_KEY",
-    "SCHEMA_VERSION",
-    "SOFT_DELETE_COLUMN",
-    "STATE_KEY",
-    "ConvergenceState",
-    "ConvergenceStateUnreadable",
-    "DestinationNode",
-    "Disposition",
-    "Fingerprint",
-    "Purpose",
-    "Regression",
-    "RestoreCheck",
-    "TreeConvergence",
-    "assert_converged",
-    "assert_injective",
-    "assert_no_out_of_band_restore",
-    "assert_tree_writable",
-    "clear_unconverged",
-    "detect_out_of_band_restore",
-    "lock_path",
-    "mark_unconverged",
-    "native_trees",
-    "path_for",
-    "probe",
-    "read",
-    "record_fingerprint",
-    "record_nodes",
-    "regression",
-    "write",
-]
