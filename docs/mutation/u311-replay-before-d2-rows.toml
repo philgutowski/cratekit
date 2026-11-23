@@ -1,0 +1,335 @@
+name = "u311-replay-before-d2"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1761.P15_history_fact_ignored"
+source = { table = "r1761.json", id = "P15_history_fact_ignored" }
+description = "_history: the library's own fact is not history, so an emptied library with installation state lost runs"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    if fact is not None:
+        return None, "the library's own record of its backups"'''
+new = '''
+    if False:
+        return None, "the library's own record of its backups"'''
+
+[[rows]]
+id = "r1761.P16_history_unreadable_fact_none"
+source = { table = "r1761.json", id = "P16_history_unreadable_fact_none" }
+description = "_history: a fact file that cannot be read is no history"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    except backup_facts.BackupFactsUnreadable:
+        return None, "the library's own record of its backups"'''
+new = '''
+    except backup_facts.BackupFactsUnreadable:
+        return None'''
+
+[[rows]]
+id = "r1761.P19_census_not_written"
+source = { table = "r1761.json", id = "P19_census_not_written" }
+description = "run_backup: no census is kept after a completed files portion"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '                backup_record.write_census(cfg, entry.held, at=moment)'
+new = '                pass'
+
+[[rows]]
+id = "r1761.P1_identity_not_asked"
+source = { table = "r1761.json", id = "P1_identity_not_asked" }
+description = "_plan_files: skip the identity proof, so a root on another volume is walked and mirrored"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    if foreign:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_FOREIGN,'''
+new = '''
+    if False:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_FOREIGN,'''
+
+[[rows]]
+id = "r1761.P20_runtime_check_skipped"
+source = { table = "r1761.json", id = "P20_runtime_check_skipped" }
+description = "run_backup: the full mirror is not held to the root the plan read, so a volume lost after the plan is mirrored"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+                if lost:
+                    failed = CommandResult(
+                        returncode=1, stderr=f"nothing was sent or archived: {lost}"
+                    )
+                    break'''
+new = '''
+                if False:
+                    break'''
+
+[[rows]]
+id = "r1761.P25_max_delete_sentence_on_any_failure"
+source = { table = "r1761.json", id = "P25_max_delete_sentence_on_any_failure" }
+description = "run_backup: the remote holds files sentence is said for any failure of a move nothing mirror, round one's B2"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '                and MOVE_NOTHING[0].lstrip("-") in failed.stderr'
+new = '                and True'
+
+[[rows]]
+id = "r1761.P2_identity_at_read_strength_tolerates_mismatch"
+source = { table = "r1761.json", id = "P2_identity_at_read_strength_tolerates_mismatch" }
+description = "_not_the_recorded_volume: read every refusal of the gate as an unread identity, so a foreign volume is left to the census"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+        if recorded is None or observed is None:
+            return ""'''
+new = '''
+        if True:
+            return ""'''
+
+[[rows]]
+id = "r1761.P3_identity_raise_refuses"
+source = { table = "r1761.json", id = "P3_identity_raise_refuses" }
+description = "_not_the_recorded_volume: an identity read that raises is a refusal, so a flaky probe stops every backup"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return ""'''
+new = '''
+    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return "the identity could not be read"'''
+
+[[rows]]
+id = "r1761.P4_content_proof_skipped"
+source = { table = "r1761.json", id = "P4_content_proof_skipped" }
+description = "_plan_files: ignore the content proof's refusal, so an empty root is mirrored (the defect)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    if unproven:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_UNPROVEN,'''
+new = '''
+    if False:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_UNPROVEN,'''
+
+[[rows]]
+id = "r1761.P5_empty_root_passes"
+source = { table = "r1761.json", id = "P5_empty_root_passes" }
+description = "_unproven: a root holding nothing at all is not refused, so with no history it runs as a new library"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    if not anything:
+        held_before = ""'''
+new = '''
+    if False:
+        held_before = ""'''
+
+[[rows]]
+id = "r1761.P6_no_music_with_history_passes"
+source = { table = "r1761.json", id = "P6_no_music_with_history_passes" }
+description = "_unproven: a root of only its state folder is not refused while a backup on record held files"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '    if held == 0 and had != 0:'
+new = '    if held == 0 and had:'
+
+[[rows]]
+id = "r1761.P8_floor_comparison_inclusive"
+source = { table = "r1761.json", id = "P8_floor_comparison_inclusive" }
+description = "_unproven: the floor refuses at a tenth as well as under it, so two of twenty refuses"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '    if had and held * backup_record.LIBRARY_FLOOR < had:'
+new = '    if had and held * backup_record.LIBRARY_FLOOR <= had:'
+
+[[rows]]
+id = "r1761.P9_emptied_passes_on_the_fact_file"
+source = { table = "r1761.json", id = "P9_emptied_passes_on_the_fact_file" }
+description = "_unproven: the emptied flag passes on the fact file alone, which a database item writes at a mount point (round two's N2)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+        if carried is not None:
+            return "", False'''
+new = '''
+        if backup_facts.path_for(cfg).is_file():
+            return "", False'''
+
+[[rows]]
+id = "r1761.P17_census_damaged_is_none"
+source = { table = "r1761.json", id = "P17_census_damaged_is_none" }
+description = "read_census: a census that cannot be parsed is no census, so it is not history"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+        return Census(files=None)'''
+new = '''
+    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+        return None'''
+
+[[rows]]
+id = "r1761.P18_census_any_root"
+source = { table = "r1761.json", id = "P18_census_any_root" }
+description = "read_census: a census kept for another library root answers for this one"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '        if data["library_root"] != str(cfg.library.root) or data["dest"] != str(cfg.backup.dest):'
+new = '        if data["dest"] != str(cfg.backup.dest):'
+
+[[rows]]
+id = "r1761.P21_runtime_device_unchecked"
+source = { table = "r1761.json", id = "P21_runtime_device_unchecked" }
+description = "root_still_holds: the device is not compared, so a volume swapped for one holding a copy is mirrored"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+        if os.stat(root).st_dev != root_dev:
+            return f"the library root {root} is on another volume than the one the plan read"'''
+new = '''
+        if os.stat(root).st_dev != os.stat(root).st_dev:
+            return f"the library root {root} is on another volume than the one the plan read"'''
+
+[[rows]]
+id = "r1761.P22_runtime_files_unchecked"
+source = { table = "r1761.json", id = "P22_runtime_files_unchecked" }
+description = "root_still_holds: the files half is not asked, so a root emptied on its own volume after the plan is mirrored"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '    if files and not probe(root, excludes, state_dirname, first=True)[1]:'
+new = '    if False:'
+
+[[rows]]
+id = "r1761.P23_probe_counts_state"
+source = { table = "r1761.json", id = "P23_probe_counts_state" }
+description = "probe: a file in the state folder is counted as the library's, so a stray state folder proves the root"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''
+            anything = True
+            if held(rel, state_dirname):'''
+new = '''
+            anything = True
+            if True:'''
+
+[[rows]]
+id = "r1761.P7_floor_coefficient_halved"
+source = { table = "r1761.json", id = "P7_floor_coefficient_halved" }
+description = "LIBRARY_FLOOR: a twentieth rather than a tenth, so one file where twelve were passes"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = 'LIBRARY_FLOOR = 10'
+new = 'LIBRARY_FLOOR = 20'
+
+[[rows]]
+id = "r757-c1.S1_resume_drops_the_full_flag"
+source = { table = "r757-c1.json", id = "S1_resume_drops_the_full_flag" }
+description = "backup_argv: never emit --full, so a resumed full job's command line is a fast one"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '''
+    if payload.get(FULL):
+        argv.append("--full")'''
+new = '''
+    if False:
+        argv.append("--full")'''
+
+[[rows]]
+id = "r757-c1.S3_work_body_plans_fast"
+source = { table = "r757-c1.json", id = "S3_work_body_plans_fast" }
+description = "perform_backup: plan in the fast mode whatever the payload froze"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '            full=bool(payload.get(FULL)),'
+new = '            full=False,'
+
+[[rows]]
+id = "r757-c1.S4_rehearsal_says_it_sent"
+source = { table = "r757-c1.json", id = "S4_rehearsal_says_it_sent" }
+description = "comparison_warning: say sent over a rehearsal, the review's fix"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '        if recorded.get("dry_run")'
+new = '        if False'
+
+[[rows]]
+id = "r757-c2.S5_unread_number_printed_as_zero"
+source = { table = "r757-c2.json", id = "S5_unread_number_printed_as_zero" }
+description = "comparison_warning: print a total that was not read as 0"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '            return f"an unread number of {unit}"'
+new = '            return f"0 {unit}"'
+
+[[rows]]
+id = "r757-c2.S6_twin_in_the_other_mode_says_nothing"
+source = { table = "r757-c2.json", id = "S6_twin_in_the_other_mode_says_nothing" }
+description = "_already_queued: drop the sentence saying the open job runs the other comparison, the review's fix"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '    if asked_full is not None and asked_full != _is_full(job):'
+new = '    if False:'
+
+[[rows]]
+id = "r757-c2.S7_verb_says_nothing_of_the_comparison"
+source = { table = "r757-c2.json", id = "S7_verb_says_nothing_of_the_comparison" }
+description = "backup_library: leave the comparison sentence off the resumed envelope"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '                *comparison_warning(reported["progress"].get(OUTCOMES)),'
+new = '                *(),'
+
+[[rows]]
+id = "r757-a.E1_full_mode_still_lists_recursively"
+source = { table = "r757-a.json", id = "E1_full_mode_still_lists_recursively" }
+description = "_plan_files: the full mode carries the recursive listing option too, so --full is the fast run under another name"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '                *(() if full else (FAST_LIST,)),'
+new = '                *((FAST_LIST,)),'
+
+[[rows]]
+id = "r757-a.E2_fast_mode_lists_folder_by_folder"
+source = { table = "r757-a.json", id = "E2_fast_mode_lists_folder_by_folder" }
+description = "_plan_files: the ordinary run drops the recursive listing option, which is the whole of the speed fix"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '                *(() if full else (FAST_LIST,)),'
+new = '                *(() if True else (FAST_LIST,)),'
