@@ -495,7 +495,8 @@ def _tracks(*ids: str) -> list[Track]:
 
 def _warmup_and_peak() -> tuple[tuple[AccountPlaylist, list[Track]], ...]:
     """``pl-a`` Warmup holding 101 and ``pl-b`` Peak holding 201, made fresh."""
-    return (_playlist("pl-a", "Warmup"), _tracks("101")), (_playlist("pl-b", "Peak"), _tracks("201"))
+    warmup = (_playlist("pl-a", "Warmup"), _tracks("101"))
+    return warmup, (_playlist("pl-b", "Peak"), _tracks("201"))
 
 
 def _playlist_jobs() -> list[jobs.Job]:
