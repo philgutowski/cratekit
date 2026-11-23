@@ -4695,3 +4695,131 @@ writes the rest. Maintainer facing.
 
 **Closes when:** a test pins the interval at 50 by number, or holds that a
 process killed after 60 new reads leaves at least 50 written. Ledger only.
+
+---
+
+## R-2007. adopt move lists a row outside the library root as left with no reading, which is not why it stays
+
+**Found:** at the review of #1020, U956, 2026-11-23.
+
+**The mechanism.** Since U956 the census reads a row whose file resolves
+outside `library.root` as `outside-root`, excluded, and never reads its energy.
+`cratekit.adopt.move._standing_in_tree` gives every excluded entry held in two
+competing subs the reason `no-reading` (`LEFT_NO_READING`), so `adopt move`
+lists such a row as left for want of an energy reading though its file holds
+one; a row outside the root held in a stale band is neither moved nor listed.
+A `genre_moves` entry `tag set` recorded for it survives and is listed again at
+the next gate. Leaving the row alone is what U956 asks; the reason shown is
+what is wrong.
+
+**Measured cost.** Driven by the round one reviewer only from a state built by
+hand: a prefix rule mapping an outside folder onto itself, an `adopt apply` on
+the base that filed the row (a rule from an old folder to a new one cannot,
+since the base fails that pass), then `tag set` and `adopt move` on the branch.
+The only outside rows measured on the real library, the 16 sampler rows, hold
+no place, so the producer on a real library is unmeasured. `tag set`'s own
+closing message was corrected in U956 and names such a row.
+
+**Closes when:** `adopt move` names an outside row with its own reason, such as
+`outside-root`, or leaves it out of its list, and a test drives a row held in
+two subs outside the root. Ledger only: nothing is written wrongly and the
+reachability on a real library is unmeasured.
+
+---
+
+## R-2008. Adoption asks whether a file is inside the library root one way, and the tree writer resolves it another
+
+**Found:** at the review of #1020, U956, 2026-11-23.
+
+**The mechanism.** `cratekit.adopt.scan.within_root` decides by name on whole
+components, then asks each parent whether it is the root (`os.path.samefile`).
+`cratekit.write.trees.index_active_rows` groups rows by the text their recorded
+location resolves to through the prefix rules. Two shapes fall between them.
+A prefix rule whose target is a link, outside the root, to a folder under it
+(`root/Music`) reads `outside-root`, so a real library file is named as not the
+library's and left out. A rule whose target is another name for the root
+itself passes the samefile walk, so the row routes, and the membership write,
+which matches by text, cannot place it: the pass fails `adopt-entries-failed`,
+with a refusal step ("two live rows for it or none") true of neither case.
+
+**Measured cost.** Driven by the round one reviewer with both rules written by
+hand. Neither is a regression: the base fails both passes. Setup's rule offer
+was not driven, and a case folding volume, the shape the samefile walk is
+there for, cannot be driven on Linux.
+
+**Closes when:** the census and the tree writer read containment and identity
+through one resolution, so a row the census routes is one the writer can
+place, with a test for each shape above. Ledger only: no input a person makes
+through the shipped verbs was shown to produce either.
+
+---
+
+## R-2009. crate organize approves the adoption digest without counting or naming the rows outside the library root
+
+**Found:** at the review of #1020, U956, 2026-11-23.
+
+**The mechanism.** `cratekit.organize.rekordbox._adoption` takes the adoption
+screen from `apply_cli.digested` and shows its own counts (tracks read,
+placeable, to file, vocal memberships to add), dropping the facts beside it.
+So `organize.rekordbox.approve` binds the adoption digest, which since U956
+covers the rows left outside the root, while its screen holds neither their
+count nor their names. `adopt apply`'s own gate names them under
+`outside_root`.
+
+**Measured cost.** Driven by the round one reviewer: the organize gate showed
+"tracks read 4, placeable 1, to file 1" and no word of the outside row.
+Nothing false is said, since organize never showed excluded rows; a person
+approving there is told less than at `adopt apply`.
+
+**Closes when:** organize's adopt step counts the rows left outside the root,
+or names them, beside its other counts, with a test. Ledger only.
+
+---
+
+## R-2010. The wiring of tag set's outside root sentence is pinned by no test through the verb, and the backlog's docstrings still call its walk adoption's census
+
+**Found:** at the review of #1020, U956, 2026-11-23.
+
+**The mechanism.** `cratekit.tagging.genre_set_cli._written` takes the library
+root and names a written row whose file is outside it; its tests call it
+directly with stand ins and their own root. The verb's call passes
+`cfg.library.root`, and a mutant passing `"/"` there killed 0 of 77 tests; so
+did dropping the `item.path and` guard and `sorted`. The new sentence joins raw
+content ids uncapped, where the file's other sentences name rows by title
+through `named()`. And `src/cratekit/tagging/backlog.py` (its module docstring
+and two others) and `genre_set.py` still describe the tag verbs' walk as
+adoption's census, which since U956 is confined to the root while theirs is not.
+
+**Measured cost.** None today: round two drove the verb with rows inside and
+outside the root and the wiring is right. A later change to the call would ship
+green. The docstrings are not help text.
+
+**Closes when:** a test drives `tag set` through the verb over a row mapped
+outside the root and asserts its answer, the sentence names rows by title, and
+the docstrings say the walk is not confined. Ledger only.
+
+---
+
+## R-2011. The adoption digest now covers each outside row's resolved path, and moved for every plan when U956 landed
+
+**Found:** at the review of #1020, U956, 2026-11-23.
+
+**The mechanism.** `AdoptionPlan.digest` covers `outside_root`, each row's
+content id, recorded location and resolved path, so the gate's named rows and
+its digest cannot differ. The resolved path depends on a prefix rule's target,
+so two machines whose rules map the same rows to different folders digest
+differently though the library and the plan's routing are the same. And the
+digest's new key moved every plan's digest, outside rows or none.
+
+**Measured cost.** Driven by the round one reviewer: the same rows with a rule
+target of `Sampler` and `SamplerCopy` digest `98c16f23e2379acf` and
+`b0bb8f1b9af6ea9c`; one fixture with no outside row digests `f85ac2c07ba6d4c0`
+on the base and `f71f627d2beadd60` on the branch. Not driven: a job approved on
+the previous build and resumed on this one, which refuses `decision-stale` and
+asks for the run again, and a rehearsal whose copy resolves the rule
+elsewhere; the standing recipe keeps the root and the rules, so a rehearsal's
+digest and the live one stay equal.
+
+**Closes when:** the digest covers the outside rows by content id and recorded
+location only, if a sitting shows a rehearsal digest differing for this
+reason. Ledger only.

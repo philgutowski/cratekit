@@ -1380,17 +1380,22 @@ crate inbox rotate
 
 **Adopting an existing library.** `crate adopt scan` queues a census; `crate
 adopt apply` shows the plan at `adopt.apply.approve` and files tracks and
-writes their genre tags.
+writes their genre tags. A row whose file resolves outside `library.root`,
+such as rekordbox's own sampler presets made readable by a
+`location_prefix_map` rule, is counted `outside-root`, excluded, and named
+under `outside_root` at the gate; adoption, `adopt move` and the genre moves
+leave it alone, and the tag verbs still read it. A row inside the root that
+cannot be placed still fails the whole pass.
 
 **Genres.**
 
 | Verb | Does |
 |---|---|
-| `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
+| `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre, and any such row whose file is outside the library root, by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
 | `tag campaign [--alias WORD=GENRE] [--folder WORD] [--leave-word WORD] [--catalogue] [--rehearsed DIGEST]` | Applies the backlog under one gate: `tag rows`, `tag suggest` at the floor, the answered words, then `tag rows` again; writes file and row, and names `route resort`. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
-| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply`, and `adopt move` where a row leaves a genre folder. |
+| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply`, and `adopt move` where a row leaves a genre folder, or names a row whose file is outside the library root as one neither files. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
 | `tag second GENRE \| --clear (--row ID \| --rows-file PATH \| --playlist PATH) [--leave ID]` | Sets or clears a second genre on chosen files, which files each track into that genre's folder too, in its own energy band; writes no row. |
@@ -1428,7 +1433,9 @@ the rows back and each file's old genre. Then run `crate adopt apply`, which
 files each row in the new genre folder by its energy band, and, where the gate
 showed a row leaving a genre folder, `crate adopt move`, which takes it out of
 that folder's energy band, `with vox`, genre sub and Favorites; the run's
-answer names what applies. Where adoption held a row back (it still sat in a
+answer names what applies. A row whose file is outside the library root is
+written and named as one neither verb files or moves, since adoption leaves it
+alone. Where adoption held a row back (it still sat in a
 band of the old folder that the new genre's folder also claims, as R&B's bands
 are for Soul), `adopt apply` files nothing for it and the move files its band:
 the next `crate adopt apply` then files its `with vox`, and `crate favorites
@@ -1445,7 +1452,7 @@ second genre off. The gate lists every chosen row with its second genre before
 and after, which is the undo, and why any is left: a second genre naming the
 folder the file's genre already names, or a file whose genre names no folder.
 The next `adopt apply` (or `organize --only adopt`) files the track into the
-second folder too, and from then on `adopt move`, `converge`, `rebuild`,
+second folder too, unless its file is outside the library root, and from then on `adopt move`, `converge`, `rebuild`,
 `route resort` and `favorites refresh` keep it in both, an energy change
 moving it in both. This holds for a pair one of whose folders took tracks
 over from the other (Soul and R&B): the band of the one is the track's own
@@ -1473,7 +1480,9 @@ Name"`, which retags without touching the taxonomy. After an alias, run `tag
 rows`, then `route resort`.
 
 **The needs genre backlog.** `tag backlog` reads every row adoption files
-nowhere for want of a genre and puts each in one cause: its file carries a
+nowhere for want of a genre, and a row with the same want whose file is
+outside the library root, which adoption excludes as `outside-root`, and puts
+each in one cause: its file carries a
 genre the row lacks (`tag rows` writes it), no genre on the row or the file
 (`tag suggest` weighs it), a word too coarse to be a genre (`tag retag`), a
 genre word no folder takes, or a file whose genre could not be read. A row

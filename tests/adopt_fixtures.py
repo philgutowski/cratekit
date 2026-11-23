@@ -34,11 +34,21 @@ class Track:
     #: False writes the row and NOT the file, which is how a ``missing`` row is
     #: made. The census must still carry it, excluded, rather than dropping it.
     on_disk: bool = True
+    #: The folder the row records, when not the library's music folder (U956): a
+    #: location a prefix rule maps elsewhere. Nothing is written there.
+    recorded_at: Path | None = None
 
 
 def recorded_location(root: Path, filename: str) -> str:
     """The file URL rekordbox would record, built through ``cratekit.core.locations``."""
     return locations.location_url(root / "Music" / filename)
+
+
+def _recorded(root: Path, track: Track) -> str:
+    """The location one seeded row records."""
+    if track.recorded_at is None:
+        return recorded_location(root, track.filename)
+    return locations.location_url(track.recorded_at / track.filename)
 
 
 def build(cfg: config.Config, tracks: tuple[Track, ...] = ()) -> Path:
@@ -67,7 +77,7 @@ def build(cfg: config.Config, tracks: tuple[Track, ...] = ()) -> Path:
             db_session.add(_row(tables.DjmdGenre, ID=str(ordinal), Name=name))
         by_name = {name: str(ordinal) for ordinal, name in enumerate(sorted(genres), start=100)}
         for track in tracks:
-            if track.on_disk:
+            if track.on_disk and track.recorded_at is None:
                 write_audio(music / track.filename)
             db_session.add(
                 _row(
@@ -76,7 +86,7 @@ def build(cfg: config.Config, tracks: tuple[Track, ...] = ()) -> Path:
                     Title=track.filename,
                     GenreID=by_name.get(track.genre),
                     rb_local_deleted=1 if track.deleted else 0,
-                    FolderPath=recorded_location(root, track.filename),
+                    FolderPath=_recorded(root, track),
                 )
             )
         db_session.commit()

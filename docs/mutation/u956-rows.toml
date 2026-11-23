@@ -1,0 +1,218 @@
+name = "u956"
+pass_kind = "light"
+
+# Rows O1 to O17 and O22 target the code U956 added; S18 to S21 are a fixed
+# sample of the guards around it that the unit leans on. 22 rows, under the cap
+# of 25.
+
+[[rows]]
+id = "O1_confine_guard_gone"
+description = "scan_rows: never read a row as outside the root, so a sampler preset mapped outside it routes and the apply fails the pass again (the card itself)"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        if readability is None and confine_to_root and not within_root(path or "", root):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "O2_confine_flag_ignored"
+description = "scan_rows: confine whatever the flag says, so the tag verbs' walk stops reading a row outside the root"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_tag_backlog.py", "tests/test_adoption.py"]
+old = '''        if readability is None and confine_to_root and not within_root(path or "", root):'''
+new = '''        if readability is None and not within_root(path or "", root):'''
+
+[[rows]]
+id = "O3_confine_default_off"
+description = "scan_rows: confine only when asked, so every adoption caller routes a row outside the root"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''    confine_to_root: bool = True,'''
+new = '''    confine_to_root: bool = False,'''
+
+[[rows]]
+id = "O4_outside_reads_missing"
+description = "scan_rows: name an outside row missing rather than outside-root, so the count and the gate say the file is gone when it is there"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py"]
+old = '''            readability = Readability.OUTSIDE_ROOT'''
+new = '''            readability = Readability.MISSING'''
+
+[[rows]]
+id = "O5_tagging_walk_confined"
+description = "tagging rows.scanned: confine the tag verbs' walk, so tag rows counts a sampler row as unreadable"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_tag_backlog.py"]
+old = '''        confine_to_root=False,'''
+new = '''        confine_to_root=True,'''
+
+[[rows]]
+id = "O6_tag_set_promises_outside"
+description = "tag set _written: name no row as outside the root, so tag set promises adopt apply and adopt move for a sampler row neither touches"
+file = "src/cratekit/tagging/genre_set_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_tag_set.py", "tests/test_tag_set_move.py"]
+old = '''            if item.path and not adopt_scan.within_root(item.path, root)'''
+new = '''            if False'''
+
+[[rows]]
+id = "O7_prefix_not_anchored"
+description = "within_root: match the root as a bare text prefix, so a sibling folder sharing the root's name reads inside it"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py"]
+old = '''    if wanted == anchor or wanted.startswith(anchor + "/"):'''
+new = '''    if wanted == anchor or wanted.startswith(anchor):'''
+
+[[rows]]
+id = "O8_dots_not_read"
+description = "within_root: compare the path without reading its dots, so a path that climbs out of the root by .. reads inside it"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py"]
+old = '''    wanted = posixpath.normpath(locations.norm_for_compare(str(path)))'''
+new = '''    wanted = locations.norm_for_compare(str(path))'''
+
+[[rows]]
+id = "O9_path_not_composed"
+description = "within_root: compare the path's own composition form, so a decomposed accent reads outside an accented root"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py"]
+old = '''    wanted = posixpath.normpath(locations.norm_for_compare(str(path)))'''
+new = '''    wanted = posixpath.normpath(str(path))'''
+
+[[rows]]
+id = "O10_root_not_composed"
+description = "within_root: compare the root's own composition form, so a root spelled decomposed reads every row outside it"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py"]
+old = '''    anchor = posixpath.normpath(locations.norm_for_compare(str(root)))'''
+new = '''    anchor = posixpath.normpath(str(root))'''
+
+[[rows]]
+id = "O11_no_samefile_walk"
+description = "within_root: ask by name only, so a volume that folds case or a name linked to the root reads every row outside it"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py"]
+old = '''            if os.path.samefile(parent, anchor):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "O12_unaskable_parent_answers"
+description = "within_root: a parent that cannot be asked ends the walk, so a row under a gone folder of an aliased root reads outside it"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py"]
+old = '''        except (OSError, ValueError):
+            continue
+    return False'''
+new = '''        except (OSError, ValueError):
+            return False
+    return False'''
+
+[[rows]]
+id = "O13_outside_list_every_excluded"
+description = "AdoptionPlan.outside_root: list every excluded row, so the gate names a missing or unmapped row as outside the root"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py", "tests/test_adopt_apply_cli.py"]
+old = '''            entry for entry in self.firsts() if entry.category is Readability.OUTSIDE_ROOT'''
+new = '''            entry for entry in self.firsts() if entry.disposition is Disposition.EXCLUDED'''
+
+[[rows]]
+id = "O14_digest_blind_to_outside"
+description = "AdoptionPlan.digest: leave the outside rows out, so an approval stands over a screen that names other rows"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''                "outside_root": [outside_row(entry) for entry in self.outside_root()],
+            }'''
+new = '''            }'''
+
+[[rows]]
+id = "O15_document_blind_to_outside"
+description = "to_json: an empty outside_root list, so the gate shows none of the rows the plan leaves out"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        "outside_root": [outside_row(entry) for entry in plan.outside_root()],'''
+new = '''        "outside_root": [],'''
+
+[[rows]]
+id = "O16_row_names_no_location"
+description = "outside_row: name the row by its resolved path in the location field, so the gate shows a place rekordbox never recorded"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adopt_apply_cli.py"]
+old = '''    return {"content_id": entry.content_id, "location": entry.recorded, "path": entry.path}'''
+new = '''    return {"content_id": entry.content_id, "location": entry.path, "path": entry.path}'''
+
+[[rows]]
+id = "O17_gate_hides_outside"
+description = "apply_cli _FACTS: leave outside_root off the gate, so adopt.apply.approve never names the rows left out"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''    "outside_root",
+'''
+new = ''''''
+
+[[rows]]
+id = "S18_unplaced_inside_passes"
+description = "existing, _refuse_unplaced: never refuse, so a row inside the root with two live rows is marked adopted and the pass is not all or nothing"
+file = "src/cratekit/adopt/apply_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adopt_workers.py", "tests/test_adopt_apply_cli.py"]
+old = '''    if not membership.skipped:
+        return
+    unplaced = sorted({str(match.requested) for match in membership.skipped})'''
+new = '''    return
+    unplaced = sorted({str(match.requested) for match in membership.skipped})'''
+
+[[rows]]
+id = "S19_unadoptable_routes"
+description = "existing, scan_rows: route an unadoptable row, so a missing file is planned for a playlist"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        if readability not in ADOPTABLE:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "S20_tombstone_scanned"
+description = "existing, scan_rows: census a tombstone, so adopting a removed track would put it back"
+file = "src/cratekit/adopt/scan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        if row.deleted:
+            continue
+        path, readability = _resolved_path('''
+new = '''        path, readability = _resolved_path('''
+
+[[rows]]
+id = "S21_excluded_applicable"
+description = "existing, PlanEntry.applicable: any entry not excluded is applicable, so a needs-genre or withheld track is written"
+file = "src/cratekit/adopt/plan.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adoption.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py"]
+old = '''        return self.disposition is Disposition.ROUTE'''
+new = '''        return self.disposition is not Disposition.EXCLUDED'''
+
+[[rows]]
+id = "O22_scan_verb_unconfined"
+description = "adopt scan: census without confining to the root, so the scan counts a sampler row readable and routed that adopt apply excludes"
+file = "src/cratekit/adopt/scan_cli.py"
+surface = "user"
+tests = ["tests/test_adopt_outside_root.py", "tests/test_adopt_workers.py", "tests/test_adoption.py"]
+old = '''        [row], declared, root=cfg.library.root, prefix_map=collection.prefix_rules(cfg)
+    )'''
+new = '''        [row], declared, root=cfg.library.root, prefix_map=collection.prefix_rules(cfg),
+        confine_to_root=False,
+    )'''
