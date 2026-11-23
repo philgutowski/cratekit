@@ -333,82 +333,59 @@ def read_path(path: Path) -> Registry:
     Only for a restore comparing a capture's registry with the live one; split
     from :func:`read` so a path is never passed by accident.
     """
+
+    def unusable(message: str, *, remedy: Remedy = Remedy.RUN_DOCTOR) -> TreeRegistryUnreadable:
+        return TreeRegistryUnreadable(message, path=path, remedy=remedy)
+
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
         return EMPTY
     except OSError as exc:
-        raise TreeRegistryUnreadable(
-            f"{path} exists but could not be read: {exc}",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        ) from exc
+        raise unusable(f"{path} exists but could not be read: {exc}") from exc
 
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise TreeRegistryUnreadable(
-            f"{path} is not readable as JSON: {exc}",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        ) from exc
+        raise unusable(f"{path} is not readable as JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise TreeRegistryUnreadable(
-            f"{path} does not hold an object at its top level",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        )
+        raise unusable(f"{path} does not hold an object at its top level")
 
     version = data.get("schema_version")
     if not isinstance(version, int):
-        raise TreeRegistryUnreadable(
+        raise unusable(
             f"{path} carries no integer schema_version, so nothing can be said "
             f"about the shape of what follows it",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
         )
     if version > SCHEMA_VERSION:
-        raise TreeRegistryUnreadable(
+        raise unusable(
             f"{path} was written at schema version {version}; this build "
             f"understands {SCHEMA_VERSION}",
-            path=path,
             remedy=Remedy.UPGRADE_CRATEKIT,
         )
 
     entries = data.get("trees")
     if not isinstance(entries, list):
-        raise TreeRegistryUnreadable(
-            f"{path} has no trees array",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        )
+        raise unusable(f"{path} has no trees array")
 
     records: list[TreeRecord] = []
     seen: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
-            raise TreeRegistryUnreadable(
-                f"{path} holds a tree entry that is not an object",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
-            )
+            raise unusable(f"{path} holds a tree entry that is not an object")
         tree_id = entry.get("tree")
         if not isinstance(tree_id, str) or not tree_id.strip():
-            raise TreeRegistryUnreadable(
+            raise unusable(
                 f"{path} holds a tree entry with no identifier; a record that "
                 f"cannot say which tree it describes is worse than no record",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
             )
         if tree_id in seen:
             # Two answers for one tree are refused, never resolved by line order.
-            raise TreeRegistryUnreadable(
+            raise unusable(
                 f"{path} holds two records for the tree {tree_id!r}; a registry "
                 f"that gives two answers for one tree cannot say which medium "
                 f"owns it, and guessing decides which writer runs against a "
                 f"real library",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
             )
         seen.add(tree_id)
         stamp = entry.get("cutover_on")
@@ -417,11 +394,9 @@ def read_path(path: Path) -> Registry:
             try:
                 cutover = date.fromisoformat(str(stamp))
             except (TypeError, ValueError) as exc:
-                raise TreeRegistryUnreadable(
+                raise unusable(
                     f"{path} records {tree_id!r} as cutting over on {stamp!r}, "
                     f"which is not an ISO date",
-                    path=path,
-                    remedy=Remedy.RUN_DOCTOR,
                 ) from exc
         root_id = entry.get("root")
         raw_source = entry.get("source")
@@ -429,14 +404,12 @@ def read_path(path: Path) -> Registry:
         if raw_mode is None:
             # NO DEFAULT: XML would read a cut over tree as on the bridge and
             # empty the restore detector's input.
-            raise TreeRegistryUnreadable(
+            raise unusable(
                 f"{path} holds a record for {tree_id!r} with no mode; the medium "
                 f"that owns a tree is the one thing this file exists to say, and "
                 f"the value it would default to sends the bridge writer at a tree "
                 f"the database may already own and switches the restore detector "
                 f"off for every tree in this library",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
             )
         try:
             records.append(
@@ -450,11 +423,7 @@ def read_path(path: Path) -> Registry:
             )
         except ValueError as exc:
             # Refused, not dropped, since a dropped record reads as on the bridge.
-            raise TreeRegistryUnreadable(
-                f"{path} holds an unusable record: {exc}",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
-            ) from exc
+            raise unusable(f"{path} holds an unusable record: {exc}") from exc
 
     return Registry(tuple(sorted(records, key=lambda e: e.tree_id)))
 

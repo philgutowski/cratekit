@@ -494,85 +494,62 @@ def read(cfg: config.Config) -> ConvergenceState:
     misread can never be written back as an empty store.
     """
     path = path_for(cfg)
+
+    def unusable(
+        message: str, *, remedy: Remedy = Remedy.RUN_DOCTOR
+    ) -> ConvergenceStateUnreadable:
+        return ConvergenceStateUnreadable(message, path=path, remedy=remedy)
+
     try:
         raw = config.read_bytes_if_present(path)
     except OSError as exc:
-        raise ConvergenceStateUnreadable(
-            f"{path} exists and could not be read: {exc}",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        ) from exc
+        raise unusable(f"{path} exists and could not be read: {exc}") from exc
     if raw is None:
         return EMPTY
 
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConvergenceStateUnreadable(
-            f"{path} is not readable as JSON: {exc}", path=path, remedy=Remedy.RUN_DOCTOR
-        ) from exc
+        raise unusable(f"{path} is not readable as JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise ConvergenceStateUnreadable(
-            f"{path} does not hold an object at its top level",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        )
+        raise unusable(f"{path} does not hold an object at its top level")
 
     version = data.get("schema_version")
     if not isinstance(version, int):
-        raise ConvergenceStateUnreadable(
+        raise unusable(
             f"{path} carries no integer schema_version, so nothing can be said "
             f"about the shape of what follows it",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
         )
     if version > SCHEMA_VERSION:
-        raise ConvergenceStateUnreadable(
+        raise unusable(
             f"{path} was written at schema version {version}; this build "
             f"understands {SCHEMA_VERSION}",
-            path=path,
             remedy=Remedy.UPGRADE_CRATEKIT,
         )
 
     raw_fingerprint = data.get("fingerprint")
     if raw_fingerprint is not None and not isinstance(raw_fingerprint, dict):
-        raise ConvergenceStateUnreadable(
-            f"{path} holds a fingerprint that is not an object",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        )
+        raise unusable(f"{path} holds a fingerprint that is not an object")
     entries = data.get("trees")
     if not isinstance(entries, list):
-        raise ConvergenceStateUnreadable(
-            f"{path} has no trees array", path=path, remedy=Remedy.RUN_DOCTOR
-        )
+        raise unusable(f"{path} has no trees array")
 
     records: list[TreeConvergence] = []
     seen: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
-            raise ConvergenceStateUnreadable(
-                f"{path} holds a tree record that is not an object",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
-            )
+            raise unusable(f"{path} holds a tree record that is not an object")
         try:
             record = TreeConvergence.from_json(entry)
         except (KeyError, TypeError, ValueError) as exc:
             # Refused, not dropped, since a dropped record reads as fine.
-            raise ConvergenceStateUnreadable(
-                f"{path} holds an unusable tree record: {exc}",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
-            ) from exc
+            raise unusable(f"{path} holds an unusable tree record: {exc}") from exc
         if record.tree_id in seen:
-            raise ConvergenceStateUnreadable(
+            raise unusable(
                 f"{path} holds two records for the tree {record.tree_id!r}; a "
                 f"record that gives two answers for one tree cannot say whether "
                 f"it is converged, and resolving that by line order decides "
                 f"whether a write runs against a damaged library",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
             )
         seen.add(record.tree_id)
         records.append(record)
@@ -580,11 +557,7 @@ def read(cfg: config.Config) -> ConvergenceState:
     try:
         taken = None if raw_fingerprint is None else Fingerprint.from_json(raw_fingerprint)
     except (KeyError, TypeError, ValueError) as exc:
-        raise ConvergenceStateUnreadable(
-            f"{path} holds an unusable fingerprint: {exc}",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
-        ) from exc
+        raise unusable(f"{path} holds an unusable fingerprint: {exc}") from exc
 
     return ConvergenceState(
         fingerprint=taken, trees=tuple(sorted(records, key=lambda e: e.tree_id))
