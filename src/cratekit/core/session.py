@@ -94,6 +94,11 @@ from cratekit.core.session_volumes import expected_rule_identity as expected_rul
 logger = logging.getLogger(__name__)
 
 
+def _defect(message: str, **refusal: Any) -> CratekitError:
+    """An ``internal-error`` refusal, whose remedy is to report the defect."""
+    return refuse("internal-error", message, remedy=Remedy.REPORT_DEFECT, **refusal)
+
+
 # ---------------------------------------------------------------------------
 # The session log's vocabulary, spelled the way ``rb_writer``'s scan expects.
 # ---------------------------------------------------------------------------
@@ -291,12 +296,10 @@ class SessionRecord:
     def from_json(cls, data: Mapping[str, Any]) -> SessionRecord:
         version = data.get("schema_version")
         if version != LOG_SCHEMA_VERSION:
-            raise refuse(
-                "internal-error",
+            raise _defect(
                 f"the session log entry declares schema {version!r} and this "
                 f"build understands {LOG_SCHEMA_VERSION}; refusing to guess what "
                 f"wrote it",
-                remedy=Remedy.REPORT_DEFECT,
                 detail={"schema_version": version},
             )
         pending = data.get("pending_human_action")
@@ -361,18 +364,14 @@ def read_record(session_id: str, cfg: config.Config) -> SessionRecord:
     try:
         raw = path.read_bytes()
     except FileNotFoundError as exc:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"no session is recorded with the identifier {session_id!r}: {exc}",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": session_id, "path": str(path)},
         ) from exc
     except OSError as exc:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"the session record at {path} could not be read, so whether a "
             f"session is recorded under {session_id!r} was not established: {exc}",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": session_id, "path": str(path)},
         ) from exc
     return SessionRecord.from_json(json.loads(raw.decode("utf-8")))
@@ -447,11 +446,9 @@ def records(cfg: config.Config) -> tuple[SessionRecord, ...]:
     """
     parsed, unreadable = scan_log(cfg)
     if log_unlisted(unreadable, cfg):
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"{unread_clause(unreadable, cfg)}, so no session recorded in it can be "
             "read; refusing rather than answering that none is recorded",
-            remedy=Remedy.REPORT_DEFECT,
             scope=Scope.RUN,
             detail={"log": str(log_dir(cfg)), "unlisted": True},
         )
@@ -526,12 +523,10 @@ def assert_no_unresolved_session(cfg: config.Config) -> None:
             },
         )
     if unreadable:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"{unread_clause(unreadable, cfg)}, so this gate cannot vouch that no "
             "session ended unresolved; refusing rather than writing against a log "
             "it cannot read",
-            remedy=Remedy.REPORT_DEFECT,
             scope=Scope.RUN,
             detail={
                 "unreadable": [str(path) for path in unreadable],
@@ -550,12 +545,10 @@ def resolve_unverified_session(
     """
     record = read_record(session_id, cfg)
     if record.state is not SessionState.COMMITTED_UNVERIFIED:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"session {session_id} is {str(record.state)!r}, not "
             f"{str(SessionState.COMMITTED_UNVERIFIED)!r}; only a session that "
             f"committed behind a read-back that disagreed is resolved this way",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": session_id, "state": str(record.state)},
         )
     return close_session(record, cfg, state=SessionState.ABANDONED, now=now)
@@ -750,11 +743,9 @@ def close_session(
         )
         reconcile.assert_converged(cfg)
     if state not in TERMINAL_STATES:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"{state!r} is not a terminal session state, so closing into it would "
             f"release a capture the session still references",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"state": str(state), "session_id": record.session_id},
         )
     record.state = state
@@ -891,12 +882,10 @@ def mark_import_verified(
     any other state.
     """
     if record.state is not SessionState.AWAITING_IMPORT:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"session {record.session_id} is {str(record.state)!r}, not "
             f"{str(SessionState.AWAITING_IMPORT)!r}; only a session waiting on an "
             f"import has one to verify",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": record.session_id, "state": str(record.state)},
         )
     pending = record.pending
