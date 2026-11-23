@@ -13,6 +13,12 @@ Applied verbatim to `go.py` on `main` at `c919209`, all 110 tests of
 its file. So the kill was lost before U308, which keeps the row's state as it
 found it; U308's replay before measures it on the base.
 
+The replay before first measured it killed on `main`, by one death on the
+full suite: `tests/test_repair_rows.py`'s inode bound test, which fails on this
+container's disk whatever the code (#702). That batch subtracted the measured
+baseline alone; measured again subtracting the two inode bound tests as well,
+as the other batches did, the row is a zero on `main`, so no kill of it is owed.
+
 **Measured cost.** Not driven to a user: a go whose resumed jobs changed between
 its gate and its write would be approved on the old digest.
 

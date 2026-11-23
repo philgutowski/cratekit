@@ -1,6 +1,6 @@
 # Mutation table: u308-replay-before-d
 
-Measured by `scripts/mutate.py` on 2026-11-22 13:17 UTC, branch `HEAD` at `c9192091`. Pass kind: replay.
+Measured by `scripts/mutate.py` on 2026-11-22 22:48 UTC, branch `HEAD` at `c9192091`. Pass kind: replay.
 
 A replay pass measures again rows a table under `docs/mutation/` already recorded, so it has no row cap and chooses no rows: every row below names the table and the id it came from. One full baseline and one null control serve the batch, and each row ran on its own subset (U297).
 
@@ -10,7 +10,7 @@ Full baseline: measured by this driver (the battery's verdict was not read: no b
 
 Subset baselines: 34, each measured by this driver.
 
-Known failures: 249 node ids whose failure is this machine's and not the tree's, read from `/tmp/claude-0/-home-user-cratekit/5bcab4be-2978-53ef-b3bd-2807d1f5544d/scratchpad/known-failures.txt` and subtracted from every run, the baselines and the rows alike. The baseline is green net of them, and a death among them is not counted. This is a Linux measure of a macOS suite; the full battery is owed on a Mac.
+Known failures: 251 node ids whose failure is this machine's and not the tree's, read from `/tmp/claude-0/-home-user-cratekit/5bcab4be-2978-53ef-b3bd-2807d1f5544d/scratchpad/known-failures-plus.txt` and subtracted from every run, the baselines and the rows alike. The baseline is green net of them, and a death among them is not counted. This is a Linux measure of a macOS suite; the full battery is owed on a Mac.
 
 Temporary files: on disk, the place the known failures were measured in, each run given a fresh directory there as `TMPDIR` (U273).
 
@@ -96,7 +96,7 @@ Null control `NULL_CONTROL`: killed 0, collected 22933 against 22933. The contro
 | `u108-a.G02_pick_takes_releases` | `src/cratekit/label/go.py` | user | 1 file(s) | 110 | 2 | killed |
 | `u108-a.G03_not_now_counted` | `src/cratekit/label/go.py` | user | 1 file(s) | 110 | 1 | killed |
 | `u108-a.G04_digest_covers_releases` | `src/cratekit/label/go.py` | user | 1 file(s) | 110 | 1 | killed |
-| `u108-a.G05_digest_covers_resume` | `src/cratekit/label/go.py` | user | 1 file(s) | 22933 | 1 (promoted) | killed |
+| `u108-a.G05_digest_covers_resume` | `src/cratekit/label/go.py` | user | 1 file(s) | 22933 | 0 (promoted) | zero |
 | `u108-a.G06_abort_downloads_nothing` | `src/cratekit/label/go.py` | user | 1 file(s) | 110 | 2 | killed |
 | `u108-a.G07_only_accepted_downloaded` | `src/cratekit/label/go.py` | user | 1 file(s) | 110 | 1 | killed |
 | `u108-a.G08_already_passed_to_listing` | `src/cratekit/label/go.py` | user | 1 file(s) | 110 | 2 | killed |
@@ -193,6 +193,7 @@ Null control `NULL_CONTROL`: killed 0, collected 22933 against 22933. The contro
 
 ## Zero rows and what they owe
 
+- `u108-a.G05_digest_covers_resume` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 - `u190.G5_resume_one_job_only` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 - `u239.M07_beside_done` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 
@@ -2333,10 +2334,9 @@ Summary.plan: the digest leaves out the jobs a go would resume
 - Subset: explicit subset from the row
 - Ran: `tests/test_label_sync_go.py`
 - Collected: 22933 against a baseline of 22933
-- Kills: 1 (killed)
-- Promoted: subset killed 0, full suite killed 1
-- Killed:
-  - `tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random`
+- Kills: 0 (zero)
+- Promoted: subset killed 0, full suite killed 0
+- Note: confirmed on the full suite
 
 Old text:
 
