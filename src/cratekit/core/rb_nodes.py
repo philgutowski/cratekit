@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 
+from cratekit.core.call_time import rb_writer as _writer
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.rb_tables import (
@@ -21,13 +22,6 @@ from cratekit.core.rb_tables import (
     PLAYLIST_TABLE,
     ROOT_PARENT_SENTINELS,
 )
-
-
-def _writer():
-    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import rb_writer
-
-    return rb_writer
 
 
 def is_folder(playlist: Any) -> bool:

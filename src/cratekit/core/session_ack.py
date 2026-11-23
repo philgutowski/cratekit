@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from cratekit.core import backup_facts, config
+from cratekit.core.call_time import session as _session
 from cratekit.core.cause import (
     CratekitError,
     Scope,
@@ -27,13 +28,6 @@ from cratekit.core.exit_codes import Remedy
 
 #: The session logger, so a record reads as it did before the split.
 logger = logging.getLogger("cratekit.core.session")
-
-
-def _session():
-    """``session`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import session
-
-    return session
 
 
 def _defect(message: str, **refusal: Any) -> CratekitError:

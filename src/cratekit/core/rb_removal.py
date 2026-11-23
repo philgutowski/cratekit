@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping
 
+from cratekit.core.call_time import rb_writer as _writer
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.rb_tables import (
@@ -24,13 +25,6 @@ from cratekit.core.rb_tables import (
     TARGET_REFERENCE_COLUMN,
     TRACK_NUMBER_COLUMN,
 )
-
-
-def _writer():
-    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import rb_writer
-
-    return rb_writer
 
 
 def _tables(session: Any) -> tuple[str, ...]:

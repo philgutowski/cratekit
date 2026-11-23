@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, Mapping
 
 from cratekit.core import config, rb_writer
+from cratekit.core.call_time import session as _session
 from cratekit.core.cause import (
     Cause,
     CratekitError,
@@ -39,13 +40,6 @@ if TYPE_CHECKING:
 
 #: The session logger, so a record reads as it did before the split.
 logger = logging.getLogger("cratekit.core.session")
-
-
-def _session():
-    """``session`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import session
-
-    return session
 
 
 #: Recorded in place of a value this platform cannot answer, so a degraded

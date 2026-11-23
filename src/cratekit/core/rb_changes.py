@@ -10,6 +10,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, Iterable, Mapping
 
+from cratekit.core.call_time import rb_writer as _writer
 from cratekit.core.rb_tables import (
     _DEFAULT_EMPTIES,
     _REGISTERED,
@@ -28,13 +29,6 @@ from cratekit.core.rb_tables import (
     Ownership,
     content_writable_columns,
 )
-
-
-def _writer():
-    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import rb_writer
-
-    return rb_writer
 
 
 def guard_violations(
