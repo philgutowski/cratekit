@@ -191,26 +191,9 @@ class RekordboxRunning(CratekitError):
     """The rekordbox application or its background agent is running and a write was requested."""
 
 
-def _cause(
-    reason: str,
-    message: str,
-    *,
-    remedy: Remedy | None = None,
-    steps: Sequence[str] = (),
-    scope: Scope = Scope.SESSION,
-    detail: Mapping[str, Any] | None = None,
-    inner: Cause | None = None,
-) -> Cause:
+def _cause(reason: str, message: str, *, scope: Scope = Scope.SESSION, **kwargs: Any) -> Cause:
     """Build one cause through ``cause.refuse``, so the closed reason registry applies in one place."""
-    return refuse(
-        reason,
-        message,
-        remedy=remedy,
-        steps=steps,
-        scope=scope,
-        detail=detail,
-        inner=inner,
-    ).cause
+    return refuse(reason, message, scope=scope, **kwargs).cause
 
 
 def _unavailable(reason: str, message: str, **kwargs: Any) -> RekordboxUnavailable:
@@ -292,20 +275,17 @@ def pin_validated_on(cfg: config.Config | None = None) -> str | None:
 
 def live_db_path(cfg: config.Config | None = None) -> Path:
     """The configured rekordbox database. No default: one person's disk in code (R1, AE10)."""
-    resolved = cfg if cfg is not None else config.load()
-    return config.state_path("rekordbox_db", resolved)
+    return config.state_path("rekordbox_db", cfg if cfg is not None else config.load())
 
 
 def snapshot_root(cfg: config.Config | None = None) -> Path:
     """Where snapshots live: beside the library, and outside the coupled set to avoid nesting."""
-    resolved = cfg if cfg is not None else config.load()
-    return config.state_path("snapshots", resolved)
+    return config.state_path("snapshots", cfg if cfg is not None else config.load())
 
 
 def write_lock_path(cfg: config.Config | None = None) -> Path:
     """The cross-process write-session lock, beside the library so every installation shares it (R31)."""
-    resolved = cfg if cfg is not None else config.load()
-    return config.state_path("write_lock", resolved)
+    return config.state_path("write_lock", cfg if cfg is not None else config.load())
 
 
 #: The first bytes of an UNencrypted SQLite file. A real rekordbox 6 database is encrypted.
@@ -444,6 +424,10 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
     """
     loaded = _loaded_config(cfg)
     found = read_installed_app_version(cfg=loaded)
+
+    def detail(pin: str | None) -> dict[str, Any]:
+        return {"installed": found, "pinned": pin, "validated_on": pin_validated_on(loaded)}
+
     if found is None:
         logger.warning(
             "the rekordbox application could not be located, so its version pin cannot "
@@ -461,12 +445,7 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
                 f"pin has ever been recorded for this machine, so there is nothing "
                 f"to validate the write against: {exc}",
                 remedy=Remedy.RECORD_REKORDBOX_PIN,
-                detail={
-                    "installed": found,
-                    "pinned": None,
-                    "validated_on": pin_validated_on(loaded),
-                    "config_error": type(exc).__name__,
-                },
+                detail={**detail(None), "config_error": type(exc).__name__},
             ) from exc
 
     pin = pinned_app_version(loaded)
@@ -485,7 +464,6 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
         )
         return
 
-    detail = {"installed": found, "pinned": pin, "validated_on": pin_validated_on(loaded)}
     if not pin:
         # The configless machine: same slug and remedy as the unrecorded pin above,
         # so "you never pinned one" exits the same either way.
@@ -493,9 +471,9 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
             "app-version-pin-unrecorded",
             message,
             remedy=Remedy.RECORD_REKORDBOX_PIN,
-            detail=detail,
+            detail=detail(pin),
         )
-    raise _unavailable("app-version-pin-drift", message, detail=detail)
+    raise _unavailable("app-version-pin-drift", message, detail=detail(pin))
 
 
 # ---------------------------------------------------------------------------
@@ -812,32 +790,29 @@ def soft_deleted(
     return bool(marker)
 
 
-def membership_removed(row: Any) -> bool:
-    """Whether rekordbox, or this product, removed one membership row. Or REFUSE."""
+def _row_removed(row: Any, kind: str, key: str, consequence: str) -> bool:
+    """:func:`soft_deleted` for one playlist ``kind`` of row, its id in ``detail`` under ``key``."""
     return soft_deleted(
         row,
         message=(
-            f"the playlist membership row {getattr(row, 'ID', '?')!r} cannot say "
-            f"whether rekordbox removed it, and treating that as live would "
-            f"report a track as filed where nobody can see it"
+            f"the {kind} row {getattr(row, 'ID', '?')!r} cannot say whether "
+            f"rekordbox removed it, and treating that as live would {consequence}"
         ),
         origin=("rb_writer",),
-        detail={"membership_id": str(getattr(row, "ID", ""))},
+        detail={key: str(getattr(row, "ID", ""))},
+    )
+
+
+def membership_removed(row: Any) -> bool:
+    """Whether rekordbox, or this product, removed one membership row. Or REFUSE."""
+    return _row_removed(
+        row, "playlist membership", "membership_id", "report a track as filed where nobody can see it"
     )
 
 
 def node_removed(row: Any) -> bool:
     """Whether one playlist or folder row carries the marker. Or REFUSE."""
-    return soft_deleted(
-        row,
-        message=(
-            f"the playlist row {getattr(row, 'ID', '?')!r} cannot say whether "
-            f"rekordbox removed it, and treating that as live would file a "
-            f"track in a playlist nobody can see"
-        ),
-        origin=("rb_writer",),
-        detail={"playlist_id": str(getattr(row, "ID", ""))},
-    )
+    return _row_removed(row, "playlist", "playlist_id", "file a track in a playlist nobody can see")
 
 
 # ---------------------------------------------------------------------------
@@ -1196,6 +1171,27 @@ def commit_guarded(
         reconciliation_logger.setLevel(previous)
 
 
+def _live_collection_row(db: Any, content_class: Any, key: str) -> Any:
+    """The live collection row ``key``, or the refusal for one that is gone or cannot say (U288)."""
+    row = db.session.get(content_class, key)
+    if row is None or soft_deleted(
+        row,
+        message=(
+            f"the collection row {key!r} cannot say whether rekordbox removed it, "
+            f"and deleting it as live could take a track out twice"
+        ),
+        origin=("rb_writer",),
+        detail={"content_id": key},
+    ):
+        raise _unavailable(
+            "whitelist-violation",
+            f"asked to take the collection row {key!r} out of the collection, and "
+            f"the database holds no live row of that id; nothing was written",
+            detail={"content_id": key},
+        )
+    return row
+
+
 class CollectionRemoval:
     """One removal from the collection, prepared, then committed, then read back (U288).
 
@@ -1243,23 +1239,7 @@ class CollectionRemoval:
         content_class = _mapped(CONTENT_TABLE)
         columns: dict[str, dict[str, Any]] = {}
         for key in ids:
-            row = db.session.get(content_class, key)
-            if row is None or soft_deleted(
-                row,
-                message=(
-                    f"the collection row {key!r} cannot say whether rekordbox removed it, "
-                    f"and deleting it as live could take a track out twice"
-                ),
-                origin=("rb_writer",),
-                detail={"content_id": key},
-            ):
-                raise _unavailable(
-                    "whitelist-violation",
-                    f"asked to take the collection row {key!r} out of the collection, and "
-                    f"the database holds no live row of that id; nothing was written",
-                    detail={"content_id": key},
-                )
-            columns[key] = recorded_columns(row)
+            columns[key] = recorded_columns(_live_collection_row(db, content_class, key))
         held = content_references(db, ids)
         if held:
             named = "; ".join(
