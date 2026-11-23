@@ -1,13 +1,8 @@
 """U61: ``crate sync all`` composes the source increments that already have workers.
 
-WHAT THIS FILE GUARDS. A pass is real only when each source is queued under
-the key its OWN worker serves, with items, the jobs then run to done through
-the argv the job engine spawns, and no job is left under ``sync.all``, a key
-nothing runs.
-
-THE PROVIDERS ARE THE ONLY STAND INS. The catalogue and the streaming account
-are put in front of their seams as the two worker suites do; the dispatcher,
-gate flow, queue and workers are real.
+A pass is real only when each source is queued under its own worker's key,
+with items, the jobs run to done through the engine's argv, and no job is left
+under ``sync.all``, which nothing runs. Only the providers are stand ins.
 """
 
 from __future__ import annotations
@@ -140,9 +135,7 @@ def test_every_source_with_a_worker_has_a_planner_and_no_other_does():
 def test_every_guided_source_names_a_verb_the_registry_declares_and_queues_nothing():
     """U109: a source ``sync all`` leaves to another verb names one the registry agrees with.
 
-    The verb must exist, share the source's module and be the command the pass
-    prints. A guided source declaring a handler key would be both skipped and
-    claimed as queued.
+    The verb shares the source's module and is the command printed; it holds no handler key.
     """
     guided = [spec for spec in sources.SPECS if spec.guided_by is not None]
     assert [spec.source_id for spec in guided] == ["labels"]
@@ -157,11 +150,7 @@ def test_every_guided_source_names_a_verb_the_registry_declares_and_queues_nothi
 
 
 def test_no_path_creates_a_job_under_sync_all():
-    """The registry derived population and the composer's own module both say no ``enqueue``.
-
-    The converse of ``tests/test_cli_contract.py``'s queueing guard, for the
-    one verb whose enqueue would be a job under a key nothing runs (R-203).
-    """
+    """The registry and the composer's own module both say no ``enqueue`` (R-203)."""
     queued = {e.handler_key for e in registry.ENTRIES if e.landed and e.long_running}
     assert SYNC_ALL.handler_key not in queued
     assert SYNC_ALL.argv_builder is None
@@ -386,11 +375,7 @@ def test_nothing_queued_because_every_source_refused_is_a_refusal(installed):
 
 
 class NoLabelCalls(FakeCatalogue):
-    """An account whose label catalogue must never be asked anything.
-
-    ``artist_for`` starts a label sweep, so a pass that planned labels fails
-    here. Playlists and hearts are ordinary reads.
-    """
+    """An account whose label catalogue (``artist_for``) must never be asked anything."""
 
     def artist_for(self, entry):
         raise AssertionError(f"sync all asked the label catalogue for {entry!r}")
@@ -399,10 +384,9 @@ class NoLabelCalls(FakeCatalogue):
 def test_a_pass_with_labels_enabled_and_registered_calls_no_label_provider(
     installed, exported, monkeypatch
 ):
-    """Every label registered, the module on and a catalogue bound, and still no labels job or listing.
+    """Every label registered and a catalogue bound, still no labels job or listing.
 
-    ``LabelSource`` is fenced too, so reaching the sweep's engine by any other
-    door fails as loudly.
+    ``LabelSource`` is fenced too, so reaching the sweep's engine by any door fails.
     """
     del installed
     from cratekit.label import sweep
@@ -492,11 +476,7 @@ def _playlist(playlist_id: str, name: str, tracks: int | None = None) -> Account
 def bind_playlists(
     monkeypatch, *listed: tuple[AccountPlaylist, list[Track] | None]
 ) -> FakeCatalogue:
-    """An account whose own playlists are ``listed``, each with its tracks.
-
-    ``None`` tracks lists a playlist that cannot be resolved, as one deleted
-    between the two reads.
-    """
+    """An account whose own playlists are ``listed``; ``None`` tracks cannot be resolved."""
     fake = FakeCatalogue(
         playlists={
             playlist.playlist_id: FakePagedPlaylist(tracks)
@@ -630,10 +610,7 @@ def test_the_favourites_placeholders_are_left_to_the_favourites_source(slim, mon
 
 
 def test_the_label_batch_debris_is_not_queued_as_intake(slim, monkeypatch):
-    """R-361 through the verb: two label batch playlists and a person's with the same ending.
-
-    None is listed track by track or queued, and the report says why.
-    """
+    """R-361: two label batch playlists and a person's of that ending are not listed or queued."""
     del slim
     fake = bind_playlists(
         monkeypatch,
@@ -987,19 +964,11 @@ def test_a_refusal_part_way_through_the_playlists_keeps_the_filed_ones_named(
     assert check["status"] == "fail" and job.job_id in check["detail"]
 
 
-# 3b. The deferred mark, R-358 code half
-#
-# THE PRODUCER IS THE PASS, NOT A HAND BUILT DATACLASS. ``recorded_now`` is
-# non empty only once a queued playlist's intake job SUCCEEDED, so each mark
-# test drives that sequence for real.
+# 3b. The deferred mark, R-358 code half, each driven through a real pass
 
 
 def _recording_pass(cfg, fake) -> playlists.Sweep:
-    """Queue ``pl-a``, finish its job, and return the pass that records it.
-
-    :func:`playlists.plan` reconciles, so it is called EXACTLY ONCE: a second
-    call would hand back an empty ``recorded_now`` for an unrelated reason.
-    """
+    """Queue ``pl-a``, finish its job, and plan the pass ONCE: a second plan records nothing."""
     exited(drive(["sync", "all"]))
     (job,) = _playlist_jobs()
     resumed = exited(drive(cli_jobs.argv_for(job)))
@@ -1011,11 +980,7 @@ def _recording_pass(cfg, fake) -> playlists.Sweep:
 
 
 class _Taker:
-    """The real record ``mark_swept`` hands each mark to (U242).
-
-    ``taken`` is every ``(id, name)`` handed in, in order; ``fail_on`` names
-    playlists whose take raises, as a record write failing part way does.
-    """
+    """The record ``mark_swept`` hands each mark to (U242); ``fail_on`` names takes that raise."""
 
     def __init__(self, cfg: config.Config, *, fail_on=()) -> None:
         self.cfg = cfg
@@ -1033,12 +998,15 @@ class _Taker:
         self.taken.append((identity, name))
 
 
-def test_a_mark_without_a_real_importable_file_renames_nothing(slim, monkeypatch, tmp_path):
-    """Both halves of the file rule, and neither reaches the account.
+def _written(tmp_path: Path) -> Path:
+    """The pass's local output, written as an importable file."""
+    output = tmp_path / "run-1_synced.xml"
+    output.write_text("<COLLECTION/>", encoding="utf-8")
+    return output
 
-    The listing count holds the ORDER: the file is checked before the
-    recheck's second read, so no file costs no provider call.
-    """
+
+def test_a_mark_without_a_real_importable_file_renames_nothing(slim, monkeypatch, tmp_path):
+    """Both halves of the file rule; the file is checked before the recheck reads the account."""
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     sweep = _recording_pass(slim, fake)
     account = _Taker(slim)
@@ -1064,8 +1032,7 @@ def test_a_mark_after_a_real_importable_file_takes_the_recorded_playlist(
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     sweep = _recording_pass(slim, fake)
     account = _Taker(slim)
-    output = tmp_path / "run-1_synced.xml"
-    output.write_text("<COLLECTION/>", encoding="utf-8")
+    output = _written(tmp_path)
     listings = fake.account_listings
 
     marked = playlists.mark_swept(sweep, fake, account, local_output=output)
@@ -1076,30 +1043,18 @@ def test_a_mark_after_a_real_importable_file_takes_the_recorded_playlist(
     assert fake.account_listings == listings + 1, "the recheck was not a second read"
 
 
-def test_a_playlist_renamed_on_the_account_since_the_plan_is_left_alone(
-    slim, monkeypatch, tmp_path
+@pytest.mark.parametrize(
+    "now", [[_playlist("pl-a", "Warmup Rework")], []], ids=["renamed", "gone"]
+)
+def test_a_playlist_renamed_or_gone_on_the_account_since_the_plan_is_left_alone(
+    slim, monkeypatch, tmp_path, now
 ):
-    """The recheck stops a prefix landing on a playlist renamed since the pass swept it."""
+    """The recheck stops a prefix landing on a playlist renamed or gone since the pass swept it."""
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     sweep = _recording_pass(slim, fake)
-    fake.account = [_playlist("pl-a", "Warmup Rework")]
+    fake.account = now
     account = _Taker(slim)
-    output = tmp_path / "run-1_synced.xml"
-    output.write_text("<COLLECTION/>", encoding="utf-8")
-
-    assert playlists.mark_swept(sweep, fake, account, local_output=output) == ()
-    assert account.taken == []
-
-
-def test_a_playlist_gone_from_the_account_since_the_plan_is_not_marked(
-    slim, monkeypatch, tmp_path
-):
-    fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
-    sweep = _recording_pass(slim, fake)
-    fake.account = []
-    account = _Taker(slim)
-    output = tmp_path / "run-1_synced.xml"
-    output.write_text("<COLLECTION/>", encoding="utf-8")
+    output = _written(tmp_path)
 
     assert playlists.mark_swept(sweep, fake, account, local_output=output) == ()
     assert account.taken == []
@@ -1108,11 +1063,7 @@ def test_a_playlist_gone_from_the_account_since_the_plan_is_not_marked(
 def test_a_recorded_playlist_the_pass_never_listed_is_not_pending_at_all(
     slim, monkeypatch
 ):
-    """ASSERTED ON ``pending_marks``, NOT THROUGH ``mark_swept``, whose recheck would hide it.
-
-    A cursor playlist this pass did not list has no name, and a nameless mark
-    would fail the recheck for the wrong reason with the same result.
-    """
+    """On ``pending_marks``, since ``mark_swept``'s recheck would refuse a nameless mark anyway."""
     cfg = slim
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     _recording_pass(cfg, fake)
@@ -1126,10 +1077,7 @@ def test_a_recorded_playlist_the_pass_never_listed_is_not_pending_at_all(
 
 
 def test_a_recorded_debris_playlist_is_not_pending_at_all():
-    """R-361 on ``pending_marks``: a ` LIBRARY` name in the cursor is never prefixed.
-
-    The prefix is decided first, so debris already carrying it is skipped for that reason.
-    """
+    """R-361 on ``pending_marks``: a ` LIBRARY` name in the cursor is never prefixed."""
     sweep = playlists.Sweep(
         listed=(
             _playlist("pl-sol", "Sol Selectas LIBRARY"),
@@ -1161,8 +1109,7 @@ def test_a_playlist_the_source_system_already_prefixed_is_not_prefixed_twice(
     assert sweep.recorded_now == ("pl-a",)
 
     account = _Taker(slim)
-    output = tmp_path / "run-1_synced.xml"
-    output.write_text("<COLLECTION/>", encoding="utf-8")
+    output = _written(tmp_path)
 
     assert playlists.mark_swept(sweep, fake, account, local_output=output) == ()
     assert account.taken == []
@@ -1200,8 +1147,7 @@ def test_a_mark_that_landed_is_not_owed_a_second_time(slim, monkeypatch, tmp_pat
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     sweep = _recording_pass(cfg, fake)
     account = _Taker(slim)
-    output = tmp_path / "run-1_synced.xml"
-    output.write_text("<COLLECTION/>", encoding="utf-8")
+    output = _written(tmp_path)
     assert playlists.mark_swept(sweep, fake, account, local_output=output) == ("pl-a",)
 
     # THE RECORD, NOT THE TITLE (U242): the account still lists it unprefixed.
@@ -1238,8 +1184,7 @@ def test_a_rename_that_fails_mid_batch_still_names_the_ones_that_landed(
     assert sorted(sweep.recorded) == ["pl-a", "pl-b"]
 
     account = _Taker(cfg, fail_on={"pl-b"})
-    output = tmp_path / "run-1_synced.xml"
-    output.write_text("<COLLECTION/>", encoding="utf-8")
+    output = _written(tmp_path)
     landed: list[str] = []
 
     with pytest.raises(RuntimeError):
@@ -1269,9 +1214,7 @@ def test_the_current_intake_path_marks_nothing_and_still_reports_unbound(slim, m
     assert _swept(cfg) == ("pl-a",)
 
 
-# R-359. SWEPT MEANS RESOLVED, NOT ACQUIRED, AND BOTH SURFACES SAY SO. A pass
-# over a playlist the library owns none of succeeds with every track missing
-# and the next pass records it, so "recorded" must not read as "held". The
+# R-359: swept means resolved, not acquired, and both surfaces say so. The
 # literal is spelled out so a changed token fails rather than agreeing with itself.
 
 
@@ -1324,10 +1267,7 @@ def test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acqu
         assert claim not in lowered, text
 
 
-# 3d. The pass names its next step, U73
-#
-# A pass ends in one list, one download and one landed file (R29), so it
-# names the command that turns its intake jobs into that list, by default.
+# 3d. The pass names its next step, the command that lists its intake jobs (U73)
 
 
 def test_the_default_output_of_a_pass_that_queued_intake_jobs_names_the_run_verb(
@@ -1401,11 +1341,7 @@ def test_the_block_says_what_swept_means_whatever_the_pass_found():
 def test_a_pass_renames_nothing_even_over_a_recorded_playlist_with_its_file_landed(
     slim, monkeypatch
 ):
-    """THE ACT, NOT A NAME (R-397): an ungated pass must rename nothing on the account.
-
-    Every condition a mark needs is met and the pass runs again, so whatever a
-    future pass calls its mark step, a rename shows on the bound account.
-    """
+    """R-397: an ungated pass whose marks are all due renames nothing on the account."""
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     _recording_pass(slim, fake)
     account = outbound_fakes.FakeAccount()
@@ -1431,11 +1367,7 @@ def test_the_block_tells_a_mark_that_ran_apart_from_a_mark_that_never_ran():
 
 
 def test_the_sync_package_defines_no_remove_write():
-    """The outbound suite's banned account write names, banned over ``sync`` too.
-
-    The SET is imported from ``tests/modules/test_outbound.py``, never copied,
-    so extending it arms this root as well.
-    """
+    """The outbound suite's banned account writes, imported not copied, banned over ``sync``."""
     from tests.modules.test_outbound import FORBIDDEN_WRITE_NAMES
 
     defined: set[str] = set()
@@ -1515,9 +1447,8 @@ def test_a_hand_off_of_a_decision_with_no_digest_refuses(installed):
         ("sync.favorites", "write.cloudsync.unreadable"),
         ("export.playlist", "export.playlist.confirm"),
     ],
-    # WHICH GUARD EACH CASE REACHES. The cloud sync gate offers neither the
-    # option nor a digest, so both layers refuse; the export gate compares a
-    # digest without offering "sync", so only the option layer refuses.
+    # The cloud gate offers neither option nor digest, so both layers refuse;
+    # the export gate has a digest but no "sync", so only the option layer does.
     ids=["undeclared", "offers-neither", "option-not-offered"],
 )
 def test_a_hand_off_to_a_gate_that_could_not_mean_the_same_refuses(installed, verb, gate):
@@ -1560,12 +1491,7 @@ def test_a_source_refused_at_queue_time_leaves_the_queued_ones_named(
 def test_the_composed_pass_carries_the_favourites_verb_standing_warning(
     installed, exported
 ):
-    """R-424 survives the composition.
-
-    ``_plan_favorites`` queues the sweep itself, so the message is read off
-    the verb's module rather than typed, two spellings of one fact being how
-    they come to disagree.
-    """
+    """R-424 survives the composition; the message is read off the verb's module, not typed."""
     del installed
     _, code, passed = _confirmed(exported)
     assert code == int(ExitCode.OK), passed
@@ -1583,9 +1509,7 @@ def test_a_declined_favourites_source_says_nothing_about_a_write_it_never_reache
 ):
     """A declined source's standing warning stays out of the envelope.
 
-    ``_envelope`` extends only plans that filed. THE HEARTS ARE LISTED so the
-    pass exits OK and reaches the warnings loop at all; without other work it
-    raises first and the test is vacuous (mutation row ``D2_filed_filter``).
+    The hearts are listed so the pass reaches the warnings loop (mutation row ``D2_filed_filter``).
     """
     del installed
     bind_hearts(monkeypatch)
@@ -1598,11 +1522,7 @@ def test_a_declined_favourites_source_says_nothing_about_a_write_it_never_reache
 
 
 def test_a_hand_off_to_a_gate_that_compares_no_digest_refuses(installed, monkeypatch):
-    """The digest layer alone: the real favourites entry, its confirm's digest source removed.
-
-    No declared gate offers "sync" without a digest, and without that layer
-    the resumed child never meets ``DecisionStale``.
-    """
+    """The digest layer alone: the real favourites entry, its confirm's digest source removed."""
     import dataclasses
 
     del installed
