@@ -1,11 +1,9 @@
-"""U284: a sync pass lands when every catalogue but Discogs refuses, and stops plainly when Discogs cannot help.
+"""U284: a pass lands when all but Discogs refuse, and stops plainly when Discogs cannot help.
 
-With a token, a file Discogs could not tag while every other catalogue
-refused settles ``sources-unread`` and the pass lands, naming the file and the
-refusing catalogues with the date each began (Phillip's answer of 2026-11-13).
-With none, the pass stops at its tag step saying who refused, since when, and
-that a token lets it carry on; a file no catalogue could be read for still
-fails with the network first. Every catalogue answer is a fake.
+With a token, a file nobody could tag settles ``sources-unread`` and the pass
+lands, naming the refusers and their dates (Phillip, 2026-11-13). With none,
+the tag step stops saying who refused, since when, and that a token helps.
+Every catalogue answer is a fake.
 """
 
 from __future__ import annotations
@@ -27,6 +25,7 @@ from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_discogs_searcher import SENT, results, routed
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_sync_land import Tail
 from tests.test_tag_folder_copyright import MINIMAL, RAWAX, downloaded, five_labels
 from tests.test_tag_workers import general, item_causes, item_states, resume_argv, tag_job
@@ -323,11 +322,7 @@ def staging(tmp_path) -> Path:
 
 
 def bind(monkeypatch, *, token: str | None, beatport=CHALLENGE, search=None, by_title=None):
-    """Bind the worker's searcher to the shipped one over recorded answers.
-
-    A searcher per call carrying the run count the worker hands in, as the
-    shipped binder builds one. ``by_title`` answers Beatport per title.
-    """
+    """Bind the shipped searcher, per call, over recorded answers; ``by_title`` answers Beatport."""
 
     def fetch(url: str) -> searchers.Fetched:
         if url.startswith(searchers.BEATPORT_SEARCH):
@@ -480,12 +475,7 @@ def test_a_sweep_stopped_by_an_outage_carries_no_refusal_stop(
 
 
 class Rest(Tail):
-    """The tail with its tag step REAL and every later step standing in.
-
-    ``tag folder`` runs through the real dispatcher, its worker and the shipped
-    searcher over recorded answers. The analysis, naming and landing stand in as
-    :class:`tests.test_sync_land.Tail` has them: real jobs, and the landing's gate.
-    """
+    """The tail with its tag step real and every later step standing in, as ``Tail`` has them."""
 
     def __call__(self, argv: list[str]):
         if argv[:2] == ["tag", "folder"]:
@@ -602,9 +592,7 @@ def test_a_pass_whose_catalogues_answered_says_nothing_of_refusals(
 
 
 def test_every_landing_verb_runs_the_one_chain_whose_tag_step_this_is():
-    """``sync land``, ``label sync --go`` and ``sync bandcamp`` reach the tag step through
-    :func:`tail.through_name`, so a label go's tag step behaves as the sync pass's by
-    construction."""
+    """Every landing verb reaches the tag step through :func:`tail.through_name`."""
     import inspect
 
     from cratekit.cli import sync_bandcamp

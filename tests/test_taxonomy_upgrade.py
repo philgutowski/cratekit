@@ -1,8 +1,6 @@
 """U132: what the shipped template declares that a library's copy lacks, and the copy with it added.
 
-The planner is a function of two texts. Each copy is cut from the shipped text
-with plain string operations, never the planner's own cut, so an expected value
-never comes from the code under test.
+Each copy is cut with plain string operations, never the planner's own cut.
 """
 
 from __future__ import annotations
@@ -19,6 +17,7 @@ from cratekit.core.exit_codes import ExitCode
 from tests.cli_drive import drive
 from tests.test_active_taxonomy import write_active
 from tests.test_config import valid_data
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 
 def _shipped() -> str:
@@ -69,8 +68,7 @@ def before_genre_subs(text: str) -> str:
 
 
 def behind() -> str:
-    """A version 2 copy made before the genre Favorites, the Soul folder and the
-    Rominimal genre sub (U155); it tags the soul word as R&B, as the live copy does."""
+    """A version 2 copy before Favorites, Soul and Rominimal (U155), tagging soul as R&B."""
     text = _without(before_genre_subs(_shipped()), FAVORITES_START, FAVORITES_END)
     text = _without(text, SOUL_START, SOUL_END)
     return _version(_retag(text, "Soul & Funk", "Soul", "R&B"), 2)
@@ -106,8 +104,7 @@ def _subsequence(short: list[str], long: list[str]) -> bool:
 
 
 def test_a_version_2_copy_gains_favorites_and_soul_in_place_and_keeps_every_line():
-    """Declared order is behaviour: review menus list buckets in it and a tie
-    between two buckets' words goes to the first declared."""
+    """Declared order is behaviour: menus list it and a tie goes to the first declared."""
     copy = behind()
     assert taxonomy.load_taxonomy(copy).schema_version == 2
     found = _plan(copy)
@@ -172,8 +169,7 @@ def test_a_rerun_plans_nothing():
 
 
 def test_headers_that_cannot_be_matched_to_entries_put_the_block_at_the_end():
-    """A header the scan does not read (a quoted key) leaves headers and entries
-    uneven, so the block goes at the end and the copy's entries stay as they were."""
+    """A quoted key leaves headers and entries uneven, so the block goes at the end."""
     text = behind()
     assert text.count("[[sub_class]]\n") > 1
     quoted = text.replace("[[sub_class]]\n", '[["sub_class"]]\n', 1)
@@ -190,8 +186,7 @@ def test_headers_that_cannot_be_matched_to_entries_put_the_block_at_the_end():
 
 
 def test_a_placement_that_does_not_parse_is_not_kept_whole():
-    """A copy that declares its entries inline cannot take a table at its end;
-    that is a hold, not a ValueError read as a shipped template defect."""
+    """Inline entries cannot take a table at the end: a hold, not a ValueError."""
     assert upgrade._kept_whole("a = 1\n", "a = 1\nb = \n", upgrade.BUCKET, {}) is False
 
 
@@ -287,8 +282,7 @@ def test_jazz_is_held_while_non_electronic_still_files_its_words_and_every_place
 
 
 def test_the_hand_edit_the_hold_names_lets_jazz_in_on_the_next_run():
-    """Every line the hold named, out, and the copy takes the bucket; Jazz still
-    tags by the bucket's own word. The copy's keyword rule is left, and said."""
+    """The named lines out, the copy takes the bucket, and the keyword rule left is said."""
     by_hand = _without_jazz_words(before_jazz())
     by_hand = _swap(by_hand, JAZZ_VOCABULARY_ROW, "")
     found = _plan(by_hand)
@@ -319,8 +313,7 @@ def test_a_copy_with_no_jazz_keyword_rule_is_told_it_has_none():
 
 
 def test_one_place_filing_a_word_under_two_spellings_names_both_in_one_sentence():
-    """An alias "Jazz" and a tagging word "jazz" on one bucket are two lines to
-    take out, so the sentence names both rather than sending a person round."""
+    """An alias "Jazz" and a tag word "jazz" on one bucket are named in one sentence."""
     copy = _swap(before_jazz(), JAZZ_SUB, "")
     copy = _swap(copy, JAZZ_MAP_ROW, "")
     copy = _swap(copy, JAZZ_VOCABULARY_ROW, "")
@@ -346,8 +339,7 @@ def test_a_copy_with_the_words_out_and_the_row_left_does_not_load():
 
 
 def test_every_bucket_of_the_copy_filing_a_word_is_named_not_the_first():
-    """A person's copy whose R&B bucket tags "jazz" as well as NonElectronic
-    filing it is two buckets to edit, and the hold names both."""
+    """Two buckets filing "jazz" are two to edit, and the hold names both."""
     rnb = 'aliases = [\n  "MPB",\n  "R&B",\n]\ntag_aliases = [\n  "rnb",\n]'
     copy = _swap(before_jazz(), rnb, rnb.replace('  "rnb",', '  "jazz",\n  "rnb",'))
     assert "jazz" in _bucket(copy, "rnb").tag_aliases
@@ -358,9 +350,7 @@ def test_every_bucket_of_the_copy_filing_a_word_is_named_not_the_first():
 
 
 def test_a_vocabulary_row_whose_tag_files_where_the_template_shares_the_word_is_not_named():
-    """The row's tag files in the breaks bucket, which the shipped template
-    gives "Trap / Wave" on purpose, so taking R&B's word out leaves it
-    loading; only the bucket that clashes is named, not the row."""
+    """Only the clashing bucket is named, not the row filing in the breaks bucket."""
     copy = _retag(_without(_shipped(), HIP_HOP_START, HIP_HOP_END), "Rap/Hip Hop", "Hip-Hop", "R&B")
     copy = _swap(copy, 'tag_aliases = [\n  "rnb",\n]', 'tag_aliases = [\n  "rnb",\n  "trap / wave",\n]')
     reggae = '  { word = "Reggae", tag = "Caribbean" },\n'
@@ -795,8 +785,7 @@ def test_a_copy_made_before_r799_gains_both_tables():
 
 
 def test_a_table_whose_row_names_no_folder_in_the_copy_is_held_with_the_loaders_words():
-    """The copy renamed the Techno folder, so the row writing Techno names no
-    folder there and the copy would not load with the table."""
+    """The copy renamed Techno, so the table's Techno row names no folder and would not load."""
     copy = without_discogs(_shipped()).replace('display = "Techno"', 'display = "Techno By Hand"', 1)
     taxonomy.load_taxonomy(copy)
     found = _plan(copy)
@@ -848,8 +837,7 @@ def test_the_verb_asks_then_adds_the_discogs_table(configured):
 
 
 def test_a_copy_made_before_u133_takes_the_discogs_table_and_loads_after_the_holds_edits():
-    """U244's round two: no Discogs row may write Jazz, which that copy files only
-    as a sub, or the hold's hand edits leave a copy that does not load."""
+    """U244 round two: no Discogs row may write Jazz, a sub only in that copy."""
     first = _plan(without_discogs(before_jazz()))
     assert first.vocabularies == ("discogs",)
     assert [held.id for held in first.held] == ["jazz"]

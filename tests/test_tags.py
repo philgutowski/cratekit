@@ -1,16 +1,10 @@
 """The container-correct tag writer, proved per container against real audio.
 
-A tag write changes the tags and nothing else, proved in four layers because a
-corrupted AIFF is still a file of the right size that just no longer decodes:
-
-1. the decoded sample stream hashes identically before and after (ffmpeg);
-2. the container still parses as itself, with a sane duration;
-3. the magic bytes are untouched: an AIFF opens ``FORM``, a WAV ``RIFF``;
-4. a second opinion without ffmpeg: FLAC's STREAMINFO MD5, and the chunk
-   containers' audio payload hashed straight out of the file.
-
-Fixtures are synthesized silence, never a real library. A missing ffmpeg fails
-rather than skips: a skipped audio-safety proof reads as a passing one.
+A tag write changes the tags and nothing else, in four layers, since a corrupted
+AIFF keeps its size: the decoded samples hash the same (ffmpeg); the container
+parses with a sane duration; the magic bytes are untouched; and without ffmpeg,
+FLAC's STREAMINFO MD5 and the chunk containers' payload hashed from the file.
+Fixtures are synthesized silence. A missing ffmpeg fails rather than skips.
 """
 
 from __future__ import annotations
@@ -103,12 +97,7 @@ def _decoded_md5(path: Path) -> str:
 
 
 def _payload_chunk_digest(path: Path) -> str | None:
-    """Hash the audio payload chunk of a RIFF or FORM container, with no decoder.
-
-    A digest only if the chunk table parses and the payload is where it says,
-    so a bare ID3 stream at offset 0 gives None or a different digest. None for
-    a container that is not chunk based.
-    """
+    """A RIFF or FORM container's payload chunk hashed with no decoder, None if not chunk based."""
     data = path.read_bytes()
     if data[:4] == b"RIFF":
         wanted, big_endian = b"data", False
@@ -229,8 +218,7 @@ def test_writing_a_tempo_field_raises_rather_than_returning_false(container):
 
 
 def test_the_writable_field_set_is_a_module_constant_not_configuration():
-    """R17: a configurable field set would reopen the beat grid hole, so the table
-    is a literal in the module body and the module imports no configuration."""
+    """R17: a configurable field set would reopen the beat grid hole, so it is a literal."""
     import ast
 
     import cratekit.core.tags as tags

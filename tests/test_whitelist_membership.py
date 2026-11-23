@@ -19,6 +19,7 @@ import pytest
 
 from cratekit.core import rb_writer as W
 from cratekit.write import metadata
+from tests._source_guards import _walk
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 
@@ -119,7 +120,7 @@ def _audit_database_opens(tree: ast.AST) -> tuple[int, list[tuple[int, str]]]:
     A reference that is not a call (an alias, a ``partial``) is itself a
     problem, since its arguments are supplied where this walk cannot see."""
     names = {_CONSTRUCTOR}
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if isinstance(node, ast.ImportFrom):
             names.update(
                 alias.asname
@@ -128,13 +129,13 @@ def _audit_database_opens(tree: ast.AST) -> tuple[int, list[tuple[int, str]]]:
             )
     calls = [
         node
-        for node in ast.walk(tree)
+        for node in _walk(tree)
         if isinstance(node, ast.Call) and _called_name(node.func) in names
     ]
     call_funcs = {id(call.func) for call in calls}
 
     problems: list[tuple[int, str]] = []
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if _called_name(node) in names and id(node) not in call_funcs:
             problems.append(
                 (node.lineno, "the constructor is referenced without being called here")

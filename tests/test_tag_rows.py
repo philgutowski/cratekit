@@ -1,9 +1,8 @@
 """R-816: ``crate tag rows`` writes a row's genre from its file, and nothing else.
 
-The plan against a disposable database and real tagged containers, one row per
-outcome; the apply with every column of every row compared across the write;
-then the verb through the real dispatcher. The too coarse word is the shipped
-taxonomy's; the lookup rows are whatever this file seeds. D1 applies.
+The plan on a disposable database and real containers, one row per outcome;
+the apply with every column compared across the write; then the verb. The too
+coarse word is the shipped taxonomy's, the lookup rows this file's. D1 applies.
 """
 
 from __future__ import annotations
@@ -43,6 +42,7 @@ from cratekit.write import metadata, metadata_cli
 from tests._containers import synth_container
 from tests.cli_drive import drive, drive_human
 from tests.test_config import valid_data
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
 DECLARED = taxonomy.default_taxonomy()
@@ -71,11 +71,9 @@ UNREADABLE = object()
 
 @dataclass(frozen=True)
 class Track:
-    """One row to seed and the file it names.
+    """One row to seed and its file: ``file`` a genre, empty, :data:`ABSENT`, :data:`UNREADABLE`.
 
-    ``file`` is the genre the file carries, an empty string for a readable file
-    with no genre, :data:`ABSENT` for no file, or :data:`UNREADABLE` for bytes
-    no tag library opens. ``recorded`` overrides the location the row records.
+    ``recorded`` overrides the location the row records.
     """
 
     content_id: str
@@ -529,8 +527,7 @@ def _id3_track(cfg: config.Config, id3_silence: Path, content_id: str, values: l
 def test_two_genres_in_an_id3_frame_read_as_they_do_in_a_list_container(
     machine, silence, id3_silence
 ):
-    """The checked reader joins an ID3 frame's values on a null byte. Compared
-    as it came, the row that agrees on FLAC differed on ID3 on every run."""
+    """ID3 values joined on a null byte made an agreeing row differ on every run."""
     agreeing = _id3_track(machine, id3_silence, "30", [DEEP, MELODIC])
     differing = _id3_track(machine, id3_silence, "31", [MELODIC, PROGRESSIVE])
     build(
@@ -550,9 +547,7 @@ def test_two_genres_in_an_id3_frame_read_as_they_do_in_a_list_container(
 def test_an_empty_second_value_is_not_a_second_genre_and_not_an_unknown_word(
     machine, silence, monkeypatch
 ):
-    """A frame parsed as one genre and an empty value read as a word ending in
-    a null byte, which no lookup row matches, so the run told a person to make
-    a genre row for a row that already agreed."""
+    """An empty second value read as a word ending in a null byte asked for a needless row."""
     build(machine, silence, Track("30", DEEP, DEEP), Track("31", OLD, MELODIC))
     real = tags.read_tags_checked
     monkeypatch.setattr(
@@ -872,9 +867,7 @@ def test_a_blank_row_is_as_planned_however_the_database_spells_blank(held):
 def test_a_restore_out_of_band_is_marked_before_this_write_replaces_the_evidence(
     acknowledged, silence
 ):
-    """The write records a fingerprint after its commit. Recorded over a
-    database recovered out of band and never compared, it blessed the recovered
-    reading, and the native tree the restore emptied went unmarked for good."""
+    """A fingerprint recorded over an unmarked out of band restore would bless it for good."""
     cfg = acknowledged
     build(cfg, silence, Track("30", OLD, MELODIC))
     tree_id = DECLARED.intake.id
@@ -1136,8 +1129,7 @@ def test_a_second_run_after_a_clean_one_asks_and_is_a_no_op(acknowledged, silenc
 
 
 def test_an_empty_plan_still_asks_and_opens_nothing_to_write(acknowledged, silence, monkeypatch):
-    """Every declared gate fires, and a plan that writes nothing never reaches
-    the write handle: an opener asked for write intent fails this case."""
+    """Every gate fires, and an empty plan never opens the write handle."""
     cfg = acknowledged
     build(cfg, silence, Track("30", DEEP, DEEP))
     real_open = rb_writer.open_db

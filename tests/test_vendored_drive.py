@@ -1,9 +1,8 @@
 """U274: a download job logs in once per drive, four provider calls a track.
 
-The session is materialised, validated and written back once per drive, and the private
-token file goes when the drive ends or fails. The vendored tool is stood in by the smallest
-doubles the real ``authenticate`` and ``fetch`` accept, each asking the provider through
-``request_session.request``, which the real gate wraps, so every call is counted by the gate.
+The session is validated and written back once per drive, and the token file
+goes when the drive ends or fails. The vendored tool is stood in by the
+smallest doubles the real calls accept, asking through the gated request.
 """
 
 from __future__ import annotations
@@ -36,6 +35,7 @@ from cratekit.core.exit_codes import ExitCode
 from tests.acquire_fakes import tidal_list, wav_bytes
 from tests.cli_drive import drive
 from tests.test_config import valid_data
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 #: The stored session: PKCE, and obviously not a real one.
 STORED = {

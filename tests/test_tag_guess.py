@@ -22,6 +22,7 @@ from cratekit.intake import account_playlists, batch_name
 from cratekit.tagging import guess, guess_cli, suggest
 from tests import test_tag_suggest as _suggest_suite
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 # The row verb's fixtures, shared through the suggest suite rather than copied.
 machine = _suggest_suite.machine
@@ -115,8 +116,7 @@ def test_a_playlist_mostly_of_one_genre_gives_it_to_a_track_no_artist_knows():
 
 
 def test_a_long_playlist_does_not_drown_three_tracks_by_the_artist():
-    """One voice per playlist: ten Melodic House members weigh four, the
-    artist's three Deep House tracks six. A vote per member would give ten."""
+    """One voice per playlist: ten members weigh four, the artist's three tracks six."""
     members = [_staged(f"m{n}", artist=f"Other {n}", genre=MELODIC) for n in range(10)]
     lone = _staged("lone", artist="Ana Vale")
     plan = _plan(
@@ -187,9 +187,7 @@ def test_an_exact_eighty_percent_share_is_high_as_tag_suggest_says():
 
 
 def test_a_playlist_share_on_an_exact_bound_is_banded_as_the_ints_would_be():
-    """A playlist's voice of four shared three to two is twelve fifths against
-    eight fifths, exactly the sixty percent bound, and banded as the rules band
-    the same share of whole votes."""
+    """Twelve fifths against eight is exactly the sixty percent bound, banded as whole votes."""
     members = [_staged(f"m{n}", artist=f"Other {n}", genre=DEEP) for n in range(3)]
     others = [_staged(f"o{n}", artist=f"Else {n}", genre=MELODIC) for n in range(2)]
     lone = _staged("lone", artist="Nobody Known")
@@ -408,8 +406,7 @@ def test_a_pass_that_cannot_be_read_is_said_and_the_artist_still_votes(
 
 
 def test_a_pass_no_job_carries_is_said_and_never_read_as_no_playlists(machine, silence):
-    """Review round 1, through the real reader: a mistyped pass name is a pass
-    that could not be read, not one whose playlists knew nothing."""
+    """Review round 1: a mistyped pass could not be read, which is not knowing nothing."""
     build(machine, silence)
     _stage(machine, silence, "lone", artist="Nobody Known", title="Lone")
 
@@ -448,9 +445,7 @@ def test_an_off_taxonomy_word_is_named_with_both_offers(machine, silence):
 
 
 def test_a_folders_own_name_in_another_case_is_named_with_its_one_answer(machine, silence):
-    """R-1184: the lowercased name of the breaks folder is off taxonomy, and
-    neither offer takes it as the warning puts it, so the warning names the
-    alias to its own folder that does."""
+    """R-1184: the warning names the alias to its own folder that takes the lowercased name."""
     build(machine, silence)
     _stage(machine, silence, "breaks", artist="Ana Vale", title="Breaks", genre="breaks / d&b / dubstep")
 
@@ -577,9 +572,7 @@ def test_a_guess_that_refuses_ends_the_chain(monkeypatch):
 
 
 def test_a_go_stopped_at_its_tag_step_names_the_guess_next_with_no_pass():
-    """Review round 1: the go's remaining commands from the tag step on include
-    the guess, which no go test stopping later reaches. Round 2: with no pass,
-    since a label go's pass names no account playlist."""
+    """A go stopped at its tag step names the guess next, with no pass, as a label go names none."""
     commands = label_sync._commands(
         Path("/staging"), ["--manifest", "m.json", "--pass", "p1"], tail.TAG
     )
@@ -588,8 +581,7 @@ def test_a_go_stopped_at_its_tag_step_names_the_guess_next_with_no_pass():
 
 
 def test_an_unreadable_file_is_counted_apart_from_the_files_left_with_none(monkeypatch):
-    """Review round 2: a file whose genre could not be read is not one the
-    guess left untagged, and the chain's sentence says which is which."""
+    """Review round 2: an unreadable genre is not one the guess left untagged."""
     chain = tail.Chain(
         progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again="a"
     )
@@ -607,9 +599,7 @@ def test_an_unreadable_file_is_counted_apart_from_the_files_left_with_none(monke
 
 
 def test_an_exact_bound_over_a_playlist_and_an_artist_is_banded_exactly():
-    """Review round 2: one artist track and a ten track playlist of seven to
-    three is 24/5 against 6/5, exactly eighty percent of six votes, which the
-    float sum of the two read as just under."""
+    """24/5 against 6/5 is exactly eighty percent, which a float sum reads as just under."""
     members = [_staged(f"d{n}", artist=f"Other {n}", genre=DEEP) for n in range(7)]
     members += [_staged(f"m{n}", artist=f"Else {n}", genre=MELODIC) for n in range(3)]
     lone = _staged("lone", artist="Ana Vale")
@@ -644,8 +634,7 @@ def test_a_soft_deleted_row_is_no_neighbour(machine, silence):
 
 
 def test_the_files_left_are_the_files_still_without_a_genre(monkeypatch):
-    """Mutation row C3: of ten files, seven carried a genre and two were
-    guessed, so one is left, whatever the guess wrote."""
+    """Mutation row C3: seven carried a genre and two were guessed, so one is left."""
     chain = tail.Chain(
         progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again="a"
     )

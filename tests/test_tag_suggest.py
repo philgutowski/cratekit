@@ -25,6 +25,7 @@ from cratekit.tagging import suggest, suggest_cli
 from cratekit.tagging.tag import SearchHit
 from tests import test_tag_rows as _rows_suite
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rb_writer_db import _build_disposable_database, _row
 
 # The row verb's fixtures, shared rather than copied: the machine, its
@@ -506,10 +507,7 @@ def test_an_unread_answer_between_two_reads_does_not_stop_the_walk(machine):
 
 
 def test_rows_unread_only_by_a_catalogue_nobody_asked_do_not_stop_the_walk(machine):
-    """U244's review, round one, B2. With no Discogs token every row Beatport
-    misses rides ``unread``, and three of them in a row stopped the walk asking
-    Beatport too, telling the person the catalogues could not be read. A row
-    left unread only by a catalogue nobody asked is not a refusal."""
+    """U244 review B2: rows unread only by a catalogue nobody asked are no refusal."""
     from urllib.parse import quote_plus
 
     from cratekit.tagging import searchers
@@ -568,9 +566,7 @@ def test_a_kept_answer_keeps_what_it_passed_over(machine):
 
 
 def test_a_kept_row_that_passed_over_discogs_is_asked_again_once_a_token_is_recorded(machine):
-    """U244's round two, B2. The morning's run had no token; a token is then
-    recorded, and the same day's run asks again rather than keeping the answer
-    that said none is recorded."""
+    """U244 round two, B2: a token recorded later the same day asks again."""
     today = date(2026, 11, 12)
     passed = suggest.Asked(suggest.UNREAD, note="unread: discogs", passed_over=("discogs",))
     lookup = _Lookup({"t": passed})
@@ -586,8 +582,7 @@ def test_a_kept_row_that_passed_over_discogs_is_asked_again_once_a_token_is_reco
 
 
 def test_a_row_passed_over_is_said_as_not_asked_and_not_as_unreadable():
-    """U244's round two, D1: the verb's warning tells rows a catalogue refused
-    from rows only passed over for want of a token, and names the login step."""
+    """U244 round two, D1: passed over for want of a token is not refused, and login is named."""
     from collections import defaultdict
 
     from cratekit.tagging import searchers
@@ -971,8 +966,7 @@ def test_the_verb_declares_the_file_and_the_row():
 def test_tag_suggest_asks_deezer_past_a_refusing_beatport_by_each_files_isrc(
     acknowledged, silence, monkeypatch
 ):
-    """U322: the verb's general catalogue is the suggest binder's, so a row
-    Discogs missed and Beatport refused is still asked of it by ISRC."""
+    """U322: a row Discogs missed and Beatport refused is still asked by ISRC."""
     from cratekit.tagging import published, searchers
     from tests.test_beatport_refusal import REFUSED, _over_the_wire
     from tests.test_discogs_searcher import SENT

@@ -20,6 +20,7 @@ from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_analysis import _FakeModel
 from tests.test_config import valid_data
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 
 @pytest.fixture
@@ -214,11 +215,7 @@ def _drive_help(argv: list[str]) -> tuple[int, str, str]:
 def test_a_slim_worker_refuses_at_the_queue_rather_than_reporting_done(
     cfg, folder, silence, monkeypatch
 ):
-    """Nothing bound and no extra is the state of a real slim process.
-
-    The availability check is patched rather than relied on, because the
-    suite runs in a venv that may carry the extra (R-370).
-    """
+    """A real slim process; availability is patched since the venv may carry the extra (R-370)."""
     monkeypatch.setattr(
         vocals, "missing_requirement", lambda: "the 'vocals' extra is not installed here"
     )
@@ -277,13 +274,7 @@ def test_an_unchanged_score_is_not_rewritten(cfg, folder, silence, monkeypatch):
 def test_an_oversize_track_is_refused_by_the_restamp_verb_and_keeps_its_tags(
     cfg, folder, silence, monkeypatch
 ):
-    """U92, closing R-408, on the second of the two verbs sharing ``analyse``.
-
-    The cap comes down to a byte so a real container stands in for a live set.
-    The shipped value of ``VOCAL_MAX_BYTES`` is pinned in
-    ``tests/test_analysis_workers.py``, because a suite that only ever lowers
-    the cap proves the comparison and never the number.
-    """
+    """U92, R-408: the cap lowered to a byte; ``tests/test_analysis_workers.py`` pins its value."""
     track = place(folder, silence, "a live set", voxlevel=7, voxgender="F")
     bind_scoring(monkeypatch)
     monkeypatch.setattr(vocals, "VOCAL_MAX_BYTES", 1)
@@ -524,8 +515,7 @@ def test_a_one_level_vocals_resume_says_nothing_about_a_walk_it_never_did(
 def test_unscored_queues_a_headed_file_with_no_score_and_leaves_the_rest_alone(
     cfg, folder, silence, monkeypatch
 ):
-    """A file the run finalized with no voxlevel is scored; one already scored,
-    and one the run has not finalized, are not queued at all."""
+    """Only a finalized file with no voxlevel is queued."""
     finalized = place(folder, silence, "08A - 124 - finalized")
     scored = place(folder, silence, "09A - 125 - scored", voxlevel=40)
     fresh = place(folder, silence, "fresh")
@@ -590,9 +580,7 @@ def _chain():
 def test_the_tails_rescore_scores_a_headed_file_with_no_score_and_leaves_a_scored_one(
     cfg, folder, silence, monkeypatch
 ):
-    """U181's tail scenario, through the real dispatcher and the real worker:
-    a file the run finalized with no voxlevel is scored by the analyze step,
-    and one already carrying a score is not touched."""
+    """U181: the analyze step scores a file with no voxlevel and leaves a scored one."""
     from cratekit.cli import tail
 
     finalized = place(folder, silence, "08A - 124 - finalized")

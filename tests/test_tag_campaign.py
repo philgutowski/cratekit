@@ -1,15 +1,10 @@
 """U294: ``crate tag campaign`` applies the needs genre backlog under one gate.
 
-Three layers, in the order they are trusted. The rules, pure: narrowing a made
-plan to the rows a campaign may write, an answer checked against the plan, and
-the one digest. Then the verb through the real dispatcher on a disposable
-database and real tagged containers, the ``tag backlog`` suite's fixtures: the
-two acts R34 requires, every step through its verb's own apply path, needs
-genre before and after, a step's refusal stopping the campaign with the
-earlier steps' writes intact and named, and a second run planning only what is
-left. Catalogue answers are recorded, never asked of the network.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The rules pure: narrowing a plan to the rows a campaign may write, an answer
+checked against it, the one digest. Then the verb through the dispatcher on the
+``tag backlog`` suite's fixtures: R34's two acts, each step's own apply path, a
+refusal stopping with earlier writes intact and named, and a second run
+planning what is left. Catalogue answers are recorded. D1 applies.
 """
 
 from __future__ import annotations
@@ -31,6 +26,7 @@ from cratekit.write import metadata
 from tests import test_tag_backlog as _backlog_suite
 from tests import test_tag_suggest as _suggest_suite
 from tests.cli_drive import drive, drive_human
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 machine = _backlog_suite.machine
 acknowledged = _suggest_suite.acknowledged
@@ -90,8 +86,7 @@ def _steps(envelope: dict) -> dict[str, dict]:
 
 
 def _tempo(cfg: config.Config, paths) -> dict[str, object]:
-    """Every row's BPM column and every file's tags but its genre, for the beat
-    grid rule: a written file moved its genre and nothing else."""
+    """Every BPM column and every file's tags but genre: a written file moved its genre alone."""
     import mutagen
 
     connection = sqlite3.connect(cfg.library.db_path)
@@ -112,9 +107,7 @@ def _tempo(cfg: config.Config, paths) -> dict[str, object]:
     return found
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The rules
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _rows_plan() -> rows.RowsPlan:
@@ -287,9 +280,7 @@ def test_the_answer_order_on_the_command_line_does_not_move_the_digest():
     assert tag_campaign.digest(plan, one) == tag_campaign.digest(plan, two)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The campaign through the dispatcher
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_whole_campaign_lands_and_needs_genre_falls_as_measured(acknowledged, silence):
@@ -398,9 +389,7 @@ def test_a_word_left_or_unanswered_is_named_and_nothing_retags_it(acknowledged, 
 def test_rows_joining_needs_genre_and_any_other_routed_row_are_never_written(
     acknowledged, silence
 ):
-    """R-1734: tag rows would give row 70 a word no folder takes, and row 72 is
-    a routed row whose file carries another routed genre. The campaign writes
-    only the rows the backlog named."""
+    """R-1734: the campaign writes only the backlog's rows, never row 70's or routed row 72's."""
     cfg = acknowledged
     build(
         cfg,
@@ -420,8 +409,7 @@ def test_rows_joining_needs_genre_and_any_other_routed_row_are_never_written(
 def test_a_proposal_that_appears_after_the_first_step_is_left_for_the_next_run(
     acknowledged, silence
 ):
-    """R-1732: row 30 had no proposal when the gate was answered, and the first
-    step's rows gave it one. It was never shown, so it is left and named."""
+    """R-1732: a proposal the first step made was never shown, so it is left and named."""
     cfg = acknowledged
     build(
         cfg,
@@ -531,9 +519,7 @@ def test_an_empty_backlog_still_asks_and_writes_nothing(acknowledged, silence):
     assert _tree(cfg) == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The stop
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_step_that_refuses_stops_the_campaign_with_the_earlier_writes_named(
@@ -599,9 +585,7 @@ def test_a_first_step_that_refuses_writes_nothing_and_runs_nothing_after(
     assert _tree(cfg) == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The catalogue, recorded
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_recorded_catalogue_proposal_is_written_and_asked_once_across_the_acts(
@@ -643,9 +627,7 @@ def test_no_proposal_below_the_floor_is_shown_or_written(acknowledged, silence):
     assert _genre_of(cfg, "80") == ""
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. What a person reads
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_rehearsed_digest_is_set_beside_the_live_one_at_the_gate(acknowledged, silence):
@@ -679,9 +661,7 @@ def test_the_verb_declares_one_explicit_gate_and_the_surfaces_it_writes():
     assert entry.writes == frozenset({"files", "db_metadata"}) and entry.destructive
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. Round one of the review
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _stray(cfg: config.Config, silence: Path, name: str, genre: str) -> Path:
@@ -973,16 +953,13 @@ def test_needing_counts_only_live_rows_with_a_readable_file(machine, silence):
     assert len(_planned(machine).rows) == 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. Round two of the review
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_same_folder_answer_once_the_word_has_left_the_backlog_is_taken_as_given(
     acknowledged, silence
 ):
-    """Round two: the row and the file both carry the word, so once its folder
-    lands the backlog no longer holds it, and the same command still runs."""
+    """Round two: once its folder lands the word leaves the backlog, and the command still runs."""
     cfg = acknowledged
     build(cfg, silence, *_backlog_suite._eight(), Track("15", INDIE, INDIE, artist="X", folder="w"))
     code, acted, _refused = _two_acts(["--folder", INDIE])
@@ -1001,9 +978,7 @@ def test_the_joining_rows_are_said_in_the_campaigns_own_words(acknowledged, sile
     assert "the campaign holds each of them out" in note and "--leave" not in note
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 8. What the mutation table found no test for
-# ═══════════════════════════════════════════════════════════════════════════
 
 ZOUK = "zouk bass"
 
@@ -1011,8 +986,7 @@ ZOUK = "zouk bass"
 def test_an_alias_to_the_folder_another_answer_makes_is_planned_on_that_folder(
     acknowledged, silence
 ):
-    """M15: each word is planned on the copy the words before it leave, so an
-    alias may name the genre folder the same campaign's folder answer makes."""
+    """M15: each word is planned on the copy the words before it leave."""
     cfg = acknowledged
     paths = build(cfg, silence, *_library(), Track("97", ZOUK, ZOUK, artist="Z", folder="z"))
     argv = ["--folder", INDIE, "--alias", f"{ZOUK}={INDIE}"]

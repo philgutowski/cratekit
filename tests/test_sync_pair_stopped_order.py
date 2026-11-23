@@ -1,10 +1,8 @@
 """U225: a sync pair after a stopped order write finishes it from the leading side.
 
-A stopped write's own moves are never read as the person's reorder, so the
-scramble it left never reaches rekordbox. An account off the moves' path is
-the provider's partial state as often as a person's edit, so it leads only
-once a sync after the stop read the account in another order (U234). D1
-applies, nothing here names a real account, person or track.
+The stopped write's own moves are never read as a reorder, so its scramble
+never reaches rekordbox; an account off the moves' path leads only once a
+later sync read it in another order (U234). D1 applies.
 """
 
 from __future__ import annotations
@@ -18,6 +16,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs, tidal_account
 from cratekit.sync import pair_cli, pair_stopped
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
@@ -33,11 +32,7 @@ LED = ("4", "5", "1", "6", "2", "7", "3")
 
 
 def _as_before_u231(monkeypatch) -> None:
-    """Record every ordering step as v0.13.1 did, saying nothing of a moving step (U234).
-
-    The stops below send moves with no moving step, which a record of this
-    version would read as a write that sent nothing.
-    """
+    """Record each ordering step as v0.13.1 did, with no moving step (U234)."""
     real = pair_stopped.ordering_step
 
     def ordering_step(**kwargs):
@@ -49,12 +44,7 @@ def _as_before_u231(monkeypatch) -> None:
 
 
 def _stopping(world, monkeypatch, playlist_id: str, moves: int) -> list[int]:
-    """Make the account's order on one playlist stop after ``moves`` moves, as the adapter makes them.
-
-    The moves are the adapter's own ``_to_the_front`` and the stop is a read
-    back refusal, which stops that pair alone (U220). Answers a list each stop
-    is appended to. Recorded as before U231 (:func:`_as_before_u231`).
-    """
+    """Stop one playlist's order after ``moves`` adapter moves by a read back refusal (U220)."""
     _as_before_u231(monkeypatch)
     real = world.account.order_tracks
     stops: list[int] = []
@@ -80,17 +70,18 @@ def _stopping(world, monkeypatch, playlist_id: str, moves: int) -> list[int]:
     return stops
 
 
-@pytest.fixture
-def stopped(world, monkeypatch):
-    """Synced on four tracks, three added in rekordbox, the order stopped after two moves.
-
-    Answers the rekordbox playlist, the account playlist and the stopped run.
-    """
-    gig = world.folder("GIG READY")
-    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
+def _synced(world, name: str, *content_ids: str) -> tuple[str, str]:
+    """A GIG READY playlist of ``content_ids`` synced once: (rekordbox id, account id)."""
+    made = world.playlist(name, *content_ids, under=world.folder("GIG READY"))
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Intro")
+    return made, world.titled(f"GIG READY {name}")
+
+
+@pytest.fixture
+def stopped(world, monkeypatch):
+    """Synced on four, three added, stopped after two moves: (rekordbox, account, run)."""
+    intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.rekordbox_add(intro, "5", "6", "7")
     _reordered(world, intro, *LED)
     stops = _stopping(world, monkeypatch, account_id, 2)
@@ -150,11 +141,7 @@ def test_the_gate_names_the_pair_as_finishing_the_stopped_run(world, stopped):
 def test_a_move_the_person_made_on_the_account_after_a_sync_read_it_still_leads(
     world, stopped, monkeypatch
 ):
-    """U234: the move is shown by settled readings off the path after the stop in two orders.
-
-    A reading on the path is never kept, since it may be a lag. The new order
-    holds the pair until a reading the agreement window later agrees with it.
-    """
+    """U234: settled readings off the path in two orders show the move; none on it is kept."""
     _agreeing_at_once(monkeypatch)
     intro, account_id, _run = stopped
     plan_only()
@@ -183,8 +170,7 @@ def test_a_move_the_person_made_on_the_account_after_a_sync_read_it_still_leads(
 
 
 def test_a_move_off_the_path_no_sync_read_before_is_not_read_as_the_persons(world, stopped):
-    """U234: one reading off the moves' path is the provider's partial state as often as an edit,
-    so rekordbox's order stands."""
+    """U234: one reading off the path may be the provider's partial state, so rekordbox leads."""
     intro, account_id, _run = stopped
     members = world.account.playlists[account_id]
     members.remove("t3")
@@ -231,11 +217,7 @@ def test_a_track_added_on_the_account_after_the_stop_is_kept_and_the_order_still
 def test_a_stopped_write_its_continue_holds_is_finished_by_the_next_sync_and_leaves_nothing(
     world, stopped
 ):
-    """R-1420: moves no record names are a change the continue did not make, held as moved.
-
-    A refusal with no moves recorded sent none (U231), so the continue writes
-    nothing over it; the fresh sync after finishes from the side that led.
-    """
+    """R-1420: a refusal with no moves recorded sent none (U231), so the next sync finishes it."""
     intro, account_id, run_id = stopped
     reached = list(world.account.playlists[account_id])
     code, refused = drive(["--run", run_id, *VERB])
@@ -255,11 +237,7 @@ def test_a_stopped_write_its_continue_holds_is_finished_by_the_next_sync_and_lea
 
 
 def test_a_stopped_write_that_skipped_rekordbox_still_finishes_its_order(world, monkeypatch):
-    gig = world.folder("GIG READY")
-    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Intro")
+    intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.rekordbox_add(intro, "5", "6", "7")
     _reordered(world, intro, *LED)
     stops = _stopping(world, monkeypatch, account_id, 2)
@@ -322,15 +300,8 @@ def test_a_runs_steps_that_cannot_be_read_are_named_never_read_as_no_write(world
 
 
 def test_an_addition_the_provider_left_out_is_never_read_as_taken_off(world, monkeypatch):
-    """The adapter leaves out a track the provider would not add, and raises nothing.
-
-    A base built from what the write asked for would read it as taken off.
-    """
-    gig = world.folder("GIG READY")
-    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Intro")
+    """A track the provider would not add is left out silently, never read as taken off."""
+    intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.rekordbox_add(intro, "5", "6", "7")
     _reordered(world, intro, *LED)
     real_add = world.account.add_tracks
@@ -357,11 +328,7 @@ def test_a_stopped_write_that_skipped_rekordbox_leaves_the_accounts_removal_to_b
     world, monkeypatch
 ):
     """Record both or neither: a base moved for the account alone loses its removal."""
-    gig = world.folder("GIG READY")
-    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Intro")
+    intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.account.playlists[account_id].remove("t2")
     world.rekordbox_add(intro, "5", "6", "7")
     _reordered(world, intro, *LED)
@@ -524,11 +491,7 @@ def test_a_stop_that_cannot_be_kept_past_its_run_moves_nothing(world, monkeypatc
     """The record is kept before the first move, so a write that cannot keep it stops first."""
     from cratekit.core import held_plan
 
-    gig = world.folder("GIG READY")
-    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Intro")
+    intro, account_id = _synced(world, "Intro", "1", "2", "3", "4")
     world.rekordbox_add(intro, "5", "6", "7")
     _reordered(world, intro, *LED)
 
@@ -563,11 +526,7 @@ def test_a_run_that_finished_the_pair_without_moving_its_snapshot_keeps_nothing_
 
 
 def _released(world, intro: str, account_id: str, *, root: bool = False) -> str:
-    """The stopped pair's rekordbox playlist deleted, a sync releasing it, and a new one in rekordbox's order.
-
-    Answers the new playlist, in GIG READY (account order kept, U231) or at the
-    root (not kept), made after the release so no discovery has paired it.
-    """
+    """The stopped pair released and a new one made, its account order kept in GIG READY (U231)."""
     world.delete_rekordbox(intro)
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
@@ -663,11 +622,7 @@ def test_a_first_sync_whose_account_side_was_skipped_still_never_takes_the_scram
 def test_a_released_pair_read_off_the_path_on_its_first_sync_keeps_rekordboxs_order(
     world, stopped
 ):
-    """U234: an order off the stopped write's path is not somebody's on that alone.
-
-    A hand pairing has no earlier reading kept, so rekordbox's order stands and
-    the account is finished to it.
-    """
+    """U234: a hand pairing has no reading kept, so rekordbox's order stands off the path."""
     intro, account_id, run_id = stopped
     rebuilt = _released(world, intro, account_id)
     world.account.playlists[account_id] = _ids("7", "6", "5", "4", "3", "2", "1")
@@ -802,11 +757,7 @@ LEFT = ("4", "1", "3", "2", "5", "6", "7")
 
 
 def _left_off_the_path(world, monkeypatch, playlist_id: str) -> list[int]:
-    """The order on one playlist stops with the account at :data:`LEFT`, as a refused move stops it.
-
-    Recorded as before U231 (:func:`_as_before_u231`), so the next plan reads
-    the account as it stands.
-    """
+    """Stop the order on one playlist with the account at :data:`LEFT`, recorded as before U231."""
     _as_before_u231(monkeypatch)
     real = world.account.order_tracks
     stops: list[int] = []
@@ -831,15 +782,8 @@ def _left_off_the_path(world, monkeypatch, playlist_id: str) -> list[int]:
 
 @pytest.fixture
 def strayed(world, monkeypatch):
-    """A GIG READY pair synced on seven tracks, reversed in rekordbox, its order stopped off the path.
-
-    Answers the rekordbox playlist, the account playlist and the stopped run.
-    """
-    gig = world.folder("GIG READY")
-    closer = world.playlist("Closer", "1", "2", "3", "4", "5", "6", "7", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Closer")
+    """A GIG READY pair of seven reversed, stopped off the path: (rekordbox, account, run)."""
+    closer, account_id = _synced(world, "Closer", "1", "2", "3", "4", "5", "6", "7")
     _reordered(world, closer, *BACK)
     stops = _left_off_the_path(world, monkeypatch, account_id)
     code, refused = sync()
@@ -932,11 +876,7 @@ def test_a_reorder_seen_changing_between_two_syncs_after_the_stop_leads(
 
 
 def test_a_kept_reading_that_never_settled_shows_no_reorder(world, strayed):
-    """The provider moving between two plans is not the person.
-
-    A lag, then the partial state: the first is on the path and never kept, so
-    the stopped write is finished and rekordbox untouched.
-    """
+    """The provider moving between two plans is not the person: a lag on the path is not kept."""
     closer, account_id, _run = strayed
     world.account.served[account_id] = _ids("1", "2", "3", "4", "5", "6", "7")
     plan_only()
@@ -952,11 +892,7 @@ def test_a_kept_reading_that_never_settled_shows_no_reorder(world, strayed):
 def test_a_reading_on_the_path_is_never_the_baseline_so_the_partial_state_after_it_finishes(
     world, strayed, monkeypatch
 ):
-    """An order on the path read steadily may be a lag of the whole write.
-
-    Nothing on the path is kept, so the partial state after it is the first
-    reading kept and the stop is finished from rekordbox's side.
-    """
+    """An order on the path read steadily may be a lag; the partial state after it is finished."""
     _agreeing_at_once(monkeypatch)
     closer, account_id, _run = strayed
     for served in (("2", "1", "3", "4", "5", "6", "7"), ("1", "2", "3", "4", "5", "6", "7")):
@@ -1152,16 +1088,8 @@ def test_a_later_reading_still_on_the_moves_path_is_finished_never_read_as_a_reo
 def test_a_stop_this_version_recorded_with_no_move_sent_leaves_a_reorder_the_persons(
     world, monkeypatch
 ):
-    """U234 keeps R-1420's case: an order refused before its first move left no partial state.
-
-    An ordering step with no moving step sent nothing, so an order off its path
-    is somebody's: the account leads, and the gate says why.
-    """
-    gig = world.folder("GIG READY")
-    closer = world.playlist("Closer", "1", "2", "3", "4", under=gig)
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    account_id = world.titled("GIG READY Closer")
+    """U234 keeps R-1420: an order refused before any move sent nothing, so the account leads."""
+    closer, account_id = _synced(world, "Closer", "1", "2", "3", "4")
     _reordered(world, closer, "4", "3", "1", "2")
     real = world.account.order_tracks
     refused: list[str] = []
