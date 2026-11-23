@@ -25,7 +25,9 @@ from tests import _import_probe
 
 #: Ceiling on Cratekit's own modules after ``crate doctor --help`` on the full preset:
 #: 58 at U248 against 301 before; the margin is for the doctor's own closure growing.
-DOCTOR_HELP_CEILING = 90
+#: 2026-11-23, U328: 86 became 91 when the registry's table went into five parts, which
+#: load with it at every start, so the ceiling rose by those five and the margin is the same.
+DOCTOR_HELP_CEILING = 95
 
 #: Two verb modules with large closures of their own, which ``doctor --help`` must not load.
 NOT_DOCTORS = ("cratekit.organize.cli", "cratekit.intake.land_cli")

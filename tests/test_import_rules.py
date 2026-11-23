@@ -696,6 +696,9 @@ def test_a_starred_name_is_followed_into_the_part_that_holds_its_tuple():
     ]
     with pytest.raises(ValueError, match="holds no MORE tuple"):
         measure.verbs_from(registry)
+    for unread in ((), (part,)):  # a tree with no registry is refused, never read as no verbs
+        with pytest.raises(ValueError, match="holds no ENTRIES tuple"):
+            measure.verbs_from(*unread)
     with pytest.raises(ValueError, match="not an Entry"):
         measure.verbs_from("ENTRIES = (*more.ROWS,)\n", part)
 
