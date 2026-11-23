@@ -21,7 +21,7 @@ from cratekit.adopt import move_cli
 from cratekit.adopt import plan as adopt_plan
 from cratekit.adopt import scan as adopt_scan
 from cratekit.cli import converge as converge_cli
-from cratekit.core import rb_writer, routing, tags, taxonomy, tree_registry
+from cratekit.core import convergence, rb_writer, routing, tags, taxonomy, tree_registry
 from cratekit.organize import mirror_edits
 from cratekit.write import genre_favorites, rebuild, routing_pass, trees
 from tests import test_rebuild as _rebuild_suite
@@ -446,6 +446,50 @@ def test_a_favorites_playlist_the_run_did_not_compare_stays_foreign(
     )
     assert report.converged, report.summaries()
     assert report.foreign == ("/".join(routing_pass.destination(DECLARED, TWO, "favorites")),)
+
+
+def test_a_recorded_folder_renamed_to_another_genres_name_is_read_by_that_name(
+    cfg, gates_pass, db, adopted_root
+):
+    """A folder bearing a declared bucket's name is that bucket's, whatever a record says."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=TECH)
+    other = _truth(music(cfg, _rebuild_suite.PLAIN), energy=1, second=None)
+    _rebuild_suite._rebuild(cfg, db, adopted_root, DECLARED, [], truth=[track, other])
+    folder_id = next(
+        node.folder_id
+        for node in rebuild.read_tree(db, str(adopted_root.ID))
+        if node.folder_display == DECLARED.bucket(TWO).display
+    )
+    folder = db.get_playlist(ID=folder_id)
+    folder.Name = DECLARED.bucket(THIRD).display
+    med = rb_writer.ensure_playlist(db, routing_pass.destination(DECLARED, THIRD, MED)[1], folder)
+    rb_writer.add_membership(db, med, "2")
+    db.session.commit()
+
+    report = _rebuild_suite._check(cfg, db, adopted_root, DECLARED, _derived(track, other))
+    assert _left(report) == [("2", THIRD, MED)]
+
+
+def test_a_record_naming_a_bucket_the_taxonomy_dropped_is_reported_not_raised(
+    cfg, gates_pass, db, adopted_root
+):
+    """The record outlives a template edit; the check reads past it and says so."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=None)
+    made = _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, HIGH): ("1",)})
+    (node,) = [
+        one for one in rebuild.read_tree(db, str(adopted_root.ID))
+        if one.playlist_id == made[(TWO, HIGH)]
+    ]
+    retired = convergence.DestinationNode(
+        bucket="retired_genre", sub=HIGH, folder_id=node.folder_id, playlist_id="gone-1"
+    )
+    convergence.record_nodes(cfg, _rebuild_suite.TREE_ID, [retired])
+
+    report = _rebuild_suite._check(cfg, db, adopted_root, DECLARED, _derived(track))
+    assert _left(report) == [("1", TWO, HIGH)]
+    assert report.undeclared == (f"retired_genre/{HIGH}",)
 
 
 # 3. Adoption's census and plan

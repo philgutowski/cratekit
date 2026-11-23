@@ -365,8 +365,10 @@ class ConvergenceReport:
     Two sets are reported and are NOT differences: ``unmatched``, every declared
     file that reached no single active row, which no playlist can hold, and
     ``foreign``, every node under the governed root no declared destination
-    resolves to and whose names declare none (R-1949). THE ACTIVE-ROW RULE
-    APPLIES TO BOTH DIRECTIONS.
+    resolves to and that :func:`namesakes` does not compare (R-1949): one
+    whose names declare nothing, a manual class such as Candy, one rekordbox
+    removed, or one in a dimension this run did not compare. THE ACTIVE-ROW
+    RULE APPLIES TO BOTH DIRECTIONS.
     """
 
     tree_id: str
@@ -491,9 +493,10 @@ def namesakes(
     this run derived or a record names already has its node, so a second node
     with its names is left as it was; so is a dimension this run did not
     compare, whose absence is not evidence (U119), and a playlist rekordbox
-    removed, which nobody sees. A folder a previous write recorded is read by
-    its bucket's declared name, so a folder renamed in rekordbox is still
-    compared, as :func:`_under_recorded_folders` resolves it for a write.
+    removed, which nobody sees. A folder a previous write recorded, whose name
+    now declares no bucket, is read by its bucket's declared name, so a folder
+    renamed in rekordbox is still compared once a write has recorded it; a
+    folder that bears a declared bucket's name is read by that name.
     """
     covered = {(entry.bucket, entry.sub) for entry in destinations}
     resolved = {
@@ -504,6 +507,7 @@ def namesakes(
     skipped = _uncompared_subs(declared, not_compared)
     names = declared_names(declared)
     known = set(declared.bucket_ids())
+    bucket_names = {declared.bucket(bucket_id).display for bucket_id in known}
     recorded_folder = {
         entry.folder_id: declared.bucket(entry.bucket).display
         for entry in (() if record is None else record.nodes)
@@ -513,7 +517,9 @@ def namesakes(
     for node in nodes:
         if node.removed or (node.folder_id, node.playlist_id) in resolved:
             continue
-        folder = recorded_folder.get(node.folder_id, node.folder_display)
+        folder = node.folder_display
+        if folder not in bucket_names:
+            folder = recorded_folder.get(node.folder_id, folder)
         place = names.get((folder, node.playlist_display))
         if place is None or place in covered or place[1] in skipped:
             continue
