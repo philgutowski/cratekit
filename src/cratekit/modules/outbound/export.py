@@ -22,12 +22,9 @@ from cratekit.modules.outbound.service import RemoteAccount
 class LocalTrack:
     """One library row offered for export. ``identity`` is stable; the name is not.
 
-    ``title`` is the row AS THE LIBRARY SHOWS IT, naming head and all, and is
-    what an unmatched row is reported under. ``release_title`` is the same title
-    with the head off, which is the only spelling a provider's own title can be
-    compared against (R-356). Two fields because they answer two questions, and
-    a report that dropped the head would name a row the person cannot find by
-    looking.
+    ``title`` is the row as the library shows it, naming head and all, which an
+    unmatched row is reported under; ``release_title`` has the head off, the
+    only spelling a provider's title compares with (R-356).
     """
 
     identity: str
@@ -35,8 +32,7 @@ class LocalTrack:
     artist: str = ""
     isrc: str = ""
     release_title: str = ""
-    #: The album tag of the row's own file, which chooses among releases
-    #: spelled alike under one ISRC when none is hearted (R-572).
+    #: The row's own file's album tag, choosing among releases under one ISRC (R-572).
     album: str = ""
 
 
@@ -54,16 +50,11 @@ class Unmatched:
 class ExportPlan:
     """What an export will write, including the tracks it will not.
 
-    ``adopts`` is the recorded key this crate used to live under, when the verb
-    recognised one and a person confirmed it (R-229). ``expected`` is the remote
-    playlist the person was shown this write updating. Both empty means create
-    or reuse by this key alone, which is every export before that finding.
-
-    ``contents`` IS THE WHOLE CRATE, NOT THIS PLAN'S ROWS. The outbound verb
-    plans one track per item, so the rows here are one row of the crate, and the
-    ledger records what the crate holds so it can be recognised under another
-    path. Matched or not: a row the provider does not carry is still a row of
-    the crate.
+    ``adopts`` is the recorded key this crate used to live under, when a
+    person confirmed it (R-229), and ``expected`` the remote playlist they were
+    shown; both empty create or reuse by this key alone. ``contents`` is the
+    WHOLE CRATE, matched or not, which the ledger records so the crate can be
+    recognised under another path.
     """
 
     playlist_key: str
@@ -73,8 +64,8 @@ class ExportPlan:
     adopts: str = ""
     expected: str = ""
     contents: tuple[str, ...] = ()
-    #: The ISO date of the collection export the plan was read from, recorded
-    #: so ``export prune`` can refuse an older one (R-836). Empty when unread.
+    #: The ISO date of the collection export read, so ``export prune`` can
+    #: refuse an older one (R-836). Empty when unread.
     written: str = ""
     #: The Exports folder decision the gate showed, :func:`kinds.token`, or
     #: empty when the gate planned no filing (U131).
@@ -85,11 +76,11 @@ class ExportPlan:
 ADDED = "added"
 ALREADY = "already"
 #: The provider would not add the track: its answer did not name it and the
-#: playlist read back after the add does not hold it.
+#: read back does not hold it.
 REFUSED = "refused"
 
-#: How many of a job's items the driver hands the export worker at once
-#: (U270). The provider's limit on one add request, so a batch is one request.
+#: How many items the driver hands the export worker at once (U270), the
+#: provider's limit on one add request.
 BATCH = 100
 
 
@@ -103,16 +94,12 @@ class ExportReport:
     added: tuple[str, ...]
     already: tuple[str, ...]
     unmatched: tuple[Unmatched, ...]
-    #: The key the recorded remote playlist was moved from BY THIS CALL, or
-    #: empty. Set once per job: the first batch moves the record and every
-    #: later one finds it under its own key.
+    #: The key the record was moved from BY THIS CALL, or empty.
     adopted_from: str = ""
     #: Why a playlist this call created is not in the ``Exports`` folder, or
-    #: empty (U131). ``crate organize`` files one left at the root.
+    #: empty (U131); ``crate organize`` files one left at the root.
     unfiled: str = ""
-    #: Each matched row's outcome, ``(row, track, outcome)`` in plan order,
-    #: the outcome one of :data:`ADDED`, :data:`ALREADY` and :data:`REFUSED`
-    #: (U270). A batch's worker reads its own item's row here.
+    #: Each matched row's ``(row, track, outcome)`` in plan order (U270).
     outcomes: tuple[tuple[str, str, str], ...] = ()
     #: Tracks the provider would not add, which ``added`` does not name (U270).
     refused: tuple[str, ...] = ()
@@ -136,9 +123,8 @@ def plan(
 ) -> ExportPlan:
     """Match every track. Unmatched stay on the plan; they are not omitted.
 
-    ``contents`` defaults to the rows handed in, which is right for a caller
-    planning a whole playlist at once and wrong for one planning a single item,
-    so the per item verb always passes the frozen track set.
+    ``contents`` defaults to the rows handed in; a per item caller passes the
+    frozen track set.
     """
     matched: list[tuple[str, str]] = []
     unmatched: list[Unmatched] = []
@@ -153,14 +139,9 @@ def plan(
         if remote:
             matched.append((track.identity, remote))
         else:
-            unmatched.append(
-                Unmatched(
-                    identity=track.identity,
-                    title=track.title,
-                    artist=track.artist,
-                    reason=account.unmatched_reason(track.identity) or "unmatched",
-                )
-            )
+            reason = account.unmatched_reason(track.identity) or "unmatched"
+            unmatched.append(Unmatched(track.identity, track.title, track.artist, reason))
+    rows = contents if contents is not None else [t.identity for t in tracks]
     return ExportPlan(
         playlist_key=playlist_key,
         name=name,
@@ -170,39 +151,24 @@ def plan(
         expected=expected,
         written=written,
         filing=filing,
-        contents=tuple(
-            str(item)
-            for item in (
-                contents if contents is not None else [t.identity for t in tracks]
-            )
-        ),
+        contents=tuple(str(item) for item in rows),
     )
 
 
-def apply(
-    cfg: config.Config,
-    account: RemoteAccount,
-    planned: ExportPlan,
-) -> ExportReport:
+def apply(cfg: config.Config, account: RemoteAccount, planned: ExportPlan) -> ExportReport:
     """Write the matched tracks. Reuses a recorded remote playlist if one exists.
 
-    THE CREATE AND ITS RECORD HAPPEN UNDER ONE LEDGER LOCK. This used to read the
-    recorded id, create when there was none, and record afterwards, so a ledger
-    that could not be written left an orphaned remote playlist and the next call
-    made another one. Under the per item shape the outbound verbs use, that is one
-    orphan per track: driven as three remote playlists from one three track
-    export. ``ledger.reserve_playlist`` carries the ordering and the argument.
-
-    EVERYTHING AFTER THE RESERVE IS RECORDED UNDER ``reserved.key`` (R-229),
-    which is this plan's key unless the record moved to the crate's new path
-    after this job was confirmed. Recording under the plan's own key then would
-    start a second record for a remote playlist that already has one.
+    THE CREATE AND ITS RECORD HAPPEN UNDER ONE LEDGER LOCK
+    (``ledger.reserve_playlist``), so an unwritable ledger never orphans a
+    remote playlist per item. Everything after is recorded under
+    ``reserved.key`` (R-229), which differs from the plan's when the record
+    moved to the crate's new path after this job was confirmed.
     """
     reserved = ledger.reserve_playlist(
         cfg,
         planned.playlist_key,
-        # RESOLVED LAZILY, so an unwritable ledger refuses before the account is
-        # touched at all rather than after.
+        # RESOLVED LAZILY, so an unwritable ledger refuses before the account
+        # is touched.
         lambda: account.create_playlist(planned.name),
         adopts=planned.adopts,
         expected=planned.expected,
@@ -218,52 +184,40 @@ def apply(
     for at, (local, remote) in enumerate(planned.matched):
         if remote in already_on or remote in already_recorded:
             outcome[at] = ALREADY
-            # WHICH ROW A WRITTEN TRACK CAME FROM (R-836), kept for a track this
-            # product wrote, so a prune can tell a row that left from a match
-            # that drifted. A track a person put there is never claimed.
+            # WHICH ROW A WRITTEN TRACK CAME FROM (R-836), for a track this
+            # product wrote, so a prune tells a row that left from a match
+            # that drifted.
             if remote in already_recorded and reserved.rows.get(local) != remote:
                 noted[local] = remote
             continue
         lacking[local] = remote
     answered: set[str] = set()
     if lacking:
-        # ONE REQUEST FOR THE BATCH, the provider's limit per request, through
-        # the add the mirror already uses. It opens the playlist afresh, so a
-        # person's edit between two batches is read and the batch goes after
-        # it. A track is ADDED only when the answer names it, or, for an answer
-        # naming part of the batch, when the adapter's one read back holds it.
+        # ONE REQUEST FOR THE BATCH, through the mirror's add, which opens the
+        # playlist afresh; a track is ADDED only when the answer, or for a
+        # partial answer the adapter's read back, holds it.
         wanted = tuple(dict.fromkeys(lacking.values()))
         answered = {str(one) for one in account.add_tracks(remote_id, wanted)}
     landed = {local: remote for local, remote in lacking.items() if remote in answered}
-    # ONE LEDGER WRITE FOR THE BATCH, AFTER THE ANSWER (U270, R-230). See
-    # ``ledger.record_playlist_tracks`` for why nothing is written before it.
+    # ONE LEDGER WRITE FOR THE BATCH, AFTER THE ANSWER (U270, R-230).
     if landed or noted:
         ledger.record_playlist_tracks(cfg, reserved.key, landed=landed, rows=noted)
     added: list[str] = []
-    already: list[str] = []
-    refused: list[str] = []
+    by_outcome: dict[str, list[str]] = {ADDED: added, ALREADY: [], REFUSED: []}
     outcomes: list[tuple[str, str, str]] = []
     for at, (local, remote) in enumerate(planned.matched):
         said = outcome.get(at) or (ADDED if remote in answered else REFUSED)
-        # TWO ROWS MATCHED TO ONE TRACK are sent once, and the second reads as
-        # already there when the first landed, as a per item run would read it.
+        # TWO ROWS MATCHED TO ONE TRACK are sent once; the second reads as
+        # already there, as a per item run would read it.
         if said == ADDED and remote in added:
             said = ALREADY
         outcomes.append((local, remote, said))
-        if said == ADDED:
-            added.append(remote)
-        elif said == ALREADY:
-            already.append(remote)
-        else:
-            refused.append(remote)
+        by_outcome[said].append(remote)
     unfiled = ""
     if reserved.created:
-        # FILED AT CREATION (U131), after the tracks, so a refused move leaves a
-        # whole playlist at the root rather than an empty one, recorded, which
-        # ``crate organize`` files on its next pass. ANY FAILURE HERE IS A
-        # WARNING, never the export's: the playlist and its track are written
-        # and recorded, and a ledger or provider error filing it must not
-        # report a finished write as failed.
+        # FILED AT CREATION (U131), after the tracks, so a refused move leaves
+        # a whole playlist at the root for ``crate organize``. ANY FAILURE HERE
+        # IS A WARNING, never the export's: the write is done and recorded.
         try:
             unfiled = kinds.file_new(cfg, account, remote_id, KIND, planned.filing)
         except CratekitError as exc:
@@ -276,9 +230,9 @@ def apply(
         remote_id=remote_id,
         created=reserved.created,
         added=tuple(added),
-        already=tuple(already),
+        already=tuple(by_outcome[ALREADY]),
         unmatched=planned.unmatched,
         adopted_from=reserved.adopted_from,
         outcomes=tuple(outcomes),
-        refused=tuple(refused),
+        refused=tuple(by_outcome[REFUSED]),
     )

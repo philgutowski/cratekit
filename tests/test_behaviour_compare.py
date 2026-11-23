@@ -257,14 +257,9 @@ def test_a_file_that_became_a_directory_and_a_link_that_moved_are_reported(tmp_p
         tmp_path / "first",
         change=lambda world: (world / "library" / "current").symlink_to("routed.xml"),
     )
-    second = _capture(
-        tmp_path / "second",
-        process=SECOND_PROCESS,
-        change=lambda world: (
-            (world / "library" / "current").symlink_to("routed.xml"),
-            reshape(world),
-        ),
-    )
+    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=lambda world: (
+        (world / "library" / "current").symlink_to("routed.xml"), reshape(world)
+    ))
     assert _differences(first, second) == [
         "write/route: file library/current: the link to routed.xml now points to audio.flac",
         "write/route: file state/lock.json: a file became a directory",
@@ -317,7 +312,8 @@ def test_a_table_in_one_dump_only_is_reported(tmp_path):
     assert _differences(first, second) == [
         "write/route: database library/db/master.db: schema: 1 declaration(s) only in the "
         "second capture",
-        "write/route: database library/db/master.db: table playlists is only in the second capture",
+        "write/route: database library/db/master.db: table playlists is only in the "
+        "second capture",
     ]
 
 
@@ -350,41 +346,34 @@ INDEXED = "CREATE INDEX tracks_by_title ON tracks (title)"
         (
             [KEYED],
             ["CREATE TABLE tracks (id INTEGER, title TEXT)"],
-            [
-                "schema: 1 declaration(s) only in the first capture",
-                "schema: 1 declaration(s) only in the second capture",
-            ],
+            ["schema: 1 declaration(s) only in the first capture",
+             "schema: 1 declaration(s) only in the second capture"],
         ),
         # An index dropped.
         ([KEYED, INDEXED], [KEYED], ["schema: 1 declaration(s) only in the first capture"]),
         # A view and a trigger added.
         (
             [KEYED],
-            [
-                KEYED,
-                "CREATE VIEW titles AS SELECT title FROM tracks",
-                "CREATE TRIGGER seen AFTER INSERT ON tracks BEGIN SELECT 1; END",
-            ],
+            [KEYED, "CREATE VIEW titles AS SELECT title FROM tracks",
+             "CREATE TRIGGER seen AFTER INSERT ON tracks BEGIN SELECT 1; END"],
             ["schema: 2 declaration(s) only in the second capture"],
         ),
         # A column added to a table: its rows read the same until one is written.
         (
             [KEYED],
-            [
-                "CREATE TABLE tracks (id INTEGER NOT NULL, title TEXT, PRIMARY KEY (id))",
-                "CREATE TABLE empty (a INTEGER, b TEXT)",
-            ],
-            [
-                "schema: 1 declaration(s) only in the second capture",
-                "table empty is only in the second capture",
-            ],
+            ["CREATE TABLE tracks (id INTEGER NOT NULL, title TEXT, PRIMARY KEY (id))",
+             "CREATE TABLE empty (a INTEGER, b TEXT)"],
+            ["schema: 1 declaration(s) only in the second capture",
+             "table empty is only in the second capture"],
         ),
         ([KEYED], [KEYED, "PRAGMA user_version = 3"], ["user_version 0 became 3"]),
         ([KEYED], [KEYED, "PRAGMA application_id = 7"], ["application_id 0 became 7"]),
         ([KEYED], ["PRAGMA journal_mode = WAL", KEYED], ["journal_mode 'delete' became 'wal'"]),
     ],
 )
-def test_a_database_that_holds_the_same_rows_another_way_is_reported(tmp_path, base, changed, said):
+def test_a_database_that_holds_the_same_rows_another_way_is_reported(
+    tmp_path, base, changed, said
+):
     """The review's finding: a dropped key, constraint and index compared as no difference."""
     first = _capture(tmp_path / "first", change=_rebuilt(base))
     second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=_rebuilt(changed))
@@ -437,9 +426,7 @@ def test_one_order_for_the_constraints_hides_nothing_else(changed):
     )
 
 
-NAMED_LIKE = (
-    "CREATE TABLE t (a INTEGER, checksum TEXT, unique_key TEXT, PRIMARY KEY (a), UNIQUE (a))"
-)
+NAMED_LIKE = "CREATE TABLE t (a INTEGER, checksum TEXT, unique_key TEXT, PRIMARY KEY (a), UNIQUE (a))"
 
 
 def test_a_column_named_like_a_constraint_is_a_column_and_keeps_its_place():
@@ -450,10 +437,7 @@ def test_a_column_named_like_a_constraint_is_a_column_and_keeps_its_place():
     swapped = NAMED_LIKE.replace("checksum TEXT, unique_key TEXT", "unique_key TEXT, checksum TEXT")
     canonical = compare.canonical_declaration("table", NAMED_LIKE)
     assert canonical != compare.canonical_declaration("table", swapped)
-    assert (
-        canonical
-        == "CREATE TABLE t (a INTEGER, checksum TEXT, unique_key TEXT, PRIMARY KEY (a), UNIQUE (a))"
-    )
+    assert canonical == "CREATE TABLE t (a INTEGER, checksum TEXT, unique_key TEXT, PRIMARY KEY (a), UNIQUE (a))"
     reordered = NAMED_LIKE.replace("PRIMARY KEY (a), UNIQUE (a)", "UNIQUE (a), PRIMARY KEY (a)")
     assert compare.canonical_declaration("table", reordered) == canonical
 
@@ -483,10 +467,7 @@ def test_a_declaration_is_split_at_its_own_commas_only():
     head, items, tail = compare.split_declaration(sql)
     assert head == 'CREATE TABLE "t,x" ('
     assert items == [
-        "a TEXT DEFAULT 'p, q'",
-        " b NUMERIC(10, 2)",
-        " [c,d] TEXT",
-        " CHECK (a IN ('x', 'y'))",
+        "a TEXT DEFAULT 'p, q'", " b NUMERIC(10, 2)", " [c,d] TEXT", " CHECK (a IN ('x', 'y'))"
     ]
     assert tail == ") STRICT"
     assert compare.split_declaration("CREATE TABLE t") is None
@@ -503,7 +484,9 @@ def test_a_declaration_is_split_at_its_own_commas_only():
         ("table", "CREATE VIRTUAL TABLE t USING fts5"),
     ],
 )
-def test_a_declaration_that_is_no_table_or_has_one_constraint_or_none_is_left_as_written(kind, sql):
+def test_a_declaration_that_is_no_table_or_has_one_constraint_or_none_is_left_as_written(
+    kind, sql
+):
     assert compare.canonical_declaration(kind, sql) == sql
 
 
@@ -517,12 +500,8 @@ def _broken(junk: bytes):
 def test_a_database_neither_capture_can_dump_is_compared_by_its_bytes(tmp_path, capsys):
     """The review's finding: two unreadable databases with one error text compared clean."""
     first = _capture(tmp_path / "first", change=_broken(b"not pages at all"))
-    same = _capture(
-        tmp_path / "second", process=SECOND_PROCESS, change=_broken(b"not pages at all")
-    )
-    other = _capture(
-        tmp_path / "third", process=SECOND_PROCESS, change=_broken(b"other bytes here")
-    )
+    same = _capture(tmp_path / "second", process=SECOND_PROCESS, change=_broken(b"not pages at all"))
+    other = _capture(tmp_path / "third", process=SECOND_PROCESS, change=_broken(b"other bytes here"))
     dump = json.loads((first / "write/route/databases.json").read_text())
     assert "unreadable" in dump["library/db/master.db"]
     assert _differences(first, same) == []
@@ -550,9 +529,7 @@ def test_a_database_is_compared_by_its_rows_and_not_by_its_bytes(tmp_path):
     first, second = _pair(tmp_path, change=reorder)
     listed = [json.loads((one / "write/route/files.json").read_text()) for one in (first, second)]
     assert listed[0]["library/db/master.db"]["kind"] == "database"
-    assert (
-        listed[0]["library/db/master.db"]["sha256"] != listed[1]["library/db/master.db"]["sha256"]
-    )
+    assert listed[0]["library/db/master.db"]["sha256"] != listed[1]["library/db/master.db"]["sha256"]
     assert _differences(first, second) == []
 
 
@@ -670,11 +647,7 @@ WORDS = [("3409", "3467"), ("1795265299.040", "1795265311.350")]
         # Whole, against punctuation, a path or the end of a sentence, it is the word.
         ("process 3409.", "process 3467.", True),
         ("/proc/3409/stat", "/proc/3467/stat", True),
-        (
-            '{"pid": 3409, "started": "1795265299.040"}',
-            '{"pid": 3467, "started": "1795265311.350"}',
-            True,
-        ),
+        ('{"pid": 3409, "started": "1795265299.040"}', '{"pid": 3467, "started": "1795265311.350"}', True),
         ("3409", "3467", True),
     ],
 )
@@ -977,7 +950,9 @@ def test_a_run_stopped_at_its_timeout_leaves_a_root_the_next_capture_may_take(
     assert compare.take_root(root).name == "root-holder"
 
 
-def test_a_kept_capture_leaves_a_root_and_a_source_the_next_capture_may_take(tmp_path, monkeypatch):
+def test_a_kept_capture_leaves_a_root_and_a_source_the_next_capture_may_take(
+    tmp_path, monkeypatch
+):
     out = tmp_path / "out"
     root = tmp_path / "root"
     checkout = _checkout(tmp_path, "write.py")
@@ -1119,7 +1094,9 @@ def test_a_run_that_recorded_everything_it_collected_is_closed(tmp_path, monkeyp
     assert json.loads((out / compare.MANIFEST).read_text())["scenarios"] == ["write/route"]
 
 
-def test_the_scenario_run_is_handed_a_clean_environment_and_one_hash_seed(tmp_path, monkeypatch):
+def test_the_scenario_run_is_handed_a_clean_environment_and_one_hash_seed(
+    tmp_path, monkeypatch
+):
     """A capture started inside a parallel worker must not hand its child that worker."""
     seen = {}
 
@@ -1140,7 +1117,9 @@ def test_the_scenario_run_is_handed_a_clean_environment_and_one_hash_seed(tmp_pa
     assert seen["timeout"] == 77
 
 
-def test_a_scenario_run_that_never_ends_is_stopped_and_is_no_capture(tmp_path, monkeypatch, capsys):
+def test_a_scenario_run_that_never_ends_is_stopped_and_is_no_capture(
+    tmp_path, monkeypatch, capsys
+):
     """The duration clocks stand still while a scenario runs, so a wait cannot time out alone."""
 
     def run(command, *, timeout, **_):
@@ -1158,16 +1137,8 @@ def test_a_checkout_with_no_scenario_files_is_refused(tmp_path, capsys, no_run):
     (tmp_path / "checkout" / "tests" / "behaviour").mkdir(parents=True)
     (tmp_path / "checkout" / "tests" / "behaviour" / "conftest.py").write_text("", encoding="utf-8")
     code = compare.main(
-        [
-            "behaviour_compare.py",
-            "--repo-root",
-            str(tmp_path / "checkout"),
-            "capture",
-            "--out",
-            str(tmp_path / "out"),
-            "--root",
-            str(tmp_path / "root"),
-        ]
+        ["behaviour_compare.py", "--repo-root", str(tmp_path / "checkout"), "capture",
+         "--out", str(tmp_path / "out"), "--root", str(tmp_path / "root")]
     )
     assert code == 2
     assert "no scenario files under" in capsys.readouterr().err
@@ -1199,9 +1170,7 @@ def test_a_run_that_failed_with_every_record_written_is_not_a_capture(
     said = capsys.readouterr().out
     assert "exited 1 with 1 scenarios recorded, so" in said and "left no record" not in said
     assert not (out / compare.MANIFEST).exists()
-    assert (
-        compare.unrecorded(out, compare.recorded_scenarios(out), ["tests/behaviour/write.py"]) == []
-    )
+    assert compare.unrecorded(out, compare.recorded_scenarios(out), ["tests/behaviour/write.py"]) == []
 
 
 def test_a_run_that_passes_and_records_nothing_is_not_a_capture(tmp_path, monkeypatch, capsys):
@@ -1231,13 +1200,8 @@ def test_the_scenario_run_is_serial_in_the_root_and_imports_the_placed_source(tm
 def test_the_scenario_files_are_every_module_but_the_harness_own_two():
     files = compare.scenario_files(REPO_ROOT)
     assert files == sorted(files)
-    assert {
-        "tests/behaviour/cli.py",
-        "tests/behaviour/write.py",
-        "tests/behaviour/intake.py",
-        "tests/behaviour/backup.py",
-        "tests/behaviour/tagging.py",
-    } <= set(files)
+    assert {"tests/behaviour/cli.py", "tests/behaviour/write.py", "tests/behaviour/intake.py",
+            "tests/behaviour/backup.py", "tests/behaviour/tagging.py"} <= set(files)
     assert not {"tests/behaviour/conftest.py", "tests/behaviour/__init__.py"} & set(files)
 
 
@@ -1256,9 +1220,7 @@ def test_the_suite_does_not_collect_a_scenario_file():
 def _git(root: Path, *args: str) -> None:
     done = subprocess.run(
         ["git", "-c", "user.email=capture@test", "-c", "user.name=capture", *args],
-        cwd=root,
-        capture_output=True,
-        check=False,
+        cwd=root, capture_output=True, check=False,
     )
     assert done.returncode == 0, done.stderr.decode()
 
@@ -1348,7 +1310,7 @@ def test_a_scenario_that_does_not_take_the_stage_is_refused():
         stage_fixtures.refuse_a_scenario_without_a_stage(["tmp_path", "machine"])
 
 
-WIRED_SCENARIOS = """
+WIRED_SCENARIOS = '''
 import pytest
 
 
@@ -1374,7 +1336,7 @@ def test_is_expected_to_fail(stage):
 def test_fails_after_a_command(stage):
     stage.crate("--version")
     assert False
-"""
+'''
 
 
 def _wired_run(tmp_path: Path, **env: str) -> subprocess.CompletedProcess:
@@ -1392,28 +1354,10 @@ def _wired_run(tmp_path: Path, **env: str) -> subprocess.CompletedProcess:
     }
     environment.update({compare.ENV_OUT: str(tmp_path / "out"), **env})
     return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            str(scenarios / "wired.py"),
-            "-p",
-            "tests.conftest",
-            "-p",
-            "tests.behaviour.conftest",
-            "--basetemp",
-            str(tmp_path / "root"),
-            "-p",
-            "no:cacheprovider",
-            "--tb=line",
-            "-o",
-            "addopts=",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=REPO_ROOT,
-        env=environment,
+        [sys.executable, "-m", "pytest", str(scenarios / "wired.py"), "-p", "tests.conftest",
+         "-p", "tests.behaviour.conftest", "--basetemp", str(tmp_path / "root"),
+         "-p", "no:cacheprovider", "--tb=line", "-o", "addopts="],
+        capture_output=True, text=True, check=False, cwd=REPO_ROOT, env=environment,
     )
 
 
@@ -1639,16 +1583,24 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         out = tmp_path / name
         done = subprocess.run(
             [sys.executable, str(SCRIPT), "capture", "--out", str(out), "--root", str(root)],
-            capture_output=True,
-            text=True,
-            check=False,
-            cwd=REPO_ROOT,
+            capture_output=True, text=True, check=False, cwd=REPO_ROOT,
         )
         assert done.returncode == 0, done.stdout[-3000:] + done.stderr[-1000:]
         captures.append(out)
 
     manifest = json.loads((captures[0] / compare.MANIFEST).read_text(encoding="utf-8"))
     assert manifest["scenarios"] == [
+        "acquire/a_tombstone_withholds_a_deleted_record",
+        "acquire/acquire_audit_and_the_refusals",
+        "acquire/match_verdicts_over_three_readers",
+        "acquire_bandcamp/bandcamp_plan_and_fetch",
+        "acquire_bandcamp/bandcamp_without_a_session",
+        "acquire_download/a_drive_lands_every_track",
+        "acquire_download/a_missing_session_parks",
+        "acquire_download/a_refused_login_and_a_withdrawn_session_park",
+        "acquire_fallback/fallback_offers_and_accepts",
+        "acquire_fallback_fetch/fallback_fetch_lands_marked",
+        "acquire_fallback_fetch/fallback_fetch_refused_when_strict",
         "adopt/genre_report",
         "adopt/move_job_queued_driven_and_reported",
         "adopt/revert_after_an_apply_that_wrote_tags",
@@ -1656,19 +1608,56 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
         "backup/backup_capture_and_the_restore_plan",
         "cli/a_config_no_verb_can_use",
         "cli/help_of_every_verb",
+        "core_facts/pool_gate_preflight_and_tags_answers",
+        "core_jobs/jobs_driven_to_each_end_and_read_back",
+        "core_review/review_queue_offered_resolved_withheld_exported_and_imported",
         "deletion/review_aborted_at_the_gate_moves_nothing",
         "deletion/review_offers_declines_trashes_and_lists_tombstones",
         "deletion/review_puts_the_file_back_when_its_tombstone_cannot_be_written",
         "deletion/review_refuses_a_decision_whose_digest_moved",
         "deletion/review_refuses_a_held_file_and_an_unidentifiable_row",
+        "export/a_rename_onto_a_name_the_ledger_already_holds_is_refused",
+        "export/a_renamed_inspiration_playlist_renames_the_sets_account_playlist",
+        "export/a_set_archived_into_its_years_downloaded_sets_folder",
+        "export/a_set_made_on_the_account_with_its_unmatched_row_named",
+        "export/a_set_with_no_stored_account_session_is_refused",
+        "export/the_archive_backfill_files_every_set_its_intake_file_proves",
+        "export/the_set_backfill_makes_a_playlist_for_each_inspiration_set",
         "favorites/favorites_put_in_order_behind_the_gate",
         "intake/rehearsal_and_the_gate_it_feeds",
         "label/registry_document_written_read_back_and_refused",
+        "organize/a_genre_two_root_folders_on_the_account_carry_is_refused_by_the_mirror",
+        "organize/a_mirror_pass_after_a_full_apply_and_a_rerun_that_plans_nothing",
+        "organize/an_account_with_no_stored_session_refuses_the_account_steps",
+        "organize/the_account_side_makes_the_label_folder_and_archives_the_set",
+        "organize/the_filing_step_alone_files_a_marked_playlist_in_its_year",
+        "organize/the_rekordbox_side_files_the_tracks_and_rotates_the_batch",
+        "organize/the_root_step_alone_removes_debris_and_then_the_emptied_legacy_folder",
+        "organize/with_the_export_module_off_organize_plans_and_says_what_it_left_out",
+        "organize_mirror_edits/a_track_moved_on_the_account_is_retagged_and_refiled_in_the_library",
+        "outbound/a_label_year_pruned_of_a_held_release",
+        "outbound/a_playlist_exported_through_its_confirm_and_the_jobs_resume",
+        "outbound/a_prune_whose_removal_the_accounts_window_lags_is_refused",
+        "outbound/an_exported_playlist_pruned_of_the_track_its_library_playlist_lost",
         "sync/collection_removal",
         "tagging/tag_write_to_an_audio_file",
         "tagging_rows/row_genres_written_from_their_files",
         "write/guarded_tree_write",
         "write/xml_splice",
+        "write_link/an_unknown_row_refuses_before_any_gate",
+        "write_link/three_probe_values_written_behind_the_gate",
+        "write_link/without_the_acknowledgment_the_probe_refuses_before_its_gate",
+        "write_metadata/an_unreadable_calibration_refuses_and_writes_nothing",
+        "write_metadata/vocal_tags_planned_then_written_then_already_there",
+        "write_naming/a_rename_onto_a_name_another_file_holds_overwrites_nothing",
+        "write_naming/a_rename_planned_and_applied_beside_a_referenced_file",
+        "write_naming/a_row_under_an_unmapped_volume_refuses_and_renames_nothing",
+        "write_pending/route_pending_after_a_native_landing",
+        "write_resort/a_resort_planned_queued_and_run_by_its_worker",
+        "write_resort/an_answer_over_a_copy_does_not_approve_the_live_file",
+        "write_rows/an_inline_answer_is_refused_and_nothing_is_filled",
+        "write_rows/bare_rows_given_their_defaults_behind_the_gate",
+        "write_rows/without_the_acknowledgment_the_repair_refuses_before_its_gate",
     ]
     assert manifest["root"] == str(root.resolve()) and manifest["source"] == "the working tree"
     # The run cleaned up after itself, and held nothing back.
@@ -1677,7 +1666,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "20 scenarios" in summary and "no difference" in summary
+    assert "68 scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())
@@ -1694,9 +1683,9 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
     assert written["library/db/master.db"]["kind"] == "database"
     assert written["config/config.toml"]["kind"] == "file"
     assert written["state/cratekit/jobs/queue.db"]["mode"] == "0600"
-    queue = json.loads((captures[0] / "write/guarded_tree_write/databases.json").read_text())[
-        "state/cratekit/jobs/queue.db"
-    ]
+    queue = json.loads(
+        (captures[0] / "write/guarded_tree_write/databases.json").read_text()
+    )["state/cratekit/jobs/queue.db"]
     assert queue["settings"]["journal_mode"] == "wal"
     assert any('"type": "index"' in one for one in queue["schema"])
     assert sorted(json.loads((captures[0] / compare.EXPECTED).read_text())) == manifest["scenarios"]

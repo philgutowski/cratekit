@@ -1,50 +1,17 @@
-"""Marked custom playlists filed into their year folders on the account (U116).
+"""Every playlist at the account root placed or left with its reason (U116).
 
-THE HAND CONVENTION, MADE A STEP. The author moved each custom playlist into
-the account folder for its year once he had downloaded it, and nothing did that
-for him: ``sync mark`` prefixes a finished playlist and moves nothing, so a
-marked playlist stayed at the account root. This step lists every playlist at
-the root and names what becomes of each one:
+A playlist a sync marked moves into the root folder of its mark's year, one an
+export made into ``Exports`` (U131), and one no ledger claims that no year can
+file into ``Mine`` (U131). Label and set playlists are their own steps', label
+debris and empty playlists the root step's (U143), and a working custom
+playlist stays at the root whatever its age (U143, Phillip's rule of
+2026-10-13). One in a ``Mine`` this product made is still read for its mark;
+nothing is moved out of a folder a person made.
 
-* A PLAYLIST A SYNC MARKED, by ``sync mark``'s record and a mark still standing,
-  is moved into the root folder named for the year of its mark;
-* a label playlist is the label step's, and a set playlist is the archive's;
-* the product's own working playlists stay where they are;
-* A PLAYLIST AN EXPORT MADE, by the ledger's record, is moved into the root
-  ``Exports`` folder (U131);
-* THE SOURCE SYSTEM'S LABEL DEBRIS, and an unclaimed playlist holding no
-  track, are left for the root step (U143), :mod:`cratekit.organize.root`,
-  which removes each it can, by name on the gate;
-* A WORKING CUSTOM PLAYLIST, one no ledger claims and no sync marked, is left
-  at the root, whatever its age (U143). It is the one playlist that belongs
-  there, until a sync marks it and this step files it by its year. Before
-  U143 it was moved into ``Mine`` (U131), and Phillip's rule of 2026-10-13
-  reversed that;
-* ONE NO LEDGER CLAIMS THAT A SYNC CANNOT FILE BY A YEAR, its name prefixed
-  with no mark recorded or its mark carrying no year, is moved into the root
-  ``Mine`` folder (U131), by name on the gate;
-* what is left, the product's other playlists and any playlist whose folder a
-  name cannot decide, is reported and left with its reason.
-
-A PLAYLIST IN ``Mine`` IS STILL READ FOR ITS MARK (U131). One filed in ``Mine``
-and marked by a later sync moves on into its year folder, as one at the root
-does. Only a ``Mine`` this product made is read so; a playlist is never moved
-out of a folder a person made, and one adopted by its name may be a person's.
-
-THE YEAR FOLDER IS THE PLAIN ``<year>``, NEVER THE SETS' FOLDER (U142). A set
-is archived into ``Downloaded Sets <year>``, recorded in the same ledger map
-under that name, so the two never share a folder. The year folder is decided on
-the archive's rule: a folder recorded and still listed is reused, one root
-folder named as the year is adopted, and none is created once, on apply, for
-every playlist of that year. Two or more root folders named as the year leave
-that year's playlists where they are, reported, since a playlist the plan
-cannot place is never moved.
-
-ADD ONLY. A folder is created and a playlist is put in one; nothing is renamed,
-nothing is removed. The root's three removals are the root step's (U143), on
-rows this plan leaves for it. A move is undone by a move back,
-and each move this step makes is named on the applied totals the run records,
-playlist and folder, so the run says exactly what to put back.
+THE YEAR FOLDER IS THE PLAIN ``<year>``, never the sets' ``Downloaded Sets
+<year>`` (U142), decided on the archive's rule. Two root folders named as the
+year leave its playlists where they are, since one the plan cannot place is
+never moved. ADD ONLY, and each move is named on the applied totals.
 
 Layer: modules.
 """
@@ -54,14 +21,16 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
-from cratekit.modules.outbound import kinds, ledger, sets
-from cratekit.modules.outbound.service import RemoteAccount
 from cratekit.organize import own
 from cratekit.sync.playlists import is_library_debris, is_taken
+
+if TYPE_CHECKING:
+    from cratekit.modules.outbound import kinds
+    from cratekit.modules.outbound.service import RemoteAccount
 
 _ORIGIN = ("organize.filing",)
 
@@ -93,13 +62,6 @@ UNDATED = "its mark carries no year, so no year folder is its own"
 EXPORTED = "made by export playlist, so it is filed with the exports"
 
 
-def _ambiguous(year: str, count: int) -> str:
-    return (
-        f"the account holds {count} root folders named {year!r}, so which one is "
-        f"the year's is not something its name decides"
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class YearFolder:
     """One year's folder as the plan found it."""
@@ -111,6 +73,14 @@ class YearFolder:
     stale: str = ""
     #: Set when the year cannot be placed, and then nothing of the year moves.
     why: str = ""
+
+
+def folder_rows(folders: Mapping[str, Any]) -> list[list[str]]:
+    """Each year's or kind's folder as a digest covers it, in name order."""
+    return [
+        [name, one.action, one.folder_id, one.stale, one.why]
+        for name, one in sorted(folders.items())
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,10 +97,7 @@ class Placement:
 
     def item(self, folder: YearFolder | kinds.KindFolder | None) -> dict[str, Any]:
         shown: dict[str, Any] = {
-            "id": self.playlist_id,
-            "kind": "playlist",
-            "name": self.name,
-            "action": self.action,
+            "id": self.playlist_id, "kind": "playlist", "name": self.name, "action": self.action
         }
         if self.year:
             shown["year"] = self.year
@@ -165,14 +132,15 @@ class FilePlan:
         return bool(self.moves)
 
     def creates(self) -> tuple[str, ...]:
-        """The years whose folder a move needs and the account does not hold."""
-        wanted = {row.year for row in self.moves if row.year}
-        made = sorted(year for year in wanted if self.years[year].action == sets.CREATE)
-        wanted_kinds = {row.kind for row in self.moves if row.kind}
-        made += sorted(
-            kind for kind in wanted_kinds if self.kinds[kind].action == kinds.CREATE
+        """The years, then the kinds, whose folder a move needs and the account lacks."""
+        from cratekit.modules.outbound import kinds, sets
+
+        years = {row.year for row in self.moves if row.year}
+        wanted = {row.kind for row in self.moves if row.kind}
+        return (
+            *sorted(year for year in years if self.years[year].action == sets.CREATE),
+            *sorted(kind for kind in wanted if self.kinds[kind].action == kinds.CREATE),
         )
-        return tuple(made)
 
     def identity(self) -> dict[str, Any]:
         """What the digest covers: every row at the root, and every year's folder."""
@@ -181,14 +149,8 @@ class FilePlan:
             "rows": [
                 [row.playlist_id, row.action, row.year, row.why, row.kind] for row in self.rows
             ],
-            "years": [
-                [one.year, one.action, one.folder_id, one.stale, one.why]
-                for one in (self.years[year] for year in sorted(self.years))
-            ],
-            "kinds": [
-                [one.kind, one.action, one.folder_id, one.stale, one.why]
-                for one in (self.kinds[kind] for kind in sorted(self.kinds))
-            ],
+            "years": folder_rows(self.years),
+            "kinds": folder_rows(self.kinds),
         }
 
     def items(self) -> list[dict[str, Any]]:
@@ -213,10 +175,8 @@ class Filed:
 
     def totals(self) -> dict[str, Any]:
         return {
-            "folders": dict(self.folders),
-            "folders_created": list(self.created),
-            "kind_folders": dict(self.kinds),
-            "kind_folders_created": list(self.kinds_created),
+            "folders": dict(self.folders), "folders_created": list(self.created),
+            "kind_folders": dict(self.kinds), "kind_folders_created": list(self.kinds_created),
             "moved": [list(one) for one in self.moved],
         }
 
@@ -224,9 +184,8 @@ class Filed:
 def year_of_mark(marked: str) -> str:
     """The year a mark landed in local time, or ``""``.
 
-    The stamp is stored in UTC. A mark at 20:00 Eastern on 31 December is the
-    next day's UTC year, and filing by the UTC digits would put it in the wrong
-    year folder. Local time is the year the person meant.
+    The stamp is stored in UTC, and a mark late on 31 December west of UTC is
+    the next UTC year; local time is the year the person meant.
     """
     text = str(marked or "").strip()
     if not text:
@@ -243,17 +202,15 @@ def year_of_mark(marked: str) -> str:
 def year_folder(cfg: config.Config, year: str, root: Mapping[str, str]) -> YearFolder:
     """One year's folder on the set archive's rule, never refused here.
 
-    The root step's legacy moves (U143) decide the year's folder by this same
-    rule, so the two steps file into one folder and never make two.
+    The root step's legacy moves (U143) use this same rule, so the two steps
+    file into one folder and never make two.
     """
+    from cratekit.modules.outbound import kinds, ledger, sets
+
     recorded = ledger.set_folder(cfg, year)
-    # A RECORD WHOSE FOLDER NOW CARRIES THE SETS' NAME IS NOT THE YEAR'S (U142).
-    # Before U142 the archive recorded its folder under the plain year, so a
-    # person who renamed that folder to ``Downloaded Sets <year>`` left the
-    # year's record pointing at the sets' folder. Reused by identifier, it would
-    # file custom playlists among the sets, so it is read as stale and replaced.
-    # NOR IS ONE NOW NAMED AS A LEGACY YEAR FOLDER (U143), which the root step
-    # empties into the year's folder: reused, it would be emptied into itself.
+    # A RECORD WHOSE FOLDER NOW CARRIES THE SETS' NAME IS NOT THE YEAR'S (U142),
+    # since it would file custom playlists among the sets, NOR IS ONE NOW NAMED
+    # AS A LEGACY YEAR FOLDER (U143), which would be emptied into itself.
     if (
         recorded
         and recorded in root
@@ -263,7 +220,11 @@ def year_folder(cfg: config.Config, year: str, root: Mapping[str, str]) -> YearF
         return YearFolder(year=year, action=sets.REUSE, folder_id=recorded)
     named = sorted(folder_id for folder_id, title in root.items() if title == year)
     if len(named) > 1:
-        return YearFolder(year=year, action=LEFT, stale=recorded, why=_ambiguous(year, len(named)))
+        why = (
+            f"the account holds {len(named)} root folders named {year!r}, so which one is "
+            f"the year's is not something its name decides"
+        )
+        return YearFolder(year=year, action=LEFT, stale=recorded, why=why)
     if named:
         return YearFolder(year=year, action=sets.ADOPT, folder_id=named[0], stale=recorded)
     return YearFolder(year=year, action=sets.CREATE, stale=recorded)
@@ -272,11 +233,9 @@ def year_folder(cfg: config.Config, year: str, root: Mapping[str, str]) -> YearF
 def _standing_marks(marks: Iterable[Any], taken: Iterable[Any] = ()) -> dict[str, str]:
     """Each playlist with a mark still standing, to the instant of its latest one.
 
-    ``taken`` is the record's taken ledger (U242), and an entry a pass made,
-    or one the migration copied from a pass's legacy mark, is a mark standing
-    at its stamp. An entry the migration made for a prefix no mark dated is
-    not: its stamp is when it was found, and filing by it would choose the
-    year of the migration, so it stays the undated prefixed playlist it was.
+    ``taken`` is the record's taken ledger (U242): an entry a pass made, or one
+    copied from a pass's legacy mark, stands at its stamp. One the migration
+    made for an undated prefix does not, since its stamp is when it was found.
     """
     standing: dict[str, str] = {}
 
@@ -286,8 +245,7 @@ def _standing_marks(marks: Iterable[Any], taken: Iterable[Any] = ()) -> dict[str
             standing[playlist_id] = marked
 
     for entry in marks:
-        # A PREFIX A PASS WROTE, never a title ``sync strip`` wrote taking one
-        # off, which says nothing of when the playlist was finished (U242).
+        # A PREFIX A PASS WROTE, never a title ``sync strip`` wrote (U242).
         if not entry.unmarked and getattr(entry, "of_the_prefix", True):
             keep(entry.playlist_id, str(entry.marked))
     for entry in taken:
@@ -296,14 +254,11 @@ def _standing_marks(marks: Iterable[Any], taken: Iterable[Any] = ()) -> dict[str
     return standing
 
 
-
 def playlists_in_folders(remote: RemoteAccount) -> set[str]:
     """Every playlist any folder on the account holds, nested folders included.
 
-    Root folders alone are not enough: a playlist two folders down (for example
-    under Archive then 2025) is never listed by ``folder_playlists`` of a root
-    folder, and treating it as at the root would move it out. Walk every folder
-    the account reports, and every folder those hold.
+    A playlist two folders down is never listed by a root folder's
+    ``folder_playlists``, and read as at the root it would be moved out.
     """
     held: set[str] = set()
     pending = list(remote.folders())
@@ -323,24 +278,25 @@ def at_root(listed: Sequence[Any], in_folders: set[str] | frozenset[str]) -> lis
     return [one for one in listed if one.playlist_id not in in_folders]
 
 
+def by_name(pairs: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
+    """``(identifier, name)`` pairs in name, then identifier, order."""
+    return sorted(pairs, key=lambda pair: (pair[1], pair[0]))
+
+
 def plan(
-    cfg: config.Config,
-    *,
-    listed: Sequence[Any],
-    remote: RemoteAccount,
-    labels: Iterable[str],
-    marks: Iterable[Any],
-    working: Any,
-    taken: Iterable[Any] = (),
+    cfg: config.Config, *, listed: Sequence[Any], remote: RemoteAccount, labels: Iterable[str],
+    marks: Iterable[Any], working: Any, taken: Iterable[Any] = (),
 ) -> FilePlan:
     """Decide every playlist at the account root. Reads, and writes nothing.
 
     ``listed`` is every playlist the account created, ``marks`` is ``sync
-    mark``'s record, ``taken`` its taken ledger's entries (U242), and ``working`` answers whether a name is one of the
-    product's own working playlists. A playlist in any folder is not at the
-    root and is not this step's, save one in the ``Mine`` this product made,
-    which is read for a mark that sends it on to its year (U131).
+    mark``'s record, ``taken`` its taken ledger's entries (U242), and
+    ``working`` answers whether a name is one of the product's own working
+    playlists. A playlist in a folder is not this step's, save one in a
+    ``Mine`` this product made (U131).
     """
+    from cratekit.modules.outbound import kinds, ledger
+
     labels = tuple(labels)
     root = remote.folders()
     in_folders = playlists_in_folders(remote)
@@ -376,8 +332,7 @@ def plan(
     # Mine this product made. Nothing else in Mine is shown: it is filed.
     mine = kinds.decide(cfg, kinds.MINE, root)
     if mine.made and mine.folder_id:
-        held = remote.folder_playlists(mine.folder_id)
-        for identity, name in sorted(held.items(), key=lambda pair: (pair[1], pair[0])):
+        for identity, name in by_name(remote.folder_playlists(mine.folder_id).items()):
             year = year_of_mark(standing.get(identity, ""))
             if year and identity not in label_built and identity not in set_built:
                 row = year_row(str(identity), str(name), year)
@@ -398,18 +353,14 @@ def plan(
         if not claimed and is_library_debris(name):
             rows.append(Placement(identity, name, LEFT, why=EMPTY if empty else DEBRIS))
             continue
-        # A TAKEN PLAYLIST IS NEVER READ AS A LABEL'S BY ITS NAME (U242): the
-        # old prefix shielded a marked one from the label's name, and the
-        # record stands in for it once the prefix is gone. A label's own year
-        # playlists are claimed above by the ledger, not by a name.
+        # A TAKEN PLAYLIST IS NEVER READ AS A LABEL'S BY ITS NAME (U242).
         if not is_taken(identity, name, held_taken) and own.label_of(name, labels) is not None:
             rows.append(Placement(identity, name, LEFT, why=LABEL_STEP))
             continue
         if working(name):
             rows.append(Placement(identity, name, LEFT, why=WORKING))
             continue
-        # AN EMPTY PLAYLIST IS THE ROOT STEP'S WHATEVER ITS MARK, since a
-        # playlist holding nothing downloaded nothing to file by a year.
+        # AN EMPTY PLAYLIST IS THE ROOT STEP'S WHATEVER ITS MARK: it downloaded nothing.
         if empty:
             rows.append(Placement(identity, name, LEFT, why=EMPTY))
             continue
@@ -423,63 +374,44 @@ def plan(
         if identity in made:
             rows.append(Placement(identity, name, LEFT, why=PRODUCT_MADE))
             continue
-        # NO LEDGER CLAIMS IT AND NO SYNC MARKED IT: a working custom playlist,
-        # kept at the root (U143), however old.
+        # UNCLAIMED AND UNMARKED: a working custom playlist, kept at the root (U143).
         if identity not in standing and not is_taken(identity, name, held_taken):
             rows.append(Placement(identity, name, LEFT, why=WORKING_CUSTOM))
             continue
-        # NO LEDGER CLAIMS IT AND NO YEAR FILES IT, so it is the author's own
-        # (U131), filed in Mine with the reason it is not filed by a year.
+        # UNCLAIMED AND NO YEAR FILES IT: the author's own, filed in Mine (U131).
         why = UNDATED if identity in standing else PREFIXED_UNMARKED
         rows.append(kind_row(identity, name, kinds.MINE, why))
     return FilePlan(rows=tuple(rows), years=years, kinds=kind_folders, root=dict(root))
 
 
-def _failed_part_way(exc: Exception, done: Filed) -> Exception:
-    """The failure, with every folder made and every move made named in it."""
-    if done.moved or done.created or done.kinds_created:
-        wrote = (
-            f"before this failed {len(done.created)} year folder(s) were created, "
-            f"{len(done.kinds_created)} kind folder(s) were created and "
-            f"{len(done.moved)} playlist(s) were moved: "
-            + ", ".join(f"{playlist} into {folder}" for playlist, folder in done.moved)
-        ).rstrip(": ")
-    else:
-        wrote = "nothing was moved before this failed"
-    detail = done.totals()
-    again = "run crate organize again; a year folder made is reused, never made twice"
-    if isinstance(exc, CratekitError):
-        cause = exc.cause
-        return refuse(
-            cause.reason,
-            f"{wrote}. {cause.message}",
-            remedy=cause.remediation.remedy,
-            steps=(*cause.remediation.steps, again),
-            scope=Scope.RUN,
-            retryable=cause.retryable,
-            origin=_ORIGIN,
-            detail={**dict(cause.detail), **detail},
-            inner=cause,
-        )
-    # ANY OTHER FAILURE IS THIS BUILD'S OWN. ``organize`` names it a defect of
-    # the step, and the message it reads carries what moved.
-    return RuntimeError(f"{wrote}. {type(exc).__name__}: {exc}")
+def failed_part_way(exc: Exception, wrote: str, done: Any, again: str, origin) -> Exception:
+    """An apply's failure with what it wrote first said in front, and its totals in detail.
+
+    A refusal keeps its reason and remedy and gains ``again`` as a step; any
+    other failure is this build's own, which ``organize`` names a defect.
+    """
+    if not isinstance(exc, CratekitError):
+        return RuntimeError(f"{wrote}. {type(exc).__name__}: {exc}")
+    cause = exc.cause
+    return refuse(
+        cause.reason, f"{wrote}. {cause.message}",
+        remedy=cause.remediation.remedy, steps=(*cause.remediation.steps, again),
+        scope=Scope.RUN, retryable=cause.retryable, origin=origin,
+        detail={**dict(cause.detail), **done.totals()}, inner=cause,
+    )
 
 
 def reserve_year(
-    cfg: config.Config,
-    remote: RemoteAccount,
-    folder: YearFolder,
-    folders: dict[str, str],
+    cfg: config.Config, remote: RemoteAccount, folder: YearFolder, folders: dict[str, str],
     created: list[str],
 ) -> str:
     """The year's folder identifier, made once on the account if the plan found none.
 
-    ``folders`` and ``created`` are the caller's, and take the folder and its
-    year as soon as the provider answers a create, before the ledger write, so
-    a write that then raises still names the folder made. A folder another
-    step recorded first in the same apply is reused, never made twice.
+    ``folders`` and ``created`` take a made folder as soon as the provider
+    answers, before the ledger write, so a write that then raises still names
+    it. A folder another step recorded first in the same apply is reused.
     """
+    from cratekit.modules.outbound import ledger, sets
 
     def create() -> str:
         folder_id = remote.create_folder(folder.year)
@@ -487,14 +419,16 @@ def reserve_year(
         created.append(folder.year)
         return folder_id
 
-    folder_id, _made = ledger.reserve_set_folder(
-        cfg,
-        folder.year,
-        create,
-        adopt=folder.folder_id if folder.action == sets.ADOPT else "",
-        stale=folder.stale,
-    )
-    return folder_id
+    adopt = folder.folder_id if folder.action == sets.ADOPT else ""
+    return ledger.reserve_set_folder(cfg, folder.year, create, adopt=adopt, stale=folder.stale)[0]
+
+
+def move_into_year(cfg, remote: RemoteAccount, years, done: Any, year: str, target: str) -> None:
+    """Move one playlist into its year's folder, reserving the folder once per apply."""
+    if year not in done.folders:
+        done.folders[year] = reserve_year(cfg, remote, years[year], done.folders, done.created)
+    remote.move_to_folder(target, done.folders[year])
+    done.moved.append([target, done.folders[year]])
 
 
 def apply(cfg: config.Config, remote: RemoteAccount, planned: FilePlan) -> Filed:
@@ -503,50 +437,38 @@ def apply(cfg: config.Config, remote: RemoteAccount, planned: FilePlan) -> Filed
     STOPS AT THE FIRST REFUSAL and raises it with what moved named, so a
     provider that refuses part way leaves a run that says what to put back.
     """
+    from cratekit.modules.outbound import kinds
+
     done = Filed()
     try:
         for row in planned.moves:
-            if row.kind:
-                if row.kind not in done.kinds:
-                    done.kinds[row.kind] = kinds.reserve(
-                        cfg, remote, planned.kinds[row.kind], done.kinds_created
-                    )
-                remote.move_to_folder(row.playlist_id, done.kinds[row.kind])
-                done.moved.append([row.playlist_id, done.kinds[row.kind]])
+            if not row.kind:
+                move_into_year(cfg, remote, planned.years, done, row.year, row.playlist_id)
                 continue
-            if row.year not in done.folders:
-                done.folders[row.year] = reserve_year(
-                    cfg, remote, planned.years[row.year], done.folders, done.created
+            if row.kind not in done.kinds:
+                done.kinds[row.kind] = kinds.reserve(
+                    cfg, remote, planned.kinds[row.kind], done.kinds_created
                 )
-            remote.move_to_folder(row.playlist_id, done.folders[row.year])
-            done.moved.append([row.playlist_id, done.folders[row.year]])
+            remote.move_to_folder(row.playlist_id, done.kinds[row.kind])
+            done.moved.append([row.playlist_id, done.kinds[row.kind]])
     except Exception as exc:
-        raise _failed_part_way(exc, done) from exc
+        if done.moved or done.created or done.kinds_created:
+            wrote = (
+                f"before this failed {len(done.created)} year folder(s) were created, "
+                f"{len(done.kinds_created)} kind folder(s) were created and "
+                f"{len(done.moved)} playlist(s) were moved: "
+                + ", ".join(f"{playlist} into {folder}" for playlist, folder in done.moved)
+            ).rstrip(": ")
+        else:
+            wrote = "nothing was moved before this failed"
+        again = "run crate organize again; a year folder made is reused, never made twice"
+        raise failed_part_way(exc, wrote, done, again, _ORIGIN) from exc
     return done
 
 
 __all__ = [
-    "DEBRIS",
-    "EMPTY",
-    "EXPORTED",
-    "LABEL_STEP",
-    "LEFT",
-    "MOVE",
-    "PREFIXED_UNMARKED",
-    "PRODUCT_MADE",
-    "SET_STEP",
-    "UNDATED",
-    "WORKING",
-    "WORKING_CUSTOM",
-    "FilePlan",
-    "Filed",
-    "Placement",
-    "YearFolder",
-    "apply",
-    "at_root",
-    "plan",
-    "playlists_in_folders",
-    "reserve_year",
-    "year_folder",
-    "year_of_mark",
+    "DEBRIS", "EMPTY", "EXPORTED", "LABEL_STEP", "LEFT", "MOVE", "PREFIXED_UNMARKED",
+    "PRODUCT_MADE", "SET_STEP", "UNDATED", "WORKING", "WORKING_CUSTOM", "FilePlan", "Filed",
+    "Placement", "YearFolder", "apply", "at_root", "plan", "playlists_in_folders",
+    "reserve_year", "year_folder", "year_of_mark",
 ]

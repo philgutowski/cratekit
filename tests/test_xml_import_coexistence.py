@@ -1,9 +1,8 @@
 """U20: a flipped tree refuses the XML bridge; an unflipped sibling still accepts it.
 
-The plan's test scenarios for per-tree cutover. The emitter guard is already
-proved per emitter in ``tests/test_tree_registry.py``. This file is the
-coexistence claim those tests do not make: one document, two governed trees,
-one flipped, and a write into the unflipped tree still lands.
+The guard is proved per emitter in ``tests/test_tree_registry.py``; this is the
+coexistence claim: one document, two governed trees, one flipped, and a write
+into the unflipped tree still lands.
 """
 
 from __future__ import annotations
@@ -99,10 +98,6 @@ def test_an_all_bridge_library_is_unchanged_by_the_coexistence_rule():
     """Until the first flip, every governed write is still a byte splice."""
     content = bytearray(_tree_doc())
     before = bytes(content)
-    tree = rbxml.Tree(
-        display=TREE_DISPLAY,
-        id=TREE_ID,
-        registry=tree_registry.EMPTY,
-    )
+    tree = rbxml.Tree(display=TREE_DISPLAY, id=TREE_ID, registry=tree_registry.EMPTY)
     rbxml.splice_into_subplaylist(content, FOLDER_DISPLAY, SUB_DISPLAY, [901], tree=tree)
     assert bytes(content) != before

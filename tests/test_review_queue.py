@@ -1,24 +1,11 @@
 """U11: the review queue, the decision stores, and the split between them.
 
-R12 in one sentence: every state the product asks a person to adjudicate is a
-persisted, addressable review item, never a file the user must hand edit. The
-source system's answer is a spread of comma-separated files a person opens in a
-spreadsheet, edits, and saves, and the failure modes of that shape are what this
-suite asserts against:
-
-* it re-prompts unconditionally every run, because a decision is not recorded
-  anywhere a later run consults;
-* it has no rejected state at all, so an item a person looked at and turned down
-  is indistinguishable from one nobody has reached yet, and unresolved items roll
-  forward forever;
-* it is per set directory, so a decision made on one machine is invisible to the
-  next, and a decision made this morning is invisible after the directory is
-  cleaned up.
-
-Every test here is written against those three, and the harder ones use a REAL
-second process rather than a second handle in the same interpreter. A second
-handle shares the interpreter's memory, so it can only prove that a value was
-kept; a second process can only see what actually reached the disk.
+R12: every state the product asks a person to adjudicate is a persisted,
+addressable review item, never a file the user must hand edit. The source
+system's comma separated files re-prompt every run, have no rejected state, and
+are per set directory; every test here is written against those three. The
+harder ones use a REAL second process, since only a second process sees what
+actually reached the disk.
 """
 
 from __future__ import annotations
@@ -53,20 +40,15 @@ SRC_ROOT = REPO_ROOT / "src"
 SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
+# Fixtures and helpers
 
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
     """A configured library, saved, so a second process resolves the same one.
 
-    The environment variable is set as well as the file, and it has to be: the
-    suite's isolation fixture already points the library root somewhere, and
-    ``from_dict`` relocates a configured root onto whatever the environment says.
-    Writing only the file would leave the value under test and the value in force
-    as two different directories, which is the exact P2 shape.
+    The environment variable is set as well as the file: ``from_dict`` relocates
+    a configured root onto whatever the environment says (P2).
     """
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
@@ -94,75 +76,65 @@ def store(cfg):
         yield opened
 
 
-def _in_another_process(*argv: str) -> subprocess.CompletedProcess:
-    """Run the real command line in a genuinely separate interpreter.
+def _child_env() -> dict[str, str]:
+    """The inherited environment, so a child resolves the same temporary library."""
+    return {**os.environ, "PYTHONPATH": str(SRC_ROOT)}
 
-    The environment is inherited, which is what makes this honest: the suite's
-    isolation fixtures redirect every state root through environment variables,
-    so the child resolves the same temporary library and the same temporary
-    installation state as the parent, and nothing real is reachable from either.
-    """
-    env = dict(os.environ)
-    env["PYTHONPATH"] = str(SRC_ROOT)
+
+def _in_another_process(*argv: str) -> subprocess.CompletedProcess:
+    """Run the real command line in a separate interpreter and wait for it."""
     return subprocess.run(
         [sys.executable, "-m", "cratekit.cli", *argv],
-        env=env,
+        env=_child_env(),
         capture_output=True,
         text=True,
     )
 
 
 def _start_another_process(*argv: str) -> subprocess.Popen:
-    """Start the real command line WITHOUT waiting, so two of them overlap.
-
-    ``_in_another_process`` waits, which serializes what a race test needs to
-    interleave. Everything else about the environment is the same.
-    """
-    env = dict(os.environ)
-    env["PYTHONPATH"] = str(SRC_ROOT)
+    """Start the real command line WITHOUT waiting, so two of them overlap."""
     return subprocess.Popen(
         [sys.executable, "-m", "cratekit.cli", *argv],
-        env=env,
+        env=_child_env(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
 
 
-def _in_separate_processes(script: str, *, workers: int, arguments) -> None:
-    """Run one short script in several REAL interpreters at once, and check each.
-
-    A thread would share this interpreter's memory and its locks, so it can only
-    ever prove that a value was kept. Only a separate process can show what
-    actually reached the disk, which is the whole question a decision store has
-    to answer.
-    """
-    env = dict(os.environ)
-    env["PYTHONPATH"] = str(SRC_ROOT)
-    running = [
+def _start_separate_processes(script: str, *, workers: int, arguments) -> list[subprocess.Popen]:
+    """Start one short script in several REAL interpreters at once."""
+    return [
         subprocess.Popen(
             [sys.executable, "-c", script, *(str(value) for value in arguments(worker))],
-            env=env,
+            env=_child_env(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
         for worker in range(workers)
     ]
+
+
+def _all_succeed(running: list[subprocess.Popen]) -> None:
     for process in running:
         out, err = process.communicate()
         assert process.returncode == 0, err or out
 
 
 def _drive(*argv: str) -> tuple[int, dict, str]:
-    """Run the real dispatcher in process and return the parsed envelope.
-
-    Used for everything except the cross process scenarios, which need a real
-    interpreter on each side and use ``_in_another_process`` instead.
-    """
+    """Run the real dispatcher in process and return the parsed envelope."""
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
     return code, json.loads(out.getvalue()), err.getvalue()
+
+
+def _refused(*argv: str, reason: str) -> dict:
+    """Drive the dispatcher and assert a precondition refusal for ``reason``."""
+    code, envelope, _ = _drive(*argv)
+    assert code == int(ExitCode.PRECONDITION), argv
+    assert envelope["cause"]["reason"] == reason
+    return envelope
 
 
 def _offer_one(store, *, key: str = "a", **overrides):
@@ -182,25 +154,47 @@ def _offer_one(store, *, key: str = "a", **overrides):
     return review.offer(store, **fields)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+def _offer_many(store, keys) -> list[str]:
+    """One item per key, in order, as ``_offer_one`` would make them.
+
+    Only the population skips the per commit fsync: WAL keeps every commit
+    visible to other connections and processes, and FULL is back before the test.
+    """
+    store.conn.execute("PRAGMA synchronous=NORMAL")
+    try:
+        return [_offer_one(store, key=key).item_id for key in keys]
+    finally:
+        store.conn.execute("PRAGMA synchronous=FULL")
+
+
+def _document(*items, exported: str = "2026-01-01T00:00:00+00:00") -> dict:
+    """An export document carrying ``items``."""
+    return {"export": review.EXPORT_VERSION, "queue": "", "exported": exported, "items": list(items)}
+
+
+def _written(path: Path, *items) -> Path:
+    path.write_text(json.dumps(_document(*items)))
+    return path
+
+
+def _stored_verdict(store, item_id: str):
+    """The raw verdict column, past the reader's coercion."""
+    row = store.conn.execute(
+        "SELECT verdict FROM review_items WHERE item_id = ?", (item_id,)
+    ).fetchone()
+    return row["verdict"]
+
+
 # Part 1: identity, and the storage that survives the process
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_item_identifier_is_derived_from_stable_facts_rather_than_a_display_name():
-    """D5. A record keyed by what a thing is CALLED is orphaned by a rename.
-
-    The identifier is a function of the queue, the kind, and an identity mapping
-    the producer supplies, so two producers that mean the same candidate agree
-    without coordinating, and a display name changing moves nothing.
-    """
+    """D5. The identifier is a function of queue, kind and identity, and key order is not identity."""
     first = review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", {"row": "7"})
     again = review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", {"row": "7"})
     other = review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", {"row": "8"})
     assert first == again
     assert first != other
-    # Key order is not identity: a producer that builds its mapping differently
-    # must not manufacture a second item for the same candidate.
     assert review.item_id_for(
         review.Queue.VERSION_MATCH, "version-difference", {"a": "1", "b": "2"}
     ) == review.item_id_for(
@@ -215,15 +209,8 @@ def test_an_identity_with_nothing_in_it_is_refused():
     assert excinfo.value.cause.reason == "review-selection-invalid"
 
 
-# ── The identity is NORMALIZED before it is hashed ───────────────────────────
-#
-# This is the module's central claim and the whole reason three comma separated
-# files fold into one queue: two producers that mean the same candidate agree
-# without coordinating. The identity mapping and the kind are both free-form
-# producer input, and a canonical JSON hash distinguishes 7 from "7", so the
-# claim was false for the commonest disagreement there is. ``_same_value``
-# already exists in this module because this codebase mixes text and numeric
-# spellings of one fact, and the identity is where that mix costs the most.
+# The identity is NORMALIZED before it is hashed, so two producers that mean the
+# same candidate agree without coordinating, as ``_same_value`` already does.
 
 
 @pytest.mark.parametrize(
@@ -237,12 +224,7 @@ def test_an_identity_with_nothing_in_it_is_refused():
     ],
 )
 def test_the_same_candidate_spelled_two_ways_is_one_identifier(left, right):
-    """A type difference is not a different candidate.
-
-    Observed before this: ``{"track_id": 7}`` and ``{"track_id": "7"}`` produced
-    different identifiers, so the same candidate was asked about twice and the
-    second question could not be recognized as the first.
-    """
+    """A type difference is not a different candidate, for items and suppressions alike."""
     assert review.item_id_for(
         review.Queue.VERSION_MATCH, "version-difference", left
     ) == review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", right)
@@ -261,56 +243,30 @@ def test_the_same_candidate_spelled_two_ways_is_one_identifier(left, right):
     ],
 )
 def test_normalizing_the_identity_does_not_collapse_facts_that_differ(left, right):
-    """The other direction, and it is the one that would be dangerous.
-
-    ``_same_value`` refuses to match ``None`` against the text ``"None"``
-    because "this field is absent" and "this field says None" are different
-    facts. Collapsing them in an identity would merge two candidates onto one
-    item and settle a decision nobody made about the second.
-    """
+    """Absent and the text "None" are different facts; merging them settles an unmade decision."""
     assert review.item_id_for(
         review.Queue.VERSION_MATCH, "version-difference", left
     ) != review.item_id_for(review.Queue.VERSION_MATCH, "version-difference", right)
 
 
 def test_the_same_candidate_under_two_spellings_of_one_kind_is_one_item(store):
-    """A kind is an identifier and never a display name (D5, R19).
-
-    Two producers describing one candidate wrote ``version-difference`` and
-    ``version_difference``, which produced a third item for a candidate that was
-    already in the queue twice.
-    """
-    identity = {"source": "list-1", "row": "a"}
-    first = review.offer(
-        store,
-        queue=review.Queue.VERSION_MATCH,
-        kind="version-difference",
-        identity=identity,
-        payload={"wanted": "one"},
-    )
-    again = review.offer(
-        store,
-        queue=review.Queue.VERSION_MATCH,
-        kind="Version_Difference",
-        identity=identity,
-        payload={"wanted": "one"},
+    """A kind is an identifier and never a display name (D5, R19)."""
+    first, again = (
+        review.offer(
+            store, queue=review.Queue.VERSION_MATCH, kind=kind,
+            identity={"source": "list-1", "row": "a"}, payload={"wanted": "one"},
+        )
+        for kind in ("version-difference", "Version_Difference")
     )
     assert again.item_id == first.item_id
     assert again.kind == first.kind, (
-        "the stored kind is the normalized one on both sides, or a predicate "
-        "written against one spelling silently matches nothing"
+        "the stored kind is normalized, or a predicate on one spelling matches nothing"
     )
     assert review.count_unresolved(store) == 1
 
 
 def test_an_item_records_the_identity_it_was_addressed_by(store):
-    """Stored, so a duplicate or a collision is detectable AFTERWARDS.
-
-    A content addressed identifier with no record of what it was derived from
-    can be checked by nobody: two candidates that hash alike are indistinguishable
-    from one candidate offered twice, which is the failure that looks most like
-    the feature working.
-    """
+    """Stored, so a duplicate or a collision is detectable afterwards."""
     item = _offer_one(store)
     assert review.identity_of(store, item.item_id) == {"source": "list-1", "row": "a"}
 
@@ -318,27 +274,18 @@ def test_an_item_records_the_identity_it_was_addressed_by(store):
 def test_two_different_candidates_that_hash_alike_are_refused_rather_than_merged(
     store, monkeypatch
 ):
-    """A collision must never be settled silently by the first one there.
-
-    The digest is forced here rather than searched for, because the point is what
-    the queue does WHEN one happens, not how unlikely it is.
-    """
+    """A collision, forced here, is never settled silently by the first one there."""
     monkeypatch.setattr(review, "item_id_for", lambda *args, **kwargs: "rv_forced")
-    review.offer(
-        store,
-        queue=review.Queue.VERSION_MATCH,
-        kind="version-difference",
-        identity={"source": "list-1", "row": "a"},
-        payload={},
-    )
-    with pytest.raises(CratekitError) as excinfo:
-        review.offer(
-            store,
-            queue=review.Queue.VERSION_MATCH,
-            kind="version-difference",
-            identity={"source": "list-1", "row": "b"},
-            payload={},
+
+    def offer(row):
+        return review.offer(
+            store, queue=review.Queue.VERSION_MATCH, kind="version-difference",
+            identity={"source": "list-1", "row": row}, payload={},
         )
+
+    offer("a")
+    with pytest.raises(CratekitError) as excinfo:
+        offer("b")
     assert excinfo.value.cause.reason == "review-selection-invalid"
 
 
@@ -353,12 +300,7 @@ def test_the_queue_lives_where_the_state_inventory_says_and_is_owner_only(cfg, s
 
 
 def test_every_file_the_queue_creates_is_owner_only_derived_by_walking(cfg, store):
-    """P3: the set is DERIVED by walking, never listed.
-
-    The version of this that named the database alone would have missed the
-    write-ahead log beside it, which is where the queue's contents actually live
-    until a checkpoint, and it would have kept missing every file added later.
-    """
+    """P3: the set is DERIVED by walking, so the write-ahead log beside the database is covered."""
     _offer_one(store)
     root = config.state_path("review_queue", cfg)
     if not hasattr(os, "chmod"):  # pragma: no cover - platforms without POSIX modes
@@ -409,17 +351,11 @@ def test_a_queue_nothing_declares_is_refused_and_the_refusal_names_the_declared_
     assert "not-a-declared-queue" in cause.message
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Part 2: the split between an adjudication surface and a plain output
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_declared_surface_says_which_side_of_the_split_it_is_on():
-    """Approach step 4: name the split. Outputs stay files.
-
-    Asserted over the DECLARATION rather than over a list here, so a surface
-    added later is covered the day it lands.
-    """
+    """Approach step 4: outputs stay files. Asserted over the declaration, so a new surface is covered."""
     assert review.SURFACES
     for surface in review.SURFACES:
         assert surface.why, f"{surface.legacy_file} does not say why"
@@ -427,37 +363,25 @@ def test_every_declared_surface_says_which_side_of_the_split_it_is_on():
             assert surface.queue is not None, f"{surface.legacy_file} adjudicates nothing"
         else:
             assert surface.queue is None, (
-                f"{surface.legacy_file} is a plain output and must not name a queue; "
-                f"outputs stay files"
+                f"{surface.legacy_file} is a plain output; outputs stay files"
             )
 
 
 def test_the_declared_queues_are_exactly_the_adjudicated_surfaces_queues():
-    """Both directions, because each one rots differently.
-
-    A queue with no surface behind it is a slug nobody can say why exists. A
-    surface pointing at a queue the enum does not declare is a producer that will
-    refuse at run time on a value the table already promised.
-    """
+    """Both directions: a queue with no surface, and a surface naming an undeclared queue."""
     declared = {str(surface.queue) for surface in review.SURFACES if surface.adjudicated}
     assert declared == set(review.adjudicated_queues())
     assert declared == {str(member) for member in review.Queue}
 
 
 def test_several_legacy_files_may_fold_into_one_queue_and_that_is_the_point():
-    """Fourteen files becoming one surface is the unit's goal, not an accident.
-
-    The same question asked in three files is how a person answers it in one and
-    the other two keep asking, so the table is allowed to point several files at
-    one queue and is NOT allowed to give one file two.
-    """
+    """Several files may share one queue; one file may not have two."""
     files = [surface.legacy_file for surface in review.SURFACES if surface.legacy_file]
     assert len(files) == len(set(files))
     folded = [s.legacy_file for s in review.SURFACES if s.adjudicated and s.legacy_file]
     queues = {str(s.queue) for s in review.SURFACES if s.adjudicated and s.legacy_file}
     assert len(folded) > len(queues), (
-        "no legacy file folds into a shared queue, so this table is a rename "
-        "rather than a consolidation"
+        "no legacy file folds into a shared queue: a rename, not a consolidation"
     )
 
 
@@ -469,16 +393,13 @@ def test_a_plain_output_cannot_be_smuggled_into_the_queue(store):
     assert excinfo.value.cause.reason == "review-queue-undeclared"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Part 3: a different process, which is the requirement R12 actually states
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_item_resolved_in_one_process_is_seen_resolved_by_another(cfg, store):
     """The plan's first test scenario, run with a real interpreter on each side."""
     item = _offer_one(store)
     store.close()
-
     done = _in_another_process(
         "--output", "json", "review", "resolve", item.item_id, "--verdict", "accepted",
         "--option", "opt-accept",
@@ -486,7 +407,6 @@ def test_an_item_resolved_in_one_process_is_seen_resolved_by_another(cfg, store)
     assert done.returncode == 0, done.stderr
     envelope = json.loads(done.stdout)
     assert envelope["data"]["items"][0]["verdict"] == "accepted"
-
     with review.open_store(cfg) as reopened:
         settled = review.get(reopened, item.item_id)
     assert settled.verdict is review.Verdict.ACCEPTED
@@ -494,18 +414,11 @@ def test_an_item_resolved_in_one_process_is_seen_resolved_by_another(cfg, store)
     assert settled.actor
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Part 4: a verdict persists, so the same decision is never re-asked
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_re_offering_a_settled_item_does_not_reopen_it(store):
-    """The property the source system cannot have, because it records nothing.
-
-    A producer runs again, meets the same candidate, and offers it again. If that
-    reopened the item, every run would re-ask every question a person has already
-    answered, which is what happens today.
-    """
+    """A producer meeting the same candidate again must not re-ask an answered question."""
     item = _offer_one(store)
     review.resolve(store, item.item_id, review.Verdict.ACCEPTED, actor="tester")
     again = _offer_one(store)
@@ -522,18 +435,14 @@ def test_re_offering_an_open_item_refreshes_what_it_shows(store):
 
 
 def test_a_rejected_verdict_suppresses_the_item_until_it_is_explicitly_cleared(store):
-    """The state the source system has no representation for at all."""
+    """Suppressed means out of the way, not deleted, so the next producer cannot re-offer it."""
     item = _offer_one(store)
     rejected = review.resolve(store, item.item_id, review.Verdict.REJECTED, actor="tester")
     assert rejected.suppressed
-
-    # Suppressed means out of the way, not gone: deleting it would let the next
-    # producer offer it again, which is the roll forward this replaces.
     assert review.list_items(store).items == ()
     assert [i.item_id for i in review.list_items(store, include_suppressed=True).items] == [
         item.item_id
     ]
-
     reopened = review.clear(store, item.item_id, actor="tester")
     assert reopened.verdict is None
     assert [i.item_id for i in review.list_items(store).items] == [item.item_id]
@@ -565,15 +474,9 @@ def test_clearing_an_item_that_was_never_resolved_changes_nothing(store):
     assert review.clear(store, item.item_id, actor="tester").verdict is None
 
 
-# ── A verdict this build cannot read (P2: two layers, one answer) ────────────
-#
-# The queue is library scoped by KTD21, so two installations at different
-# versions share one queue on the library volume. The Python reader degrades an
-# unrecognized verdict to unresolved on purpose, and every SQL consumer used to
-# ask the raw column whether it was NULL. The two disagreed, which is P2 exactly:
-# the item was not listed, not counted, refused a resolution with a message that
-# was factually false, and clear returned before touching the row. It was
-# unreachable by every route this module offers.
+# A verdict this build cannot read (P2: two layers, one answer). The queue is
+# library scoped (KTD21), so builds at two versions share it; the Python reader
+# degrades an unknown verdict to unresolved, and every SQL consumer must agree.
 
 
 def _a_verdict_from_a_newer_build(store, item_id: str, raw: str = "deferred") -> None:
@@ -586,80 +489,44 @@ def _a_verdict_from_a_newer_build(store, item_id: str, raw: str = "deferred") ->
 def test_an_item_carrying_a_verdict_this_build_cannot_read_is_still_offered(store):
     item = _offer_one(store)
     _a_verdict_from_a_newer_build(store, item.item_id)
-
     assert [held.item_id for held in review.list_items(store).items] == [item.item_id]
     assert review.count_unresolved(store) == 1
     assert review.get(store, item.item_id).verdict is None
 
 
 def test_an_item_carrying_a_verdict_this_build_cannot_read_can_be_resolved(store):
-    """Recoverable rather than frozen, and it is the reader's own direction.
-
-    An unknown verdict must not become a decision, so the item is presented as a
-    question again; answering it therefore has to be allowed to land.
-    """
+    """It is presented as a question again, so answering it has to land."""
     item = _offer_one(store)
     _a_verdict_from_a_newer_build(store, item.item_id)
-
     settled = review.resolve(store, item.item_id, review.Verdict.REJECTED, actor="tester")
     assert settled.verdict is review.Verdict.REJECTED
     assert review.count_unresolved(store) == 0
 
 
 def test_clearing_an_item_whose_verdict_this_build_cannot_read_clears_the_row(store):
-    """``clear`` returned early on this item and never touched the column.
-
-    It read the COERCED verdict, saw None, and concluded there was nothing to
-    revoke, leaving the value that made the item unreachable exactly where it was.
-    """
+    """``clear`` must not read the COERCED verdict and return before touching the column."""
     item = _offer_one(store)
     _a_verdict_from_a_newer_build(store, item.item_id)
-
     review.clear(store, item.item_id, actor="tester")
-    row = store.conn.execute(
-        "SELECT verdict FROM review_items WHERE item_id = ?", (item.item_id,)
-    ).fetchone()
-    assert row["verdict"] is None
+    assert _stored_verdict(store, item.item_id) is None
 
 
 def test_an_export_carries_a_verdict_this_build_cannot_read_rather_than_dropping_it(store):
-    """The other end of the same disagreement, and it is a silent decision loss.
-
-    An export that rendered the unreadable value as "no verdict" would hand the
-    next installation a document saying nobody had decided, and that installation
-    would insert the item as open. The decision would be gone with nobody told,
-    which is the one thing this whole surface refuses to do.
-    """
+    """Rendered as "no verdict", the next installation would insert the item as open."""
     item = _offer_one(store)
     _a_verdict_from_a_newer_build(store, item.item_id)
-
     document = review.export_document(store)
-
     assert [entry["verdict"] for entry in document["items"]] == ["deferred"]
 
 
 def test_an_import_does_not_overwrite_a_local_verdict_it_cannot_read(store):
-    """The local decision is unreadable, not absent, so it is a conflict.
-
-    Applying over it would discard a decision somebody made on a build that could
-    represent it, with nobody told, which is the shape import exists to refuse.
-    """
+    """The local decision is unreadable, not absent, so it is a conflict."""
     item = _offer_one(store)
     _a_verdict_from_a_newer_build(store, item.item_id)
-    incoming = {
-        "export": review.EXPORT_VERSION,
-        "queue": "",
-        "exported": "2026-01-01T00:00:00+00:00",
-        "items": [{**item.to_json(), "verdict": str(review.Verdict.ACCEPTED)}],
-    }
-
+    incoming = _document({**item.to_json(), "verdict": str(review.Verdict.ACCEPTED)})
     result = review.import_document(store, incoming, actor="importer")
-
     assert result.conflicts == (item.item_id,)
-    row = store.conn.execute(
-        "SELECT verdict FROM review_items WHERE item_id = ?", (item.item_id,)
-    ).fetchone()
-    assert row["verdict"] == "deferred"
+    assert _stored_verdict(store, item.item_id) == "deferred"
 
 
 def test_quitting_partway_through_a_set_and_returning_presents_only_what_is_left(cfg, store):
@@ -669,20 +536,15 @@ def test_quitting_partway_through_a_set_and_returning_presents_only_what_is_left
         review.resolve(store, item.item_id, review.Verdict.ACCEPTED, actor="tester")
     review.resolve(store, offered[2].item_id, review.Verdict.REJECTED, actor="tester")
     store.close()
-
     with review.open_store(cfg) as reopened:
         left = review.list_items(reopened).items
         assert [item.item_id for item in left] == [item.item_id for item in offered[3:]]
-        # The prior verdicts are still there, which is the other half of the
-        # scenario: re-entry must not have cost the work already done.
         assert review.get(reopened, offered[0].item_id).verdict is review.Verdict.ACCEPTED
         assert review.get(reopened, offered[2].item_id).verdict is review.Verdict.REJECTED
         assert review.count_unresolved(reopened) == 3
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Part 5: batch resolution by predicate
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _mixed_queue(store) -> dict[str, list[str]]:
@@ -731,13 +593,7 @@ def test_a_predicate_may_select_on_a_payload_field(store):
 
 
 def test_a_predicate_typed_at_a_command_line_matches_a_payload_number(store):
-    """A filter that matches nothing is indistinguishable from an empty queue.
-
-    Everything arriving from a command line is text, and a producer that wrote a
-    count as a number would otherwise be unmatchable: the predicate would be
-    correct, the payload would be correct, and the sweep would settle nothing
-    while reporting success.
-    """
+    """Command line text matches a payload number, or the sweep settles nothing and says success."""
     _offer_one(store, key="numeric", payload={"attempts": 3})
     settled = review.resolve_where(
         store,
@@ -749,12 +605,7 @@ def test_a_predicate_typed_at_a_command_line_matches_a_payload_number(store):
 
 
 def test_an_absent_payload_field_is_not_matched_by_the_text_none(store):
-    """The one coercion that must NOT happen, or a typo selects the absent rows.
-
-    "This field is not there" and "this field says None" are different facts.
-    Matching them would mean a mistyped field name quietly selects every item
-    that does not carry it, which is every item.
-    """
+    """The one coercion that must NOT happen, or a mistyped field selects every item."""
     _offer_one(store, key="plain", payload={"wanted": "something"})
     settled = review.resolve_where(
         store,
@@ -788,66 +639,39 @@ def test_batch_resolution_skips_what_is_already_settled_rather_than_refusing(sto
 
 
 def test_a_second_process_sweeping_the_same_predicate_does_not_abort_the_first(cfg, store):
-    """The skip above held inside ONE process and failed the moment two existed.
+    """The loser of any one item's race must not abort a sweep that already wrote verdicts.
 
-    ``resolve_where`` collected the identifiers and then called ``resolve`` on
-    each with no handling for the race ``resolve`` is designed to raise, so the
-    loser of any single item aborted the whole sweep AFTER it had already written
-    every verdict before it. Observed: a sweep that settled two hundred items
-    reported zero of them and exited 30, and the caller had no way to learn what
-    had landed.
-
-    Two REAL processes, because a second handle in one interpreter shares the
-    connection's own serialization and can only prove that a value was kept.
+    Two REAL processes, two hundred items, each sweep reporting what it settled.
     """
-    outstanding = {_offer_one(store, key=f"{index:03d}").item_id for index in range(200)}
+    outstanding = set(_offer_many(store, (f"{index:03d}" for index in range(200))))
     store.close()
-
     running = [
         _start_another_process(
-            "--output",
-            "json",
-            "review",
-            "resolve",
-            "--where",
-            f"queue={review.Queue.VERSION_MATCH}",
-            "--verdict",
-            "rejected",
-            "--actor",
-            f"sweep-{index}",
+            "--output", "json", "review", "resolve",
+            "--where", f"queue={review.Queue.VERSION_MATCH}",
+            "--verdict", "rejected", "--actor", f"sweep-{index}",
         )
         for index in range(2)
     ]
     finished = [(process, *process.communicate()) for process in running]
-
     reported: list[str] = []
     for process, out, err in finished:
         assert process.returncode == int(ExitCode.OK), err or out
         reported.extend(row["id"] for row in json.loads(out)["data"]["items"])
-
-    assert sorted(reported) == sorted(outstanding), (
-        "a sweep wrote verdicts it did not report, so nobody can tell what landed"
-    )
+    assert sorted(reported) == sorted(outstanding), "a sweep wrote verdicts it did not report"
     with review.open_store(cfg) as reopened:
         assert review.count_unresolved(reopened) == 0
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Part 6: paging, asserted by counting what is built rather than by reading SQL
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _four_hundred(store) -> list[str]:
-    return [_offer_one(store, key=f"{index:04d}").item_id for index in range(400)]
+    return _offer_many(store, (f"{index:04d}" for index in range(400)))
 
 
 def test_four_hundred_items_page_without_loading_all_of_them_at_once(store, monkeypatch):
-    """The plan's fifth scenario, asserted against the objects actually built.
-
-    Counting rows CONVERTED is the only check that can tell real paging from
-    reading everything and slicing the result, which is what the obvious
-    implementation does and what a test asserting only the page size would pass.
-    """
+    """Counting rows CONVERTED is what tells real paging from reading whole and slicing."""
     made = _four_hundred(store)
     built = 0
     original = review._item_from_row
@@ -858,14 +682,10 @@ def test_four_hundred_items_page_without_loading_all_of_them_at_once(store, monk
         return original(row)
 
     monkeypatch.setattr(review, "_item_from_row", counting)
-
     page = review.list_items(store, limit=25)
     assert [item.item_id for item in page.items] == made[:25]
     assert page.next_cursor is not None
-    assert built <= 25 + 1, (
-        f"{built} items were built to show 25; the queue is being read whole and "
-        f"then sliced, which is not paging"
-    )
+    assert built <= 25 + 1, f"{built} items built to show 25: read whole and sliced, not paging"
 
 
 def test_walking_every_page_visits_each_item_exactly_once(store):
@@ -882,13 +702,7 @@ def test_walking_every_page_visits_each_item_exactly_once(store):
 
 
 def test_a_cursor_is_a_position_so_an_insert_mid_walk_does_not_shift_a_later_page(store):
-    """Why the cursor is an ordinal and not an offset.
-
-    Under offset paging, an item inserted while somebody is working through the
-    queue pushes every later item back by one, and the next page silently skips
-    whatever crossed the boundary. That is the failure a person experiences as
-    "it never asked me about that one".
-    """
+    """The cursor is an ordinal, so an insert mid walk cannot make a page skip an item."""
     made = [_offer_one(store, key=f"{index:03d}").item_id for index in range(10)]
     first = review.list_items(store, limit=4)
     _offer_one(store, key="inserted-later")
@@ -897,11 +711,7 @@ def test_a_cursor_is_a_position_so_an_insert_mid_walk_does_not_shift_a_later_pag
 
 
 def test_the_walk_used_by_batch_work_holds_one_page_at_a_time(store, monkeypatch):
-    """``iter_items`` is the shape export and batch resolution both use.
-
-    If it read the queue whole, the paging above would be decorative: the two
-    operations most likely to meet a large queue would both bypass it.
-    """
+    """``iter_items``, which export and batch resolution use, holds one page at a time."""
     _four_hundred(store)
     alive = 0
     peak = 0
@@ -921,13 +731,7 @@ def test_the_walk_used_by_batch_work_holds_one_page_at_a_time(store, monkeypatch
 
 @pytest.mark.parametrize("limit", [0, -1, -2])
 def test_a_page_size_that_is_not_a_positive_number_is_refused(store, limit):
-    """Three different failures behind one bad argument, and none of them said so.
-
-    Zero and minus one crashed with an index error out of the cursor arithmetic.
-    Minus two and below silently omitted items and reported success, because a
-    negative limit is UNBOUNDED in SQLite: those paths read the entire queue and
-    then sliced it, which is the shape every test in this part exists to forbid.
-    """
+    """Zero and minus one crashed; minus two is UNBOUNDED in SQLite and read the whole queue."""
     _offer_one(store)
     with pytest.raises(CratekitError) as excinfo:
         review.list_items(store, limit=limit)
@@ -937,14 +741,10 @@ def test_a_page_size_that_is_not_a_positive_number_is_refused(store, limit):
 def test_a_page_size_that_is_not_a_positive_number_is_refused_at_the_command_line(cfg, store):
     _offer_one(store)
     store.close()
-    code, envelope, _ = _drive("review", "list", "--limit", "0")
-    assert code == int(ExitCode.PRECONDITION)
-    assert envelope["cause"]["reason"] == "review-selection-invalid"
+    _refused("review", "list", "--limit", "0", reason="review-selection-invalid")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Part 7: export and import, for anyone who genuinely wants a file
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_export_round_trips_into_an_empty_queue_with_its_verdicts(tmp_path, cfg, store):
@@ -953,7 +753,6 @@ def test_an_export_round_trips_into_an_empty_queue_with_its_verdicts(tmp_path, c
     review.resolve(store, first.item_id, review.Verdict.REJECTED, actor="tester")
     document = review.export_document(store)
     assert {entry["id"] for entry in document["items"]} == {first.item_id, second.item_id}
-
     elsewhere = tmp_path / "other" / "queue.db"
     with review.open_store(cfg, path=elsewhere) as receiving:
         result = review.import_document(receiving, document, actor="importer")
@@ -965,26 +764,12 @@ def test_an_export_round_trips_into_an_empty_queue_with_its_verdicts(tmp_path, c
 def test_an_import_never_overwrites_a_local_verdict_and_reports_the_conflict(
     tmp_path, cfg, store
 ):
-    """Two people resolving one item differently is a real situation.
-
-    Picking a winner silently is how the losing decision disappears with nobody
-    told, so the conflict is reported and the local record stands.
-    """
+    """Two people resolving one item differently: the conflict is reported, the local record stands."""
     item = _offer_one(store)
     review.resolve(store, item.item_id, review.Verdict.ACCEPTED, actor="local")
-    incoming = {
-        "export": review.EXPORT_VERSION,
-        "queue": "",
-        "exported": "2026-01-01T00:00:00+00:00",
-        "items": [
-            {
-                **item.to_json(),
-                "verdict": str(review.Verdict.REJECTED),
-                "option": None,
-                "actor": "remote",
-            }
-        ],
-    }
+    incoming = _document(
+        {**item.to_json(), "verdict": str(review.Verdict.REJECTED), "option": None, "actor": "remote"}
+    )
     result = review.import_document(store, incoming, actor="importer")
     assert result.conflicts == (item.item_id,)
     assert review.get(store, item.item_id).verdict is review.Verdict.ACCEPTED
@@ -998,32 +783,21 @@ def test_an_export_written_by_another_version_refuses(store):
 
 
 def test_one_unapplicable_item_does_not_abort_the_import(tmp_path, cfg, store):
-    """A partial import that stopped halfway would report nothing about the half.
-
-    Two items the queue cannot take, for two different reasons, either side of a
-    good one. Everything applicable applies, the other two are reported, and the
-    caller can tell a person exactly which is which.
-    """
+    """Two items refused for different reasons either side of a good one; the good one applies."""
     good = _offer_one(store, key="good").to_json()
-    document = {
-        "export": review.EXPORT_VERSION,
-        "queue": "",
-        "exported": "2026-01-01T00:00:00+00:00",
-        "items": [
-            # A verdict this build has no representation for. Dropping it
-            # silently would discard a decision and look like a clean import.
-            {**good, "id": "rv_unreadable", "verdict": "whatever-that-means"},
-            {**good, "verdict": str(review.Verdict.ACCEPTED), "option": "opt-accept"},
-            # A candidate the item never offered, which ``resolve`` refuses.
-            {
-                **good,
-                "id": "rv_bad_option",
-                "options": [],
-                "verdict": str(review.Verdict.ACCEPTED),
-                "option": "opt-nowhere",
-            },
-        ],
-    }
+    document = _document(
+        # A verdict this build has no representation for.
+        {**good, "id": "rv_unreadable", "verdict": "whatever-that-means"},
+        {**good, "verdict": str(review.Verdict.ACCEPTED), "option": "opt-accept"},
+        # A candidate the item never offered, which ``resolve`` refuses.
+        {
+            **good,
+            "id": "rv_bad_option",
+            "options": [],
+            "verdict": str(review.Verdict.ACCEPTED),
+            "option": "opt-nowhere",
+        },
+    )
     elsewhere = tmp_path / "receiving" / "queue.db"
     with review.open_store(cfg, path=elsewhere) as receiving:
         result = review.import_document(receiving, document, actor="importer")
@@ -1043,23 +817,12 @@ def test_one_unapplicable_item_does_not_abort_the_import(tmp_path, cfg, store):
 def test_a_malformed_item_is_reported_rather_than_raised_out_of_the_import(
     tmp_path, cfg, store, name, broken
 ):
-    """An import is TOTAL, and its own docstring says so.
-
-    Two of these escaped the refusal guard entirely, as a type error and a key
-    error, and both aborted the loop AFTER earlier items had already been
-    written. A caller cannot report what it applied when the call it made never
-    returned, and re-running never succeeds because the good half is already in.
-    """
+    """An import is TOTAL: a type or key error must not abort it after earlier items were written."""
     good = _offer_one(store, key="good").to_json()
-    document = {
-        "export": review.EXPORT_VERSION,
-        "queue": "",
-        "exported": "2026-01-01T00:00:00+00:00",
-        "items": [
-            {**good, "id": "rv_broken", **broken},
-            {**good, "verdict": str(review.Verdict.ACCEPTED), "option": "opt-accept"},
-        ],
-    }
+    document = _document(
+        {**good, "id": "rv_broken", **broken},
+        {**good, "verdict": str(review.Verdict.ACCEPTED), "option": "opt-accept"},
+    )
     elsewhere = tmp_path / "receiving" / "queue.db"
     with review.open_store(cfg, path=elsewhere) as receiving:
         result = review.import_document(receiving, document, actor="importer")
@@ -1068,60 +831,32 @@ def test_a_malformed_item_is_reported_rather_than_raised_out_of_the_import(
 
 
 def test_an_import_says_why_each_item_it_could_not_apply_was_not_applied(tmp_path, cfg, store):
-    """A caller that reports every conflict as a disagreement is lying about most.
-
-    "Already settled here and the export disagrees" is one of four reasons an
-    item lands in this list, and the other three send a person somewhere else
-    entirely.
-    """
+    """Each conflict carries its own reason; "the export disagrees" is only one of them."""
     item = _offer_one(store)
     review.resolve(store, item.item_id, review.Verdict.ACCEPTED, actor="local")
-    document = {
-        "export": review.EXPORT_VERSION,
-        "queue": "",
-        "exported": "2026-01-01T00:00:00+00:00",
-        "items": [
-            {**item.to_json(), "verdict": str(review.Verdict.REJECTED), "actor": "remote"},
-            {**item.to_json(), "id": "rv_unreadable", "verdict": "whatever-that-means"},
-            {**item.to_json(), "id": "rv_broken", "payload": [1, 2, 3]},
-        ],
-    }
-
-    result = review.import_document(store, document, actor="importer")
-
-    assert set(result.conflicts) == {"rv_broken", "rv_unreadable", item.item_id}
-    assert set(result.reasons) == set(result.conflicts), (
-        "every conflict carries a reason, or the caller has to invent one"
+    document = _document(
+        {**item.to_json(), "verdict": str(review.Verdict.REJECTED), "actor": "remote"},
+        {**item.to_json(), "id": "rv_unreadable", "verdict": "whatever-that-means"},
+        {**item.to_json(), "id": "rv_broken", "payload": [1, 2, 3]},
     )
+    result = review.import_document(store, document, actor="importer")
+    assert set(result.conflicts) == {"rv_broken", "rv_unreadable", item.item_id}
+    assert set(result.reasons) == set(result.conflicts), "every conflict carries a reason"
     assert len(set(result.reasons.values())) == 3, (
-        f"three different failures collapsed into {set(result.reasons.values())}"
+        f"three failures collapsed into {set(result.reasons.values())}"
     )
 
 
 def test_an_unresolved_cause_says_how_many_are_outstanding_and_what_to_do():
-    """One sentence for "a person still has to decide", built in one place.
-
-    Every producer that cannot proceed past open items reports it the same way,
-    rather than each inventing its own wording, which is how the source system
-    ended up with eleven prose variants of one instruction.
-    """
+    """One sentence for "a person still has to decide", built in one place."""
     cause = review.unresolved_cause(4)
     assert cause.code is ExitCode.PENDING_HUMAN
     assert cause.detail["unresolved"] == 4
     assert cause.remediation.steps
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Part 7b: the third verdict, written by a resolution and never by a person
-# ═══════════════════════════════════════════════════════════════════════════
-#
-# The residual titled "A review item outlives its question: a later resolution
-# that owns the row leaves the version-match item open, and no verdict or
-# predicate can retire it honestly". A question filed before the ISRC and
-# credited rules existed asks about a row those rules now own, and nothing in
-# the vocabulary could say so: a rejection is a decision against every
-# candidate that nobody made. So a third verdict, SUPERSEDED, recorded by the
-# resolution that owned the row, naming the rule, and by nothing a person types.
+# Part 7b: the third verdict, SUPERSEDED, written by the resolution that owned
+# the row and naming its rule, never by a person.
 
 
 def test_supersede_retires_an_open_item_naming_the_rule_and_it_leaves_the_open_list(store):
@@ -1132,7 +867,7 @@ def test_supersede_retires_an_open_item_naming_the_rule_and_it_leaves_the_open_l
     assert retired.option is None
     assert retired.decided
     assert retired.resolved
-    # NOT A SUPPRESSION. A rejection is; this is the question ceasing to be one.
+    # Not a suppression: the question ceased to be one.
     assert not retired.suppressed
     assert [one.item_id for one in review.list_items(store)] == []
     assert [one.item_id for one in review.list_items(store, include_suppressed=True)] == []
@@ -1143,8 +878,7 @@ def test_supersede_retires_an_open_item_naming_the_rule_and_it_leaves_the_open_l
 
 
 def test_supersede_takes_several_identifiers_and_retires_only_the_open_ones_among_them(store):
-    """The producer asks about the four shapes a line can have been asked under
-    in one call; most were never filed and some are answered."""
+    """Unfiled, answered and repeated identifiers in one call; only the open ones retire."""
     first = _offer_one(store, key="a")
     second = _offer_one(store, key="b")
     third = _offer_one(store, key="c")
@@ -1162,9 +896,7 @@ def test_supersede_takes_several_identifiers_and_retires_only_the_open_ones_amon
 
 @pytest.mark.parametrize("theirs", [review.Verdict.ACCEPTED, review.Verdict.REJECTED])
 def test_supersede_never_overwrites_a_persons_verdict(store, theirs):
-    """The brief's fourth scenario. A resolution walks two hundred rows and most
-    answered questions on its path were answered by a person before the rule
-    existed, so their verdict stands and the call reports it did nothing."""
+    """The brief's fourth scenario: a person's verdict stands and the call reports nothing."""
     item = _offer_one(store)
     review.resolve(store, item.item_id, theirs, actor="phillip")
     assert review.supersede(store, [item.item_id], rule="isrc-exact") == ()
@@ -1174,16 +906,9 @@ def test_supersede_never_overwrites_a_persons_verdict(store, theirs):
 
 
 def test_supersede_never_overwrites_a_verdict_this_build_cannot_read(store):
-    """NARROWER THAN RESOLVE, on purpose. A person answering a question they
-    were shown may write over a value a newer build left; a resolution running
-    on every pass may not, because that value is a decision somebody made on
-    the build that could represent it."""
+    """Narrower than resolve on purpose: a newer build's value is somebody's decision."""
     item = _offer_one(store)
-    with store.immediate() as conn:
-        conn.execute(
-            "UPDATE review_items SET verdict = 'from-a-newer-build' WHERE item_id = ?",
-            (item.item_id,),
-        )
+    _a_verdict_from_a_newer_build(store, item.item_id, "from-a-newer-build")
     assert review.get(store, item.item_id).verdict is None, "the reader sees a question"
     assert review.supersede(store, [item.item_id], rule="isrc-exact") == ()
     assert review.get(store, item.item_id).stored_verdict == "from-a-newer-build"
@@ -1202,9 +927,7 @@ def test_supersede_refuses_an_empty_rule(store):
 
 
 def test_resolve_and_the_batch_refuse_the_machines_verdict(store):
-    """The third verdict has one writer. ``resolve`` is a person's path, and
-    ``resolve_where`` and the import ride on it, so letting it through would
-    land a superseded item naming a candidate and a person."""
+    """The third verdict has one writer; ``resolve``, the batch and the import ride on a person's path."""
     item = _offer_one(store)
     with pytest.raises(CratekitError) as caught:
         review.resolve(store, item.item_id, review.Verdict.SUPERSEDED, actor="phillip")
@@ -1220,8 +943,7 @@ def test_resolve_and_the_batch_refuse_the_machines_verdict(store):
 
 
 def test_a_superseded_item_offered_again_is_neither_reopened_nor_duplicated(store):
-    """The brief's second scenario. ``offer`` is idempotent by identity and a
-    resolved row is left alone, and the third verdict is a resolution."""
+    """The brief's second scenario: the third verdict is a resolution, so offer leaves it alone."""
     item = _offer_one(store)
     review.supersede(store, [item.item_id], rule="isrc-exact")
     again = _offer_one(store, payload={"wanted": "track a", "found": "a newer description"})
@@ -1243,9 +965,7 @@ def test_clear_returns_a_superseded_item_to_the_open_list(store):
 
 
 def test_a_batch_resolution_does_not_touch_items_a_resolution_superseded(store):
-    """The brief's sixth scenario. A predicate over a payload field would have
-    swept 86 items to take the three live ones; a superseded item is settled,
-    so the sweep is a filter over what is outstanding and leaves it alone."""
+    """The brief's sixth scenario: a sweep filters what is outstanding and leaves superseded items."""
     first = _offer_one(store, key="a", payload={"why": "title-approximate"})
     second = _offer_one(store, key="b", payload={"why": "title-approximate"})
     review.supersede(store, [first.item_id], rule="isrc-exact")
@@ -1262,13 +982,11 @@ def test_a_batch_resolution_does_not_touch_items_a_resolution_superseded(store):
 
 
 def test_an_export_carrying_the_third_verdict_imports_without_conflict(cfg, store, tmp_path):
-    """The brief's fifth scenario, in both directions: into a queue that never
-    saw the item, and back into the one that wrote it."""
+    """The brief's fifth scenario: into a queue that never saw the item, and back into its writer."""
     item = _offer_one(store)
     review.supersede(store, [item.item_id], rule="credited-exact")
     document = review.export_document(store)
     assert document["items"][0]["verdict"] == "superseded"
-
     with review.open_store(cfg, path=tmp_path / "elsewhere.sqlite3") as other:
         taken = review.import_document(other, document, actor="importer")
         assert taken.conflicts == ()
@@ -1277,33 +995,24 @@ def test_an_export_carrying_the_third_verdict_imports_without_conflict(cfg, stor
         assert landed.verdict is review.Verdict.SUPERSEDED
         assert landed.actor == "credited-exact"
         assert [one.item_id for one in review.list_items(other)] == []
-
     back = review.import_document(store, document, actor="importer")
     assert back.conflicts == ()
     assert back.unchanged == (item.item_id,)
 
 
 def test_an_import_carries_the_machines_verdict_under_the_machines_rules(cfg, store, tmp_path):
-    """A document is a transport and not a second writer. An incoming
-    superseded verdict lands through ``supersede``: the option it carries is
-    dropped, the actor is the rule, and a document naming no rule is reported
-    as not applied rather than landing a verdict nothing can explain."""
+    """An incoming superseded verdict lands through ``supersede``; one naming no rule is not applied."""
     item = _offer_one(store)
-    edited = {
-        "export": review.EXPORT_VERSION,
-        "queue": "",
-        "exported": "2026-09-23T00:00:00Z",
-        "items": [
-            {**item.to_json(), "verdict": "superseded", "option": "opt-accept", "actor": "isrc-exact"},
-        ],
-    }
+    edited = _document(
+        {**item.to_json(), "verdict": "superseded", "option": "opt-accept", "actor": "isrc-exact"},
+        exported="2026-09-23T00:00:00Z",
+    )
     taken = review.import_document(store, edited, actor="importer")
     assert taken.conflicts == ()
     landed = review.get(store, item.item_id)
     assert landed.verdict is review.Verdict.SUPERSEDED
     assert landed.actor == "isrc-exact"
     assert landed.option is None
-
     other = _offer_one(store, key="b")
     unnamed = {**edited, "items": [{**other.to_json(), "verdict": "superseded", "actor": ""}]}
     taken = review.import_document(store, unnamed, actor="importer")
@@ -1312,10 +1021,7 @@ def test_an_import_carries_the_machines_verdict_under_the_machines_rules(cfg, st
 
 
 def test_the_command_line_offers_a_person_only_the_persons_verdicts(store, capsys):
-    """The machine's verdict cannot be typed. ``PERSON_VERDICTS`` is the parser's
-    vocabulary, and argparse refuses the third with its own status. The refusal
-    lands on the process's own stderr, since argparse writes there and not to
-    the injected stream, so it is read through ``capsys``."""
+    """``PERSON_VERDICTS`` is the parser's vocabulary; argparse's refusal is read through ``capsys``."""
     assert review.PERSON_VERDICTS == (review.Verdict.ACCEPTED, review.Verdict.REJECTED)
     item = _offer_one(store)
     out, err = io.StringIO(), io.StringIO()
@@ -1329,52 +1035,36 @@ def test_the_command_line_offers_a_person_only_the_persons_verdicts(store, capsy
     assert review.get(store, item.item_id).verdict is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Part 8: the decision stores, which share this shape and are revocable
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_decision_stores_are_the_two_the_state_inventory_declares(cfg):
-    """DERIVED from the inventory, so a third store cannot appear undeclared.
-
-    The name of this test quantifies over the inventory, and the constant it
-    iterated was a literal pair spelled in the review module with a docstring
-    saying it came from the inventory (P3). The inventory declares which entries
-    are decision stores now, and this reads that declaration.
-    """
+    """DERIVED from the inventory (P3), and still holding R35's and R36's two stores."""
     declared = tuple(sorted(entry.key for entry in config.STATE_FILES if entry.decision_store))
     assert review.DECISION_STORE_KEYS == declared, (
-        "the module's list and the inventory's declaration disagree, so one of "
-        "them is a copy that has drifted"
+        "the module's list has drifted from the inventory"
     )
-    # R35's declines and R36's tombstones are the two the plan names. Asserted
-    # against the DERIVED set rather than instead of it: a derivation that lost
-    # both entries would otherwise pass this test by being vacuously equal.
+    # Against the derived set, so a derivation that lost both is not vacuously equal.
     assert {"declines", "tombstones"} <= set(declared)
     for key in review.DECISION_STORE_KEYS:
         entry = config.state_file(key)
         assert entry.root is config.StateRoot.LIBRARY
         assert entry.snapshot is config.SnapshotRole.COUPLED, (
-            f"{key} must roll back with the database, or a restore leaves a "
-            f"suppression standing for a removal it undid"
+            f"{key} must roll back with the database"
         )
         assert review.DecisionStore(key, cfg).path == config.state_path(key, cfg)
 
 
 def test_a_decline_suppresses_and_is_revocable(cfg):
-    """R35's exact sentence: remembered, never offered again, until revoked."""
+    """R35: remembered, never offered again, until revoked; revoked records are kept."""
     declines = review.DecisionStore("declines", cfg)
     identity = {"device": 12, "inode": 3456}
     assert not declines.suppresses("removed-file", identity)
-
     recorded = declines.record(kind="removed-file", identity=identity, actor="tester")
     assert declines.suppresses("removed-file", identity)
     assert [d.suppression_id for d in declines.suppressions()] == [recorded.suppression_id]
-
     declines.revoke(recorded.suppression_id, actor="tester")
     assert not declines.suppresses("removed-file", identity)
-    # Revoked, not forgotten: the record of the suppression having existed is
-    # what makes the revocation reportable.
     assert declines.suppressions() == ()
     assert [d.suppression_id for d in declines.suppressions(include_revoked=True)] == [
         recorded.suppression_id
@@ -1413,13 +1103,7 @@ def test_a_suppression_identifier_is_not_mistakable_for_a_review_item(cfg):
 
 
 def test_an_unreadable_decision_store_refuses_rather_than_reading_as_empty(cfg):
-    """A tolerant read on a path that governs an action fails OPEN.
-
-    Reading an unreadable suppression list as empty un-suppresses everything in
-    it, silently, and the next acquisition re-acquires exactly what somebody
-    removed on purpose. That is U8's lesson about the session gate, one store
-    along.
-    """
+    """A tolerant read on a path that governs an action fails OPEN (U8's lesson)."""
     declines = review.DecisionStore("declines", cfg)
     declines.record(kind="removed-file", identity={"inode": 1}, actor="tester")
     declines.path.write_text("{not json at all")
@@ -1428,105 +1112,76 @@ def test_an_unreadable_decision_store_refuses_rather_than_reading_as_empty(cfg):
     assert excinfo.value.cause.reason == "review-file-unusable"
 
 
-#: Documents that are perfectly good JSON and are not this store. The refusal
-#: used to cover only the case where ``json.loads`` itself raised, so every one
-#: of these fell through to an empty read: the store reported that it suppressed
-#: nothing, and the next write then replaced the file with what it had read.
+def _declines_holding(cfg, text: str):
+    declines = review.DecisionStore("declines", cfg)
+    declines.path.parent.mkdir(parents=True, exist_ok=True)
+    declines.path.write_text(text)
+    return declines
+
+
+def _declines_document(**fields) -> str:
+    return json.dumps({"version": 1, "store": "declines", "decisions": [], **fields})
+
+
+#: Good JSON that is not this store. Each used to read as empty, and the next
+#: write then replaced the file with what it had read.
 STRUCTURALLY_WRONG_STORES = {
     "a top level list": "[]",
     "a top level scalar": "7",
-    "a version this build does not know": json.dumps(
-        {"version": 99, "store": "declines", "decisions": []}
-    ),
+    "a version this build does not know": _declines_document(version=99),
     "no version at all": json.dumps({"store": "declines", "decisions": []}),
     "records under another version's key": json.dumps(
         {"version": 1, "store": "declines", "records": []}
     ),
-    "decisions present and null": json.dumps(
-        {"version": 1, "store": "declines", "decisions": None}
+    "decisions present and null": _declines_document(decisions=None),
+    "decisions that are not a list": _declines_document(decisions={"dc_one": {}}),
+    "another store's document": _declines_document(store="tombstones"),
+    "a record whose identifier key was renamed": _declines_document(
+        decisions=[{"identifier": "dc_one"}]
     ),
-    "decisions that are not a list": json.dumps(
-        {"version": 1, "store": "declines", "decisions": {"dc_one": {}}}
+    "a record whose payload is not a mapping": _declines_document(
+        decisions=[{"id": "dc_one", "payload": 5}]
     ),
-    "another store's document": json.dumps(
-        {"version": 1, "store": "tombstones", "decisions": []}
-    ),
-    "a record whose identifier key was renamed": json.dumps(
-        {"version": 1, "store": "declines", "decisions": [{"identifier": "dc_one"}]}
-    ),
-    "a record whose payload is not a mapping": json.dumps(
-        {"version": 1, "store": "declines", "decisions": [{"id": "dc_one", "payload": 5}]}
-    ),
-    "a record that is not a mapping": json.dumps(
-        {"version": 1, "store": "declines", "decisions": ["dc_one"]}
-    ),
+    "a record that is not a mapping": _declines_document(decisions=["dc_one"]),
 }
 
 
 @pytest.mark.parametrize("shape", sorted(STRUCTURALLY_WRONG_STORES))
-def test_a_store_this_build_cannot_positively_recognize_refuses(cfg, shape):
-    """Refusal is the ONLY alternative to a correct read.
-
-    Everything here parses as JSON and none of it is this store's document, so
-    the reader that only caught a parse error returned an empty mapping for every
-    one of them. Fail open plus a name that says the opposite.
-    """
-    declines = review.DecisionStore("declines", cfg)
-    declines.path.parent.mkdir(parents=True, exist_ok=True)
-    declines.path.write_text(STRUCTURALLY_WRONG_STORES[shape])
+def test_a_store_this_build_cannot_recognize_refuses_and_is_never_overwritten(cfg, shape):
+    """Refusal is the only alternative to a correct read, and no later write may replace the file."""
+    declines = _declines_holding(cfg, STRUCTURALLY_WRONG_STORES[shape])
+    before = declines.path.read_text()
     with pytest.raises(CratekitError) as excinfo:
         declines.suppressions()
     assert excinfo.value.cause.reason == "review-file-unusable"
-
-
-@pytest.mark.parametrize("shape", sorted(STRUCTURALLY_WRONG_STORES))
-def test_a_store_this_build_cannot_read_is_never_overwritten_by_the_next_write(cfg, shape):
-    """The half that turns a fail open into permanent data loss.
-
-    The empty read was fed straight back into the writer, so ONE further record
-    deleted every prior decline from the disk, in the store whose own docstring
-    says treating it as empty would re-acquire exactly what somebody removed on
-    purpose.
-    """
-    declines = review.DecisionStore("declines", cfg)
-    declines.path.parent.mkdir(parents=True, exist_ok=True)
-    declines.path.write_text(STRUCTURALLY_WRONG_STORES[shape])
-    before = declines.path.read_text()
-
     with pytest.raises(CratekitError):
         declines.record(kind="removed-file", identity={"inode": 1}, actor="tester")
     assert declines.path.read_text() == before
-
     with pytest.raises(CratekitError):
         declines.revoke("dc_one", actor="tester")
     assert declines.path.read_text() == before
 
 
 def test_a_record_whose_payload_is_not_a_mapping_refuses_rather_than_raising(cfg):
-    """``suppresses`` is asked once per candidate by an acquisition pass.
-
-    A type error out of it is not a refusal anything up the stack can render, and
-    the pass that was consulting the store dies rather than reporting.
-    """
-    declines = review.DecisionStore("declines", cfg)
-    declines.path.parent.mkdir(parents=True, exist_ok=True)
-    declines.path.write_text(
+    """``suppresses`` is asked once per candidate, so a type error out of it kills the pass."""
+    declines = _declines_holding(
+        cfg,
         json.dumps(
             {
                 "version": 1,
                 "store": "declines",
                 "decisions": [{"id": "dc_one", "payload": [1, 2, 3]}],
             }
-        )
+        ),
     )
     with pytest.raises(CratekitError) as excinfo:
         declines.suppresses("removed-file", {"inode": 1})
     assert excinfo.value.cause.reason == "review-file-unusable"
 
 
-# ── Two processes, which is the case a document store has to survive ─────────
+# Two processes, which is the case a document store has to survive
 
-_RECORD_IN_A_CHILD = """
+_IN_A_CHILD = """
 import sys
 
 from cratekit.core import config, review
@@ -1534,72 +1189,57 @@ from cratekit.core import config, review
 key, worker, count = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 store = review.DecisionStore(key, config.load())
 for index in range(count):
-    store.record(
+"""
+
+_RECORD_IN_A_CHILD = _IN_A_CHILD + """    store.record(
         kind="version",
         identity={"worker": worker, "index": index},
         actor="worker-" + str(worker),
     )
 """
 
-_REVOKE_IN_A_CHILD = """
-import sys
-
-from cratekit.core import config, review
-
-key, worker, count = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-store = review.DecisionStore(key, config.load())
-for index in range(count):
-    store.revoke(
+_REVOKE_IN_A_CHILD = _IN_A_CHILD + """    store.revoke(
         review.suppression_id_for(key, "version", {"worker": worker, "index": index}),
         actor="worker-" + str(worker),
     )
 """
 
-#: Eight writers, twenty five decisions each. The numbers are the reviewer's:
-#: they produced 78 records on disk out of 200 expected, with every call
-#: returning a record that reported success.
+#: The reviewer's numbers: unlocked, 78 of 200 records reached the disk.
 WORKERS = 8
 PER_WORKER = 25
 
 
-def test_every_decision_recorded_by_eight_processes_at_once_survives(cfg):
-    """A lost record re-offers a declined file and re-acquires a tombstoned version.
+def test_every_decision_and_revocation_by_eight_processes_at_once_survives(cfg):
+    """A lost record re-acquires a tombstoned version; a lost revocation stands forever.
 
-    ``atomic_write_bytes`` makes the RENAME atomic; it does nothing for the read
-    then write around it. Two processes both read the same document, both add
-    their own record, and the second rename discards the first one's, while the
-    call that lost returns a record saying it worked.
-
-    The queue next door survives exactly this by taking the write lock up front,
-    and the config module already ships a lock whose docstring names this hazard.
+    ``atomic_write_bytes`` makes the rename atomic, not the read then write
+    around it. Eight processes record into each store at once (the two stores
+    have separate files and locks, so their rounds overlap), then eight revoke.
     """
-    _in_separate_processes(
-        _RECORD_IN_A_CHILD,
-        workers=WORKERS,
-        arguments=lambda worker: ("tombstones", worker, PER_WORKER),
+    _all_succeed(
+        [
+            *_start_separate_processes(
+                _RECORD_IN_A_CHILD,
+                workers=WORKERS,
+                arguments=lambda worker: ("tombstones", worker, PER_WORKER),
+            ),
+            *_start_separate_processes(
+                _RECORD_IN_A_CHILD,
+                workers=WORKERS,
+                arguments=lambda worker: ("declines", worker, PER_WORKER),
+            ),
+        ]
     )
     held = review.DecisionStore("tombstones", cfg).suppressions()
     assert len(held) == WORKERS * PER_WORKER, (
-        f"{len(held)} of {WORKERS * PER_WORKER} decisions reached the disk; the "
-        f"rest were reported as recorded and are gone"
+        f"{len(held)} of {WORKERS * PER_WORKER} reported decisions reached the disk"
     )
-
-
-def test_every_revocation_by_eight_processes_at_once_survives(cfg):
-    """A lost revocation leaves a suppression standing forever.
-
-    Which is worse than losing a record: nothing ever offers the thing again, so
-    nobody finds out.
-    """
-    _in_separate_processes(
-        _RECORD_IN_A_CHILD,
-        workers=WORKERS,
-        arguments=lambda worker: ("declines", worker, PER_WORKER),
-    )
-    _in_separate_processes(
-        _REVOKE_IN_A_CHILD,
-        workers=WORKERS,
-        arguments=lambda worker: ("declines", worker, PER_WORKER),
+    _all_succeed(
+        _start_separate_processes(
+            _REVOKE_IN_A_CHILD,
+            workers=WORKERS,
+            arguments=lambda worker: ("declines", worker, PER_WORKER),
+        )
     )
     declines = review.DecisionStore("declines", cfg)
     assert declines.suppressions() == ()
@@ -1607,13 +1247,7 @@ def test_every_revocation_by_eight_processes_at_once_survives(cfg):
 
 
 def test_a_mode_the_filesystem_refuses_is_reported_rather_than_swallowed(cfg, monkeypatch):
-    """Absence is normal for a sidecar. A refusal is not, and it was tolerated.
-
-    Swallowing every operating system error meant a chmod the filesystem declined
-    left a world readable queue of everything a person has decided about their
-    library, with nothing raised and nothing logged, on exactly the platforms
-    where the mode is the only protection there is.
-    """
+    """A refused chmod would leave a world readable queue with nothing raised."""
     real_chmod = os.chmod
     target = review.queue_path(cfg)
 
@@ -1630,12 +1264,7 @@ def test_a_mode_the_filesystem_refuses_is_reported_rather_than_swallowed(cfg, mo
 
 @pytest.fixture
 def permissive_umask():
-    """Run the body under umask 000, then put the process back.
-
-    A test that does not manipulate the umask cannot see this class of defect at
-    all: on a developer machine the umask is usually 022 and a plain create lands
-    0644, which looks fine until somebody with a laxer umask runs the same code.
-    """
+    """Run the body under umask 000, then put the process back."""
     previous = os.umask(0o000)
     try:
         yield
@@ -1644,14 +1273,10 @@ def permissive_umask():
 
 
 def test_every_path_this_unit_creates_is_private_under_any_umask(permissive_umask, cfg):
-    """P1 over EVERYTHING this unit writes, derived by walking rather than listed.
+    """P1 over everything this unit writes, derived by walking three roots.
 
-    Three roots, because this unit now writes in three places: the queue and its
-    sidecars, the decision store documents, and the sibling locks that serialize
-    them. The lock is the one that needed saying: it is created by ``os.open``
-    with an explicit mode, which the umask still masks, and 0600 carries no group
-    or other bits for a mask to add, so masking can only leave it at or below the
-    mode asked for.
+    The queue and its sidecars, the decision store documents, and their sibling
+    locks, which ``os.open`` creates with an explicit mode.
     """
     if not hasattr(os, "chmod"):  # pragma: no cover - platforms without POSIX modes
         return
@@ -1660,7 +1285,6 @@ def test_every_path_this_unit_creates_is_private_under_any_umask(permissive_umas
     declines = review.DecisionStore("declines", cfg)
     recorded = declines.record(kind="removed-file", identity={"inode": 1}, actor="tester")
     declines.revoke(recorded.suppression_id, actor="tester")
-
     roots = [
         config.state_path("review_queue", cfg),
         declines.path.parent,
@@ -1690,24 +1314,19 @@ def test_a_store_the_inventory_does_not_declare_is_refused(cfg):
     assert excinfo.value.cause.reason == "review-queue-undeclared"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Part 9: the unit's verification
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_match_producing_all_three_states_round_trips_across_two_processes(cfg, store):
-    """The unit's stated verification, end to end.
+    """The unit's stated verification, end to end (R11).
 
-    R11 resolves each track to matched, needs review, or missing. Only the middle
-    state is an adjudication surface: the other two are the match result, and the
-    assertion that they never reach the queue is as load bearing as the assertion
-    that the middle one does. A person then answers half the queue, everything
-    restarts, and a second process answers the rest.
+    Only needs review is an adjudication surface; matched and missing never reach
+    the queue. A person answers half, everything restarts, a second process
+    answers the rest.
     """
     matched = [{"row": "1", "state": "matched"}]
     needs_review = [{"row": "2", "state": "needs_review"}, {"row": "3", "state": "needs_review"}]
     missing = [{"row": "4", "state": "missing"}]
-
     offered = [
         review.offer(
             store,
@@ -1721,29 +1340,21 @@ def test_a_match_producing_all_three_states_round_trips_across_two_processes(cfg
         for row in needs_review
     ]
     assert review.count_unresolved(store) == len(needs_review)
-
-    # The two states that are OUTPUTS never become queue items. Asserted by
-    # identity rather than by count, so an item smuggled in under another kind
-    # would still be caught.
+    # By identity rather than by count, so an item under another kind is caught.
     for row in matched + missing:
         absent = review.item_id_for(
             review.Queue.VERSION_MATCH, "version-difference", {"source": "list-9", "row": row["row"]}
         )
         with pytest.raises(CratekitError):
             review.get(store, absent)
-
-    # A person answers the first one, then everything stops.
     review.resolve(
         store, offered[0].item_id, review.Verdict.ACCEPTED, option="opt-same", actor="person"
     )
     store.close()
-
-    # A restart, then a genuinely separate process answers the rest.
     done = _in_another_process(
         "--output", "json", "review", "resolve", offered[1].item_id, "--verdict", "rejected"
     )
     assert done.returncode == 0, done.stderr
-
     with review.open_store(cfg) as reopened:
         assert review.count_unresolved(reopened) == 0
         assert review.get(reopened, offered[0].item_id).verdict is review.Verdict.ACCEPTED
@@ -1751,27 +1362,17 @@ def test_a_match_producing_all_three_states_round_trips_across_two_processes(cfg
         assert review.get(reopened, offered[1].item_id).suppressed
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Part 10: the verbs, and the structured output R32 requires of them
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_review_set_output_validates_against_its_committed_schema(cfg, store):
-    """The plan's sixth scenario, checked against the SHIPPED contract.
-
-    Two validations rather than one. ``envelope_problems`` is the product's own
-    check, and the committed schema document is what a consumer outside this
-    repository validates against; a payload satisfying one and not the other
-    would mean the shipped contract and the running code disagree.
-    """
+    """The plan's sixth scenario, against the product's own check and the SHIPPED schema."""
     _offer_one(store)
     store.close()
-
     code, envelope, _ = _drive("review", "list")
     assert code == int(ExitCode.OK)
     assert output.envelope_problems(envelope) == [], envelope
     assert envelope["schema"] == "review_set/1"
-
     declared = json.loads((SCHEMA_DIR / "review_set.v1.json").read_text())
     payload = envelope["data"]
     assert sorted(payload) == declared["required"]
@@ -1785,19 +1386,15 @@ def test_listing_shows_what_is_outstanding_and_not_what_is_settled(cfg, store):
     settled = _offer_one(store, key="settled")
     review.resolve(store, settled.item_id, review.Verdict.ACCEPTED, actor="tester")
     store.close()
-
     _, outstanding, _ = _drive("review", "list")
     assert [row["id"] for row in outstanding["data"]["items"]] == [open_item.item_id]
     assert outstanding["data"]["unresolved"] == 1
-
     _, everything, _ = _drive("review", "list", "--all")
     assert {row["id"] for row in everything["data"]["items"]} == {
         open_item.item_id,
         settled.item_id,
     }
-    # The backlog is a query over the queue, never the length of the page. A
-    # listing that showed two items and called two the backlog would tell a
-    # person they have twice the work left.
+    # The backlog is a query over the queue, never the length of the page.
     assert everything["data"]["unresolved"] == 1
 
 
@@ -1821,15 +1418,12 @@ def test_showing_one_item_carries_its_whole_record(cfg, store):
 
 def test_an_unknown_identifier_refuses_with_a_code_from_the_vocabulary(cfg, store):
     store.close()
-    code, envelope, _ = _drive("review", "show", "rv_nothing")
-    assert code == int(ExitCode.PRECONDITION)
-    assert envelope["cause"]["reason"] == "review-item-unknown"
+    _refused("review", "show", "rv_nothing", reason="review-item-unknown")
 
 
 def test_a_batch_resolution_from_the_command_line_settles_only_the_subset(cfg, store):
     made = _mixed_queue(store)
     store.close()
-
     code, envelope, _ = _drive(
         "review", "resolve", "--where", "kind=version-difference", "--verdict", "rejected"
     )
@@ -1854,29 +1448,21 @@ def test_a_predicate_on_a_payload_field_is_reachable_from_the_command_line(cfg, 
 def test_a_resolution_naming_both_an_item_and_a_predicate_refuses(cfg, store):
     item = _offer_one(store)
     store.close()
-    code, envelope, _ = _drive(
-        "review", "resolve", item.item_id, "--where", "kind=x", "--verdict", "accepted"
+    _refused(
+        "review", "resolve", item.item_id, "--where", "kind=x", "--verdict", "accepted",
+        reason="review-selection-invalid",
     )
-    assert code == int(ExitCode.PRECONDITION)
-    assert envelope["cause"]["reason"] == "review-selection-invalid"
 
 
 def test_a_batch_resolution_naming_a_candidate_refuses_rather_than_dropping_it(cfg, store):
-    """Each item offers its own candidates, so one identifier cannot span a subset.
-
-    Accepting the argument and quietly ignoring it would leave a person believing
-    a choice was recorded that never was.
-    """
+    """Each item offers its own candidates, so one identifier cannot span a subset."""
     _mixed_queue(store)
     store.close()
-    code, envelope, _ = _drive(
-        "review", "resolve",
-        "--where", "kind=version-difference",
-        "--verdict", "accepted",
-        "--option", "opt-accept",
+    _refused(
+        "review", "resolve", "--where", "kind=version-difference",
+        "--verdict", "accepted", "--option", "opt-accept",
+        reason="review-selection-invalid",
     )
-    assert code == int(ExitCode.PRECONDITION)
-    assert envelope["cause"]["reason"] == "review-selection-invalid"
     with review.open_store(cfg) as reopened:
         assert review.count_unresolved(reopened) == 7
 
@@ -1884,9 +1470,7 @@ def test_a_batch_resolution_naming_a_candidate_refuses_rather_than_dropping_it(c
 def test_a_resolution_naming_neither_refuses_rather_than_answering_everything(cfg, store):
     _offer_one(store)
     store.close()
-    code, envelope, _ = _drive("review", "resolve", "--verdict", "accepted")
-    assert code == int(ExitCode.PRECONDITION)
-    assert envelope["cause"]["reason"] == "review-selection-invalid"
+    _refused("review", "resolve", "--verdict", "accepted", reason="review-selection-invalid")
     with review.open_store(cfg) as reopened:
         assert review.count_unresolved(reopened) == 1
 
@@ -1896,16 +1480,16 @@ def test_a_malformed_predicate_is_refused_rather_than_matching_nothing(cfg, stor
     _offer_one(store)
     store.close()
     for bad in ("kind", "nonsense=1"):
-        code, envelope, _ = _drive("review", "resolve", "--where", bad, "--verdict", "accepted")
-        assert code == int(ExitCode.PRECONDITION), bad
-        assert envelope["cause"]["reason"] == "review-selection-invalid"
+        _refused(
+            "review", "resolve", "--where", bad, "--verdict", "accepted",
+            reason="review-selection-invalid",
+        )
 
 
 def test_clearing_from_the_command_line_puts_a_rejected_item_back(cfg, store):
     item = _offer_one(store)
     review.resolve(store, item.item_id, review.Verdict.REJECTED, actor="tester")
     store.close()
-
     code, envelope, _ = _drive("review", "clear", item.item_id, "--actor", "somebody")
     assert code == int(ExitCode.OK)
     assert envelope["data"]["items"][0]["verdict"] is None
@@ -1920,31 +1504,23 @@ def test_an_export_and_an_import_round_trip_through_the_command_line(
     second = _offer_one(store, key="two")
     review.resolve(store, first.item_id, review.Verdict.REJECTED, actor="tester")
     store.close()
-
     target = tmp_path / "exports" / "queue.json"
     code, envelope, _ = _drive("review", "export", str(target))
     assert code == int(ExitCode.OK)
     assert target.exists()
     assert {row["id"] for row in envelope["data"]["items"]} == {first.item_id, second.item_id}
-
-    # A file is a transport, not an editing surface: versioned JSON rather than
-    # the comma separated shape whose column breaks silently change a verdict.
+    # A transport, not an editing surface: versioned JSON.
     document = json.loads(target.read_text())
     assert document["export"] == review.EXPORT_VERSION
-
-    # A SECOND library, reached the way a relocation is actually reached: the
-    # root moves and the configuration follows it. Building a second Config by
-    # hand would not work here and the reason is worth knowing, because it is the
-    # property that keeps this suite off a real library: an environment override
-    # relocates a configured root, so a hand built Config naming another
-    # directory resolves straight back to this one.
+    # A SECOND library, reached as a relocation is: the root moves and the
+    # configuration follows it, since an environment override relocates any
+    # hand built Config straight back to this one.
     elsewhere = tmp_path / "second-library"
     (elsewhere / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(elsewhere))
     config.reset_cache()
     moved = config.load()
     assert moved.library.root == elsewhere
-
     code, imported, _ = _drive("review", "import", str(target))
     assert code == int(ExitCode.OK)
     assert {row["id"] for row in imported["data"]["items"]} == {first.item_id, second.item_id}
@@ -1959,10 +1535,7 @@ def test_an_export_never_replaces_a_file_that_is_already_there(tmp_path, cfg, st
     store.close()
     target = tmp_path / "already-here.json"
     target.write_text("something somebody wanted")
-
-    code, envelope, _ = _drive("review", "export", str(target))
-    assert code == int(ExitCode.PRECONDITION)
-    assert envelope["cause"]["reason"] == "review-file-unusable"
+    _refused("review", "export", str(target), reason="review-file-unusable")
     assert target.read_text() == "something somebody wanted"
 
 
@@ -1972,26 +1545,10 @@ def test_an_import_reports_a_conflict_as_a_warning_and_keeps_the_local_verdict(
     item = _offer_one(store)
     review.resolve(store, item.item_id, review.Verdict.ACCEPTED, actor="local")
     store.close()
-
-    target = tmp_path / "incoming.json"
-    target.write_text(
-        json.dumps(
-            {
-                "export": review.EXPORT_VERSION,
-                "queue": "",
-                "exported": "2026-01-01T00:00:00+00:00",
-                "items": [
-                    {
-                        **item.to_json(),
-                        "verdict": str(review.Verdict.REJECTED),
-                        "option": None,
-                        "actor": "remote",
-                    }
-                ],
-            }
-        )
+    target = _written(
+        tmp_path / "incoming.json",
+        {**item.to_json(), "verdict": str(review.Verdict.REJECTED), "option": None, "actor": "remote"},
     )
-
     code, envelope, _ = _drive("review", "import", str(target))
     assert code == int(ExitCode.OK)
     assert [warning["code"] for warning in envelope["warnings"]] == ["review-verdict-conflict"]
@@ -2002,43 +1559,18 @@ def test_an_import_reports_a_conflict_as_a_warning_and_keeps_the_local_verdict(
 def test_an_import_that_applies_one_verdict_and_cannot_apply_another_reports_both(
     tmp_path, cfg, store
 ):
-    """The verb wrote verdicts and then reported failure, which is the worst pair.
-
-    Observed: a document carrying one applicable verdict plus one item this build
-    cannot read applied the good verdict, then exited 30 with review-item-unknown
-    and a remediation telling the user to list the queue and take an identifier
-    from it. Zero warnings, no account of what landed, and re-running never
-    succeeded because the good half was already in. The cause was a report step
-    that looked every touched identifier up locally, including the conflicts,
-    which need not exist here at all.
-    """
+    """It reports what it applied plus a warning, never failure after writing, and reruns succeed."""
     item = _offer_one(store)
     store.close()
-    target = tmp_path / "incoming.json"
-    target.write_text(
-        json.dumps(
-            {
-                "export": review.EXPORT_VERSION,
-                "queue": "",
-                "exported": "2026-01-01T00:00:00+00:00",
-                "items": [
-                    {**item.to_json(), "verdict": str(review.Verdict.ACCEPTED)},
-                    {
-                        **item.to_json(),
-                        "id": "rv_from_a_newer_build",
-                        "verdict": "whatever-that-means",
-                    },
-                ],
-            }
-        )
+    target = _written(
+        tmp_path / "incoming.json",
+        {**item.to_json(), "verdict": str(review.Verdict.ACCEPTED)},
+        {**item.to_json(), "id": "rv_from_a_newer_build", "verdict": "whatever-that-means"},
     )
-
     code, envelope, _ = _drive("review", "import", str(target))
-
     assert code == int(ExitCode.OK)
     assert [row["id"] for row in envelope["data"]["items"]] == [item.item_id], (
-        "the verb reports what it applied, and an identifier it never took in is "
-        "not something it applied"
+        "an identifier it never took in is not something it applied"
     )
     assert [warning["code"] for warning in envelope["warnings"]] == [
         "review-verdict-conflict"
@@ -2046,9 +1578,6 @@ def test_an_import_that_applies_one_verdict_and_cannot_apply_another_reports_bot
     assert "rv_from_a_newer_build" in envelope["warnings"][0]["message"]
     with review.open_store(cfg) as reopened:
         assert review.get(reopened, item.item_id).verdict is review.Verdict.ACCEPTED
-
-    # Re-running is the move a person makes after a failure, and it used to be
-    # the move that could never succeed.
     again, second, _ = _drive("review", "import", str(target))
     assert again == int(ExitCode.OK)
 
@@ -2056,36 +1585,20 @@ def test_an_import_that_applies_one_verdict_and_cannot_apply_another_reports_bot
 def test_an_import_lists_an_item_it_inserted_and_could_not_settle_exactly_once(
     tmp_path, cfg, store
 ):
-    """Both facts are true, and one of them is not a second item.
-
-    The row WAS inserted and the verdict WAS not applied, so the identifier is in
-    both lists, and concatenating the lists showed a person two items where the
-    queue holds one.
-    """
+    """Inserted and not settled is in both lists, and is still one item."""
     good = _offer_one(store, key="good").to_json()
     store.close()
-    target = tmp_path / "incoming.json"
-    target.write_text(
-        json.dumps(
-            {
-                "export": review.EXPORT_VERSION,
-                "queue": "",
-                "exported": "2026-01-01T00:00:00+00:00",
-                "items": [
-                    {
-                        **good,
-                        "id": "rv_no_such_option",
-                        "options": [],
-                        "verdict": str(review.Verdict.ACCEPTED),
-                        "option": "opt-nowhere",
-                    }
-                ],
-            }
-        )
+    target = _written(
+        tmp_path / "incoming.json",
+        {
+            **good,
+            "id": "rv_no_such_option",
+            "options": [],
+            "verdict": str(review.Verdict.ACCEPTED),
+            "option": "opt-nowhere",
+        },
     )
-
     code, envelope, _ = _drive("review", "import", str(target))
-
     assert code == int(ExitCode.OK)
     assert [row["id"] for row in envelope["data"]["items"]] == ["rv_no_such_option"]
 
@@ -2093,31 +1606,15 @@ def test_an_import_lists_an_item_it_inserted_and_could_not_settle_exactly_once(
 def test_an_import_carrying_a_malformed_item_does_not_fail_as_an_internal_error(
     tmp_path, cfg, store
 ):
-    """A payload that is a list of numbers used to leave as a type error.
-
-    An internal error at the process boundary is a bare status with no cause and
-    no remediation, which is the one shape the exit-code vocabulary exists to
-    make impossible.
-    """
+    """An internal error is a bare status with no cause, which the vocabulary exists to forbid."""
     good = _offer_one(store, key="good").to_json()
     store.close()
-    target = tmp_path / "incoming.json"
-    target.write_text(
-        json.dumps(
-            {
-                "export": review.EXPORT_VERSION,
-                "queue": "",
-                "exported": "2026-01-01T00:00:00+00:00",
-                "items": [
-                    {**good, "id": "rv_broken", "payload": [1, 2, 3]},
-                    {**good, "verdict": str(review.Verdict.REJECTED)},
-                ],
-            }
-        )
+    target = _written(
+        tmp_path / "incoming.json",
+        {**good, "id": "rv_broken", "payload": [1, 2, 3]},
+        {**good, "verdict": str(review.Verdict.REJECTED)},
     )
-
     code, envelope, _ = _drive("review", "import", str(target))
-
     assert code == int(ExitCode.OK)
     assert [warning["code"] for warning in envelope["warnings"]] == [
         "review-verdict-conflict"
@@ -2127,15 +1624,8 @@ def test_an_import_carrying_a_malformed_item_does_not_fail_as_an_internal_error(
 
 
 def test_every_reason_an_import_can_report_has_a_sentence_a_person_can_act_on():
-    """DERIVED by introspecting the module, so a fifth reason cannot arrive mute.
-
-    The verb reported all four as "already settled here and the export
-    disagrees", which is true of one of them. The others send a person to a
-    different place entirely: re-export from the build that wrote the file,
-    repair the file, or run it again.
-    """
+    """DERIVED by introspecting the module, so a new reason cannot arrive mute."""
     from cratekit.cli import review as verbs
-
     declared = {
         value
         for name, value in vars(review).items()
@@ -2145,8 +1635,7 @@ def test_every_reason_an_import_can_report_has_a_sentence_a_person_can_act_on():
     missing = declared - set(verbs.CONFLICT_SENTENCES)
     assert not missing, f"conflict reasons with no sentence for the user: {sorted(missing)}"
     assert set(verbs.CONFLICT_SENTENCES) == declared, (
-        f"sentences for reasons the core cannot report: "
-        f"{sorted(set(verbs.CONFLICT_SENTENCES) - declared)}"
+        f"sentences for reasons the core cannot report: {sorted(set(verbs.CONFLICT_SENTENCES) - declared)}"
     )
 
 
@@ -2154,52 +1643,27 @@ def test_an_import_of_something_that_is_not_an_export_refuses(tmp_path, cfg, sto
     store.close()
     target = tmp_path / "not-an-export.json"
     target.write_text("[]")
-    code, envelope, _ = _drive("review", "import", str(target))
-    assert code == int(ExitCode.PRECONDITION)
-    assert envelope["cause"]["reason"] == "review-file-unusable"
+    _refused("review", "import", str(target), reason="review-file-unusable")
 
 
 def test_an_import_of_a_file_that_is_not_there_refuses_by_name(tmp_path, cfg, store):
     store.close()
-    code, envelope, _ = _drive("review", "import", str(tmp_path / "absent.json"))
-    assert code == int(ExitCode.PRECONDITION)
-    assert envelope["cause"]["reason"] == "review-file-unusable"
+    _refused("review", "import", str(tmp_path / "absent.json"), reason="review-file-unusable")
 
 
-# NOTE ON WHAT IS DELIBERATELY NOT HERE. There is no per module assertion that
-# the review verbs never read standard input. R33 needs that property and
-# ``tests/test_cli_contract.py`` already asserts it over EVERY module this
-# repository authors, derived by walking the package. A narrower copy here would
-# cover strictly less and would be the second opinion that eventually disagrees.
+# Not here on purpose: R33's "never reads standard input" is asserted over every
+# module by tests/test_cli_contract.py.
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Part 11: what this unit settled that a LATER unit owes (P5)
-# ═══════════════════════════════════════════════════════════════════════════
 #
-# Every guard below is gated on the unit that lands the package it walks, so each
-# is a countdown rather than a wish in a docstring. Each walks the syntax tree for
-# a call that resolves to THIS module through the import graph, rather than for an
-# attribute of the right name.
-#
-# WHY THE BINDING MATTERS, stated because this section shipped without it. A guard
-# that looks for a call to something spelled ``offer`` is satisfied by any object
-# in the language with a method of that name. A reviewer wrote a module that hand
-# edits a gate column in a comma separated file, never touches the queue, and
-# passed all three assertions this section used to make: one unrelated
-# ``_Ranking.offer`` call and one dead assignment of the queue constant were
-# enough. The same walk failed in the other direction too, on correct code written
-# as ``from cratekit.core.review import offer``, and P7 says a guard that fires on
-# correct code is a guard somebody routes around. Both directions have fixtures
-# below, and the fixtures run on every suite run rather than on the day the unit
-# lands.
+# Each guard walks the syntax tree for a call that resolves to THIS module
+# through the import graph, never an attribute of the right name: a name match
+# was satisfied by an unrelated ``_Ranking.offer`` and missed ``from
+# cratekit.core.review import offer`` (P7). Both directions have fixtures.
 
-
-# ── The fixtures. One evasion, and correct code in both import shapes ────────
-
-#: The reviewer's evasion, kept verbatim in shape: it adjudicates nothing, hand
-#: edits the exact comma separated file R12 replaces, hides the writer behind an
-#: aliased import, and satisfies a name matching countdown anyway.
+#: The reviewer's evasion: adjudicates nothing, hand edits the comma separated
+#: file R12 replaces behind an aliased import, and satisfies a name match.
 EVASION_SOURCE = '''
 """A module that answers a name matching countdown and adjudicates nothing."""
 
@@ -2239,7 +1703,6 @@ def run(store, needing_review):
 '''
 
 #: Correct code, symbol import shape, with the queue held in a module constant.
-#: This is the shape the previous walk could not see at all.
 CORRECT_OFFER_SYMBOL_IMPORT = '''
 from cratekit.core.review import Queue, offer
 
@@ -2257,21 +1720,10 @@ def run(store, needing_review):
         )
 '''
 
-# ── The relative spellings, which a SIBLING of the review module would use ────
-#
-# The residual "Two copies of one import walk still carry a relative-import defect"
-# unified the two copies of the import walk so that ``from .review import
-# offer`` and ``from . import review`` resolve the same way their absolute
-# spellings do, and the review half of that fix shipped with NOTHING driving it:
-# reverting those four lines to the old suffix match left the suite at 3323
-# passed and zero deaths, and a grep across the whole tests tree for
-# ``from .review import`` or ``from . import review`` returned nothing at all.
-# The exit-code half of the same unification had three fixtures. This is the
-# other half, in the file whose thesis is that a guard answering "no" instead of
-# "wrong" is the defect.
+# The relative spellings a SIBLING of the review module would use, from the
+# residual "Two copies of one import walk still carry a relative-import defect".
 
-#: A sibling importing the symbol. ``node.module`` holds only ``review`` here,
-#: which the two-element suffix match could not see.
+#: A sibling importing the symbol; ``node.module`` holds only ``review``.
 CORRECT_OFFER_SIBLING_RELATIVE_IMPORT = '''
 from .review import Queue, offer
 
@@ -2281,8 +1733,7 @@ def run(store, needing_review):
         offer(store, queue=Queue.VERSION_MATCH, identity=candidate.identity)
 '''
 
-#: A sibling importing the module. ``node.module`` is None here, and reading
-#: that None as an empty string is how the shape went missing entirely.
+#: A sibling importing the module; ``node.module`` is None.
 CORRECT_OFFER_SIBLING_BOUND_AS_A_MODULE = '''
 from . import review
 
@@ -2294,29 +1745,14 @@ def run(store, needing_review):
         )
 '''
 
-#: Two levels up, which is the ONE relative spelling the old rule recognized.
-CORRECT_OFFER_RELATIVE_IMPORT_TWO_LEVELS_UP = '''
-from ..core.review import Queue, offer
+#: Two levels up, the ONE relative spelling the old rule recognized.
+CORRECT_OFFER_RELATIVE_IMPORT_TWO_LEVELS_UP = CORRECT_OFFER_SIBLING_RELATIVE_IMPORT.replace(
+    "from .review import", "from ..core.review import"
+)
 
-
-def run(store, needing_review):
-    for candidate in needing_review:
-        offer(store, queue=Queue.VERSION_MATCH, identity=candidate.identity)
-'''
-
-#: A module in ANOTHER package with a sibling of its own called ``review``. The
-#: resolution has to answer no here, and a suffix match cannot: the text is
-#: identical to the fixture above it.
-EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW = '''
-from . import review
-
-
-def run(store, needing_review):
-    for candidate in needing_review:
-        review.offer(
-            store, queue=review.Queue.VERSION_MATCH, identity=candidate.identity
-        )
-'''
+#: The same text as the sibling fixture, read in ANOTHER package whose own
+#: sibling is called ``review``: the resolution must answer no, a suffix match cannot.
+EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW = CORRECT_OFFER_SIBLING_BOUND_AS_A_MODULE
 
 #: Correct code holding a decision store on a field, which is the ordinary shape.
 CORRECT_DECISION_STORE = '''
@@ -2349,8 +1785,7 @@ def run(cfg, identity, suppression_id):
     store.revoke(suppression_id, actor="cli")
 '''
 
-#: A deletion pass keeping its own ledger. It satisfies "remembered" and fails
-#: "until the decline is revoked", which is exactly what the countdown forbids.
+#: A private ledger: satisfies "remembered", fails "until the decline is revoked".
 EVASIVE_DECISION_STORE = '''
 class _Ledger:
     def record(self, row):
@@ -2371,19 +1806,16 @@ def run(rows):
 def test_the_countdown_bites_the_evasion_that_satisfied_the_name_match():
     """P7's first half, run against the thing the guard exists to catch."""
     assert not calls_review(EVASION_SOURCE, "offer"), (
-        "an unrelated method called 'offer' still answers for the review queue"
+        "an unrelated method called offer answers for the queue"
     )
     assert not offers_into(EVASION_SOURCE, "Queue.VERSION_MATCH"), (
-        "an assignment of the queue constant that reaches no call still counts "
-        "as offering into it"
+        "a queue constant reaching no call counts as offering into it"
     )
     assert constructs_a_csv_writer(EVASION_SOURCE), (
-        "a comma separated writer behind an aliased import is invisible to the "
-        "guard, which is one keyword away from switching it off"
+        "a comma separated writer behind an aliased import is invisible"
     )
     assert not methods_on_review_construction(EVASIVE_DECISION_STORE, "DecisionStore"), (
-        "a private ledger with methods named record and revoke answers for the "
-        "decision stores, so R35's revocability is unenforced"
+        "a private ledger named record and revoke answers for the decision stores (R35)"
     )
 
 
@@ -2391,12 +1823,7 @@ def test_the_countdown_bites_the_evasion_that_satisfied_the_name_match():
     "source", [CORRECT_OFFER_MODULE_IMPORT, CORRECT_OFFER_SYMBOL_IMPORT]
 )
 def test_the_countdown_stays_quiet_on_correct_code_in_either_import_shape(source):
-    """P7's second half, which is the half that was skipped.
-
-    A guard that fires on correct code trains people to route around it, and the
-    symbol import shape is not exotic: it is what a module offering into one
-    queue writes.
-    """
+    """P7's second half: a guard that fires on correct code gets routed around."""
     assert calls_review(source, "offer")
     assert offers_into(source, "Queue.VERSION_MATCH")
     assert not constructs_a_csv_writer(source)
@@ -2411,18 +1838,7 @@ def test_the_countdown_stays_quiet_on_correct_code_in_either_import_shape(source
     ],
 )
 def test_the_countdown_reads_every_relative_import_shape(source):
-    """The review-side fix from the residual
-    "Two copies of one import walk still carry a relative-import defect", which shipped with
-    nothing watching it.
-
-    The rule read ``node.level > 0`` beside a two-element suffix match on
-    ``node.module``, and ``node.module`` holds only the TAIL: ``from .review
-    import offer`` records ``review`` and ``from . import review`` records
-    nothing at all. So the two spellings a module sitting BESIDE the review
-    module would use were the two that matched nothing, while the two-level
-    spelling from further away worked. Each of these offers into the queue U11
-    declared, and the fallback path has to read all three.
-    """
+    """``node.module`` holds only the tail, so the fallback has to read all three spellings."""
     assert calls_review(source, "offer")
     assert offers_into(source, "Queue.VERSION_MATCH")
 
@@ -2435,21 +1851,11 @@ def test_the_countdown_reads_every_relative_import_shape(source):
     ],
 )
 def test_a_relative_import_is_resolved_against_the_package_the_file_sits_in(source):
-    """Resolving the level is what makes the relative answer match the absolute one.
-
-    ``from . import review`` means a different module in ``cratekit.core`` than
-    it does in ``cratekit.intake``, and a suffix match cannot tell those apart:
-    the two sources are textually identical.
-    ``EVASION_A_DIFFERENT_SIBLING_CALLED_REVIEW`` is that second module, and
-    every question in this file has to answer no about it while answering yes
-    about the same text one package over.
-    """
+    """``from . import review`` names a different module in ``cratekit.intake`` than in ``cratekit.core``."""
     assert calls_review(source, "offer", "cratekit.core")
     assert offers_into(source, "Queue.VERSION_MATCH", "cratekit.core")
     assert not calls_review(source, "offer", "cratekit.intake"), (
-        "a module in another package with a sibling of its own called review "
-        "answers for cratekit.core.review, which is the resolution the level "
-        "exists to do"
+        "a sibling called review in another package answers for cratekit.core.review"
     )
     assert not offers_into(source, "Queue.VERSION_MATCH", "cratekit.intake")
     assert not calls_review(
@@ -2461,17 +1867,7 @@ def test_a_relative_import_is_resolved_against_the_package_the_file_sits_in(sour
 
 
 def test_the_review_module_is_named_once(monkeypatch):
-    """The rule from the residual
-    "Two copies of one import walk still carry a relative-import defect", applied to the spelling
-    it left behind.
-
-    That residual deleted the second constant holding the review module's
-    PACKAGE and
-    left its LEAF written out as ``"review"`` one line below the resolver, so
-    moving ``REVIEW_MODULE`` moved the resolver and left the binding pointing at
-    the old name. Derived at use now, and the way to show a derivation is a
-    derivation is to move the constant and watch the answer follow.
-    """
+    """The leaf is derived from ``REVIEW_MODULE``, so moving the constant moves the binding."""
     monkeypatch.setattr(_guards, "REVIEW_MODULE", "cratekit.core.adjudication")
     moved = '''
 from cratekit.core import adjudication
@@ -2488,8 +1884,7 @@ def run(store, needing_review):
     assert calls_review(moved, "offer")
     assert offers_into(moved, "Queue.VERSION_MATCH")
     assert not calls_review(CORRECT_OFFER_MODULE_IMPORT, "offer"), (
-        "the module moved and the binding did not follow it, so the old name "
-        "still answers for the review queue"
+        "the module moved and the binding did not follow it"
     )
 
 
@@ -2521,21 +1916,11 @@ def test_the_decision_store_countdown_stays_quiet_on_correct_code(source):
     assert methods_on_review_construction(source, "DecisionStore") >= {"record", "revoke"}
 
 
-# ── The countdowns themselves ────────────────────────────────────────────────
+# The countdowns themselves
 
-#: Every adjudication surface this unit declared with NO legacy file, and the
-#: import target of the thing that produces it. A ported surface has a file in
-#: the source tree that a porting unit must dispose of, and ``SURFACES`` already
-#: records that disposition. A NEW surface has nothing in the source tree at all,
-#: so a countdown is the only thing that makes it exist (P5).
-#:
-#: A TARGET HERE IS IN ONE OF TWO STATES, and the test below asserts a different
-#: thing in each. While it is in ``_pending.PENDING`` it is a countdown, and what
-#: is asserted is that the countdown exists. Once its unit lands the target and
-#: clears the register, the countdown is spent, and asserting its presence would
-#: mean the surface quietly stopped being covered by anything the moment it
-#: acquired a real producer. So a landed target is held to the stronger claim: it
-#: must actually offer into the queue it was registered against.
+#: Every adjudication surface declared with NO legacy file, and the import
+#: target producing it (P5). While a target is in ``_pending.PENDING`` it is a
+#: countdown; once landed it must actually offer into its queue.
 NEW_SURFACE_OWED_BY: dict[str, str] = {
     review.Queue.DUPLICATES: "cratekit.modules.reports",
     review.Queue.DELETION: "cratekit.deletion",
@@ -2545,55 +1930,29 @@ NEW_SURFACE_OWED_BY: dict[str, str] = {
 
 
 def test_every_new_adjudication_surface_is_owed_by_a_registered_unit():
-    """DERIVED from the split, so a fifth new surface cannot arrive uncovered.
-
-    A queue declared with no producer and no countdown is a surface that exists
-    only in this module's own table. R26 named the duplicate audit and the
-    adoption plan as review items, and both obligations lived in a ``why`` string
-    until this test, which is the shape P5 forbids by name.
-
-    THE CHECK FOLLOWS THE TARGET THROUGH ITS OWN LANDING. It used to assert only
-    that each target sat in the pending register, which was correct while all
-    four were unwritten and would have gone quiet the moment one landed: clearing
-    a register entry is the required act of landing, so the assertion would have
-    had to be weakened by the very unit it governs. A landed target answers the
-    stronger question instead.
-    """
+    """DERIVED from the split; a landed target is held to producing, so landing cannot switch it off."""
     declared = {
         surface.queue
         for surface in review.SURFACES
         if surface.adjudicated and not surface.legacy_file
     }
     assert set(NEW_SURFACE_OWED_BY) == declared, (
-        f"new adjudication surfaces with no registered producer: "
-        f"{sorted(declared - set(NEW_SURFACE_OWED_BY))}; stale entries: "
-        f"{sorted(set(NEW_SURFACE_OWED_BY) - declared)}"
+        f"unregistered: {sorted(declared - set(NEW_SURFACE_OWED_BY))}; stale: {sorted(set(NEW_SURFACE_OWED_BY) - declared)}"
     )
     for queue, key in NEW_SURFACE_OWED_BY.items():
         if key in _pending.PENDING:
             continue
         assert not _pending._is_absent(key), (
-            f"{queue} is produced by {key}, which is neither in the pending "
-            f"register nor present in this build, so nothing produces it and "
-            f"nothing counts down to it"
+            f"{queue}: {key} is neither pending nor present, so nothing produces it"
         )
         constant = f"Queue.{review.Queue(queue).name}"
         assert _target_offers_into(key, constant), (
-            f"{key} has landed and cleared its countdown, and nothing in it "
-            f"offers into {constant}; the surface is declared with a producer "
-            f"that does not produce it"
+            f"{key} has landed and nothing in it offers into {constant}"
         )
 
 
 def _target_offers_into(target: str, queue: str) -> bool:
-    """Whether a landed import target offers into ``queue``, package or module.
-
-    Both shapes are accepted because both appear in the table above: two entries
-    name a package and two name a single module inside one. Handling only the
-    package shape would answer False for a correct module and turn this into a
-    guard that fires on correct code, which is how a guard gets routed around
-    (P7).
-    """
+    """Whether ANY module of a landed package, or a single landed module, offers into ``queue`` (P3, P7)."""
     parts = target.split(".")
     root = SRC_ROOT.joinpath(*parts)
     if root.is_dir():
@@ -2605,153 +1964,75 @@ def _target_offers_into(target: str, queue: str) -> bool:
 @pytest.mark.parametrize(
     "target, expected",
     [
-        # The package shape, both ways. One module inside it offers, so the
-        # package does; nothing inside cratekit.write does.
         ("cratekit.modules.reports", True),
         ("cratekit.write", False),
-        # The MODULE shape, both ways. This branch had never executed: every
-        # target in the table above that has landed happens to name a package,
-        # so the half of this helper written for the two that name a module was
-        # dead code the day it was written.
         ("cratekit.modules.reports.duplicates", True),
         ("cratekit.modules.reports.aging", False),
-        # And a target that is not there at all, which must be False rather than
-        # an exception, since the caller asks this only after establishing the
-        # thing has landed and a crash would read as a broken suite rather than
-        # as a broken table.
         ("cratekit.modules.reports.no_such_producer", False),
         ("cratekit.nowhere.at_all", False),
     ],
+    ids=[
+        "package-offers",
+        "package-does-not",
+        "module-offers",
+        "module-does-not",
+        "absent-module",
+        "absent-package",
+    ],
 )
 def test_a_landed_target_that_does_not_produce_is_not_taken_for_one(target, expected):
-    """The helper the countdown's landed branch rests on, answered both ways.
-
-    Stubbing ``_target_offers_into`` to return True unconditionally killed no
-    test in the whole suite. Every entry in ``NEW_SURFACE_OWED_BY`` except one is
-    still a countdown and takes the early return above, and the one that has
-    landed is covered from the other side by
-    ``test_the_duplicate_audit_offers_its_pairs_into_the_duplicates_queue``,
-    which calls a different helper. So the assertion that a landed producer
-    really produces was carried by a function nothing could show was capable of
-    saying no.
-
-    It has to answer FALSE for a landed thing that does not produce, or the
-    branch is decoration: the whole reason the check follows a target through its
-    own landing is that clearing a register entry must not be able to switch the
-    obligation off.
-    """
+    """The helper the landed branch rests on must be able to say no, and False for an absent target."""
     assert _target_offers_into(target, "Queue.DUPLICATES") is expected
 
 
 def test_the_countdown_can_tell_a_landed_target_from_one_that_is_not_there():
-    """The premise the branch above is chosen on, which is a separate question.
-
-    ``_is_absent`` is what decides whether a table entry that has left the
-    pending register has landed or has simply never existed, and the second is
-    the case the assertion beside it exists for: a surface declared against a
-    producer that is neither counted down to nor present is owed by nothing at
-    all. No entry is in that state today, so the assertion itself cannot be made
-    to fail without inventing a table; the predicate it rests on is asserted
-    here instead, over the exact module family the table names.
-    """
+    """``_is_absent`` decides whether an entry off the register landed or never existed."""
     assert not _pending._is_absent("cratekit.modules.reports")
     assert _pending._is_absent("cratekit.modules.reports.no_such_producer")
 
 
 def test_the_match_verb_sends_only_the_middle_state_to_the_queue():
-    """U11's obligation on U16, ARMED now that the match verb has landed.
-
-    R11 resolves each track to matched, needs review, or missing. U11 declared
-    the first and the last as OUTPUTS and the middle one as the version match
-    queue, and that declaration is only worth having if the first unit able to
-    contradict it is held to it.
-
-    This is the static half. The behavioural half lives in
-    tests/test_match_states.py, which drives the real verb over a real library
-    and asserts that a matched track and a missing one leave the queue empty.
-    Both are needed: this one cannot see what the verb does at run time, and
-    that one cannot see a second producer added later that writes a file.
-    """
+    """U11's obligation on U16, ARMED. The static half; tests/test_match_states.py is the behavioural one."""
     source = (SRC_ROOT / "cratekit" / "acquire" / "match_cli.py").read_text()
-    assert calls_review(source, "offer"), (
-        "the match verb declares that it adjudicates and never calls this "
-        "module's offer; a call to something else spelled the same way is not "
-        "the review queue"
-    )
+    assert calls_review(source, "offer"), "the match verb never calls this module's offer"
     assert offers_into(source, "Queue.VERSION_MATCH"), (
-        "the match verb offers into some queue other than the one U11 declared "
-        "for R11's needs-review state; the queue must reach the offer call, "
-        "directly or through a constant assigned from it"
+        "the match verb does not offer into the version match queue (R11)"
     )
     assert not constructs_a_csv_writer(source), (
-        "the match verb writes a comma separated file for a person to edit, which "
-        "is the surface R12 replaces"
+        "the match verb writes a comma separated file for a person to edit (R12)"
     )
 
 
-def _package_methods_on(package: str, wanted: str) -> set[str]:
-    """Every method called on something ANY module in a package built from ``wanted``.
-
-    The union across modules rather than per module, for the reason
-    :func:`_package_offers_into` is walked: the subject of the countdown is the
-    UNIT, not one file in it, and a unit that puts its store access in one module
-    and its queue access in another has done the ordinary thing.
-    """
+def _package_answers(root: Path) -> tuple[bool, set[str], bool]:
+    """The deletion countdown's three questions over a package, as the UNIT is the subject (P3)."""
+    modules = package_modules(root)
     reached: set[str] = set()
-    root = SRC_ROOT.joinpath(*package.split("."))
-    for _name, source in package_modules(root):
-        reached |= methods_on_review_construction(source, wanted)
-    return reached
-
-
-def _package_constructs(package: str, wanted: str) -> bool:
-    root = SRC_ROOT.joinpath(*package.split("."))
-    return any(constructs_review(source, wanted) for _name, source in package_modules(root))
+    for _name, source in modules:
+        reached |= methods_on_review_construction(source, "DecisionStore")
+    return (
+        any(constructs_review(source, "DecisionStore") for _name, source in modules),
+        reached,
+        any(offers_into(source, "Queue.DELETION") for _name, source in modules),
+    )
 
 
 def test_the_deletion_pass_records_declines_and_tombstones_where_they_are_revocable():
-    """U24's obligation, ARMED. R35 and R36 both require revocability by name.
-
-    A deletion pass keeping its own file would satisfy "remembered" and fail
-    "until the decline is revoked", and nothing about a green suite would show it.
-
-    IT WALKS THE PACKAGE RATHER THAN ONE FILE, and the change is deliberate. The
-    entry was registered against ``cratekit.deletion.cli`` because that was the
-    only module name the plan had spelled at the time. What R35 and R36 require
-    is a property of the UNIT: a countdown pointed at one file inside a package
-    is satisfied by that file and blind to the rest, which is P3, and it is also
-    how the obligation would have been read as met by a shell that merely called
-    something. The shape here is the one U34's and U23's countdowns already use.
-    """
-    reached = _package_methods_on("cratekit.deletion", "DecisionStore")
-    assert _package_constructs("cratekit.deletion", "DecisionStore"), (
-        "the deletion pass does not reach the decision stores at all"
-    )
-    assert "record" in reached, (
-        "the deletion pass never records a suppression through a store it built "
-        "from this module, so a declined file is offered again on the next run "
-        "(R35)"
-    )
-    assert "revoke" in reached, (
-        "the deletion pass records suppressions and offers no way to revoke one; "
-        "R36 says a tombstone is listable AND revocable"
-    )
-    assert _package_offers_into("cratekit.deletion", "Queue.DELETION"), (
-        "R35 presents a removed row's file for review, and U11 declared the "
-        "queue that presentation goes through"
-    )
+    """U24's obligation, ARMED: R35 and R36 require revocability, walked over the whole package."""
     root = SRC_ROOT / "cratekit" / "deletion"
+    constructs, reached, offers = _package_answers(root)
+    assert constructs, "the deletion pass does not reach the decision stores at all"
+    assert "record" in reached, (
+        "the deletion pass never records through a store built from this module (R35)"
+    )
+    assert "revoke" in reached, "the deletion pass offers no way to revoke a suppression (R36)"
+    assert offers, "the deletion pass does not offer into the deletion queue (R35)"
     for name, source in package_modules(root):
         assert not constructs_a_csv_writer(source), (
             f"{name} writes a comma separated file for a person to edit"
         )
 
 
-#: A package that does everything the countdown asks, SPLIT ACROSS TWO MODULES,
-#: which is the shape the landed unit actually has and the shape a per-file guard
-#: would have failed on. Assembled here rather than asserted against the real
-#: package alone, because a guard proved only against the code it was written for
-#: is a guard nobody has proved anything about (P7).
+#: Everything the countdown asks, SPLIT ACROSS TWO MODULES, the landed shape (P7).
 _CORRECT_SPLIT_PACKAGE = {
     "stores.py": """
 from cratekit.core import review
@@ -2782,9 +2063,7 @@ def present(store, identity):
 """,
 }
 
-#: The same package with the store replaced by a private ledger and the queue
-#: replaced by one that is not this one. Every method name still matches, which is
-#: exactly what the name-matching version of this guard was satisfied by.
+#: The same package with a private ledger and another queue; every name still matches.
 _EVASIVE_SPLIT_PACKAGE = {
     "stores.py": """
 class _Ledger:
@@ -2822,42 +2101,20 @@ def _assemble(root: Path, files: dict[str, str]) -> Path:
     return root
 
 
-def _package_answers(root: Path) -> tuple[bool, set[str], bool]:
-    """The three questions the countdown asks, over an assembled package."""
-    modules = package_modules(root)
-    reached: set[str] = set()
-    for _name, source in modules:
-        reached |= methods_on_review_construction(source, "DecisionStore")
-    return (
-        any(constructs_review(source, "DecisionStore") for _name, source in modules),
-        reached,
-        any(offers_into(source, "Queue.DELETION") for _name, source in modules),
-    )
-
-
 def test_the_deletion_countdown_bites_a_package_that_evades_it(tmp_path):
     """P7's first half, on the guard's own shape rather than on one file's."""
     constructs, reached, offers = _package_answers(
         _assemble(tmp_path / "evasive", _EVASIVE_SPLIT_PACKAGE)
     )
     assert not constructs, (
-        "a private ledger with methods named record and revoke answers for the "
-        "decision stores, so R35's revocability is unenforced"
+        "a private ledger named record and revoke answers for the decision stores (R35)"
     )
     assert reached == set()
-    assert not offers, (
-        "offering into some other queue satisfies the deletion countdown, so the "
-        "surface U11 declared for R35 is unenforced"
-    )
+    assert not offers, "offering into another queue satisfies the deletion countdown (R35)"
 
 
 def test_the_deletion_countdown_stays_quiet_on_a_correct_package(tmp_path):
-    """P7's second half, which is the half that keeps getting skipped.
-
-    The correct package here SPLITS the store access and the queue access across
-    two modules. A guard that reads one file would fail this, and a guard that
-    fails correct code is a guard somebody routes around.
-    """
+    """P7's second half: store access and queue access split across two modules."""
     constructs, reached, offers = _package_answers(
         _assemble(tmp_path / "correct", _CORRECT_SPLIT_PACKAGE)
     )
@@ -2866,85 +2123,73 @@ def test_the_deletion_countdown_stays_quiet_on_a_correct_package(tmp_path):
     assert offers
 
 
-def _package_offers_into(package: str, queue: str) -> bool:
-    """Whether ANY module in a landed package offers into ``queue``.
-
-    Walked rather than named, because a countdown pointed at one file inside a
-    package is satisfied by that file and blind to the rest of the unit (P3).
-
-    A SINGLE MODULE IS ACCEPTED TOO. Two of the four registered producers name a
-    module rather than a package, and a walk over a path that is not a directory
-    finds nothing and answers False, which reads exactly like "the producer does
-    not offer into the queue". Those two are still pending today, so nothing
-    would have failed; the answer would simply have been wrong on the day either
-    of them landed, which is the worst time to discover it.
-    """
-    root = SRC_ROOT.joinpath(*package.split("."))
-    if root.is_dir():
-        return any(offers_into(source, queue) for _name, source in package_modules(root))
-    single = root.with_suffix(".py")
-    return single.is_file() and offers_into(single.read_text(), queue)
-
-
 def test_the_duplicate_audit_offers_its_pairs_into_the_duplicates_queue():
-    """U34's obligation, and half of R26. ARMED: the register entry is cleared.
-
-    The source system's duplicate audit prints and never records, so a pair
-    somebody has already judged an intentional alternate is reported again on
-    every run. The persistent ignore U34's brief asks for IS a verdict in this
-    queue, and a private ignore file beside the report would satisfy the brief
-    and re-create the defect.
-    """
-    assert _package_offers_into("cratekit.modules.reports", "Queue.DUPLICATES")
+    """U34's obligation, half of R26, ARMED: the persistent ignore IS a verdict in this queue."""
+    assert _target_offers_into("cratekit.modules.reports", "Queue.DUPLICATES")
 
 
 def test_the_adoption_plan_becomes_review_items_rather_than_a_file():
-    """U23's obligation, ARMED: the module landed and the countdown expired.
+    """U23's obligation, ARMED (R26): offers into the queue and writes no comma separated file.
 
-    R26 says adoption presents its whole plan for review and applies it
-    incrementally and resumably. Resumable across sessions is precisely what a
-    plan file cannot be, because the verdicts have to outlive the process that
-    collected them.
-
-    Walked over the whole package rather than pointed at one file, because a
-    countdown satisfied by one module inside a package is blind to the rest of
-    the unit (P3).
-
-    WHAT THIS ALONE CANNOT SEE, SAID PLAINLY, because a guard that reads as
-    complete and is not is worse than one that reads as partial. This is a SHAPE
-    check: it asks whether the package contains an ``offer`` call reaching this
-    queue, and a package whose only such call sits under ``if False:``, after a
-    ``raise NotImplementedError``, inside a discarded lambda, or in a private
-    function nothing calls passes it, as does a ``build_adoption_plan`` that
-    returns its rows unchanged. Five such shapes were built and all five went
-    green here. The behavioural half is ``tests/test_adoption.py``, which drives
-    the real producer end to end and explodes on collection against every one of
-    them, and naming it here is what U16's sibling countdown does and what this
-    one was missing.
-
-    THE COMMA SEPARATED CLAUSE IS THE HALF THAT WAS ABSENT FROM THE SHAPE CHECK
-    ITSELF, and it is not covered by the behavioural half either. A module that
-    offers correctly AND ALSO writes a file for a person to edit satisfied every
-    assertion here, in a test whose own name ends "rather than a file". Its U16
-    and U24 siblings both assert it; this one did not.
+    A SHAPE check over the whole package (P3); the behavioural half is
+    ``tests/test_adoption.py``.
     """
-    assert _package_offers_into("cratekit.adopt", "Queue.ADOPTION")
+    assert _target_offers_into("cratekit.adopt", "Queue.ADOPTION")
     offenders: list[str] = []
     for name, source in package_modules(SRC_ROOT / "cratekit" / "adopt"):
         if constructs_a_csv_writer(source):
             offenders.append(name)
     assert not offenders, (
-        f"the adoption package writes a comma separated file for a person to "
-        f"edit: {offenders}. That is the surface R12 replaces, and a module can "
-        f"offer into the queue and write one anyway."
+        f"the adoption package writes a comma separated file to edit: {offenders} (R12)"
     )
 
 
 def test_the_path_repair_pass_offers_its_proposals_into_the_path_repair_queue():
-    """U37's obligation.
+    """U37's obligation: a proposal is never applied without a decision taken in the queue."""
+    assert _target_offers_into("cratekit.intake", "Queue.PATH_REPAIR")
 
-    A wrong answer here re-points a library row at somebody else's file, so a
-    proposal is never applied without a decision, and a decision is never taken
-    from a file somebody edited.
-    """
-    assert _package_offers_into("cratekit.intake", "Queue.PATH_REPAIR")
+
+
+def _hold_one(store):
+    review.hold(store, queue=review.Queue.LABEL_RELEASE, kind="label-release",
+                identity={"release_id": "r1"}, payload={}, group="g", name="L", reason="r",
+                detail={}, run_id="run-1")
+
+
+def _import_over_a_verdict(store):
+    document = review.export_document(store)
+    review.resolve(store, document["items"][0]["id"], review.Verdict.ACCEPTED,
+                   option="opt-accept", actor="a")
+    return lambda: review.import_document(store, document, actor="importer")
+
+
+@pytest.mark.parametrize(
+    ("name", "ready"),
+    [
+        ("item_id_for", lambda store: lambda: _hold_one(store)),
+        ("list_items", lambda store: lambda: review.grouped(
+            store, queue=review.Queue.LABEL_RELEASE, by="label")),
+        ("_item_from_row", lambda store: (_offer_one(store), _import_over_a_verdict(store))[1]),
+    ],
+    ids=["hold", "grouped", "import_document"],
+)
+def test_a_name_patched_on_review_reaches_the_module_it_moved_to(store, monkeypatch, name, ready):
+    """U301. hold, grouped and import_document read these through ``core.review``."""
+    act = ready(store)
+    calls = []
+    real = getattr(review, name)
+    monkeypatch.setattr(review, name, lambda *a, **k: calls.append(1) or real(*a, **k))
+    act()
+    assert calls
+
+
+def test_an_item_a_document_carries_twice_is_applied_once(tmp_path, cfg, store):
+    """U301. Inserted open, then resolved by its second entry: one change, not two."""
+    item = _offer_one(store, key="twice")
+    entry = item.to_json()
+    document = _document(entry, {**entry, "verdict": str(review.Verdict.ACCEPTED),
+                                 "option": "opt-accept", "actor": "other"})
+    with review.open_store(cfg, path=tmp_path / "other" / "queue.db") as receiving:
+        result = review.import_document(receiving, document, actor="importer")
+    assert result.inserted == (item.item_id,) and result.resolved == (item.item_id,)
+    assert result.applied == (item.item_id,)

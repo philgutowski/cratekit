@@ -1,23 +1,9 @@
 """U274: a download job logs in once per drive, four provider calls a track.
 
-``crate acquire download`` built a new adapter and a new session scope for every
-track, so every track read the keychain, wrote a private token file, logged in
-again (``sessions``, then ``users/<id>``) and erased the file. Phillip's answer
-on the card (option 1): the session is materialised, validated and written back
-once per drive of one job, and the private token file is removed when the drive
-ends or fails.
-
-THE STAND IN COUNTS EVERY CALL THROUGH THE REAL GATE. The vendored tool's two
-classes and its downloader are the smallest doubles the real ``authenticate``
-and ``fetch`` accept (the shape ``tests/test_provider_gate.py`` uses), and each
-of them asks the provider through ``request_session.request``, which the real
-gate wraps. So the verb, the job engine, the paced pool, the adapter, the gate
-and the in memory keychain are all the product's own, and only the provider and
-the tool's insides are stood in. The tool's own per track calls are the ones
-the brief measured on the live shape: ``tracks/<id>`` (the offer, then the
-tool's own), ``albums/<id>`` and ``playbackinfo``.
-
-Nothing here reaches a network, a real keychain or a real library.
+The session is materialised, validated and written back once per drive, and the private
+token file goes when the drive ends or fails. The vendored tool is stood in by the smallest
+doubles the real ``authenticate`` and ``fetch`` accept, each asking the provider through
+``request_session.request``, which the real gate wraps, so every call is counted by the gate.
 """
 
 from __future__ import annotations
@@ -53,23 +39,16 @@ from tests.test_config import valid_data
 
 #: The stored session: PKCE, and obviously not a real one.
 STORED = {
-    "token_type": "Bearer",
-    "access_token": "FAKE-value-1",
-    "refresh_token": "FAKE-value-2",
-    "expiry_time": 1700000000,
-    "is_pkce": True,
+    "token_type": "Bearer", "access_token": "FAKE-value-1", "refresh_token": "FAKE-value-2",
+    "expiry_time": 1700000000, "is_pkce": True,
 }
 
 BASE = "https://api.invalid/v1/"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The stand in
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 class HTTPError(Exception):
-    """The client's HTTP error, carrying its status in its words, as the real one does."""
+    """The client's HTTP error, carrying its status in its words."""
 
 
 class Response:
@@ -84,8 +63,7 @@ class Provider:
 
     def __init__(self) -> None:
         self.asked: list[str] = []
-        #: Answer 401 to every call from this call's index on (a session the
-        #: provider withdrew mid drive), or None to answer every call.
+        #: Answer 401 to every call from this index on, or None to answer every call.
         self.withdraw_at: int | None = None
         #: Refuse the login itself.
         self.reject_login = False
@@ -119,16 +97,14 @@ class Transport:
 
 
 class ToolSession:
-    """The tool's client session: the four token fields, and the calls the adapter
-    and the tool make on it. Each call goes out through ``request_session``."""
+    """The tool's client session: the four token fields and the calls made on it."""
 
     def __init__(self, provider: Provider) -> None:
         self.request_session = Transport(provider)
         self.token_type = self.access_token = self.refresh_token = None
         self.expiry_time: Any = None
         self.is_pkce = False
-        #: Refresh the access token in memory, as the client library does on an
-        #: expired answer, when this track is looked up.
+        #: Refresh the access token in memory on this track's lookup, as the client does.
         self.refresh_at: str | None = None
 
     def _get(self, path: str) -> Response:
@@ -162,8 +138,7 @@ class ToolSession:
 
 
 class Tool:
-    """The tool's two classes and its downloader, sharing one session per test,
-    as the real singleton shares one per process."""
+    """The tool's two classes and its downloader, sharing one session per test."""
 
     def __init__(self, provider: Provider) -> None:
         self.session = ToolSession(provider)
@@ -199,8 +174,6 @@ class Tool:
                     data = json.loads(Path(path).read_text())
                 except (OSError, ValueError):
                     return False
-                # The real token model types the expiry a float, so a stored
-                # ``1700000000`` comes back ``1700000000.0``.
                 data["expiry_time"] = float(data.get("expiry_time") or 0.0)
                 self.data = SimpleNamespace(**data)
                 file = Path(path)
@@ -210,15 +183,10 @@ class Tool:
                 return True
 
             def login_token(self, do_pkce: bool = False) -> bool:
-                # The real tool's shape: every exception is caught, the token
-                # file is deleted, and the answer is False.
                 try:
                     return self.session.load_oauth_session(
-                        self.data.token_type,
-                        self.data.access_token,
-                        self.data.refresh_token,
-                        self.data.expiry_time,
-                        is_pkce=do_pkce,
+                        self.data.token_type, self.data.access_token, self.data.refresh_token,
+                        self.data.expiry_time, is_pkce=do_pkce,
                     )
                 except Exception:  # noqa: BLE001 - the tool's own shape
                     Path(self.file_path).unlink(missing_ok=True)
@@ -236,8 +204,6 @@ class Tool:
                 self.fn_logger = fn_logger
 
             def item(self, *, file_template, media_id, media_type) -> tuple[bool, str]:
-                # The tool's own lookups, then the stream, each swallowed as the
-                # real tool swallows them.
                 try:
                     track = self.session.track(media_id)
                     self.session.album(track.album.id)
@@ -277,10 +243,6 @@ class Keychain:
         monkeypatch.setattr(keyring, "get_password", get_password)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 @pytest.fixture
 def library(tmp_path, monkeypatch) -> Path:
@@ -309,8 +271,7 @@ def cfg(library, temporary, tmp_path, monkeypatch) -> config.Config:
     monkeypatch.setenv(binaries.env_var("ffmpeg"), str(ffmpeg))
     built = config.from_dict(
         valid_data(
-            library,
-            profile={"name": "full"},
+            library, profile={"name": "full"},
             acquisition={"adapter": "vendored", "pacing_delay_s": 3.0},
             provider={"min_interval_s": 0.001},
         )
@@ -388,10 +349,6 @@ def stored_now() -> dict:
     return secrets.get_json(secrets.Credential.PROVIDER_SESSION)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. One login a drive, four calls a track
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def test_a_ten_track_job_logs_in_once_and_spends_four_calls_a_track(
     cfg, library, tool, provider, keychain, temporary, slept
@@ -407,17 +364,13 @@ def test_a_ten_track_job_logs_in_once_and_spends_four_calls_a_track(
     assert provider.count("users/") == 1
     for key in tracks:
         assert provider.per_track(key) == [
-            f"tracks/{key}",
-            f"tracks/{key}",
-            f"albums/a{key}",
-            f"tracks/{key}/playbackinfo",
+            f"tracks/{key}", f"tracks/{key}", f"albums/a{key}", f"tracks/{key}/playbackinfo",
         ], key
     assert len(provider.asked) == 2 + 4 * len(tracks)
 
 
 def test_every_call_of_the_drive_goes_through_the_gate(cfg, library, tool, provider, stored):
-    """The gate's own count is the stand in's, so nothing reached the provider
-    around it, and its spacing applied to each call."""
+    """The gate's count is the stand in's, so nothing reached the provider around it."""
     job_id = queued(library, keys(3))
     before = provider_gate.spend().calls
 
@@ -440,8 +393,7 @@ def test_the_pacing_delay_is_still_taken_before_every_acquisition(
 def test_a_drive_reads_the_keychain_as_a_one_track_drive_does_and_writes_nothing(
     cfg, library, tool, provider, keychain
 ):
-    """One read for the drive however many tracks, and no write for a session
-    the provider did not refresh."""
+    """One read for the drive however many tracks, and no write for an unrefreshed session."""
     one = queued(library, keys(1))
     keychain.reads = 0
     drive(resume_argv(one))
@@ -476,8 +428,7 @@ def test_the_tool_is_built_and_pointed_at_one_token_file_for_the_whole_drive(
 def test_each_item_still_lands_in_its_own_staging_directory(
     cfg, library, tool, provider, stored, monkeypatch
 ):
-    """The source is reused and its settings are not: the staging directory the
-    tool is told is this item's own, pushed and verified on every reuse."""
+    """The source is reused, its settings are not: the staging directory is verified each time."""
     seen: list[str] = []
     real = vendored.apply_settings
 
@@ -502,10 +453,6 @@ def test_two_drives_log_in_twice(cfg, library, tool, provider, stored):
     assert provider.count("sessions") == 2
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. A refused session still parks, and is never logged into again
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def test_a_rejected_login_parks_the_job_after_one_login(cfg, library, tool, provider, keychain):
     provider.reject_login = True
@@ -527,7 +474,6 @@ def test_a_session_withdrawn_mid_drive_parks_and_a_resume_lands_the_rest(
 ):
     tracks = keys(5)
     job_id = queued(library, tracks)
-    # The login (2) and two tracks (8) are answered, then every call is refused.
     provider.withdraw_at = 2 + 4 * 2
 
     code, envelope = drive(resume_argv(job_id))
@@ -535,17 +481,13 @@ def test_a_session_withdrawn_mid_drive_parks_and_a_resume_lands_the_rest(
     assert envelope["cause"]["reason"] == "auth-failed", envelope
     assert job_of(job_id).state is jobs.JobState.BLOCKED
     assert [states(job_id)[key] for key in tracks] == [
-        jobs.ItemState.DONE,
-        jobs.ItemState.DONE,
-        jobs.ItemState.PENDING,
-        jobs.ItemState.PENDING,
+        jobs.ItemState.DONE, jobs.ItemState.DONE, jobs.ItemState.PENDING, jobs.ItemState.PENDING,
         jobs.ItemState.PENDING,
     ]
     assert provider.count("sessions") == 1, "the drive logged in again over a refused session"
     assert keychain.session_writes == []
     assert token_directories(temporary) == []
 
-    # The person records a fresh session; the provider answers again.
     secrets.set_json(secrets.Credential.PROVIDER_SESSION, {**STORED, "access_token": "FAKE-value-4"})
     provider.withdraw_at = None
     code, envelope = drive(resume_argv(job_id))
@@ -557,8 +499,7 @@ def test_a_session_withdrawn_mid_drive_parks_and_a_resume_lands_the_rest(
 
 
 def test_a_missing_session_parks_and_leaves_no_file(cfg, library, tool, provider, temporary):
-    """Nothing recorded: the drive's first track cannot materialise, the job
-    parks on the credential, and no call or file is made."""
+    """Nothing recorded: the job parks on the credential, with no call or file made."""
     job_id = queued(library, keys(3))
 
     code, envelope = drive(resume_argv(job_id))
@@ -571,8 +512,7 @@ def test_a_missing_session_parks_and_leaves_no_file(cfg, library, tool, provider
 
 
 def test_a_refused_source_raises_again_with_no_call(cfg, tmp_path, tool, provider, stored):
-    """The guard under the park: a source that met a refusal never logs in or
-    asks again, whatever its caller does next."""
+    """A source that met a refusal never logs in or asks again."""
     provider.reject_login = True
     staging = tmp_path / "staging"
     staging.mkdir()
@@ -586,10 +526,6 @@ def test_a_refused_source_raises_again_with_no_call(cfg, tmp_path, tool, provide
             held.source(settings).authenticate()
     assert len(provider.asked) == asked == 1
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. A refreshed session reaches the keychain, once
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_token_refreshed_during_the_drive_is_stored_once(cfg, library, tool, provider, keychain):
@@ -605,7 +541,6 @@ def test_a_token_refreshed_during_the_drive_is_stored_once(cfg, library, tool, p
     assert written["access_token"] == "FAKE-value-3"
     assert written["refresh_token"] == STORED["refresh_token"]
     assert written["is_pkce"] is True
-    # The client's naive datetime is UTC, stored as the epoch.
     assert written["expiry_time"] == datetime(2030, 1, 1, tzinfo=timezone.utc).timestamp()
 
 
@@ -627,8 +562,7 @@ def test_a_refresh_before_a_withdrawal_still_reaches_the_keychain(
 def test_a_refresh_in_a_drive_where_every_item_failed_still_reaches_the_keychain(
     cfg, library, tool, provider, keychain, temporary
 ):
-    """A drive whose every item failed ends in the engine's no evidence raise,
-    which is the drive scope closing by an exception."""
+    """A drive whose every item failed ends in the engine's no evidence raise."""
     tracks = keys(2)
     tool.session.refresh_at = tracks[0]
 
@@ -646,10 +580,6 @@ def test_a_refresh_in_a_drive_where_every_item_failed_still_reaches_the_keychain
     assert [w["access_token"] for w in keychain.session_writes] == ["FAKE-value-3"]
     assert token_directories(temporary) == []
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. The token file goes on every way out
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_drive_signalled_mid_track_leaves_no_token_file(
@@ -694,8 +624,7 @@ def test_a_drive_torn_down_mid_track_leaves_no_token_file(
 def test_a_drive_killed_outright_leaves_a_directory_the_next_one_sweeps(
     cfg, library, tool, provider, stored, temporary
 ):
-    """A hard kill runs no code at all, so the next materialise removes what a
-    process that is gone left behind, and nothing a live process holds."""
+    """A hard kill runs no code, so the next materialise removes what a gone process left."""
     dead = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
                           capture_output=True, text=True, check=True)
     orphan = temporary / f"cratekit-session-{int(dead.stdout)}-abc123"
@@ -755,16 +684,13 @@ def test_a_materialised_directory_names_its_process(temporary, stored):
     assert not scope.directory.exists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. R-293's asymmetry holds
-# ═══════════════════════════════════════════════════════════════════════════
+# R-293's asymmetry holds
 
 
 def test_a_broken_item_fails_alone_and_the_job_stays_resumable(
     cfg, library, tool, provider, stored, temporary
 ):
-    """A tool that breaks on one track fails that track; the run goes on with
-    the same login and the job ends failed, resumable, with the rest done."""
+    """A tool that breaks on one track fails that track; the job ends failed, resumable."""
     tracks = keys(3)
 
     def broken() -> None:
@@ -778,8 +704,7 @@ def test_a_broken_item_fails_alone_and_the_job_stays_resumable(
     assert job_of(job_id).state is jobs.JobState.FAILED
     assert job_of(job_id).cause.reason == "adapter-broken"
     assert states(job_id) == {
-        tracks[0]: jobs.ItemState.DONE,
-        tracks[1]: jobs.ItemState.FAILED,
+        tracks[0]: jobs.ItemState.DONE, tracks[1]: jobs.ItemState.FAILED,
         tracks[2]: jobs.ItemState.DONE,
     }
     assert provider.count("sessions") == 1
@@ -800,10 +725,6 @@ def test_outside_a_drive_the_adapter_still_materialises_per_invocation(
     assert token_directories(temporary) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. The engine's per drive seam
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def test_the_download_worker_names_the_vendored_drive():
     assert handlers.per_drive_of(acquire_cli.handle) is vendored.drive
@@ -823,11 +744,8 @@ def test_a_drive_that_is_not_callable_is_refused():
     assert caught.value.cause.reason == "internal-error"
 
 
-def test_the_engine_opens_a_workers_drive_once_and_closes_it_on_a_park(
-    cfg, library, monkeypatch
-):
-    """Three items, one open and one close, and the close runs when the drive
-    ends in a park rather than a finish."""
+def test_the_engine_opens_a_workers_drive_once_and_closes_it_on_a_park(cfg, library, monkeypatch):
+    """One open and one close, and the close runs when the drive ends in a park."""
     opened: list[str] = []
     claimed: list[str] = []
 
@@ -844,12 +762,8 @@ def test_the_engine_opens_a_workers_drive_once_and_closes_it_on_a_park(
         if item.item_id == "2":
             raise jobs.Parked(
                 download.blocked_cause(
-                    adapter="vendored",
-                    key="2",
-                    signal=download.ProviderSignal.BLOCKED,
-                    detail="403 Forbidden",
-                    attempts=1,
-                    retry_hint_s=None,
+                    adapter="vendored", key="2", signal=download.ProviderSignal.BLOCKED,
+                    detail="403 Forbidden", attempts=1, retry_hint_s=None,
                 )
             )
         return None
@@ -868,8 +782,7 @@ def test_the_engine_opens_a_workers_drive_once_and_closes_it_on_a_park(
 
 
 def test_a_refusal_outlives_the_source_it_was_met_on(cfg, tool, provider, stored):
-    """A drive hands out a new source only for other gate settings, which a
-    frozen configuration never has; even then the refusal carries over."""
+    """A drive hands out a new source only for other gate settings; the refusal carries over."""
     provider.reject_login = True
     settings = vendored.AdapterSettings.from_config(cfg)
     other = dataclasses.replace(
@@ -885,20 +798,13 @@ def test_a_refusal_outlives_the_source_it_was_met_on(cfg, tool, provider, stored
 
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 7. Round one: what the close cannot do never replaces the drive's answer
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def no_keychain(monkeypatch) -> None:
-    """The product's own opt in for a machine with no keychain: the session is
-    read from the environment, and keyring's real fail backend refuses a write."""
+    """The opt in for a machine with no keychain: the session comes from the environment."""
     from keyring.backends import fail
 
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
-    monkeypatch.setenv(
-        secrets.ENV_CREDENTIAL_PREFIX + "PROVIDER_SESSION", json.dumps(STORED)
-    )
+    monkeypatch.setenv(secrets.ENV_CREDENTIAL_PREFIX + "PROVIDER_SESSION", json.dumps(STORED))
     backend = fail.Keyring()
     monkeypatch.setattr(keyring, "set_password", backend.set_password)
     monkeypatch.setattr(keyring, "get_password", backend.get_password)
@@ -942,8 +848,7 @@ def test_a_refresh_the_keychain_cannot_take_leaves_a_park_its_own_cause(
 def test_an_unchanged_session_needs_no_keychain_write_at_all(
     cfg, library, tool, provider, temporary, monkeypatch
 ):
-    """The tool reads the expiry back as a float; by value it is the stored one,
-    so a drive that refreshed nothing asks the keychain to take nothing."""
+    """The tool reads the expiry back as a float; equal by value, so nothing is written."""
     job_id = queued(library, keys(2))
     no_keychain(monkeypatch)
 
@@ -967,9 +872,7 @@ def test_a_defect_at_the_close_of_a_finished_drive_is_raised(
     assert token_directories(temporary) == []
 
 
-def test_a_session_left_in_the_atmos_client_is_not_stored(
-    cfg, library, tool, provider, keychain
-):
+def test_a_session_left_in_the_atmos_client_is_not_stored(cfg, library, tool, provider, keychain):
     tracks = keys(2)
     tool.session.refresh_at = tracks[0]
     tool.during[tracks[1]] = lambda: setattr(tool.tidal, "is_atmos_session", True)
@@ -981,8 +884,7 @@ def test_a_session_left_in_the_atmos_client_is_not_stored(
 
 
 def test_a_session_refused_mid_track_is_never_asked_again(cfg, tmp_path, tool, provider, stored):
-    """The refusal met in ``offer`` or ``fetch`` is remembered as one met at the
-    login is, whoever asks the source next."""
+    """A refusal met in ``offer`` or ``fetch`` is remembered as one met at the login is."""
     settings = vendored.AdapterSettings.from_config(cfg)
     with vendored.drive() as held:
         source = held.source(settings)
@@ -1102,8 +1004,7 @@ def test_an_index_that_refuses_after_the_keychain_took_the_session_is_a_warning(
 def test_a_defect_at_the_close_of_a_drive_that_raised_leaves_the_drives_own_error(
     cfg, library, tool, provider, stored, temporary, monkeypatch
 ):
-    """Every item failed: the engine's no evidence refusal is the drive's own
-    answer, and a defect in the close must not replace it."""
+    """Every item failed: the no evidence refusal is the drive's answer, not a close defect."""
     def broken_capture(self, scope):
         raise TypeError("a defect in the capture")
 

@@ -1,37 +1,20 @@
-"""Byte-exact golden characterization of every XML splice.
+"""Byte exact golden characterization of every XML splice.
 
-A golden file pins the EXACT bytes a splicer emits against a synthetic fixture.
-It is the cheapest possible answer to the question that makes an incremental
-rewrite safe: did that refactor change the output, and by how much.
+A golden pins the EXACT bytes a splicer emits against a synthetic fixture, so a
+refactor that changes the output fails with a readable diff. Nine are ported
+byte for byte from the source system, whose five duplicated splicers Cratekit
+collapses into one writer, the change most likely to move a byte silently;
+``NOT_PORTED`` names this product's own.
 
-Nine goldens are ported unchanged, byte for byte, from the source system, and
-``NOT_PORTED`` names the ones this product produced itself.
-They matter more here than they did there. The source system had FIVE duplicated
-splice implementations, and Cratekit collapses them into one writer. Collapsing
-five implementations into one is exactly the change that produces a silent byte
-difference, and a silent byte difference in this format means a playlist that
-renders wrong in rekordbox, or a document tail that is quietly truncated. The
-goldens turn that into a failing test with a readable diff.
-
-**These pin CURRENT behaviour, bugs included.** A golden going red means the
-bytes changed. Decide whether that change was intended, then regenerate. Never
-hand-edit a ``.bytes`` file: the producing code is the source of truth, and a
-hand-edited golden pins a fiction.
+**These pin CURRENT behaviour, bugs included.** When one goes red, decide
+whether the change was intended, then regenerate; never hand edit a ``.bytes``
+file, since the producing code is the source of truth.
 
     REGEN=1 pytest tests/test_xml_splice_golden.py
 
-THIS FILE HAS TWO HALVES, and the split is deliberate.
-
-*The integrity half runs today.* It asserts the ported goldens arrived intact and
-still describe the rules they were written to describe: CRLF only, well formed,
-correctly terminated, and carrying the specific structure the table below names.
-Porting a binary fixture is exactly the kind of step where a file gets truncated,
-line-ending-converted by a helpful tool, or simply forgotten, and none of those
-would be visible until the producer lands.
-
-*The producer half is skipped until its writer lands.* Nothing is stubbed to make
-it pass, and tests/test_pending_units.py fails the build the moment the writer
-lands unless the skip is removed.
+The integrity half asserts the goldens arrived intact and still carry what the
+table names, because a port truncates or converts a binary file invisibly. The
+producer half drives each writer against its golden.
 """
 
 from __future__ import annotations
@@ -49,10 +32,8 @@ GOLDEN_DIR = Path(__file__).parent / "golden"
 DECLARED = taxonomy.default_taxonomy()
 REGEN = os.environ.get("REGEN") == "1"
 
-# Every golden, the invariant it locks, and a byte marker proving that invariant
-# is still present in the ported file. The marker is what makes the integrity
-# half meaningful: without it, "the file exists and has CRLF" would pass on any
-# nine well-formed documents.
+# Every golden, the invariant it locks, and a byte marker proving it is still in
+# the file; without the marker any nine well formed documents would pass.
 GOLDEN_INVARIANTS: dict[str, tuple[str, bytes]] = {
     "splice_subplaylist": (
         "CRLF only, 12-space TRACK indent, Entries bumped on the target sub",
@@ -131,18 +112,12 @@ def _check(name: str, produced: bytes) -> None:
         raise AssertionError(f"byte mismatch vs golden {name}:\n{diff}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Integrity half: the ported goldens are intact and still mean something.
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 
 def test_every_declared_golden_is_present_and_no_others():
-    """The table and the directory agree, in both directions.
-
-    One direction catches a golden that failed to copy. The other catches a
-    golden that was added without documenting what it locks, which is how a
-    golden file becomes a byte blob nobody dares change.
+    """The table and the directory agree both ways: a golden that failed to copy,
+    and one added without saying what it locks.
     """
     on_disk = {path.stem for path in GOLDEN_DIR.glob("*.bytes")}
     declared = set(GOLDEN_INVARIANTS)
@@ -157,11 +132,8 @@ def test_every_declared_golden_is_present_and_no_others():
 
 @pytest.mark.parametrize("name", sorted(GOLDEN_INVARIANTS))
 def test_golden_is_crlf_only(name):
-    """A line-ending conversion during the port would be invisible otherwise.
-
-    Copying a binary fixture through a tool that thinks it is text is the single
-    most likely way these files get damaged, and the damage is exactly the rule
-    they exist to enforce.
+    """A line ending conversion during the port would damage exactly the rule the
+    goldens enforce, invisibly.
     """
     data = (GOLDEN_DIR / f"{name}.bytes").read_bytes()
     assert _no_bare_lf(data), f"golden {name} carries a bare LF; it must be CRLF only"
@@ -169,12 +141,7 @@ def test_golden_is_crlf_only(name):
 
 @pytest.mark.parametrize("name", sorted(GOLDEN_INVARIANTS))
 def test_golden_is_a_complete_well_formed_document(name):
-    """Well formed AND correctly terminated.
-
-    The termination check is not redundant with parsing. The stale-offset bug
-    these goldens were written for corrupted the document TAIL, and a truncated
-    tail is the shape that most needs catching.
-    """
+    """Well formed AND terminated: the stale offset bug corrupted the TAIL."""
     data = (GOLDEN_DIR / f"{name}.bytes").read_bytes()
     ET.fromstring(data.decode("utf-8"))  # raises on malformed XML
     assert data.endswith(b"</DJ_PLAYLISTS>\r\n"), f"golden {name} is truncated"
@@ -182,11 +149,7 @@ def test_golden_is_a_complete_well_formed_document(name):
 
 @pytest.mark.parametrize("name", sorted(GOLDEN_INVARIANTS))
 def test_golden_still_carries_the_invariant_it_documents(name):
-    """The table's claim is checked against the bytes, not trusted.
-
-    Without this, the documentation and the fixture drift apart and the golden
-    becomes an opaque blob that nobody can review a diff against.
-    """
+    """The table's claim is checked against the bytes, so the golden stays reviewable."""
     description, marker = GOLDEN_INVARIANTS[name]
     data = (GOLDEN_DIR / f"{name}.bytes").read_bytes()
     assert marker in data, (
@@ -196,11 +159,7 @@ def test_golden_still_carries_the_invariant_it_documents(name):
 
 
 def test_the_fixtures_the_goldens_were_produced_from_still_build():
-    """The inputs, not just the outputs.
-
-    A golden is only meaningful next to the fixture that produced it. If the
-    fixture builder drifts, the golden pins the output of an input nobody has.
-    """
+    """The inputs too: a golden pins nothing next to a fixture that drifted."""
     for builder in (_fresh_xml, _routing_xml):
         data = builder()
         assert _no_bare_lf(data)
@@ -208,9 +167,7 @@ def test_the_fixtures_the_goldens_were_produced_from_still_build():
     assert b'Artist="Bait"' in _routing_xml(collision=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Producer half: armed when the writers land.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_splice_tracks_into_subplaylist_golden():
@@ -228,12 +185,8 @@ def test_splice_tracks_into_subplaylist_golden():
 
 
 def test_name_collision_current_behaviour():
-    """Characterizes the collision case so the scoped fix yields a reviewed diff.
-
-    The unique sub name re-disambiguates the anchor here, so this specific
-    collision is survived even by an unscoped search. Pinned anyway: the scoped
-    implementation should preserve these exact bytes, and a change flags a
-    behaviour shift rather than a bug fix.
+    """Characterizes the collision case. The unique sub name already
+    disambiguates it, so a change here is a behaviour shift, not a bug fix.
     """
     from cratekit.write.rbxml import splice_into_subplaylist
 
@@ -274,10 +227,8 @@ def test_entries_count_matches_tracks_actually_inserted():
 
 
 def test_unplaced_existing_sub_golden():
-    """The regression guard for the bare-LF insert.
-
-    The existing-sub path once emitted a bare LF while every sibling path emitted
-    CRLF, which is how the bug survived: the common path was correct.
+    """The bare LF insert's guard: that path once emitted a bare LF while every
+    sibling emitted CRLF.
     """
     from cratekit.write import trees
 
@@ -325,11 +276,8 @@ def test_rating_write_golden():
 
 
 def test_second_rating_writer_golden():
-    """The source system carried TWO copies of the rating writer.
-
-    Both are pinned so the consolidation is byte-checked from both sides. When
-    one writer replaces both, these two goldens must both still match, which is
-    what proves the merge lost nothing.
+    """The source system carried TWO rating writers; both goldens still matching
+    proves one writer lost nothing.
     """
     from cratekit.write import trees
 
@@ -395,11 +343,8 @@ def test_label_subtree_golden(tmp_path):
 
 
 def test_label_subtree_written_twice_matches_the_single_write_golden(tmp_path):
-    """R-129: a second write of the same label merges into the first and adds nothing.
-
-    Compared against the same golden the single write is, so a second write that
-    moved any byte, a duplicated year, a doubled track, a count bumped again,
-    fails with the golden's own diff.
+    """R-129: a second write of the same label adds nothing, checked against the
+    single write's golden so any moved byte fails with its diff.
     """
     from cratekit.write import trees
 
