@@ -1,10 +1,8 @@
 """U72: ``crate intake land`` plans, stops at its gate, then lands the batch.
 
-Every test drives the real dispatcher over real FLAC containers tagged through
-the product's own writer, against the byte fixture every splice test uses. The
-engine's own refusals are pinned in ``tests/test_landing.py``; this file pins
-what the verb adds: nothing moves before an answer, a stale answer moves
-nothing, and a landed batch leaves a pending import a person can see.
+The real dispatcher over real FLAC containers; the engine's refusals are in
+``tests/test_landing.py``. Here: nothing moves before an answer, a stale answer
+moves nothing, and a landed batch leaves a pending import a person can see.
 """
 
 from __future__ import annotations
@@ -160,9 +158,8 @@ def _watch_apply(monkeypatch, before=None, after=None) -> list[str]:
 def test_the_first_run_stops_at_the_gate_and_an_abort_moves_nothing(
     cfg, silence, export, monkeypatch
 ):
-    """The screen a person reads names the files and the intake file, never the
-    plan payload. The engine's preflight adds a refusal and nothing else, so an
-    answer recorded before the check existed is not made stale by it (R-677)."""
+    """The screen names the files and the intake file, never the payload, and the
+    preflight leaves an older answer fresh (R-677)."""
     from tests.test_intake_land_vox_native import _calibrate
     for name in ("One.flac", "Two.flac"):
         _stage(cfg, silence, name)
@@ -212,13 +209,9 @@ def test_the_first_run_stops_at_the_gate_and_an_abort_moves_nothing(
 
 
 def test_an_answered_run_lands_with_an_import_blocking_nothing(cfg, silence, export, monkeypatch):
-    """R34's two acts, then the landing, read the way a person reads it; then a
-    landing answered in one act, as an envelope. The pending action is the
-    intake session's, read back, so the two cannot differ (R-501). ``blocks``
-    stays empty: no cost of an unimported landing was driven to justify
-    refusing every verb it names. Given no name (U110), the batch a person
-    reads in INBOX is the date and the source, and the run's identifier,
-    colons removed, names only the intake file."""
+    """R34's two acts, then one act as an envelope. The pending action is the intake
+    session's, read back (R-501), ``blocks`` stays empty, and an unnamed batch is
+    the date and the source (U110)."""
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 3))
     for name in ("One.flac", "Two.flac"):
         _stage(cfg, silence, name)
@@ -260,9 +253,7 @@ def test_an_answered_run_lands_with_an_import_blocking_nothing(cfg, silence, exp
 
 @pytest.mark.parametrize("change", ["a file arrived", "batch name", "export", "folder"])
 def test_an_answer_is_stale_for_any_other_plan(cfg, silence, export, tmp_path, change):
-    """The digest covers the files, where they go, the export they are spliced
-    into, and the folder itself, since two folders can match on names, sizes
-    and times. Each is a plan the person never saw."""
+    """The digest covers the files, where they go, the export, and the folder."""
     _stage(cfg, silence, "One.flac")
     run_id = _decided(export, "--name", BATCH)
     argv = _land(export, "--name", BATCH)
@@ -289,10 +280,8 @@ def test_an_answer_is_stale_for_any_other_plan(cfg, silence, export, tmp_path, c
 
 
 def test_an_empty_staging_folder_is_a_plan_of_nothing_and_makes_nothing(cfg, export, tmp_path):
-    """The step still asks, and applying nothing makes no batch folder, no
-    intake file and no pending import. What staging holds between landings,
-    the lists folder, the unfinished download directory, a Finder dotfile and
-    a sync's intake file, is not audio."""
+    """The step still asks, and applying nothing leaves nothing; what staging holds
+    between landings is not audio."""
     code, refused = _drive(_land(export, "--name", BATCH))
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert refused["cause"]["detail"]["shown"]["files"] == []
@@ -359,9 +348,7 @@ def _manifest(tmp_path: Path, listed: list[tuple[str, str, str, str, int]]) -> P
 def test_a_manifest_is_on_the_gate_and_its_labels_reported(
     cfg, silence, export, tmp_path, monkeypatch
 ):
-    """The plan read hands the engine's export check the manifest rows the gate
-    shows, and between the gate and the first move the file is read again, so
-    the engine is handed the fingerprint of the bytes the gate compared."""
+    """The engine is handed the manifest rows and fingerprint the gate compared."""
     _stage(cfg, silence, "One.flac")
     manifest = _manifest(
         tmp_path,
@@ -410,10 +397,8 @@ def test_a_manifest_is_on_the_gate_and_its_labels_reported(
 
 
 def test_an_answer_is_stale_once_its_manifest_is_rewritten(cfg, silence, export, tmp_path):
-    """The same path holding other rows files other tracks under other labels,
-    so the bytes are what the gate compares and not the name. A manifest whose
-    only row matched nothing still reports it: nothing filed is when the report
-    matters most."""
+    """The gate compares the bytes, not the name, and a manifest matching nothing
+    still reports it."""
     _stage(cfg, silence, "One.flac")
     manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
     extra = ("--name", BATCH, "--manifest", str(manifest))
@@ -516,9 +501,8 @@ def test_a_plan_the_engine_would_refuse_refuses_before_the_gate(
 
 
 def test_a_recorded_abort_is_honored_over_what_went_missing(cfg, silence, export, tmp_path):
-    """An answer given before the export or the library went bad is honoured as
-    it was before the check existed (R-677), and the medium's read under the
-    library root (R-746) must not refuse ahead of the gate either."""
+    """An earlier answer is honoured (R-677), and the medium's read (R-746) does not
+    refuse ahead of the gate."""
     _stage(cfg, silence, "One.flac")
     runs = [_decided(export, "--name", BATCH, answer="abort") for _ in range(2)]
     kept = export.rename(tmp_path / "kept.xml")
@@ -535,9 +519,8 @@ def test_a_recorded_abort_is_honored_over_what_went_missing(cfg, silence, export
 def test_an_apply_over_a_missing_export_is_the_engine_s_refusal(
     cfg, silence, export, tmp_path, monkeypatch
 ):
-    """An answered apply reaches the engine, which asks its own checks again.
-    Only the refusal that asks for an answer gives way to the preflight: over
-    another export that is not there the person is told the plan moved."""
+    """An answered apply reaches the engine, which asks its own checks again; over a
+    missing export the person is told the plan moved."""
     _stage(cfg, silence, "One.flac")
     run_id = _decided(export, "--name", BATCH)
     code, envelope = _drive(["--run", run_id, *_land(tmp_path / "absent.xml", "--name", BATCH)])
@@ -634,9 +617,7 @@ def _an_engine_failing_with_no_refusal(cfg, export, patched) -> None:
 def test_the_lock_is_released_by_every_refusal(
     cfg, silence, export, tmp_path, monkeypatch, arrange
 ):
-    """The landing after is watched from inside the engine call, before its
-    first check and after its last write, so a lock taken late or dropped
-    early is seen."""
+    """Watched from inside the engine call, so a lock taken late or dropped early is seen."""
     _stage(cfg, silence, "One.flac")
     kept = tmp_path / "kept.xml"
     shutil.copyfile(export, kept)

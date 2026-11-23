@@ -121,9 +121,7 @@ def resumed(job: jobs.Job) -> tuple[int, dict]:
     return drive(["--run", run_id, *argv])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The mapping itself
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _job_in(machine, state: jobs.JobState, *, cause=None) -> jobs.Job:
@@ -244,9 +242,7 @@ def test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero(machine
     assert envelope["cause"]["reason"] == "cancelled", envelope
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The population, driven
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("key", QUEUED_KEYS)
@@ -320,9 +316,7 @@ def test_the_tables_name_only_keys_that_are_bound():
         assert f"def {name}(" in source, f"{where} is named here and does not exist"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The population, read
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @functools.cache
@@ -579,9 +573,7 @@ def test_no_shell_keeps_a_hand_rolled_copy_of_the_mapping():
     assert offenders == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The hop between a shell and the dispatcher
-# ═══════════════════════════════════════════════════════════════════════════
 
 #: Refusals built from a cause with no exception in hand, so no type to keep.
 #: ``sync`` raises the first queue refusal over the whole pass and drives no job.

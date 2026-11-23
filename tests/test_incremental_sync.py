@@ -402,9 +402,7 @@ def test_declared_sources_are_stable_ids_not_display_names():
 
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U64: the playlists cursor is a set of identifiers
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_recording_swept_ids_unions_them_in_first_seen_order(cfg):
@@ -512,9 +510,7 @@ def test_the_label_batch_debris_is_excluded_by_the_source_systems_own_rule():
     assert playlists.is_library_debris(None) is False
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-263: a source that records no cursor is not a source that never ran
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _row(cfg, source_id: str) -> dict[str, str]:
