@@ -1,52 +1,26 @@
 """The one register of guards that are written but not yet armed.
 
-U6 ports the safety net BEFORE the engine it guards, on purpose: a guard that
-arrives after the code it governs can only ever confirm what already shipped,
-while a guard that arrives first makes the violation impossible to introduce
-silently. The cost of that ordering is that some ported guards name a module
-that does not exist yet.
+U6 ports the safety net BEFORE the engine, so some guards name a module that
+does not exist yet. Such a guard keeps its FULL assertion body (never
+weakened, never green against a stub), is gated behind a skip naming the unit
+that unblocks it, and is declared here; tests/test_pending_units.py asserts
+the declared set is exactly the intended set and each target still absent,
+so a skip is a countdown, not a hiding place.
 
-The rule for handling that cost, and the reason this file exists:
-
-1. A pending guard keeps its FULL ported assertion body. It is never weakened,
-   never reduced to a placeholder, and the production module is never stubbed
-   just to make it green. A stub would turn a real guard into a test of the stub.
-2. It is gated behind a skip whose reason names the unit that unblocks it, so
-   anyone reading a skipped test learns what has to land, not just that something
-   is missing.
-3. Every such skip is declared here, and tests/test_pending_units.py asserts the
-   declared set is exactly the intended set AND that each target is genuinely
-   still absent. The moment a unit lands its module, that meta-test goes red.
-
-That third point is the whole design. Without it, a skip added for a good reason
-in August is still silently skipping in December, and the safety net has a hole
-nobody can see. With it, a skip is a countdown, not a hiding place.
-
-DISCHARGING AN ENTRY IS THREE EDITS IN ONE COMMIT, AND MAKING ONLY THE FIRST IS
-WORSE THAN MAKING NONE. Deleting the entry does not arm anything by itself:
+DISCHARGING AN ENTRY IS THREE EDITS IN ONE COMMIT:
 
 1. Delete the entry from PENDING below.
-2. Delete the matching key from EXPECTED_PENDING in tests/test_pending_units.py,
-   which duplicates every key on purpose.
-3. Remove the @requires("<key>") decorator from EVERY guard the key gated, so
-   those guards run unconditionally.
+2. Delete the matching key from EXPECTED_PENDING in tests/test_pending_units.py.
+3. Remove the @requires("<key>") decorator from EVERY guard the key gated.
 
-Find the decorator sites BEFORE deleting anything, because a key is usually
-cited from more than one file and a grep that stops at the first hit is how the
-second file loses its collection:
+Find the decorator sites first, since a key is often cited from several files:
 
     grep -rn 'requires("<key>")' tests/
 
-Some entries are cited by no decorator at all, and for those step 3 is empty.
-The grep is what tells the two cases apart, which is why it runs first.
-
-A decorator expression is evaluated when its module is IMPORTED, and pytest
-imports a test module in order to collect it. So an entry deleted while a
-decorator still names it is not one red test. requires() raises KeyError during
-collection and the guard's whole FILE stops existing. On the U16 merge that was
-330 tests. Then run the newly armed guard on purpose and read its result,
-because it has never executed once, and reconcile the collected count by
-identifier rather than by total. The full procedure and the worked case are in
+A decorator runs at import, during collection, so a deleted entry still named
+by one makes requires() raise KeyError and drops the guard's whole FILE (330
+tests on the U16 merge). Then run the newly armed guard and reconcile the
+collected count by identifier. The procedure is in
 docs/solutions/workflow-issues/countdown-entry-discharge-drops-a-whole-test-file.md
 """
 
@@ -62,9 +36,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # ---------------------------------------------------------------------------
 # Guards awaiting the module they govern.
 #
-# key   -> a stable identifier for the thing that is missing. For an import
-#          target this is the dotted module path, checked with find_spec. For a
-#          non-import target it is a "path:" key, checked against the filesystem.
+# key   -> the dotted module path (checked with find_spec), or a "path:" key
+#          checked against the filesystem.
 # value -> (unit that lands it, one line saying what the guard asserts)
 # ---------------------------------------------------------------------------
 PENDING: dict[str, tuple[str, str]] = {
@@ -238,16 +211,9 @@ PENDING: dict[str, tuple[str, str]] = {
 }
 
 
-#: The three answers a module probe can give, and they are not two.
-#:
-#: ``PRESENT`` and ``ABSENT`` are the countdown's own states. ``ANCESTOR_MISSING``
-#: is the one that was being read as ``ABSENT``, and the difference matters
-#: because the two expire differently. A module whose PARENT package exists is a
-#: file somebody is about to add, so the countdown is armed and will fire the day
-#: it lands. A module whose parent does not exist cannot be probed at all: nothing
-#: in the tree can distinguish "that package is coming" from "that name is
-#: misspelled and will never exist", so a marker in this state expires only if
-#: somebody happens to create exactly the ancestor it names.
+#: The three answers a module probe can give. ``ANCESTOR_MISSING`` is not
+#: ``ABSENT``: a module whose parent exists is armed and fires the day it lands,
+#: while one whose parent is missing cannot tell "coming" from "misspelled".
 PRESENT = "present"
 ABSENT = "absent"
 ANCESTOR_MISSING = "ancestor-missing"
@@ -256,20 +222,10 @@ ANCESTOR_MISSING = "ancestor-missing"
 def module_state(name: str) -> str:
     """Probe a dotted module name and say WHICH kind of missing it is.
 
-    ``find_spec`` is used rather than a real import, so a probe can never execute
-    module-level code and never has an import failure of its own to distinguish
-    from absence. What it does have is two failure modes that look identical from
-    the outside: it returns None when a module is missing from a package that
-    exists, and it RAISES ``ModuleNotFoundError`` when an ancestor package is
-    missing. Both were caught and read as "not present".
-
-    The third case is why the ancestor is walked rather than the exception simply
-    being classified. A ``ModuleNotFoundError`` can also come from INSIDE an
-    ancestor's ``__init__`` that imports something unavailable, and swallowing
-    that reports a defect in our own tree as a countdown ticking quietly. Here
-    the ancestors are probed from the top down, so the exception is only accepted
-    as absence when an ancestor is genuinely missing, and anything else
-    propagates.
+    ``find_spec`` never runs module code. It returns None for a module missing
+    from an existing package and raises for a missing ancestor; a raise from
+    inside an existing ancestor's ``__init__`` is a defect, so ancestors are
+    probed top down and only a genuinely missing one is read as absence.
     """
     parts = name.split(".")
     for depth in range(1, len(parts)):
@@ -295,8 +251,7 @@ def requires(key: str) -> pytest.MarkDecorator:
         def test_creating_a_track_row_is_forbidden():
             ...
 
-    The skip reason always names the unit, so ``pytest -rs`` reads as a work
-    queue rather than as a list of mysteries.
+    The skip reason names the unit, so ``pytest -rs`` reads as a work queue.
     """
     if key not in PENDING:
         raise KeyError(
