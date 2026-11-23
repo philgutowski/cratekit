@@ -236,7 +236,9 @@ for. Banded like a suggestion but always written; a tie takes the artist's
 heaviest genre, then the first by name, and reports **split**. Part of the tail.
 
 ### Needs genre backlog
-Every row adoption's census reads as **needs-genre**, as `crate tag backlog`
+Every row adoption's census reads as **needs-genre**, and every row whose
+file is outside the library root that would (adoption excludes it as
+`outside-root`, and the tag verbs' walk still reads it), as `crate tag backlog`
 sorts it (`tagging/backlog.py`) into one **cause**: `row-lags-file` (the file
 carries a genre the row lacks), `no-genre`, `too-coarse`, `off-taxonomy` (one
 question per word, folded on case) or `file-unread`. The **floor** is the high

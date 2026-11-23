@@ -201,7 +201,8 @@ def scanned(
     probe: Callable[[Path], adopt_scan.Readability],
 ) -> Iterable[adopt_scan.ScannedTrack]:
     """Adoption's census over the mapped rows, the walk ``tag rows``, ``tag
-    suggest`` and ``tag backlog`` share, its probe handed through."""
+    suggest`` and ``tag backlog`` share, its probe handed through. Not confined
+    to the library root, since it files nothing (U956)."""
     return adopt_scan.scan_rows(
         collection.collection_rows(mapped.values()),
         declared,
@@ -210,6 +211,7 @@ def scanned(
         probe=probe,
         energy_reader=_no_energy,
         second_reader=adopt_scan.NO_SECOND_GENRE,
+        confine_to_root=False,
     )
 
 

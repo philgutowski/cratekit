@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.adopt import placements
+from cratekit.adopt import scan as adopt_scan
 from cratekit.cli import output
 from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session
@@ -207,7 +208,9 @@ def _nothing(plan: gs.SetPlan) -> dict[str, str]:
     return warning(NOTHING_TO_WRITE, f"no genre is to be written: {said}")
 
 
-def _written(plan: gs.SetPlan, written: gs.Written) -> list[dict[str, str]]:
+def _written(
+    plan: gs.SetPlan, written: gs.Written, root: Path | str
+) -> list[dict[str, str]]:
     files = written.files
     said = [warning(
         GENRE_WRITTEN,
@@ -218,7 +221,18 @@ def _written(plan: gs.SetPlan, written: gs.Written) -> list[dict[str, str]]:
         f"genre, which its record keeps",
     )]
     if written.written:
-        leaving = sum(1 for item in plan.writes if item.leaves)
+        # A ROW OUTSIDE THE LIBRARY ROOT IS ONE ADOPTION LEAVES ALONE (U956), so
+        # neither verb is promised for it; it is named instead. Over the rows
+        # whose file took the genre, never the plan's (review round two).
+        took = frozenset(files.read_back)
+        landed = [item for item in plan.writes if item.content_id in took]
+        outside = sorted(
+            item.content_id
+            for item in landed
+            if item.path and not adopt_scan.within_root(item.path, root)
+        )
+        inside = [item for item in landed if item.content_id not in outside]
+        leaving = sum(1 for item in inside if item.leaves)
         moved = (
             f", then `crate adopt move`, which takes the {leaving} row(s) the tree "
             f"filed under their old genre out of that genre folder: its energy "
@@ -230,12 +244,20 @@ def _written(plan: gs.SetPlan, written: gs.Written) -> list[dict[str, str]]:
             if leaving
             else ""
         )
-        said.append(warning(
-            FILE_NEXT,
-            f"to file the rows under {plan.genre!r}, run `crate adopt apply`, which "
-            f"files by its energy band each one the tree does not hold in that "
-            f"genre's folder yet{moved}",
-        ))
+        if inside:
+            said.append(warning(
+                FILE_NEXT,
+                f"to file the rows under {plan.genre!r}, run `crate adopt apply`, which "
+                f"files by its energy band each one the tree does not hold in that "
+                f"genre's folder yet{moved}",
+            ))
+        if outside:
+            said.append(warning(
+                FILE_NEXT,
+                f"{len(outside)} written row(s) have their file outside the library "
+                f"root, which adoption leaves alone, so neither verb files or moves "
+                f"them: {', '.join(outside)}",
+            ))
     return said
 
 
@@ -345,7 +367,7 @@ def tag_set(ctx) -> Envelope:
         )
     written = apply_plan(cfg, plan, declared, ctx.args)
     data["totals"] = {**data["totals"], "written": written.written, "read_back": written.read_back}
-    answered = ctx.envelope(data=data, warnings=[*_written(plan, written), *_advisories(plan)])
+    answered = ctx.envelope(data=data, warnings=[*_written(plan, written, cfg.library.root), *_advisories(plan)])
     if written.files.clean:
         return answered
     # A PARTIAL APPLY REFUSES, THROUGH ``from_cause``, its counts and every
