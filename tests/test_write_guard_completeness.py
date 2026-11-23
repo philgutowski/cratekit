@@ -1,26 +1,8 @@
-"""The write guard sees everything the session will write, not just what survives.
+"""The write guard sees everything the session will write, not just what survives (U9).
 
-W2 and W3 from the U9 attended gate, plus the A4 whitelist addition.
-
-W2 IS THE LOAD BEARING ONE. The whitelist judge read ``session.new`` and
-``session.dirty`` and nothing else. SQLAlchemy empties both on any flush, and it
-flushes pending work before a query so the query can see it. A flushed INSERT is
-still uncommitted and still rollback-able, but it has left those collections, so
-the guard judged an empty session and approved. Every primitive in the writer
-does an add followed by a lookup, in a loop, so this was the normal path rather
-than an exotic one. The A1 verdict made it urgent: a database-native intake path
-is now buildable, and the guard meant to police it did not fire.
-
-W3. A row CREATION was judged on its table name alone. The judge bound the
-column set and threw it away, so a created row had no column policy at all. That
-was nearly harmless while the whitelist held four membership tables, and stops
-being harmless in the same change that adds a fifth.
-
-Every set here is DERIVED at run time, by walking the binding, parsing its
-source, or iterating a module constant. Seam decision P3: a test whose name
-quantifies over a set and then hand-lists it is a test that misses the next
-addition.
-"""
+A flush empties ``session.new`` and ``session.dirty``, so the guard also reads the
+binding's buffer (W2), a created row carries a column policy (W3), and djmdKey is
+whitelisted (A4). Every set is DERIVED at run time (P3)."""
 
 from __future__ import annotations
 
@@ -31,9 +13,7 @@ import pytest
 
 from cratekit.core import rb_writer as W
 
-#: Captured before any fixture can replace it. The autouse fixture below stubs
-#: the buffer reader out for most tests, and the three tests that exercise the
-#: reader itself would otherwise introspect the stub.
+#: Captured before the autouse fixture below stubs the buffer reader out.
 _REAL_REGISTRY_CHANGES = W._registry_changes
 
 
@@ -69,26 +49,15 @@ class _Session:
 
 @pytest.fixture(autouse=True)
 def _empty_buffer(monkeypatch):
-    """Every test starts with an empty update buffer.
-
-    The buffer is a class attribute shared process wide, so without this a test
-    inherits whatever an earlier test left behind, which is precisely the bug
-    this file also pins below.
-    """
+    """Every test starts with an empty update buffer, which is shared process wide."""
     monkeypatch.setattr(W, "_registry_changes", lambda db: ({}, {}, {}))
 
 
-# ---------------------------------------------------------------------------
 # W2. A flush must not blind the guard
-# ---------------------------------------------------------------------------
 
 
 def test_a_creation_flushed_out_of_the_session_is_still_judged(monkeypatch):
-    """The regression, stated at its smallest.
-
-    The session reports nothing, exactly as it would after an autoflush. The
-    binding's buffer still holds the creation, and the guard must refuse on it.
-    """
+    """A creation an autoflush carried out of the session is still refused, from the buffer."""
     forbidden = _FakeObj("djmdArtist")
     monkeypatch.setattr(
         W, "_registry_changes", lambda db: ({id(forbidden): ("djmdArtist", set())}, {}, {})
@@ -114,13 +83,7 @@ def test_a_content_creation_flushed_away_is_still_refused(monkeypatch):
 
 
 def test_the_two_sources_are_unioned_rather_than_either_being_trusted_alone(monkeypatch):
-    """Neither source is complete, which is why the guard reads both (P4).
-
-    The buffer misses anything written while the binding disables its own
-    tracking, and a raw session add never reaches it. The session collections
-    miss anything a flush has carried away. A guard trusting either alone has a
-    blind spot; only the union has none.
-    """
+    """Neither source is complete, so the guard reads their union (P4)."""
     from_session = _FakeObj("djmdSongPlaylist")
     from_buffer = _FakeObj("djmdArtist")
     monkeypatch.setattr(
@@ -146,21 +109,12 @@ def test_one_instance_created_then_updated_is_reported_once_as_a_creation(monkey
 
 
 def test_the_buffer_is_scoped_to_an_open_handle():
-    """With no handle there is no session whose buffer it could be.
-
-    This fired for real: a guard called with no handle inherited rows created by
-    earlier work in the same process and refused a legitimate write. A guard that
-    refuses correct code is one people route around (P7).
-    """
+    """With no handle there is no buffer, so earlier work never refuses a legitimate write (P7)."""
     assert _REAL_REGISTRY_CHANGES(None) == ({}, {}, {})
 
 
 def test_every_operation_the_binding_can_record_is_translated():
-    """Derived by parsing the binding's own source, never by listing the ops.
-
-    A future binding adding a fifth operation must fail here rather than pass
-    silently through the guard.
-    """
+    """Derived from the binding's own source, so a new operation fails here, not silently."""
     from pyrekordbox.db6 import registry as R
 
     tree = ast.parse(inspect.getsource(R))
@@ -229,19 +183,12 @@ def test_an_operation_the_guard_has_never_heard_of_fails_closed():
 
 
 def test_a_move_is_judged_on_its_table_rather_than_skipped():
-    """An empty column set would look like a bookkeeping touch and skip the check.
-
-    A move on a whitelisted table passes; the same move on any other table
-    refuses. That is the judgement a re-parent deserves, and it needs a named
-    sentinel to get it.
-    """
+    """A move is judged on its table, since an empty column set would skip the check."""
     assert W.guard_violations([], [("djmdPlaylist", {W.MOVED})], []) == []
     assert W.guard_violations([], [("djmdArtist", {W.MOVED})], []) != []
 
 
-# ---------------------------------------------------------------------------
 # W3. A creation now carries a column policy
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("column", sorted(W.GRIDLESS_ON_CREATE_COLUMNS))
@@ -258,11 +205,7 @@ def test_a_created_row_declaring_only_ordinary_columns_passes():
 
 
 def test_every_gridless_column_is_a_real_column_on_the_content_table():
-    """The honest list is checked against the schema, so a rename fails loudly.
-
-    Without this, a binding that renamed a column would silently disarm the
-    check while every test stayed green.
-    """
+    """The honest list is checked against the schema, so a rename fails loudly."""
     from pyrekordbox.db6.tables import DjmdContent
 
     real = {column.name for column in DjmdContent.__table__.columns}
@@ -283,8 +226,7 @@ def test_every_analysis_table_is_a_real_table_keyed_on_the_content_row():
 
 
 def test_a_flushed_creation_is_read_back_from_both_sources(monkeypatch):
-    """R-760's blind spot, closed: the SQL read back used to walk ``session.new``
-    only, so a creation the binding had already flushed was never read."""
+    """R-760: a creation the binding already flushed is read back too."""
     row = _FakeObj("djmdContent", columns=("ID", "BPM"))
     monkeypatch.setattr(W, "_registry_created_instances", lambda db: {id(row): row})
     seen: list[object] = []
@@ -311,9 +253,7 @@ def test_a_flushed_creation_is_read_back_from_both_sources(monkeypatch):
     assert seen == [row], "the buffered creation was not resolved for its read back"
 
 
-# ---------------------------------------------------------------------------
 # A4. djmdKey joins the whitelist
-# ---------------------------------------------------------------------------
 
 
 def test_a_lookup_row_creation_is_permitted():
@@ -322,17 +262,12 @@ def test_a_lookup_row_creation_is_permitted():
 
 
 def test_a_lookup_row_creation_still_carries_the_column_policy():
-    """The pairing that makes the widening safe (P5).
-
-    The permission and the column policy land together, so the fifth table
-    cannot be the one that walks an analysis column in.
-    """
+    """The permission and the column policy land together (P5)."""
     assert W.guard_violations([("djmdKey", {"Analysed"})], [], []) != []
 
 
 def test_every_permitted_table_is_a_real_table_in_the_binding():
-    """Derived by iterating the constant. Catches a typo, which is otherwise
-    a silently inert whitelist entry that permits nothing and warns nobody."""
+    """Derived from the constant, so a typo is not a silently inert entry."""
     from pyrekordbox.db6.tables import Base
 
     real = set(Base.metadata.tables)

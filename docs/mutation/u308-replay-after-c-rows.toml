@@ -1,0 +1,2042 @@
+name = "u308-replay-after-c"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1313.C1_catalogue_failure_alone"
+source = { table = "r1313.json", id = "C1_catalogue_failure_alone" }
+description = "_gone: read the 404 off the failure alone, as before R-1313, so a release answered with a 404 page climbs the ladder and fails as an outage"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+    if "notfound" in type(exc).__name__.lower():
+        return True
+    return answered_not_found(exc)'''
+new = '''
+    if "notfound" in type(exc).__name__.lower():
+        return True
+    return getattr(getattr(exc, "response", None), "status_code", None) == 404'''
+
+[[rows]]
+id = "r1313.C2_catalogue_name_on_any_link"
+source = { table = "r1313.json", id = "C2_catalogue_name_on_any_link" }
+description = "_gone: read a not found class name on any link, so a parse failure met while handling a not found reads the release as gone"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+    if "notfound" in type(exc).__name__.lower():
+        return True
+    return answered_not_found(exc)'''
+new = '''
+    if any("notfound" in type(one).__name__.lower() for one, _ in provider_session.failure_links(exc)):
+        return True
+    return answered_not_found(exc)'''
+
+[[rows]]
+id = "r1634.M11_reread_reads_the_line"
+source = { table = "r1634.json", id = "M11_reread_reads_the_line" }
+description = "TidalCatalogue.reread_release: judge the listed object's own line instead of reading the album"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
+old = '''
+            album = self._album(identity)
+        except ReleaseUnresolvable as exc:'''
+new = '''
+            album = release
+        except ReleaseUnresolvable as exc:'''
+
+[[rows]]
+id = "r261.D1_discovery_record"
+source = { table = "r261.json", id = "D1_discovery_record" }
+description = "_discover skips a failed listing without recording it, which is R-393 as it was"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''
+                unread.append(
+                    Unread(
+                        artist=str(getattr(artist, "name", "") or artist_id),'''
+new = '''
+                (
+                    Unread(
+                        artist=str(getattr(artist, "name", "") or artist_id),'''
+
+[[rows]]
+id = "r261.D2_transient_class"
+source = { table = "r261.json", id = "D2_transient_class" }
+description = "_discover marks every listing failure transient, a listing that cannot page included"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '                        transient=not isinstance('
+new = '                        transient=True or not isinstance('
+
+[[rows]]
+id = "r261.D3_held_guard"
+source = { table = "r261.json", id = "D3_held_guard" }
+description = "_discover records a held artist the roster reads again (the review finding)"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '''
+                if str(getattr(artist, "id", "") or artist_id) in held_ids:
+                    continue'''
+new = '''
+                if str(getattr(artist, "id", "") or artist_id) in ():
+                    continue'''
+
+[[rows]]
+id = "r261.R2_roster_keeps_discovery"
+source = { table = "r261.json", id = "R2_roster_keeps_discovery" }
+description = "LabelRoster.unread keeps only its own missing listings and loses what discovery handed in"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/modules/test_labels.py"]
+old = '        self.unread = (*unread, *missing)'
+new = '        self.unread = (*missing,)'
+
+[[rows]]
+id = "r351.A3_empty_roster_returned"
+source = { table = "r351.json", id = "A3_empty_roster_returned" }
+description = "return an empty roster for a label nothing resolved"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not artists:
+            raise LabelUnresolvable('''
+new = '''
+        if not artists:
+            return LabelRoster([])
+            raise LabelUnresolvable('''
+
+[[rows]]
+id = "r351.A5_ambiguity_takes_first"
+source = { table = "r351.json", id = "A5_ambiguity_takes_first" }
+description = "take the first of two artists named exactly the same"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if len(distinct) > 1:'
+new = '        if len(distinct) > 2:'
+
+[[rows]]
+id = "r351.G3_unresolved_id_skipped"
+source = { table = "r351.json", id = "G3_unresolved_id_skipped" }
+description = "a seed that does not resolve is skipped rather than refusing the label"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+            if artist is None:
+                unresolved.append(seed)
+'''
+new = '''
+            if artist is None:
+                continue
+'''
+
+[[rows]]
+id = "r351.G4_any_remainder_is_an_id"
+source = { table = "r351.json", id = "G4_any_remainder_is_an_id" }
+description = "treat anything after id: as an identifier, including a name"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+_ID_SEED = re.compile(r"^id:(\d+)$")
+'''
+new = '''
+_ID_SEED = re.compile(r"^id:(.+)$")
+'''
+
+[[rows]]
+id = "r351.G5_except_everything"
+source = { table = "r351.json", id = "G5_except_everything" }
+description = "a provider outage looking up an identifier is read as a missing seed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        except tidalapi.exceptions.ObjectNotFound:
+            return None
+        except LookupError as exc:
+            # Bare LookupError is the fake's not found. KeyError and IndexError
+            # are subclasses, and those are parse failures, not a missing id.
+            if type(exc) is not LookupError:
+                raise
+            return None
+'''
+new = '''
+        except Exception:
+            return None
+'''
+
+[[rows]]
+id = "r351.G7_drop_object_not_found"
+source = { table = "r351.json", id = "G7_drop_object_not_found" }
+description = "the live client's ObjectNotFound is no longer treated as a missing seed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        except tidalapi.exceptions.ObjectNotFound:
+            return None
+        except LookupError as exc:
+'''
+new = '''
+        except LookupError as exc:
+'''
+
+[[rows]]
+id = "r351.G8_id_prefix_case_insensitive"
+source = { table = "r351.json", id = "G8_id_prefix_case_insensitive" }
+description = "ID:99 is treated as an identifier, against the locked id:<digits> shape"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+_ID_SEED = re.compile(r"^id:(\d+)$")
+'''
+new = '''
+_ID_SEED = re.compile(r"^id:(\d+)$", re.IGNORECASE)
+'''
+
+[[rows]]
+id = "r351.G9_all_lookuperror_is_absence"
+source = { table = "r351.json", id = "G9_all_lookuperror_is_absence" }
+description = "KeyError and IndexError from the identifier lookup are read as a missing seed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+            if type(exc) is not LookupError:
+                raise
+            return None
+'''
+new = '''
+            return None
+'''
+
+[[rows]]
+id = "r352.A2_empty_roster_returned"
+source = { table = "r352.json", id = "A2_empty_roster_returned" }
+description = "return an empty roster for a label nothing resolved"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not artists:
+            raise LabelUnresolvable(
+'''
+new = '''
+        if False and not artists:
+            raise LabelUnresolvable(
+'''
+
+[[rows]]
+id = "r352.G10_no_collaborator_enqueue"
+source = { table = "r352.json", id = "G10_no_collaborator_enqueue" }
+description = "BFS does not enqueue credited artists from listed matching releases"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+            for release in releases:
+                if _credits_label(release, needle):
+                    for identity in _credited_ids(release):
+                        enqueue(identity)
+'''
+new = '''
+            for release in releases:
+                if _credits_label(release, needle):
+                    pass
+'''
+
+[[rows]]
+id = "r352.G11_discovered_not_added"
+source = { table = "r352.json", id = "G11_discovered_not_added" }
+description = "credited artists are walked but never appended to the roster"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+            if identity not in held_ids:
+                discovered.append(artist)
+                held_ids.add(identity)
+'''
+new = '''
+            if identity not in held_ids:
+                held_ids.add(identity)
+'''
+
+[[rows]]
+id = "r352.G13_duplicate_roster_member"
+source = { table = "r352.json", id = "G13_duplicate_roster_member" }
+description = "a discovered artist already on the roster is appended again"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+            if identity not in held_ids:
+                discovered.append(artist)
+                held_ids.add(identity)
+'''
+new = '''
+            discovered.append(artist)
+            held_ids.add(identity)
+'''
+
+[[rows]]
+id = "r352.G2_skip_when_roster_nonempty"
+source = { table = "r352.json", id = "G2_skip_when_roster_nonempty" }
+description = "discovery does not run when the label already has an artist page"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        needle = entry.match or entry.name
+        seen: set[str] = set()
+'''
+new = '''
+        if held:
+            return []
+        needle = entry.match or entry.name
+        seen: set[str] = set()
+'''
+
+[[rows]]
+id = "r352.G4_empty_message_omits_discovery"
+source = { table = "r352.json", id = "G4_empty_message_omits_discovery" }
+description = "an empty roster still says only that the label names no seed artists"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+                f"the provider has no artist named exactly {entry.name!r}, the "
+                f"label names no seed artists, and discovery found nothing"
+'''
+new = '''
+                f"the provider has no artist named exactly {entry.name!r} and the "
+                f"label names no seed artists to crawl instead"
+'''
+
+[[rows]]
+id = "r352.G5_compilation_range_shrunk"
+source = { table = "r352.json", id = "G5_compilation_range_shrunk" }
+description = "numbered compilation searches stop at 001"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+COMPILATION_RANGE = range(1, 80)
+'''
+new = '''
+COMPILATION_RANGE = range(1, 2)
+'''
+
+[[rows]]
+id = "r352.G6_name_query_only"
+source = { table = "r352.json", id = "G6_name_query_only" }
+description = "discovery searches the bare label name and no numbered compilations"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+    return (name, *(f"{name} {number:03d}" for number in COMPILATION_RANGE))
+'''
+new = '''
+    return (name,)
+'''
+
+[[rows]]
+id = "r352.G7_ignore_match_needle"
+source = { table = "r352.json", id = "G7_ignore_match_needle" }
+description = "copyright match uses the display name and ignores entry.match"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        needle = entry.match or entry.name
+'''
+new = '''
+        needle = entry.name
+'''
+
+[[rows]]
+id = "r504-a.A1_lt_to_le"
+source = { table = "r504-a.json", id = "A1_lt_to_le" }
+description = "Adapter compares with <= instead of <, so a listing that reached its count raises a shortfall of zero"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if declared is not None and len(rows) < declared:'
+new = '        if declared is not None and len(rows) <= declared:'
+
+[[rows]]
+id = "r504-a.A2_lt_to_gt"
+source = { table = "r504-a.json", id = "A2_lt_to_gt" }
+description = "Adapter compares the wrong way round, so a short listing returns and a long one raises"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if declared is not None and len(rows) < declared:'
+new = '        if declared is not None and len(rows) > declared:'
+
+[[rows]]
+id = "r504-a.A3_no_none_guard"
+source = { table = "r504-a.json", id = "A3_no_none_guard" }
+description = "Adapter drops the guard for a count the provider did not publish"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if declared is not None and len(rows) < declared:'
+new = '        if len(rows) < declared:'
+
+[[rows]]
+id = "r504-a.A4_no_raise"
+source = { table = "r504-a.json", id = "A4_no_raise" }
+description = "Adapter never raises the shortfall, which is the pre R-504 behaviour"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '            raise HeartsShortfall(rows, declared)'
+new = '            pass'
+
+[[rows]]
+id = "r515-operator.S7_adapter_no_count"
+source = { table = "r515-operator.json", id = "S7_adapter_no_count" }
+description = "The release adapter ignores the album's num_tracks"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        short = ListingShortfall.of(tracks, getattr(album, "num_tracks", None))'
+new = '        short = None'
+
+[[rows]]
+id = "r840-c.C3_the_adapter_reads_a_name"
+source = { table = "r840-c.json", id = "C3_the_adapter_reads_a_name" }
+description = "TidalCatalogue.release_artist: answer with the text of the album's artist object, which is its address, the defect R-379 named"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        return artist_name(self._album(release_id))'
+new = '        return str(getattr(self._album(release_id), "artist", "") or "")'
+
+[[rows]]
+id = "r879-b.T2_offset_not_sent"
+source = { table = "r879-b.json", id = "T2_offset_not_sent" }
+description = "TidalCatalogue.search_tracks: send offset 0 to the client whatever page was asked"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '                query, models=[tidalapi.media.Track], limit=limit, offset=offset'
+new = '                query, models=[tidalapi.media.Track], limit=limit, offset=0'
+
+[[rows]]
+id = "r888.R1_roster_serves_one_listing"
+source = { table = "r888.json", id = "R1_roster_serves_one_listing" }
+description = "LabelRoster.held: the roster answers its albums for every listing, so its singles are never read"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_adapter_listing.py", "tests/test_label_playlists.py"]
+old = '        return self._listed.get(method)'
+new = '        return self._listed.get("get_albums")'
+
+[[rows]]
+id = "u205.S3_catalogue_lookup_ignores_app"
+source = { table = "u205.json", id = "S3_catalogue_lookup_ignores_app" }
+description = "label catalogue: tracks_for_isrc goes to the account session whatever the opener built, and intake missing with it"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_label_tidal_catalogue.py", "tests/test_intake_missing_isrc.py"]
+old = '        self._lookups = catalogue if catalogue is not None else session'
+new = '        self._lookups = session'
+
+[[rows]]
+id = "u206.M18_catalogue_keeps_any_gone"
+source = { table = "u206.json", id = "M18_catalogue_keeps_any_gone" }
+description = "TidalCatalogue.tracks_for_isrc: keep every failure _gone reads as a not found, a FileNotFoundError among them"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+                    if isrc_cache.said_not_found(exc):
+                        answered.append(())'''
+new = '''
+                    if True:
+                        answered.append(())'''
+
+[[rows]]
+id = "u207.A2_catalogue_ignores_screen"
+source = { table = "u207.json", id = "A2_catalogue_ignores_screen" }
+description = "TidalCatalogue.tracks_for_isrc: a code the screen answered absent is asked again"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py"]
+old = '        if self._screen.absent(wanted):'
+new = '        if False:'
+
+[[rows]]
+id = "u217.A1_flush_on_the_way_out"
+source = { table = "u217.json", id = "A1_flush_on_the_way_out" }
+description = "artist_for: drop the flush in the finally, so a ceiling stop before a batch keeps nothing"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+        finally:
+            kept.flush()'''
+new = '''
+        finally:
+            pass'''
+
+[[rows]]
+id = "u217.A2_roster_lists_now"
+source = { table = "u217.json", id = "A2_roster_lists_now" }
+description = "_roster: hand the roster no lister, so every member is paged again after discovery"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '            lister=lambda artist, method, missing: self._listed(kept, artist, method, missing),'
+new = '            lister=None,'
+
+[[rows]]
+id = "u217.A3_listing_not_kept"
+source = { table = "u217.json", id = "A3_listing_not_kept" }
+description = "_listed: never keep a listing it asked"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '            kept.keep_listed(identity, method, rows)'
+new = '            kept.asked_unkept()'
+
+[[rows]]
+id = "u217.A4_search_not_kept"
+source = { table = "u217.json", id = "A4_search_not_kept" }
+description = "_credited_by: never keep a discovery album search"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '        kept.keep_searched(query, credited)'
+new = '        kept.asked_unkept()'
+
+[[rows]]
+id = "u217.A5_name_not_kept"
+source = { table = "u217.json", id = "A5_name_not_kept" }
+description = "_member_named: never keep an exact name found"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '            kept.keep_named(name, ((identity, str(getattr(artist, "name", "") or "")),))'
+new = '            kept.asked_unkept()'
+
+[[rows]]
+id = "u217.A6_need_object"
+source = { table = "u217.json", id = "A6_need_object" }
+description = "_discover: never read a kept artist's object before its listing's skip"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '                need_object=not all('
+new = '                need_object=False and not all('
+
+[[rows]]
+id = "u217.A8_member_read_uncounted"
+source = { table = "u217.json", id = "A8_member_read_uncounted" }
+description = "_listed: do not count the read of a kept artist's object, so the line can say no call over one"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '            if not artist.read_yet:'
+new = '            if False:'
+
+[[rows]]
+id = "u261.O1_catalogue_drops_the_app"
+source = { table = "u261.json", id = "O1_catalogue_drops_the_app" }
+description = "open_catalogue: build the catalogue without the held app client, so its ISRC lookups go to the account"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_catalogue_app.py", "tests/test_label_tidal_catalogue.py"]
+old = '        catalogue=held.app,'
+new = '        catalogue=None,'
+
+[[rows]]
+id = "u62.A1_missing_playlist_returns_none"
+source = { table = "u62.json", id = "A1_missing_playlist_returns_none" }
+description = "Return None for a playlist the client returned nothing for"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if playlist is None:
+            raise PlaylistUnresolvable('''
+new = '''
+        if playlist is None:
+            return None
+            raise PlaylistUnresolvable('''
+
+[[rows]]
+id = "u62.A4_first_hit_not_exact"
+source = { table = "u62.json", id = "A4_first_hit_not_exact" }
+description = "Take any hit the search returned rather than an exact name"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '            if label_verify.fold_label(str(getattr(artist, "name", "") or "")) == wanted'
+new = '            if label_verify.fold_label(str(getattr(artist, "name", "") or ""))'
+
+[[rows]]
+id = "u62.A6_no_reread_for_missing_copyright"
+source = { table = "u62.json", id = "A6_no_reread_for_missing_copyright" }
+description = "Judge a release with no copyright line unconfirmed instead of re-reading it"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if not resolved and identity:'
+new = '        if not resolved and not identity:'
+
+[[rows]]
+id = "u62.A7_any_search_hit_confirms"
+source = { table = "u62.json", id = "A7_any_search_hit_confirms" }
+description = "Confirm a harvested label on any album with a copyright line"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '            if resolved and label_verify.labels_match(name, resolved):'
+new = '            if resolved:'
+
+[[rows]]
+id = "u70.A1_no_favourites_refused"
+source = { table = "u70.json", id = "A1_no_favourites_refused" }
+description = "A client exposing no favourites is not refused by name, so the read fails as an attribute error"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if getattr(user, "favorites", None) is None:'
+new = '        if False:'
+
+[[rows]]
+id = "u75-c.C1_gone_is_never_retried"
+source = { table = "u75-c.json", id = "C1_gone_is_never_retried" }
+description = "Stop classifying a not found answer first, so a withdrawn release climbs the whole retry ladder"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+                if _gone(exc):
+                    return _GONE
+                raise'''
+new = '                raise'
+
+[[rows]]
+id = "u75-c.C5_none_album_raises"
+source = { table = "u75-c.json", id = "C5_none_album_raises" }
+description = "Let a client that returned nothing for a release through to the listing"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if album is _GONE or album is None:'
+new = '        if album is _GONE:'
+
+[[rows]]
+id = "u75-c.C7_tracks_through_the_paging_wrapper"
+source = { table = "u75-c.json", id = "C7_tracks_through_the_paging_wrapper" }
+description = "List the tracks with one direct call instead of the paging wrapper, which serves one page"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        tracks = listing.playlist_tracks(album, shape="release_tracks", sleep=_pause)'
+new = '        tracks = album.tracks()'
+
+[[rows]]
+id = "u78-c.D2_blank_isrc"
+source = { table = "u78-c.json", id = "D2_blank_isrc" }
+description = "A blank ISRC is sent to the provider"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not wanted:
+            raise ValueError("no ISRC was given to look up")'''
+new = ''
+
+[[rows]]
+id = "u78-c.D3_no_lookup_method"
+source = { table = "u78-c.json", id = "D3_no_lookup_method" }
+description = "A client with no ISRC lookup climbs the whole ladder before failing"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not callable(lookup):
+            # A client without the method cannot be asked, and waiting on the
+            # ladder cannot grow one.
+            raise LookupError("the provider client exposes no ISRC lookup")'''
+new = ''
+
+[[rows]]
+id = "u79-c.D1_search_shape_read_as_empty"
+source = { table = "u79-c.json", id = "D1_search_shape_read_as_empty" }
+description = "A search answer with no track listing is read as no candidate"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not present:
+            raise LookupError("the provider's search answer carries no track listing")'''
+new = '''
+        if False:
+            raise LookupError("the provider's search answer carries no track listing")'''
+
+[[rows]]
+id = "r1476.M20_named_first_only"
+source = { table = "r1476.json", id = "M20_named_first_only" }
+description = "Registry.named: answer only the first holder, as by_name does"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_tag_folder_copyright.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_label_registry_verbs.py", "tests/modules/test_labels.py"]
+old = '        return tuple(entry for entry in self.labels.values() if _name_key(entry.name) == wanted)'
+new = '        return tuple(entry for entry in self.labels.values() if _name_key(entry.name) == wanted)[:1]'
+
+[[rows]]
+id = "r381-b.M12_add_legacy_any_name"
+source = { table = "r381-b.json", id = "M12_add_legacy_any_name" }
+description = "add takes the entry under the old fold whatever its display name"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '                if legacy is not None and _name_key(legacy.name) == _name_key(name)'
+new = '                if legacy is not None'
+
+[[rows]]
+id = "r381.M10_by_id_no_follow"
+source = { table = "r381.json", id = "M10_by_id_no_follow" }
+description = "by_id stops following the renamed map, so a frozen old identifier refuses label-unknown"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '        if found is None and label_id in self.renamed:'
+new = '        if found is None and label_id in ():'
+
+[[rows]]
+id = "r381.M11_add_ignores_legacy"
+source = { table = "r381.json", id = "M11_add_ignores_legacy" }
+description = "add keys on the new slug alone, so a collided label overwrites its neighbour"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '                if legacy is not None and _name_key(legacy.name) == _name_key(name)'
+new = '                if False'
+
+[[rows]]
+id = "r381.M1_fold_only_slug"
+source = { table = "r381.json", id = "M1_fold_only_slug" }
+description = "Restore the fold only slug, the brief's named row: slug folds the raw name and transliterates nothing"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '    folded = _fold(stripped)'
+new = '    folded = _fold(name)'
+
+[[rows]]
+id = "r381.M2_no_umlaut_table"
+source = { table = "r381.json", id = "M2_no_umlaut_table" }
+description = "Drop the umlaut and sharp s table, so NFKD alone turns Schön into schon"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '    composed = unicodedata.normalize("NFC", name).translate(_TRANSLITERATE)'
+new = '    composed = unicodedata.normalize("NFC", name)'
+
+[[rows]]
+id = "r381.M3_keep_combining_marks"
+source = { table = "r381.json", id = "M3_keep_combining_marks" }
+description = "Keep the combining marks after NFKD, so they fold to hyphens as before"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '        if not unicodedata.combining(char)'
+new = '        if unicodedata.combining(char) or True'
+
+[[rows]]
+id = "r381.M4_migrate_ignores_taken"
+source = { table = "r381.json", id = "M4_migrate_ignores_taken" }
+description = "migrate moves an entry onto a slug another entry already holds"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '        if new is None or new in taken:'
+new = '        if new is None:'
+
+[[rows]]
+id = "r381.M6_update_skips_move_write"
+source = { table = "r381.json", id = "M6_update_skips_move_write" }
+description = "update writes nothing for a move when the mutator opts out, so load never persists a migration"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '            if changed is not False or moved:'
+new = '            if changed is not False:'
+
+[[rows]]
+id = "r381.M7_load_never_migrates"
+source = { table = "r381.json", id = "M7_load_never_migrates" }
+description = "load returns the stored document without planning a move"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not migrate(held)[1]:
+            return held'''
+new = '''
+        if True:
+            return held'''
+
+[[rows]]
+id = "r381.M8_no_renamed_map"
+source = { table = "r381.json", id = "M8_no_renamed_map" }
+description = "The writer leaves the renamed map out, so no watermark can follow"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+        if renamed:
+            # Only when something moved'''
+new = '''
+        if False:
+            # Only when something moved'''
+
+[[rows]]
+id = "r381.M9_live_renames_unfiltered"
+source = { table = "r381.json", id = "M9_live_renames_unfiltered" }
+description = "live_renames keeps a move whose old identifier a new label holds again"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '        return {old: new for old, new in self.renamed.items() if old not in self.labels}'
+new = '        return dict(self.renamed)'
+
+[[rows]]
+id = "r790-c.G1_offer_bounded_by_limit"
+source = { table = "r790-c.json", id = "G1_offer_bounded_by_limit" }
+description = "effective_offer: stop bounding the window by the track limit, so the increment slices what the listing reported"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '    return min(offer, effective_limit(entry))'
+new = '    return offer'
+
+[[rows]]
+id = "r790-c.G2_entry_overrides"
+source = { table = "r790-c.json", id = "G2_entry_overrides" }
+description = "effective_offer: ignore a label's own offer"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '    offer = entry.offer if entry.offer is not None and entry.offer > 0 else default'
+new = '    offer = default'
+
+[[rows]]
+id = "r790-c.G3_offer_floor"
+source = { table = "r790-c.json", id = "G3_offer_floor" }
+description = "check_offer: accept zero at the store"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '    if isinstance(offer, bool) or not isinstance(offer, int) or offer < 1:'
+new = '    if isinstance(offer, bool) or not isinstance(offer, int) or offer < 0:'
+
+[[rows]]
+id = "r790-c.G4_offer_read_back"
+source = { table = "r790-c.json", id = "G4_offer_read_back" }
+description = "_entry_from: read every stored offer as unset"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '        offer=_coerce_int(raw.get("offer")),'
+new = '        offer=None,'
+
+[[rows]]
+id = "r790-c.G5_rename_keeps_offer"
+source = { table = "r790-c.json", id = "G5_rename_keeps_offer" }
+description = "rename: rebuild the entry field by field without the offer, the shape every copy had before"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/test_label_registry_verbs.py"]
+old = '            current[label_id] = replace(existing, name=new_name)'
+new = '''
+            current[label_id] = LabelEntry(
+                label_id=existing.label_id,
+                name=new_name,
+                match=existing.match,
+                seed_artists=existing.seed_artists,
+                track_limit=existing.track_limit,
+            )'''
+
+[[rows]]
+id = "u100-a.R2_no_presence_check"
+source = { table = "u100-a.json", id = "R2_no_presence_check" }
+description = "RegistryStore.adopt never finds a label present, so every accepted name is written over the held entry"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+                if held is not None:
+                    results.append('''
+new = '''
+                if False:
+                    results.append('''
+
+[[rows]]
+id = "u100-a.R3_presence_before_the_batch"
+source = { table = "u100-a.json", id = "R3_presence_before_the_batch" }
+description = "RegistryStore.adopt resolves against the file as loaded, not the entries this run already added, so two spellings in one run both add"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_tidal_catalogue.py"]
+old = '                held = Registry(labels=current).resolve(name)'
+new = '                held = self.load().resolve(name)'
+
+[[rows]]
+id = "u100-a.R4_slug_refusal_aborts"
+source = { table = "u100-a.json", id = "R4_slug_refusal_aborts" }
+description = "a name that yields no identifier is no longer caught per name, so it aborts the whole adopt"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+                except CratekitError as exc:
+                    results.append('''
+new = '''
+                except KeyError as exc:
+                    results.append('''
+
+[[rows]]
+id = "u100-c.R5_adopt_always_writes_after_fix"
+source = { table = "u100-c.json", id = "R5_adopt_always_writes_after_fix" }
+description = "RegistryStore.adopt asks for a write even when it added nothing, re-measured after the fix round added its test"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_adopt.py"]
+old = '            return any(result.added for result in results)'
+new = '            return True'
+
+[[rows]]
+id = "u177.A1_account_suffix"
+source = { table = "u177.json", id = "A1_account_suffix" }
+description = "bandcamp_account: keep .bandcamp.com on the host, so an address is stored as a host no purchase's seller equals"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''
+    if host.endswith(_ACCOUNT_HOST):
+        host = host[: -len(_ACCOUNT_HOST)]
+    if not host or not _ACCOUNT.fullmatch(host):
+'''
+new = '''
+    if not host or not _ACCOUNT.fullmatch(host):
+'''
+
+[[rows]]
+id = "u177.A2_account_shape"
+source = { table = "u177.json", id = "A2_account_shape" }
+description = "bandcamp_account: drop the shape check, so an account with a space is stored and matches no purchase"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''
+    if not host or not _ACCOUNT.fullmatch(host):
+'''
+new = '''
+    if not host:
+'''
+
+[[rows]]
+id = "u177.A3_account_case"
+source = { table = "u177.json", id = "A3_account_case" }
+description = "bandcamp_account: keep the case typed, so PulsRomania never equals the purchase's pulsromania"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''
+    text = account.strip().lower() if isinstance(account, str) else ""
+'''
+new = '''
+    text = account.strip() if isinstance(account, str) else ""
+'''
+
+[[rows]]
+id = "u177.A4_claim_removed"
+source = { table = "u177.json", id = "A4_claim_removed" }
+description = "_claim: return at once, so a second label naming a held account is written beside the first"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''
+    if account is None:
+        return
+    for other in current.values():
+'''
+new = '''
+    if True:
+        return
+    for other in current.values():
+'''
+
+[[rows]]
+id = "u177.A5_claim_self"
+source = { table = "u177.json", id = "A5_claim_self" }
+description = "_claim: count the label itself as a claimant, so setting its own account again is refused"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''
+        if other.label_id != label_id and other.bandcamp == account:
+'''
+new = '''
+        if other.bandcamp == account:
+'''
+
+[[rows]]
+id = "u177.A6_first_of_two"
+source = { table = "u177.json", id = "A6_first_of_two" }
+description = "by_bandcamp: answer the first of two claimants, so a hand edited tie stages under a guessed label"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py", "tests/test_bandcamp_labels.py", "tests/test_bandcamp_cli.py"]
+old = '''
+        return found[0] if len(found) == 1 else None
+'''
+new = '''
+        return found[0] if found else None
+'''
+
+[[rows]]
+id = "u177.A7_stored_raw"
+source = { table = "u177.json", id = "A7_stored_raw" }
+description = "_stored_account: keep a stored account as written, so a hand written address matches no purchase"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''
+    try:
+        return bandcamp_account(value)
+    except CratekitError:
+        return None
+'''
+new = '''
+    return value
+'''
+
+[[rows]]
+id = "u178.G1_genre_length_bound"
+source = { table = "u178.json", id = "G1_genre_length_bound" }
+description = "check_genre: the bound read one past GENRE_MAX, so a 65 character genre is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''
+        or len(text) > GENRE_MAX
+'''
+new = '''
+        or len(text) > GENRE_MAX + 1
+'''
+
+[[rows]]
+id = "u178.G2_genre_needs_a_letter"
+source = { table = "u178.json", id = "G2_genre_needs_a_letter" }
+description = "check_genre: drop the letter or digit rule, so a punctuation only genre is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''
+        or not any(char.isalnum() for char in text)
+'''
+new = ''
+
+[[rows]]
+id = "u178.G3_genre_one_line"
+source = { table = "u178.json", id = "G3_genre_one_line" }
+description = "check_genre: drop the control character rule, so a genre with a newline is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''
+        or any(unicodedata.category(char).startswith("C") for char in text)
+'''
+new = ''
+
+[[rows]]
+id = "u99-a.A1_blank_seed"
+source = { table = "u99-a.json", id = "A1_blank_seed" }
+description = "check_seed: drop the blank seed refusal, so a whitespace seed is stored as an empty name"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''
+    if not text:
+        raise _field_invalid('''
+new = '''
+    if False:
+        raise _field_invalid('''
+
+[[rows]]
+id = "u99-a.A2_malformed_id_seed"
+source = { table = "u99-a.json", id = "A2_malformed_id_seed" }
+description = "check_seed: drop the malformed id: refusal, so id:12a is stored and later searched for as a name"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '    if text[:3].casefold() == "id:" and not _ID_SEED.fullmatch(text):'
+new = '    if False:'
+
+[[rows]]
+id = "u99-a.A3_id_prefix_case"
+source = { table = "u99-a.json", id = "A3_id_prefix_case" }
+description = "check_seed: compare the id: prefix case sensitively, so ID:12 is stored as a name"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '    if text[:3].casefold() == "id:" and not _ID_SEED.fullmatch(text):'
+new = '    if text[:3] == "id:" and not _ID_SEED.fullmatch(text):'
+
+[[rows]]
+id = "u99-a.A4_id_digits_optional"
+source = { table = "u99-a.json", id = "A4_id_digits_optional" }
+description = "_ID_SEED: allow zero digits, so a bare id: is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '_ID_SEED = re.compile(r"id:[0-9]+")'
+new = '_ID_SEED = re.compile(r"id:[0-9]*")'
+
+[[rows]]
+id = "u99-a.A5_id_prefix_match"
+source = { table = "u99-a.json", id = "A5_id_prefix_match" }
+description = "check_seed: match the identifier as a prefix rather than whole, so id:12a is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = 'not _ID_SEED.fullmatch(text):'
+new = 'not _ID_SEED.match(text):'
+
+[[rows]]
+id = "u99-a.A7_add_unchecked_seeds"
+source = { table = "u99-a.json", id = "A7_add_unchecked_seeds" }
+description = "add: store the seeds unchecked, so a malformed seed on add is written"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''
+        seeds = _checked_seeds(seed_artists)
+'''
+new = '''
+        seeds = tuple(seed_artists)
+'''
+
+[[rows]]
+id = "u99-a.A8_edit_unchecked_seeds"
+source = { table = "u99-a.json", id = "A8_edit_unchecked_seeds" }
+description = "edit: store the seeds unchecked, so a malformed seed on set is written"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '        seeds = _checked_seeds(seed_artists) if seed_artists is not None else None'
+new = '        seeds = tuple(seed_artists) if seed_artists is not None else None'
+
+[[rows]]
+id = "u99-b.A6r_store_limit_floor"
+source = { table = "u99-b.json", id = "A6r_store_limit_floor" }
+description = "check_track_limit: accept zero, measured again after the store level test the A6 zero bought"
+file = "src/cratekit/label/registry.py"
+surface = "maintainer"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = 'or limit < 1:'
+new = 'or limit < 0:'
+
+[[rows]]
+id = "u145-s2.S2b_removed_member_read_live"
+source = { table = "u145-s2.json", id = "S2b_removed_member_read_live" }
+description = "quarters: a membership rekordbox marked removed counts as a member"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''
+            if not rb_writer.membership_removed(song)
+        ]
+        found.append(Quarter('''
+new = '''
+            if True
+        ]
+        found.append(Quarter('''
+
+[[rows]]
+id = "u145.C1_unplanned_membership_admitted"
+source = { table = "u145.json", id = "C1_unplanned_membership_admitted" }
+description = "addition_violations: a membership added into a month for a row the plan did not name is admitted"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '        if row[m_marker] or content_id not in wanted.get(owner, set()):'
+new = '        if row[m_marker]:'
+
+[[rows]]
+id = "u145.C3_parent_unchecked"
+source = { table = "u145.json", id = "C3_parent_unchecked" }
+description = "addition_violations: a made month under another parent is admitted"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '            or str(row[parent_at]) != str(parent)'
+new = '            or False'
+
+[[rows]]
+id = "u145.C4_changed_membership_admitted"
+source = { table = "u145.json", id = "C4_changed_membership_admitted" }
+description = "addition_violations: an existing membership that changed is admitted"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '        if before.memberships[key] != after.memberships[key]:'
+new = '        if False:'
+
+[[rows]]
+id = "u145.S10_unemptied_retired"
+source = { table = "u145.json", id = "S10_unemptied_retired" }
+description = "apply: a quarter whose member its month lacks is retired all the same"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''
+        unemptied = _unemptied(db, planned, rows)
+        if unemptied:'''
+new = '''
+        unemptied = _unemptied(db, planned, rows)
+        if False:'''
+
+[[rows]]
+id = "u145.S11_unemptied_asks_taken_back"
+source = { table = "u145.json", id = "S11_unemptied_asks_taken_back" }
+description = "_unemptied: a taken back member is asked of a month it has none in"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''
+            if content_id in month_of
+            and content_id not in held.get(month_of[content_id], frozenset())'''
+new = '            if content_id not in held.get(month_of[content_id], frozenset())'
+
+[[rows]]
+id = "u145.S1_any_name_is_a_quarter"
+source = { table = "u145.json", id = "S1_any_name_is_a_quarter" }
+description = "quarters: every playlist beside the source but Undated is a quarter, All Favorites and the months included"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '        if not placeholders.QUARTER_LABEL.fullmatch(name):'
+new = '        if name == placeholders.UNDATED:'
+
+[[rows]]
+id = "u145.S4_account_never_asked"
+source = { table = "u145.json", id = "S4_account_never_asked" }
+description = "date_members: a member no job dates is never looked for on the account"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''
+    rest = wanted - set(by_row)
+    if rest:'''
+new = '''
+    rest = wanted - set(by_row)
+    if False:'''
+
+[[rows]]
+id = "u145.S6_rehearted_is_taken_back"
+source = { table = "u145.json", id = "S6_rehearted_is_taken_back" }
+description = "taken_back: a heart removed and added back live is still taken back"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '    return frozenset(removed - placement.members(db, home.source_id))'
+new = '    return frozenset(removed)'
+
+[[rows]]
+id = "u145.S7_taken_back_placed"
+source = { table = "u145.json", id = "S7_taken_back_placed" }
+description = "_planned: a member the author took back is put in its month all the same"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '    members = tuple(one for one in every if one.content_id not in gone)'
+new = '    members = tuple(one for one in every)'
+
+[[rows]]
+id = "u145.S9_digest_covers_the_months_state"
+source = { table = "u145.json", id = "S9_digest_covers_the_months_state" }
+description = "identity: the digest covers what the months hold, so a run stopped after its additions plans another digest"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''
+            "taken_back": [one.content_id for one in self.taken_back],
+        }'''
+new = '''
+            "taken_back": [one.content_id for one in self.taken_back],
+            "held": {name: sorted(ids) for name, ids in self.held.items()},
+        }'''
+
+[[rows]]
+id = "u146-a.B12_landing_takes_keyless_rows"
+source = { table = "u146-a.json", id = "B12_landing_takes_keyless_rows" }
+description = "owned_in_library: a row whose job froze no date key is placed by the landing, into Undated for good"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '    known = [row for row in rows if row.known and row.paths]'
+new = '    known = [row for row in rows if row.paths]'
+
+[[rows]]
+id = "u146-a.B3_already_ignores_filed"
+source = { table = "u146-a.json", id = "B3_already_ignores_filed" }
+description = "gather: a heart All Favorites holds is already placed whatever its month, so a heart with no month never takes one"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '        if content_id in in_source and content_id in filed:'
+new = '        if content_id in in_source:'
+
+[[rows]]
+id = "u146-a.B4_already_ignores_source"
+source = { table = "u146-a.json", id = "B4_already_ignores_source" }
+description = "gather: a heart a month holds is already placed whatever All Favorites holds, so a heart out of All Favorites is never put back nor named"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '        if content_id in in_source and content_id in filed:'
+new = '        if content_id in filed:'
+
+[[rows]]
+id = "u146-a.B5_removed_counts_a_live_row"
+source = { table = "u146-a.json", id = "B5_removed_counts_a_live_row" }
+description = "gather: a removed membership beside a live one reads as taken back, so a heart put back by hand never takes its month"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '    removed = placement.members_marked_removed(db, home.source_id) - in_source'
+new = '    removed = placement.members_marked_removed(db, home.source_id)'
+
+[[rows]]
+id = "u146-a.B9_whole_and_short_swapped"
+source = { table = "u146-a.json", id = "B9_whole_and_short_swapped" }
+description = "gather: a heart a whole listing lacks is held back and one a short listing lacks is taken back"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '            if listing.whole:'
+new = '            if not listing.whole:'
+
+[[rows]]
+id = "u146-b.B13_first_of_two_rows"
+source = { table = "u146-b.json", id = "B13_first_of_two_rows" }
+description = "owned_in_library: a file two active rows claim answers with the first, so a duplicate import joins All Favorites by a guess"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '    by_path = native.single_rows_for(db, cfg, paths)'
+new = '    by_path = native.content_ids_for(db, cfg, paths)'
+
+[[rows]]
+id = "u146-b.B14_plan_owned_keeps_held_hearts"
+source = { table = "u146-b.json", id = "B14_plan_owned_keeps_held_hearts" }
+description = "plan_owned: an owned heart All Favorites holds is planned too, so an empty landing gives it a month"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '        one for one in owned_in_library(cfg, db, rows) if one.content_id not in in_source'
+new = '        one for one in owned_in_library(cfg, db, rows)'
+
+[[rows]]
+id = "u153.B1_read_back_grey"
+source = { table = "u153.json", id = "B1_read_back_grey" }
+description = "backfill _read_back: invert the Pink check, so a row that reads Pink is called a disagreement and the verb refuses"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '        if str(getattr(colour.find_row(db, row), colour.COLUMN, "") or "") != pink'
+new = '        if str(getattr(colour.find_row(db, row), colour.COLUMN, "") or "") == pink'
+
+[[rows]]
+id = "u153.B2_record_colour_only"
+source = { table = "u153.json", id = "B2_record_colour_only" }
+description = "backfill record: do not record a colour-only commit, so a run that only coloured leaves no session record"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '    if placed.added <= 0 and not placed.coloured:'
+new = '    if placed.added <= 0:'
+
+[[rows]]
+id = "u153.B3_member_order_isdigit"
+source = { table = "u153.json", id = "B3_member_order_isdigit" }
+description = "backfill _member_order: sort every id as an int, so a non-numeric id raises and takes the plan down"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '        content_ids, key=lambda c: (0, int(c), "") if str(c).isdigit() else (1, 0, str(c))'
+new = '        content_ids, key=lambda c: (0, int(c), "")'
+
+[[rows]]
+id = "u120.T2_naive_is_utc"
+source = { table = "u120.json", id = "T2_naive_is_utc" }
+description = "as_utc: a naive moment is returned as it is rather than taken as UTC"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py"]
+old = '''
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=timezone.utc)'''
+new = '''
+    if moment.tzinfo is None:
+        return moment'''
+
+[[rows]]
+id = "u145.M1_month_off_by_one"
+source = { table = "u145.json", id = "M1_month_off_by_one" }
+description = "month_of: the month is off by one, October named 2026-09"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_split.py", "tests/test_intake_land_hearts_native.py"]
+old = '    return f"{utc.year:04d}-{utc.month:02d}"'
+new = '    return f"{utc.year:04d}-{utc.month - 1:02d}"'
+
+[[rows]]
+id = "u146-b.B16_undated_is_no_filing"
+source = { table = "u146-b.json", id = "B16_undated_is_no_filing" }
+description = "is_filing: Undated is not a filing playlist, so a heart the split filed there is given a second month"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''
+        text == UNDATED
+        or MONTH_LABEL'''
+new = '''
+        False
+        or MONTH_LABEL'''
+
+[[rows]]
+id = "u146-e.B17_month_label_wrong"
+source = { table = "u146-e.json", id = "B17_month_label_wrong" }
+description = "MONTH_LABEL: a month playlist does not read as a month, so every placed heart is planned again with nothing to add"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = 'MONTH_LABEL = re.compile(r"\d{4}-(?:0[1-9]|1[0-2])")'
+new = 'MONTH_LABEL = re.compile(r"\d{4}-(?:0[1-9]|1[0-2])-")'
+
+[[rows]]
+id = "u180.M1_source_first"
+source = { table = "u180.json", id = "M1_source_first" }
+description = "folder_rank: All Favorites ranks as any other playlist, so it is no longer first"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''
+    if source:
+        return (RANK_SOURCE, 0)'''
+new = '''
+    if False:
+        return (RANK_SOURCE, 0)'''
+
+[[rows]]
+id = "u180.M2_newest_first_sign"
+source = { table = "u180.json", id = "M2_newest_first_sign" }
+description = "folder_rank: the months rank oldest first, the order the brief replaces"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '        return (RANK_MONTH, -(int(year) * 12 + int(month)))'
+new = '        return (RANK_MONTH, (int(year) * 12 + int(month)))'
+
+[[rows]]
+id = "u180.M3_year_coefficient"
+source = { table = "u180.json", id = "M3_year_coefficient" }
+description = "folder_rank: a year weighs ten months rather than twelve, so December reads above the January after it"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '        return (RANK_MONTH, -(int(year) * 12 + int(month)))'
+new = '        return (RANK_MONTH, -(int(year) * 10 + int(month)))'
+
+[[rows]]
+id = "u180.M4_month_must_be_plain"
+source = { table = "u180.json", id = "M4_month_must_be_plain" }
+description = "folder_rank: a folder or smart list named as a month ranks as a month and is moved between the months"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '    if plain and MONTH_LABEL.fullmatch(text) is not None:'
+new = '    if MONTH_LABEL.fullmatch(text) is not None:'
+
+[[rows]]
+id = "u180.M5_undated_rank"
+source = { table = "u180.json", id = "M5_undated_rank" }
+description = "folder_rank: Undated ranks with the other playlists rather than directly after the months"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = '''
+    if plain and text == UNDATED:
+        return (RANK_UNDATED, 0)'''
+new = '''
+    if plain and text == UNDATED:
+        return (RANK_OTHER, 0)'''
+
+[[rows]]
+id = "u180.M6_undated_after_others"
+source = { table = "u180.json", id = "M6_undated_after_others" }
+description = "RANK_UNDATED: Undated reads after every other playlist rather than before them"
+file = "src/cratekit/favorites/placeholders.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_order.py"]
+old = 'RANK_UNDATED = 2'
+new = 'RANK_UNDATED = 4'
+
+[[rows]]
+id = "u153.C1_is_uncoloured_narrowed"
+source = { table = "u153.json", id = "C1_is_uncoloured_narrowed" }
+description = "is_uncoloured: only None counts as unset, so a '0' colour reads coloured and is held not written"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_favorites_backfill.py"]
+old = '    return value in rb_writer.FIELD_EMPTIES[COLUMN]'
+new = '    return value is None'
+
+[[rows]]
+id = "u153.C2_sort_rows_dedup"
+source = { table = "u153.json", id = "C2_sort_rows_dedup" }
+description = "sort_rows: drop the seen check, so a row named twice is sorted and coloured twice"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_favorites_backfill.py"]
+old = '''
+        if key in seen:
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "u153.C3_sort_rows_missing_row"
+source = { table = "u153.json", id = "C3_sort_rows_missing_row" }
+description = "sort_rows: do not skip a row the handle cannot find, so an absent id reaches getattr"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_favorites_backfill.py"]
+old = '''
+        row = find_row(db, key)
+        if row is None:
+            continue'''
+new = '''
+        row = find_row(db, key)
+        if row is None:
+            to_colour.append(key)
+            continue'''
+
+[[rows]]
+id = "u153.C4_sort_rows_uncoloured_branch"
+source = { table = "u153.json", id = "C4_sort_rows_uncoloured_branch" }
+description = "sort_rows: treat every row as uncoloured, so a coloured row is coloured not held"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_favorites_backfill.py"]
+old = '''
+        if is_uncoloured(current):
+            to_colour.append(key)'''
+new = '''
+        if True:
+            to_colour.append(key)'''
+
+[[rows]]
+id = "u153.C6_write_pink_fill_only"
+source = { table = "u153.json", id = "C6_write_pink_fill_only" }
+description = "write_pink: drop the is_uncoloured re-check, so a colour a person chose is overwritten"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_intake_land_owned_hearts_native.py"]
+old = '''
+        if row is None or not is_uncoloured(getattr(row, COLUMN, None)):
+            continue'''
+new = '''
+        if row is None:
+            continue'''
+
+[[rows]]
+id = "u243.L1_companion_not_asked"
+source = { table = "u243.json", id = "L1_companion_not_asked" }
+description = "Tombstoned: the uncredited companion kind is not asked"
+file = "src/cratekit/label/tombstoned.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '        for kind in (tombstone.KIND_VERSION, tombstone.KIND_VERSION_UNCREDITED):'
+new = '        for kind in (tombstone.KIND_VERSION,):'
+
+[[rows]]
+id = "u243.L2_revoked_tombstones_count"
+source = { table = "u243.json", id = "L2_revoked_tombstones_count" }
+description = "Tombstoned: the snapshot includes revoked records, so a lifted deletion still takes the track off"
+file = "src/cratekit/label/tombstoned.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '                record.suppression_id for record in store.suppressions()'
+new = '                record.suppression_id for record in store.suppressions(include_revoked=True)'
+
+[[rows]]
+id = "u243.L3_artists_joined_with_ampersand"
+source = { table = "u243.json", id = "L3_artists_joined_with_ampersand" }
+description = "track_artist: the billed artists are joined by an ampersand, not as the downloader tags them"
+file = "src/cratekit/label/tombstoned.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '        return ", ".join(names)'
+new = '        return " & ".join(names)'
+
+[[rows]]
+id = "u243.L4_title_without_version"
+source = { table = "u243.json", id = "L4_title_without_version" }
+description = "track_title: the bare name is read before the full name, so the version is dropped"
+file = "src/cratekit/label/tombstoned.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '    for attribute in ("full_name", "name", "title"):'
+new = '    for attribute in ("name", "full_name", "title"):'
+
+[[rows]]
+id = "r1634.M12_gone_confirms"
+source = { table = "r1634.json", id = "M12_gone_confirms" }
+description = "TidalCatalogue.reread_release: answer a withdrawn release confirmed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
+old = '''
+            return _unanswered(RELEASE_GONE, str(exc))
+'''
+new = '''
+            return _unanswered("confirmed", str(exc))
+'''
+moved = '''
+The gone answer of reread_release is the same dict built by the _unanswered helper; the verdict argument is the guarded value, and the mutation answers a withdrawn release confirmed as before.'''
+
+[[rows]]
+id = "r351.A2_unresolved_seed_skipped"
+source = { table = "r351.json", id = "A2_unresolved_seed_skipped" }
+description = "crawl the seeds that resolved and skip the one that did not"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if unresolved:
+            bits = [
+'''
+new = '''
+        if unresolved and not artists:
+            bits = [
+'''
+moved = '''
+The unresolved seed sentences are built by one comprehension; the mutation refuses only when nothing resolved, as before.'''
+
+[[rows]]
+id = "r351.G10_identifier_message_says_named"
+source = { table = "r351.json", id = "G10_identifier_message_says_named" }
+description = "an unresolved identifier is reported as a name the provider does not carry"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+                f"no artist with identifier {seed!r}"
+                if seed_identifier(seed) is not None
+                else f"no artist named exactly {seed!r}"
+'''
+new = '''
+                f"no artist named exactly {seed!r}"
+'''
+moved = '''
+The identifier or name sentence is one conditional in the comprehension; the mutation always says named.'''
+
+[[rows]]
+id = "r705-b.S9_playlist_read_wraps_the_park"
+source = { table = "r705-b.json", id = "S9_playlist_read_wraps_the_park" }
+description = "the playlist read wraps the park into an unresolvable playlist again"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''
+        )):
+            playlist = self._session.playlist(identifier)
+'''
+new = '''
+        ), passing=()):
+            playlist = self._session.playlist(identifier)
+'''
+moved = '''
+The playlist read boundary is catalogue.translated, whose default passing type is CratekitError, the park; the mutation passes nothing through, so the park is wrapped as an unresolvable playlist.'''
+
+[[rows]]
+id = "u217.A7_missing_method_kept"
+source = { table = "u217.json", id = "A7_missing_method_kept" }
+description = "_listed: keep a listing the client does not expose, as empty"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+        if len(missing) > before:
+            return rows
+'''
+new = ''
+moved = '''
+_listed reads through _listed_now, which records each missing method in missing; a longer missing list is the skip, and the mutation drops the early return so the empty listing is kept.'''
+
+[[rows]]
+id = "r381.M5_migrate_any_identifier"
+source = { table = "r381.json", id = "M5_migrate_any_identifier" }
+description = "migrate moves any entry whose slug differs, not only one the old fold produced"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_registry_adopt.py", "tests/test_label_registry_verbs.py", "tests/test_label_slug.py", "tests/test_label_tidal_catalogue.py"]
+old = '''
+    if new == entry.label_id or entry.label_id != _fold(entry.name):
+'''
+new = '''
+    if new == entry.label_id:
+'''
+moved = '''
+The _legacy_slug alias was the fold of the name and is now called as _fold; the mutation drops the old fold test as before.'''
+
+[[rows]]
+id = "u177.A8_edit_drops_account"
+source = { table = "u177.json", id = "A8_edit_drops_account" }
+description = "edit: keep the held account, so registry set --bandcamp reports a change it never writes"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_bandcamp_account.py", "tests/test_label_registry_verbs.py", "tests/test_bandcamp_labels.py", "tests/test_label_genre.py"]
+old = '''
+            entry = replace(existing, **changes)
+'''
+new = '''
+            entry = replace(existing, **{**changes, "bandcamp": None if clear_bandcamp else existing.bandcamp})
+'''
+moved = '''
+The checked account reaches edit in the changes; the mutation keeps the held account unless cleared, so set --bandcamp reports a change it never writes.'''
+
+[[rows]]
+id = "u178.G4_edit_clear_genre"
+source = { table = "u178.json", id = "G4_edit_clear_genre" }
+description = "edit: ignore clear_genre, so --genre default on set keeps the genre"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''
+            entry = replace(existing, **changes)
+'''
+new = '''
+            entry = replace(existing, **{**changes, "genre": genre if genre is not None else existing.genre})
+'''
+moved = '''
+The clear flags are folded into the checked changes; the mutation sets the genre as if clear_genre were never given.'''
+
+[[rows]]
+id = "u178.G5_edit_none_keeps_genre"
+source = { table = "u178.json", id = "G5_edit_none_keeps_genre" }
+description = "edit: a genre of None drops the held genre, so an unrelated edit clears it"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''
+            entry = replace(existing, **changes)
+'''
+new = '''
+            entry = replace(existing, **{**changes, "genre": None if clear_genre else genre})
+'''
+moved = '''
+The checked changes leave out a genre given as None; the mutation writes the passed genre, so a None genre drops the held one.'''
+
+[[rows]]
+id = "u99-a.A10_edit_drops_match"
+source = { table = "u99-a.json", id = "A10_edit_drops_match" }
+description = "edit: write the passed match even when none was passed, so set --track-limit clears the needle"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''
+            entry = replace(existing, **changes)
+'''
+new = '''
+            entry = replace(existing, **{**changes, "match": match})
+'''
+moved = '''
+edit replaces the held entry with the checked changes, which leave out every field given as None; the mutation writes the passed match even when none was passed.'''
+
+[[rows]]
+id = "u99-a.A11_edit_drops_seeds"
+source = { table = "u99-a.json", id = "A11_edit_drops_seeds" }
+description = "edit: write the passed seeds even when none were passed, so set --track-limit clears the seeds"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''
+            entry = replace(existing, **changes)
+'''
+new = '''
+            entry = replace(existing, **{**changes, "seed_artists": seeds or ()})
+'''
+moved = '''
+edit replaces the held entry with the checked changes; the mutation writes the passed seeds, or none, even when none were passed.'''
+
+[[rows]]
+id = "u99-a.A12_edit_drops_limit"
+source = { table = "u99-a.json", id = "A12_edit_drops_limit" }
+description = "edit: write the passed limit even when none was passed, so set --seed clears the limit"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_registry_verbs.py", "tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''
+            entry = replace(existing, **changes)
+'''
+new = '''
+            entry = replace(existing, **{**changes, "track_limit": track_limit})
+'''
+moved = '''
+edit replaces the held entry with the checked changes; the mutation writes the passed limit even when none was passed.'''
+
+[[rows]]
+id = "u145.C2_unplanned_playlist_admitted"
+source = { table = "u145.json", id = "C2_unplanned_playlist_admitted" }
+description = "addition_violations: a playlist row the plan did not make is admitted"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''    for key in sorted(set(after.playlists) - set(before.playlists) - set(made)):'''
+new = '''    for key in sorted(set()):'''
+moved = "The unplanned playlist row check of addition_violations is now spine.drift's, the made rows handed in; the same loop over rows added but not made, emptied the same way."
+
+[[rows]]
+id = "u145.C5_content_unchecked"
+source = { table = "u145.json", id = "C5_content_unchecked" }
+description = "addition_violations: a changed content row is admitted"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py", "tests/test_favorites_order.py"]
+old = '    if before.content != after.content:'
+new = '    if False:'
+moved = "split's addition_violations now builds its content check through spine.drift, which order's confinement shares; the same comparison of the content table before and after"
+
+[[rows]]
+id = "u145.C6_existing_playlist_change_admitted"
+source = { table = "u145.json", id = "C6_existing_playlist_change_admitted" }
+description = "addition_violations: an existing playlist row that changed beyond its bookkeeping is admitted"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''        moved -= BOOKKEEPING if moves(key) else frozenset()
+        if moved:'''
+new = '''        moved -= BOOKKEEPING if moves(key) else frozenset()
+        if False:'''
+moved = "The check of an existing playlist row changing beyond what it may change is now spine.drift's, the allowed columns taken off first; the same test of what is left, disabled the same way."
+
+[[rows]]
+id = "u145.S12_retirement_admits_memberships_only"
+source = { table = "u145.json", id = "S12_retirement_admits_memberships_only" }
+description = "apply: the retirement's commit admits a removed membership and no removed playlist"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''            rb_writer.commit_guarded(db, removals=REMOVALS)'''
+new = '''            rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))'''
+moved = "The retirement's commit sits inside spine.witnessed, one indent shallower; the same guarded commit admitting REMOVALS, narrowed the same way."
+
+[[rows]]
+id = "u145.S13_retirement_confined_to_nothing"
+source = { table = "u145.json", id = "S13_retirement_confined_to_nothing" }
+description = "apply: the node confinement is told no quarter is removed"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''                db, before, moved={}, removed=[one.playlist_id for one in planned.quarters]'''
+new = '''                db, before, moved={}, removed=[]'''
+moved = "The node confinement call sits inside spine.witnessed, one indent shallower, its arguments on one line; the same removed list of the quarters' rows, emptied the same way."
+
+[[rows]]
+id = "u145.S3_last_dated_mention_wins"
+source = { table = "u145.json", id = "S3_last_dated_mention_wins" }
+description = "_job_rows: a heart's last dated mention wins over its first"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''        if row.hearted is not None and row.ref not in found:'''
+new = '''        if row.hearted is not None:'''
+moved = "_job_rows now loops over backfill.reported's rows, so the loop is two levels shallower; the same first dated mention rule, loosened the same way."
+
+[[rows]]
+id = "u145.S5_job_dates_ignored"
+source = { table = "u145.json", id = "S5_job_dates_ignored" }
+description = "_job_rows: no hearts job row is read, so every date comes from the account"
+file = "src/cratekit/favorites/split.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '''        if row.hearted is not None and row.ref not in found:'''
+new = '''        if row.hearted is None and row.ref not in found:'''
+moved = "_job_rows now loops over backfill.reported's rows, so the loop is two levels shallower; the same test that a job row carries a date, inverted the same way."
+
+[[rows]]
+id = "u145.S8_stale_digest_accepted"
+source = { table = "u145.json", id = "S8_stale_digest_accepted" }
+description = "apply: a digest that moved between the approval and the write is written anyway"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_split.py"]
+old = '    if again.digest != approved.digest:'
+new = '    if False:'
+moved = "the split writer's digest check moved into spine.fresh, which split.apply calls through spine.prepared with its own wording; the same comparison of the plan taken again with the approved one"
+
+[[rows]]
+id = "u120-b.B4r_stale_not_refused"
+source = { table = "u120-b.json", id = "B4r_stale_not_refused" }
+description = "apply: a plan whose digest moved is written anyway"
+file = "src/cratekit/favorites/spine.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''    if again.digest != approved.digest:'''
+new = '''    if False:'''
+moved = "The backfill's stale digest check moved into spine.fresh, which every favourites writer calls with its own wording; the same comparison of the replanned digest against the approved one, disabled the same way."
+
+[[rows]]
+id = "u146-a.B10_job_no_date_dated_by_account"
+source = { table = "u146-a.json", id = "B10_job_no_date_dated_by_account" }
+description = "gather: a row whose job dated it nowhere is dated from the account, so the backfill and the landing file one heart in two places"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''        if not heart.known and (when := listing.dates.get(heart.ref)) is not None:'''
+new = '''        if heart.hearted is None and (when := listing.dates.get(heart.ref)) is not None:'''
+moved = "The nested check of a row frozen with no date key folded into one condition with the account's date; the same not heart.known test, turned into the job's no date the same way."
+
+[[rows]]
+id = "u146-a.B11_listing_always_asked"
+source = { table = "u146-a.json", id = "B11_listing_always_asked" }
+description = "gather: the account is listed even when no heart needs placing"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''    if not candidates:
+        return replace(left, taken_back=tuple(taken), already=already)'''
+new = '''    if not candidates and False:
+        return replace(left, taken_back=tuple(taken), already=already)'''
+moved = "gather now answers an unplanned BackfillPlan rather than a Gathered; the same early return before the account is listed when no heart needs placing."
+
+[[rows]]
+id = "u146-a.B1_carried_states"
+source = { table = "u146-a.json", id = "B1_carried_states" }
+description = "carried: the backfill reads only the carried states again, so an owned heart is never placed"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_favorites_backfill.py"]
+old = '''                rows.extend(account_playlists.carried_hearts(store, job, states=None))'''
+new = '''                rows.extend(account_playlists.carried_hearts(store, job))'''
+moved = "The read of every hearts job's rows in every state moved into backfill.reported, which carried (and the split) now call; the same states=None argument, dropped the same way."
+
+[[rows]]
+id = "u153.C7_write_pink_reports_write"
+source = { table = "u153.json", id = "C7_write_pink_reports_write" }
+description = "write_pink: report every row as coloured, including one the policy skipped"
+file = "src/cratekit/favorites/colour.py"
+surface = "user"
+tests = ["tests/test_favorites_placement.py", "tests/test_favorites_pink.py", "tests/test_favorites_backfill.py"]
+old = '''        if rb_writer.write_metadata_field(row, OWNER, COLUMN, pink) is rb_writer.Decision.WRITE:
+            written.append(str(content_id))'''
+new = '''        if rb_writer.write_metadata_field(row, OWNER, COLUMN, pink) is not rb_writer.Decision.WRITE:
+            written.append(str(content_id))'''
+moved = "The policy's decision is compared where it is made rather than through a local; the same is WRITE test before a row is reported, negated the same way."
+
+[[rows]]
+id = "r798-c.H3_every_name_is_resolved_before_any_is_filed"
+source = { table = "r798-c.json", id = "H3_every_name_is_resolved_before_any_is_filed" }
+description = "label held return: skip a name nothing holds and file the rest, so a mistyped identifier leaves a half done run reported as a refusal of nothing"
+file = "src/cratekit/label/held_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_cli_contract.py"]
+old = '''
+    if unknown:
+        raise _refuse(
+            "review-item-unknown",'''
+new = '''
+    if False:
+        raise _refuse(
+            "review-item-unknown",'''
+moved = 'The refusal over unknown names moved with the name resolution into _found, one level out of the with block, and is raised through _refuse, refuse with the module origin bound; the same if unknown guard raises before anything is filed, and the mutation disables it the same way.'
+
+[[rows]]
+id = "r798-c.H4_a_release_with_no_isrc_was_not_asked_about"
+source = { table = "r798-c.json", id = "H4_a_release_with_no_isrc_was_not_asked_about" }
+description = "label held: count a release with no ISRC as one the catalogue was asked about, so it hides a sweep whose every question went unread"
+file = "src/cratekit/label/held_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_cli_contract.py"]
+old = '''
+        if answer is not None and answer not in (searchers.NOT_ASKED, NO_ISRC):'''
+new = '''
+        if answer is not None and answer != searchers.NOT_ASKED:'''
+moved = "_sweep_rows walks the queue through review.iter_items, so the paging loop went and the same test stands one level shallower"
+
+[[rows]]
+id = "r798-c.H5_a_returned_hold_is_marked"
+source = { table = "r798-c.json", id = "H5_a_returned_hold_is_marked" }
+description = "label held return: file the release and leave its hold in force, so it is listed as held while it waits in review"
+file = "src/cratekit/label/held_cli.py"
+surface = "user"
+tests = ["tests/test_label_genre_gate.py", "tests/test_cli_contract.py"]
+old = '    review.return_hold(store, queue=queue, item_id=one.item_id)'
+new = '    pass'
+moved = '''
+The hold's return mark moved with the per release body into _return_one, two levels out; it is the same call after the offer, and the mutation drops it the same way.'''
+
+[[rows]]
+id = "r815-b.H1_a_withheld_release_returns_under_no_invented_run"
+source = { table = "r815-b.json", id = "H1_a_withheld_release_returns_under_no_invented_run" }
+description = "label held return: fall back to the hold's own run for a withheld release"
+file = "src/cratekit/label/held_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py", "tests/test_label_genre_gate.py"]
+old = '        or (None if taken_back else one.run_id or None),'
+new = '        or (one.run_id or None),'
+moved = '''
+The offer call moved into _return_one, two levels out; the same fallback run expression, and the mutation falls back to the hold's own run the same way.'''
+
+[[rows]]
+id = "r815-b.H2_the_withheld_word_stays_with_the_hold"
+source = { table = "r815-b.json", id = "H2_the_withheld_word_stays_with_the_hold" }
+description = "label held return: file the hold's payload whole"
+file = "src/cratekit/label/held_cli.py"
+surface = "maintainer"
+tests = ["tests/test_label_judge.py", "tests/test_label_genre_gate.py"]
+old = '        **{k: v for k, v in one.payload.items() if k != review.WITHHELD_FIELD},'
+new = '        **one.payload,'
+moved = '''
+The returned payload moved into _return_one, two levels out; the same comprehension drops the withheld word, and the mutation files the hold's payload whole the same way.'''
+
+[[rows]]
+id = "r815-b.H3_a_judge_runs_answer_is_not_the_sweeps"
+source = { table = "r815-b.json", id = "H3_a_judge_runs_answer_is_not_the_sweeps" }
+description = "_sweep_rows: count a judging job's answer as the sweep's"
+file = "src/cratekit/label/held_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py", "tests/test_label_genre_gate.py"]
+old = '''
+        if item.payload.get(genre_gate.GATE_RUN_FIELD):
+            continue'''
+new = '''
+        if False:
+            continue'''
+moved = "_sweep_rows walks the queue through review.iter_items, so the same skip stands one level shallower"
+

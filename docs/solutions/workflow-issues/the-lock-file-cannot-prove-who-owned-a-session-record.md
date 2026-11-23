@@ -2,7 +2,7 @@
 title: The lock file cannot prove who owned a session record, so the record carries its own holder
 date: 2026-09-21
 category: workflow-issues
-module: "src/cratekit/core/session.py"
+module: "src/cratekit/core/session.py, src/cratekit/core/session_holders.py"
 problem_type: workflow_issue
 component: seam_design
 root_cause: incorrect_assumption

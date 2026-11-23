@@ -1,12 +1,6 @@
 """A date the binding cannot place in local time reads as a bound, never a failure (U285).
 
-DEADCA7 0.2.3 stamps every row it pushes ``0001-01-01T00:00:00Z``. The pinned
-binding converts each stamp to local time, which west of UTC falls before year
-1 and raised ``OverflowError``, so a verb walking the playlist tree failed over
-a real push. ``core/rb_dates.py`` wraps that conversion once, at the open seam.
-Driven here on the conversion itself and through a real handle on a disposable
-database carrying the producer's own value.
-"""
+DEADCA7 stamps pushed rows ``0001-01-01T00:00:00Z``, which west of UTC overflowed the conversion."""
 
 from __future__ import annotations
 
@@ -24,14 +18,12 @@ from tests.test_rb_writer_db import (  # noqa: F401 - fixtures
     library,
 )
 
-#: Zones as POSIX rules, which need no zone database: US Eastern, Japan, UTC,
-#: and the two furthest offsets in use, twelve hours west and fourteen east.
+#: Zones as POSIX rules, which need no zone database, spanning the furthest offsets in use.
 WEST = dc7.EASTERN
 EAST = "JST-9"
 ZONES = (WEST, EAST, "UTC0", "AOE+12", "LINT-14")
 
-#: rekordbox's own stamp, as its rows read, and what it is in US Eastern
-#: (four hours behind in March, after the change to summer time).
+#: rekordbox's own stamp, as its rows read, and what it is in US Eastern in March.
 OWN = "2026-03-09 21:06:07.516 +00:00"
 OWN_EASTERN = datetime(2026, 3, 9, 17, 6, 7, 516000)
 #: A playlist of the library's own, stamped as rekordbox stamps.
@@ -39,14 +31,12 @@ OWN_ID = "4242"
 
 
 def _binding() -> object:
-    """The binding's own conversion, unwrapped whatever state the process is in."""
     current = tables.string_to_datetime
     return getattr(current, "__wrapped__", current)
 
 
 @pytest.fixture
 def unwrapped(monkeypatch):
-    """The binding's conversion and XML update as shipped, put back after the test."""
     from pyrekordbox.db6 import aux_files
 
     monkeypatch.setattr(tables, "string_to_datetime", _binding())
@@ -66,9 +56,7 @@ def _rekordbox_closed(monkeypatch):
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
 
 
-# ---------------------------------------------------------------------------
 # The conversion
-# ---------------------------------------------------------------------------
 
 
 def test_the_binding_alone_cannot_place_the_zero_date_west_of_utc(unwrapped):
@@ -101,8 +89,7 @@ def test_the_calendars_last_moment_reads_as_the_ceiling(unwrapped, zone):
     ],
 )
 def test_an_edge_stamp_with_no_offset_reads_as_its_bound(unwrapped, zone, text, bound):
-    """With no offset the binding fails with ValueError rather than OverflowError,
-    in every zone, and the brief asks for any value the conversion cannot place."""
+    """With no offset the binding raises ValueError, which reads as a bound too."""
     read = rb_dates.placeable(unwrapped)
     with dc7.west_of_utc(zone):
         with pytest.raises(ValueError, match="out of range"):
@@ -119,7 +106,6 @@ def test_an_ordinary_stamp_reads_exactly_as_the_binding_reads_it(unwrapped):
 
 @pytest.mark.parametrize("zone", ZONES)
 def test_each_bound_converts_back_in_every_zone(zone):
-    """A reader that converts a bound again cannot overflow where the binding did."""
     with dc7.west_of_utc(zone):
         for bound in (rb_dates.FLOOR, rb_dates.CEILING):
             assert bound.astimezone().replace(tzinfo=None) == bound
@@ -139,8 +125,7 @@ def test_each_bound_converts_back_in_every_zone(zone):
     ],
 )
 def test_text_the_binding_cannot_parse_still_fails_as_it_did(unwrapped, text):
-    """Never a hidden error: only the calendar's edge reads as a bound, and text
-    the binding refuses is refused with the binding's own error."""
+    """Never a hidden error: text the binding refuses fails with the binding's own error."""
     read = rb_dates.placeable(unwrapped)
     with dc7.west_of_utc(WEST):
         with pytest.raises(Exception) as by_binding:
@@ -201,14 +186,11 @@ def test_a_bound_is_never_handed_to_the_xml_update():
     assert calls == [("3", "9", None, None, None, None), ("4", None, None, ordinary, None, None)]
 
 
-# ---------------------------------------------------------------------------
 # Through a real handle
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
 def zero_pushed(library):  # noqa: F811 - the imported fixture
-    """A disposable database holding two tracks and a push stamped as the app stamps."""
     import sqlite3
 
     path = library / "db" / "master.db"
@@ -240,8 +222,7 @@ def test_the_open_seam_installs_the_wrapper(unwrapped, zero_pushed, cloud_sync_o
 def test_a_handle_reads_the_whole_tree_over_a_zero_dated_push_and_writes_nothing(
     unwrapped, zero_pushed, cloud_sync_off  # noqa: F811
 ):
-    """Every playlist and membership row loads; the push's read as the floor, the
-    library's own exactly as the binding reads them; the file is not written."""
+    """Every row loads over a zero dated push, read as the floor, and nothing written."""
     import sqlite3
 
     path, pushed = zero_pushed
@@ -280,9 +261,7 @@ def test_a_handle_reads_the_whole_tree_over_a_zero_dated_push_and_writes_nothing
 def test_a_wrapper_installed_after_a_handle_has_read_is_still_the_one_called(
     unwrapped, zero_pushed, cloud_sync_off  # noqa: F811
 ):
-    """The binding's column looks the conversion up at every row, so a handle
-    that has already read a date before the install reads a zero dated row
-    after it."""
+    """The column looks the conversion up per row, so a late install still takes effect."""
     from pyrekordbox import Rekordbox6Database
 
     path, pushed = zero_pushed
@@ -300,7 +279,6 @@ def test_a_wrapper_installed_after_a_handle_has_read_is_still_the_one_called(
 
 
 def _playlist_xml(db_path, timestamps: dict[str, int]):
-    """A ``masterPlaylists6.xml`` beside the database, one node per playlist id."""
     nodes = "".join(
         f'<NODE Id="{int(node):X}" ParentId="0" Attribute="0" Timestamp="{ms}" '
         'Lib_Type="0" CheckType="0"/>'
@@ -325,8 +303,7 @@ def _node_attributes(xml, node: str) -> dict[str, str]:
     raise AssertionError(f"no node {node}")
 
 
-#: DEADCA7's push time at sitting 98, in milliseconds, and a time the library's
-#: own row does not hold, so the binding's sync has something to change.
+#: DEADCA7's push time in milliseconds, one the library's own row does not hold.
 PUSHED_MS = 1763050727914
 STALE_MS = 1700000000000
 
@@ -335,9 +312,7 @@ STALE_MS = 1700000000000
 def test_a_commit_leaves_the_pushed_nodes_xml_timestamps_and_still_syncs_its_own(
     unwrapped, zero_pushed, cloud_sync_off, zone  # noqa: F811
 ):
-    """Round two of the review: the binding's sync would write the floor's
-    instant into DEADCA7's nodes. A commit now leaves those nodes exactly as
-    they were, while the library's own stale node is still synced to its row."""
+    """A commit leaves the pushed nodes' XML timestamps as they were and still syncs its own."""
     path, pushed = zero_pushed
     foreign = (pushed.folder_id, *pushed.playlist_ids)
     xml = _playlist_xml(path, {**{node: PUSHED_MS for node in foreign}, OWN_ID: STALE_MS})
@@ -360,8 +335,7 @@ def test_a_commit_leaves_the_pushed_nodes_xml_timestamps_and_still_syncs_its_own
 
 
 def test_before_the_seam_such_a_commit_failed_after_its_write(unwrapped, zero_pushed):
-    """The binding alone, at UTC where the row loads: its sync cannot convert
-    the year 1 value back, so the commit raised after the database write."""
+    """Without the seam, the binding's sync raised after the database write."""
     from pyrekordbox import Rekordbox6Database
 
     path, pushed = zero_pushed

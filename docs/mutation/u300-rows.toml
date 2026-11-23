@@ -1,0 +1,180 @@
+name = "u300"
+pass_kind = "light"
+
+# The card's own table over what the split wrote: each part reads the facade's
+# seams through the facade at call time, so a patch on rb_writer, session or
+# restore still bites inside the part. Each row reverts one such lookup to the
+# part's own name (the shape a split gets wrong), plus the three refusals a part
+# raises on the writer's behalf. The guards that moved unchanged are held by the
+# kill set replay, u300-replay-after-*.
+
+[[rows]]
+id = "S1_probe_resolved_in_the_part"
+description = "rekordbox_processes_running asks the part's own probes, so a probe patched on rb_writer is not asked"
+file = "src/cratekit/core/rb_probes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_process_guard.py", "tests/test_rb_writer_db.py"]
+old = "            if getattr(_writer(), probe_name)():"
+new = "            if globals()[probe_name]():"
+
+[[rows]]
+id = "S2_read_only_copy_skips_the_process_refusal"
+description = "read_only_copy no longer refuses while rekordbox or its agent runs"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_rb_snapshot.py", "tests/test_snapshot.py"]
+old = '    _writer().assert_rekordbox_closed("copying the database for a read only look")'
+new = "    pass"
+
+[[rows]]
+id = "S3_restore_from_snapshot_skips_the_process_refusal"
+description = "restore_from_snapshot no longer refuses while rekordbox or its agent runs"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_rb_snapshot.py", "tests/test_snapshot.py", "tests/test_restore.py"]
+old = '    _writer().assert_rekordbox_closed("restoring the database")'
+new = "    pass"
+
+[[rows]]
+id = "S4_copy_file_set_local"
+description = "snapshot_db copies through the part's own _copy_file_set, so a patched copy is not used"
+file = "src/cratekit/core/rb_copies.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_db.py", "tests/test_rb_snapshot.py", "tests/test_snapshot.py", "tests/test_snapshot_wal_r1665.py"]
+old = "    return _writer()._copy_file_set(source, destination)"
+new = "    return _copy_file_set(source, destination)"
+
+[[rows]]
+id = "S7_disposable_copy_local"
+description = "read_only_copy takes its copy with the part's own disposable_copy"
+file = "src/cratekit/core/rb_copies.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_db.py", "tests/test_rb_snapshot.py", "tests/test_snapshot.py", "tests/test_snapshot_check_room_r1677.py"]
+old = "    with _writer().disposable_copy(source) as copied:"
+new = "    with disposable_copy(source) as copied:"
+
+[[rows]]
+id = "S8_disposable_root_local"
+description = "disposable_copy places its directory under the part's own disposable_root"
+file = "src/cratekit/core/rb_copies.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_db.py", "tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '    directory = Path(tempfile.mkdtemp(prefix="cratekit-copy-", dir=_writer().disposable_root()))'
+new = '    directory = Path(tempfile.mkdtemp(prefix="cratekit-copy-", dir=disposable_root()))'
+
+[[rows]]
+id = "S9_add_memberships_local"
+description = "add_membership files through the part's own add_memberships"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py"]
+old = "    return bool(_writer().add_memberships(db, playlist, [content_id]))"
+new = "    return bool(add_memberships(db, playlist, [content_id]))"
+
+[[rows]]
+id = "S10_remove_memberships_local"
+description = "remove_playlist_node marks its memberships through the part's own remove_memberships"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py"]
+old = "    marked = _writer().remove_memberships(db, playlist, held)"
+new = "    marked = remove_memberships(db, playlist, held)"
+
+[[rows]]
+id = "S11_registry_changes_local"
+description = "pending_objects reads the buffer through the part's own _registry_changes"
+file = "src/cratekit/core/rb_changes.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_rb_writer_db.py"]
+old = "    r_created, r_modified, r_removed = _writer()._registry_changes(db)"
+new = "    r_created, r_modified, r_removed = _registry_changes(db)"
+
+[[rows]]
+id = "S12_settings_read_in_the_part"
+description = "cloud_sync_state reads the settings with the part's own reader, so a patched reader is not asked"
+file = "src/cratekit/core/rb_probes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_rb_writer_db.py"]
+old = "        settings = _writer().read_rekordbox_settings()"
+new = "        settings = read_rekordbox_settings()"
+
+[[rows]]
+id = "S13_process_exists_local"
+description = "a holder's death since an earlier boot is judged by the part's own process_exists"
+file = "src/cratekit/core/session_holders.py"
+surface = "maintainer"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py"]
+old = "    return _session().process_exists(holder.pid) is False"
+new = "    return process_exists(holder.pid) is False"
+
+[[rows]]
+id = "S14_process_started_local"
+description = "current_holder records the start time from the part's own process_started"
+file = "src/cratekit/core/session_holders.py"
+surface = "maintainer"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_behaviour_compare.py"]
+old = "        started=_session().process_started(pid),"
+new = "        started=process_started(pid),"
+
+[[rows]]
+id = "S15_terminal_probe_local"
+description = "record_acknowledgment asks the part's own terminal probe, so a patched probe is not asked"
+file = "src/cratekit/core/session_ack.py"
+surface = "maintainer"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py"]
+old = "        probe = terminal or _session().has_controlling_terminal"
+new = "        probe = terminal or has_controlling_terminal"
+
+[[rows]]
+id = "S16_derive_actor_local"
+description = "record_acknowledgment names its actor with the part's own derive_actor"
+file = "src/cratekit/core/session_ack.py"
+surface = "maintainer"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py"]
+old = "        actor=_session().derive_actor(),"
+new = "        actor=derive_actor(),"
+
+[[rows]]
+id = "S17_mapped_reasons_local"
+description = "the mapped volume gate reads the part's own reason table, so a patched table is not read"
+file = "src/cratekit/core/session_volumes.py"
+surface = "maintainer"
+tests = ["tests/test_write_session.py"]
+old = "            reason = _session()._MAPPED_REASONS[status.state]"
+new = "            reason = _MAPPED_REASONS[status.state]"
+
+[[rows]]
+id = "S18_copyfile_unsampled"
+description = "a replaced file is copied by shutil itself, out of reach of the capacity test's sampler"
+file = "src/cratekit/core/restore_perform.py"
+surface = "maintainer"
+tests = ["tests/test_restore.py"]
+old = "        _restore().shutil.copyfile(source, staged)"
+new = '        __import__("shutil").copyfile(source, staged)'
+
+[[rows]]
+id = "S19_replace_file_local"
+description = "the perform step replaces a file through the part's own _replace_file"
+file = "src/cratekit/core/restore_perform.py"
+surface = "maintainer"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = "            _restore()._replace_file(step.source, step.target)"
+new = "            _replace_file(step.source, step.target)"
+
+[[rows]]
+id = "S20_stage_aside_local"
+description = "the perform step stages a companion aside through the part's own helper"
+file = "src/cratekit/core/restore_perform.py"
+surface = "maintainer"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = "            _restore()._stage_companion_aside(step.target, decided.pre_restore_root)"
+new = "            _stage_companion_aside(step.target, decided.pre_restore_root)"
+
+[[rows]]
+id = "S21_mount_probe_local"
+description = "assert_library_volume_is_gone asks the part's own mount probe, so a patched probe is not asked"
+file = "src/cratekit/core/restore_recovery.py"
+surface = "maintainer"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = "    probe = mount_probe or _restore()._is_mount_point"
+new = "    probe = mount_probe or _is_mount_point"

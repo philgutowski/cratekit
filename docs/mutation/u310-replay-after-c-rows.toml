@@ -1,0 +1,711 @@
+name = "u310-replay-after-c"
+pass_kind = "replay"
+
+[[rows]]
+id = "u243.D10_prefix_order_fewest_first"
+source = { table = "u243.json", id = "D10_prefix_order_fewest_first" }
+description = "reference_set: unmapped prefixes sorted fewest first, so the refusal names the smallest groups"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = 'key=lambda pair: (-pair[1], pair[0])'
+new = 'key=lambda pair: (pair[1], pair[0])'
+
+[[rows]]
+id = "u243.D11_refusal_names_no_prefix"
+source = { table = "u243.json", id = "D11_refusal_names_no_prefix" }
+description = "assert_complete: the prefixes are left out of the refusal's sentence"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''        f"cannot resolve{f' ({under})' if under else ''}, "'''
+new = '        f"cannot resolve, "'
+
+[[rows]]
+id = "u243.D12_refusal_offers_no_rule"
+source = { table = "u243.json", id = "D12_refusal_offers_no_rule" }
+description = "assert_complete: the location_prefix_map step is not offered"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''
+                for prefix, count in named
+            ),'''
+new = '''
+                for prefix, count in ()
+            ),'''
+
+[[rows]]
+id = "u243.D1_id_class_takes_a_dot"
+source = { table = "u243.json", id = "D1_id_class_takes_a_dot" }
+description = "_STREAMING_LOCATION: the id class takes any character but a slash, so /v4/catalog/tracks/123.flac/ is excused"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+/?\Z")'
+new = '_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[^/]+/?\Z")'
+
+[[rows]]
+id = "u243.D2_end_anchor_is_dollar"
+source = { table = "u243.json", id = "D2_end_anchor_is_dollar" }
+description = "_STREAMING_LOCATION: \\Z becomes $, which also accepts a trailing newline"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+/?\Z")'
+new = '_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+/?$")'
+
+[[rows]]
+id = "u243.D3_no_end_anchor"
+source = { table = "u243.json", id = "D3_no_end_anchor" }
+description = "_STREAMING_LOCATION: no end anchor, so /v4/catalog/tracks/123/track.flac is excused"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+/?\Z")'
+new = '_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+")'
+
+[[rows]]
+id = "u243.D4_search_not_match"
+source = { table = "u243.json", id = "D4_search_not_match" }
+description = "_streaming: search rather than match, so a spelling under another directory is excused"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '    if not _STREAMING_LOCATION.match(text):'
+new = '    if not _STREAMING_LOCATION.search(text):'
+
+[[rows]]
+id = "u243.D5_spelling_not_asked"
+source = { table = "u243.json", id = "D5_spelling_not_asked" }
+description = "_streaming: the spelling test is dropped, so every unmapped row with nothing at it is excused"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''
+    if not _STREAMING_LOCATION.match(text):
+        return False'''
+new = '''
+    if False:
+        return False'''
+
+[[rows]]
+id = "u243.D6_disk_not_asked"
+source = { table = "u243.json", id = "D6_disk_not_asked" }
+description = "_streaming: the stat is not asked, so a streaming spelling with a file at it is excused"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''
+    try:
+        stat(text)
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
+    return False'''
+new = '    return True'
+
+[[rows]]
+id = "u243.D7_an_error_reads_as_absent"
+source = { table = "u243.json", id = "D7_an_error_reads_as_absent" }
+description = "_streaming: a stat error other than not found reads as nothing there, failing open"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''
+    except (OSError, ValueError):
+        return False
+    return False'''
+new = '''
+    except (OSError, ValueError):
+        return True
+    return False'''
+
+[[rows]]
+id = "u243.D8_something_there_reads_as_absent"
+source = { table = "u243.json", id = "D8_something_there_reads_as_absent" }
+description = "_streaming: a stat that answers, a file or directory at the spelling, reads as nothing there"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''
+    except (OSError, ValueError):
+        return False
+    return False'''
+new = '''
+    except (OSError, ValueError):
+        return False
+    return True'''
+
+[[rows]]
+id = "u243.D9_streaming_still_counted_unmapped"
+source = { table = "u243.json", id = "D9_streaming_still_counted_unmapped" }
+description = "reference_set: a streaming row is counted but also left unmapped, so the run still refuses"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''
+                streaming.append(row.content_id)
+                continue'''
+new = '                streaming.append(row.content_id)'
+
+[[rows]]
+id = "r1844.N17_screen_silent"
+source = { table = "r1844.json", id = "N17_screen_silent" }
+description = "the gate's screen never shows the landings read as rolled back"
+file = "src/cratekit/deletion/cli.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py"]
+old = '    if found.rolled_back:'
+new = '    if False:'
+
+[[rows]]
+id = "r239-b.S6_delete_key_off"
+source = { table = "r239-b.json", id = "S6_delete_key_off" }
+description = "delete review's open passes unlock=False"
+file = "src/cratekit/deletion/cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '    return rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)'
+new = '    return rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg, unlock=False)'
+
+[[rows]]
+id = "u243.D14_screen_never_says_ignored"
+source = { table = "u243.json", id = "D14_screen_never_says_ignored" }
+description = "deletion.cli._shown: the count of rows excused as no local file is never put on the gate screen"
+file = "src/cratekit/deletion/cli.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''
+    if ignored:
+        shown["ignored, not local files"] = ignored'''
+new = '''
+    if False:
+        shown["ignored, not local files"] = ignored'''
+
+[[rows]]
+id = "r1037.M7_earlier_landing_kept"
+source = { table = "r1037.json", id = "M7_earlier_landing_kept" }
+description = "landed_absences: keep the earlier of two landings naming one row"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '            if seen is None or seen.landed < sequence:'
+new = '            if seen is None or seen.landed > sequence:'
+
+[[rows]]
+id = "r1037.M8_playlist_ids_live_only"
+source = { table = "r1037.json", id = "M8_playlist_ids_live_only" }
+description = "playlist_ids: count no playlist at all, so every landing reads as rolled back"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '    return frozenset(str(getattr(row, "ID", "")) for row in playlists if getattr(row, "ID", None))'
+new = '    return frozenset()'
+
+[[rows]]
+id = "r1844.N10_numbered_ignored"
+source = { table = "r1844.json", id = "N10_numbered_ignored" }
+description = "LandedRead.unasked: count every rolled back landing, a batch already offered and tidied included"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '        return sum(1 for rows in self.rolled_back if rows - asked)'
+new = '        return sum(1 for rows in self.rolled_back if rows)'
+
+[[rows]]
+id = "r1844.N11_marked_uuid_unread"
+source = { table = "r1844.json", id = "N11_marked_uuid_unread" }
+description = "read_collection: keep the UUID of live rows only, so a marked landed row no longer proves its landing"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''
+        uuids[_identifier(row, "ID")] = _text(row, "UUID")
+        if not trees.soft_delete_marker(row):'''
+new = '''
+        if not trees.soft_delete_marker(row):
+            uuids[_identifier(row, "ID")] = _text(row, "UUID")'''
+
+[[rows]]
+id = "r1844.N12_record_uuid_unread"
+source = { table = "r1844.json", id = "N12_record_uuid_unread" }
+description = "landed_absences: the record's UUID is not read, so no row proves its landing"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '            uuid = entry.get(LANDED_UUID_KEY)'
+new = '            uuid = entry.get("UUID")'
+
+[[rows]]
+id = "r1844.N1_uuid_proof_dropped"
+source = { table = "r1844.json", id = "N1_uuid_proof_dropped" }
+description = "_landing_stands: never read a landed row held under its UUID as proof, so a landing whose playlist was deleted by hand is read as rolled back (the defect)"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '    if any(uuid and uuids.get(content_id) == uuid for content_id, _columns, uuid in rows):'
+new = '    if False:'
+
+[[rows]]
+id = "r1844.N2_id_alone_proves"
+source = { table = "r1844.json", id = "N2_id_alone_proves" }
+description = "_landing_stands: a row held under the landed id proves the landing whatever its UUID, so a later import's id reads a rolled back landing as standing"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '    if any(uuid and uuids.get(content_id) == uuid for content_id, _columns, uuid in rows):'
+new = '    if any(content_id in uuids for content_id, _columns, uuid in rows):'
+
+[[rows]]
+id = "r1844.N3_empty_uuid_proves"
+source = { table = "r1844.json", id = "N3_empty_uuid_proves" }
+description = "_landing_stands: a row recorded with no UUID matches a held row holding none"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '    if any(uuid and uuids.get(content_id) == uuid for content_id, _columns, uuid in rows):'
+new = '    if any(uuids.get(content_id) == uuid for content_id, _columns, uuid in rows):'
+
+[[rows]]
+id = "r1844.N4_playlist_proof_dropped"
+source = { table = "r1844.json", id = "N4_playlist_proof_dropped" }
+description = "_landing_stands: every playlist held no longer proves the landing, so a lone landed track removed while its playlist stays is never offered"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '    return all(playlist_held(str(one)) for one in playlists)'
+new = '    return False'
+
+[[rows]]
+id = "r1844.N5_any_playlist_proves"
+source = { table = "r1844.json", id = "N5_any_playlist_proves" }
+description = "_landing_stands: one playlist of the landing held is enough, not all of them"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '    return all(playlist_held(str(one)) for one in playlists)'
+new = '    return any(playlist_held(str(one)) for one in playlists)'
+
+[[rows]]
+id = "r1844.N6_no_playlist_proves"
+source = { table = "r1844.json", id = "N6_no_playlist_proves" }
+description = "_landing_stands: a landing that made no playlist reads as standing, so a rolled back landing into a playlist already there is offered"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '    if not isinstance(playlists, (list, tuple)) or not playlists:'
+new = '    if not isinstance(playlists, (list, tuple)):'
+
+[[rows]]
+id = "r1844.N8_nothing_absent_listed"
+source = { table = "r1844.json", id = "N8_nothing_absent_listed" }
+description = "landed_absences: a landing with every row held is still weighed and listed as rolled back"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''
+        if not absent:
+            continue
+'''
+new = ''
+
+[[rows]]
+id = "r1844.N9_rolled_back_unlisted"
+source = { table = "r1844.json", id = "N9_rolled_back_unlisted" }
+description = "landed_absences: a landing read as rolled back is not listed, so the gate never counts it"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '            rolled_back.append(frozenset(content_id for content_id, _columns in absent))'
+new = '            pass'
+
+[[rows]]
+id = "u288.M23_recorded_identity"
+source = { table = "u288.json", id = "M23_recorded_identity" }
+description = "recorded_removals: read a record of another database as this one's"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py", "tests/test_deletion.py"]
+old = '        if str(recorded.get("database_identity") or "") != str(database_identity):'
+new = '        if False:'
+
+[[rows]]
+id = "r1037.M9_recorded_not_excluded"
+source = { table = "r1037.json", id = "M9_recorded_not_excluded" }
+description = "plan: a row sync removed recorded is read again as a landed absence, so one row is two candidates"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '        present=held | {row.content_id for row in recorded},'
+new = '        present=held,'
+
+[[rows]]
+id = "r1844.N14_uuids_not_passed"
+source = { table = "r1844.json", id = "N14_uuids_not_passed" }
+description = "run.plan: the held rows' UUIDs are not handed to the landed row reader"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '        uuids=seen.uuids,'
+new = '        uuids={},'
+
+[[rows]]
+id = "r1844.N15_baseline_count_lost"
+source = { table = "r1844.json", id = "N15_baseline_count_lost" }
+description = "run.plan: the run that baselines carries no rolled back count"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''
+            baselined_over=len(seen.removed),
+            rolled_back=landings.unasked(mark.absent),'''
+new = '            baselined_over=len(seen.removed),'
+
+[[rows]]
+id = "r1844.N16_review_count_lost"
+source = { table = "r1844.json", id = "N16_review_count_lost" }
+description = "run.plan: an ordinary review carries no rolled back count"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''
+        ambiguous=ambiguous,
+        rolled_back=landings.unasked(mark.absent),'''
+new = '        ambiguous=ambiguous,'
+
+[[rows]]
+id = "r44-b.R1_rules_drop_identity"
+source = { table = "r44-b.json", id = "R1_rules_drop_identity" }
+description = "Build the pass's rules from configuration without each rule's recorded identity"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '        locations.PrefixRule(source, target, volume_id)'
+new = '        locations.PrefixRule(source, target)'
+
+[[rows]]
+id = "r44-b.R5_both_looks_gone"
+source = { table = "r44-b.json", id = "R5_both_looks_gone" }
+description = "Composite for R3 and R4: make the per file look a no-op, so only the plan's gate stands"
+file = "src/cratekit/deletion/run.py"
+surface = "maintainer"
+tests = ["tests/test_deletion.py"]
+old = '''
+    if answered.resolved is None:
+        return
+    resolved = locations.resolve_recorded_path('''
+new = '''
+    return
+    resolved = locations.resolve_recorded_path('''
+
+[[rows]]
+id = "r44-b.X2_suspect_anchor"
+source = { table = "r44-b.json", id = "X2_suspect_anchor" }
+description = "Existing guard, sampled: never hold a row because its anchor proved nothing"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '    return answered.anchor is not None and answered.anchor in references.suspect_anchors'
+new = '    return False'
+
+[[rows]]
+id = "r431-a.A10_the_shared_companion_goes_with_the_first_lift"
+source = { table = "r431-a.json", id = "A10_the_shared_companion_goes_with_the_first_lift" }
+description = "Lifting takes every companion the tombstone accounts for, whoever else still does"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_intake_missing.py", "tests/test_label_approved.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '    return tuple(sorted(mine - still_accounted_for))'
+new = '    return tuple(sorted(mine))'
+
+[[rows]]
+id = "r431-a.A11_a_lifted_tombstone_still_accounts"
+source = { table = "r431-a.json", id = "A11_a_lifted_tombstone_still_accounts" }
+description = "A tombstone that was itself lifted still holds the shared companion, so the second lift strands it"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_intake_missing.py", "tests/test_label_approved.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '''
+            and other.suppressing
+            and other.suppression_id != named.suppression_id'''
+new = '            and other.suppression_id != named.suppression_id'
+
+[[rows]]
+id = "r431-a.A12_the_named_tombstone_accounts_for_itself"
+source = { table = "r431-a.json", id = "A12_the_named_tombstone_accounts_for_itself" }
+description = "The tombstone being lifted counts as still accounting, so no companion is ever lifted"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_intake_missing.py", "tests/test_label_approved.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '''
+            and other.suppressing
+            and other.suppression_id != named.suppression_id'''
+new = '            and other.suppressing'
+
+[[rows]]
+id = "r431-a.A13_accounting_by_stripping_alone"
+source = { table = "r431-a.json", id = "A13_accounting_by_stripping_alone" }
+description = "_accounts_for drops the pointer, so a moved stripping rule strands a companion and takes a shared one"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_intake_missing.py", "tests/test_label_approved.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '    found = {str(credited.payload.get(UNCREDITED_ID_FIELD) or "")}'
+new = '    found = {""}'
+
+[[rows]]
+id = "r431-a.A14_accounting_by_pointer_alone"
+source = { table = "r431-a.json", id = "A14_accounting_by_pointer_alone" }
+description = "_accounts_for drops the stripping, so a tombstone with no pointer accounts for nothing"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_intake_missing.py", "tests/test_label_approved.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '''
+    if stripped:
+        found.add('''
+new = '''
+    if stripped and not stripped:
+        found.add('''
+
+[[rows]]
+id = "r431-a.A3_stripped_from_the_title_column"
+source = { table = "r431-a.json", id = "A3_stripped_from_the_title_column" }
+description = "The companion is stripped from the Title column and not from the composed identity, so a mix name in the version column is lost"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_intake_missing.py", "tests/test_label_approved.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '    stripped = tombstone.uncredited_title(verbatim["title"])'
+new = '    stripped = tombstone.uncredited_title(tombstone.fold(row.title))'
+
+[[rows]]
+id = "r431-a.A4_the_tombstone_names_no_companion"
+source = { table = "r431-a.json", id = "A4_the_tombstone_names_no_companion" }
+description = "The tombstone's pointer to its companion is written empty"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_intake_missing.py", "tests/test_label_approved.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '            UNCREDITED_ID_FIELD: uncredited_id,'
+new = '            UNCREDITED_ID_FIELD: "",'
+
+[[rows]]
+id = "r1037.M13_sight_renumbers"
+source = { table = "r1037.json", id = "M13_sight_renumbers" }
+description = "sight: number a row again at every run, so it moves past every advance and is offered again"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''
+                if content_id in kept or content_id in held:
+                    continue
+                kept[str(content_id)] = int(counter)'''
+new = '''
+                if content_id in held:
+                    continue
+                kept[str(content_id)] = int(counter)'''
+
+[[rows]]
+id = "r1037.M14_sight_at_the_watermark"
+source = { table = "r1037.json", id = "M14_sight_at_the_watermark" }
+description = "sight: number a new sighting at the watermark, so every outright removal is hidden"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '                kept[str(content_id)] = int(counter)'
+new = '                kept[str(content_id)] = existing.sequence'
+
+[[rows]]
+id = "r1037.M15_sight_keeps_held"
+source = { table = "r1037.json", id = "M15_sight_keeps_held" }
+description = "sight: drop no sighting of a row held again"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '            kept = {key: value for key, value in existing.absent.items() if key not in held}'
+new = '            kept = dict(existing.absent)'
+
+[[rows]]
+id = "r1037.M16_advance_drops_sightings"
+source = { table = "r1037.json", id = "M16_advance_drops_sightings" }
+description = "advance: write the position without the sightings, so the next run renumbers and re-offers"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '                absent=dict(existing.absent) if existing is not None else {},'
+new = '                absent={},'
+
+[[rows]]
+id = "r1037.M17_sightings_unchecked"
+source = { table = "r1037.json", id = "M17_sightings_unchecked" }
+description = "_recognize: accept sightings of any shape"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''
+        if not isinstance(absent, Mapping):
+            raise self._unusable(f"its sightings are a {type(absent).__name__}, not a mapping")'''
+new = '''
+        if not isinstance(absent, Mapping):
+            absent = {}'''
+
+[[rows]]
+id = "r1037.M18_sighting_value_unchecked"
+source = { table = "r1037.json", id = "M18_sighting_value_unchecked" }
+description = "_recognize: accept a sighting that is not a whole number"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '            if isinstance(sighted, bool) or not isinstance(sighted, int):'
+new = '            if False:'
+
+[[rows]]
+id = "r1037.M19_version_two_refused"
+source = { table = "r1037.json", id = "M19_version_two_refused" }
+description = "_recognize: read only version 1, so this build refuses its own document"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = 'READABLE_VERSIONS = frozenset({1, WATERMARK_VERSION})'
+new = 'READABLE_VERSIONS = frozenset({1})'
+
+[[rows]]
+id = "r1037.M1_identity_unchecked"
+source = { table = "r1037.json", id = "M1_identity_unchecked" }
+description = "landed_absences: read a landing record of any database, so another library's landed rows are offered here"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        if str(recorded.get("database_identity") or "") != str(database_identity):
+            continue
+        sequence = recorded.get("sequence")'''
+new = '''        sequence = recorded.get("sequence")'''
+moved = "the record preamble of landed_absences and recorded_removals is now one generator, _records, whose record is named recorded; the identity check is dropped from it, as before"
+
+[[rows]]
+id = "r1844.N7_held_rows_read_absent"
+source = { table = "r1844.json", id = "N7_held_rows_read_absent" }
+description = "landed_absences: a landed row the database holds is read as absent, so a live track's file is offered"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''            (content_id, columns) for content_id, columns, _uuid in rows if content_id not in held'''
+new = '''            (content_id, columns) for content_id, columns, _uuid in rows'''
+moved = "the formatter split the over long comprehension; the held filter is dropped, as before"
+
+[[rows]]
+id = "r1037.M10_landed_not_joined"
+source = { table = "r1037.json", id = "M10_landed_not_joined" }
+description = "plan: leave the absent landed rows out of the removals, which is the defect R-1037 names"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        seen, removed=seen.removed + tuple(one.row(mark.absent[key]) for key, one in absent.items())'''
+new = '''        seen, removed=seen.removed'''
+moved = "the replace call collapsed onto one argument line; the landed absences are not joined, as before"
+
+[[rows]]
+id = "r1037.M11_sightings_never_forgotten"
+source = { table = "r1037.json", id = "M11_sightings_never_forgotten" }
+description = "plan: tell the sightings no row is held, so a row a restore put back keeps its old number"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''    mark = marks.sight(database_identity=identity, absent=absent, present=held, counter=counter)'''
+new = '''    mark = marks.sight(database_identity=identity, absent=absent, present=(), counter=counter)'''
+moved = "the sight call collapsed onto one line; nothing is held present, as before"
+
+[[rows]]
+id = "r1037.M12_playlists_always_held"
+source = { table = "r1037.json", id = "M12_playlists_always_held" }
+description = "_playlists_held: answer every playlist held, so a rolled back landing is offered"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''    return lambda playlist_id: playlist_id in ids()'''
+new = '''    return lambda playlist_id: True'''
+moved = "the once only playlist read is now functools.cache over the ids; every playlist reads as held, as before"
+
+[[rows]]
+id = "r431-a.A15_the_verb_lifts_through_the_store"
+source = { table = "r431-a.json", id = "A15_the_verb_lifts_through_the_store" }
+description = "run.revoke lifts a tombstone through the store and not through stores.revoke_tombstone, so no companion goes"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_uncredited_tombstone.py"]
+old = '''                # (R-431); tombstones are read first, never needing the declines.
+                return stores.revoke_tombstone(cfg, suppression_id, actor=actor)'''
+new = '''                # (R-431); tombstones are read first, never needing the declines.
+                return held.revoke(suppression_id, actor=actor)'''
+moved = "only the comment above the guarded line changed; the verb lifts through the opened store, as before"
+
+[[rows]]
+id = "r44-b.R2_no_gate_at_the_plan"
+source = { table = "r44-b.json", id = "R2_no_gate_at_the_plan" }
+description = "Drop the assertion of every mapped target before the plan resolves a path"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '''    session.assert_mapped_volume_identities(cfg, rules, **seams)
+'''
+new = ''''''
+moved = "the seams now travel as one mapping and the call is one line; it is deleted, as before"
+
+[[rows]]
+id = "r44-b.R3_no_look_at_the_loop_top"
+source = { table = "r44-b.json", id = "R3_no_look_at_the_loop_top" }
+description = "Drop the look at the top of the apply loop, before a retirement or a settlement of the plan's answer"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '''            look(item)
+'''
+new = ''''''
+moved = "the seven line volume call became a functools.partial named look, bound to the configuration, the rules and the seams; the loop top's call is deleted, as before"
+
+[[rows]]
+id = "r44-b.R4_no_look_after_the_recheck"
+source = { table = "r44-b.json", id = "R4_no_look_after_the_recheck" }
+description = "Drop the look after the re-check, before its answer is settled or moved on"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '''            look(fresh)
+'''
+new = ''''''
+moved = "the same partial; the call after the re-check is deleted, as before"
+
+[[rows]]
+id = "r44-b.X1_library_root_gate"
+source = { table = "r44-b.json", id = "X1_library_root_gate" }
+description = "Existing guard, sampled: drop the library root's own volume assertion from the pass"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_deletion.py"]
+old = '''    session.assert_volume_identity(cfg, **seams)
+    session.assert_mapped_volume_identities(cfg, rules, **seams)'''
+new = '''    session.assert_mapped_volume_identities(cfg, rules, **seams)'''
+moved = "the seams now travel as one mapping; the library root's identity check is deleted, as before"
+
+[[rows]]
+id = "r431-a.A5_the_companion_names_no_tombstone"
+source = { table = "r431-a.json", id = "A5_the_companion_names_no_tombstone" }
+description = "The companion's pointer back is dropped from its payload, so the listing cannot link the pair"
+file = "src/cratekit/deletion/stores.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_intake_missing.py", "tests/test_label_approved.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '''        CREDITED_ID_FIELD: review.suppression_id_for(
+            tombstone.STORE_KEY, tombstone.KIND_VERSION, identity
+        ),'''
+new = '''        CREDITED_ID_FIELD: "",'''
+moved = "the companion's payload is now built into a local before the write, so its indentation changed; the credited id is emptied, as before"
+
+[[rows]]
+id = "u27-reports-round-3-fixes.F4_absent_flag_never_set"
+source = { table = "u27-reports-round-3-fixes.json", id = "F4_absent_flag_never_set" }
+description = "Never mark an absent Trash as absent, so doctor cannot tell it from an unwritable one"
+file = "src/cratekit/deletion/trash.py"
+surface = "user"
+tests = ["tests/test_deletion.py", "tests/test_doctor.py"]
+old = '''            layout, False, f"{target} is not a directory", absent=not target.exists()'''
+new = '''            layout, False, f"{target} is not a directory", absent=False'''
+moved = "the call collapsed onto one argument line; the absent flag is never set, as before"

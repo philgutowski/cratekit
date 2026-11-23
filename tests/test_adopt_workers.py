@@ -1,24 +1,17 @@
-"""U55: both adopt verbs driving their own queued work, end to end.
+"""U55: both adopt verbs driving their own queued work, end to end, item by item.
 
-WHAT THIS FILE IS FOR THAT NO OTHER FILE CAN BE. ``test_adopt_apply_cli.py``
-drives the queueing path and the session, and ``test_adopt_collection.py`` drives
-the read. Neither one runs an ITEM. Until this file existed, both handler keys
-were in ``HANDLERS_NOT_YET_BOUND`` and the property "a queued adoption actually
-happens" had nowhere to be asserted.
-
-THE APPLY'S HAPPY PATH NEEDS A CUT-OVER LIBRARY, and that is the honest shape
-rather than a convenience. ``write_tree_membership`` refuses a tree that is not
-recorded as database native with a root the library actually has, and nothing in
-``src`` records a cutover, so the only way to reach the write at all is to record
-one here the way ``tests/test_tree_writer.py`` does. That asymmetry is this
-build's, not this file's, and it is written down as a residual.
+The apply's happy path needs a cut-over library, so the fixture records one as
+``tests/test_tree_writer.py`` does. Properties read off one approved apply are
+asserted over one drive rather than one drive per property.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import sqlite3
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
@@ -27,26 +20,27 @@ import pytest
 
 from cratekit.adopt import apply as adopt_apply
 from cratekit.adopt import apply_cli, artifacts, collection, scan_cli
+from cratekit.adopt import placements as adopt_placements
 from cratekit.adopt import scan as adopt_scan
 from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs, preflight, rb_writer, session, taxonomy, tree_registry
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
+from cratekit.write.routing_pass import destination
 from tests import adopt_fixtures
 from tests._taxonomy_parses import counted, renamed_in_place, rewrite_keeping_time, unique
-from tests.cli_drive import approve_and_queue, drive
+from tests.cli_drive import approve_and_queue, drive, drive_human
 from tests.test_adoption import _bucket_and_genre
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION
 
-#: The tree the shipped taxonomy declares, resolved once so the cutover the
-#: fixture records and the tree the plan names cannot drift apart.
+#: The shipped taxonomy's tree, resolved once so the cutover and the plan agree.
 DECLARED = taxonomy.default_taxonomy()
+APPLY = ["adopt", "apply"]
+GATE = "adopt.apply.approve"
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+# ── Fixtures ──
 
 
 @pytest.fixture(autouse=True)
@@ -65,12 +59,8 @@ def _release_process_locks():
 
 @pytest.fixture(autouse=True)
 def _platform_seams(monkeypatch):
-    """Everything about THIS machine a temporary library cannot speak for.
-
-    The three process probes and the cloud-sync marker, patched where the guards
-    resolve them. That each of these guards refuses is proved directly, against
-    the same seams driven the other way, in ``tests/test_rb_writer_db.py``.
-    """
+    """What THIS machine cannot speak for on behalf of a temporary library; that
+    each guard refuses is proved in ``tests/test_rb_writer_db.py``."""
     from pyrekordbox.db6 import database as binding
 
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
@@ -82,12 +72,7 @@ def _platform_seams(monkeypatch):
         lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
     )
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
-    # The capture's integrity check reaches for the key by default and an
-    # unencrypted fixture fails it, which would report every session here as
-    # having no verified recovery point. Compensated at the FIXTURE, never by
-    # giving the writer a verifier argument, for the reason
-    # ``tests/test_tree_writer.py`` gives: a writer that accepts one accepts
-    # ``lambda _: True``.
+    # The capture's check needs the key; compensated at the fixture, not the verifier.
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(
         rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False)
@@ -112,71 +97,57 @@ def _tracks() -> tuple[adopt_fixtures.Track, ...]:
     )
 
 
+def _configured(root: Path, **library: object) -> config.Config:
+    data = valid_data(
+        root,
+        rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
+    )
+    data["library"].update(library)
+    return config.from_dict(data)
+
+
 @pytest.fixture
 def machine(library, monkeypatch):
-    """A set-up machine with a library the adopt verbs can act on.
-
-    Saved to disk rather than monkeypatched, because every test here drives the
-    real dispatcher and the dispatcher loads configuration for itself in the
-    parser construction every invocation runs first.
-    """
-    resolved = config.from_dict(
-        valid_data(
-            library,
-            rekordbox={
-                "pinned_app_version": RECORDED_APP_VERSION,
-                "validated_on": "2026-08-01",
-            },
-        )
-    )
+    """A set-up machine, saved to disk since the real dispatcher loads configuration."""
+    resolved = _configured(library)
     config.save(resolved)
     config.reset_cache()
     adopt_fixtures.build(resolved, _tracks())
     collection.reset_cache()
     monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
+        preflight, "default_identity_provider", lambda: lambda _path: resolved.library.volume_id
     )
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     session.record_acknowledgment(resolved, terminal=lambda: True)
     return resolved
 
 
+def _record_cutover(cfg: config.Config, root_id: str, on: date = date(2026, 9, 2)) -> None:
+    tree_registry.record_cutover(
+        cfg,
+        DECLARED.tree.id,
+        root_id=root_id,
+        on=on,
+        source=tree_registry.DerivationSource.TAXONOMY,
+    )
+
+
 @pytest.fixture
 def cut_over(machine):
-    """A library whose taxonomy tree the registry records as database native.
-
-    THE ONLY WAY THE APPLY'S WRITE PATH IS REACHABLE AT ALL. ``anchored_root``
-    refuses a tree still on the bridge, and ``Registry.mode`` treats an
-    unrecorded tree as being on the bridge, so without this the write refuses on
-    every library there is. Recording it here rather than through a verb is not a
-    shortcut: no verb records one.
-    """
-    target = rb_writer.live_db_path(machine)
-    handle = rb_writer.open_db(target, unlock=False, cfg=machine)
+    """A library whose tree the registry records as database native, so the write runs."""
+    handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
     try:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
         handle.session.commit()
         root_id = str(root.ID)
     finally:
         rb_writer.close_db(handle)
-    tree_registry.record_cutover(
-        machine,
-        DECLARED.tree.id,
-        root_id=root_id,
-        on=date(2026, 9, 2),
-        source=tree_registry.DerivationSource.TAXONOMY,
-    )
+    _record_cutover(machine, root_id)
     return machine
 
 
 def _resume(job_id: str) -> list[str]:
-    """The command line the job driver would spawn for this job.
-
-    THROUGH THE REAL ``argv_for`` rather than by hand, which is the only thing
-    that can tell a resume that works from one refused for ever: the approval
-    gate is explicit, so a resume that minted a fresh run would meet it again
-    with nothing recorded and exit DECISION_REQUIRED on every respawn.
-    """
+    """The command line the job driver would spawn, through the real ``argv_for``."""
     from cratekit.cli import jobs as cli_jobs
 
     with jobs.open_store() as store:
@@ -190,23 +161,35 @@ def _job(handler_key: str):
     return held[0]
 
 
-def _memberships(cfg: config.Config) -> dict[str, list[str]]:
-    """What the database actually holds, read back through a fresh handle.
+def _scan_job():
+    return _job(registry.entry("adopt.scan").handler_key)
 
-    READ BACK RATHER THAN TAKEN FROM THE REPORT, which is the whole point of the
-    apply's happy path assertion: a ``MembershipReport`` saying it added two rows
-    is the writer's own account of itself, and the seam defect this unit fixes
-    produced exactly that account over a write that landed nothing.
-    """
-    target = rb_writer.live_db_path(cfg)
-    handle = rb_writer.open_db(target, unlock=False, cfg=cfg)
+
+def _applied() -> str:
+    """Approve and queue an apply, drive its resume to OK, and answer the job id."""
+    _run_id, job_id = approve_and_queue(APPLY, GATE)
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+    return job_id
+
+
+def _worker(job_id: str, job_of=lambda job: job):
+    """Run the apply worker directly on this job's one item, as the driver would."""
+    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        item = jobs.items(store, job_id)[0]
+    return handler(job_of(job), item, jobs.frozen_config(job))
+
+
+def _memberships(cfg: config.Config) -> dict[str, list[str]]:
+    """What the database holds, read through a fresh handle rather than the report."""
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
     try:
         found: dict[str, list[str]] = {}
         for row in handle.get_playlist():
-            members = [
-                str(entry.ContentID)
-                for entry in handle.get_playlist_songs(PlaylistID=str(row.ID))
-            ]
+            songs = handle.get_playlist_songs(PlaylistID=str(row.ID))
+            members = [str(entry.ContentID) for entry in songs]
             if members:
                 found[str(row.Name)] = sorted(members)
         return found
@@ -214,9 +197,7 @@ def _memberships(cfg: config.Config) -> dict[str, list[str]]:
         rb_writer.close_db(handle)
 
 
-# ---------------------------------------------------------------------------
-# Both keys are bound
-# ---------------------------------------------------------------------------
+# ── Both keys are bound ──
 
 
 def test_both_adopt_keys_resolve_to_a_worker():
@@ -228,22 +209,33 @@ def test_both_adopt_keys_resolve_to_a_worker():
         assert callable(handlers.resolve(key))
 
 
-# ---------------------------------------------------------------------------
-# The scan
-# ---------------------------------------------------------------------------
+# ── The scan ──
 
 
-def test_a_scan_queues_one_item_per_live_row_and_drives_them_all(machine):
-    """Pending to done through the real resume argv, and the artifact read back.
+def test_a_scan_queues_one_item_per_live_row_and_drives_them_all(machine, monkeypatch):
+    """Pending to done through the real resume argv, and the artifacts read back:
+    only they say the missing row is missing, and the counts come from them.
 
-    THE THIRD ITEM IS THE ONE WORTH READING BACK. Its file is not on disk, so a
-    worker that reported every row as readable would still drive to done and the
-    counts would still add up; only the artifact says which category the row
-    actually landed in.
+    The worker gets the FROZEN configuration (KTD9), read on the artifact root,
+    which no environment variable overrides, and the active taxonomy is parsed
+    ONCE however many rows the census drives (U247).
     """
+    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    _active_copy(machine, text)
+    parses = counted(monkeypatch)
+    seen: list[str] = []
+    real = artifacts.produced
+
+    def recording(cfg, job, item, report):
+        seen.append(str(jobs.store_dir(cfg)))
+        return real(cfg, job, item, report)
+
+    monkeypatch.setattr(scan_cli.artifacts, "produced", recording)
+
     code, queued = drive(["adopt", "scan"])
     assert code == int(ExitCode.OK), queued
-    job = _job(registry.entry("adopt.scan").handler_key)
+    job = _scan_job()
+    frozen_root = str(jobs.store_dir(jobs.frozen_config(job)))
     with jobs.open_store() as store:
         assert {item.item_id for item in jobs.items(store, job.job_id)} == {
             "r-one",
@@ -256,13 +248,9 @@ def test_a_scan_queues_one_item_per_live_row_and_drives_them_all(machine):
     assert code == int(ExitCode.OK), resumed
     with jobs.open_store() as store:
         assert jobs.get(store, job.job_id).state is jobs.JobState.SUCCEEDED
-        assert all(
-            item.state is jobs.ItemState.DONE for item in jobs.items(store, job.job_id)
-        )
+        assert all(item.state is jobs.ItemState.DONE for item in jobs.items(store, job.job_id))
 
-    reports = {
-        report["content_id"]: report for report in artifacts.committed(machine, job.job_id)
-    }
+    reports = {report["content_id"]: report for report in artifacts.committed(machine, job.job_id)}
     assert reports["r-one"]["readability"] == str(adopt_scan.Readability.READABLE)
     assert reports["r-one"]["disposition"] == str(adopt_scan.Disposition.ROUTE)
     assert reports["r-missing"]["readability"] == str(adopt_scan.Readability.MISSING)
@@ -275,139 +263,151 @@ def test_a_scan_queues_one_item_per_live_row_and_drives_them_all(machine):
         "a summary listing only the categories it saw cannot tell 'none here' "
         "from 'this build does not look'"
     )
+    counted_rows = sum(census["categories"].values())
+    assert counted_rows == len(artifacts.committed(machine, job.job_id))
+    assert counted_rows == resumed["data"]["progress"]["total"]
+
+    assert seen and set(seen) == {frozen_root}
+    assert counted_rows >= 3
+    assert parses.of(text) == 1, (
+        f"{counted_rows} rows parsed the active copy {parses.of(text)} times"
+    )
 
 
-def test_the_reported_counts_come_from_the_artifacts_and_not_from_the_queue(machine):
-    """Derived from what RAN. The items alone would report five of five either way."""
-    drive(["adopt", "scan"])
-    job = _job(registry.entry("adopt.scan").handler_key)
-    _code, resumed = drive(["adopt", "scan", "--job", job.job_id])
-
-    counted = sum(resumed["data"]["progress"]["census"]["categories"].values())
-    assert counted == len(artifacts.committed(machine, job.job_id))
-    assert counted == resumed["data"]["progress"]["total"]
-
-
-def test_an_empty_library_queues_nothing_and_says_so(machine):
-    """THE HONEST ZERO. Nothing is queued, and the exit code is still success."""
+@pytest.mark.parametrize("tombstones", [False, True])
+def test_an_empty_library_queues_nothing_and_says_so(machine, tombstones):
+    """The honest zero: nothing queued, still success; the baseline rows are removed first."""
     adopt_fixtures.build(machine, ())
-    collection.reset_cache()
-    # The two rows the disposable build seeds carry no location, so a library
-    # with only those still has live rows. Remove them to reach the true zero.
     _empty_the_collection(machine)
+    if tombstones:
+        _add_tombstone(machine)
 
     code, envelope = drive(["adopt", "scan"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["job_id"] == ""
-    assert [warning["code"] for warning in envelope["warnings"]] == ["collection-empty"]
+    expected = "collection-all-tombstones" if tombstones else "collection-empty"
+    assert [warning["code"] for warning in envelope["warnings"]] == [expected]
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == ()
 
 
-def test_a_library_of_tombstones_is_a_different_zero_from_an_empty_one(machine):
-    """Both census to nothing, and only the collection can tell them apart."""
-    _empty_the_collection(machine)
-    _add_tombstone(machine)
-    collection.reset_cache()
-
-    code, envelope = drive(["adopt", "scan"])
-    assert code == int(ExitCode.OK), envelope
-    assert [warning["code"] for warning in envelope["warnings"]] == [
-        "collection-all-tombstones"
-    ]
-    with jobs.open_store() as store:
-        assert jobs.list_jobs(store) == ()
-
-
-def test_a_row_removed_between_queueing_and_driving_fails_only_its_own_item(machine):
-    """The nil path, named rather than raised as a KeyError.
-
-    The collection is re-read at drive time and is not frozen, so this is
-    reachable input rather than a hypothetical.
-    """
+@pytest.mark.parametrize("edit", ["deleted", "tombstoned"])
+def test_a_row_removed_between_queueing_and_driving_fails_only_its_own_item(machine, edit):
+    """The collection is re-read at drive time, so a row deleted since the queueing
+    fails its own item with its own slug, never as a defect."""
     drive(["adopt", "scan"])
-    job = _job(registry.entry("adopt.scan").handler_key)
+    job = _scan_job()
 
-    _delete_row(machine, "r-two")
-    collection.reset_cache()
+    if edit == "deleted":
+        _sql(machine, "DELETE FROM djmdContent WHERE ID = ?", ("r-two",))
+    else:
+        _sql(machine, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", ("r-two",))
 
-    code, resumed = drive(["adopt", "scan", "--job", job.job_id])
+    code, _resumed = drive(["adopt", "scan", "--job", job.job_id])
     assert code != int(ExitCode.OK)
     with jobs.open_store() as store:
-        states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
-    assert states["r-two"] is jobs.ItemState.FAILED
-    assert states["r-one"] is jobs.ItemState.DONE
-    with jobs.open_store() as store:
-        failed = [
-            item for item in jobs.items(store, job.job_id) if item.item_id == "r-two"
-        ][0]
-    assert failed.cause is not None
-    assert failed.cause.reason == "adopt-item-absent"
+        items = {item.item_id: item for item in jobs.items(store, job.job_id)}
+    assert items["r-two"].state is jobs.ItemState.FAILED
+    assert items["r-one"].state is jobs.ItemState.DONE
+    assert items["r-two"].cause is not None
+    assert items["r-two"].cause.reason == "adopt-item-absent", "a removed track read as a defect"
 
 
-def test_a_job_queued_with_no_items_refuses_rather_than_reporting_success(machine):
-    """A job frozen by a build before this one carries no items at all.
-
-    ``core.jobs`` reports a zero item job as SUCCEEDED by design, so driving one
-    would report a census over a library it never read.
-    """
+@pytest.mark.parametrize("verb", ["adopt.scan", "adopt.apply"])
+def test_a_job_queued_with_no_items_refuses_rather_than_reporting_success(machine, verb):
+    """A job frozen by an older build carries no items, and ``core.jobs`` reports
+    a zero item job as SUCCEEDED, so driving one would report work never done."""
+    payload: dict = {"tree": DECLARED.tree.id}
+    argv = ["adopt", "scan"]
+    if verb == "adopt.apply":
+        plan = apply_cli.current_plan(machine, DECLARED)
+        run_id = _record_decision(APPLY, GATE)
+        payload = {
+            "tree": plan.tree,
+            "digest": plan.digest(),
+            apply_cli.ACTOR_KEY: "a-person",
+            jobs.GATE_RUN_KEY: run_id,
+        }
+        argv = ["--run", run_id, *APPLY]
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store,
-            handler_key=registry.entry("adopt.scan").handler_key,
-            payload={"tree": DECLARED.tree.id},
-            cfg=machine,
+            store, handler_key=registry.entry(verb).handler_key, payload=payload, cfg=machine
         )
-    code, envelope = drive(["adopt", "scan", "--job", job.job_id])
+    code, envelope = drive([*argv, "--job", job.job_id])
     assert code != int(ExitCode.OK)
     assert envelope["cause"]["reason"] == "internal-error"
     assert "no items" in envelope["cause"]["message"]
 
 
-def test_the_configuration_reaching_the_scan_worker_is_the_frozen_one(machine):
-    """KTD9, driven on a key NO environment variable overrides.
+def test_a_configured_volume_rewrite_reaches_the_census(machine, tmp_path):
+    """S1's prefix map reaches the census; the older root is a temporary directory (R1)."""
+    older = str(tmp_path / "an-older-root")
+    adopt_fixtures.build(machine, ())
+    _empty_the_collection(machine)
+    _insert_under(machine, older, "r-elsewhere", _tracks()[0].genre)
+    (Path(machine.library.root) / "Music" / "one.flac").write_bytes(b"\x00" * 64)
 
-    ``frozen_config`` reapplies environment overrides and the suite sets
-    ``CRATEKIT_LIBRARY_ROOT`` globally, so the obvious version of this test cannot
-    fail. The artifact root is resolved from the handed configuration, so moving
-    the queue's own directory is what makes the difference visible.
+    found = {track.content_id: track for track in apply_cli.census(machine, DECLARED)}
+    assert found["r-elsewhere"].readability is adopt_scan.Readability.UNMAPPED
+
+    mapped = _configured(
+        Path(machine.library.root), location_prefix_map=[{"from": older, "to": "{library.root}"}]
+    )
+    collection.reset_cache()
+    resolved = {track.content_id: track for track in apply_cli.census(mapped, DECLARED)}
+    assert resolved["r-elsewhere"].readability is adopt_scan.Readability.READABLE, (
+        "the volume rewrite was ignored"
+    )
+    assert resolved["r-elsewhere"].disposition is adopt_scan.Disposition.ROUTE
+
+
+# ── The apply ──
+
+
+def test_an_apply_over_a_cut_over_library_writes_the_memberships(cut_over, monkeypatch):
+    """The happy path, READ BACK from the database rather than from the report.
+
+    First, the membership write needs locations: ``membership_plan`` groups
+    content identifiers, which ``write_tree_membership`` matches to nothing. On
+    the drive: no tag and every file's bytes kept (R16), the actor in the payload
+    (R34), one capture per job (KTD6). A second worker run adds no row, read off
+    its STAGED report, and one over a taxonomy with no favourites class names
+    the Favorites step's refusal code (U132).
     """
-    seen: list[str] = []
-    real = artifacts.produced
+    from cratekit.core import active_taxonomy
+    from cratekit.write import genre_favorites, trees
 
-    def recording(cfg, job, item, report):
-        seen.append(str(jobs.store_dir(cfg)))
-        return real(cfg, job, item, report)
+    plan = apply_cli.current_plan(cut_over, DECLARED)
+    by_identifier = adopt_apply.membership_plan(plan.applicable(), DECLARED)
+    by_location = apply_cli.membership_locations(plan.applicable(), DECLARED)
+    assert set(by_identifier) == set(by_location)
+    assert by_identifier != by_location
 
-    drive(["adopt", "scan"])
-    job = _job(registry.entry("adopt.scan").handler_key)
-    frozen_root = str(jobs.store_dir(jobs.frozen_config(job)))
+    root, prefix_map = cut_over.library.root, collection.prefix_rules(cut_over)
+    index = trees.index_active_rows(
+        collection.read_collection(cut_over), root=root, prefix_map=prefix_map
+    )
+    wanted = [value for values in by_identifier.values() for value in values]
+    matched = trees.match_indexed_rows(wanted, index, root=root, prefix_map=())
+    assert wanted and not any(match.outcome is trees.MatchOutcome.MATCHED for match in matched), (
+        "content identifiers matched a location index, so the seam claim is wrong"
+    )
 
-    import unittest.mock
+    wanted = [value for values in by_location.values() for value in values]
+    matched = trees.match_indexed_rows(wanted, index, root=root, prefix_map=prefix_map)
+    assert all(match.outcome is trees.MatchOutcome.MATCHED for match in matched)
 
-    with unittest.mock.patch.object(scan_cli.artifacts, "produced", recording):
-        drive(["adopt", "scan", "--job", job.job_id])
-    assert seen and set(seen) == {frozen_root}
+    music = Path(cut_over.library.root) / "Music"
+    before = {path: path.read_bytes() for path in sorted(music.glob("*.flac"))}
+    assert before, "the fixture wrote no files, so this assertion is empty"
 
-
-# ---------------------------------------------------------------------------
-# The apply
-# ---------------------------------------------------------------------------
-
-
-def test_an_apply_over_a_cut_over_library_writes_the_memberships(cut_over):
-    """The happy path, read back from the database rather than from the report.
-
-    THE READ BACK IS THE ASSERTION. The seam defect this unit fixes produced a
-    ``MembershipReport`` naming a session that ran over a write that landed
-    nothing, so a test that trusted the report would have passed against it.
-    """
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    _run_id, job_id = approve_and_queue(APPLY, GATE)
     with jobs.open_store() as store:
         assert [item.item_id for item in jobs.items(store, job_id)] == [
             apply_cli.current_plan(cut_over, DECLARED).digest()
         ]
+        assert jobs.get(store, job_id).payload[apply_cli.ACTOR_KEY] == "a-person"
 
     code, resumed = drive(_resume(job_id))
     assert code == int(ExitCode.OK), resumed
@@ -422,65 +422,17 @@ def test_an_apply_over_a_cut_over_library_writes_the_memberships(cut_over):
     plan = apply_cli.current_plan(cut_over, DECLARED)
     assert ledger.entry_ids() == {entry.entry_id for entry in plan.applicable()}
 
-
-def test_the_apply_writes_no_tag_and_leaves_every_file_byte_identical(cut_over):
-    """R16. Nothing in this build supplies a ``tag_value``, so nothing is written.
-
-    Measured against the files' own bytes rather than argued from the call, which
-    is the only thing that can tell a tag write that did not happen from one whose
-    caller believes it did not.
-    """
-    music = Path(cut_over.library.root) / "Music"
-    before = {path: path.read_bytes() for path in sorted(music.glob("*.flac"))}
-    assert before, "the fixture wrote no files, so this assertion is empty"
-
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, _resumed = drive(_resume(job_id))
-    assert code == int(ExitCode.OK)
-
     assert {path: path.read_bytes() for path in sorted(music.glob("*.flac"))} == before
+    assert artifacts.committed(cut_over, job_id)[-1]["actor"] == "a-person"
+    captures = sorted(p for p in rb_writer.snapshot_root(cut_over).iterdir() if p.is_dir())
+    assert len(captures) == 1, captures
 
-
-def test_a_second_drive_adds_no_second_membership_row(cut_over):
-    """Idempotent, which is what makes the crash between the two writes survivable."""
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    drive(_resume(job_id))
-    first = _memberships(cut_over)
-
-    # THE WORKER IS RUN AGAIN DIRECTLY, because ``jobs.retry`` refuses a job that
-    # SUCCEEDED and there is nothing left in it to resume. What is under test is
-    # the worker's own idempotence, not the queue's.
     collection.reset_cache()
-    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
-    with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-        item = jobs.items(store, job_id)[0]
-    produced = handler(job, item, jobs.frozen_config(job))
-
-    assert _memberships(cut_over) == first
-    # READ THE STAGED FILE, not the committed one. ``jobs.drive`` owns the
-    # flush-then-rename and nothing drove this call, so the committed artifact is
-    # still the FIRST run's and reading it would assert the wrong run's numbers.
+    produced = _worker(job_id)
+    assert _memberships(cut_over) == written
     report = json.loads(produced.staged.read_text(encoding="utf-8"))
     assert report["added"] == 0
-    assert report["already_present"] == len(
-        [row for rows in first.values() for row in rows]
-    )
-
-
-def test_a_drive_that_adds_nothing_still_names_an_undeclared_favorites_class(
-    cut_over, monkeypatch
-):
-    """U132. The genre Favorites step ran only when the drive filed a track, so
-    a retry over a library with no class said nothing. It is named on every
-    drive now, with the refusal's code, whatever the drive added."""
-    import dataclasses
-
-    from cratekit.core import active_taxonomy
-    from cratekit.write import genre_favorites
-
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    drive(_resume(job_id))
+    assert report["already_present"] == len([row for rows in written.values() for row in rows])
 
     real = active_taxonomy.load
 
@@ -492,13 +444,7 @@ def test_a_drive_that_adds_nothing_still_names_an_undeclared_favorites_class(
 
     monkeypatch.setattr(active_taxonomy, "load", narrowed)
     collection.reset_cache()
-    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
-    with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-        item = jobs.items(store, job_id)[0]
-    produced = handler(job, item, jobs.frozen_config(job))
-
-    report = json.loads(produced.staged.read_text(encoding="utf-8"))
+    report = json.loads(_worker(job_id).staged.read_text(encoding="utf-8"))
     assert report["added"] == 0
     assert report["favorites"]["cause"] == genre_favorites.CLASS_UNDECLARED
     (note,) = apply_cli.favorites_warnings({"favorites": report["favorites"]})
@@ -506,13 +452,7 @@ def test_a_drive_that_adds_nothing_still_names_an_undeclared_favorites_class(
 
 
 def test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run(cut_over):
-    """The crash-repair property, driven rather than argued.
-
-    A ledger that already holds every entry makes ``apply_outstanding`` gather
-    nothing, which is exactly the state a kill between the two writes leaves. If
-    the mapping came from the run, the memberships would never land. It comes from
-    the plan, so they do.
-    """
+    """A ledger holding every entry, as a kill leaves it, still gets its memberships."""
     plan = apply_cli.current_plan(cut_over, DECLARED)
     for entry in plan.applicable():
         adopt_apply.mark_applied(
@@ -529,381 +469,109 @@ def test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run(cut_
             ),
         )
 
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), resumed
-
+    job_id = _applied()
     report = artifacts.committed(cut_over, job_id)[-1]
     assert report["gathered"] == [], "the loop had nothing outstanding, as this test needs"
-    assert report["added"] == 2, (
-        "the memberships were derived from what this run applied rather than from "
-        "the plan, so a kill between the membership write and the ledger mark "
-        "would be permanent"
-    )
+    assert report["added"] == 2, "memberships came from the run, not the plan"
     assert _memberships(cut_over)
 
 
-def test_an_uncut_library_marks_nothing_and_the_job_stays_resumable(machine):
-    """The state every real library is in, and the refusal is the honest answer.
-
-    An unrecorded registry IS the bridge: ``Registry.mode`` defaults to XML, so
-    "no record" and "recorded as bridge" are one state raising one refusal. Both
-    it and ``RegistrySkew`` carry the slug ``tree-unconverged``, so this asserts on
-    the refusal's own detail rather than on a slug that cannot tell them apart.
-    """
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+@pytest.mark.parametrize("root_id", [None, "no-such-root"])
+def test_an_uncut_library_marks_nothing_and_the_job_stays_resumable(machine, root_id):
+    """The state every real library is in: an unrecorded registry IS the bridge.
+    A registry naming a root the library does not have is its own refusal. Both
+    share the slug ``tree-unconverged``, so the refusal's detail tells them apart."""
+    if root_id is not None:
+        _record_cutover(machine, root_id)
+    _run_id, job_id = approve_and_queue(APPLY, GATE)
     code, resumed = drive(_resume(job_id))
 
     assert code != int(ExitCode.OK)
     assert resumed["cause"]["inner"]["reason"] == "tree-unconverged"
-    assert resumed["cause"]["inner"]["detail"]["tree_id"] == DECLARED.tree.id
+    detail = resumed["cause"]["inner"]["detail"]
+    if root_id is None:
+        assert detail["tree_id"] == DECLARED.tree.id
+    else:
+        assert detail["root_id"] == root_id, "only the detail tells them apart"
     assert adopt_apply.read(machine).entry_ids() == frozenset(), (
-        "the ledger marked entries over an adoption that placed nothing, so the "
-        "next run would find nothing outstanding and the gap would be permanent"
+        "the ledger marked unplaced entries"
     )
     with jobs.open_store() as store:
         assert jobs.get(store, job_id).state is jobs.JobState.FAILED
 
 
-def test_a_registry_naming_a_root_the_library_does_not_have_is_its_own_refusal(machine):
-    """Distinguishable from the bridge case by DETAIL, since both share a slug."""
-    tree_registry.record_cutover(
-        machine,
-        DECLARED.tree.id,
-        root_id="no-such-root",
-        on=date(2026, 9, 2),
-        source=tree_registry.DerivationSource.TAXONOMY,
-    )
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(job_id))
-
-    assert code != int(ExitCode.OK)
-    assert resumed["cause"]["inner"]["reason"] == "tree-unconverged"
-    assert resumed["cause"]["inner"]["detail"]["root_id"] == "no-such-root", (
-        "the two tree refusals share a slug, so only the detail tells them apart"
-    )
-
-
 def test_a_plan_with_nothing_applicable_queues_nothing(machine):
     """The apply's honest zero. The gate still fires; the queue stays empty."""
     _empty_the_collection(machine)
-    _add_unroutable(machine)
-    collection.reset_cache()
+    _sql(
+        machine,
+        "INSERT INTO djmdContent (ID, FolderPath, rb_local_deleted, created_at, "
+        "updated_at) VALUES (?, ?, 0, ?, ?)",
+        ("r-blank", "file://localhost/blank.flac", "2026-09-02", "2026-09-02"),
+    )
 
-    run_id, envelope = _answer_gate(["adopt", "apply"], "adopt.apply.approve")
+    run_id = _record_decision(APPLY, GATE)
+    code, envelope = drive(["--run", run_id, *APPLY])
+    assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op", envelope
     assert envelope["data"]["job_id"] == ""
-    assert [warning["code"] for warning in envelope["warnings"]] == [
-        "adoption-nothing-applicable"
-    ]
-    del run_id
+    assert [warning["code"] for warning in envelope["warnings"]] == ["adoption-nothing-applicable"]
     with jobs.open_store() as store:
         assert jobs.list_jobs(store) == ()
 
 
 def test_a_collection_that_moved_after_approval_refuses_rather_than_applying(cut_over):
-    """R34 held at the WORKER as well as at the gate.
+    """R34 at the worker as well as the gate; an unattributed payload writes no row."""
+    _run_id, job_id = approve_and_queue(APPLY, GATE)
 
-    The gate refuses a stale decision on the way in. This is the same refusal one
-    layer down, and it is what stops a job frozen yesterday from applying a write
-    set nobody has seen.
-    """
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    _delete_row(cut_over, "r-two")
-    collection.reset_cache()
+    def unauthorised(job):
+        return replace(job, payload={**job.payload, apply_cli.ACTOR_KEY: ""})
 
-    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
-    with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-        item = jobs.items(store, job_id)[0]
+    with pytest.raises(Exception):
+        _worker(job_id, unauthorised)
+    assert _memberships(cut_over) == {}, "an unauthorised run wrote rows"
+
+    _sql(cut_over, "DELETE FROM djmdContent WHERE ID = ?", ("r-two",))
     with pytest.raises(Exception) as excinfo:
-        handler(job, item, jobs.frozen_config(job))
+        _worker(job_id)
     assert excinfo.value.cause.reason == "decision-stale"
     assert adopt_apply.read(cut_over).entry_ids() == frozenset()
 
 
-def test_the_approving_actor_travels_in_the_payload(cut_over):
-    """R34 asks WHICH ACTOR asserted the decision, and the worker has no run.
+def test_an_interrupted_job_exits_with_its_own_cause_and_not_ok(machine):
+    """R-225: a census or apply stopped by a signal is CANCELLED, with ``jobs.cancel``'s
+    cause, and exits non zero."""
+    drive(["adopt", "scan"])
+    scan_id = _scan_job().job_id
+    run_id, apply_id = approve_and_queue(APPLY, GATE)
 
-    ``approval.grant`` refuses an empty actor, so without the frozen key the only
-    actor a worker could supply is one it invented.
-    """
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    with jobs.open_store() as store:
-        payload = jobs.get(store, job_id).payload
-    assert payload[apply_cli.ACTOR_KEY] == "a-person"
+    for job_id, argv in (
+        (scan_id, ["adopt", "scan", "--job", scan_id]),
+        (apply_id, ["--run", run_id, *APPLY, "--job", apply_id]),
+    ):
+        with jobs.open_store() as store:
+            jobs.cancel(store, job_id, stage="interrupted")
+            cancelled = jobs.get(store, job_id)
+        assert cancelled.state is jobs.JobState.CANCELLED
+        assert cancelled.cause is not None, "the fixture built a cause-free cancel"
 
-    drive(_resume(job_id))
-    report = artifacts.committed(cut_over, job_id)[-1]
-    assert report["actor"] == "a-person"
-
-
-def test_the_membership_write_needs_locations_and_not_content_identifiers(cut_over):
-    """The seam mismatch, MEASURED rather than argued.
-
-    ``membership_plan`` groups content identifiers and ``write_tree_membership``
-    decodes every value as a recorded location, so handing one to the other
-    matches nothing and reports a session that ran over a write that landed
-    nothing. Driven directly here, both ways, so the plan's claim is a number in
-    this repository.
-    """
-    plan = apply_cli.current_plan(cut_over, DECLARED)
-    by_identifier = adopt_apply.membership_plan(plan.applicable(), DECLARED)
-    by_location = apply_cli.membership_locations(plan.applicable(), DECLARED)
-    assert set(by_identifier) == set(by_location)
-    assert by_identifier != by_location
-
-    handle = rb_writer.open_db(rb_writer.live_db_path(cut_over), unlock=False, cfg=cut_over)
-    try:
-        from cratekit.write import trees
-
-        index = trees.index_active_rows(
-            collection.read_collection(cut_over),
-            root=cut_over.library.root,
-            prefix_map=collection.prefix_rules(cut_over),
-        )
-        wanted = [value for values in by_identifier.values() for value in values]
-        matched = trees.match_indexed_rows(
-            wanted, index, root=cut_over.library.root, prefix_map=()
-        )
-        assert wanted and not any(
-            match.outcome is trees.MatchOutcome.MATCHED for match in matched
-        ), "content identifiers matched a location index, so the seam claim is wrong"
-
-        wanted = [value for values in by_location.values() for value in values]
-        matched = trees.match_indexed_rows(
-            wanted,
-            index,
-            root=cut_over.library.root,
-            prefix_map=collection.prefix_rules(cut_over),
-        )
-        assert all(match.outcome is trees.MatchOutcome.MATCHED for match in matched)
-    finally:
-        rb_writer.close_db(handle)
-
-
-def test_one_capture_per_apply_job_whatever_the_entry_count(cut_over):
-    """KTD6's measured cost, pinned so an item-per-entry shape cannot creep back.
-
-    ``write_tree_membership`` runs a full ``snapshot.capture`` inside its session,
-    so one item per track would copy the whole rekordbox database once per track.
-    """
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    drive(_resume(job_id))
-
-    captures = sorted(p for p in rb_writer.snapshot_root(cut_over).iterdir() if p.is_dir())
-    assert len(captures) == 1, captures
-
-
-# ---------------------------------------------------------------------------
-# Library surgery the fixtures above need
-# ---------------------------------------------------------------------------
-
-
-def _connect(cfg: config.Config):
-    import sqlite3
-
-    return sqlite3.connect(Path(cfg.library.db_path))
-
-
-def _empty_the_collection(cfg: config.Config) -> None:
-    conn = _connect(cfg)
-    try:
-        conn.execute("DELETE FROM djmdContent")
-        conn.commit()
-    finally:
-        conn.close()
-    collection.reset_cache()
-
-
-def _delete_row(cfg: config.Config, content_id: str) -> None:
-    conn = _connect(cfg)
-    try:
-        conn.execute("DELETE FROM djmdContent WHERE ID = ?", (content_id,))
-        conn.commit()
-    finally:
-        conn.close()
-    collection.reset_cache()
-
-
-def _add_tombstone(cfg: config.Config) -> None:
-    adopt_fixtures.build(cfg, ())
-    _empty_the_collection(cfg)
-    conn = _connect(cfg)
-    try:
-        conn.execute(
-            "INSERT INTO djmdContent (ID, FolderPath, rb_local_deleted, created_at, "
-            "updated_at) VALUES (?, ?, 1, ?, ?)",
-            ("r-gone", "file://localhost/gone.flac", "2026-09-02", "2026-09-02"),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    collection.reset_cache()
-
-
-def _add_unroutable(cfg: config.Config) -> None:
-    """One live row whose genre nothing can route, so the plan holds it and cannot act."""
-    conn = _connect(cfg)
-    try:
-        conn.execute(
-            "INSERT INTO djmdContent (ID, FolderPath, rb_local_deleted, created_at, "
-            "updated_at) VALUES (?, ?, 0, ?, ?)",
-            ("r-blank", "file://localhost/blank.flac", "2026-09-02", "2026-09-02"),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    collection.reset_cache()
-
-
-def _answer_gate(verb: list[str], gate: str) -> tuple[str, dict]:
-    """R34's two acts, then the third drive, WITHOUT asserting it queued.
-
-    ``tests.cli_drive.approve_and_queue`` asserts a job comes back, which is
-    exactly what the no-op paths here do not do.
-    """
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, envelope = drive(
-        ["run", "decide", run_id, gate, refused["cause"]["detail"]["options"][0], "--actor", "a-person"]
-    )
-    assert decided == int(ExitCode.OK), envelope
-    code, envelope = drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), envelope
-    return run_id, envelope
-
-
-# ---------------------------------------------------------------------------
-# The gaps the first mutation round found, closed
-# ---------------------------------------------------------------------------
-
-
-def test_a_configured_volume_rewrite_reaches_the_census(machine, tmp_path):
-    """S1's prefix map, driven through the census rather than assumed.
-
-    Measured on 2026-09-02: dropping ``prefix_map`` from ``census`` killed ZERO
-    tests across the whole suite, because every fixture in this repository records
-    its locations under the configured root already. The source library records
-    most of its active rows under an OLDER VOLUME NAME, which is the failure S1
-    exists to prevent and which no test could see.
-    """
-    # A root this machine is not, built under the test's own temporary directory
-    # rather than spelled as a volume path: R1 forbids a shipped artifact naming a
-    # volume, and what the census has to resolve is a prefix rather than a mount.
-    older = str(tmp_path / "an-older-root")
-    rows = _tracks()
-    adopt_fixtures.build(machine, ())
-    _empty_the_collection(machine)
-    _insert_under(machine, older, "r-elsewhere", rows[0].genre)
-    (Path(machine.library.root) / "Music" / "one.flac").write_bytes(b"\x00" * 64)
-
-    unmapped = apply_cli.census(machine, DECLARED)
-    found = {track.content_id: track for track in unmapped}
-    assert found["r-elsewhere"].readability is adopt_scan.Readability.UNMAPPED
-
-    root = Path(machine.library.root)
-    data = valid_data(
-        root,
-        rekordbox={
-            "pinned_app_version": RECORDED_APP_VERSION,
-            "validated_on": "2026-08-01",
-        },
-    )
-    data["library"]["location_prefix_map"] = [{"from": older, "to": "{library.root}"}]
-    mapped = config.from_dict(data)
-    collection.reset_cache()
-    routed = apply_cli.census(mapped, DECLARED)
-    resolved = {track.content_id: track for track in routed}
-    assert resolved["r-elsewhere"].readability is adopt_scan.Readability.READABLE, (
-        "the census ignored the configured volume rewrite, so a library recorded "
-        "under an older volume name resolves nowhere"
-    )
-    assert resolved["r-elsewhere"].disposition is adopt_scan.Disposition.ROUTE
-
-
-def test_an_apply_job_queued_with_no_items_refuses_rather_than_driving(machine):
-    """The sibling of the scan's guard, which the first mutation round found absent.
-
-    Measured on 2026-09-02: deleting this refusal from ``apply_cli._resume`` killed
-    zero tests. A job frozen by a build before this one carries no items, and
-    ``core.jobs`` reports a zero item job as SUCCEEDED by design, so driving one
-    reports an adoption over a library it never touched.
-    """
-    plan = apply_cli.current_plan(machine, DECLARED)
-    run_id, refused = _record_decision(["adopt", "apply"], "adopt.apply.approve")
-    del refused
-    with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key=registry.entry("adopt.apply").handler_key,
-            payload={
-                "tree": plan.tree,
-                "digest": plan.digest(),
-                apply_cli.ACTOR_KEY: "a-person",
-                jobs.GATE_RUN_KEY: run_id,
-            },
-            cfg=machine,
-        )
-    code, envelope = drive(["--run", run_id, "adopt", "apply", "--job", job.job_id])
-    assert code != int(ExitCode.OK)
-    assert envelope["cause"]["reason"] == "internal-error"
-    assert "no items" in envelope["cause"]["message"]
-
-
-@pytest.mark.parametrize("verb", ["adopt.scan", "adopt.apply"])
-def test_an_interrupted_job_exits_with_its_own_cause_and_not_ok(machine, verb):
-    """R-225, at its WIDER edge, which the first mutation round found untested.
-
-    Measured on 2026-09-02: narrowing each resume branch's predicate from "closed
-    and carrying a cause" to "FAILED" killed zero tests, because every driven
-    failure here reaches FAILED. A run stopped by a signal is CANCELLED and
-    carries the cause ``jobs.cancel`` builds, so the narrow predicate reports an
-    interrupted adoption through a normal envelope and exits 0. That exact shape
-    was driven on the two outbound verbs on 2026-09-02 as exit 0 over a job with
-    none of its items done.
-    """
-    if verb == "adopt.scan":
-        drive(["adopt", "scan"])
-        job = _job(registry.entry("adopt.scan").handler_key)
-        argv = ["adopt", "scan", "--job", job.job_id]
-        job_id = job.job_id
-    else:
-        run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-        argv = ["--run", run_id, "adopt", "apply", "--job", job_id]
-
-    with jobs.open_store() as store:
-        jobs.cancel(store, job_id, stage="interrupted")
-        cancelled = jobs.get(store, job_id)
-    assert cancelled.state is jobs.JobState.CANCELLED
-    assert cancelled.cause is not None, "the fixture built a cause-free cancel"
-
-    code, envelope = drive(argv)
-    assert code != int(ExitCode.OK), (
-        "an interrupted adoption reported through a normal envelope, so a person "
-        "whose work did not happen is told it finished"
-    )
-    assert envelope["cause"]["reason"] == cancelled.cause.reason
+        code, envelope = drive(argv)
+        assert code != int(ExitCode.OK), "an interrupt reported as finished"
+        assert envelope["cause"]["reason"] == cancelled.cause.reason
 
 
 def test_a_parked_adoption_leaves_blocked_and_non_zero(machine, monkeypatch):
-    """R-290 for the one key ``tests/test_job_outcome.py`` cannot drive.
-
-    ``adopt apply`` opens its destructive session before it looks at the job, and
-    that needs this file's machine. The population test names this function as
-    the place the key is covered, and fails if it is ever removed.
-    """
+    """R-290 for the one key ``tests/test_job_outcome.py`` cannot drive, since
+    ``adopt apply`` opens its session before it looks at the job. That population
+    test names this function, and fails if it is ever removed."""
 
     def parks(job, item, cfg):
-        raise jobs.Parked(
-            refuse("provider-blocked", "the run must stop", origin=("test",)).cause
-        )
+        raise jobs.Parked(refuse("provider-blocked", "the run must stop", origin=("test",)).cause)
 
-    run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    run_id, job_id = approve_and_queue(APPLY, GATE)
     monkeypatch.setattr(handlers, "resolve", lambda _key: parks)
 
-    code, envelope = drive(["--run", run_id, "adopt", "apply", "--job", job_id])
+    code, envelope = drive(["--run", run_id, *APPLY, "--job", job_id])
 
     with jobs.open_store() as store:
         assert jobs.get(store, job_id).state is jobs.JobState.BLOCKED, envelope
@@ -912,191 +580,55 @@ def test_a_parked_adoption_leaves_blocked_and_non_zero(machine, monkeypatch):
     assert envelope["cause"]["reason"] == "provider-blocked"
 
 
-def test_an_apply_whose_entries_failed_raises_rather_than_reporting_success(
-    cut_over, monkeypatch
-):
-    """``apply_plan`` RETURNS its failures, and ``jobs.drive`` fails only on a raise.
-
-    Measured on 2026-09-02: deleting this raise killed zero tests, because every
-    failure driven elsewhere in this file comes out of the membership write rather
-    than out of the loop. The report is substituted rather than provoked: what is
-    under test is the worker turning a returned failure into a raised one, and
-    there is no input to this build that makes ``apply_plan`` fail an entry
-    without also failing the write.
-    """
+def test_an_apply_whose_entries_failed_raises_rather_than_reporting_success(cut_over, monkeypatch):
+    """``apply_plan`` returns its failures and ``jobs.drive`` fails only on a raise, so
+    the worker raises after committing the artifact (the report is substituted)."""
     real = apply_cli.apply_outstanding
 
     def failing(cfg, plan, declared, **kwargs):
         report, gathered = real(cfg, plan, declared, **kwargs)
-        from dataclasses import replace as _replace
-
-        return _replace(report, failed={"e-1": "the taxonomy no longer declares this sub"}), gathered
+        return replace(report, failed={"e-1": "the taxonomy no longer declares this sub"}), gathered
 
     monkeypatch.setattr(apply_cli, "apply_outstanding", failing)
 
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    _run_id, job_id = approve_and_queue(APPLY, GATE)
     code, envelope = drive(_resume(job_id))
 
     assert code != int(ExitCode.OK)
     assert envelope["cause"]["inner"]["reason"] == "adopt-entries-failed", envelope
-    assert artifacts.committed(cut_over, job_id), (
-        "the artifact was not committed before the raise, so what happened to the "
-        "failed entry survives nowhere"
-    )
+    assert artifacts.committed(cut_over, job_id), "the artifact was not committed"
 
 
 def test_the_apply_opens_its_own_handle_with_write_intent(cut_over, monkeypatch):
-    """The two-process refusal runs BEFORE anything opens, which is a write's open.
-
-    Measured on 2026-09-02: flipping ``require_closed`` to False on the apply's own
-    handle killed zero tests, because nothing here has rekordbox running. Driven
-    directly against ``_write_memberships`` rather than through the verb, so the
-    refusal that arrives is the OPEN's rather than the session's.
-    """
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+    """``require_closed=True`` on the apply's own handle: the application pin is what
+    only the flag holds, so the refusal is the open's."""
     plan = apply_cli.current_plan(cut_over, DECLARED)
-    with pytest.raises(Exception) as excinfo:
-        apply_cli._write_memberships(cut_over, plan, DECLARED)
-    assert excinfo.value.cause.reason == "rekordbox-running"
+    for seam, answer, reason in (
+        ("rekordbox_running", lambda: True, "rekordbox-running"),
+        ("read_installed_app_version", lambda **_: "9.9.9.0002", "app-version-pin-drift"),
+    ):
+        with monkeypatch.context() as patched:
+            patched.setattr(rb_writer, seam, answer)
+            with pytest.raises(Exception) as excinfo:
+                apply_cli._write_memberships(cut_over, plan, DECLARED)
+        assert excinfo.value.cause.reason == reason, seam
 
 
-def test_the_application_pin_is_what_the_write_intent_open_uniquely_holds(
-    cut_over, monkeypatch
-):
-    """The composite the two-process row owes, because that half is doubly guarded.
-
-    Measured on 2026-09-02: flipping ``require_closed`` to False on the apply's own
-    handle killed zero tests EVEN WITH the refusal above driven, and the reason is
-    that ``cratekit.core.session`` asserts rekordbox closed for itself before it
-    verifies a commit. So the two-process half of that flag is covered twice and
-    reverting it changes nothing a test can see.
-
-    The APPLICATION PIN is not. ``assert_app_version`` runs only inside
-    ``open_db``'s ``require_closed`` branch and nothing else on this path asks it,
-    so a rekordbox that has updated itself since the pin was recorded reaches the
-    membership commit with the flag off. This is what the flag holds alone.
-    """
-    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: "9.9.9.0002")
-    plan = apply_cli.current_plan(cut_over, DECLARED)
-    with pytest.raises(Exception) as excinfo:
-        apply_cli._write_memberships(cut_over, plan, DECLARED)
-    assert excinfo.value.cause.reason == "app-version-pin-drift", (
-        "the apply opened a database whose application has moved since the pin "
-        "was recorded, and nothing outside the open would have asked"
-    )
-
-
-def _insert_under(cfg: config.Config, prefix: str, content_id: str, genre: str) -> None:
-    """One live row whose recorded location sits under a volume this machine is not."""
-    import sqlite3
-
-    from cratekit.core import locations
-
-    conn = sqlite3.connect(Path(cfg.library.db_path))
-    try:
-        row = conn.execute("SELECT ID FROM djmdGenre WHERE Name = ?", (genre,)).fetchone()
-        if row is None:
-            conn.execute(
-                "INSERT INTO djmdGenre (ID, Name, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?)",
-                ("900", genre, "2026-09-02", "2026-09-02"),
-            )
-            genre_id = "900"
-        else:
-            genre_id = row[0]
-        conn.execute(
-            "INSERT INTO djmdContent (ID, FolderPath, GenreID, rb_local_deleted, "
-            "created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)",
-            (
-                content_id,
-                locations.location_url(Path(prefix) / "Music" / "one.flac"),
-                genre_id,
-                "2026-09-02",
-                "2026-09-02",
-            ),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    collection.reset_cache()
-
-
-def _record_decision(verb: list[str], gate: str) -> tuple[str, dict]:
-    """R34's first two acts, without the third drive."""
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, envelope = drive(
-        ["run", "decide", run_id, gate, "approve", "--actor", "a-person"]
-    )
-    assert decided == int(ExitCode.OK), envelope
-    return run_id, refused
-
-
-# ---------------------------------------------------------------------------
-# The gaps the code review found, closed
-# ---------------------------------------------------------------------------
-
-
-def test_a_row_tombstoned_between_queueing_and_driving_fails_its_own_item(machine):
-    """rekordbox SOFT deletes, and the reader carries a tombstone on purpose.
-
-    Driven on 2026-09-02 before the fix: the item's row was still in the index so
-    the absence guard passed it, ``scan_rows`` then skipped it for being deleted,
-    and the single-value unpack raised ``ValueError`` out of the worker. A person
-    who removed one track from rekordbox while a census was queued was told to
-    report a defect, and every retry told them again.
-
-    The hard-delete twin one test above covers the other half of the condition.
-    Both are here because they are different library edits reaching one guard.
-    """
-    drive(["adopt", "scan"])
-    job = _job(registry.entry("adopt.scan").handler_key)
-
-    _tombstone_row(machine, "r-two")
-
-    code, resumed = drive(["adopt", "scan", "--job", job.job_id])
-    assert code != int(ExitCode.OK)
-    with jobs.open_store() as store:
-        items = {item.item_id: item for item in jobs.items(store, job.job_id)}
-    assert items["r-two"].state is jobs.ItemState.FAILED
-    assert items["r-one"].state is jobs.ItemState.DONE
-    assert items["r-two"].cause is not None
-    assert items["r-two"].cause.reason == "adopt-item-absent", (
-        "a track removed in rekordbox during a queued census reported as an "
-        "internal defect rather than as the library edit it is"
-    )
-    del resumed
-
-
-def test_a_track_the_tree_write_could_not_place_is_never_marked_applied(
-    cut_over, monkeypatch
-):
-    """R-148's hazard in its new shape: surfaced by the writer, marked by the caller.
-
-    ``write_tree_membership`` SURFACES a row it could not resolve to exactly one
-    active library row rather than raising, correctly. The caller then marked
-    every outstanding entry applied, including that one, so a track that never
-    reached a playlist was recorded as adopted and ``outstanding`` would never
-    offer it again. The ledger would say the library holds something it does not.
-
-    Driven by making the write report one row skipped, which is the shape a
-    library with two live rows for one file produces.
-    """
+def test_a_track_the_tree_write_could_not_place_is_never_marked_applied(cut_over, monkeypatch):
+    """R-148: a row the writer could not resolve to one live row is never marked
+    applied, driven by the write reporting one row skipped."""
     from cratekit.write import trees
 
     real = apply_cli._write_memberships
 
     def one_skipped(cfg, plan, declared):
         report = real(cfg, plan, declared)
-        from dataclasses import replace as _replace
-
         skipped = trees.RowMatch("a-location-two-rows-claim", trees.MatchOutcome.AMBIGUOUS)
-        return _replace(report, skipped=(skipped,))
+        return replace(report, skipped=(skipped,))
 
     monkeypatch.setattr(apply_cli, "_write_memberships", one_skipped)
 
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    _run_id, job_id = approve_and_queue(APPLY, GATE)
     code, envelope = drive(_resume(job_id))
 
     assert code != int(ExitCode.OK)
@@ -1106,52 +638,75 @@ def test_a_track_the_tree_write_could_not_place_is_never_marked_applied(
         "something a person can act on"
     )
     assert adopt_apply.read(cut_over).entry_ids() == frozenset(), (
-        "a track the tree write could not place was recorded as adopted, so the "
-        "next run would never offer it again"
+        "an unplaced track recorded as adopted"
     )
 
 
-def test_the_approval_is_refused_before_anything_is_written(cut_over):
-    """``require_approval`` runs inside the loop, which is AFTER the tree write.
-
-    A payload carrying no actor would have written playlist rows into a person's
-    database and only then discovered the run was never authorised. The refusal
-    is minted up front so it costs nothing.
-    """
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-        item = jobs.items(store, job_id)[0]
-        unauthorised = replace(job, payload={**job.payload, apply_cli.ACTOR_KEY: ""})
-
-    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
-    with pytest.raises(Exception):
-        handler(unauthorised, item, jobs.frozen_config(job))
-
-    assert _memberships(cut_over) == {}, (
-        "an unauthorised run wrote membership rows before anything asked whether "
-        "it was authorised"
-    )
+# ── Library surgery the tests above need ──
 
 
-def _tombstone_row(cfg: config.Config, content_id: str) -> None:
-    """Set rekordbox's own soft-delete marker, which is what a removal really is."""
-    import sqlite3
-
+def _sql(cfg: config.Config, statement: str, parameters: tuple = ()) -> None:
+    """One statement against the library database, then the reader cache forgotten."""
     conn = sqlite3.connect(Path(cfg.library.db_path))
     try:
-        conn.execute(
-            "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (content_id,)
-        )
+        conn.execute(statement, parameters)
         conn.commit()
     finally:
         conn.close()
     collection.reset_cache()
 
 
-# ---------------------------------------------------------------------------
-# R-731: a track that already holds a competing place is withheld, not doubled
-# ---------------------------------------------------------------------------
+def _empty_the_collection(cfg: config.Config) -> None:
+    _sql(cfg, "DELETE FROM djmdContent")
+
+
+def _add_tombstone(cfg: config.Config) -> None:
+    adopt_fixtures.build(cfg, ())
+    _empty_the_collection(cfg)
+    _sql(
+        cfg,
+        "INSERT INTO djmdContent (ID, FolderPath, rb_local_deleted, created_at, "
+        "updated_at) VALUES (?, ?, 1, ?, ?)",
+        ("r-gone", "file://localhost/gone.flac", "2026-09-02", "2026-09-02"),
+    )
+
+
+def _insert_under(cfg: config.Config, prefix: str, content_id: str, genre: str) -> None:
+    """One live row whose recorded location sits under a volume this machine is not."""
+    from cratekit.core import locations
+
+    _sql(
+        cfg,
+        "INSERT OR IGNORE INTO djmdGenre (ID, Name, created_at, updated_at) "
+        "SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM djmdGenre WHERE Name = ?)",
+        ("900", genre, "2026-09-02", "2026-09-02", genre),
+    )
+    _sql(
+        cfg,
+        "INSERT INTO djmdContent (ID, FolderPath, GenreID, rb_local_deleted, "
+        "created_at, updated_at) VALUES (?, ?, (SELECT ID FROM djmdGenre WHERE Name = ?), "
+        "0, ?, ?)",
+        (
+            content_id,
+            locations.location_url(Path(prefix) / "Music" / "one.flac"),
+            genre,
+            "2026-09-02",
+            "2026-09-02",
+        ),
+    )
+
+
+def _record_decision(verb: list[str], gate: str) -> str:
+    """R34's first two acts, without the third drive. Answers the gate run."""
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(["run", "decide", run_id, gate, "approve", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK), envelope
+    return run_id
+
+
+# ── R-731: a track that already holds a competing place is withheld, not doubled ──
 
 
 def _energy_bucket() -> taxonomy.Bucket:
@@ -1166,9 +721,7 @@ def _energy_bucket() -> taxonomy.Bucket:
 
 def _style_bucket() -> taxonomy.Bucket:
     return next(
-        bucket
-        for bucket in DECLARED.buckets
-        if not bucket.energy.enabled and len(bucket.subs) > 1
+        bucket for bucket in DECLARED.buckets if not bucket.energy.enabled and len(bucket.subs) > 1
     )
 
 
@@ -1176,11 +729,10 @@ def _band(level: int) -> str:
     return next(band.id for band in DECLARED.energy.bands if level <= band.max)
 
 
-#: One placed library, as data. Each row is a track, the energy its file
-#: carries, the sub it already sits in, and what an approved apply must do.
-#: ``held`` is a sub identifier, a sub class identifier, or None for nowhere.
+#: One placed library, as data: each track, the energy its file carries, the sub
+#: it already sits in (a sub, a sub class, or None for nowhere), and the sub the
+#: plan names.
 _PLACED_ENERGY = (
-    # content id, energy tag, held, the sub the plan names
     ("p-med-reads-high", "8", "band:5", "band:8"),
     ("p-nowhere", "8", None, "band:8"),
     ("p-vox-only", "5", "class:with_vox", "band:5"),
@@ -1190,8 +742,7 @@ _PLACED_ENERGY = (
     ("p-same", "5", "band:5", "band:5"),
 )
 
-#: What each of those must come to. The three the plan adds, the four it
-#: withholds counting the style one below, and the one already where it goes.
+#: Three added, four withheld counting the style one, one already in place.
 _ADDED = {"p-nowhere", "p-vox-only", "p-candy-only"}
 _WITHHELD_BAND = {"p-med-reads-high", "p-sink-now-reads", "p-band-no-reading"}
 _WITHHELD_STYLE = {"p-style"}
@@ -1214,21 +765,21 @@ def silence(tmp_path_factory) -> Path:
     return synth_container(tmp_path_factory.mktemp("synth"), ".flac")
 
 
+def _file_into(handle, root, bucket_id: str, sub_id: str, content_id: str):
+    """File one track under a destination's declared names, as a cutover adopts."""
+    folder_display, sub_display = destination(DECLARED, bucket_id, sub_id)
+    folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
+    playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
+    rb_writer.add_memberships(handle, playlist, [content_id])
+    return folder, playlist
+
+
 @pytest.fixture
 def placed(machine, silence):
-    """A cut over library whose tree already files tracks, some of them elsewhere.
-
-    REAL CONTAINERS WITH REAL TAGS, because the defect is a disagreement
-    between a file's energy tag and the sub its track sits in, and the fixture
-    library's sixty four zero bytes carry no tag to disagree with.
-
-    THE TREE IS SEEDED THROUGH THE GUARDED WRITER'S OWN FIND OR CREATE, under
-    the display names the taxonomy declares, which is what a cutover adopts.
-    """
+    """A cut over library already filing tracks, with real containers and tags."""
     import shutil
 
     from cratekit.core import tags
-    from cratekit.write.routing_pass import destination
 
     energy, style = _energy_bucket(), _style_bucket()
     first, second = style.subs[0], style.subs[1]
@@ -1263,21 +814,12 @@ def placed(machine, silence):
     try:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
         for bucket_id, sub_id, content_id in seeded:
-            folder_display, sub_display = destination(DECLARED, bucket_id, sub_id)
-            folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
-            playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
-            rb_writer.add_memberships(handle, playlist, [content_id])
+            _file_into(handle, root, bucket_id, sub_id, content_id)
         handle.session.commit()
         root_id = str(root.ID)
     finally:
         rb_writer.close_db(handle)
-    tree_registry.record_cutover(
-        machine,
-        DECLARED.tree.id,
-        root_id=root_id,
-        on=date(2026, 9, 27),
-        source=tree_registry.DerivationSource.TAXONOMY,
-    )
+    _record_cutover(machine, root_id, on=date(2026, 9, 27))
     return machine
 
 
@@ -1303,7 +845,32 @@ def _shown(verb: list[str]) -> dict:
     return refused["cause"]["detail"]["shown"]
 
 
-def test_the_plan_reads_the_tree_the_census_database_holds(placed):
+def destination_names(bucket_id: str, sub_id: str) -> tuple[str, str]:
+    return destination(DECLARED, bucket_id, sub_id)
+
+
+def test_an_uncut_library_reads_neither_its_tree_nor_its_vocals(machine):
+    """With no cutover the tree is not read, so no vocal membership is planned
+    either, whatever the tag and the calibration say."""
+    _calibrate(machine)
+    _tag_vox(machine, "a1")
+    plan = apply_cli.current_plan(machine, DECLARED)
+
+    assert plan.placements.read is False
+    assert plan.vocals.read is False
+    assert plan.vocal_additions() == ()
+    shown = _shown(APPLY)
+    assert (shown["placements"], shown["vocals"]) == ("unread", "unread")
+
+
+def test_an_approved_apply_leaves_a_withheld_track_where_it_sat(placed):
+    """The plan reads the tree the census database holds, and the gate counts the
+    withheld by kind and lists every one, to the person reading it too. An
+    approved apply leaves each withheld track where it sat, adds the rest and
+    removes nothing; a second apply over the same tree shows the same screen and
+    digest, adds nothing and withholds the same. Then a planned sub renamed in
+    rekordbox withholds rather than doubles, and a track moved after an approval
+    is a stale decision."""
     plan = apply_cli.current_plan(placed, DECLARED)
     assert plan.placements.read is True
     withheld = {entry.content_id: entry for entry in plan.held_elsewhere()}
@@ -1314,22 +881,12 @@ def test_the_plan_reads_the_tree_the_census_database_holds(placed):
             assert withheld[content_id].holds == (_sub_id(held),), content_id
             assert withheld[content_id].sub == _sub_id(planned), content_id
 
-
-def test_an_uncut_library_says_its_tree_was_not_read(machine):
-    plan = apply_cli.current_plan(machine, DECLARED)
-    assert plan.placements.read is False
-    assert _shown(["adopt", "apply"])["placements"] == "unread"
-
-
-def test_the_gate_counts_the_withheld_by_kind_and_lists_every_one(placed):
-    shown = _shown(["adopt", "apply"])
-
-    assert shown["placements"] == "read"
-    assert shown["withheld_by_placement"] == {"total": 4, "band": 3, "style": 1}
-    assert {item["content_id"] for item in shown["items"]} == _ADDED | {"p-same"}
-    listed = {row["content_id"]: row for row in shown["held_elsewhere"]}
+    first_shown = _shown(APPLY)
+    assert first_shown["placements"] == "read"
+    assert first_shown["withheld_by_placement"] == {"total": 4, "band": 3, "style": 1}
+    assert {item["content_id"] for item in first_shown["items"]} == _ADDED | {"p-same"}
+    listed = {row["content_id"]: row for row in first_shown["held_elsewhere"]}
     assert set(listed) == _WITHHELD_BAND | _WITHHELD_STYLE
-
     row = listed["p-med-reads-high"]
     assert (row["bucket"], row["kind"]) == (_energy_bucket().id, "band")
     assert (row["holds"], row["planned"], row["energy"]) == ([_band(5)], _band(8), 8)
@@ -1337,23 +894,14 @@ def test_the_gate_counts_the_withheld_by_kind_and_lists_every_one(placed):
     assert listed["p-band-no-reading"]["energy"] is None
     assert listed["p-style"]["kind"] == "style"
 
-
-def test_a_person_reading_the_gate_is_shown_the_whole_list(placed):
-    from tests.cli_drive import drive_human
-
-    _code, text = drive_human(["adopt", "apply"])
+    _code, text = drive_human(APPLY)
     for content_id in _WITHHELD_BAND | _WITHHELD_STYLE:
         assert f"content_id={content_id}" in text, content_id
     assert "withheld_by_placement:" in text
 
-
-def test_an_approved_apply_leaves_a_withheld_track_where_it_sat(placed):
     before = _filed(placed)
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), resumed
+    job_id = _applied()
     after = _filed(placed)
-
     for content_id in _WITHHELD_BAND | _WITHHELD_STYLE:
         assert after[content_id] == before[content_id], content_id
         assert len(after[content_id]) == 1, content_id
@@ -1373,72 +921,61 @@ def test_an_approved_apply_leaves_a_withheld_track_where_it_sat(placed):
         entry.entry_id for entry in plan.entries if entry.content_id in _ADDED | {"p-same"}
     }
 
-
-def destination_names(bucket_id: str, sub_id: str) -> tuple[str, str]:
-    from cratekit.write.routing_pass import destination
-
-    return destination(DECLARED, bucket_id, sub_id)
-
-
-def test_a_second_approved_apply_adds_nothing_and_withholds_the_same(placed):
-    first_shown = _shown(["adopt", "apply"])
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), resumed
-    filed = _filed(placed)
-
     collection.reset_cache()
-    second_shown = _shown(["adopt", "apply"])
+    second_shown = _shown(APPLY)
     assert second_shown["held_elsewhere"] == first_shown["held_elsewhere"]
     assert second_shown["withheld_by_placement"] == first_shown["withheld_by_placement"]
     assert second_shown["digest"] == first_shown["digest"]
 
-    _run_id, second_job = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(second_job))
-    assert code == int(ExitCode.OK), resumed
+    second_job = _applied()
     report = artifacts.committed(placed, second_job)[-1]
     assert (report["added"], report["already_present"]) == (0, len(_ADDED) + 1)
-    assert _filed(placed) == filed
+    assert _filed(placed) == after
 
+    # A track in the planned sub under another name is withheld, not doubled.
+    _rename_recorded(placed, _energy_bucket().id, _band(5), "Middle of the night")
+    before = _filed(placed)
 
-def test_a_track_moved_after_the_approval_is_a_stale_decision(placed):
-    """The digest covers what a withheld track holds, so a plan approved over
-    one tree is not applied over another."""
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    shown = _shown(APPLY)
+    listed = {row["content_id"]: row for row in shown["held_elsewhere"]}
+    assert "p-same" in listed
+    assert listed["p-same"]["holds"] == [_band(5)]
+    assert listed["p-same"]["planned"] == _band(5)
+    assert listed["p-same"]["holds_under_another_name"] == [_band(5)]
+    assert listed["p-med-reads-high"]["holds_under_another_name"] == [_band(5)]
+    assert "p-same" not in {item["content_id"] for item in shown["items"]}
+
+    _applied()
+    after = _filed(placed)
+    assert after["p-same"] == before["p-same"]
+    assert after["p-med-reads-high"] == before["p-med-reads-high"]
+
+    # A track moved after the approval is a stale decision, run on the worker directly.
+    _run_id, job_id = approve_and_queue(APPLY, GATE)
 
     handle = rb_writer.open_db(rb_writer.live_db_path(placed), unlock=False, cfg=placed)
     try:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
-        folder_display, sub_display = destination_names(_energy_bucket().id, _band(1))
-        folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
-        playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
-        rb_writer.add_memberships(handle, playlist, ["p-med-reads-high"])
+        _file_into(handle, root, _energy_bucket().id, _band(1), "p-med-reads-high")
         handle.session.commit()
     finally:
         rb_writer.close_db(handle)
     before = _filed(placed)
 
-    # THE WORKER DIRECTLY, because the resume asks the gate first and the
-    # gate's own digest check would answer before the worker's could.
-    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
-    with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-        item = jobs.items(store, job_id)[0]
     with pytest.raises(Exception) as raised:
-        handler(job, item, jobs.frozen_config(job))
+        _worker(job_id)
     assert raised.value.cause.reason == "decision-stale"
     assert _filed(placed) == before
 
 
 def _rename_recorded(cfg: config.Config, bucket_id: str, sub_id: str, to: str) -> None:
-    """Rename one destination's playlist the way a person does in rekordbox,
-    after a previous write recorded which node that destination is."""
+    """Rename one destination's playlist in rekordbox after a write recorded its node."""
     from cratekit.core import convergence
 
-    folder_display, sub_display = destination_names(bucket_id, sub_id)
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
     try:
         root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
+        folder_display, sub_display = destination_names(bucket_id, sub_id)
         folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
         playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
         node = convergence.DestinationNode(
@@ -1454,37 +991,11 @@ def _rename_recorded(cfg: config.Config, bucket_id: str, sub_id: str, to: str) -
     convergence.record_nodes(cfg, DECLARED.tree.id, [node])
 
 
-def test_a_track_in_the_planned_sub_under_another_name_is_withheld_not_doubled(placed):
-    """The writer finds a playlist by the declared name. A playlist renamed in
-    rekordbox is still the sub its recorded node says it is, and the writer
-    would make a second one beside it and file the track in both."""
-    bucket = _energy_bucket().id
-    _rename_recorded(placed, bucket, _band(5), "Middle of the night")
-    before = _filed(placed)
-
-    shown = _shown(["adopt", "apply"])
-    listed = {row["content_id"]: row for row in shown["held_elsewhere"]}
-    assert "p-same" in listed
-    assert listed["p-same"]["holds"] == [_band(5)]
-    assert listed["p-same"]["planned"] == _band(5)
-    assert listed["p-same"]["holds_under_another_name"] == [_band(5)]
-    assert listed["p-med-reads-high"]["holds_under_another_name"] == [_band(5)]
-    assert "p-same" not in {item["content_id"] for item in shown["items"]}
-
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), resumed
-    after = _filed(placed)
-    assert after["p-same"] == before["p-same"]
-    assert after["p-med-reads-high"] == before["p-med-reads-high"]
-
-
 # ── R-788: a vox tagged track is filed under its bucket's vocal sub ─────────
 
 VOX = "with_vox"
 
-#: Who carries the tag in the placed library, and what the plan does about
-#: each. ``p-candy-only`` and the rest carry none.
+#: Who carries the tag in the placed library, and what the plan does about each.
 _VOX_ADDED = {"p-nowhere", "p-same"}
 _VOX_PRESENT = {"p-vox-only"}
 _VOX_WITHHELD = {"p-med-reads-high"}
@@ -1492,12 +1003,7 @@ _VOX_TAGGED = _VOX_ADDED | _VOX_PRESENT | _VOX_WITHHELD
 
 
 def _tag_vox(cfg: config.Config, *content_ids: str) -> None:
-    """Give these tracks the vox My Tag, as rows, the way the vocals verb leaves them.
-
-    Rows rather than the verb, because the verb decides from a file's score
-    and what is under test is what adoption does with the tag once it is
-    there, whoever put it there. The category and the value are made once.
-    """
+    """Give these tracks the vox My Tag as rows, the way the vocals verb leaves them."""
     from pyrekordbox.db6 import tables
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
@@ -1505,33 +1011,23 @@ def _tag_vox(cfg: config.Config, *content_ids: str) -> None:
     from cratekit.write import metadata_cli
     from tests.test_rb_writer_db import _row
 
+    def tag(row_id, name, parent, uuid):
+        return _row(
+            tables.DjmdMyTag,
+            ID=row_id,
+            Name=name,
+            Attribute=0,
+            ParentID=parent,
+            Seq=0,
+            UUID=uuid,
+            rb_local_deleted=0,
+        )
+
     engine = create_engine(f"sqlite:///{rb_writer.live_db_path(cfg)}")
     with Session(engine) as db_session:
         if db_session.get(tables.DjmdMyTag, "9000") is None:
-            db_session.add(
-                _row(
-                    tables.DjmdMyTag,
-                    ID="9000",
-                    Name=metadata_cli.CATEGORY,
-                    Attribute=0,
-                    ParentID="0",
-                    Seq=0,
-                    UUID="vocals-category",
-                    rb_local_deleted=0,
-                )
-            )
-            db_session.add(
-                _row(
-                    tables.DjmdMyTag,
-                    ID="9001",
-                    Name=metadata_cli.VALUE_VOX,
-                    Attribute=0,
-                    ParentID="9000",
-                    Seq=0,
-                    UUID="vox-value",
-                    rb_local_deleted=0,
-                )
-            )
+            db_session.add(tag("9000", metadata_cli.CATEGORY, "0", "vocals-category"))
+            db_session.add(tag("9001", metadata_cli.VALUE_VOX, "9000", "vox-value"))
         for content_id in content_ids:
             db_session.add(
                 _row(
@@ -1548,13 +1044,17 @@ def _tag_vox(cfg: config.Config, *content_ids: str) -> None:
     engine.dispose()
 
 
-def _calibrate(cfg: config.Config) -> None:
-    """Record a with vox cut for this library, the way a calibration leaves one."""
+def _write_calibration(cfg: config.Config, text: str) -> None:
     from cratekit.write import metadata_cli
 
     path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"threshold": 5.0}), encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
+
+
+def _calibrate(cfg: config.Config) -> None:
+    """Record a with vox cut for this library, the way a calibration leaves one."""
+    _write_calibration(cfg, json.dumps({"threshold": 5.0}))
 
 
 @pytest.fixture
@@ -1569,104 +1069,74 @@ def _vocal_place() -> tuple[str, str]:
     return destination_names(_energy_bucket().id, VOX)
 
 
-def test_the_plan_reads_the_tag_and_the_vocal_subs_off_the_census_database(voxed):
-    plan = apply_cli.current_plan(voxed, DECLARED)
-    bucket = _energy_bucket().id
+def _never(what: str):
+    def never(*_args, **_kwargs):
+        raise AssertionError(what)
 
-    assert plan.vocals.state == "read"
-    assert plan.vocals.calibrated is True
-    assert plan.vocals.tagged == _VOX_TAGGED
-    assert plan.vocals.filed == {bucket: {"p-vox-only"}}
-    assert {entry.content_id for entry in plan.vocal_additions()} == _VOX_ADDED
-    assert {entry.vocal_sub for entry in plan.vocal_additions()} == {VOX}
+    return never
 
 
-def test_the_gate_names_the_vocal_count_and_lists_every_membership(voxed):
-    shown = _shown(["adopt", "apply"])
-
-    assert shown["vocals"] == "read"
-    assert shown["vocal"] == {
-        "add": len(_VOX_ADDED),
-        "present": len(_VOX_PRESENT),
-        "under-another-name": 0,
-        "no-sub": 0,
-        "no-bucket": 0,
-        "withheld": len(_VOX_WITHHELD),
-    }
-    listed = {row["content_id"]: row for row in shown["vocal_memberships"]}
-    assert set(listed) == _VOX_ADDED | _VOX_PRESENT
-    assert {cid for cid, row in listed.items() if not row["present"]} == _VOX_ADDED
-    assert (listed["p-nowhere"]["bucket"], listed["p-nowhere"]["sub"]) == (
-        _energy_bucket().id,
-        VOX,
-    )
-    assert listed["p-nowhere"]["location"].endswith("p-nowhere.flac")
-    # The entries an apply places are what they were. The vocal sub is beside.
-    assert {item["content_id"] for item in shown["items"]} == _ADDED | {"p-same"}
-
-
-def test_a_library_with_no_vox_tag_says_so_and_plans_no_vocal_membership(placed):
+def test_an_untagged_membership_of_a_vocal_sub_is_never_removed(placed):
+    """A calibrated library with no vox tag says so and plans no vocal membership.
+    Once the tag exists on another track the dimension is read, and
+    ``p-vox-only``, in the vocal sub with no tag, is never removed from it."""
     _calibrate(placed)
-    shown = _shown(["adopt", "apply"])
-
+    shown = _shown(APPLY)
     assert shown["vocals"] == "no-tag"
     assert set(shown["vocal"].values()) == {0}
     assert shown["vocal_memberships"] == []
 
+    _tag_vox(placed, "p-nowhere")
+    vocal = _vocal_place()
+    assert vocal in _filed(placed)["p-vox-only"]
+    _applied()
+    after = _filed(placed)
+    assert vocal in after["p-vox-only"]
+    assert vocal in after["p-nowhere"]
 
-def test_an_uncalibrated_library_files_no_vocal_sub_from_its_tags(placed):
+
+def test_an_uncalibrated_library_files_no_vocal_sub_from_its_tags(placed, monkeypatch):
     """The routing pass files nothing under the vocal sub without a cut, and a
-    tag written from the default cut is not the person's answer."""
+    tag written from the default cut is not the person's answer. With no cut on
+    record the tag tables are not even opened."""
     _tag_vox(placed, *sorted(_VOX_TAGGED))
     vocal = _vocal_place()
-    shown = _shown(["adopt", "apply"])
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            adopt_placements, "vox_tagged", _never("the tag tables were read with no cut on record")
+        )
+        assert apply_cli.current_plan(placed, DECLARED).vocals.state == "uncalibrated"
+    shown = _shown(APPLY)
 
     assert shown["vocals"] == "uncalibrated"
     assert set(shown["vocal"].values()) == {0}
     assert shown["vocal_memberships"] == []
 
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), resumed
+    _applied()
     after = _filed(placed)
     assert {cid for cid, places in after.items() if vocal in places} == {"p-vox-only"}
 
 
-def _corrupt_calibration(cfg: config.Config) -> None:
+def test_a_calibration_that_cannot_be_read_refuses_before_the_library_is_walked(voxed, monkeypatch):
+    """A taxonomy with no vocal sub reads neither the calibration nor the tag,
+    since nothing vocal can be filed there. Nor does the move verb, through the
+    plan it shows and the plan its worker checks against."""
+    from cratekit.adopt import move_cli
     from cratekit.write import metadata_cli
 
-    path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('{"threshold": 5.', encoding="utf-8")
+    _write_calibration(voxed, '{"threshold": 5.')
 
-
-def test_a_calibration_that_cannot_be_read_refuses_before_the_library_is_walked(
-    voxed, monkeypatch
-):
-    _corrupt_calibration(voxed)
-
-    def never(*_args, **_kwargs):
-        raise AssertionError("the census ran before the calibration was read")
-
-    monkeypatch.setattr(apply_cli, "census", never)
-    with pytest.raises(Exception) as raised:
-        apply_cli.current_plan(voxed, DECLARED)
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            apply_cli, "census", _never("the census ran before the calibration was read")
+        )
+        with pytest.raises(Exception) as raised:
+            apply_cli.current_plan(voxed, DECLARED)
     assert raised.value.cause.reason == "vocal-calibration-unreadable"
 
-
-def test_a_taxonomy_with_no_vocal_sub_reads_neither_the_calibration_nor_the_tag(
-    voxed, monkeypatch
-):
-    """Nothing vocal can be filed there, so a calibration that cannot be read
-    and a tag row that cannot be read are not this run's to refuse over."""
-    from cratekit.adopt import placements as adopt_placements
-
-    _corrupt_calibration(voxed)
-
-    def never(*_args, **_kwargs):
-        raise AssertionError("the tag tables were read with nowhere to file")
-
-    monkeypatch.setattr(adopt_placements, "vox_tagged", never)
+    monkeypatch.setattr(
+        adopt_placements, "vox_tagged", _never("the tag tables were read with nowhere to file")
+    )
     declared = replace(
         DECLARED, sub_classes=tuple(e for e in DECLARED.sub_classes if not e.additive)
     )
@@ -1676,32 +1146,9 @@ def test_a_taxonomy_with_no_vocal_sub_reads_neither_the_calibration_nor_the_tag(
     assert plan.vocal_memberships() == ()
     assert plan.placements.read is True
 
-
-def test_an_uncalibrated_library_does_not_open_the_tag_tables(placed, monkeypatch):
-    from cratekit.adopt import placements as adopt_placements
-
-    _tag_vox(placed, "p-nowhere")
-
-    def never(*_args, **_kwargs):
-        raise AssertionError("the tag tables were read with no cut on record")
-
-    monkeypatch.setattr(adopt_placements, "vox_tagged", never)
-    assert apply_cli.current_plan(placed, DECLARED).vocals.state == "uncalibrated"
-
-
-def test_the_move_verb_reads_neither_the_tag_nor_the_calibration(voxed, monkeypatch):
-    """A move asks nothing about vocals, so a refusal about either cannot stop
-    one, through the plan it shows and the plan its worker checks against."""
-    from cratekit.adopt import move_cli
-    from cratekit.adopt import placements as adopt_placements
-    from cratekit.write import metadata_cli
-
-    def never(*_args, **_kwargs):
-        raise AssertionError("the move verb read the vocals")
-
-    monkeypatch.setattr(adopt_placements, "vox_tagged", never)
-    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", never)
-
+    monkeypatch.setattr(
+        metadata_cli, "load_vocal_threshold", _never("the move verb read the vocals")
+    )
     assert move_cli.current_plan(voxed, DECLARED) is not None
     plain = apply_cli.current_plan(voxed, DECLARED, vocals=False)
     assert plain.vocals.read is False
@@ -1710,58 +1157,70 @@ def test_the_move_verb_reads_neither_the_tag_nor_the_calibration(voxed, monkeypa
         apply_cli.current_plan(voxed, DECLARED)
 
 
-def test_an_uncut_library_reads_no_vocals_either(machine):
-    _calibrate(machine)
-    _tag_vox(machine, "a1")
-    plan = apply_cli.current_plan(machine, DECLARED)
-
-    assert plan.vocals.read is False
-    assert plan.vocal_additions() == ()
-    assert _shown(["adopt", "apply"])["vocals"] == "unread"
-
-
 def test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else(voxed):
+    """The plan reads the tag and the vocal subs off the census database and the
+    gate names the vocal count and lists every membership. An approved apply
+    adds the vocal sub beside the band, leaves what is already there, gains a
+    withheld track nothing, never adds an untagged track and removes nothing.
+    The plan it approved is the plan it rebuilds to, so a stopped run resumes.
+    Then a track tagged after an approval is a stale decision, and a renamed
+    vocal playlist gains no second one."""
+    plan = apply_cli.current_plan(voxed, DECLARED)
+    bucket = _energy_bucket().id
+    assert plan.vocals.state == "read"
+    assert plan.vocals.calibrated is True
+    assert plan.vocals.tagged == _VOX_TAGGED
+    assert plan.vocals.filed == {bucket: {"p-vox-only"}}
+    assert {entry.content_id for entry in plan.vocal_additions()} == _VOX_ADDED
+    assert {entry.vocal_sub for entry in plan.vocal_additions()} == {VOX}
+
     before = _filed(voxed)
     vocal = _vocal_place()
-    first_shown = _shown(["adopt", "apply"])
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), resumed
+    first_shown = _shown(APPLY)
+    assert first_shown["vocals"] == "read"
+    assert first_shown["vocal"] == {
+        "add": len(_VOX_ADDED),
+        "present": len(_VOX_PRESENT),
+        "under-another-name": 0,
+        "no-sub": 0,
+        "no-bucket": 0,
+        "withheld": len(_VOX_WITHHELD),
+    }
+    listed = {row["content_id"]: row for row in first_shown["vocal_memberships"]}
+    assert set(listed) == _VOX_ADDED | _VOX_PRESENT
+    assert {cid for cid, row in listed.items() if not row["present"]} == _VOX_ADDED
+    assert (listed["p-nowhere"]["bucket"], listed["p-nowhere"]["sub"]) == (bucket, VOX)
+    assert listed["p-nowhere"]["location"].endswith("p-nowhere.flac")
+    # The entries an apply places are what they were. The vocal sub is beside.
+    assert {item["content_id"] for item in first_shown["items"]} == _ADDED | {"p-same"}
+
+    job_id = _applied()
     after = _filed(voxed)
 
-    # THE VOCAL SUB IS GAINED BESIDE THE BAND, and the band is the one the
-    # plan named without the tag.
     band = {content_id: planned for content_id, _tag, _held, planned in _PLACED_ENERGY}
     for content_id in _VOX_ADDED:
         gained = after[content_id] - before.get(content_id, set())
         expected = {vocal}
         if content_id in _ADDED:
-            expected.add(destination_names(_energy_bucket().id, _sub_id(band[content_id])))
+            expected.add(destination_names(bucket, _sub_id(band[content_id])))
         assert gained == expected, content_id
     # ALREADY THERE: no second row, and its band is added as it always was.
     assert vocal in before["p-vox-only"] and vocal in after["p-vox-only"]
     # WITHHELD STAYS WITHHELD, vocal sub included.
     assert after["p-med-reads-high"] == before["p-med-reads-high"]
     assert vocal not in after["p-med-reads-high"]
-    # A TRACK WITHOUT THE TAG IS NEVER ADDED.
     for content_id in after:
         if content_id not in _VOX_TAGGED:
             assert vocal not in after[content_id], content_id
-    # NOTHING IS REMOVED, from any playlist.
     for content_id, places in before.items():
         assert places <= after[content_id], content_id
 
     report = artifacts.committed(voxed, job_id)[-1]
-    assert (report["added"], report["already_present"]) == (
-        len(_ADDED) + len(_VOX_ADDED),
-        1,
-    )
+    assert (report["added"], report["already_present"]) == (len(_ADDED) + len(_VOX_ADDED), 1)
     assert "/".join(vocal) in report["playlists"]
 
-    # THE PLAN IT APPROVED IS THE PLAN IT REBUILDS TO. The additions are now
-    # present and the digest has not moved, so a stopped run could resume.
     collection.reset_cache()
-    second_shown = _shown(["adopt", "apply"])
+    second_shown = _shown(APPLY)
     assert second_shown["vocal"]["add"] == 0
     assert second_shown["vocal"]["present"] == len(_VOX_ADDED) + len(_VOX_PRESENT)
     assert [row["id"] for row in second_shown["vocal_memberships"]] == [
@@ -1770,71 +1229,35 @@ def test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else(voxe
     assert all(row["present"] for row in second_shown["vocal_memberships"])
     assert second_shown["digest"] == first_shown["digest"]
 
-    _run_id, second_job = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(second_job))
-    assert code == int(ExitCode.OK), resumed
+    second_job = _applied()
     assert artifacts.committed(voxed, second_job)[-1]["added"] == 0
     assert _filed(voxed) == after
 
-
-def test_an_untagged_membership_of_a_vocal_sub_is_never_removed(placed):
-    """``p-vox-only`` sits in the vocal sub and carries no tag. The tag exists
-    in the library, on another track, so the dimension was read."""
-    _calibrate(placed)
-    _tag_vox(placed, "p-nowhere")
-    vocal = _vocal_place()
-    assert vocal in _filed(placed)["p-vox-only"]
-
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), resumed
-
-    after = _filed(placed)
-    assert vocal in after["p-vox-only"]
-    assert vocal in after["p-nowhere"]
-
-
-def test_a_track_tagged_after_the_approval_is_a_stale_decision(voxed):
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    # A TRACK TAGGED AFTER THE APPROVAL IS A STALE DECISION.
+    _run_id, job_id = approve_and_queue(APPLY, GATE)
     _tag_vox(voxed, "p-candy-only")
     before = _filed(voxed)
 
-    handler = handlers.resolve(registry.entry("adopt.apply").handler_key)
-    with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-        item = jobs.items(store, job_id)[0]
     with pytest.raises(Exception) as raised:
-        handler(job, item, jobs.frozen_config(job))
+        _worker(job_id)
     assert raised.value.cause.reason == "decision-stale"
     assert _filed(voxed) == before
 
+    # A renamed vocal playlist gains no second one: the plan adds none.
+    _rename_recorded(voxed, _energy_bucket().id, VOX, "Singers")
 
-def test_a_renamed_vocal_playlist_gains_no_second_one_beside_it(voxed):
-    """The writer finds a playlist by its declared name. With the bucket's
-    vocal sub renamed in rekordbox it would make a second one for the tracks
-    the plan adds, so the plan adds none there and says why."""
-    bucket = _energy_bucket().id
-    _rename_recorded(voxed, bucket, VOX, "Singers")
-    vocal = _vocal_place()
-
-    shown = _shown(["adopt", "apply"])
+    shown = _shown(APPLY)
     assert shown["vocal"]["add"] == 0
-    # Every tagged track of the bucket, the one in the renamed playlist and
-    # the ones that are not: none of them can be handed to the writer.
-    assert shown["vocal"]["under-another-name"] == len(_VOX_TAGGED)
+    assert shown["vocal"]["under-another-name"] == len(_VOX_TAGGED | {"p-candy-only"})
     assert shown["vocal_memberships"] == []
 
-    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
-    code, resumed = drive(_resume(job_id))
-    assert code == int(ExitCode.OK), resumed
+    _applied()
     after = _filed(voxed)
     assert all(vocal not in places for places in after.values())
     assert (vocal[0], "Singers") in after["p-vox-only"]
 
 
-# ---------------------------------------------------------------------------
-# The active taxonomy, parsed once a run (U247)
-# ---------------------------------------------------------------------------
+# ── The active taxonomy, parsed once a run (U247) ──
 
 
 def _active_copy(cfg: config.Config, text: str) -> Path:
@@ -1844,38 +1267,8 @@ def _active_copy(cfg: config.Config, text: str) -> Path:
     return path
 
 
-def test_a_scan_parses_the_active_taxonomy_once_however_many_rows_it_drives(
-    machine, monkeypatch
-):
-    """The speed survey's count: the handler asked for it once a row, and parsed it each time.
-
-    THE ITEM COUNT IS READ, not assumed, so a census that shrank to one row could
-    not pass this by having only one row to parse for.
-    """
-    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
-    _active_copy(machine, text)
-    parses = counted(monkeypatch)
-
-    code, queued = drive(["adopt", "scan"])
-    assert code == int(ExitCode.OK), queued
-    job = _job(registry.entry("adopt.scan").handler_key)
-    code, resumed = drive(["adopt", "scan", "--job", job.job_id])
-    assert code == int(ExitCode.OK), resumed
-
-    with jobs.open_store() as store:
-        assert jobs.get(store, job.job_id).state is jobs.JobState.SUCCEEDED
-        driven = [item for item in jobs.items(store, job.job_id)]
-    assert len(driven) >= 3 and all(item.state is jobs.ItemState.DONE for item in driven)
-    assert parses.of(text) == 1, (
-        f"{len(driven)} rows parsed the active copy {parses.of(text)} times"
-    )
-
-
 def test_a_copy_edited_during_a_scan_judges_every_row_after_the_edit(machine, monkeypatch):
-    """R-690's question is left where it was: the read stays per item, so an edit counts.
-
-    The edit keeps the copy's length, time and inode, so only its text says it changed.
-    """
+    """R-690: the read stays per item, so an edit keeping length, time and inode counts."""
     before = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
     display = DECLARED.buckets[0].display
     after, renamed = renamed_in_place(before, display)
@@ -1893,10 +1286,8 @@ def test_a_copy_edited_during_a_scan_judges_every_row_after_the_edit(machine, mo
 
     code, queued = drive(["adopt", "scan"])
     assert code == int(ExitCode.OK), queued
-    job = _job(registry.entry("adopt.scan").handler_key)
-    code, resumed = drive(["adopt", "scan", "--job", job.job_id])
+    code, resumed = drive(["adopt", "scan", "--job", _scan_job().job_id])
     assert code == int(ExitCode.OK), resumed
-
     assert len(judged_by) >= 3
     assert judged_by[0] == taxonomy.load_taxonomy(before)
     assert judged_by[0].buckets[0].display == display

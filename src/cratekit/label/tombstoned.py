@@ -1,28 +1,20 @@
 """Which tracks of a label's catalogue the library removed on purpose (U243).
 
-A track confirmed in ``crate delete review`` is tombstoned, which is the
-record that the library stopped holding that version and should never acquire
-it again. The label sweep already asks the tombstone store about a RELEASE;
-this asks it about each TRACK a label's catalogue read carries, so ``label
-playlists`` never adds a removed track to a year playlist and ``label prune``
-takes one off a year playlist this product made.
+A track confirmed in ``crate delete review`` is tombstoned. The label sweep
+asks the tombstone store about a release; this asks it about each track a
+label's catalogue read carries, so ``label playlists`` never adds a removed
+track and ``label prune`` takes one off a year playlist this product made.
 
-ONE RECORD OF REMOVALS, NOT TWO. The question is asked of the same store the
-deletion pass writes and the acquisition passes read, under the same kinds and
-the same identity, through :mod:`cratekit.core.tombstone` and
-:mod:`cratekit.core.review` only. The deletion package is a toggleable module,
-so a label verb never imports it.
+One record of removals: the same store, kinds and identity the deletion pass
+writes, through :mod:`cratekit.core.tombstone` and :mod:`cratekit.core.review`
+only, since the deletion package is a toggleable module.
 
-THE TRACK'S OWN WORDS ARE ITS IDENTITY, read as the downloader tags a file: the
-artists the provider bills, joined by a comma and a space, and the title with
-its version, which is what a removed row records in rekordbox for a track this
-product acquired. Asked under the version kind first and the companion a
-credited deletion writes second, as the acquisition consult asks.
+A track's identity is its own words as the downloader tags a file: the billed
+artists joined by a comma and a space, and the title with its version. Asked
+under the version kind first and the credited deletion's companion second.
 
-THE STORE IS READ ONCE AND LAZILY, on the first track that has words to ask
-about, so a run with nothing to judge never reads it, and an unreadable store
-refuses (``DecisionStore`` refuses a document it cannot recognise rather than
-reading it as empty, which would put every removed track back).
+The store is read once and lazily, on the first track with words to ask about,
+and an unreadable store refuses rather than reading as empty.
 
 Layer: modules.
 """

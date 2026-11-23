@@ -1882,3 +1882,305 @@ line open in acquire and one in intake.
 
 **Closes when:** the refusal lives in an interface module and acquire's
 allowance is pruned. Ledger only.
+
+---
+
+## R-1880. Seven favourites seam lines stay, four held by the registry declaring the favourites verbs with no toggle and three by outbound names favorites.cli keeps at module level
+
+**Found:** at the build of #865, U308, 2026-11-22.
+
+**The mechanism.** `tests/ratchets/imports/favorites.txt` keeps seven lines U308
+could not clear from its own files. Four read `dangling favorites
+cratekit.favorites.<verb>_cli`: `cli/registry.py` declares `favorites split`,
+`backfill`, `order` and `refresh` with no toggle, so with the `favorites` module
+off the registry still loads them, from a package the toggle owns. Three read
+`dangling export cratekit.modules.outbound.<hearts|shell|source>`:
+`favorites/cli.py`, which builds `sync favorites`, imports outbound's `hearts`,
+`shell` and `source` at module level, because `tests/test_outbound_workers.py`
+patches `favorites_cli.hearts` there, other files read the outbound constants
+it holds (`NO_MATCH`), and `build_sync` takes its default from `source`.
+
+**Measured cost.** None driven: every toggle is on in the shipped profiles. With
+`favorites` off the four verbs still show and run; with `export` off and
+`favorites` on, `sync favorites` cannot build.
+
+**Closes when:** the registry gates the four verbs on `favorites` (the cli card,
+#860, U303, whose file the registry is), and the outbound card (#866, U309)
+moves the patch in `tests/test_outbound_workers.py` to the outbound module so
+`favorites/cli.py` can import outbound under its functions; then
+`refactor_measure.py prune favorites` empties the file. Ledger only.
+
+---
+
+## R-1881. The recorded kill u108-a G05, the go's digest covering the jobs it would resume, survives on main
+
+**Found:** at the review of #865, U308, 2026-11-22.
+
+**The mechanism.** `docs/mutation/u108-a.json` records `G05_digest_covers_resume`
+(in `label/go.py`, `Summary.plan`: the digest leaves out the jobs a go would
+resume) as killed by
+`test_a_second_go_that_waited_for_the_first_refuses_rather_than_queue_its_tracks_again`.
+Applied verbatim to `go.py` on `main` at `c919209`, all 110 tests of
+`tests/test_label_sync_go.py` pass, the named test included, run alone and in
+its file. So the kill was lost before U308, which keeps the row's state as it
+found it; U308's replay before measures it on the base.
+
+The replay before first measured it killed on `main`, by one death on the
+full suite: `tests/test_repair_rows.py`'s inode bound test, which fails on this
+container's disk whatever the code (#702). That batch subtracted the measured
+baseline alone; measured again subtracting the two inode bound tests as well,
+as the other batches did, the row is a zero on `main`, so no kill of it is owed.
+
+**Measured cost.** Not driven to a user: a go whose resumed jobs changed between
+its gate and its write would be approved on the old digest.
+
+**Closes when:** a test drives a second go whose open jobs change after the
+gate and asserts `decision-stale`, killing G05 again. Ledger only.
+
+---
+
+## R-1882. Two label and favourites inconsistencies a person can see, left as they are by the refactor that froze behaviour
+
+**Found:** at the build of #865, U308, 2026-11-22.
+
+**The mechanism.** U308 changed no behaviour, so it left two differences its
+workers saw. `crate label registry remove <unknown>` exits OK reporting
+`removed: false`, where `set` and `rename` refuse an unknown label with
+`label-unknown`. And `crate favorites backfill` and `crate favorites refresh` open
+their approval gate even when the plan writes nothing, where `favorites split`
+and `favorites order` end NO_OP without asking; `favorites.spine.run` keeps the
+difference as its `gate_first` flag, and tests pin both orders.
+
+**Measured cost.** A person removing a misspelt label is told nothing was
+removed rather than that no such label exists; a person running backfill or
+refresh with nothing to do is asked to approve nothing.
+
+**Closes when:** Phillip decides each as a UX cleanup under #847's rule, posted
+on #847 first. Ledger only.
+
+---
+
+## R-1883. The label and favourites suites run faster on three shortcuts a later change could outgrow
+
+**Found:** at the review of #865, U308, 2026-11-22.
+
+**The mechanism.** U308 took about half the summed test time out of its 34
+files with three shortcuts. An autouse `one_parser` fixture in
+`tests/test_label_workers.py`, imported by most of the label and favourites
+suites, keeps one verb parser per module membership in a module global and
+reuses it across drives and tests in a worker, where a real run builds one per
+process; it holds while no label builder reads state beyond membership and no
+test patches a handler after the build (the reviewer ran all fifteen files with a
+fresh parser per drive, 1,037 passed either way). The favourites suites'
+`_landed_hearts` seeds the rows a landing writes instead of driving the two act
+landing, except one test; the seeded rows differ from a landing's in folder,
+playlist membership, device and empty columns, and forcing a real landing in
+every call passed 93 of 93. And `no_disk_flush` in `tests/test_label_sync.py`
+turns SQLite durability and `os.fsync` off for the sync and go suites, none of
+whose tests asserts durability and no recorded kill names fsync.
+
+**Measured cost.** None today, each measured as above. A later builder that
+reads state at build time, a backfill rule that reads what only a landing
+writes, or a durability guard in the sync record would pass these suites
+unseen.
+
+**Closes when:** the suite card (#869, U312) moves the parser cache into the
+shared test support with its rule beside it, or a change that breaks one of the
+three conditions takes its shortcut out. Ledger only.
+
+---
+
+## R-1884. Full suite baselines fail under parallel load on tests no card owns, so a kill set replay cannot run side by side on one container
+
+**Found:** at the kill set replay of #867, U310, 2026-11-22.
+
+**The mechanism.** A replay batch runs the whole suite twice before its first
+row, the baseline and the null control, and refuses the batch on any death.
+With three batches and four build workers on one four core container, five
+tests outside adopt and deletion failed one baseline or control each and
+passed alone: `tests/test_jobs.py::test_two_processes_claiming_the_same_job_never_claim_one_item_twice`,
+`tests/intake/test_set_progress.py::test_the_watcher_reports_the_bytes_written_while_the_download_runs`,
+`tests/test_rb_writer_guard.py::test_second_writer_refuses_while_lock_held`,
+and the two inode bound tests in `tests/test_repair_rows.py`, the first of
+which also failed alone in a clone under the temporary directory (#702).
+Each refusal came after an hour of baselines, and two batches were then cut
+at the two hour limit with about fifteen rows measured each.
+
+**Measured cost.** About five hours of replay time on this card, and the
+before batches moved to helper containers. The replays read a scratch copy of
+the measured known failures naming these five, the same file before and
+after; the measured `.cloud-battery/baseline.txt` was never edited.
+
+**Closes when:** the three load sensitive tests wait on an event rather than
+on time, or a replay batch on a shared container is documented as one at a
+time. Ledger only.
+
+---
+
+## R-1885. Patching digest_of on the revert module reaches nothing since the ledger was split
+
+**Found:** at the review of #867, U310, 2026-11-22.
+
+**The mechanism.** `adopt/revert.py` was split into `revert.py`,
+`revert_record.py` and `revert_changed.py`. `revert.py` re-exports
+`digest_of`, but its only callers are in `revert_changed.py`, which resolves
+its own module global. A test that patches `cratekit.adopt.revert.digest_of`,
+the site every such test used before the split, now changes nothing and
+passes or fails for another reason. The thirteen tests that patch it were
+moved to `revert_changed` and each was shown to bite.
+
+**Measured cost.** None to a person: no production path is affected. Base
+`tests/test_adoption.py` with its patches unchanged, run over the branch's
+source, fails 11 tests beyond the machine set, which is how the review
+measured it.
+
+**Closes when:** a guard refuses a patch of a name a module only re-exports,
+or the re-export is dropped once nothing outside imports it from `revert`.
+Ledger only.
+
+---
+
+## R-1886. A base cannot be captured with a branch's scenarios once the test modules they borrow import a module the branch added
+
+**Found:** at the behaviour comparison of #867, U310, 2026-11-22.
+
+**The mechanism.** `behaviour_compare.py capture --rev` swaps only `src/`,
+so scenarios and fixtures come from the working tree. This card's scenarios
+borrow fixtures from `tests/test_adoption.py` and `tests/test_deletion.py`,
+and after the split those test modules import `cratekit.adopt.revert_changed`,
+which the base does not have. A capture of the base from the branch's tree
+fails at collection, every scenario unrecorded. DEVELOPING's rule that a
+scenario names nothing the base lacks holds for the scenario file and not for
+the test modules it imports.
+
+**Measured cost.** The comparison was read against the base capture taken
+before the first edit, with the base's own fixtures, which holds it more
+strictly; nothing was lost here. A later card that wants to recapture this
+base from its own tree will meet the same refusal.
+
+**Closes when:** the capture refuses with the import named, or scenario
+fixtures live in a module that imports only what every revision has. Ledger
+only.
+
+---
+
+## R-1887. The write path's code lines rose under U300 instead of falling 15 percent, and its tests stay above their line and time targets
+
+**Found:** at the build of #857, U300, 2026-11-22.
+
+**The mechanism.** Phillip's answer A on #847 says every card must still
+remove at least 15 percent of its code lines. #857 set the fourteen files of
+the write path at most 7,189 code lines (8,458 at the survey, 9,045 on U300's
+base `c9192091`) and its fifteen test files at most 10,655 lines (14,553 on
+the base). U300 cut prose to its rule and its reason, by that answer, and split
+the three files over 1,500 lines, so the area's source fell from 18,806 lines
+to 13,872, under its 14,256 target, and no file is over 1,500. Its code lines
+rose, from 9,045 to 9,287: each split adds imports, a re-export block and a
+three line call-time accessor in each part, so a test that patches the facade
+still bites. The tests fell to 11,992 lines, prose only, and their summed time 25
+percent (35 seconds to 26), short of the 30 percent the card asks. The area held no
+copied block of six logical lines to fold (the survey's own count was 0).
+Reflowing message fragments or call arguments onto fewer lines would meet the
+count without simplifying anything, and was not done.
+
+**Measured cost.** None to a person. The area misses the 15 percent code rule
+by 1,599 lines (7,688 is 15 percent under the base) and the card's code target
+by 2,098; its tests miss their line target by 1,337. U300 asked Phillip on
+#857 and took the recommended option, land with the miss named.
+
+**Closes when:** a unit cuts this area's code lines to 7,688 or fewer, with
+behaviour frozen, the behaviour comparison and the kill set replay, likely by
+narrowing the parts' re-export blocks, folding the accessors into one shared
+reader per module, and shortening the longest guards named on #857
+(`guard_violations`, `node_change_violations`, `assert_app_version`,
+`assert_gates`, `verify_commit`, restore's `plan`).
+
+---
+
+## R-1888. Splitting a module needs one entry in three guards no area card owns, the scenario list, the layer ladder and the reports allowlist
+
+**Found:** at the build of #857, U300, 2026-11-22.
+
+**The mechanism.** U300 split `core/rb_writer.py`, `core/session.py` and
+`core/restore.py`. Three guards outside the card's own files pin what the split
+moves: `tests/test_behaviour_compare.py` names every shipped scenario, so the
+card's ten new scenarios joined its list; `tests/test_layering.py` places a part
+of a write-ranked core module only by a line of its own, so restore's three
+parts were placed beside it; and `tests/modules/test_reports.py` asks every
+writer its allowlist's closure reaches to be named, so the moved writers were
+named under their parts. Each edit is the mechanism the guard's own message
+gives, one entry per name, but each file belongs to another card's list
+(the suite card #869 for the first two, #868 for the reports guard), and every
+area card that adds a scenario or splits a module edits the same lists.
+
+**Measured cost.** None to a person; a merge conflict between two area cards
+in a list, which git resolves line by line.
+
+**Closes when:** the suite card (#869) decides whether these three lists stay
+hand-kept or are derived. Ledger only.
+
+---
+
+## R-1889. The tree registry and the backup facts each read their JSON document with the same shape and different words
+
+**Found:** at the build of #857, U300, 2026-11-22.
+
+**The mechanism.** #857's brief notes that `core/tree_registry.py`'s path
+reader repeats `core/backup_facts.py`'s by shape (read the bytes, absent is
+empty, unreadable and not JSON and not an object each refuse). The two differ
+in their exception types, their messages, and a permission branch only the
+backup facts have, so a shared home would take each message and type as a
+parameter. U300 left both where they are rather than fold text a person
+reads into arguments.
+
+**Measured cost.** None; a maintainer reads two readers where one shape would do.
+
+**Closes when:** a card that may change these refusals' wording gives them one
+reader with the two vocabularies as data. Ledger only.
+
+---
+
+## R-1890. Guards that scan the split modules by file or by module name do not read their parts, so a forbidden shape in a part passes them
+
+**Found:** at review rounds one and two of #857, U300, 2026-11-22.
+
+**The mechanism.** U300 split `core/rb_writer.py`, `core/session.py` and
+`core/restore.py` into parts that each module re-exports. Guards that scan a
+module's own file, its `inspect.getsource`, or an import of its exact dotted
+name read the module and not the code that moved to its parts. The two review
+rounds drove each by injecting the forbidden shape into a part: it failed the
+guard on the base and passed it on the branch.
+
+- `tests/test_rb_writer_guard.py`: the writer raises no bare `RuntimeError(`
+  or `SystemExit`, and `_raised_reasons`' scan of the refusals the writer
+  raises, both over `rb_writer.py` alone; the soft-delete guard does not
+  resolve the parts' call-time spelling `_writer().SOFT_DELETE_COLUMN`.
+- `tests/test_cli_contract.py`: the writer never learns the gate's name or a
+  flag string, over `rb_writer.py` alone.
+- `tests/test_sync_night.py`: the night module may not import
+  `cratekit.core.session`, matched with a following dot, so
+  `cratekit.core.session_holders` and its siblings pass.
+- `tests/test_config.py` and `tests/test_process_guard.py`, one scan each.
+
+U300 kept what it could inside its own files: the one part function raising a
+slug `_raised_reasons` reads went back into `rb_writer.py`, the parts read the
+soft-delete column as `rb_writer.SOFT_DELETE_COLUMN` from a local binding,
+which the soft-delete guard resolves (a permissive read written that way in a
+part is caught), and the restore and session scans in `tests/test_restore.py`
+and `tests/test_write_session.py` read the parts. The files above are not
+U300's: `tests/test_rb_writer_guard.py` no card may edit, and the rest are on
+other cards' lists.
+
+**Measured cost.** None today: the reviews grepped every part for each scan's
+forbidden text and found none, and five of the driven injections are still
+caught by a wider guard. The cost is a guard on a path that writes or deletes
+that kills nothing for code in the parts (board bar (d)): a permissive read
+of the soft-delete marker on the removal path written in the parts'
+`_writer()` spelling, or the unattended night job taking the library lock
+through `session_holders`, would pass the guard written to stop it.
+
+**Closes when:** each scan reads its module and its parts (by glob of the
+module's file name, or by every module whose dotted name starts with the
+module's own), the soft-delete guard resolves a call-time accessor, and the
+night ban matches the parts. The writer guard file needs Phillip's leave to
+change, since no card may touch it.

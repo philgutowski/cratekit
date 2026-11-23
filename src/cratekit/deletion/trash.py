@@ -1,45 +1,29 @@
 """The move to the system Trash, and the proof that one is available first.
 
-R18 permits exactly three things to happen to a music file: a metadata tag write,
-a content-preserving rename, and the move to the system Trash performed by R35.
-There is no fourth, and in particular there is no unlink. So this module has one
-job and one refusal: it moves a file into the Trash for the volume the file is
-on, and when there is no such Trash it REFUSES rather than falling back to a
-delete. A fallback would be the product doing the single thing it promised never
-to do, at the one moment nobody could check the result afterwards.
+R18 permits three things to happen to a music file: a tag write, a content
+preserving rename, and R35's move to the Trash. There is no unlink, so when the
+file's volume has no Trash this REFUSES rather than falling back to a delete.
 
-**WHY THE TRASH HAS TO BE ON THE FILE'S OWN VOLUME, in mechanics rather than in
-principle.** A move within a filesystem is a rename: the bytes never move, the
-operation is atomic, and it is reversible by renaming back. A move ACROSS
-filesystems is a copy followed by an unlink, which is not atomic, takes as long
-as the file is big, and ends with the original genuinely deleted. Every desktop
-platform solves this the same way, with a Trash per volume, and this follows the
-platform rather than inventing anything. The device check below is what makes
-that structural rather than hopeful: it compares device numbers, so a Trash
-directory that LOOKS right and sits on another mount is caught before a byte
-moves.
+**THE TRASH IS ON THE FILE'S OWN VOLUME** because a move within a filesystem is
+an atomic, reversible rename, while across filesystems it is a copy and an
+unlink. The device check makes that structural: a Trash that looks right on
+another mount is caught before a byte moves.
 
-**WHY THE DESTINATION NAME IS RESERVED BEFORE THE RENAME.** POSIX ``rename``
-silently REPLACES an existing destination. Two tracks with the same file name
-removed a week apart, and the second one trashed over the first, is data loss
-performed by the recovery mechanism. So a free name is claimed with an exclusive
-create first, which fails if anything is already there, and the rename then
-replaces the placeholder this process just made and nothing else.
+**THE DESTINATION NAME IS RESERVED BEFORE THE RENAME**, since POSIX ``rename``
+silently replaces a destination: two same named tracks trashed a week apart
+would lose the first. A free name is claimed with an exclusive create, and the
+rename replaces only that placeholder.
 
-ONE NAMING DECISION, RECORDED. ``Stat`` is declared here and in ``candidates``,
-and they are one idea specialised per module rather than two ideas sharing a
-name: each is "the stat seam THIS module reads through", and they differ only in
-what they read off the result, an inode there and a device number here. Both
-exist for the same reason, which is that the branch each one guards is otherwise
-unreachable without a second disk or a broken filesystem.
+``Stat`` here and in ``candidates`` is each module's own stat seam; they read a
+device number here and an inode there.
 
-Layer note: MODULES. It names no verb, and its platform differences arrive as
-parameters so both branches are reachable in a test on one machine, which is the
-same seam ``core.locations`` uses for the Windows path separator.
+Layer note: MODULES. Platform differences arrive as parameters, so both branches
+run in a test on one machine.
 """
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import os
 import sys
@@ -48,34 +32,23 @@ from pathlib import Path
 from typing import Callable
 
 from cratekit.core import config
-from cratekit.core.cause import Scope, refuse
+from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 
-#: How many name collisions to work through before giving up. A Trash holding a
-#: thousand files of one name is not a case worth serving; it is a signal that
-#: something upstream is looping, and refusing says so while continuing to search
-#: would spend an unbounded amount of time saying nothing.
+#: Name collisions worked through before giving up; a thousand files of one name
+#: is something upstream looping.
 MAX_NAME_ATTEMPTS = 1000
 
-#: The errno values that mean "this NAME is unacceptable" rather than "this
-#: VOLUME is unusable". Listed rather than collapsed into a bare ``except
-#: OSError`` because the two need opposite blast radii: a name the filesystem
-#: will not take costs one file, and a disk that is full or read only costs the
-#: run. ``EILSEQ`` is looked up rather than named, since not every platform
-#: defines it and a missing attribute here would be an import-time crash.
+#: The errno values that mean "this NAME is unacceptable" (one file) rather than
+#: "this VOLUME is unusable" (the run). ``EILSEQ`` is looked up, since not every
+#: platform defines it.
 _NAME_REFUSED_BY_FILESYSTEM: frozenset[int] = frozenset(
     value
-    for value in (
-        errno.ENAMETOOLONG,
-        errno.EINVAL,
-        getattr(errno, "EILSEQ", None),
-    )
+    for value in (errno.ENAMETOOLONG, errno.EINVAL, getattr(errno, "EILSEQ", None))
     if value is not None
 )
 
-#: The macOS per-volume Trash directory, and the XDG one. Named rather than
-#: written inline so the two platform branches read as one decision with two
-#: answers rather than as scattered literals.
+#: The macOS and XDG Trash directory names.
 _MACOS_HOME_TRASH = ".Trash"
 _MACOS_VOLUME_TRASH = ".Trashes"
 _XDG_HOME_TRASH = "Trash"
@@ -83,10 +56,8 @@ _XDG_VOLUME_TRASH_PREFIX = ".Trash-"
 _XDG_FILES = "files"
 _XDG_INFO = "info"
 
-#: The environment variable the XDG basedir specification uses for the data root,
-#: and the relative fallback when it is unset. Read directly rather than through
-#: platformdirs, because platformdirs answers "where does THIS APPLICATION keep
-#: its data" and the Trash belongs to the desktop rather than to us.
+#: The XDG basedir data root and its fallback, read directly: the Trash belongs to
+#: the desktop, not to this application's data directory.
 _XDG_DATA_HOME = "XDG_DATA_HOME"
 _XDG_DATA_FALLBACK = (".local", "share")
 
@@ -95,22 +66,12 @@ _XDG_DATA_FALLBACK = (".local", "share")
 class TrashLayout:
     """Where a trashed file goes on this platform, and what has to go beside it.
 
-    ``info`` is the XDG specification's metadata directory, which is where a
-    Linux desktop keeps the record of where each trashed file came from. macOS
-    keeps that association in the volume's own index and has no such directory,
-    so ``info`` is None there. Modelling it as an optional field rather than as
-    two functions keeps one caller for both platforms.
-
-    **THE INFO FILE IS NOT WRITTEN, and that is a decision rather than an
-    omission.** The specification says its ``Path`` value is percent-encoded like
-    a URI, and this repository forbids a second percent-encoder anywhere outside
-    ``core.locations``, by a guard, because the last time two encoders existed in
-    one tree they disagreed about accented filenames and 144 files were deleted.
-    A trashed file with no info file is visible in the trash directory and is
-    restorable by :func:`recover` and by hand; a trashed file with a wrong info
-    file can be restored by the desktop to the wrong place. The directory is
-    still created so a real implementation, written when there is a Linux user to
-    write it for, drops into the shape the desktop already expects.
+    ``info`` is the XDG metadata directory, None on macOS. **THE INFO FILE IS NOT
+    WRITTEN**: its ``Path`` is percent encoded, and a second encoder outside
+    ``core.locations`` is forbidden (two encoders once deleted 144 files). A file
+    with no info file is restorable by :func:`recover` and by hand; one with a
+    wrong info file would be restored to the wrong place. The directory is still
+    made, for the desktop's expected shape.
     """
 
     root: Path
@@ -122,42 +83,24 @@ class TrashLayout:
 class TrashStatus:
     """Whether this volume has a Trash this account can actually move a file into.
 
-    ``problem`` is empty exactly when ``usable`` is true. It is a sentence rather
-    than a token because the reader is doctor, which is going to print it, and
-    because each way this fails needs a different act from the user: create the
-    directory, fix its permissions, or work out why the mount is not the mount
-    they think it is.
+    ``problem`` is empty exactly when ``usable`` is true; it is the sentence
+    doctor prints.
     """
 
     layout: TrashLayout | None
     usable: bool
     problem: str = ""
-    #: True when the ONLY thing wrong is that the directory has not been created
-    #: yet. Carried as a typed field rather than left for a caller to recognise
-    #: in ``problem``, because branching on a sentence is how two readers come to
-    #: disagree about what it said.
-    #:
-    #: IT EXISTS FOR THE ASYMMETRY BETWEEN THIS MODULE'S TWO CALLERS. The
-    #: deletion pass probes with ``create=True`` and a volume nobody has trashed
-    #: anything on therefore works. Doctor probes with ``create=False`` so its
-    #: check cannot pass by having run, and without this field it read that same
-    #: volume as a failure and told a person deletion would refuse on a machine
-    #: where it would succeed. Absent and unwritable are two states, and only one
-    #: of them is a fault.
+    #: True when the ONLY fault is a directory not created yet. Doctor probes with
+    #: ``create=False``, and without this read a volume deletion would serve as a
+    #: failure. Typed, so nobody branches on the sentence.
     absent: bool = False
 
 
 def volume_root(path: Path | str) -> Path:
-    """The mount point the given path sits on, found by device number.
+    """The mount point the given path sits on, walked up by device number (R1).
 
-    WALKED RATHER THAN NAMED. Every platform spells its mount root differently
-    and several spell it more than one way, so a function that knew the names
-    would be a function that is wrong on the next platform and, worse, wrong on a
-    nested mount on this one. Walking up while the device number stays the same
-    finds the real boundary on any platform with no list to maintain (R1).
-
-    The walk starts at the nearest existing ancestor, so this answers for a file
-    that is about to be created as readily as for one that is there.
+    No list of mount names, so nested mounts and other platforms work. Starts at
+    the nearest existing ancestor, so a file about to be created is answered too.
     """
     current = Path(path)
     while not current.exists() and current != current.parent:
@@ -175,10 +118,7 @@ def volume_root(path: Path | str) -> Path:
 
 
 def _xdg_data_home(home: Path) -> Path:
-    override = os.environ.get(_XDG_DATA_HOME)
-    if override:
-        return Path(override)
-    return home.joinpath(*_XDG_DATA_FALLBACK)
+    return Path(os.environ.get(_XDG_DATA_HOME) or home.joinpath(*_XDG_DATA_FALLBACK))
 
 
 def layout_for(
@@ -190,15 +130,10 @@ def layout_for(
 ) -> TrashLayout:
     """Where a file at ``path`` belongs when it is trashed, on this platform.
 
-    The home volume and every other volume are different answers, which is not an
-    optimization: on the home volume the desktop's own Trash is the one the user
-    already knows how to open, and a per-volume directory beside it would be a
-    second trash only this product knows about. On any other volume there is no
-    home trash to use, because using it would make the move a cross-device copy.
-
-    ``home``, ``uid`` and ``platform`` are parameters so that both branches are
-    reachable from one machine. A platform branch that can only run on the
-    platform it is for is a branch that ships untested.
+    On the home volume the desktop's own Trash, which the user knows how to
+    open; elsewhere the volume's, since the home one would mean a cross device
+    copy. ``home``, ``uid`` and ``platform`` are parameters so every branch runs
+    on one machine.
     """
     resolved_home = Path(home) if home is not None else Path.home()
     resolved_uid = uid if uid is not None else (os.getuid() if hasattr(os, "getuid") else 0)
@@ -207,8 +142,8 @@ def layout_for(
     if platform == "darwin":
         if on_home_volume:
             root = resolved_home / _MACOS_HOME_TRASH
-            return TrashLayout(root=root, files=root)
-        root = volume_root(path) / _MACOS_VOLUME_TRASH / str(resolved_uid)
+        else:
+            root = volume_root(path) / _MACOS_VOLUME_TRASH / str(resolved_uid)
         return TrashLayout(root=root, files=root)
 
     if on_home_volume:
@@ -218,10 +153,8 @@ def layout_for(
     return TrashLayout(root=root, files=root / _XDG_FILES, info=root / _XDG_INFO)
 
 
-#: The stat this module reads a device number through. A seam for the same reason
-#: the platform is one: the branch that matters most here is the one where the
-#: Trash turns out to be on ANOTHER filesystem, and a test cannot mount a second
-#: disk to reach it.
+#: The stat a device number is read through, so the Trash on ANOTHER filesystem
+#: is reachable without mounting a second disk.
 Stat = Callable[[str], object]
 
 
@@ -236,15 +169,9 @@ def probe(
 ) -> TrashStatus:
     """Answer whether a file at ``path`` could be trashed, WITHOUT trashing it.
 
-    This is what doctor calls, which is why it reports rather than raises: a
-    health check names every problem it found, and an exception names one. The
-    deletion pass calls :func:`assert_usable`, which is this plus a refusal.
-
-    ``create`` is on by default because the per-volume Trash is created on first
-    use by the desktop too, so a volume nobody has ever trashed anything on
-    legitimately has no directory yet and that is not a fault. It is a parameter
-    so doctor can ask the question without making the directory it is asking
-    about exist, which would make the check pass by having run.
+    Reports rather than raises, for doctor; the pass calls :func:`assert_usable`.
+    ``create`` makes a missing per volume Trash as the desktop would on first
+    use; doctor turns it off so its check cannot pass by having run.
     """
     layout = layout_for(path, home=home, uid=uid, platform=platform)
     target = layout.files
@@ -257,17 +184,12 @@ def probe(
             return TrashStatus(layout, False, f"{layout.root} could not be created: {exc}")
     if not target.is_dir():
         return TrashStatus(
-            layout,
-            False,
-            f"{target} is not a directory",
-            absent=not target.exists(),
+            layout, False, f"{target} is not a directory", absent=not target.exists()
         )
     if not os.access(target, os.W_OK | os.X_OK):
         return TrashStatus(layout, False, f"{target} is not writable by this account")
     try:
-        same_device = (
-            stat(str(target)).st_dev == stat(str(volume_root(path))).st_dev
-        )
+        same_device = stat(str(target)).st_dev == stat(str(volume_root(path))).st_dev
     except OSError as exc:  # pragma: no cover - the directory vanished mid-probe
         return TrashStatus(layout, False, f"{target} could not be inspected: {exc}")
     if not same_device:
@@ -278,6 +200,17 @@ def probe(
             f"file there would be a copy and a delete rather than a move",
         )
     return TrashStatus(layout, True)
+
+
+def _unavailable(message: str, scope: Scope, **detail: str) -> CratekitError:
+    return refuse(
+        "trash-unavailable",
+        message,
+        remedy=Remedy.RUN_DOCTOR,
+        scope=scope,
+        origin=("deletion.trash",),
+        detail=detail,
+    )
 
 
 def assert_usable(
@@ -291,28 +224,19 @@ def assert_usable(
     """Return the layout, or refuse. Called immediately before every move."""
     status = probe(path, home=home, uid=uid, platform=platform, stat=stat)
     if not status.usable or status.layout is None:
-        raise refuse(
-            "trash-unavailable",
-            f"the volume holding {path} has no usable Trash: {status.problem}. "
-            f"Deletion refuses rather than unlinking the file, because the move "
-            f"to the Trash is the only destructive act this product performs on "
-            f"a music file and an unlink has no undo",
-            remedy=Remedy.RUN_DOCTOR,
-            scope=Scope.RUN,
-            origin=("deletion.trash",),
-            detail={"path": str(path), "problem": status.problem},
+        raise _unavailable(
+            f"the volume holding {path} has no usable Trash: {status.problem}. Deletion refuses "
+            "rather than unlinking the file, because the move to the Trash is the only "
+            "destructive act this product performs on a music file and an unlink has no undo",
+            Scope.RUN,
+            path=str(path),
+            problem=status.problem,
         )
     return status.layout
 
 
 def _is_a_directory(directory: Path) -> bool:
-    """Whether the destination is still a directory this account can look at.
-
-    Asked only when a create has already failed, to decide whether the failure
-    was about the NAME or about the place it was going. It swallows the error
-    because the answer it owes is a boolean and the caller is already holding the
-    exception that matters.
-    """
+    """Whether the destination is still a directory this account can look at."""
     try:
         return directory.is_dir()
     except OSError:  # pragma: no cover - a path the account cannot even stat
@@ -320,143 +244,83 @@ def _is_a_directory(directory: Path) -> bool:
 
 
 def _free_name(directory: Path, name: str) -> Path:
-    """Claim an unused name in ``directory``, atomically, and return it.
+    """Claim an unused name in ``directory`` with an exclusive create, and return it.
 
-    The claim is an exclusive create rather than a "does it exist" test followed
-    by a rename. The test-then-act version has a window in it, and what falls
-    through that window is one trashed file silently replacing another, which is
-    the deletion mechanism destroying the copy it exists to preserve.
-
-    A NAME THE FILESYSTEM WILL NOT ACCEPT IS A FACT ABOUT THAT NAME. Numbering a
-    collision makes the name longer, so a file already at the length limit has no
-    numbered alternative, and the exclusive create comes back with a length error
-    rather than a collision. That refuses at ``Scope.ITEM``, like running out of
-    numbers does, because the next file's name is a different length and the
-    caller is entitled to keep going.
+    No test then act window, through which one trashed file would replace
+    another. A name the filesystem will not take (a numbered name past the
+    length limit) refuses at ``Scope.ITEM``, as running out of numbers does,
+    since the next file's name differs.
     """
     stem, dot, suffix = name.rpartition(".")
     for attempt in range(1, MAX_NAME_ATTEMPTS + 1):
         if attempt == 1:
             candidate = directory / name
         elif dot and stem:
-            # ``stem`` is empty for a dotfile-shaped name such as ``.flac``,
-            # where the whole name is the suffix. Numbering it through the
-            # extension branch produces " 2.flac", with a leading space and the
-            # original name nowhere in it.
+            # ``stem`` is empty for a name such as ``.flac``, numbered whole below.
             candidate = directory / f"{stem} {attempt}{dot}{suffix}"
         else:
             candidate = directory / f"{name} {attempt}"
         try:
-            handle = os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY, config.PRIVATE_FILE_MODE)
+            handle = os.open(
+                candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY, config.PRIVATE_FILE_MODE
+            )
         except FileExistsError:
             continue
         except OSError as exc:
             if exc.errno not in _NAME_REFUSED_BY_FILESYSTEM or not _is_a_directory(directory):
-                # Out of space, read only, no permission: every one of those is
-                # about the volume and the next file will meet it too, so it goes
-                # up as it came and the caller stops the run.
-                #
-                # THE DIRECTORY IS CHECKED BEFORE THE ERRNO IS BELIEVED, because
-                # the same two errno values can be facts about the DESTINATION
-                # rather than about the name: an over-long Trash path, or a
-                # directory the filesystem will not accept a create in at all.
-                # Attributing that to the name would report one item scoped skip
-                # per confirmed file, hundreds of them, each blaming a track,
-                # while the one true sentence about the Trash is never said.
+                # A fact about the volume, which the next file meets too, so it
+                # goes up as it came and the run stops. The directory is checked
+                # before the errno is believed: the same values can be about an
+                # over long Trash path, which would blame every track in turn.
                 raise
-            raise refuse(
-                "trash-unavailable",
-                f"the Trash at {directory} cannot hold a file named "
-                f"{candidate.name!r} ({exc}), so this one file has nowhere to "
-                f"land; nothing was moved for it",
-                remedy=Remedy.RUN_DOCTOR,
-                scope=Scope.ITEM,
-                origin=("deletion.trash",),
-                detail={"directory": str(directory), "name": candidate.name},
+            raise _unavailable(
+                f"the Trash at {directory} cannot hold a file named {candidate.name!r} ({exc}), so "
+                "this one file has nowhere to land; nothing was moved for it",
+                Scope.ITEM,
+                directory=str(directory),
+                name=candidate.name,
             ) from exc
         os.close(handle)
         return candidate
-    raise refuse(
-        "trash-unavailable",
+    raise _unavailable(
         f"the Trash at {directory} already holds {MAX_NAME_ATTEMPTS} files named "
         f"like {name!r}, so this move has nowhere to land",
-        remedy=Remedy.RUN_DOCTOR,
-        scope=Scope.ITEM,
-        origin=("deletion.trash",),
-        detail={"directory": str(directory), "name": name},
+        Scope.ITEM,
+        directory=str(directory),
+        name=name,
     )
 
 
-def move_to_trash(
-    path: Path | str,
-    *,
-    layout: TrashLayout,
-) -> Path:
-    """Move one file into the Trash and return where it landed.
+def move_to_trash(path: Path | str, *, layout: TrashLayout) -> Path:
+    """Move one file into the Trash with a RENAME and return where it landed.
 
-    A RENAME, never a copy. The device was proved equal by :func:`assert_usable`
-    before this was called, and the rename would fail loudly rather than silently
-    copying if that proof were wrong, which is the property that makes the check
-    a check rather than a comment.
-
-    The placeholder is removed on any failure. Leaving one behind would put an
-    empty file with a real track's name in the user's Trash, which is worse than
-    the failure itself: it looks exactly like the file that was supposed to be
-    there.
+    The device was proved equal by :func:`assert_usable`, and a wrong proof makes
+    the rename fail loudly. The placeholder is removed on any failure, since an
+    empty file with a track's name looks like the track.
     """
     source = Path(path)
     target = _free_name(layout.files, source.name)
     try:
         os.replace(source, target)
     except BaseException:
-        # The placeholder is ours and nothing else can have replaced it, because
-        # it was created with O_EXCL and nothing between then and here writes to
-        # this directory under this name.
-        try:
+        # The placeholder is ours: created with O_EXCL, and nothing since writes
+        # this name.
+        with contextlib.suppress(OSError):
             target.unlink()
-        except OSError:  # pragma: no cover - the placeholder was already gone
-            pass
         raise
     return target
 
 
 def recover(target: Path | str, original: Path | str) -> Path:
-    """Put a trashed file back. The undo, exercised by the suite rather than promised.
-
-    It exists because "the file is recoverable" is the whole justification for
-    trashing rather than deleting, and a claim nothing runs is a claim nobody has
-    checked. It refuses to overwrite, for the reason every other write here does.
-    """
+    """Put a trashed file back, refusing to overwrite. The undo, run by the suite."""
     destination = Path(original)
     if destination.exists():
-        raise refuse(
-            "trash-unavailable",
+        raise _unavailable(
             f"{destination} is occupied again, so restoring the trashed copy "
             f"would overwrite whatever is there now",
-            remedy=Remedy.RUN_DOCTOR,
-            scope=Scope.ITEM,
-            origin=("deletion.trash",),
-            detail={"original": str(destination), "trashed": str(target)},
+            Scope.ITEM,
+            original=str(destination),
+            trashed=str(target),
         )
     os.replace(Path(target), destination)
     return destination
-
-
-#: The probe signature doctor consumes, named so the check and this module cannot
-#: drift into two shapes for one question (U27 owns the check itself).
-Probe = Callable[..., TrashStatus]
-
-
-__all__ = [
-    "MAX_NAME_ATTEMPTS",
-    "Probe",
-    "Stat",
-    "TrashLayout",
-    "TrashStatus",
-    "assert_usable",
-    "layout_for",
-    "move_to_trash",
-    "probe",
-    "recover",
-    "volume_root",
-]

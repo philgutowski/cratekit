@@ -1,62 +1,25 @@
 """KTD21b: the database and the state coupled to it, captured as one matched set.
 
-The guarded writer already captures the database, the files the storage engine
-keeps beside it, and rekordbox's own legacy playlist file. That is the DATABASE
-half and it is complete. What it cannot do on its own is the other half: the
-registry, the watermarks, the tombstones, the declines and the active taxonomy
-template all describe the rows in that database, and a capture that takes one
-without the other produces a recovery point that is internally inconsistent. That
-inconsistency is the plan's top-ranked risk stated as a file layout.
+The registry, watermarks, tombstones, declines and taxonomy template describe
+the database's rows, so a capture taking one half without the other is an
+inconsistent recovery point. This is the layer above ``rb_writer.snapshot_db``:
+the database half delegated to the writer, the coupled half copied from
+``config.snapshot_sources``, one integrity verdict, one flush to the disk
+before the manifest (U272), and one manifest of what was taken and what was
+absent. A capture that fails its check or its flush is recorded unverified.
 
-So this module is the layer ABOVE ``rb_writer.snapshot_db`` rather than a second
-copy of it. It composes:
+THE CAPTURE SET IS DERIVED AND IS NEVER LISTED HERE. A companion list beside
+the inventory drifts into a database copied without its outstanding log;
+``tests/test_config.py`` asserts this source spells no file suffix.
 
-1. the database half, delegated verbatim to the writer, because duplicating a
-   copier that already handles the engine checkpoint would give the product two
-   answers to one question;
-2. the coupled half, copied from whatever ``config.snapshot_sources`` declares;
-3. one verification of the captured database, whose verdict is part of the
-   returned record because no session may commit behind a capture that did not
-   verify;
-4. one flush of everything captured to the disk, the full flush where the
-   platform has one, before the manifest is written (U272), because the check
-   reads the copy back through the page cache and passes whether or not the
-   bytes reached the drive;
-5. one manifest recording exactly what was taken, because a restore has to know
-   what it may replace and, just as importantly, what was legitimately absent.
-   A capture whose flush failed is recorded as not verified and refuses.
+ABSENCE IS NORMAL, NOT AN ERROR, and the manifest records it, because "not
+captured" and "captured empty" call for different restores.
 
-THE CAPTURE SET IS DERIVED AND IS NEVER LISTED HERE. Every path comes from the
-state inventory. A companion list maintained beside that inventory is the drift
-the inventory exists to abolish, and the specific cost of that drift is a
-database copied without the committed transactions the engine is still holding
-outside the main file: a copy that opens cleanly and is quietly behind, which is
-the worst shape a backup can take. There is deliberately no file-suffix literal
-anywhere in this module, and ``tests/test_config.py`` asserts that by reading
-this source.
+Retention is U32's. The capacity refusals live here because this function
+writes: :func:`assert_room_for_capture`, :func:`assert_room_for` (also used by
+restore) and :func:`assert_room_for_check` for the check's copy (R-1677).
 
-ABSENCE IS NORMAL, NOT AN ERROR. A database that was just folded in by the
-engine has no companion files beside it. A library that has never run a sweep
-has no coupled directory yet. Every one of those paths is copied only if it is
-there, and the manifest records which were and which were not, because "this was
-not captured" and "this was captured empty" call for different restores.
-
-RETENTION BELONGS TO U32 AND CAPACITY ARRIVED WITH IT. Nothing here prunes or
-bounds; ``rb_writer.prune_snapshots`` already exists, ``core.restore`` gives it
-the count, age and byte bounds R30 asks for, and this module's job is to make
-what it spares real. What DID land here is the capacity refusal, and it landed
-here rather than beside the retention policy because this is the function that
-writes: a check placed anywhere else is a check some future caller reaches the
-copy without. See :func:`assert_room_for_capture`, and :func:`assert_room_for`
-underneath it, which the restore asks the same question of the library volume
-because a restore copies the same bytes back the other way.
-The integrity check's throwaway copy is measured the same way on the
-temporary volume it lands on, :func:`assert_room_for_check` (R-1677), so a
-full temporary volume refuses as that rather than as a capture that failed
-its check.
-
-LAYER: infrastructure. It reads configuration, does input and output, and
-carries remediation TOKENS rather than any text a user types (D2).
+LAYER: infrastructure, carrying remediation TOKENS rather than user text (D2).
 """
 
 from __future__ import annotations
@@ -78,52 +41,29 @@ from cratekit.core.exit_codes import Remedy
 
 logger = logging.getLogger(__name__)
 
-#: The record written inside every capture directory. A capture with no manifest
-#: is a directory of files whose provenance a restore has to guess at.
+#: The record inside every capture directory; without it provenance is a guess.
 MANIFEST_NAME = "capture.json"
 
-#: Bumped only when the manifest's shape changes incompatibly. A manifest written
-#: by a later build is not read: guessing at a shape this build does not know is
-#: how a restore replaces the wrong set of files.
+#: Bumped only on an incompatible change. A later shape is refused, not guessed.
 MANIFEST_SCHEMA_VERSION = 1
 
-#: The state entry whose path is the database. Named once so this module and the
-#: writer cannot disagree about which entry carries the companion declaration.
+#: The state entry whose path is the database, named once so the writer agrees.
 DATABASE_KEY = "rekordbox_db"
 
-#: The state entry that holds captures. Named once for the same reason.
+#: The state entry that holds captures.
 STORE_KEY = "snapshots"
 
-#: Verifies one captured database file. A seam, so the battery can drive both
-#: verdicts without a real rekordbox database, and so the verdict has exactly one
-#: producer rather than one per caller.
+#: Verifies one captured database file, a seam so tests drive both verdicts.
 Verifier = Callable[[Path], bool]
 
 
 def new_stamp(now: datetime | None = None) -> str:
     """A sortable, filesystem-safe directory name for one capture.
 
-    The random tail exists because two captures can begin inside the same second
-    on a machine running a queued job beside an interactive one, and a collision
-    would have the second capture write into the first one's directory.
-
-    SIXTY-FOUR BITS OF TAIL, NOT SIXTEEN, and the widening is not defensive
-    rounding. This string names more than a capture directory: ``restore``
-    derives one staged-companion directory per ATTEMPT from it, and a restore
-    repeated after a failure runs several attempts back to back, so same-second
-    stamps are the ordinary case there rather than the rare one. At sixteen bits
-    a run of eight attempts collides about once in every two thousand runs, and
-    the loss when it does is precisely the one the staging exists to prevent: the
-    second attempt's ``os.replace`` puts its write-ahead log over the first
-    attempt's, and those bytes are in no capture. Eight bytes of tail costs twelve
-    characters in a directory name and moves that number below any rate worth
-    reasoning about. ``tests/test_snapshot.py`` pins the width.
-    ``cli.output.new_run_id`` carries the same sixty four bits since U235, for
-    the same reason, so a change to either width is a change to read both.
-
-    No colon and no space, unlike the run identifier, because this string becomes
-    a directory name on whatever filesystem the user's library lives on and a
-    colon is not a legal character on all of them.
+    Sixty-four random bits, because restore derives one staging directory per
+    attempt from it and same-second attempts are ordinary; at sixteen bits a
+    collision overwrites an earlier attempt's log. ``cli.output.new_run_id``
+    carries the same width (U235). No colon or space, since it is a directory name.
     """
     moment = now or datetime.now(timezone.utc)
     return f"{moment.strftime('%Y-%m-%dT%H%M%SZ')}-{secrets.token_hex(8)}"
@@ -133,10 +73,8 @@ def new_stamp(now: datetime | None = None) -> str:
 class CapturedSource:
     """One declared source and what became of it.
 
-    ``captured`` is None when the source was simply not there, which is a normal
-    outcome rather than a failure. Recording the ABSENCE explicitly is what lets
-    a restore tell "there was nothing to put back" from "we never looked", and
-    those two call for opposite behaviour.
+    ``captured`` is None when the source was absent, recorded so a restore can
+    tell "nothing to put back" from "never looked".
     """
 
     source: Path
@@ -168,19 +106,9 @@ class CapturedSource:
 class Capture:
     """One matched set on disk, and whether anything may commit behind it.
 
-    ``integrity_verified`` is carried rather than re-derived on demand. The check
-    runs once, immediately after the copy, against the bytes that were actually
-    written; asking again later would answer about a file that has had time to
-    change, and a gate whose input can move between the check and its use is not
-    a gate.
-
-    It is true only when the check passed AND every file and directory of the
-    capture was then flushed to the disk (U272). A flush that failed before the
-    manifest records it false, so a manifest that says verified is never beside
-    a copy that may still be only in memory. A failure of the flush AFTER the
-    manifest rewrites it false where the disk still takes the write; where it
-    does not, the manifest says verified about a copy that was flushed, and the
-    capture refuses all the same, so nothing commits behind it.
+    ``integrity_verified`` is carried, not re-derived, because the check ran on
+    the bytes just written. It is true only when the check passed and the whole
+    capture was then flushed to the disk (U272).
     """
 
     stamp: str
@@ -192,11 +120,7 @@ class Capture:
 
     @property
     def verified(self) -> bool:
-        """True only when a database was captured AND it passed its check.
-
-        Both halves, because a capture with no database at all would otherwise
-        report as trivially sound while protecting nothing.
-        """
+        """True only when a database was captured AND it passed its check."""
         return self.database is not None and self.integrity_verified
 
     def to_json(self) -> dict[str, Any]:
@@ -242,10 +166,7 @@ def store_root(cfg: config.Config) -> Path:
 def database_paths(cfg: config.Config) -> tuple[Path, ...]:
     """The database and every file the storage engine keeps beside it.
 
-    Composed by the inventory, never spelled here. This is the exact set
-    ``rb_writer.snapshot_db`` already copies, and it is derived rather than
-    restated so that "what the writer took" and "what this module skips" cannot
-    drift apart into a file captured twice or a file captured never.
+    Derived from the inventory, the same set ``rb_writer.snapshot_db`` copies.
     """
     return (config.state_path(DATABASE_KEY, cfg), *config.sidecar_paths(DATABASE_KEY, cfg))
 
@@ -253,15 +174,8 @@ def database_paths(cfg: config.Config) -> tuple[Path, ...]:
 def _harden(root: Path) -> None:
     """Give every file and directory under ``root`` an explicit private mode.
 
-    DERIVED BY WALKING, never by listing what was copied (P3). The copier
-    preserves each source file's own permission bits, and the rekordbox database
-    is world-readable on a normal install, so a capture that inherited those
-    modes would be a world-readable copy of the user's whole library state.
-    Walking also covers the files the writer copied, which a hand-list would miss
-    the moment the writer learns to copy a fifth thing.
-
-    Guarded on the platform having POSIX modes at all, so a filesystem without
-    them degrades rather than crashing (P1).
+    Derived by walking (P3), because the copier preserves source modes and the
+    database is world readable on a normal install. Skipped without POSIX modes (P1).
     """
     if not hasattr(os, "chmod"):  # pragma: no cover - every supported platform has it
         return
@@ -275,12 +189,7 @@ def _harden(root: Path) -> None:
 
 
 def _chmod(path: Path, mode: int) -> None:
-    """Best effort, and deliberately not fatal.
-
-    A capture whose mode could not be tightened is still a capture, and refusing
-    here would trade a permissions weakness for having no recovery point at all,
-    which is the worse of the two.
-    """
+    """Best effort, because a capture with loose modes beats no capture."""
     try:
         os.chmod(path, mode)
     except OSError as exc:
@@ -290,11 +199,8 @@ def _chmod(path: Path, mode: int) -> None:
 def _refuse_if_nested(source: Path, store: Path) -> None:
     """Refuse when a declared source and the capture store contain each other.
 
-    The schema already forbids this and ``tests/test_config.py`` asserts it. It
-    is checked again HERE, at the moment of copying, because a derivation is only
-    as good as its coverage of the real set (P4) and the failure it prevents is
-    unbounded: a store inside a source means every capture contains every capture
-    before it, so the tenth one costs the sum of the first nine.
+    Rechecked at copy time (P4), because a nested store makes every capture
+    contain every earlier one.
     """
     if source == store or store in source.parents or source in store.parents:
         raise refuse(
@@ -319,26 +225,15 @@ def _copy(source: Path, destination: Path) -> CapturedSource:
 
 
 def _raise_walk_error(error: OSError) -> None:
-    """``os.walk`` reports an unreadable directory to this and otherwise skips it.
-
-    A skipped directory is a directory not flushed, so it raises.
-    """
+    """Raise what ``os.walk`` would skip, because a skipped directory is not flushed."""
     raise error
 
 
 def _flush(capture_root: Path, store: Path) -> None:
     """Put everything a capture holds on the disk, deepest first, then its store.
 
-    DERIVED BY WALKING, as :func:`_harden` is, never by listing what was copied
-    (P3): the database the writer took, the files the engine keeps beside it,
-    rekordbox's legacy playlist file and the coupled half, and whatever the
-    writer learns to copy next. Each file is flushed before the directory that
-    holds it, every directory before its parent, and the store last, because
-    the capture directory is an entry in the store.
-
-    Raises the first :class:`OSError` a flush or the walk meets. Nothing is
-    skipped, because the caller records a verdict on the strength of this
-    returning (U272).
+    Derived by walking (P3). Raises the first :class:`OSError`, because the
+    caller records a verdict on the strength of this returning (U272).
     """
     for current, _directories, files in os.walk(
         capture_root, topdown=False, onerror=_raise_walk_error
@@ -359,9 +254,7 @@ def _write_manifest(record: Capture, manifest: Path) -> None:
 def _record_unverified(record: Capture, manifest: Path) -> None:
     """Write the capture's manifest saying NOT verified, before any refusal of it.
 
-    So a capture that is refused is never on disk as one anything may commit
-    behind. If even this write fails the refusal still stands: it is the guard,
-    and a capture with no manifest is one a restore already refuses to use.
+    A failed write still refuses, since a capture with no manifest is unusable.
     """
     unverified = Capture(
         stamp=record.stamp,
@@ -379,13 +272,7 @@ def _record_unverified(record: Capture, manifest: Path) -> None:
 
 
 def _not_flushed(record: Capture, manifest: Path, exc: OSError) -> CratekitError:
-    """Record the capture as NOT verified, then the refusal the caller raises.
-
-    The manifest is rewritten unverified first, so a capture whose flush failed
-    is never on disk as one anything may commit behind. If even that write
-    fails, the refusal still stands: it is the guard, and a capture with no
-    manifest is one a restore already refuses to use.
-    """
+    """Record the capture as NOT verified, then return the refusal to raise."""
     _record_unverified(record, manifest)
     return refuse(
         "snapshot-integrity-failed",
@@ -403,19 +290,13 @@ def _not_flushed(record: Capture, manifest: Path, exc: OSError) -> CratekitError
     )
 
 
-#: What a capture's walk records of one entry: a file's size and modification
-#: time, or None for a directory, whose own times move whenever an entry is
-#: added inside it and so say nothing about what it held.
+#: A file's size and modification time, or None for a directory, whose times
+#: move with its entries.
 _Identity = tuple[int, int] | None
 
 
 def _walked(capture_root: Path) -> dict[Path, _Identity]:
-    """Every file and directory under a capture, with what identifies it.
-
-    DERIVED BY WALKING, as :func:`_harden` and :func:`_flush` are (P3), so it
-    covers what the writer copied, the coupled half and whatever is copied
-    next without a list. Raises the first :class:`OSError` the walk meets.
-    """
+    """Every file and directory under a capture, derived by walking (P3)."""
     found: dict[Path, _Identity] = {}
     for current, directories, files in os.walk(capture_root, onerror=_raise_walk_error):
         here = Path(current)
@@ -430,15 +311,9 @@ def _walked(capture_root: Path) -> dict[Path, _Identity]:
 def _changed_by_the_check(before: Mapping[Path, _Identity], capture_root: Path) -> list[str]:
     """What the check removed or rewrote of the capture it was asked about.
 
-    THE CHECK READS, AND A CAPTURE IS WHAT WAS COPIED (R-1665). The real check
-    once opened the capture itself, and closing its handle folded the log into
-    the captured database and deleted the captured log and its index, which
-    the record already listed; the restore then refused the capture as missing
-    them. So a verdict counts only when everything the copy left is still
-    there as it was. Something the check ADDS is not asked about: it is in no
-    record, a restore never reads it, and the flush after the check covers it.
-    A walk that cannot finish answers as a change, since what it could not
-    read is what it cannot vouch for.
+    THE CHECK READS, AND A CAPTURE IS WHAT WAS COPIED (R-1665). A verdict counts
+    only when the copy is unchanged. Additions are ignored, being in no record,
+    and a walk that cannot finish answers as a change.
     """
     try:
         after = _walked(capture_root)
@@ -456,111 +331,43 @@ def _changed_by_the_check(before: Mapping[Path, _Identity], capture_root: Path) 
 def _verify(database: Path, verifier: Verifier | None) -> bool:
     """Run the integrity check, failing CLOSED on anything unexpected.
 
-    The real check is asked to raise :class:`rb_writer.IntegrityCheckCopyFailed`
-    when its throwaway copy cannot be made, and that alone passes through, for
+    Only :class:`rb_writer.IntegrityCheckCopyFailed` passes through, for
     :func:`capture` to name (R-1677).
-
-    A verdict this module cannot produce is treated as "did not verify", because
-    the verdict gates a commit and the safe direction for an unknown is to refuse
-    it. Reporting True on an unreadable answer would put a session behind a
-    capture nobody has established is sound, which is the one thing the check
-    exists to prevent.
     """
     try:
         if verifier is None:
             return bool(rb_writer.integrity_ok(database, raise_copy_failure=True))
         return bool(verifier(database))
     except rb_writer.IntegrityCheckCopyFailed:
-        # No verdict at all, which the capture names rather than folding into a
-        # failed one (R-1677); it still records the capture unverified.
+        # No verdict at all, which the capture names (R-1677).
         raise
     except Exception as exc:  # noqa: BLE001 - a check that cannot answer has not passed
         logger.warning("the capture integrity check could not run, so it did not pass: %s", exc)
         return False
 
 
-#: How much more room than the capture needs must be free before one is taken.
-#:
-#: A copy is not the only thing that lands: the manifest goes in beside it, the
-#: engine checkpoint can grow the database file just before it is read, and a
-#: filesystem driven to zero free bytes fails in ways that have nothing to do
-#: with this write and are much harder to read afterwards. Ten percent is small
-#: enough that it never refuses a capture a disk could genuinely hold.
+#: How much more room than the capture needs must be free before one is taken,
+#: for the manifest, checkpoint growth and a filesystem never driven to zero.
 CAPACITY_HEADROOM = 1.10
 
 
-#: What one filesystem block costs when the platform will not say. Used only as
-#: the floor for a file whose ``st_blocks`` is unavailable; every POSIX platform
-#: this product supports reports it.
-#:
-#: IT IS OBSERVABLE ON EXACTLY ONE SHAPE, and it is worth saying which, because
-#: the value survived being changed from 4096 to 1 with nothing red and that
-#: looked like a constant nobody tests. :func:`_allocated_file` returns
-#: ``max(st_blocks * 512, ceil(st_size / ALLOCATION_UNIT) * ALLOCATION_UNIT)``,
-#: and for an ordinary file on a filesystem whose block size is also 4096 those
-#: two expressions agree, so the rounding term is invisible. It is the larger of
-#: the two only for a SPARSE file, whose ``st_blocks`` under-reports what the
-#: destination copy will occupy, and that is the case the max exists for.
-#: ``tests/test_snapshot.py`` pins it there, on a sparse file whose length is not
-#: a multiple of the unit, which is the only shape where the two candidate
-#: answers differ.
+#: The block size floor for a file whose ``st_blocks`` is unavailable. It shows
+#: only on a sparse file, where ``tests/test_snapshot.py`` pins it.
 ALLOCATION_UNIT = 4096
 
-#: What one directory entry costs beyond the blocks its file occupies. A copy of
-#: a directory tree grows the destination's own directory structure as well as
-#: allocating the files, and on a copy-on-write filesystem that growth is not
-#: small. MEASURED rather than guessed; see :func:`_allocated_size`.
+#: What one directory entry costs beyond its blocks; see :func:`_allocated_size`.
 DIRECTORY_ENTRY_OVERHEAD = 2048
 
 
 def _allocated_size(path: Path, *, entry_overhead: int = DIRECTORY_ENTRY_OVERHEAD) -> int:
     """What ``path`` costs a filesystem, not what its bytes add up to.
 
-    THE DIFFERENCE IS TWO ORDERS OF MAGNITUDE ON THE SHAPE THIS PRODUCT ACTUALLY
-    CAPTURES, which is why the apparent size is not used. A filesystem allocates
-    whole blocks and grows its own directory structure, so a tree of many small
-    documents costs far more than the sum of its file lengths. ``review_queue``
-    and ``label_outcomes`` are both directories of small documents, and both are
-    captured whole. Measured on the development machine:
-
-    ======================  ==========  ===========  ==================
-    coupled contents        ``st_size``  allocated   real free-space
-    ======================  ==========  ===========  ==================
-    10 MiB database only    10,485,760  10,489,856   10,489,856
-    2,000 items, 120 bytes     241,024   8,200,192    9,617,408
-    20,000 items, 60 bytes   1,201,024  81,928,192  112,484,352
-    ======================  ==========  ===========  ==================
-
-    The middle column is ``st_blocks * 512`` and it accounts for the blocks. The
-    gap between it and the last column is the destination's own directory growth,
-    which is why every entry also carries :data:`DIRECTORY_ENTRY_OVERHEAD`. With
-    both terms the estimate is above the measured cost in all three rows, which
-    is the direction that matters: an over-estimate refuses a capture that would
-    have just fitted, and an under-estimate writes the truncated capture this
-    exists to prevent.
-
-    ``entry_overhead`` IS A PARAMETER BECAUSE THE THREE CALLERS ANSWER DIFFERENTLY,
-    and the split is by DIRECTION rather than by side. A capture charges it
-    (:func:`assert_room_for_capture`), and so does the incoming half of a restore
-    (:func:`incoming_bytes`), because both write a tree of entries that did not
-    exist a moment ago: a staged copy beside its target is a fresh allocation of
-    directory structure exactly as a capture is. Only :func:`freed_bytes` passes
-    zero, because it is counting what a step GIVES BACK, and over-counting that
-    is how an estimate ends up below the real peak.
-
-    An earlier version of this paragraph said the whole restore side charged
-    nothing, on the argument that a restore writes back over a tree of nearly the
-    same shape. That argument was measured wrong: the staged sibling is a second
-    tree, not an overwrite of the first, and the version that charged nothing
-    passed a preflight and then died with ENOSPC part way through a coupled copy.
-    :func:`incoming_bytes` says the same thing in one line beside its own code, so
-    the two accounts agree.
-
-    Absence is normal rather than exceptional, exactly as it is everywhere else
-    in this module: a database just folded in by the engine has no companion
-    files, and a library that has never run a sweep has no coupled directory yet.
-    A missing source contributes nothing, because it will contribute nothing to
-    the copy.
+    A tree of small documents allocates up to two orders of magnitude more than
+    its apparent size, measured on the queue directories, so each entry is
+    charged blocks plus :data:`DIRECTORY_ENTRY_OVERHEAD` and the estimate errs
+    high. A capture and the incoming half of a restore charge the overhead;
+    only :func:`freed_bytes` passes zero, because over-counting what is given
+    back puts the estimate below the real peak. A missing source counts zero.
     """
     try:
         if path.is_dir():
@@ -579,9 +386,7 @@ def _allocated_size(path: Path, *, entry_overhead: int = DIRECTORY_ENTRY_OVERHEA
 def _allocated_file(path: Path, *, entry_overhead: int = DIRECTORY_ENTRY_OVERHEAD) -> int:
     """One file's cost: its blocks, or its rounded-up length, whichever is larger.
 
-    The larger of the two, because ``st_blocks`` under-reports a SPARSE file and a
-    copy of a sparse file is not sparse at the destination unless the copier was
-    asked to make it so, and this module's copier is not.
+    ``st_blocks`` under-reports a sparse file, and the copy is not sparse.
     """
     try:
         stat_result = path.stat()
@@ -596,14 +401,7 @@ def _allocated_file(path: Path, *, entry_overhead: int = DIRECTORY_ENTRY_OVERHEA
 def _free_bytes(root: Path) -> int | None:
     """Free space on the filesystem that will hold ``root``, or None if unknowable.
 
-    The capture directory does not exist yet, and neither may its parent, so the
-    question is asked of the nearest ancestor that DOES exist. Asking about a
-    path that is not there answers about nothing.
-
-    None is not zero, and it is NOT a pass either. See
-    :func:`assert_room_for`: every supported platform answers this, so the only
-    way to reach None is a path that is disappearing or unreadable underneath the
-    question, and that is a reason to refuse rather than to proceed.
+    Asked of the nearest existing ancestor. None refuses in :func:`assert_room_for`.
     """
     probe = root
     while True:
@@ -626,26 +424,9 @@ def assert_room_for_capture(
 ) -> int:
     """Refuse BEFORE a capture is taken when the store cannot hold one.
 
-    Returns the estimate, so a caller that wants to report it does not have to
-    compute it a second way.
-
-    THE REFUSAL HAS TO COME FIRST, and that is the whole property. A copy that
-    runs out of room part way leaves a truncated database inside a directory that
-    looks like a capture, and the session then commits behind it. The integrity
-    check would catch that particular file, but only after the partial write has
-    already consumed the last of the disk and only if the truncation happens to
-    land somewhere the check reads. Refusing up front costs one stat per source
-    and leaves the store byte for byte as it was found.
-
-    THE ESTIMATE IS DERIVED FROM THE SAME DECLARATION THE COPY USES. It walks
-    ``database_paths`` and ``config.snapshot_sources``, which is exactly what
-    :func:`capture` copies, so an entry added to the inventory is measured
-    without anybody remembering to add it here (P4). It is measured in ALLOCATED
-    bytes rather than in apparent ones, for the reason :func:`_allocated_size`
-    states at length with the measurements behind it: the apparent size of a tree
-    of small documents under-reports what the copy costs by up to two orders of
-    magnitude, and both of this product's queue directories are exactly that
-    shape.
+    Returns the estimate. A copy that runs out of room leaves a truncated
+    capture to commit behind. The estimate walks what :func:`capture` copies
+    (P4), in allocated bytes.
     """
     destination_root = Path(root) if root is not None else store_root(cfg)
     sources = {*database_paths(cfg), *config.snapshot_sources(cfg)}
@@ -675,18 +456,8 @@ def assert_room_for(
 ) -> int:
     """Refuse when ``destination``'s filesystem cannot hold ``needed`` bytes.
 
-    Split out of :func:`assert_room_for_capture` so a RESTORE can ask the same
-    question of the library volume. It had only one call site, inside the capture
-    function, so a restore that copies a whole database and coupled tree back onto
-    the library checked nothing about free space at all; and a restore is the verb
-    people reach for when a disk is already misbehaving.
-
-    A FILESYSTEM THAT WILL NOT REPORT ITS FREE SPACE REFUSES. That is the reverse
-    of what this used to do, and the reverse is right. Every platform this product
-    supports answers ``statvfs``, so the only way to get no answer is a path that
-    is disappearing or unreadable underneath the question. Reading that as
-    permission to proceed is reading the one signal that something is wrong as the
-    all-clear.
+    Shared with restore. A filesystem that will not report its free space
+    refuses, because on a supported platform silence means an unreadable path.
     """
     where = Path(destination)
     available = free_bytes if free_bytes is not None else _free_bytes(where)
@@ -723,18 +494,15 @@ def assert_room_for(
     )
 
 
-#: What a person does about a throwaway copy with no room (R-1677), refused as
-#: ``snapshot-check-temp-full``. Steps rather than a remedy token, for the reason
-#: ``snapshot-store-full`` gives in the cause registry: freeing disk is not a
-#: command this product runs.
+#: Steps for a throwaway copy with no room (R-1677), since freeing disk is not
+#: a command this product runs.
 CHECK_ROOM_STEPS: tuple[str, ...] = (
     "free space on the volume holding the temporary directory named above, or "
     "set TMPDIR (TEMP on Windows) to a directory on a volume with room, and run "
     "this again",
 )
 
-#: The operating system's answers that mean a volume had no room: no space left,
-#: and a quota reached where the platform has quotas.
+#: The operating system's answers that mean a volume had no room.
 _NO_ROOM_ERRNOS = frozenset(
     code for code in (errno.ENOSPC, getattr(errno, "EDQUOT", None)) if code is not None
 )
@@ -751,9 +519,7 @@ def _device(path: Path) -> int:
 def _same_volume(first: Path, second: Path) -> bool:
     """Whether two paths, made or not yet made, land on one filesystem.
 
-    UNKNOWN COUNTS AS SHARED, the direction that asks for more room: a volume
-    whose device cannot be read is one whose free space cannot be read either,
-    and that already refuses.
+    Unknown counts as shared, the direction that asks for more room.
     """
     try:
         return _device(Path(first)) == _device(Path(second))
@@ -770,25 +536,10 @@ def assert_room_for_check(
 ) -> int:
     """Refuse BEFORE a capture when the integrity check's throwaway copy has no room.
 
-    Returns the estimate. Since R-1665 the check never opens the capture: it
-    copies the database's file set into the system's temporary directory
-    (:func:`rb_writer.disposable_root`) and checks the copy. Nothing measured
-    that room, and a temporary volume too small for the copy made the check
-    answer False, so the capture was recorded unverified and every guarded
-    write refused it as one that failed its integrity check, with the remedy
-    to report a defect (R-1677). Measured here instead, beside
-    :func:`assert_room_for_capture` and before anything is written, under its
-    own slug naming the temporary volume.
-
-    THE FILE SET IS THE ONE THE CHECK COPIES, :func:`rb_writer.file_set`, in
-    allocated bytes with the same headroom as the capture. ``database`` is the
-    live database the capture copies: the throwaway is a copy of that copy.
-
-    ``store`` IS THE CAPTURE'S OWN DESTINATION AND WHAT IT NEEDS THERE. When
-    the temporary directory sits on the same volume, both land on it, the
-    capture first and its throwaway after, so the room asked of it is for the
-    two together: room for either alone, which two separate questions would
-    each find, is not room for both.
+    Returns the estimate. The check copies :func:`rb_writer.file_set` to the
+    temporary directory (R-1665), and a full temporary volume used to read as a
+    failed check (R-1677). When ``store`` shares that volume, room is asked for
+    the capture and the throwaway together.
     """
     try:
         scratch = rb_writer.disposable_root()
@@ -852,12 +603,8 @@ def check_had_no_room(
 ) -> CratekitError | None:
     """The refusal for a throwaway copy that ran out of room, or None for any other failure.
 
-    For the case the measure cannot rule out: the temporary volume filled
-    between the measure and the copy, or the copy took more than its estimate.
-    Only no space and a quota reached are read as no room; any other copy
-    failure is left to its caller, which records the database unverified as
-    before. The check never ran, so this says nothing about the database
-    either way, and the caller still never records it verified.
+    For a volume that filled after the measure. Only no space and a quota count;
+    the database is still never recorded verified.
     """
     code = getattr(failed.error, "errno", None)
     if code not in _NO_ROOM_ERRNOS:
@@ -880,41 +627,16 @@ def check_had_no_room(
 
 
 def incoming_bytes(source: Path) -> int:
-    """What a copy of ``source`` will ALLOCATE at the destination.
-
-    Charged WITH the directory-entry overhead, because a staged copy is a tree of
-    entries that did not exist a moment ago, exactly as a capture is.
-    """
+    """What a copy of ``source`` will ALLOCATE, charged with the entry overhead."""
     return _allocated_size(source, entry_overhead=DIRECTORY_ENTRY_OVERHEAD)
 
 
 def freed_bytes(target: Path) -> int:
     """What removing ``target`` will give back, counted conservatively.
 
-    Charged WITHOUT the entry overhead, which is the opposite choice from
-    :func:`incoming_bytes` and is deliberate: over-counting what a step gives back
-    is how an estimate ends up below the real peak, and the whole point of the
-    estimate is to be above it. Directory structure is also not reliably returned
-    to the filesystem when a tree is removed.
-
-    IT IS WORTH 2,048 BYTES, NOT A HEADLINE, and stating the real magnitude is
-    the honest version of the paragraph above. What a step gives back enters
-    ``restore.space_peak_bytes`` only through the running total, and the running
-    total only raises the peak at a LATER step; on this product's plans the
-    largest step is the coupled tree and it is last, so the only outgoing that
-    ever reaches a peak is the database file's, a single entry. Measured on the
-    branch's own shapes: an 8 MiB database with a 4 MiB log and 2,000 queue items
-    estimates 16,490,496 with this choice and 16,488,448 with the overhead charged
-    on both sides, and at 20,000 items the two answers are 127,082,496 and
-    127,080,448. One directory entry, either way.
-
-    IT IS KEPT ANYWAY, AND IT IS TESTED. Kept because the argument does not
-    depend on the size of the term: an estimate that is under is a preflight that
-    passes and a restore that dies part way through, and the cost of being over
-    by one entry is nothing. Tested because "too small to matter" and "wrong" are
-    indistinguishable from a green suite, so ``tests/test_restore.py`` asserts the
-    exact peak of an ordinary plan as a literal, which is the one assertion shape
-    that can see a 2,048-byte difference at all.
+    Charged without the entry overhead, because over-counting what is given back
+    puts the estimate below the real peak. The difference is one entry, and
+    ``tests/test_restore.py`` pins the exact peak.
     """
     return _allocated_size(target, entry_overhead=0)
 
@@ -930,24 +652,14 @@ def capture(
 ) -> Capture:
     """Take one matched capture of the database and the state coupled to it.
 
-    ``db`` is the caller's OPEN handle, passed straight through to the writer so
-    it can fold the engine's outstanding transactions into the main file before
-    the copy. That is the belt; copying the companion files is the braces, and
-    the braces are what actually hold, because a fold can fail for reasons a
-    capture has to survive.
-
-    ``verifier`` and ``root`` exist so the battery can drive every branch without
-    a rekordbox database and without a library volume. Neither is a safety
-    escape: a verdict that does not come back true still blocks every commit
-    behind it, whichever function produced it.
+    ``db`` is the caller's open handle, passed to the writer to fold the log;
+    the companion copies are what hold if the fold fails. ``verifier`` and
+    ``root`` are test seams, and a false verdict still blocks every commit.
     """
     destination_root = Path(root) if root is not None else store_root(cfg)
-    # BEFORE the collision check and before anything is created, because a
-    # refusal that has already made a directory is a refusal that did something.
+    # Before anything is created, so a refusal has done nothing.
     estimate = assert_room_for_capture(cfg, root=destination_root)
-    # And the room the real check's throwaway copy needs on the temporary
-    # volume (R-1677), counted with the capture's own when they share one. A
-    # stand in verifier makes no copy, so nothing is asked of that volume.
+    # The real check's throwaway needs room too (R-1677); a stand in makes none.
     if verifier is None:
         assert_room_for_check(database_paths(cfg)[0], store=(destination_root, estimate))
     chosen = stamp or new_stamp(now)
@@ -967,9 +679,7 @@ def capture(
     for source in declared:
         _refuse_if_nested(source, store)
 
-    # The database half, delegated. The writer owns the engine fold, the
-    # companion files, and rekordbox's own legacy playlist file, and it owns them
-    # in one place rather than two.
+    # The database half, delegated to the writer.
     try:
         database = rb_writer.snapshot_db(stamp=chosen, root=destination_root, db=db, cfg=cfg)
     except CratekitError:
@@ -985,9 +695,7 @@ def capture(
 
     captured: list[CapturedSource] = []
 
-    # What the writer took, recorded by looking at the result rather than by
-    # restating its behaviour. A restore reads this list, so it has to describe
-    # the directory that exists and not the directory this module intended.
+    # Recorded from the result, because a restore reads what exists.
     for path in database_paths(cfg):
         landed = destination / path.name
         captured.append(
@@ -1006,8 +714,7 @@ def capture(
         )
     )
 
-    # The coupled half. Everything the inventory declares that the writer did not
-    # already take.
+    # The coupled half, whatever the writer did not already take.
     for source in declared:
         if source in already:
             continue
@@ -1031,9 +738,7 @@ def capture(
         integrity_verified=False,
         sources=tuple(captured),
     )
-    # The capture as copied, read before the check and asked again after it,
-    # so the verdict is about the bytes the record lists and nothing the check
-    # did to them (R-1665). A capture that cannot be walked has no verdict.
+    # Walked before and after the check, so the verdict is about the listed bytes (R-1665).
     try:
         copied = _walked(destination)
     except OSError as exc:
@@ -1047,9 +752,7 @@ def capture(
             else False
         )
     except rb_writer.IntegrityCheckCopyFailed as failed:
-        # The check never ran. No room for its copy is refused as that, with
-        # the capture recorded unverified first (R-1677); any other copy that
-        # could not be made leaves the capture unverified, as it always has.
+        # No room for the check's copy is refused as that, unverified first (R-1677).
         no_room = check_had_no_room(failed)
         if no_room is not None:
             _record_unverified(record, manifest)
@@ -1073,15 +776,8 @@ def capture(
         sources=record.sources,
     )
 
-    # THE COPY REACHES THE DISK BEFORE THE RECORD THAT VOUCHES FOR IT (U272).
-    # ``shutil`` writes and never syncs, and the check above reads the copy back
-    # through the page cache, so it passes whether or not the bytes reached the
-    # drive. The manifest goes through the synced atomic writer, so without this
-    # a power cut inside the write back window could leave a manifest saying
-    # verified beside a copy that is short or empty. After the check, so that
-    # whatever a check leaves behind is flushed with the rest; the real check
-    # reads a throwaway copy and changes nothing here (R-1665), and a check
-    # that changed what the copy left was refused its verdict above.
+    # THE COPY REACHES THE DISK BEFORE THE RECORD THAT VOUCHES FOR IT (U272),
+    # because the check reads through the page cache.
     try:
         _flush(destination, destination_root)
     except OSError as exc:
@@ -1089,9 +785,7 @@ def capture(
 
     _write_manifest(record, manifest)
 
-    # And the record itself, before anything commits behind it: the atomic
-    # writer syncs the manifest's bytes and renames it into place, and the
-    # rename is an entry in this directory that an unflushed directory loses.
+    # The manifest's rename is a directory entry an unflushed directory loses.
     try:
         config.flush_to_disk(destination)
         config.flush_to_disk(destination_root)
@@ -1110,19 +804,14 @@ def capture(
 def read_manifest(capture_root: Path | str) -> Capture:
     """Read one capture's manifest, or refuse naming the directory.
 
-    U32 restores from this. It is here rather than there because the writer and
-    the reader of a persisted shape belong together: two modules that each know
-    half of a format is how a format acquires two incompatible readings.
+    Here beside the writer, so one module knows the format.
     """
     root = Path(capture_root)
     path = root / MANIFEST_NAME
     try:
         raw = path.read_bytes()
     except OSError as exc:
-        # The REMEDY here is the class default for an unanticipated failure, and
-        # it stays that. What it is not allowed to do is stand when the operating
-        # system is what refused: ``raise ... from exc`` is what lets the refusal
-        # constructor see that and answer with an act the reader can perform.
+        # ``from exc`` lets the refusal answer an OS refusal with an act.
         raise refuse(
             "internal-error",
             f"{path} could not be read, so there is no record of what this "
@@ -1152,19 +841,8 @@ def read_manifest(capture_root: Path | str) -> Capture:
 def assert_verified(record: Capture) -> None:
     """The gate. Nothing commits behind a capture that did not verify.
 
-    Stated as its own function rather than as an ``if`` at each call site so that
-    there is one answer to "may this session proceed" and one message when it may
-    not. A capture that failed its check is not a smaller recovery point, it is
-    the absence of one, and proceeding would put the commit's only undo behind a
-    file nobody has established can be opened.
-
-    IT ASKS THE DISK AS WELL AS THE MANIFEST, and the second question is not
-    redundant. ``integrity_verified`` records a verdict reached at capture time
-    about bytes that existed then; a partial cloud pull, an interrupted copy or a
-    hand-cleared store can take those bytes away afterwards and leave the manifest
-    saying they passed. A restore that trusted the manifest alone would rehearse
-    clean, clear the live write-ahead log, and only then discover the file it was
-    going to put in its place is not there.
+    It also asks the disk, because the database can vanish after the manifest
+    recorded it as verified.
     """
     if record.verified and record.database is not None and record.database.exists():
         return
@@ -1194,12 +872,7 @@ def assert_verified(record: Capture) -> None:
 def assert_sources_present(record: Capture) -> None:
     """Refuse when the manifest names captured bytes the store no longer holds.
 
-    :func:`assert_verified` covers the database, which is the file that matters
-    most. This covers the rest of the matched set, and it exists for the same
-    reason: a restore is a sequence of destructive steps, and finding out half way
-    through that the source of step four is gone means steps one to three have
-    already happened. Everything a restore is going to read is therefore checked
-    before anything it is going to write.
+    Checked before a restore writes anything, so it cannot stop half way.
     """
     absent = [
         str(entry.captured)

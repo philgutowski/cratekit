@@ -1,28 +1,6 @@
 """The integrity check's throwaway copy is measured, and named when it has no room (R-1677).
 
-Since R-1665 the check never opens the capture: it copies the database's file
-set into the system's temporary directory and checks the copy. Nothing
-measured the room that copy needs, and a temporary volume too small for it
-made the check answer False, so the capture was recorded unverified and every
-guarded write refused it as a capture that failed its integrity check, with
-the remedy to report a defect. Nothing was wrong with the capture.
-
-Two layers hold it now, and each is asserted here on its own:
-
-1. **Measured before the copy** (``snapshot.assert_room_for_check``). When the
-   real check will run, the capture measures the temporary volume before
-   anything is written, beside the room for the capture itself, and counts
-   both when they share one volume.
-2. **Named when it still happens** (``rb_writer.integrity_ok`` with
-   ``raise_copy_failure``). A throwaway copy that fails for lack of room
-   refuses under the same slug, with the manifest saying not verified.
-
-What never changes: a capture whose check did not complete is never recorded
-verified, and a real integrity failure is never told as a room message.
-
-Driven on the suite's real disposable database with the real check. No
-library volume, no rekordbox, no live database.
-"""
+A check that did not complete is never verified, and a real failure is never a room message."""
 
 # ruff: noqa: F811, the fixtures below are imported from the R-1665 suite by name
 
@@ -53,7 +31,6 @@ ROOM = "snapshot-check-temp-full"
 
 @pytest.fixture
 def scratch(tmp_path, monkeypatch) -> Path:
-    """The temporary directory the throwaway copy goes in, made private to the test."""
     directory = tmp_path / "scratch"
     directory.mkdir()
     monkeypatch.setattr(tempfile, "tempdir", str(directory))
@@ -101,9 +78,7 @@ def _no_room_in(scratch: Path, monkeypatch, code: int = errno.ENOSPC) -> None:
     monkeypatch.setattr(W, "_copy_file_set", copying)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Layer one: measured before anything is written
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_temporary_volume_too_small_for_the_check_refuses_before_anything_is_written(
@@ -174,11 +149,7 @@ def test_one_byte_short_on_the_temporary_volume_refuses(cfg, scratch, monkeypatc
 def test_the_measure_counts_every_file_the_check_copies_not_the_database_alone(
     cfg, scratch, monkeypatch
 ):
-    """The playlist file and any companion ride along with the copy, so they are measured.
-
-    Room for the database alone, with the file the binding saves beside it
-    left out, is a copy that runs out part way.
-    """
+    """The playlist file and any companion ride along with the copy, so they are measured."""
     database = _database(cfg)
     (database.parent / W.MASTER_PLAYLIST_XML).write_bytes(b"<playlists/>" * 8192)
     alone = int(snapshot._allocated_size(database) * snapshot.CAPACITY_HEADROOM)
@@ -195,7 +166,6 @@ def test_the_measure_counts_every_file_the_check_copies_not_the_database_alone(
 
 
 def test_a_temporary_volume_with_room_captures_verified_and_leaves_nothing(cfg, scratch):
-    """Unchanged where there is room: the real check ran, passed, and cleaned up."""
     captured = snapshot.capture(cfg)
 
     assert captured.verified
@@ -203,11 +173,7 @@ def test_a_temporary_volume_with_room_captures_verified_and_leaves_nothing(cfg, 
 
 
 def test_a_temporary_volume_shared_with_the_store_must_hold_both(cfg, scratch, monkeypatch):
-    """The capture and its throwaway land on one volume, so the room is for both.
-
-    Room for either alone, as two separate questions would each answer, is not
-    room for the two, and the throwaway is copied after the capture is.
-    """
+    """The capture and its throwaway share one volume, so the room is for both."""
     capture_needs = snapshot.assert_room_for_capture(cfg, free_bytes=1 << 60)
     both = int((capture_needs + _check_needs(cfg)) * snapshot.CAPACITY_HEADROOM)
     assert both - 1 >= int(capture_needs * snapshot.CAPACITY_HEADROOM)
@@ -250,18 +216,13 @@ def test_the_store_and_the_temporary_directory_on_this_disk_are_one_volume(tmp_p
 
 
 def test_a_store_not_yet_made_is_read_as_the_volume_of_its_nearest_parent(tmp_path):
-    """The first capture's store does not exist yet, and is its parent's volume.
-
-    Without the walk the store would answer no device at all, which counts as
-    shared, and a separate temporary volume would be asked for the capture's
-    room too: a false refusal on the first guarded write.
-    """
+    """A store not yet made reads as its parent's volume, or the first write refuses falsely."""
     assert snapshot._device(tmp_path / "not" / "yet" / "made") == os.stat(tmp_path).st_dev
     assert snapshot._device(tmp_path) == os.stat(tmp_path).st_dev
 
 
 def test_two_volumes_with_different_devices_are_separate(tmp_path, monkeypatch):
-    """The direction that lets a write proceed: a separate temporary volume is not asked for both."""
+    """A separate temporary volume is not asked for both, so a write may proceed."""
     devices = {tmp_path / "scratch": 7, tmp_path / "store": 8}
     monkeypatch.setattr(snapshot, "_device", lambda path: devices[Path(path)])
     assert not snapshot._same_volume(tmp_path / "scratch", tmp_path / "store")
@@ -337,9 +298,7 @@ def test_the_file_set_measured_is_the_one_the_check_copies(tmp_path, monkeypatch
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Layer two: named when the copy still runs out of room
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("code", [errno.ENOSPC, errno.EDQUOT], ids=["no-space", "quota"])
@@ -424,7 +383,7 @@ def test_a_scratch_directory_that_cannot_be_made_is_a_copy_failure(
     def no_directory(*_args, **_kwargs):
         raise OSError(errno.ENOSPC, "No space left on device")
 
-    monkeypatch.setattr(W.tempfile, "mkdtemp", no_directory)
+    monkeypatch.setattr(tempfile, "mkdtemp", no_directory)
 
     with pytest.raises(W.IntegrityCheckCopyFailed):
         W.integrity_ok(copied, raise_copy_failure=True)

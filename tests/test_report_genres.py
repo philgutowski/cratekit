@@ -2,12 +2,11 @@
 
 ``crate report genres`` counts the live collection by genre, names every genre
 holding fifty or more tracks that no top level folder answers for, and creates
-nothing. The resolver's answer is held first, then the count, then the verb
-through the real dispatcher against a disposable library, with every file
-under the library root compared byte for byte across the run.
+nothing. The resolver's answer, then the count, then the verb through the real
+dispatcher with every file under the library root compared byte for byte.
 
-Every folder and sub is derived from the shipped taxonomy's declarations. The
-genre words that nothing claims are made up, and are checked to be unclaimed.
+Every folder and sub is derived from the shipped taxonomy; the unclaimed words
+are made up and checked to be unclaimed.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
@@ -38,8 +37,7 @@ from tests.test_adopt_workers import (  # noqa: F401
 DECLARED = taxonomy.default_taxonomy()
 VERB = ["report", "genres"]
 
-#: The folder that routes by source genre, and one of its style subs with the
-#: source strings its map files there.
+#: The folder that routes by source genre, and a style sub with its map's strings.
 STYLE = next(bucket for bucket in DECLARED.buckets if bucket.sub_by_source is not None)
 DEFAULT_SUB = next(sub for sub in STYLE.subs if sub.id == STYLE.sub_by_source.default)
 #: A style sub two source strings file under, so one genre has two spellings.
@@ -55,24 +53,21 @@ OWN = next(
 UNCLAIMED = "Zydeco"
 #: A word a keyword rule sends to the source routed folder, with no map row.
 DEFAULTED = next(
-    f"New {rule.keyword.title()}"
-    for rule in DECLARED.fuzzy
-    if rule.bucket == STYLE.id
+    f"New {rule.keyword.title()}" for rule in DECLARED.fuzzy if rule.bucket == STYLE.id
 )
 
 
 def _rows(*genres: tuple[str, int], deleted: tuple[str, int] | None = None):
-    rows = []
-    for genre, how_many in genres:
-        rows.extend(
-            adopt_scan.CollectionRow(
-                content_id=f"{genre or 'none'}-{index}",
-                recorded=f"/library/Music/{genre or 'none'}-{index}.flac",
-                genre=genre,
-                deleted=False,
-            )
-            for index in range(how_many)
+    rows = [
+        adopt_scan.CollectionRow(
+            content_id=f"{genre or 'none'}-{index}",
+            recorded=f"/library/Music/{genre or 'none'}-{index}.flac",
+            genre=genre,
+            deleted=False,
         )
+        for genre, how_many in genres
+        for index in range(how_many)
+    ]
     if deleted is not None:
         genre, how_many = deleted
         rows.extend(
@@ -82,6 +77,10 @@ def _rows(*genres: tuple[str, int], deleted: tuple[str, int] | None = None):
             for index in range(how_many)
         )
     return rows
+
+
+def _count(*genres: tuple[str, int], deleted: tuple[str, int] | None = None):
+    return adopt_genres.count(_rows(*genres, deleted=deleted), DECLARED)
 
 
 # ── what a genre has in the tree ───────────────────────────────────────────
@@ -94,24 +93,28 @@ def test_the_fixture_words_are_what_they_claim_to_be():
     assert DEFAULTED not in STYLE.sub_by_source.map
 
 
-def test_a_genre_a_top_level_folder_answers_for_has_a_folder_of_its_own():
-    for genre in (OWN.display, *OWN.aliases):
-        assert routing.folder_of(DECLARED, genre) == routing.GenreFolder(
-            routing.Folder.OWN, OWN.id
-        ), genre
-
-
-def test_a_source_string_filed_in_a_style_sub_has_no_folder_of_its_own():
-    for source in SHARED_SOURCES:
-        assert routing.folder_of(DECLARED, source) == routing.GenreFolder(
-            routing.Folder.SUB, STYLE.id, SHARED_SUB.id
-        ), source
-
-
-def test_a_word_that_lands_in_a_default_sub_is_not_that_subs_genre():
-    assert routing.folder_of(DECLARED, DEFAULTED) == routing.GenreFolder(
-        routing.Folder.DEFAULT, STYLE.id, STYLE.sub_by_source.default
-    )
+@pytest.mark.parametrize(
+    ("genre", "expected"),
+    [
+        *(
+            (genre, routing.GenreFolder(routing.Folder.OWN, OWN.id))
+            for genre in (OWN.display, *OWN.aliases)
+        ),
+        *(
+            (source, routing.GenreFolder(routing.Folder.SUB, STYLE.id, SHARED_SUB.id))
+            for source in SHARED_SOURCES
+        ),
+        # A word in a default sub is not that sub's genre.
+        (
+            DEFAULTED,
+            routing.GenreFolder(routing.Folder.DEFAULT, STYLE.id, STYLE.sub_by_source.default),
+        ),
+    ],
+)
+def test_where_routing_files_a_genre_is_whether_it_has_a_folder_of_its_own(genre, expected):
+    """A top level folder's own names have a folder; a source string filed in a
+    style sub, or a word in a default sub, has none of its own."""
+    assert routing.folder_of(DECLARED, genre) == expected, genre
 
 
 def test_the_source_routed_folders_own_name_has_that_folder():
@@ -138,7 +141,7 @@ def test_every_declared_alias_of_a_bucket_that_splits_by_energy_has_its_folder()
 
 
 def test_ae8_a_style_sub_at_109_is_named_with_109():
-    report = adopt_genres.count(_rows((SHARED_SUB.display, 109)), DECLARED)
+    report = _count((SHARED_SUB.display, 109))
     (named,) = report.named
     assert (named.name, named.tracks) == (SHARED_SUB.display, 109)
     assert named.filed_under == (STYLE.display, SHARED_SUB.display)
@@ -146,41 +149,38 @@ def test_ae8_a_style_sub_at_109_is_named_with_109():
 
 
 def test_a_genre_at_49_is_counted_and_not_named_and_one_at_50_is_named():
-    report = adopt_genres.count(
-        _rows((SHARED_SOURCES[0], 50), (UNCLAIMED, 49)), DECLARED
-    )
+    report = _count((SHARED_SOURCES[0], 50), (UNCLAIMED, 49))
     assert adopt_genres.FOLDER_WORTH == 50
     assert [(genre.name, genre.tracks) for genre in report.named] == [(SHARED_SUB.display, 50)]
     assert [(genre.name, genre.tracks) for genre in report.genres] == [
         (SHARED_SUB.display, 50),
         (UNCLAIMED, 49),
     ]
-
-
-def test_the_boundary_is_the_same_on_both_sides_of_one_genre():
-    assert adopt_genres.count(_rows((UNCLAIMED, 49)), DECLARED).named == ()
-    (named,) = adopt_genres.count(_rows((UNCLAIMED, 50)), DECLARED).named
+    # The boundary is the same on both sides of one genre.
+    assert _count((UNCLAIMED, 49)).named == ()
+    (named,) = _count((UNCLAIMED, 50)).named
     assert named.tracks == 50
 
 
 def test_a_genre_no_folder_claims_at_all_is_counted_under_its_own_word():
-    (found,) = adopt_genres.count(_rows((UNCLAIMED, 60)), DECLARED).named
-    assert (found.name, found.kind, found.bucket, found.sub, found.filed_under) == (
-        UNCLAIMED, routing.Folder.NONE.value, "", "", None
+    (found,) = _count((UNCLAIMED, 60)).named
+    assert (found.name, found.kind, found.filed_under) == (
+        UNCLAIMED,
+        routing.Folder.NONE.value,
+        None,
     )
+    assert (found.bucket, found.sub) == ("", "")
 
 
 def test_the_strings_one_style_sub_holds_are_one_genre_with_its_sources_listed():
     first, second = SHARED_SOURCES[0], SHARED_SOURCES[1]
-    (found,) = adopt_genres.count(_rows((first, 30), (second, 25)), DECLARED).named
+    (found,) = _count((first, 30), (second, 25)).named
     assert (found.name, found.tracks) == (SHARED_SUB.display, 55)
     assert found.sources == ((first, 30), (second, 25))
 
 
 def test_a_word_in_a_default_sub_is_counted_apart_from_that_subs_own_genre():
-    report = adopt_genres.count(
-        _rows((SHARED_SOURCES[0], 40), (DEFAULTED, 40)), DECLARED
-    )
+    report = _count((SHARED_SOURCES[0], 40), (DEFAULTED, 40))
     assert report.named == ()
     assert {(genre.name, genre.kind, genre.tracks) for genre in report.genres} == {
         (SHARED_SUB.display, routing.Folder.SUB.value, 40),
@@ -191,22 +191,19 @@ def test_a_word_in_a_default_sub_is_counted_apart_from_that_subs_own_genre():
 
 
 def test_another_spelling_of_a_style_subs_own_name_is_counted_with_it():
-    """Found by the review, with these numbers. Routing matches a source
-    string exactly, so the lowercase spelling lands in a default sub or
-    nowhere, and counted apart neither row reached a threshold the genre had
-    passed."""
+    """Routing matches a source string exactly, so the lowercase spelling lands in
+    a default sub or nowhere, and counted apart neither row reached a threshold
+    the genre had passed (found by the review, with these numbers)."""
     lowered = SHARED_SUB.display.lower()
     assert lowered != SHARED_SUB.display
     assert routing.folder_of(DECLARED, lowered).kind is not routing.Folder.SUB
-    report = adopt_genres.count(_rows((SHARED_SUB.display, 45), (lowered, 10)), DECLARED)
+    report = _count((SHARED_SUB.display, 45), (lowered, 10))
     (found,) = report.named
-    assert (found.name, found.tracks, found.kind) == (
-        SHARED_SUB.display, 55, routing.Folder.SUB.value
-    )
+    assert (found.name, found.tracks) == (SHARED_SUB.display, 55)
+    assert found.kind == routing.Folder.SUB.value
     assert found.sources == ((SHARED_SUB.display, 45), (lowered, 10))
     assert len(report.genres) == 1
-    # THE ROW DOES NOT SAY ROUTING FILES THE OTHER SPELLING THERE. Found by
-    # the second review: it said so, and a person looking found none of them.
+    # THE ROW DOES NOT SAY ROUTING FILES THE OTHER SPELLING THERE.
     assert (found.strays, found.not_filed_there) == ((lowered,), 10)
     assert "except 10 under another spelling" in adopt_genres.where(found)
     row = adopt_genres.row_json(found)
@@ -218,14 +215,14 @@ def test_another_spelling_of_a_style_subs_own_name_is_counted_with_it():
 
 
 def test_a_genre_filed_whole_in_its_sub_names_no_other_spelling():
-    (found,) = adopt_genres.count(_rows((SHARED_SUB.display, 50)), DECLARED).named
+    (found,) = _count((SHARED_SUB.display, 50)).named
     assert (found.strays, found.not_filed_there) == ((), 0)
     assert "except" not in adopt_genres.where(found)
 
 
 def test_another_spelling_of_a_source_string_is_counted_with_its_sub():
     source = next(s for s in SHARED_SOURCES if s != SHARED_SUB.display)
-    report = adopt_genres.count(_rows((source, 30), (source.upper(), 20)), DECLARED)
+    report = _count((source, 30), (source.upper(), 20))
     (found,) = report.named
     assert (found.name, found.tracks) == (SHARED_SUB.display, 50)
 
@@ -238,72 +235,58 @@ def test_a_style_sub_nothing_routes_a_lowercase_spelling_to_is_still_its_genre()
         for sub in STYLE.subs
         if routing.folder_of(DECLARED, sub.display.lower()).kind is routing.Folder.NONE
     )
-    (found,) = adopt_genres.count(_rows((unrouted.display.lower(), 50)), DECLARED).named
-    assert (found.name, found.kind, found.filed_under) == (
-        unrouted.display, routing.Folder.SUB.value, (STYLE.display, unrouted.display)
-    )
+    (found,) = _count((unrouted.display.lower(), 50)).named
+    assert (found.name, found.kind) == (unrouted.display, routing.Folder.SUB.value)
+    assert found.filed_under == (STYLE.display, unrouted.display)
 
 
 def test_two_spellings_of_one_unclaimed_word_are_one_genre():
-    (found,) = adopt_genres.count(
-        _rows((UNCLAIMED, 30), (UNCLAIMED.lower(), 25)), DECLARED
-    ).named
+    (found,) = _count((UNCLAIMED, 30), (UNCLAIMED.lower(), 25)).named
     assert (found.name, found.tracks) == (UNCLAIMED, 55)
     assert dict(found.sources) == {UNCLAIMED: 30, UNCLAIMED.lower(): 25}
 
 
 def test_a_genre_with_a_folder_is_never_named_however_many_tracks_it_holds():
-    report = adopt_genres.count(_rows((OWN.display, 500)), DECLARED)
+    report = _count((OWN.display, 500))
     assert report.genres == () and report.with_folder == 500
 
 
 def test_tracks_with_no_genre_are_counted_apart_and_never_named():
-    report = adopt_genres.count(_rows(("", 70), ("   ", 5)), DECLARED)
+    report = _count(("", 70), ("   ", 5))
     assert (report.no_genre, report.genres, report.named) == (75, (), ())
 
 
 def test_a_word_the_taxonomy_calls_too_coarse_is_counted_apart_as_adoption_reads_it():
-    """Found by the second review. Routing sends such a word to the catch all
-    bucket by an alias, and adoption files none of those tracks."""
+    """Routing sends such a word to the catch all bucket by an alias, and adoption
+    files none of those tracks."""
     coarse = next(word for word in DECLARED.fallback.too_coarse_as_source if word)
     assert routing.folder_of(DECLARED, coarse).kind is routing.Folder.OWN
     assert adopt_scan.classify_genre(DECLARED, coarse)[0] is adopt_scan.Disposition.NEEDS_GENRE
-    report = adopt_genres.count(_rows((coarse, 200), (OWN.display, 3)), DECLARED)
+    report = _count((coarse, 200), (OWN.display, 3))
     assert (report.too_coarse, report.with_folder, report.genres) == (200, 3, ())
 
 
 def test_a_removed_row_is_not_counted():
-    report = adopt_genres.count(
-        _rows((UNCLAIMED, 49), deleted=(UNCLAIMED, 10)), DECLARED
-    )
+    report = _count((UNCLAIMED, 49), deleted=(UNCLAIMED, 10))
     assert report.tracks == 49 and report.named == ()
 
 
 def test_every_live_track_is_counted_exactly_once():
     coarse = next(word for word in DECLARED.fallback.too_coarse_as_source if word)
-    report = adopt_genres.count(
-        _rows((OWN.display, 7), (SHARED_SOURCES[0], 5), (UNCLAIMED, 3), ("", 2), (coarse, 4)),
-        DECLARED,
-    )
-    assert report.tracks == 21
-    assert (report.with_folder, report.without_folder, report.no_genre, report.too_coarse) == (
-        7, 8, 2, 4
-    )
+    report = _count((OWN.display, 7), (SHARED_SOURCES[0], 5), (UNCLAIMED, 3), ("", 2), (coarse, 4))
+    assert (report.tracks, report.with_folder, report.without_folder) == (21, 7, 8)
+    assert (report.no_genre, report.too_coarse) == (2, 4)
 
 
 def test_the_order_is_largest_first_then_by_name():
-    report = adopt_genres.count(
-        _rows(("Bravo Word", 3), ("Alpha Word", 3), (UNCLAIMED, 9)), DECLARED
-    )
+    report = _count(("Bravo Word", 3), ("Alpha Word", 3), (UNCLAIMED, 9))
     assert [genre.name for genre in report.genres] == [UNCLAIMED, "Alpha Word", "Bravo Word"]
 
 
 def test_the_promoted_genre_is_not_named_once_it_has_its_folder():
     """R&B at 200 tracks is the case this report would have named before."""
     promoted = next(bucket for bucket in DECLARED.buckets if bucket.formerly)
-    report = adopt_genres.count(
-        _rows(*((alias, 50) for alias in promoted.aliases)), DECLARED
-    )
+    report = _count(*((alias, 50) for alias in promoted.aliases))
     assert report.named == () and report.with_folder == 50 * len(promoted.aliases)
 
 
@@ -312,7 +295,9 @@ def test_the_promoted_genre_is_not_named_once_it_has_its_folder():
 
 def _tracks(*genres: tuple[str, int]) -> tuple[adopt_fixtures.Track, ...]:
     return tuple(
-        adopt_fixtures.Track(f"{genre or 'none'}-{index}", f"g{order}-{index}.flac", genre, on_disk=False)
+        adopt_fixtures.Track(
+            f"{genre or 'none'}-{index}", f"g{order}-{index}.flac", genre, on_disk=False
+        )
         for order, (genre, how_many) in enumerate(genres)
         for index in range(how_many)
     )
@@ -354,14 +339,14 @@ def test_ae8_the_verb_names_the_genre_with_its_count_and_the_library_is_unchange
     assert (summary["threshold"], summary["named"]) == (50, 1)
     # The two baseline rows every disposable database carries have no genre.
     assert (summary["tracks"], summary["with_folder"], summary["without_folder"]) == (
-        163 + len(adopt_fixtures.BASELINE_CONTENT_IDS), 3, 158
+        163 + len(adopt_fixtures.BASELINE_CONTENT_IDS),
+        3,
+        158,
     )
     assert summary["no_genre"] == 2 + len(adopt_fixtures.BASELINE_CONTENT_IDS)
     assert summary["too_coarse"] == 0
     (check,) = envelope["data"]["checks"]
-    assert (check["title"], check["status"], check["remedy"]) == (
-        SHARED_SUB.display, "info", None
-    )
+    assert (check["title"], check["status"], check["remedy"]) == (SHARED_SUB.display, "info", None)
     assert "109 tracks" in check["detail"]
     assert f"{STYLE.display} / {SHARED_SUB.display}" in check["detail"]
     assert [(row["genre"], row["tracks"]) for row in summary["genres"]] == [
@@ -401,7 +386,6 @@ def test_the_verb_declares_no_write_and_no_gate():
 
 
 def test_the_summary_a_person_reads_in_help_states_the_threshold_the_code_uses():
-    """The registry cannot import the engine's constant, so the two are held
-    together here."""
+    """The registry cannot import the engine's constant, so the two are held here."""
     summary = registry.entry("report.genres").summary
     assert f"{adopt_genres.FOLDER_WORTH} or more tracks" in summary

@@ -1,30 +1,8 @@
 """U272: a capture's copy is on the disk before its manifest says it is verified.
 
-The restore point every guarded write commits behind is a capture, and the
-manifest is what vouches for it. Before this unit the manifest went through
-the synced atomic writer while the copy it vouches for was never flushed, so a
-power cut inside the write back window could leave a manifest saying verified
-beside a copy that is short or empty. The integrity check reads the copy back
-through the page cache, so it passes whether or not the bytes reached the
-drive, and cannot see that gap.
-
-Three properties are asserted here, each by driving a real capture:
-
-1. **Order, by system call.** Every flush is traced as the inode it reached,
-   through both the plain sync and the full flush a platform offers, and the
-   database, each companion file, the legacy playlist file, a coupled file,
-   every capture directory and the store are flushed BEFORE the manifest's own
-   sync, and the capture directory again after it.
-2. **A failing flush is never recorded as verified.** The capture refuses, so
-   no caller can commit behind it even by forgetting to ask, and the manifest
-   it leaves says not verified, wherever the flush failed.
-3. **The full flush is asked for where the platform has one** (macOS, where a
-   plain sync does not empty the drive's own cache), the plain sync answers
-   only a filesystem that does not support it, and any other error raises.
-
-Fully hermetic, as ``tests/test_snapshot.py`` is: an ordinary file stands in
-for the database and a stand in verifier gives the verdict.
-"""
+Every file, directory and the store are flushed before the manifest's sync, a
+failing flush is never recorded verified, and the full flush is asked for where
+the platform has one (macOS)."""
 
 from __future__ import annotations
 
@@ -49,7 +27,6 @@ except ImportError:  # pragma: no cover - every platform the suite runs on has i
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
-    """A configured library whose database exists on disk, as ``tests/test_snapshot.py`` builds."""
     library = tmp_path / "library"
     (library / "Music").mkdir(parents=True)
     (library / "db").mkdir(parents=True)
@@ -65,12 +42,7 @@ def _identity(path: Path) -> tuple[int, int]:
 
 
 def _trace_flushes(monkeypatch) -> list[tuple[int, int]]:
-    """Record every plain sync and every full flush, in order, as the inode it reached.
-
-    Traced at the system call wrappers rather than at the capture's own helper,
-    so the manifest's sync inside the shared atomic writer is in the same list
-    and the order between the two is the order the kernel was asked in.
-    """
+    """Record every plain sync and full flush, in kernel order, as the inode it reached."""
     reached: list[tuple[int, int]] = []
     real_fsync = os.fsync
 
@@ -107,9 +79,7 @@ def _whole_file_set(cfg) -> list[Path]:
     return written
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The order: the copy is flushed before the manifest's own sync
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_copy_its_companions_and_its_directories_reach_the_disk_before_the_manifest(
@@ -138,11 +108,7 @@ def test_the_copy_its_companions_and_its_directories_reach_the_disk_before_the_m
 
 
 def test_every_file_a_capture_holds_is_flushed_before_its_manifest_by_walking(cfg, monkeypatch):
-    """P3: the flush covers the directory that exists, not a list of what was meant.
-
-    Asserted by walking the finished capture, so a fifth thing the writer
-    learns to copy is covered the day it lands and this test needs no edit.
-    """
+    """P3: the flush covers the capture as walked, not a list of what was meant."""
     _whole_file_set(cfg)
     _write_coupled_state(cfg)
     reached = _trace_flushes(monkeypatch)
@@ -162,13 +128,7 @@ def test_every_file_a_capture_holds_is_flushed_before_its_manifest_by_walking(cf
 
 
 def test_the_manifest_is_followed_by_a_flush_of_the_directory_that_holds_it(cfg, monkeypatch):
-    """The record itself survives before anything commits behind it.
-
-    The shared atomic writer syncs the manifest's bytes and renames it into
-    place, and a rename is a change to the directory. Without this second
-    flush the restore point's record could vanish after the write it protects
-    had committed.
-    """
+    """The manifest's rename changes the directory, so it is flushed again before any commit."""
     reached = _trace_flushes(monkeypatch)
 
     record = snapshot.capture(cfg, verifier=_passes)
@@ -179,16 +139,7 @@ def test_the_manifest_is_followed_by_a_flush_of_the_directory_that_holds_it(cfg,
 
 
 def test_the_flush_follows_the_check_so_what_the_check_leaves_is_flushed(cfg, monkeypatch):
-    """The flush runs after the check, over what is there then.
-
-    The real check once opened the capture, and closing it on a database with
-    an open log removed the engine's companion files from the capture. It now
-    reads a throwaway copy, and a check that removes or rewrites part of the
-    capture is refused its verdict (R-1665), but a check may still ADD a file,
-    which no record lists and the flush must still reach. Pinned here with a
-    check that leaves a file of its own behind: a flush moved ahead of the
-    check would not have reached it.
-    """
+    """The flush follows the check, so a file the check adds is still flushed (R-1665)."""
     left: list[Path] = []
 
     def leaves_a_file(database):
@@ -218,17 +169,11 @@ def test_an_unverified_capture_is_flushed_in_the_same_order(cfg, monkeypatch):
     assert _identity(record.root) in before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A failing flush is never recorded as verified
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _failing_flush(monkeypatch, fails_on, *, after: int = 0) -> list[Path]:
-    """Make ``config.flush_to_disk`` raise an input output error on one path.
-
-    ``after`` lets that path flush that many times first, which is how the
-    flush that follows the manifest is reached on its own.
-    """
+    """Make ``config.flush_to_disk`` raise on one path, after ``after`` flushes of it."""
     real = config.flush_to_disk
     seen: list[Path] = []
 
@@ -331,9 +276,7 @@ def test_a_manifest_that_cannot_be_written_after_a_failed_flush_still_refuses(cf
     assert not (root / snapshot.MANIFEST_NAME).exists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The flush itself: the full flush where the platform has one
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -429,14 +372,7 @@ def test_a_path_that_is_not_there_raises(tmp_path):
 
 
 def test_the_platforms_full_flush_is_the_one_asked_for():
-    """macOS asks the drive to empty its own cache; elsewhere there is no such request.
-
-    Stated per platform rather than by reading the platform the way the code
-    does, which would compare a value with itself. It holds the constant: on a
-    Mac, a build that stopped reading the full flush from the platform fails
-    here, and on Linux one that spelled a value does. Whether the flush then
-    ASKS for it is held by the tests above, which drive ``_flush_descriptor``.
-    """
+    """macOS asks the drive to empty its cache, stated per platform, never read back."""
     if sys.platform == "darwin":  # pragma: no cover - the Mac battery
         assert config._FULL_FLUSH is not None
         assert config._FULL_FLUSH == fcntl.F_FULLFSYNC
@@ -445,12 +381,7 @@ def test_the_platforms_full_flush_is_the_one_asked_for():
 
 
 def test_a_capture_outside_the_configured_store_is_flushed_too(cfg, tmp_path, monkeypatch):
-    """Every capture, Phillip's answer of 2026-11-13: a rehearsal's included.
-
-    A rehearsal drives the same verb with its library state redirected, so its
-    capture goes through this same function into a store that is not the
-    library's, and promises the same thing to the rehearsal's own gate.
-    """
+    """Every capture is flushed, a rehearsal's included (Phillip, 2026-11-13)."""
     elsewhere = tmp_path / "rehearsal-store"
     reached = _trace_flushes(monkeypatch)
 
@@ -463,13 +394,7 @@ def test_a_capture_outside_the_configured_store_is_flushed_too(cfg, tmp_path, mo
 
 
 def test_a_capture_directory_the_walk_cannot_read_raises_rather_than_being_skipped(tmp_path):
-    """``os.walk`` skips what it cannot read unless told otherwise.
-
-    A directory skipped is a directory not flushed, and the capture would then
-    record a verdict about it. Driven with a capture directory that is gone by
-    the time the flush walks it, the one unreadable shape a root container can
-    produce.
-    """
+    """A directory ``os.walk`` cannot read raises, since a skipped one would go unflushed."""
     store = tmp_path / "store"
     store.mkdir()
 
