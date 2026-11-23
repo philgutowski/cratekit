@@ -17,6 +17,8 @@ KEBAB_LITERALS = {
         'no-op',
     ],
     'adopt/approval.py': ['decision-required', 'decision-stale'],
+    # 2026-11-23, U339: the rows tag set moved out of a genre folder.
+    'adopt/genre_moves.py': ['utf-8'],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'adopt/artifacts.py': ['adopt-artifacts', 'adopt-staging'],
     'adopt/move.py': [

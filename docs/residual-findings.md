@@ -3433,3 +3433,385 @@ that nothing cheaper holds the same promise.
 **Measured cost.** Maintainer facing: a reader of U319's record meets a driver printout first and no statement of what the unit landed.
 
 **Closes when:** the driver's printout moves under the record's own head, or into `docs/mutation/`, in a docs sweep card. Ledger only.
+
+---
+
+## R-1947. The adopt apply gate's own counts disagree for a two genre track
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** `AdoptionPlan.counts()` and `energy_readings()` count one
+entry per track (`firsts()`), while `withheld_by_placement()` and
+`vocal_counts()` count every entry, a second genre's included.
+
+**Measured cost.** Driven at round one: a track in both folders at Med with
+its energy changed to 8 showed `counts.withheld` 1 beside
+`withheld_by_placement.total` 2. A count an independent table does not
+reproduce; nothing is written wrong.
+
+**Closes when:** every count on the gate says whether it counts tracks or
+placements, and the two kinds agree. Ledger only.
+
+---
+
+## R-1948. Every adoption census now opens each routed file twice
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** `adopt/scan.py`'s `scan_rows` opens a routed file's
+container once for its energy and once more for its second genre, where
+`rebuild.read_truth` reads both in one open (U250).
+
+**Measured cost.** Measured at round one: 300 routed rows over one FLAC on the
+local disk, five repeats each, 0.069 to 0.087 s with the second genre read
+against 0.037 to 0.040 s without. Not measured on an external volume, where an
+open costs more.
+
+**Closes when:** the census reads energy and second genre in one open. Ledger
+only.
+
+---
+
+## R-1949. A cleared second genre leaves the track in that folder, and converge reads it as matching when it is the playlist's only track
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** `crate tag second --clear` writes the file tag only. No
+filing path removes a membership that no genre files any more, but for a Soul
+track's cleared R&B, whose R&B band is Soul's split place again: `adopt move`
+moves a track between the bands of a bucket it claims, and with the second
+genre gone the track's entry no longer claims that bucket, so the track stays
+in the second folder. `crate converge` names the membership as unexpected
+only while that playlist holds another track filed into it; with the track
+alone there it says `matching`, the declared placements all present.
+
+**Measured cost.** Driven at round one: after the clear, with the track alone
+in Tech House / High, converge said `matching` and no warning; with another
+Tech House track in that playlist it said `differing`,
+`unexpected:tech_house/high`, remedy rebuild-tree. A DJ who clears a second
+genre takes the track out of that folder by hand, and converge's clean report
+over that state says nothing.
+
+**Closes when:** a cleared second genre is recorded where `adopt move` reads
+it (U339's `adopt/genre_moves.py`, once landed, records genre changes for this
+purpose) and the move takes the track out of that folder, or converge names a
+membership no genre files whatever else the playlist holds. An issue: a clean
+report over state it did not read as differing (the bar's b).
+
+---
+
+## R-1950. Guards of U340's second genre paths that no test kills, among them read backs and digests on paths that write
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** Round one removed 53 guards of the diff one at a time and
+24 killed no test; round two removed 14 of the fix rounds' guards and 4
+survived. The fix rounds pinned three of them (`kept_beside`'s holder
+condition, the fallback half of `_filed_by`, the per track counts), and the
+25 row table kills every row it holds. These remain unkilled, the starred
+ones confirmed over 117 suites at round one:
+
+- `tagging/second.py`: the read back compare*, `items` in `SecondPlan.digest`*,
+  live memberships only*, live nodes only, two nodes at one path, the parent
+  cycle guard.
+- `organize/mirror_edits.py`: an unfile clearing the second genre*, the second
+  genre in `Change.identity()`* (the step's digest) and in its read back*,
+  in `item()`, the non move refusal, the band word check.
+- `adopt/plan.py`: the second sub's ROUTE guard and its `sub is None` guard*,
+  the second genre word on the second entry*, `review_row`'s `second_genre`
+  key, the `if sub` guard on the second entry's `beside` (no shipped bucket
+  lacks a place for a reading).
+- `adopt/move.py`: `_own`'s claim condition*.
+- The `firsts()` call sites in `adopt/apply_cli.py`*, `intake/filing.py`* and
+  `organize/rekordbox.py`*; `rebuild.filed_genres`' second word*; both
+  `routing_export._shown` call sites.
+- The genre check in both `second.plan` and `second_cli.read_plan`, either
+  alone removable.
+
+**Measured cost.** Each was removed alone and the suite stayed green; the
+behaviour at the head was driven right by both rounds. A read back, a digest
+or a clear on a path that writes files can break with nothing red.
+
+**Closes when:** a test kills each, or the guard is shown equivalent and
+removed. An issue: guards on paths that write that kill nothing (the bar's d).
+
+---
+
+## R-1951. An intake landing predicts a two genre track's first folder only
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** Intake's filing prediction (`intake/filing.py`) reads one
+plan entry per track, its first genre's. A landed track whose file already
+carries a second genre is filed into the second folder at the next
+`adopt apply`, which the landing does not say.
+
+**Measured cost.** Not driven: a downloaded file carrying a SecondGenre tag
+needs a person to have written one before the landing. Nothing is lost; the
+second folder follows one verb later.
+
+**Closes when:** the landing's report names the second folder too. Ledger only.
+
+---
+
+## R-1952. tag second ignores a --leave identifier that matches no chosen row without a word
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** `tagging/second.py` holds out a chosen row named by
+`--leave` and says nothing about an identifier that matches none. `tag rows`
+carries its unmatched ones as a warning (`rows-leave-unmatched`).
+
+**Measured cost.** Driven at round one: `tag second "Melodic House"` on row t3
+with `--leave nope` showed held-out 0, no warning, and t3 planned as a write.
+A mistyped identifier writes a row the person meant to hold.
+
+**Closes when:** the verb warns as `tag rows` does. Ledger only.
+
+---
+
+## R-1953. A two genre track doubled in a third band folder gets one move listed twice, and a Soul track's doubled R&B bands block adopt move
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** `adopt move`'s `build_move_plan` asks every tree path
+bucket once per entry. A track with a second genre has two entries; a third
+band folder holding it in two bands is not claimed by either, so both entries
+ask it and plan the same move.
+
+**Measured cost.** Driven at round one with the double seeded through the
+writer: the gate showed two rows with one id, counts moves 2 and
+memberships_removed 2; the worker removed 1 and succeeded. The gate overstates
+by one; nothing is lost. The producer (a hand filed double in a third folder)
+was not driven through a verb.
+
+Round two drove a worse member of the class: a Soul track whose second genre
+is a third folder (Deep House), seeded in two R&B bands. The plan asks the
+tree path once per entry and the Deep House entry plans an R&B move, while
+the worker checks it against the Soul entry, which reads those bands as
+settled: every run refuses `decision-stale`, nothing is written, and the
+track never reaches Soul. With the genres reversed the moves are written and
+the job fails with the track in neither. The same at round one's head, so
+the fix round did not make it worse; the double was seeded, and
+`docs/cutover.md` records two live tracks holding two bands, neither with a
+second genre. A Soul plus Deep House track in the old Soul / R&B playlist is
+likewise moved out by one entry and listed `former-place-not-named-by-genre`
+by the other.
+
+**Closes when:** the tree path questions are asked once per track, by the
+entry the worker checks against. Ledger only while no second genre track is
+known to hold two bands; it earns an issue (the bar's c) once one does.
+
+---
+
+## R-1954. The same band move made in both genre folders on the account is held on every run
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** The account's edit rule (`modules/outbound/mirror_edits.py`)
+reads a track added to two band playlists at once as not saying which one it
+belongs in, before U340's `_second_genre_tags` is asked. A two folder track
+moved Low to High in both Deep House and Tech House on the account is the
+natural edit, and it is held.
+
+**Measured cost.** Driven at round one over three runs: listed as held each
+time, "added on the account to 2 band playlists at once"; the library stays
+in Low and Low, the account in High and High. Undoing one of the two on the
+account lets the other through and both folders move. Nothing is lost or
+written; the reason does not fit a track that belongs in both.
+
+**Closes when:** the rule reads two band additions in the two folders of a
+track's genre and second genre as one band move. Ledger only.
+
+---
+
+## R-1955. tag second takes a word by any tier the resolver has and its gate never names the folder it means
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** `assert_genre_files` and `routing.files_by_genre` accept a
+word any tier but the fallback resolves, the fuzzy tier included, and the
+`tag.second.confirm` gate lists the word as typed, not the folder it files.
+
+**Measured cost.** Driven at round one: `crate tag second "Soulful House"`
+filed the tracks into NonElectronic / Rock, and `crate tag second disco` into
+Nu Disco / Indie Dance / Med (fuzzy), where `Disco` resolves exactly to
+another bucket. The adopt apply gate lists the bucket before any database
+write, so the slip is visible before a membership is written; the file keeps
+the word as typed.
+
+**Closes when:** the gate shows each row's folder beside the word, or the verb
+refuses a word reached by the fuzzy tier. Ledger only.
+
+---
+
+## R-1956. tag second judges a row by its file's genre while adoption files it by the row's
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** `tagging/second.py` reads the file's genre to decide
+`genre-names-that-folder` and `genre-names-no-folder`; adoption's census
+routes by the row's genre. Where the two disagree the verb's outcome and the
+filing disagree (seam rule P2).
+
+**Measured cost.** Driven at round one on seeded rows: a blank row genre with
+file genre Deep House was written and told `crate adopt apply` files it, and
+adoption read it as needs-genre and filed it nowhere; a row genre Deep House
+with a blank file genre was left as `genre-names-no-folder` while adopt apply
+files it by the row. The producer of a disagreeing row (an unfile on the
+account) was driven for its file half only.
+
+**Closes when:** the verb judges by the census's row genre, the one adoption
+files by. Ledger only.
+
+---
+
+## R-1957. A split pair whose second genre cannot be read is planned out of its R&B band, and the gate says nothing
+
+**Found:** at the review of #989, U340, 2026-11-23.
+
+**The mechanism.** Adoption's census reads a file's second genre through
+`adopt/scan.py`'s `_second_of`, which answers an unreadable tag as no second
+genre. A Soul track whose second genre is R&B then has one entry, Soul's, and
+R&B's band reads as Soul's split place again, which `adopt move` plans to take
+it out of. Nothing on the gate says the second genre went unread.
+
+**Measured cost.** Driven at round two with `read_second_genre` made to raise
+`TagReadFailed`: the gate planned Soul's move removing `rnb_med`, with no
+warning. Whether a file whose energy reads can fail on its second genre was
+not measured; both come from one container.
+
+**Closes when:** a census that could not read a second genre leaves that
+track's R&B band alone, or names the file on the gate. Ledger only.
+
+---
+
+## R-1958. board.py residuals --archive with no ledger file ends in a traceback, where every other residuals command refuses or reads it as empty
+
+**Found:** at the build of #979, U330, 2026-11-23.
+
+**The mechanism.** `cmd_residuals` calls `archive_ledger()` for `--archive` with no check that `docs/residual-findings.md` exists, and `archive_ledger` reads it with `read_text`, so a checkout without the working file raises `FileNotFoundError` out of `main`, which catches only `Fail`. `--search` refuses the same state with a one line `board:` message and exit 2, and the listing and `--check` read it as empty.
+
+**Measured cost.** Driven in U330's capture harness on a fixture with the ledger deleted: exit 1 and a Python traceback, identical on the base and the branch. Nothing is written. Maintainer facing only, since every checkout of the repository carries the ledger; no producer of a missing working file was found among the commands.
+
+**Closes when:** `--archive` refuses a missing ledger the way `--search` does, with a test. Ledger only.
+
+---
+
+## R-1959. board.py's register readers and near miss notes are held by almost no test, so a broken reader lets a closing trailer through on a green suite
+
+**Found:** at the reviews of #979, U330, 2026-11-23.
+
+**The mechanism.** `pending_units`, `planned_units`, `_unit` and `_near_misses` in `scripts/board.py` decide which unit a register still owes a module, which is what `board.py closing` refuses a trailer on. `tests/_pending.py` holds no entry today (`EXPECTED_PENDING` is empty) and every closing test replaces `owed_by_unit` with a lambda, so the parse never sees a register entry from a test. Review round one drove 21 mutations of the lines U330 rewrote through the eight board test files: 5 killed on the head, and the 17 base equivalents show the same survivors, so this predates U330. Round two emptied `pending_units`' loop on the head and the full suite gave 0 deaths beyond the clean head. U330's own table measures the same, its row `A1_annotated_register_unread` among the zeros.
+
+**Measured cost.** None today, since no register entry exists for a broken reader to drop. The day a unit next registers a pending module, a reader that misses it lets `closing` pass a trailer that closes a unit still owed work, and the suite stays green. Maintainer facing.
+
+**Closes when:** a test drives `pending_units` and `planned_units` on a synthetic register in each shape (annotated and plain `PENDING`, a constant through a name, a key with a suffix, a `path:` key, a present package), and `closing` end to end on it without the lambda, killing the rows above. Ledger only; the test slice cards #981 to #984 own these files now.
+
+---
+
+## R-1960. Nothing runs board.py under a Python below 3.10, though the commit-msg hook calls it with the bare python3
+
+**Found:** at review round two of #979, U330, 2026-11-23.
+
+**The mechanism.** `.pre-commit-config.yaml` runs `python3 scripts/board.py closing` with `language: system`, so the hook uses whatever `python3` the committing shell finds, while `pyproject.toml` requires 3.12 and the suite and CI run 3.12 and 3.13. U330's first head used `isinstance(node, ast.AnnAssign | ast.Assign)`, which raises `TypeError` below 3.10; review round one drove it under CPython 3.9 (24 of 166 captured commands changed exit code) and the fix round put the tuple back. Reverting that fix kills no test.
+
+**Measured cost.** Every commit refused by a traceback on a machine whose `python3` is older than 3.10. Reachability unmeasured: this container's `python3` is 3.13, and no machine whose own `python3` is below 3.10 was driven.
+
+**Closes when:** a check runs `board.py`'s offline commands under the oldest interpreter the hook may meet, or the hook names the venv's interpreter. Ledger only.
+
+---
+
+## R-1961. A tag set commit that raises after the files were written leaves the files' old genre in a session the next run's answer does not name
+
+**Found:** at the review of #988, U339, round one, 2026-11-23.
+
+**The mechanism.** `tagging/genre_set.py` `apply_set` writes the files inside the session, then the rows' commit. When `rb_writer.commit_guarded` raises, the run ends `internal-error` naming no session, the files carry the new genre and the rows the old one. The next run plans the row only (its file already agrees), keeps no file in its record, and its answer says a restore of its session puts each file's old genre back, which it cannot: the old values are in the first, abandoned session's record.
+
+**Measured cost.** Driven with the commit made to raise: restoring the second session leaves row Melodic House and file Deep House (`planned: 0`); restoring the first puts the files back (`read_back: 2`). The producer was injected; a real commit refusing after files is the guard's own refusal or a disk failure.
+
+**Closes when:** a refusal after the files names the session whose record keeps them and the restore that undoes them, and the success message says "each file's old genre" only when the record kept one, with the injected failure as its test.
+
+---
+
+## R-1962. A file genre with leading or trailing spaces is kept trimmed, so a restore of tag set puts it back without them
+
+**Found:** at the build of #988, U339, 2026-11-23.
+
+**The mechanism.** `tag set` keeps each file's old genre as `tags.read_tags_checked` reads it, which trims every value, and `core/restore_tags.py` compares and writes the trimmed value. A genre tag stored with surrounding spaces is put back without them.
+
+**Measured cost.** Not driven: no file in the fixtures or the brief carries a padded genre, and the trimmed value is the one every reader in the product uses, so routing and adoption read the restored file as before.
+
+**Closes when:** the exact value is kept (`tags.read_tag_values_checked`) and the restore's read back compares exact values, or a test shows no container in use stores padded genres.
+
+---
+
+## R-1963. A genre move entry outlives a membership taken out by hand, so a later hand placement in the old folder is moved again
+
+**Found:** at the build of #988, U339, 2026-11-23; driven at its review round one.
+
+**The mechanism.** `tag set` records, in `adopt/genre_moves.py`, the genre folder the tree files a written row in under its old genre, and the entry is spent when an `adopt move` job reads the row back out of that folder, or when a later `tag set` gives the row that folder's genre again. Review round one drove three producers of an entry nothing spends, a row the tree did not hold in its old folder, a genre moved there and back, and a genre moved twice; the fix round records a folder only where the tree holds the row and spends an entry a row is given back, which closes the first two, and round two's fix spends every folder a track leaves in one job, which closes the third and a fourth round two drove (a track leaving two folders in one job spent one entry). Left: when the person takes the track out of the old folder in rekordbox before `adopt move` runs, no move is planned and the entry stays, and a later hand placement of the track in that folder, as a second genre folder (U340), is planned for removal.
+
+**Measured cost.** The removal a stale entry plans is shown at `adopt.move.approve`, naming the folder it leaves, so it is never made unseen; a person approving without reading it loses that one placement. Review round one drove the removal with the placement seeded through `rb_writer`, since a hand placement in rekordbox cannot be driven here.
+
+**Closes when:** an entry is spent when the move plan finds the row holds nothing in its folder, read on the worker's own pass, with a test placing a track back by hand after the entry is moot.
+
+---
+
+## R-1964. tag set --playlist cannot name a playlist whose name starts or ends with a slash, or a path spelled without the spaces around the separator
+
+**Found:** at the review of #988, U339, round two, 2026-11-23.
+
+**The mechanism.** `tagging/genre_set.py` `playlist_members` refuses a path that starts or ends with `/` or holds an empty name between ` / ` separators, before walking the tree, and matches names joined by ` / ` exactly. A playlist named `Sets w/` or `/r/ house` therefore cannot be named, a path typed `INBOX/Picks` refuses, and a folder `A / B` beside a folder `A` holding `B` reads as two nodes and refuses.
+
+**Measured cost.** Driven on seeded names in round two; none of the shipped taxonomy's 110 folder and sub paths is affected (0 share a spelling, 8 of 22 bucket names hold the separator and resolve). The rows can still be named with `--row` or `--rows-from`, and the refusal says how a path is written.
+
+**Closes when:** the walk accepts a name whose own text starts or ends with `/` when a live node carries it, with seeded nodes as its test.
+
+---
+
+## R-1965. adopt move takes a row tag set moved out of its old genre folder's energy band and leaves its with vox and Favorites memberships there
+
+**Found:** at the review of #988, U339, round two, 2026-11-23.
+
+**The mechanism.** The move across genre folders `adopt/move.py` `moved_out_of` plans removes the old bucket's competing subs, the energy bands, read from `Placements`. The derived sub classes adoption also files, `with vox` (from the vox My Tag) and Favorites, are read apart (`adopt/placements.py` `read_holdings`, `Vocals`) and are never in the move's `remove`, so a vocal track given another genre by `tag set` ends in the new folder's band and `with vox` and still in the old folder's `with vox`. Nothing else plans it out: review round two drove `adopt move` (plans nothing, lists nothing), `adopt apply` (sees the vocal membership present in the new bucket only) and `converge` (matching).
+
+**Measured cost.** Driven end to end through the dispatcher in round two (`metadata mytags-vocals`, `adopt apply`, `tag set`, `adopt apply`, `adopt move`). The fix round made the run's answer and the guide say the membership stays and is the person's to remove in rekordbox, so nothing false is said; the workflow cannot finish from the command line for a vocal track (board bar c).
+
+**Closes when:** the cross folder move also removes the old bucket's derived sub class memberships the track holds (read with the vocal subs, resolved by `placements.named_place` or its sub class counterpart, checked again in `move_cli.remaining` and read back in `read_back`), with the vocal track drive as its test, and the caveat in `set-file-next` and `docs/GUIDE.md` removed.
+
+---
+
+## R-1966. An unparseable genre_moves.json reads as no entry, and the next tag set overwrites it
+
+**Found:** at the review of #988, U339, round one, 2026-11-23.
+
+**The mechanism.** `adopt/genre_moves.py` `read` answers no entry for a file it cannot parse, on purpose, so a damaged file never removes a membership. `record` then writes the merged entries over it, so the entries it held are gone and `adopt move` never plans those rows' moves out of their old genre folders.
+
+**Measured cost.** Driven with the file corrupted by hand after one run: the next `tag set` rewrote it and the earlier rows were not moved. Nothing in the product writes the file other than atomically, so the producer is a hand edit or a disk fault; the cost is a track left in its old folder as well, as before U339, and visible in rekordbox.
+
+**Closes when:** `record` refuses, or keeps the unreadable file beside under a dated name, when the file exists and does not parse, with a corrupted file as its test.
+
+---
+
+## R-1967. tag set cannot make a genre row the library lacks, so a new genre folder still needs one hand edit in rekordbox first
+
+**Found:** at the battery of #988, U339, 2026-11-23.
+
+**The mechanism.** U339's brief asks `crate tag set GENRE` to mint the `djmdGenre` row for a word the library has no active row for, linked on the same commit. `tests/test_rb_writer_guard.py::test_every_other_writer_in_the_package_asks_for_no_creation` allows only `intake/native.py` to pass `creations=` to `rb_writer.commit_guarded`, and `test_rb_writer_guard.py` keeps the lookup tables out of `PERMITTED_ROW_TABLES`. A build session may not edit that suite, so `tag set` (`tagging/genre_set.py`) links an existing active row and, when there is none, leaves every named row `genre-unknown`, writes nothing on any file or row, and warns `set-genre-has-no-row`.
+
+**Measured cost.** Driven: `tests/test_tag_set.py::test_a_genre_the_library_has_no_row_for_writes_nothing_and_names_the_act`. A DJ who makes a new genre folder, as Phillip did with Deep and Soulful House on 2026-11-22, must give one track that genre in rekordbox before `tag set` files anything under it: the workflow cannot finish from the command line (board bar c).
+
+**Closes when:** the guard suite names `tagging/genre_set.py` as a second asker, admitting `djmdGenre` alone on the commit that links it, and `tag set` mints the row by hand as `intake/native.py`'s `_Mints._mint` does (ID from `generate_unused_id`, text; `Name`; a fresh `UUID`), flushed before `metadata.plan_genre_retag` resolves it, with tests for a mint shared by many rows, a tombstoned namesake skipped, and nothing minted when no row is written. The decision is on #988's card.
+
+---
+
+## R-1968. Two rows recording one file, both named to tag set, end refused as if the file had changed by another hand
+
+**Found:** at the review of #988, U339, round one, 2026-11-23.
+
+**The mechanism.** `write_files` in `tagging/genre_set.py` reads each file again before writing it and leaves one no longer carrying the word the plan read. Two rows recording one file both plan the same file; the first write changes it, so the second row is listed as moved and the run ends `tag-set-unwritten`, "no longer carry the genre the plan read", when the verb's own first write is the cause.
+
+**Measured cost.** Driven with two rows seeded on one file: the file and the first row carry the genre, the second row keeps its old one, and the refusal's reason names the wrong cause. A second run writes the second row. Two rows on one file is a duplicate the collection should not hold.
+
+**Closes when:** the plan lists a second row on a file already named as `file-shared` (or writes the file once for both), with the seeded pair as its test.

@@ -120,6 +120,11 @@ FIELDS: dict[str, TagSpec] = {
     # TEMPO, so the table still has no tempo entry; ``core.drift`` says what each is.
     "driftlevel": TagSpec("driftlevel", "TXXX:DriftLevel", "----:com.apple.iTunes:DriftLevel"),
     "drift": TagSpec("drift", "TXXX:Drift", "----:com.apple.iTunes:Drift"),
+    # U340, the second genre folder a track is filed into beside the one its
+    # genre names. A genre word, never a tempo; ``routing.second_bucket`` reads it.
+    "secondgenre": TagSpec(
+        "secondgenre", "TXXX:SecondGenre", "----:com.apple.iTunes:SecondGenre"
+    ),
 }
 
 FLAC_SUFFIXES = (".flac",)

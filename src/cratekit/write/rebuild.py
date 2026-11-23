@@ -101,13 +101,16 @@ class Truth:
     genre: str | None = None
     energy: int | None = None
     voxlevel: int | None = None
+    #: The second genre folder's word (U340), filed beside the genre's own by
+    #: :func:`cratekit.core.routing.second_bucket`.
+    second_genre: str | None = None
 
 
-_TRUTH_FIELDS = ("genre", "energylevel", "voxlevel")
+_TRUTH_FIELDS = ("genre", "energylevel", "voxlevel", "secondgenre")
 
 
 def read_truth(path: Path) -> Truth:
-    """The three tag readings for one file, through ONE container open (U250).
+    """The tag readings for one file, through ONE container open (U250).
 
     Through :mod:`cratekit.core.tags`. It never raises for an unreadable file:
     an absent reading routes to the declared fallback, visibly, where an
@@ -119,6 +122,7 @@ def read_truth(path: Path) -> Truth:
         genre=values["genre"],
         energy=tags.whole_number(values["energylevel"], field="energylevel", path=path),
         voxlevel=tags.whole_number(values["voxlevel"], field="voxlevel", path=path),
+        second_genre=values["secondgenre"],
     )
 
 
@@ -197,27 +201,43 @@ def derive_from_taxonomy(
 
     out: list[DeclaredPlacement] = []
     for entry in truth:
-        resolution = routing.resolve_bucket(declared, entry.genre)
-        sub = routing.energy_sub(
-            declared, resolution.bucket_id, entry.energy, source_genre=entry.genre or ""
-        )
-        if sub is not None:
-            # None is a real answer: the taxonomy declares no place below that
-            # bucket for this track.
-            out.append(DeclaredPlacement(entry.location, resolution.bucket_id, sub.id))
-        # THE GENRE SUB BESIDE THE BAND (U155), from the same genre reading, so it
-        # is never a gap. Both the rebuild and ``route resort`` write it.
-        genre = routing.genre_sub(declared, resolution.bucket_id, entry.genre)
-        if genre is not None:
-            out.append(DeclaredPlacement(entry.location, resolution.bucket_id, genre.id))
-        if vocal_threshold is not None and routing.routes_with_vox(
-            entry.voxlevel, vocal_threshold
-        ):
-            out.extend(
-                DeclaredPlacement(entry.location, resolution.bucket_id, sub_class.id)
-                for sub_class in additive
-            )
+        for bucket_id, word in filed_genres(declared, entry):
+            sub = routing.energy_sub(declared, bucket_id, entry.energy, source_genre=word or "")
+            if sub is not None:
+                # None is a real answer: the taxonomy declares no place below that
+                # bucket for this track.
+                out.append(DeclaredPlacement(entry.location, bucket_id, sub.id))
+            # THE GENRE SUB BESIDE THE BAND (U155), from the same genre reading, so
+            # it is never a gap. Both the rebuild and ``route resort`` write it.
+            genre = routing.genre_sub(declared, bucket_id, word)
+            if genre is not None:
+                out.append(DeclaredPlacement(entry.location, bucket_id, genre.id))
+            if vocal_threshold is not None and routing.routes_with_vox(
+                entry.voxlevel, vocal_threshold
+            ):
+                out.extend(
+                    DeclaredPlacement(entry.location, bucket_id, sub_class.id)
+                    for sub_class in additive
+                )
     return tuple(out), gaps
+
+
+def filed_genres(
+    declared: taxonomy.Taxonomy, entry: Truth
+) -> tuple[tuple[str, str | None], ...]:
+    """Each bucket one file is filed into, with the genre word that names it.
+
+    The genre's bucket first, by the resolver's four tiers as ever, then the
+    second genre's when :func:`cratekit.core.routing.second_bucket` names one
+    (U340). EACH BUCKET FILES BY ITS OWN WORD, so a ``sub_by_source`` row or a
+    genre sub of the second folder answers to the second genre, and the one
+    energy reading puts the track in the same band of both.
+    """
+    first = routing.resolve_bucket(declared, entry.genre).bucket_id
+    second = routing.second_bucket(declared, entry.genre, entry.second_genre)
+    if second is None:
+        return ((first, entry.genre),)
+    return ((first, entry.genre), (second, entry.second_genre))
 
 
 def _additive_ids(declared: taxonomy.Taxonomy, signal: str) -> set[str]:
@@ -1164,6 +1184,7 @@ __all__ = [
     "close_restore_marker",
     "declared_membership",
     "derive_from_taxonomy",
+    "filed_genres",
     "favorites_skipped_warnings",
     "governed_not_compared",
     "left_behind",

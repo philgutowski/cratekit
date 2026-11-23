@@ -68,3 +68,14 @@ def test_a_library_with_no_favourites_playlist_mirrors_the_tree_and_says_why_not
     read = _read(cfg, db, monkeypatch)
     assert [folder.name for folder in read.folders] == [DEEP.display]
     assert "All Favorites" in read.favorites
+
+
+def test_a_track_in_two_genre_folders_is_mirrored_in_both(cfg, db, monkeypatch):
+    """U340: a second genre folder is read like the first, so the account shows both."""
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1")
+    tree.playlist(AFRO, "Med", "1", "2")
+    db.session.commit()
+    shape = _shape(_read(cfg, db, monkeypatch))
+    assert shape[DEEP.display] == {f"{DEEP.display} Med": ["1"]}
+    assert shape[AFRO.display] == {f"{AFRO.display} Med": ["1", "2"]}

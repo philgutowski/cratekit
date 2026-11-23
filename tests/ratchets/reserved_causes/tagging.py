@@ -62,6 +62,30 @@ KEBAB_LITERALS = {
         'remap-records-unread',
         'tag-remap-unwritten',
     ],
+    # 2026-11-23, U340: tag second, a second genre set or cleared on chosen files.
+    'tagging/second.py': [
+        'already-that-second-genre',
+        'file-missing',
+        'file-unreadable',
+        'genre-names-no-folder',
+        'genre-names-that-folder',
+        'held-out',
+        'no-second-genre',
+        'row-not-in-collection',
+        'tag-second',
+        'tag-second-genre-undeclared',
+        'tag-second-no-rows',
+        'tag-second-playlist-unknown',
+        'tag-second-rows-unreadable',
+        'utf-8',
+    ],
+    'tagging/second_cli.py': [
+        'second-genre-left',
+        'second-genre-nothing-to-write',
+        'second-genre-written',
+        'tag-second-unwritten',
+        'tag-second-usage',
+    ],
     'tagging/retag.py': [
         'answer-too-coarse',
         'coarse-genre',
@@ -154,6 +178,28 @@ KEBAB_LITERALS = {
         'tag-suggest',
         'utf-8',
     ],
+    # 2026-11-23, U339: tag set, a chosen genre over the one a row carries.
+    'tagging/genre_set.py': [
+        'already-that-genre',
+        'decision-stale',
+        'internal-error',
+        'review-selection-invalid',
+        'row-gone',
+        'tag-set',
+        'tag-set-scope-unknown',
+        'whitelist-violation',
+    ],
+    'tagging/genre_set_cli.py': [
+        'set-file-next',
+        'set-genre-has-no-row',
+        'set-genre-written',
+        'set-leave-unmatched',
+        'set-nothing-to-write',
+        'set-rows-left',
+        'tag-set-scope-unknown',
+        'tag-set-unwritten',
+        'utf-8-sig',
+    ],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/suggest_cli.py': [
         'review-selection-invalid',
@@ -181,6 +227,8 @@ KEBAB_LITERALS = {
 }
 
 NAMED_WITHOUT_OWN = {
+    # 2026-11-23, U339: a file that would not take its set genre.
+    'tagging/genre_set_cli.py': ['tag-set-unwritten'],
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],
     # 2026-11-22, U306: searchers split by source; the literals moved with their code.
@@ -193,6 +241,8 @@ NAMED_WITHOUT_OWN = {
 }
 
 NAMED_WITH_OWN = {
+    # 2026-11-23, U339: a file that would not take its set genre.
+    'tagging/genre_set_cli.py': ['tag-set-unwritten'],
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],
     # 2026-11-22, U306: searchers split by source; the literals moved with their code.
@@ -230,6 +280,23 @@ LITERAL_HOLDERS = {
         'tag-retag-folder-unknown',
     ],
     'tagging/rows.py': ['decision-stale', 'internal-error', 'whitelist-violation'],
+    # 2026-11-23, U339: tag set's refusals.
+    'tagging/genre_set.py': [
+        'decision-stale',
+        'internal-error',
+        'review-selection-invalid',
+        'tag-set-scope-unknown',
+        'whitelist-violation',
+    ],
+    'tagging/genre_set_cli.py': ['tag-set-scope-unknown', 'tag-set-unwritten'],
+    # 2026-11-23, U340: tag second's refusals.
+    'tagging/second.py': [
+        'tag-second-genre-undeclared',
+        'tag-second-no-rows',
+        'tag-second-playlist-unknown',
+        'tag-second-rows-unreadable',
+    ],
+    'tagging/second_cli.py': ['tag-second-unwritten', 'tag-second-usage'],
     # 2026-11-22, U306: searchers split by source; the literals moved with their code.
     'tagging/catalogues.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
     # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.

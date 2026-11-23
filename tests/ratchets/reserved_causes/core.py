@@ -263,6 +263,15 @@ KEBAB_LITERALS = {
         'tag-remap-unwritten',
         'tag-retag-folder-unknown',
         'tag-retag-unwritten',  # 2026-11-01, R-1103
+        # 2026-11-23, U340: tag second's refusals.
+        'tag-second-genre-undeclared',
+        'tag-second-no-rows',
+        'tag-second-playlist-unknown',
+        'tag-second-rows-unreadable',
+        'tag-second-unwritten',
+        'tag-second-usage',
+        'tag-set-scope-unknown',  # 2026-11-23, U339
+        'tag-set-unwritten',  # 2026-11-23, U339
         'tag-suggest-unwritten',
         'target-lufs-out-of-range',
         'taxonomy-genre-unknown',  # 2026-11-02, U194
