@@ -1,12 +1,9 @@
 """A provider failure exactly as the provider client's own handler raises it (R-1305).
 
-A hand built exception carries whatever chain its author imagined. The client
-reads an error answer's body as JSON INSIDE its handler of the HTTP error, so a
-body that is not JSON surfaces as the decode error with the HTTP error three
-context links down, and no declared cause anywhere. Built here by driving the
-client's own request path over a canned answer, so a test reads the chain the
-installed client really makes and a client upgrade that changes it shows up as
-a test that changes, not as a fixture that keeps agreeing with itself.
+Built by driving the client's own request path over a canned answer, so the
+chain (a non-JSON body surfacing as the decode error, the HTTP error three
+context links down) is the installed client's, and an upgrade that changes it
+changes a test.
 """
 
 from __future__ import annotations
@@ -27,10 +24,8 @@ NOT_FOUND_BODY = b'{"status": 404, "subStatus": 2001, "userMessage": "The resour
 def client_failure(status: int, body: bytes) -> Exception:
     """What the client's request handler raises for an answer of ``status`` carrying ``body``.
 
-    Raised, never just built, so its context links are the ones the
-    interpreter set; called inside a test's own ``except`` block, the answer's
-    HTTP error takes that handled error as its context, as a real call there
-    would.
+    Raised, so its context links are the interpreter's; inside a test's own
+    ``except`` the HTTP error takes that handled error as context, as a real call would.
     """
     answer = requests.Response()
     answer.status_code = status

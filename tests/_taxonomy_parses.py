@@ -1,14 +1,9 @@
 """Counting the taxonomy module's parses by their text (U247).
 
-ONE COUNTER FOR EVERY SUITE THAT ASKS how often a taxonomy was parsed, so the
-memo's tests and the verbs' tests count the same thing. It replaces the
-``tomllib`` the taxonomy module reads at call time, and only that module's, so
-a configuration or an artifact parsed elsewhere is not counted.
-
-COUNT A TEXT THE TEST MADE UNIQUE. The memo lives for the process, so a text
-another test already parsed can be answered from it with no parse at all, and
-a count of zero there proves nothing. :func:`unique` appends a comment no other
-test writes, which changes no declaration and makes the text a key of its own.
+One counter for every suite, replacing the ``tomllib`` the taxonomy module
+reads at call time, and only that module's. The memo lives for the process,
+so count a text the test made unique: :func:`unique` appends a comment no
+other test writes.
 """
 
 from __future__ import annotations
@@ -50,12 +45,10 @@ def unique(text: str) -> str:
 
 
 def renamed_in_place(text: str, display: str) -> tuple[str, str]:
-    """``text`` with one display name replaced by another of the same length.
+    """``text`` with one display name replaced by another of the SAME LENGTH, and the new name.
 
-    THE SAME LENGTH ON PURPOSE. A memo keyed on a path and a size, or on a size
-    and a time, answers an edit that keeps the length with the declaration it
-    replaced, so an edit test whose new name is longer or shorter cannot tell
-    that memo from the right one. Returns the edited text and the new name.
+    A memo keyed on a size, or a size and a time, would miss an edit that keeps
+    the length, so only this kind of edit tells such a memo from the right one.
     """
     renamed = "X" * len(display)
     edited = text.replace(f'display = "{display}"', f'display = "{renamed}"', 1)
@@ -64,11 +57,7 @@ def renamed_in_place(text: str, display: str) -> tuple[str, str]:
 
 
 def rewrite_keeping_time(path, text: str) -> None:
-    """Write ``text`` over ``path`` in place and put its modification time back.
-
-    So a memo keyed on the file's time, as well as one keyed on its size, sees
-    nothing change. The inode is kept too, since the write truncates in place.
-    """
+    """Write ``text`` over ``path`` in place, keeping its modification time and inode."""
     before = path.stat()
     path.write_text(text, encoding="utf-8")
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))

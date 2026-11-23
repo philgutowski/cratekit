@@ -1,15 +1,8 @@
 """Driving a verb through the REAL dispatcher, and answering R34's two acts.
 
-Three suites want the same two helpers, and before this module they were typed
-out three times. That matters more than the line count: ``approve_and_queue``
-encodes a CONTRACT, that an explicit gate is answered by a separate recorded act
-and never inline, and a copy of a contract is a copy that can quietly drift into
-answering it the easy way.
-
-``cli.run`` in process rather than a subprocess, deliberately. A verb driven out
-of process cannot have its provider seam substituted, which every outbound test
-needs, and the property under test in all three suites is the dispatcher's rather
-than the operating system's.
+Shared by three suites, since ``approve_and_queue`` encodes a contract: an
+explicit gate is answered by a separate recorded act, never inline. ``cli.run``
+in process, so a provider seam can be substituted.
 
 Not a test module: pytest does not collect it.
 """
@@ -27,17 +20,9 @@ from cratekit.core.exit_codes import ExitCode
 def drive(argv: list[str]) -> tuple[int, dict]:
     """Run one invocation, VALIDATE its envelope, and return the code and payload.
 
-    THE VALIDATION IS THE POINT OF PUTTING THIS IN ONE PLACE. Every verb declares
-    an ``output_schema`` and ``cli.output`` closes each declared surface with
-    ``additionalProperties: false``, but nothing in the dispatcher validates what
-    a verb actually emitted. U51 shipped an undeclared ``outbound`` key on two
-    verbs' ``job_state/1`` payload and the whole suite stayed green, because the
-    schema fingerprint hashes the DECLARED fields and the golden envelope is a
-    hand written literal. ``tests/test_master_cli.py`` had this assertion inside
-    its own private driver, where it guarded one verb.
-
-    Here it guards every verb any of these suites drives, so the next undeclared
-    field fails in the suite rather than in somebody's consumer.
+    Nothing in the dispatcher validates what a verb emitted: U51 shipped an
+    undeclared ``outbound`` key in ``job_state/1`` with the suite green. So every
+    verb these suites drive is checked against its ``output_schema`` here.
     """
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
@@ -50,12 +35,9 @@ def drive(argv: list[str]) -> tuple[int, dict]:
 def approve_and_queue(verb: list[str], gate: str) -> tuple[str, str]:
     """R34's two acts, then the queueing drive. Returns (gate run, job id).
 
-    THREE INVOCATIONS AND NOT ONE. The first meets the gate with nothing
-    recorded and must refuse. The second records the decision with an actor,
-    which is the separate deliberate act R34 requires. Only the third, naming
-    that run, queues. A helper that answered the gate inline with ``-d`` would
-    be asserting that the contract can be met by typing one more flag on the
-    command that discovered it, which is the thing the contract forbids.
+    The gate refuses with nothing recorded, a second invocation records the
+    decision with an actor, and only the third, naming that run, queues; never
+    ``-d`` inline, which the contract forbids.
     """
     code, refused = drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
@@ -74,10 +56,9 @@ def approve_and_queue(verb: list[str], gate: str) -> tuple[str, str]:
 def drive_human(argv: list[str]) -> tuple[int, str]:
     """Run one invocation in the DEFAULT output mode and return what a person reads.
 
-    ``drive`` always requests json, which is why a verb can keep a green suite
-    over a human answer that says only ``ok`` and a run id (R-378, R-678). A
-    success is written to standard output and a refusal to standard error, so
-    whichever one holds text is the answer.
+    ``drive`` requests json, so a verb could keep a green suite over a human
+    answer saying only ``ok`` (R-378, R-678). Success goes to stdout, a refusal
+    to stderr; whichever holds text is the answer.
     """
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(list(argv), stdout=out, stderr=err)
