@@ -1,0 +1,965 @@
+name = "u329-after-01"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1917.V_r926_G1_first"
+source = { table = "r1917.json", id = "V_r926_G1_first" }
+description = "The brief's verification, r926.G1_never_checks replayed (first of two in a row on one container): the guard returns at once, so every write the file aims outside lands, and the file must remove it"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    if "pytest" not in sys.modules:
+        return
+    root = _TEST_WRITE_ROOT'''
+new = '''
+    if True:
+        return
+    root = _TEST_WRITE_ROOT'''
+
+[[rows]]
+id = "r301.F1_section_not_built"
+source = { table = "r301.json", id = "F1_section_not_built" }
+description = "The recognition section is never read from the file, so every install gets the default"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/intake/test_workers.py"]
+old = '        recognition=_build(RecognitionConfig, data.get("recognition") or {}),'
+new = '        recognition=RecognitionConfig(),'
+
+[[rows]]
+id = "r345.A9_derive_on_load"
+source = { table = "r345.json", id = "A9_derive_on_load" }
+description = "from_dict: do not derive backup.remote from the destinations"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '            overrides={"remote": derived_backup_remote(data)},'
+new = '            overrides=None,'
+
+[[rows]]
+id = "r44-a.C4_identity_not_read"
+source = { table = "r44-a.json", id = "C4_identity_not_read" }
+description = "Never read a rule's identity in, so every configured rule arrives unrecorded"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_deletion.py"]
+old = '                    volume_id=entry.get(PREFIX_VOLUME_IDENTITY_KEY),'
+new = '                    volume_id=None,'
+
+[[rows]]
+id = "r790-c.C2_config_built"
+source = { table = "r790-c.json", id = "C2_config_built" }
+description = "from_dict: ignore the labels section and always take the default"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_config.py"]
+old = '        labels=_build(LabelsConfig, data.get("labels") or {}),'
+new = '        labels=LabelsConfig(),'
+
+[[rows]]
+id = "r926.G10_no_temporary_allowance"
+source = { table = "r926.json", id = "G10_no_temporary_allowance" }
+description = "The primitives lose the system temporary allowance, the strict rule the review round measured at 101 refusals"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_provider_gate.py"]
+old = '''
+    if system_temporary:
+        allowed.append('''
+new = '''
+    if False:
+        allowed.append('''
+
+[[rows]]
+id = "r926.G11_mkdir_before_check"
+source = { table = "r926.json", id = "G11_mkdir_before_check" }
+description = "save creates the configuration directory before the lock is built, so a refused write leaves a directory behind"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+moved = "Same lines in save; U298 renamed _mkdir_private to the public mkdir_private"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    with _write_lock(target):
+        mkdir_private(target.parent)
+        atomic_write_bytes(config.to_toml_bytes(), target)'''
+new = '''
+    mkdir_private(target.parent)
+    with _write_lock(target):
+        atomic_write_bytes(config.to_toml_bytes(), target)'''
+
+[[rows]]
+id = "r926.G12_message_drops_path"
+source = { table = "r926.json", id = "G12_message_drops_path" }
+description = "The no root refusal stops naming the path it refused"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py"]
+old = '''
+            f"refused to write {path}: this process is "
+            f"running under pytest and no test root is registered, so the "'''
+new = '''
+            f"refused to write the file: this process is "
+            f"running under pytest and no test root is registered, so the "'''
+
+[[rows]]
+id = "r926.G2_checks_the_shipped_tool"
+source = { table = "r926.json", id = "G2_checks_the_shipped_tool" }
+description = "The guard runs in a process without pytest too, so the shipped tool refuses every configuration save"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    if "pytest" not in sys.modules:
+        return
+    root = _TEST_WRITE_ROOT'''
+new = '''
+    if False:
+        return
+    root = _TEST_WRITE_ROOT'''
+
+[[rows]]
+id = "r926.G3_document_check_dropped"
+source = { table = "r926.json", id = "G3_document_check_dropped" }
+description = "_write_lock no longer checks, so the configuration document is held only by the primitives' temporary allowance"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+moved = "Same lines in _write_lock; U298 renamed _exclusive_lock to the public exclusive_lock"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    _refuse_write_outside_test_root(path)
+    return exclusive_lock(path.with_name(path.name + ".migrate.lock"))'''
+new = '    return exclusive_lock(path.with_name(path.name + ".migrate.lock"))'
+
+[[rows]]
+id = "r926.G4_document_gets_temporary"
+source = { table = "r926.json", id = "G4_document_gets_temporary" }
+description = "The configuration document is given the system temporary allowance the primitives have"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+moved = "Same lines in _write_lock; U298 renamed _exclusive_lock to the public exclusive_lock"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    _refuse_write_outside_test_root(path)
+    return exclusive_lock(path.with_name(path.name + ".migrate.lock"))'''
+new = '''
+    _refuse_write_outside_test_root(path, system_temporary=True)
+    return exclusive_lock(path.with_name(path.name + ".migrate.lock"))'''
+
+[[rows]]
+id = "r926.G5_atomic_write_unchecked"
+source = { table = "r926.json", id = "G5_atomic_write_unchecked" }
+description = "atomic_write_bytes no longer checks, so a ledger or token write from an unisolated test lands anywhere"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+moved = "Same lines in atomic_write_bytes; U298 renamed _mkdir_private to the public mkdir_private"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    _refuse_write_outside_test_root(path, system_temporary=True)
+    mkdir_private(path.parent)
+    fd, tmp = tempfile.mkstemp('''
+new = '''
+    mkdir_private(path.parent)
+    fd, tmp = tempfile.mkstemp('''
+
+[[rows]]
+id = "r926.G6_lock_unchecked"
+source = { table = "r926.json", id = "G6_lock_unchecked" }
+description = "_exclusive_lock no longer checks, so a session lock from an unisolated test is created anywhere"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+moved = "Same lines in the lock's __enter__; U298 renamed the class to exclusive_lock and _mkdir_private to mkdir_private"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+        _refuse_write_outside_test_root(self.path, system_temporary=True)
+        mkdir_private(self.path.parent)'''
+new = '        mkdir_private(self.path.parent)'
+
+[[rows]]
+id = "r926.G7_no_root_allows_all"
+source = { table = "r926.json", id = "G7_no_root_allows_all" }
+description = "With no root registered the allowed set is the filesystem root, so the R-926 probe writes the live config again"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '    allowed = [] if root is None else [root.resolve()]'
+new = '    allowed = [Path(os.sep)] if root is None else [root.resolve()]'
+
+[[rows]]
+id = "r926.G8_target_unresolved"
+source = { table = "r926.json", id = "G8_target_unresolved" }
+description = "The target is compared as spelled, so a link inside the root aimed outside it passes"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+moved = "Same lines in _refuse_write_outside_test_root; U298 renamed _is_inside to the public is_inside"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    target = path.resolve()
+    if any(is_inside(target, each) for each in allowed):'''
+new = '''
+    target = path
+    if any(is_inside(target, each) for each in allowed):'''
+
+[[rows]]
+id = "u107-a.S01_record_not_json"
+source = { table = "u107-a.json", id = "S01_record_not_json" }
+description = "sync_cli.load_record: read a record that is not JSON as an empty one, so every question is asked again and every answer is lost"
+file = "src/cratekit/core/config.py"
+surface = "user"
+moved = "U298 replaced label/sync_cli.load_record's own JSON read with config.read_json_map over config.read_json; the not JSON refusal is read_json's, and answering absent there makes load_record return its empty record, the same outcome the original return of _empty gave"
+tests = ["tests/test_label_sync.py"]
+old = '''
+    except ValueError as exc:
+        raise unusable("it is not JSON") from exc
+
+
+def read_json_map('''
+new = '''
+    except ValueError as exc:
+        return False, None
+
+
+def read_json_map('''
+
+[[rows]]
+id = "u206.M25_lock_skipped"
+source = { table = "u206.json", id = "M25_lock_skipped" }
+description = "Cache._locked: yield as held without taking the lock"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+moved = "U298 replaced isrc_cache.Cache._locked's body with config.lock_within, which _locked now returns; the same non blocking flock in the same poll loop, so dropping it yields held without the lock"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                had = True'''
+new = '''
+            try:
+                had = True'''
+
+[[rows]]
+id = "u254.C1_append_unsynced"
+source = { table = "u254.json", id = "C1_append_unsynced" }
+description = "append_durable_bytes: return without syncing the appended record"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '''
+            view = view[os.write(fd, view) :]
+        os.fsync(fd)'''
+new = '            view = view[os.write(fd, view) :]'
+
+[[rows]]
+id = "u254.C2_append_one_write"
+source = { table = "u254.json", id = "C2_append_one_write" }
+description = "append_durable_bytes: make one write call and drop what it did not take"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '''
+        while view:
+            view = view[os.write(fd, view) :]'''
+new = '''
+        if view:
+            view = view[os.write(fd, view) :]'''
+
+[[rows]]
+id = "u254.C3_append_test_root"
+source = { table = "u254.json", id = "C3_append_test_root" }
+description = "append_durable_bytes: drop the test root refusal"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '''
+    _refuse_write_outside_test_root(path, system_temporary=True)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'''
+new = '    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'
+
+[[rows]]
+id = "u254.C4_append_not_append"
+source = { table = "u254.json", id = "C4_append_not_append" }
+description = "append_durable_bytes: open for writing at the start of the file rather than its end"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'
+new = '    fd = os.open(path, os.O_WRONLY)'
+
+[[rows]]
+id = "u272.C1_no_flush"
+source = { table = "u272.json", id = "C1_no_flush" }
+description = "flush_to_disk: open and close the path and flush nothing"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+    try:
+        _flush_descriptor(fd)
+    except OSError as exc:'''
+new = '''
+    try:
+        pass
+    except OSError as exc:'''
+
+[[rows]]
+id = "u272.C2_full_flush_error_swallowed"
+source = { table = "u272.json", id = "C2_full_flush_error_swallowed" }
+description = "_flush_descriptor: fall back to the plain sync on every error of the full flush, an I/O error included"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+            if exc.errno not in _FULL_FLUSH_UNSUPPORTED:
+                raise'''
+new = '''
+            if False:
+                raise'''
+
+[[rows]]
+id = "u272.C3_full_flush_then_sync"
+source = { table = "u272.json", id = "C3_full_flush_then_sync" }
+description = "_flush_descriptor: drop the return after a full flush, so the plain sync runs as well"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+            _full_flush(fd, _FULL_FLUSH)
+            return'''
+new = '            _full_flush(fd, _FULL_FLUSH)'
+
+[[rows]]
+id = "u272.C4_full_flush_never_asked"
+source = { table = "u272.json", id = "C4_full_flush_never_asked" }
+description = "_flush_descriptor: never ask for the full flush, the plain sync on every platform"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+    if _FULL_FLUSH is not None:
+        try:'''
+new = '''
+    if False:
+        try:'''
+
+[[rows]]
+id = "u272.C5_eio_counts_as_unsupported"
+source = { table = "u272.json", id = "C5_eio_counts_as_unsupported" }
+description = "_FULL_FLUSH_UNSUPPORTED: count an I/O error as a filesystem without the full flush"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = 'frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL, errno.ENOTTY})'
+new = 'frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL, errno.ENOTTY, errno.EIO})'
+
+[[rows]]
+id = "u272.C6_no_plain_sync"
+source = { table = "u272.json", id = "C6_no_plain_sync" }
+description = "_flush_descriptor: drop the plain sync, so a platform without the full flush flushes nothing"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+                raise
+    os.fsync(fd)
+'''
+new = '''
+                raise
+'''
+
+[[rows]]
+id = "u272.C7_error_names_no_path"
+source = { table = "u272.json", id = "C7_error_names_no_path" }
+description = "flush_to_disk: raise a flush error as it came, naming no file"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+        if exc.filename is not None:
+            raise
+        raise OSError(exc.errno, exc.strerror or str(exc), str(path)) from exc'''
+new = '        raise'
+
+[[rows]]
+id = "u298.H10_flock_exclusive_hardens"
+source = { table = "u298.json", id = "H10_flock_exclusive_hardens" }
+description = "flock_exclusive: a lock file left at another mode is never hardened"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''
+        handle = os.fdopen(descriptor, "r+b")
+        harden(target)'''
+new = '        handle = os.fdopen(descriptor, "r+b")'
+
+[[rows]]
+id = "u298.H11_read_json_refuses_garbage"
+source = { table = "u298.json", id = "H11_read_json_refuses_garbage" }
+description = "read_json: a document that is not JSON reads as an empty record"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''
+        return True, json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise unusable("it could not be opened") from exc
+    except ValueError as exc:
+        raise unusable("it is not JSON") from exc'''
+new = '''
+        return True, json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise unusable("it could not be opened") from exc
+    except ValueError:
+        return True, {}'''
+
+[[rows]]
+id = "u298.H12_read_json_map_shape"
+source = { table = "u298.json", id = "H12_read_json_map_shape" }
+description = "read_json_map: a list at the top level is handed on as a record"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''
+    if not isinstance(raw, Mapping):
+        raise unusable(f"the document is a {type(raw).__name__}, not a map")'''
+new = ''
+
+[[rows]]
+id = "u298.H7_held_translates_acquisition"
+source = { table = "u298.json", id = "H7_held_translates_acquisition" }
+description = "held: a lock another holder has leaves as the lock error, not the store's own refusal"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''
+    except ConfigLockUnavailable as exc:
+        raise refused(exc) from exc'''
+new = '''
+    except ConfigLockUnavailable:
+        raise'''
+
+[[rows]]
+id = "u298.H8_lock_within_takes_lock"
+source = { table = "u298.json", id = "H8_lock_within_takes_lock" }
+description = "lock_within: reads the lock as had without taking it, so two writers interleave"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '        had = fcntl is None'
+new = '        had = True'
+
+[[rows]]
+id = "u299.U13_from_dict_applies_overrides"
+source = { table = "u299.json", id = "U13_from_dict_applies_overrides" }
+description = "config.from_dict: the overrides are left to validation, so the built config keeps the file's root"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_config_test_root.py"]
+old = '''
+    data = _apply_env_overrides(data)
+    problems = validate(data)'''
+new = '    problems = validate(data)'
+
+[[rows]]
+id = "r746-a.G1_asking_for_any_table_is_not_refused"
+source = { table = "r746-a.json", id = "G1_asking_for_any_table_is_not_refused" }
+description = "guard_violations: a creation asked for in a table outside ADMITTABLE_ROW_TABLES is no longer itself a violation"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+moved = "U953 folded the three admission loops of guard_violations into one loop over data, so emptying the refusal loop for the creation entry alone is the same dropped refusal of a creation outside ADMITTABLE_ROW_TABLES"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py"]
+old = '''
+        for table in sorted(asked - allowed):
+'''
+new = '''
+        for table in (sorted(asked - allowed) if verb != "create" else ()):
+'''
+
+[[rows]]
+id = "r746-a.G2_admitted_row_judged_without_the_column_policy"
+source = { table = "r746-a.json", id = "G2_admitted_row_judged_without_the_column_policy" }
+description = "guard_violations: an admitted content row may declare any column, the ten included"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+moved = "U953 made the content row branch choose the columns a shared declared check judges, so choosing no columns there is the same empty declared set for an admitted content row"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py"]
+old = '            empties, made = CONTENT_ROW_EMPTY_COLUMNS, f"a {CONTENT_TABLE} row"'
+new = '            empties, made = frozenset(), f"a {CONTENT_TABLE} row"'
+
+[[rows]]
+id = "r746-a.G3_content_row_admitted_without_asking"
+source = { table = "r746-a.json", id = "G3_content_row_admitted_without_asking" }
+description = "guard_violations: every commit admits a content row, whether or not it named the table"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_changes.py, was in src/cratekit/core/rb_writer.py"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py", "tests/test_intake_land_native.py"]
+old = '        if table == CONTENT_TABLE and table in creatable:'
+new = '        if table == CONTENT_TABLE:'
+
+[[rows]]
+id = "r758-a.W1_marker_not_judged"
+source = { table = "r758-a.json", id = "W1_marker_not_judged" }
+description = "the guard stops judging a changed soft delete marker, so any writer removes a row in any table with the guard saying nothing"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+moved = "U953 replaced the local rb_writer name with a _writer() call on the marker line, so the same impossible extra condition silences the same marker judgment"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '        if _writer().SOFT_DELETE_COLUMN in columns and table not in admitted:'
+new = '        if _writer().SOFT_DELETE_COLUMN in columns and table not in admitted and table == "":'
+
+[[rows]]
+id = "r758-a.W2_asked_table_not_held_to_the_set"
+source = { table = "r758-a.json", id = "W2_asked_table_not_held_to_the_set" }
+description = "a commit that asks for a removal in any table is admitted it, the refusal of the ask left standing"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+moved = "U953 folded the three intersections of guard_violations into one append inside a loop over data, so skipping the intersection for the removal entry alone is the same deleted admitted &= REMOVABLE_TABLES"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '        admissions.append(asked & allowed)'
+new = '        admissions.append(asked if verb == "remove" else asked & allowed)'
+
+[[rows]]
+id = "r758-a.W3_ask_outside_the_set_not_refused"
+source = { table = "r758-a.json", id = "W3_ask_outside_the_set_not_refused" }
+description = "asking for a removal outside the removable set is no longer itself a violation, the intersection left standing"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+moved = "U953 folded the three admission loops of guard_violations into one loop over data, so emptying the refusal loop for the removal entry alone is the same dropped refusal of a removal outside REMOVABLE_TABLES"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '''
+        for table in sorted(asked - allowed):
+'''
+new = '''
+        for table in (sorted(asked - allowed) if verb != "remove" else ()):
+'''
+
+[[rows]]
+id = "u163.W15_lookup_policy"
+source = { table = "u163.json", id = "W15_lookup_policy" }
+description = "guard_violations: wave an admitted lookup row through without the creation policy"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+moved = "U953 merged the admitted lookup branch into the permitted table branch that picks the columns a shared check judges, so picking no columns for an admitted lookup row is the same wave through"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = '            empties, made = GRIDLESS_ON_CREATE_COLUMNS, f"a row in {table!r}"'
+new = '            empties, made = (frozenset() if table in LOOKUP_TABLES and table in creatable else GRIDLESS_ON_CREATE_COLUMNS), f"a row in {table!r}"'
+
+[[rows]]
+id = "u288.M1_delete_admitted_by_any_name"
+source = { table = "u288.json", id = "M1_delete_admitted_by_any_name" }
+description = "guard_violations: admit a delete in any table once any table is named, not only the named one"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_changes.py, was in src/cratekit/core/rb_writer.py"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''
+        if table in deletable:
+            continue'''
+new = '''
+        if deletable:
+            continue'''
+
+[[rows]]
+id = "u288.M2_deletable_set_unbounded"
+source = { table = "u288.json", id = "M2_deletable_set_unbounded" }
+description = "guard_violations: stop holding the named tables to DELETABLE_TABLES, so a commit can ask to delete anywhere"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+moved = "U953 folded the three intersections of guard_violations into one append inside a loop over data, so skipping the intersection for the delete entry alone is the same unbounded deletable set"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '        admissions.append(asked & allowed)'
+new = '        admissions.append(asked if verb == "delete" else asked & allowed)'
+
+[[rows]]
+id = "u300.S11_registry_changes_local"
+source = { table = "u300.json", id = "S11_registry_changes_local" }
+description = "pending_objects reads the buffer through the part's own _registry_changes"
+file = "src/cratekit/core/rb_changes.py"
+surface = "maintainer"
+tests = ["tests/test_write_guard_completeness.py"]
+old = '    r_created, r_modified, r_removed = _writer()._registry_changes(db)'
+new = '    r_created, r_modified, r_removed = _registry_changes(db)'
+
+[[rows]]
+id = "u953.M6_admission_loop_skips_the_refusal"
+source = { table = "u953.json", id = "M6_admission_loop_skips_the_refusal" }
+description = "guard_violations' admission loop admits every asked table, so a removal, creation or delete outside its set is no violation"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_rb_writer_db.py", "tests/test_sync_removed.py"]
+old = '        for table in sorted(asked - allowed):'
+new = '        for table in sorted(asked - allowed - asked):'
+
+[[rows]]
+id = "u953.M7_admission_loop_keeps_the_unadmitted"
+source = { table = "u953.json", id = "M7_admission_loop_keeps_the_unadmitted" }
+description = "guard_violations hands on what was asked rather than what was asked and allowed, so a table outside the set is admitted downstream"
+file = "src/cratekit/core/rb_changes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_rb_writer_db.py", "tests/test_sync_removed.py"]
+old = '        admissions.append(asked & allowed)'
+new = '        admissions.append(asked)'
+
+[[rows]]
+id = "r1665-b.C1_w5_composite"
+source = { table = "r1665-b.json", id = "C1_w5_composite" }
+description = "The composite for the zero W5_unreadable_check_passes in r1665.md, what it holds with the open refusal: an open the gate refuses and a consistency check that raises both answer True"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in integrity_ok, the module's names now read through the module"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+            except _writer().RekordboxUnavailable:
+                return False
+            try:
+                result = db.session.execute(text("PRAGMA quick_check")).scalar()
+                return str(result).lower() == "ok"
+            except Exception:  # noqa: BLE001 - an unreadable snapshot is a failed snapshot
+                return False'''
+new = '''
+            except _writer().RekordboxUnavailable:
+                return True
+            try:
+                result = db.session.execute(text("PRAGMA quick_check")).scalar()
+                return str(result).lower() == "ok"
+            except Exception:  # noqa: BLE001 - an unreadable snapshot is a failed snapshot
+                return True'''
+
+[[rows]]
+id = "r1665.W1_check_opens_the_capture"
+source = { table = "r1665.json", id = "W1_check_opens_the_capture" }
+description = "integrity_ok: open the file it is given rather than its throwaway copy, the defect itself"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in integrity_ok, the module's names now read through the module"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '                db = _writer().open_db(checked, check_app_version=False, unlock=unlock)'
+new = '                db = _writer().open_db(snapshot_database, check_app_version=False, unlock=unlock)'
+
+[[rows]]
+id = "r1665.W2_failed_copy_passes"
+source = { table = "r1665.json", id = "W2_failed_copy_passes" }
+description = "integrity_ok: a throwaway copy that cannot be made answers True"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_copies.py, was in src/cratekit/core/rb_writer.py"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+            exc,
+        )
+        return False'''
+new = '''
+            exc,
+        )
+        return True'''
+
+[[rows]]
+id = "r1665.W3_no_release_of_the_copy"
+source = { table = "r1665.json", id = "W3_no_release_of_the_copy" }
+description = "integrity_ok: release only the session, leaving the pooled connection on the throwaway copy open while it is removed"
+file = "src/cratekit/core/rb_copies.py"
+surface = "maintainer"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in integrity_ok, its comment cut to its rule by the prose pass,, the module's names now read through the module"
+tests = ["tests/test_organize_one_read.py"]
+old = '''
+                # The full release: the throwaway directory is removed next.
+                _writer().close_db(db)'''
+new = '''
+                # The full release: the throwaway directory is removed next.
+                db.close()'''
+
+[[rows]]
+id = "r1665.W4_quick_check_ignored"
+source = { table = "r1665.json", id = "W4_quick_check_ignored" }
+description = "integrity_ok: answer True whatever quick_check says"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_copies.py, was in src/cratekit/core/rb_writer.py"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '                return str(result).lower() == "ok"'
+new = '                return True'
+
+[[rows]]
+id = "r1665.W6_refused_open_passes"
+source = { table = "r1665.json", id = "W6_refused_open_passes" }
+description = "integrity_ok: an open the gate refuses answers True"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in integrity_ok, the module's names now read through the module"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+            except _writer().RekordboxUnavailable:
+                return False'''
+new = '''
+            except _writer().RekordboxUnavailable:
+                return True'''
+
+[[rows]]
+id = "r1677.R1_raise_after_copy"
+source = { table = "r1677.json", id = "R1_raise_after_copy" }
+description = "integrity_ok: raise the copy failure for any OSError, after the copy too, so an open that fails is told as no room"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_copies.py, was in src/cratekit/core/rb_writer.py"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '        if raise_copy_failure and not copied:'
+new = '        if raise_copy_failure:'
+
+[[rows]]
+id = "r1677.R3_copied_never_set"
+source = { table = "r1677.json", id = "R3_copied_never_set" }
+description = "integrity_ok: never mark the copy made, so an error after it raises as a copy failure"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in integrity_ok, the module's names now read through the module"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+        with _writer().disposable_copy(snapshot_database) as checked:
+            copied = True'''
+new = '''
+        with _writer().disposable_copy(snapshot_database) as checked:
+            copied = False'''
+
+[[rows]]
+id = "r1677.R5_file_set_drops_playlist"
+source = { table = "r1677.json", id = "R5_file_set_drops_playlist" }
+description = "_copy_file_set: copy the companions but not the playlist file, so the measured list and the copied list drift"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_copies.py, was in src/cratekit/core/rb_writer.py"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_rb_writer_db.py", "tests/test_rb_snapshot.py", "tests/test_restore.py"]
+old = '''
+    for companion in companions:
+        if companion.exists():'''
+new = '''
+    for companion in companions[:-1]:
+        if companion.exists():'''
+
+[[rows]]
+id = "r372-a.A10_copy_left_behind"
+source = { table = "r372-a.json", id = "A10_copy_left_behind" }
+description = "disposable_copy: leave the temporary directory and the copy in it"
+file = "src/cratekit/core/rb_copies.py"
+surface = "maintainer"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in disposable_copy, the module's names now read through the module"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '        shutil.rmtree(directory, ignore_errors=True)'
+new = '        pass'
+
+[[rows]]
+id = "r372-a.A11_copy_under_a_running_application"
+source = { table = "r372-a.json", id = "A11_copy_under_a_running_application" }
+description = "read_only_copy: drop its own closed assertion, the layer beneath doctor and setup"
+file = "src/cratekit/core/rb_copies.py"
+surface = "maintainer"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in read_only_copy, the module's names now read through the module"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '    _writer().assert_rekordbox_closed("copying the database for a read only look")'
+new = '    pass'
+
+[[rows]]
+id = "r372-a.A12_separator_kept"
+source = { table = "r372-a.json", id = "A12_separator_kept" }
+description = "recorded_db_drives: keep the trailing separator rekordbox stores, so the rule never matches"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_copies.py, was in src/cratekit/core/rb_writer.py"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '        stripped = value.strip().rstrip("/\\")'
+new = '        stripped = value.strip()'
+
+[[rows]]
+id = "r663-a.M1_empty_not_refused_before_open"
+source = { table = "r663-a.json", id = "M1_empty_not_refused_before_open" }
+description = "the size of the copy is no longer asked before the open, so an empty copy reaches the binding and is classified only if the canary is what fails"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in read_only_copy, the module's names now read through the module"
+tests = ["tests/test_paths_resolved.py"]
+old = '        refusal = None if copied.stat().st_size else _writer()._not_a_library(Path(source), copied)'
+new = '        refusal = None'
+
+[[rows]]
+id = "r663-a.M5_failed_listing_returns_empty_set"
+source = { table = "r663-a.json", id = "M5_failed_listing_returns_empty_set" }
+description = "a table listing whose query fails answers an empty set rather than None, so a file that could not be read is reported as holding nothing"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_copies.py, was in src/cratekit/core/rb_writer.py"
+tests = ["tests/test_paths_resolved.py"]
+old = '''
+        return {str(row[0]) for row in rows}
+    except Exception:  # noqa: BLE001 - an unlistable file keeps the canary's refusal
+        return None'''
+new = '''
+        return {str(row[0]) for row in rows}
+    except Exception:  # noqa: BLE001 - an unlistable file keeps the canary's refusal
+        return set()'''
+
+[[rows]]
+id = "r663-a.M6_listing_opened_with_the_key_always"
+source = { table = "r663-a.json", id = "M6_listing_opened_with_the_key_always" }
+description = "the table listing opens every copy with the key rather than asking the header, so a plain foreign file cannot be listed"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in _copy_tables, the module's names now read through the module"
+tests = ["tests/test_paths_resolved.py"]
+old = '            db = Rekordbox6Database(path=str(copied), unlock=_writer().unlock_needed(copied))'
+new = '            db = Rekordbox6Database(path=str(copied), unlock=True)'
+
+[[rows]]
+id = "r663-b.M2_every_open_refusal_classified"
+source = { table = "r663-b.json", id = "M2_every_open_refusal_classified" }
+description = "the canary reason gate is removed, so any refusal on the way in, a pin or a failed open, is also asked whether the copy is a library"
+file = "src/cratekit/core/rb_copies.py"
+surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_copies.py, the same guard in read_only_copy, the module's names now read through the module"
+tests = ["tests/test_paths_resolved.py"]
+old = '''
+            if exc.cause.reason != "canary-read-failed":
+                raise
+            refusal = _writer()._not_a_library(Path(source), copied)'''
+new = '            refusal = _writer()._not_a_library(Path(source), copied)'
+
+[[rows]]
+id = "r1890.P3_unreserved_slug_in_rb_nodes"
+source = { table = "r1890.json", id = "P3_unreserved_slug_in_rb_nodes" }
+description = "rb_nodes, a part, raises the node move's confinement refusal under a slug with no reserved code"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py"]
+old = '''
+        raise _writer()._unavailable(
+            "whitelist-violation",
+            "the node change reached rows it did not plan'''
+new = '''
+        raise _writer()._unavailable(
+            "node-change-unconfined",
+            "the node change reached rows it did not plan'''
+
+[[rows]]
+id = "r1890.P4_unreadable_slug_in_rb_nodes"
+source = { table = "r1890.json", id = "P4_unreadable_slug_in_rb_nodes" }
+description = "rb_nodes, a part, raises the confinement refusal with its slug held in a name, which no scan reads"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py"]
+old = '''
+        raise _writer()._unavailable(
+            "whitelist-violation",
+            "the node change reached rows it did not plan'''
+new = '''
+        reason = "node-change-unconfined"
+        raise _writer()._unavailable(
+            reason,
+            "the node change reached rows it did not plan'''
+
+[[rows]]
+id = "r235-b.M22_nested_namesake_is_a_root"
+source = { table = "r235-b.json", id = "M22_nested_namesake_is_a_root" }
+description = "a folder of the tree's name anywhere in the library is a candidate root"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+moved = "U953 inlined _is_folder into is_folder, so the condition now reads is_folder; dropping its parent clause is the same unbounded root"
+tests = ["tests/test_cutover_cli.py"]
+old = '''
+        if is_folder(playlist)
+        and str(getattr(playlist, "ParentID", "")) in ROOT_PARENT_SENTINELS'''
+new = '        if is_folder(playlist)'
+
+[[rows]]
+id = "r235-b.M23_playlist_is_a_root"
+source = { table = "r235-b.json", id = "M23_playlist_is_a_root" }
+description = "a playlist of the tree's name under the playlist root is a candidate root"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+moved = "U953 inlined _is_folder into is_folder, so the condition now reads is_folder; dropping that folder clause is the same playlist taken as a root"
+tests = ["tests/test_cutover_cli.py"]
+old = '''
+        if is_folder(playlist)
+        and str(getattr(playlist, "ParentID", "")) in ROOT_PARENT_SENTINELS'''
+new = '        if str(getattr(playlist, "ParentID", "")) in ROOT_PARENT_SENTINELS'
+
+[[rows]]
+id = "r758-a.W7_removed_row_marked_again"
+source = { table = "r758-a.json", id = "W7_removed_row_marked_again" }
+description = "remove_memberships marks a row that is already removed and reports it, so a second removal counts a row it did not remove"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_nodes.py, the same guard in remove_memberships, the module's names now read through the module"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_adopt_move.py"]
+old = '        if key not in wanted or _writer().membership_removed(song):'
+new = '        if key not in wanted:'
+
+[[rows]]
+id = "u111-a.A1_folder_refused"
+source = { table = "u111-a.json", id = "A1_folder_refused" }
+description = "The writer no longer refuses a folder or smart playlist as the node it moves or removes"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''
+    if int(getattr(playlist, "Attribute", -1)) != 0:
+        raise _node_refusal('''
+new = '''
+    if False:
+        raise _node_refusal('''
+
+[[rows]]
+id = "u111-a.A3_parent_not_folder"
+source = { table = "u111-a.json", id = "A3_parent_not_folder" }
+description = "move_playlist_node no longer refuses a parent that is not a live folder"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+moved = "U953 inlined _is_folder into is_folder, so the parent check of move_playlist_node now reads is_folder and disabling it is the same dropped refusal"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '    if not is_folder(parent) or _writer().node_removed(parent):'
+new = '    if False:'
+
+[[rows]]
+id = "u111-a.A4_memberships_unmarked"
+source = { table = "u111-a.json", id = "A4_memberships_unmarked" }
+description = "remove_playlist_node marks the node and leaves its own memberships live"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+moved = "U953 replaced the local rb_writer name with a _writer() call on the marking line that follows, so skipping the membership marking is the same defect at the same call"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''
+    marked = _writer().remove_memberships(db, playlist, held)
+    setattr(playlist, _writer().SOFT_DELETE_COLUMN, 1)'''
+new = '''
+    marked = list(held)
+    setattr(playlist, _writer().SOFT_DELETE_COLUMN, 1)'''
+
+[[rows]]
+id = "u111-a.A5_node_unmarked"
+source = { table = "u111-a.json", id = "A5_node_unmarked" }
+description = "remove_playlist_node marks the memberships and never the node itself"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+moved = "U953 replaced the local rb_writer name with a _writer() call, so deleting this setattr is the same node left unmarked"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''
+    setattr(playlist, _writer().SOFT_DELETE_COLUMN, 1)
+    playlist.updated_at = datetime.now()
+    return marked'''
+new = '''
+    playlist.updated_at = datetime.now()
+    return marked'''
+
+[[rows]]
+id = "u111-a.A7_content_compared"
+source = { table = "u111-a.json", id = "A7_content_compared" }
+description = "The node judge no longer compares the content table"
+file = "src/cratekit/core/rb_nodes.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = '''
+    if before.content != after.content:
+        changed = sorted('''
+new = '''
+    if False:
+        changed = sorted('''
+

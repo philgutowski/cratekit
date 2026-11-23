@@ -1,0 +1,3880 @@
+{
+  "name": "u330-replay-before",
+  "pass_kind": "replay",
+  "branch": "cloud/979-scripts-back-under-7374-lines",
+  "head": "2bff472c",
+  "when": "2026-11-23 16:51 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22622,
+  "baseline_exit": 1,
+  "pytest_runs": 120,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries); the names directly under / (25)",
+  "reused_rows": 0,
+  "known_failures": 248,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "read",
+  "baseline_note": "read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py compare` at 2026-11-23 16:51 UTC for commit `2bff472cbf7d`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file",
+  "subset_baselines": 12,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to scripts/board.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "scripts/board.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "47ef6028b991eabc",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22622,
+    "baseline_collected": 22622,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u122.H1_no_hold",
+      "description": "Remove the hold: derive_status ignores a held status and derives from the graph",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3c5190ea54b2b624",
+      "subset": [
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[1-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[1-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[2-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[2-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[4-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[4-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[5-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[5-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[7-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[7-In review]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if current in UNDERWAY:",
+      "new": "    if False:",
+      "source": {
+        "table": "u122.json",
+        "id": "H1_no_hold"
+      }
+    },
+    {
+      "id": "u122.H2_review_not_held",
+      "description": "UNDERWAY loses In review, the runner's status, so it reads as drift again",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "072a5a484cf4ce66",
+      "subset": [
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[1-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[2-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[4-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[5-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[7-In review]",
+        "tests/test_board_status.py::test_next_lists_a_held_card_as_busy_and_never_offers_it[In review]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "UNDERWAY = (\"In Progress\", \"In review\")",
+      "new": "UNDERWAY = (\"In Progress\",)",
+      "source": {
+        "table": "u122.json",
+        "id": "H2_review_not_held"
+      }
+    },
+    {
+      "id": "u122.H3_progress_not_held",
+      "description": "UNDERWAY loses In Progress, a session's and a lane's status",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3445d651ed148ff9",
+      "subset": [
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[1-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[2-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[4-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[5-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[7-In Progress]",
+        "tests/test_board_status.py::test_next_lists_a_held_card_as_busy_and_never_offers_it[In Progress]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "UNDERWAY = (\"In Progress\", \"In review\")",
+      "new": "UNDERWAY = (\"In review\",)",
+      "source": {
+        "table": "u122.json",
+        "id": "H3_progress_not_held"
+      }
+    },
+    {
+      "id": "u122.H4_hold_flattened",
+      "description": "A held card derives In Progress whatever it held, so In review becomes drift",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "e09eaf51e8ebb8dd",
+      "subset": [
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[1-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[2-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[4-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[5-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[7-In review]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return current\n",
+      "new": "        return \"In Progress\"\n",
+      "source": {
+        "table": "u122.json",
+        "id": "H4_hold_flattened"
+      }
+    },
+    {
+      "id": "u122.H5_units_only",
+      "description": "The hold applies to units only, the behaviour before the 2026-10-09 amendment",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "68eb4421d5283031",
+      "subset": [
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[4-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[4-In review]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[5-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[5-In review]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if current in UNDERWAY:",
+      "new": "    if current in UNDERWAY and node[\"unit\"]:",
+      "source": {
+        "table": "u122.json",
+        "id": "H5_units_only"
+      }
+    },
+    {
+      "id": "u122.H6_hold_beats_closure",
+      "description": "The hold is checked before closure, so a closed held card is not Done",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "ac534561bddb7246",
+      "subset": [
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_status.py::test_a_closed_card_is_done_whatever_it_held[3-In Progress]",
+        "tests/test_board_status.py::test_a_closed_card_is_done_whatever_it_held[3-In review]",
+        "tests/test_board_status.py::test_a_closed_card_is_done_whatever_it_held[6-In Progress]",
+        "tests/test_board_status.py::test_a_closed_card_is_done_whatever_it_held[6-In review]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if node[\"closed\"]:\n        return \"Done\"\n    if current in UNDERWAY:",
+      "new": "    if current in UNDERWAY:\n        return current\n    if node[\"closed\"]:\n        return \"Done\"\n    if False:",
+      "source": {
+        "table": "u122.json",
+        "id": "H6_hold_beats_closure"
+      }
+    },
+    {
+      "id": "u122.H7_attended_beats_hold",
+      "description": "Attended is checked before the hold, the order the review moved",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "92385c5a76b5ad10",
+      "subset": [
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[7-In Progress]",
+        "tests/test_board_status.py::test_an_open_card_somebody_holds_keeps_the_status_it_holds[7-In review]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if current in UNDERWAY:",
+      "new": "    if node[\"attended\"]:\n        return \"Attended\"\n    if current in UNDERWAY:",
+      "source": {
+        "table": "u122.json",
+        "id": "H7_attended_beats_hold"
+      }
+    },
+    {
+      "id": "u122.N1_next_busy_progress_only",
+      "description": "next counts only In Progress as busy, so an In review card is offered again",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "15a8b3ace03e9ab1",
+      "subset": [
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_status.py::test_next_lists_a_held_card_as_busy_and_never_offers_it[In review]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": ".get(\"status\") in UNDERWAY",
+      "new": ".get(\"status\") == \"In Progress\"",
+      "source": {
+        "table": "u122.json",
+        "id": "N1_next_busy_progress_only"
+      }
+    },
+    {
+      "id": "u122.N2_next_offers_busy",
+      "description": "next lists a busy card under underway but leaves it in the ready list",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6eea7aa75961b63e",
+      "subset": [
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_status.py::test_next_lists_a_held_card_as_busy_and_never_offers_it[In Progress]",
+        "tests/test_board_status.py::test_next_lists_a_held_card_as_busy_and_never_offers_it[In review]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    ready = [n for n in ready if n[\"number\"] not in busy]",
+      "new": "    ready = list(ready)",
+      "source": {
+        "table": "u122.json",
+        "id": "N2_next_offers_busy"
+      }
+    },
+    {
+      "id": "u122.N3_next_no_status",
+      "description": "next drops the status column, so a reader cannot tell the runner's hold from a session's",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "009c5f2f45d09c26",
+      "subset": [
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 125,
+      "baseline_collected": 125,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_status.py::test_next_lists_a_held_card_as_busy_and_never_offers_it[In Progress]",
+        "tests/test_board_status.py::test_next_lists_a_held_card_as_busy_and_never_offers_it[In review]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            print(f\"  #{node['number']:<3} {status:<11} {node['title']}\")",
+      "new": "            print(f\"  #{node['number']:<3} {node['title']}\")",
+      "source": {
+        "table": "u122.json",
+        "id": "N3_next_no_status"
+      }
+    },
+    {
+      "id": "u124-b19.B19_audit_reads_folder",
+      "description": "audit stops counting a malformed residual file as a contradiction, rerun after the audit test landed",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "f9356ffa3f064057",
+      "subset": [
+        "tests/test_restart_and_residual_files.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_audit_counts_a_residual_file_that_cannot_land_as_a_contradiction"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        clashes = clashes + malformed",
+      "new": "        clashes = clashes",
+      "source": {
+        "table": "u124-b19.json",
+        "id": "B19_audit_reads_folder"
+      }
+    },
+    {
+      "id": "u124.B10_validate_first",
+      "description": "a malformed file is skipped instead of stopping the landing, so the good ones land",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "55643197b468e8f7",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_landing_that_cannot_number_every_file_writes_nothing[files1-u1-b.md]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if problems:\n        raise ValueError(\"; \".join(problems))\n    if not parsed:",
+      "new": "    if not parsed:",
+      "source": {
+        "table": "u124.json",
+        "id": "B10_validate_first"
+      }
+    },
+    {
+      "id": "u124.B11_relanded_title",
+      "description": "a title the ledger already holds is numbered again",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "9d15ff300c649e97",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_landing_numbers_past_the_highest_in_any_file_and_archives_when_over",
+        "tests/test_restart_and_residual_files.py::test_a_landing_that_cannot_number_every_file_writes_nothing[files0-R-12 already]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if again:\n        raise ValueError(\"; \".join(again))",
+      "new": "",
+      "source": {
+        "table": "u124.json",
+        "id": "B11_relanded_title"
+      }
+    },
+    {
+      "id": "u124.B12_highest_not_count",
+      "description": "the next number is the ledger's count plus one rather than its highest plus one",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "da467a9f62a514d0",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_landing_numbers_past_the_highest_in_any_file_and_archives_when_over",
+        "tests/test_restart_and_residual_files.py::test_an_untracked_draft_is_neither_judged_nor_landed",
+        "tests/test_restart_and_residual_files.py::test_the_landing_refuses_off_main_and_behind_origin",
+        "tests/test_restart_and_residual_files.py::test_the_number_given_at_landing_is_one_past_the_ledgers_highest",
+        "tests/test_restart_and_residual_files.py::test_two_units_built_from_one_base_land_in_either_order[order0]",
+        "tests/test_restart_and_residual_files.py::test_two_units_built_from_one_base_land_in_either_order[order1]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    number = max(titles, default=0)",
+      "new": "    number = len(titles)",
+      "source": {
+        "table": "u124.json",
+        "id": "B12_highest_not_count"
+      }
+    },
+    {
+      "id": "u124.B13_separator",
+      "description": "landed entries lose the separator line",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "289ab74a0f7b6abb",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_the_number_given_at_landing_is_one_past_the_ledgers_highest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        text = text.rstrip(\"\\n\") + \"\\n\\n---\\n\\n\"",
+      "new": "        text = text.rstrip(\"\\n\") + \"\\n\\n\"",
+      "source": {
+        "table": "u124.json",
+        "id": "B13_separator"
+      }
+    },
+    {
+      "id": "u124.B14_files_deleted",
+      "description": "a landed file is left in the folder",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "545e513ebb7238eb",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_landing_numbers_past_the_highest_in_any_file_and_archives_when_over",
+        "tests/test_restart_and_residual_files.py::test_the_number_given_at_landing_is_one_past_the_ledgers_highest",
+        "tests/test_restart_and_residual_files.py::test_two_units_built_from_one_base_land_in_either_order[order0]",
+        "tests/test_restart_and_residual_files.py::test_two_units_built_from_one_base_land_in_either_order[order1]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for path, _, _ in parsed:\n        path.unlink()",
+      "new": "    for path, _, _ in parsed:\n        pass",
+      "source": {
+        "table": "u124.json",
+        "id": "B14_files_deleted"
+      }
+    },
+    {
+      "id": "u124.B15_closing_reads_folder",
+      "description": "closing stops reading the residual folder",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "e7b783f8073d1594",
+      "subset": [
+        "tests/test_restart_and_residual_files.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_closing_refuses_a_landing_whose_residual_file_lacks_its_frontmatter[hook]",
+        "tests/test_restart_and_residual_files.py::test_closing_refuses_a_landing_whose_residual_file_lacks_its_frontmatter[range]",
+        "tests/test_restart_and_residual_files.py::test_closing_refuses_a_landing_whose_residual_file_lacks_its_frontmatter[unreadable range]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    malformed = residual_file_problems()\n    if not problems and not malformed:",
+      "new": "    malformed = []\n    if not problems and not malformed:",
+      "source": {
+        "table": "u124.json",
+        "id": "B15_closing_reads_folder"
+      }
+    },
+    {
+      "id": "u124.B17_land_on_main_only",
+      "description": "residuals --land runs on any branch",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "0ca7ade7f87df556",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_the_landing_refuses_off_main_and_behind_origin"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if branch != \"main\":\n        print(\n            f\"board: residuals are numbered on main",
+      "new": "    if branch == \"never\":\n        print(\n            f\"board: residuals are numbered on main",
+      "source": {
+        "table": "u124.json",
+        "id": "B17_land_on_main_only"
+      }
+    },
+    {
+      "id": "u124.B18_behind_origin",
+      "description": "residuals --land numbers on a main behind origin/main",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3ba0543fcb089bee",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_the_landing_refuses_off_main_and_behind_origin"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if behind.returncode == 0 and behind.stdout.strip() not in (\"\", \"0\"):",
+      "new": "    if behind.returncode == 0 and behind.stdout.strip() not in (\"\", \"0\") and False:",
+      "source": {
+        "table": "u124.json",
+        "id": "B18_behind_origin"
+      }
+    },
+    {
+      "id": "u124.B1_untracked_filter",
+      "description": "residual_files returns every file, git's index ignored, so an untracked draft is judged and landed",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "e6c5a230e6879eab",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_an_untracked_draft_is_neither_judged_nor_landed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if listed.returncode != 0:\n        return paths\n",
+      "new": "    if listed.returncode == 0 or listed.returncode != 0:\n        return paths\n",
+      "source": {
+        "table": "u124.json",
+        "id": "B1_untracked_filter"
+      }
+    },
+    {
+      "id": "u124.B2_readme_excluded",
+      "description": "the README is read as a residual file",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "2d06edd8c7c7bee9",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_the_number_given_at_landing_is_one_past_the_ledgers_highest",
+        "tests/test_restart_and_residual_files.py::test_the_shipped_residual_folder_holds_only_files_that_can_land"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    paths = sorted(p for p in folder.glob(\"*.md\") if p.name != \"README.md\")",
+      "new": "    paths = sorted(p for p in folder.glob(\"*.md\"))",
+      "source": {
+        "table": "u124.json",
+        "id": "B2_readme_excluded"
+      }
+    },
+    {
+      "id": "u124.B3_name_order",
+      "description": "files land in folder listing order rather than name order",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "da0e76eee5dc6f64",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_the_number_given_at_landing_is_one_past_the_ledgers_highest",
+        "tests/test_restart_and_residual_files.py::test_two_units_built_from_one_base_land_in_either_order[order0]",
+        "tests/test_restart_and_residual_files.py::test_two_units_built_from_one_base_land_in_either_order[order1]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    paths = sorted(p for p in folder.glob(\"*.md\") if p.name != \"README.md\")",
+      "new": "    paths = sorted((p for p in folder.glob(\"*.md\") if p.name != \"README.md\"), reverse=True)",
+      "source": {
+        "table": "u124.json",
+        "id": "B3_name_order"
+      }
+    },
+    {
+      "id": "u124.B4_fence_open",
+      "description": "a file with no opening fence is not refused",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "b9f9dc4a089cdda1",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_residual_file_the_landing_could_not_read_is_named[**The mechanism.** No frontmatter at all.\\n-does not open]",
+        "tests/test_restart_and_residual_files.py::test_a_residual_file_the_landing_could_not_read_is_named[title: T\\nfound: today.\\n---\\n\\nBody.\\n-does not open]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not lines or lines[0] != \"---\":\n        raise ValueError(\"does not open with a frontmatter fence\")",
+      "new": "    if not lines:\n        raise ValueError(\"does not open with a frontmatter fence\")",
+      "source": {
+        "table": "u124.json",
+        "id": "B4_fence_open"
+      }
+    },
+    {
+      "id": "u124.B5_unknown_key",
+      "description": "an unknown frontmatter key is accepted",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "a7574eea9bf2f6c9",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_residual_file_the_landing_could_not_read_is_named[---\\ntitle: T\\nfound: today.\\nfond: typo\\n---\\n\\nBody.\\n-fond]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if key not in RESIDUAL_REQUIRED and key not in RESIDUAL_OPTIONAL:",
+      "new": "        if key not in RESIDUAL_REQUIRED and key not in RESIDUAL_OPTIONAL and False:",
+      "source": {
+        "table": "u124.json",
+        "id": "B5_unknown_key"
+      }
+    },
+    {
+      "id": "u124.B6_required_keys",
+      "description": "a missing title or found line is accepted",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "e49210504847c7b4",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_residual_file_the_landing_could_not_read_is_named[---\\nfound: today.\\n---\\n\\nBody.\\n-no title]",
+        "tests/test_restart_and_residual_files.py::test_a_residual_file_the_landing_could_not_read_is_named[---\\ntitle: No found line\\n---\\n\\nBody.\\n-no found]",
+        "tests/test_restart_and_residual_files.py::test_audit_counts_a_residual_file_that_cannot_land_as_a_contradiction",
+        "tests/test_restart_and_residual_files.py::test_closing_refuses_a_landing_whose_residual_file_lacks_its_frontmatter[hook]",
+        "tests/test_restart_and_residual_files.py::test_closing_refuses_a_landing_whose_residual_file_lacks_its_frontmatter[range]",
+        "tests/test_restart_and_residual_files.py::test_closing_refuses_a_landing_whose_residual_file_lacks_its_frontmatter[unreadable range]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not meta.get(key):\n            raise ValueError(f\"frontmatter has no {key}\")",
+      "new": "        if key not in meta and False:\n            raise ValueError(f\"frontmatter has no {key}\")",
+      "source": {
+        "table": "u124.json",
+        "id": "B6_required_keys"
+      }
+    },
+    {
+      "id": "u124.B7_issue_values",
+      "description": "issue takes any value",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6fc0ad996ee0719e",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_residual_file_the_landing_could_not_read_is_named[---\\ntitle: T\\nfound: today.\\nissue: maybe\\n---\\n\\nBody.\\n-issue]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if key in meta and meta[key] not in allowed:",
+      "new": "        if key in meta and meta[key] not in allowed and False:",
+      "source": {
+        "table": "u124.json",
+        "id": "B7_issue_values"
+      }
+    },
+    {
+      "id": "u124.B8_numbered_title",
+      "description": "the number shape widened back to any leading R number",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "69821b7a05b44ee1",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_residual_file_the_landing_could_not_read_is_named[text9-None]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if re.match(r\"R-\\d+\\.\", meta[\"title\"]):",
+      "new": "    if re.match(r\"R-\\d+\", meta[\"title\"]):",
+      "source": {
+        "table": "u124.json",
+        "id": "B8_numbered_title"
+      }
+    },
+    {
+      "id": "u124.B9_empty_body",
+      "description": "a file with frontmatter and no body is accepted",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "0b5c8d5225f1fc66",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_residual_file_the_landing_could_not_read_is_named[---\\ntitle: T\\nfound: today.\\n---\\n\\n\\n-no body]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not body.strip():\n        raise ValueError(\"has frontmatter and no body\")",
+      "new": "    if body is None:\n        raise ValueError(\"has frontmatter and no body\")",
+      "source": {
+        "table": "u124.json",
+        "id": "B9_empty_body"
+      }
+    },
+    {
+      "id": "u148.C1_one_short_allowed",
+      "description": "short_of_count lets a read one row short of the count through",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "536f1420ba593a3c",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options0-project_items-returned 316 of the 317 GitHub]",
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options2-load_issues-returned 316 of the 317 GitHub]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(rows) < total:",
+      "new": "    if len(rows) < total - 1:",
+      "source": {
+        "table": "u148.json",
+        "id": "C1_one_short_allowed"
+      }
+    },
+    {
+      "id": "u148.C2_count_off",
+      "description": "short_of_count never compares rows to the count",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "1a4c396cdade271d",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options0-project_items-returned 316 of the 317 GitHub]",
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options2-load_issues-returned 316 of the 317 GitHub]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(rows) < total:",
+      "new": "    if False:",
+      "source": {
+        "table": "u148.json",
+        "id": "C2_count_off"
+      }
+    },
+    {
+      "id": "u148.C3_no_count_skips",
+      "description": "a read with no count skips the check, the shape before the review",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "81f9e459fcc5d09b",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options1-project_items-no count to check it against]",
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options3-load_issues-no count to check it against]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not isinstance(total, int):\n        # No count means no check, and a read nobody could check is not whole.\n        raise Truncated(",
+      "new": "    if not isinstance(total, int):\n        return\n        raise Truncated(",
+      "source": {
+        "table": "u148.json",
+        "id": "C3_no_count_skips"
+      }
+    },
+    {
+      "id": "u148.C4_only_none_refused",
+      "description": "only a missing count is refused, a count that is not a number falls through",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3ee9e132b66490c6",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options3-load_issues-no count to check it against]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not isinstance(total, int):",
+      "new": "    if total is None:",
+      "source": {
+        "table": "u148.json",
+        "id": "C4_only_none_refused"
+      }
+    },
+    {
+      "id": "u148.C5_issue_count_dropped",
+      "description": "load_issues never checks its read against the repository's count",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "cea4e5f3a8512a44",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options2-load_issues-returned 316 of the 317 GitHub]",
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options3-load_issues-no count to check it against]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    short_of_count(issues, int(total) if total.isdigit() else total, \"issue\")",
+      "new": "    pass",
+      "source": {
+        "table": "u148.json",
+        "id": "C5_issue_count_dropped"
+      }
+    },
+    {
+      "id": "u148.L1_old_limit",
+      "description": "READ_LIMIT back to 300, the ceiling the board passed",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "95ff8ffca78f70c9",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options2-load_issues-returned 316 of the 317 GitHub]",
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options3-load_issues-no count to check it against]",
+        "tests/test_board_reads.py::test_every_issue_and_project_item_is_read_past_three_hundred",
+        "tests/test_board_reads.py::test_issues_filed_after_the_count_are_read_and_not_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "READ_LIMIT = 5000",
+      "new": "READ_LIMIT = 300",
+      "source": {
+        "table": "u148.json",
+        "id": "L1_old_limit"
+      }
+    },
+    {
+      "id": "u148.L2_issue_literal",
+      "description": "load_issues asks gh for a literal 300 instead of READ_LIMIT",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "f1e1f6bbe6c1b713",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options2-load_issues-returned 316 of the 317 GitHub]",
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[315-316-the whole limit of 315]",
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[316-316-the whole limit of 316]",
+        "tests/test_board_reads.py::test_every_issue_and_project_item_is_read_past_three_hundred",
+        "tests/test_board_reads.py::test_issues_filed_after_the_count_are_read_and_not_refused",
+        "tests/test_board_reads.py::test_one_row_under_the_limit_is_taken_as_whole"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"all\",\n        \"--limit\",\n        str(READ_LIMIT),",
+      "new": "        \"all\",\n        \"--limit\",\n        \"300\",",
+      "source": {
+        "table": "u148.json",
+        "id": "L2_issue_literal"
+      }
+    },
+    {
+      "id": "u148.N1_truncation_blamed_on_token",
+      "description": "next catches a truncation as a token that cannot read the board",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "76d28edca74708b8",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_next_refuses_a_truncated_item_read_and_names_a_blind_token"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except Truncated:\n        # A cut short read is not a token that cannot see the board, and the\n        # queue below would offer a held card the read missed.\n        raise\n",
+      "new": "",
+      "source": {
+        "table": "u148.json",
+        "id": "N1_truncation_blamed_on_token"
+      }
+    },
+    {
+      "id": "u148.S1_branch_before_read",
+      "description": "start creates the branch before it reads the board, the shape before the review",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "cb9aafcbd7ec10e7",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_start_reads_the_board_before_it_branches"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    ctx = project_context(owner)\n    items = project_items(owner)\n    item = items.get(node[\"number\"])\n\n    subprocess.run([\"git\", \"checkout\", \"-b\", branch], check=True)\n",
+      "new": "    subprocess.run([\"git\", \"checkout\", \"-b\", branch], check=True)\n    ctx = project_context(owner)\n    items = project_items(owner)\n    item = items.get(node[\"number\"])\n",
+      "source": {
+        "table": "u148.json",
+        "id": "S1_branch_before_read"
+      }
+    },
+    {
+      "id": "u148.S2_claims_in_progress",
+      "description": "start says a card not on the board is In Progress",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "d7d2b32a9968a7dd",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_start_reads_the_board_before_it_branches"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        print(f\"Branch {branch} is checked out, but #{node['number']} is NOT on the\")",
+      "new": "        print(f\"Branch {branch} is checked out and #{node['number']} is In Progress.\")",
+      "source": {
+        "table": "u148.json",
+        "id": "S2_claims_in_progress"
+      }
+    },
+    {
+      "id": "u148.W1_full_page_taken",
+      "description": "whole accepts a read of exactly the limit, a full page read as complete",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "0cba67588a2aa4c4",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[300-330-issue read returned 300 rows]",
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[315-316-the whole limit of 315]",
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[316-316-the whole limit of 316]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(rows) >= READ_LIMIT:",
+      "new": "    if len(rows) > READ_LIMIT:",
+      "source": {
+        "table": "u148.json",
+        "id": "W1_full_page_taken"
+      }
+    },
+    {
+      "id": "u148.W2_whole_off",
+      "description": "whole checks nothing",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "25432a15b9a8702a",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[300-330-issue read returned 300 rows]",
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[315-316-the whole limit of 315]",
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[316-316-the whole limit of 316]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(rows) >= READ_LIMIT:",
+      "new": "    if False:",
+      "source": {
+        "table": "u148.json",
+        "id": "W2_whole_off"
+      }
+    },
+    {
+      "id": "u148.W3_issue_whole_dropped",
+      "description": "load_issues no longer passes its read through whole",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "7f1dfc16eecc3a62",
+      "subset": [
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py",
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 185,
+      "baseline_collected": 185,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[300-330-issue read returned 300 rows]",
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[315-316-the whole limit of 315]",
+        "tests/test_board_reads.py::test_a_read_that_fills_the_limit_is_refused_by_name[316-316-the whole limit of 316]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    whole(issues, \"issue\")\n",
+      "new": "    pass\n",
+      "source": {
+        "table": "u148.json",
+        "id": "W3_issue_whole_dropped"
+      }
+    },
+    {
+      "id": "u151.A1_archived_read",
+      "description": "archived cards are read as on the board",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "b3caff9b34c82718",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_the_card_read_is_a_page_per_hundred_issues_not_a_call_per_card"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "includeArchived: false",
+      "new": "includeArchived: true",
+      "source": {
+        "table": "u151.json",
+        "id": "A1_archived_read"
+      }
+    },
+    {
+      "id": "u151.C1_no_cursor_trusted",
+      "description": "a page that says more and gives no cursor is followed from the start again",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "82e6e8f58d8321e5",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_a_card_read_that_is_short_or_never_ends_is_refused[150-<lambda>-gave no cursor]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not after:\n            raise Truncated(\"the project membership read said there was more and gave no cursor\")\n",
+      "new": "",
+      "source": {
+        "table": "u151.json",
+        "id": "C1_no_cursor_trusted"
+      }
+    },
+    {
+      "id": "u151.C2_page_bound_short",
+      "description": "the page bound drops its last page, a read of 317 issues refused",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "9e3014ec3746cce1",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_one_row_under_the_limit_is_taken_as_whole"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for _ in range(READ_LIMIT // 100 + 1):",
+      "new": "    for _ in range(READ_LIMIT // 100):",
+      "source": {
+        "table": "u151.json",
+        "id": "C2_page_bound_short"
+      }
+    },
+    {
+      "id": "u151.F1_cursor_typed",
+      "description": "the cursor goes as -F, which gh would type",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "2375e971ffc232de",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_the_card_read_is_a_page_per_hundred_issues_not_a_call_per_card"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            args += [\"-f\", f\"after={after}\"]",
+      "new": "            args += [\"-F\", f\"after={after}\"]",
+      "source": {
+        "table": "u151.json",
+        "id": "F1_cursor_typed"
+      }
+    },
+    {
+      "id": "u151.M1_membership_count_dropped",
+      "description": "an issue whose memberships come back short is trusted",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4554e7a71e80b0a6",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_a_card_read_that_is_short_or_never_ends_is_refused[5-<lambda>-#1 project membership read returned 1 of the 21]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            short_of_count(\n                memberships[\"nodes\"], memberships.get(\"totalCount\"),\n                f\"#{issue['number']} project membership\",\n            )\n",
+      "new": "",
+      "source": {
+        "table": "u151.json",
+        "id": "M1_membership_count_dropped"
+      }
+    },
+    {
+      "id": "u151.M2_issue_count_dropped",
+      "description": "an issue read shorter than the repository count is trusted",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "7ec45145ddaae4bd",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options0-project_items-returned 316 of the 317 GitHub]",
+        "tests/test_board_reads.py::test_a_read_short_of_its_count_or_with_none_is_refused[options1-project_items-no count to check it against]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    short_of_count(seen, total, \"project membership\")\n",
+      "new": "",
+      "source": {
+        "table": "u151.json",
+        "id": "M2_issue_count_dropped"
+      }
+    },
+    {
+      "id": "u151.N1_number_filter_dropped",
+      "description": "a card on another project of the same owner counts as this board's",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "35b3180920671c03",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_only_this_owners_project_is_the_board_whatever_the_case"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if str(project.get(\"number\")) != PROJECT_NUMBER:\n                    continue\n",
+      "new": "                pass\n",
+      "source": {
+        "table": "u151.json",
+        "id": "N1_number_filter_dropped"
+      }
+    },
+    {
+      "id": "u151.O1_owner_filter_dropped",
+      "description": "a card on this project number under another owner counts as this board's",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "240cee3abda44f1e",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_only_this_owners_project_is_the_board_whatever_the_case"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if login.lower() != owner.lower():\n                    continue\n",
+      "new": "                pass\n",
+      "source": {
+        "table": "u151.json",
+        "id": "O1_owner_filter_dropped"
+      }
+    },
+    {
+      "id": "u151.O2_owner_case_sensitive",
+      "description": "the owner match becomes case sensitive",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "452fce65d9650431",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_only_this_owners_project_is_the_board_whatever_the_case"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if login.lower() != owner.lower():",
+      "new": "                if login != owner:",
+      "source": {
+        "table": "u151.json",
+        "id": "O2_owner_case_sensitive"
+      }
+    },
+    {
+      "id": "u151.U1_unblocks_always_written",
+      "description": "Unblocks is rewritten on every card again, the U151 cost",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "a5ba3150ed2b2de5",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_a_changed_or_missing_unblocks_number_is_written_once[0-7-written0]",
+        "tests/test_board_cost.py::test_a_changed_or_missing_unblocks_number_is_written_once[2-None-written1]",
+        "tests/test_board_cost.py::test_a_sync_with_no_drift_lists_nothing_and_writes_nothing",
+        "tests/test_board_cost.py::test_an_issue_off_the_board_is_added_then_given_its_status_and_number"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": " and apply and item.get(\"unblocks\") != unblocks:",
+      "new": " and apply:",
+      "source": {
+        "table": "u151.json",
+        "id": "U1_unblocks_always_written"
+      }
+    },
+    {
+      "id": "u151.U2_added_card_zero",
+      "description": "a card sync just added reads as holding 0, so a derived 0 is never written",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "a2d565ad1dd0b1be",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_an_issue_off_the_board_is_added_then_given_its_status_and_number"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "\"status\": None, \"unblocks\": None}",
+      "new": "\"status\": None, \"unblocks\": 0}",
+      "source": {
+        "table": "u151.json",
+        "id": "U2_added_card_zero"
+      }
+    },
+    {
+      "id": "u151.X1_next_skips_context",
+      "description": "next trusts the card read without asking for the project first",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "bb3981c2c571e63a",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_next_asks_for_the_project_before_trusting_an_empty_card_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        project_context(owner)\n        items = project_items(owner)",
+      "new": "        items = project_items(owner)",
+      "source": {
+        "table": "u151.json",
+        "id": "X1_next_skips_context"
+      }
+    },
+    {
+      "id": "u151.X2_no_org_fallback",
+      "description": "the context never asks for an organization project",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "fbbfceb8b1cde161",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_the_context_is_one_query_for_the_project_its_status_and_unblocks"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for kind in (\"user\", \"organization\"):",
+      "new": "    for kind in (\"user\",):",
+      "source": {
+        "table": "u151.json",
+        "id": "X2_no_org_fallback"
+      }
+    },
+    {
+      "id": "u151.X3_status_refusal_dropped",
+      "description": "a project with no Status field is not refused",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "1e02e40fefb15fdb",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_a_project_the_token_cannot_read_whole_is_refused_by_name[<lambda>-Fail-no single select Status field]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not status or \"options\" not in status:\n        raise Fail(",
+      "new": "    if False:\n        raise Fail(",
+      "source": {
+        "table": "u151.json",
+        "id": "X3_status_refusal_dropped"
+      }
+    },
+    {
+      "id": "u151.X4_unseen_project_trusted",
+      "description": "a project the token cannot see is not refused",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "cc05b591edd89ae1",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_a_project_the_token_cannot_read_whole_is_refused_by_name[gh-Fail-cannot be read with this token]",
+        "tests/test_board_cost.py::test_next_asks_for_the_project_before_trusting_an_empty_card_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not project:\n        raise Fail(",
+      "new": "    if False:\n        raise Fail(",
+      "source": {
+        "table": "u151.json",
+        "id": "X4_unseen_project_trusted"
+      }
+    },
+    {
+      "id": "u151.X5_field_count_dropped",
+      "description": "a project whose fields come back short is trusted",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6774b3a903596b7a",
+      "subset": [
+        "tests/test_board_cost.py",
+        "tests/test_board_reads.py",
+        "tests/test_board_status.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 50,
+      "baseline_collected": 50,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cost.py::test_a_project_the_token_cannot_read_whole_is_refused_by_name[<lambda>-Truncated-project field read returned 1 of the 101]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    short_of_count(fields[\"nodes\"], fields.get(\"totalCount\"), \"project field\")\n",
+      "new": "",
+      "source": {
+        "table": "u151.json",
+        "id": "X5_field_count_dropped"
+      }
+    },
+    {
+      "id": "u158.M1_card_not_judged",
+      "description": "cmd_closing: never judge the card a pull request's head names, so an owed unit merges",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "9d611a533da2534f",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_pull_request_range_closing_a_unit_still_owed_is_refused",
+        "tests/test_pending_units.py::test_the_card_a_head_names_is_judged_even_when_the_range_is_unreadable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if card is not None:",
+      "new": "        if False:",
+      "source": {
+        "table": "u158.json",
+        "id": "M1_card_not_judged"
+      }
+    },
+    {
+      "id": "u158.M2_any_branch_names_a_card",
+      "description": "pull_request_card: read a card off any owner/N-slug branch, not only a cloud one",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "42fa4af4e031538d",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_only_a_cloud_branch_names_the_card_its_merge_closes[feature/36-x-None]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "CLOUD_BRANCH_RE = re.compile(r\"^cloud/(\\d+)-\")",
+      "new": "CLOUD_BRANCH_RE = re.compile(r\"^\\w+/(\\d+)-\")",
+      "source": {
+        "table": "u158.json",
+        "id": "M2_any_branch_names_a_card"
+      }
+    },
+    {
+      "id": "u158.M3_implied_close_not_a_reference",
+      "description": "cmd_closing: write the implied trailer without its hash, so it closes nothing",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "bf11f78b81dccb81",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_pull_request_range_closing_a_unit_still_owed_is_refused",
+        "tests/test_pending_units.py::test_the_card_a_head_names_is_judged_even_when_the_range_is_unreadable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            problems += unresolved_closes(f\"Closes #{card}\", raw=False)",
+      "new": "            problems += unresolved_closes(f\"Closes {card}\", raw=False)",
+      "source": {
+        "table": "u158.json",
+        "id": "M3_implied_close_not_a_reference"
+      }
+    },
+    {
+      "id": "u187.A1_relayed_answer_never_matches",
+      "description": "_relayed_answer: never match, so the relay thread's Answer from Phillip is read as a session hold and never as his reply",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "43f387514ca00259",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-## Brainstorm@3; ## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-## Question for Phillip@3; ## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-**Brainstorm.**@s+6; **Answer from Phillip.**@s+5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[ready-## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[ready-**Answer from Phillip.**@s+6]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return comment_heading(comment.get(\"body\") or \"\") == HEAD_ANSWER",
+      "new": "    return False",
+      "source": {
+        "table": "u187.json",
+        "id": "A1_relayed_answer_never_matches"
+      }
+    },
+    {
+      "id": "u187.A2_answer_counted_as_a_hold",
+      "description": "cloud_state: count a relayed answer among the session's own comments, so an answer alone holds the card",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "f328365c8b91ca05",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-## Brainstorm@3; ## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-## Question for Phillip@3; ## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-**Brainstorm.**@s+6; **Answer from Phillip.**@s+5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[ready-## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[ready-**Answer from Phillip.**@s+6]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    mine = [c for c in ordered if SESSION_MARK in (c.get(\"body\") or \"\") and not _relayed_answer(c)]",
+      "new": "    mine = [c for c in ordered if SESSION_MARK in (c.get(\"body\") or \"\")]",
+      "source": {
+        "table": "u187.json",
+        "id": "A2_answer_counted_as_a_hold"
+      }
+    },
+    {
+      "id": "u187.A3_answer_not_read_as_reply",
+      "description": "cloud_state: drop the relayed answer from the replies after a question, so the card is never offered as answered",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "175d160040f178dc",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-## Brainstorm@3; ## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-## Question for Phillip@3; ## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-**Brainstorm.**@s+6; **Answer from Phillip.**@s+5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if _when(c) > since and (SESSION_MARK not in (c.get(\"body\") or \"\") or _relayed_answer(c))",
+      "new": "        if _when(c) > since and (SESSION_MARK not in (c.get(\"body\") or \"\"))",
+      "source": {
+        "table": "u187.json",
+        "id": "A3_answer_not_read_as_reply"
+      }
+    },
+    {
+      "id": "u187.A4_heading_drifts",
+      "description": "HEAD_ANSWER: a nearby heading, answer from phil, so the documented heading no longer matches",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "bf22ff820a7f0a93",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-## Brainstorm@3; ## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-## Question for Phillip@3; ## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-**Brainstorm.**@s+6; **Answer from Phillip.**@s+5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[ready-## Answer from Phillip@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[ready-**Answer from Phillip.**@s+6]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "HEAD_ANSWER = \"answer from phillip\"",
+      "new": "HEAD_ANSWER = \"answer from phil\"",
+      "source": {
+        "table": "u187.json",
+        "id": "A4_heading_drifts"
+      }
+    },
+    {
+      "id": "u196.S3_empty_search",
+      "description": "cmd_residuals: drop the refusal of an empty search, which matches every heading",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "c20a6e1f6295d31b",
+      "subset": [
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 7,
+      "baseline_collected": 7,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_the_command_prints_hits_and_refuses_an_empty_search"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if args.land or not words:",
+      "new": "        if args.land:",
+      "source": {
+        "table": "u196.json",
+        "id": "S3_empty_search"
+      }
+    },
+    {
+      "id": "u196.S4_missing_ledger_no_match",
+      "description": "search_residuals: drop the refusal of a missing ledger, so a search over a file never read says no match",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "978f159cc3098379",
+      "subset": [
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 7,
+      "baseline_collected": 7,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_a_missing_ledger_is_refused_never_read_as_no_match"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not source.is_file():\n        # A missing",
+      "new": "    if False:\n        # A missing",
+      "source": {
+        "table": "u196.json",
+        "id": "S4_missing_ledger_no_match"
+      }
+    },
+    {
+      "id": "u203.M1_no_opening_span",
+      "description": "comment_heading: never take an opening emphasised span, so **Brainstorm.** One question waits reads as a hold",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4675fd4b6d54df93",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[set-aside-## Started@s+4; **Needs the machine.** It reads the live library.@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-comments21]",
+        "tests/test_board_cloud.py::test_a_known_heading_reads_through_trailing_punctuation_and_emphasis",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[**Brainstorm**.One question waits-brainstorm]",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[**Question for Phillip**?Which-question for phillip]",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[text5-brainstorm]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        span = _OPENING_EMPHASIS.match(text)",
+      "new": "        span = None",
+      "source": {
+        "table": "u203.json",
+        "id": "M1_no_opening_span"
+      }
+    },
+    {
+      "id": "u203.M2_span_closer_any_follower",
+      "description": "_OPENING_EMPHASIS: accept a closer followed by a letter, so **Brainstorm**s reads as a brainstorm",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "d89847275ad56280",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[resume-**Brainstorm**s@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[underway-**Brainstorm**s@1]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_OPENING_EMPHASIS = re.compile(r\"([*_]+)(.+?)\\1(?=$|[\\s.,:;?!\\u2026])\")",
+      "new": "_OPENING_EMPHASIS = re.compile(r\"([*_]+)(.+?)\\1\")",
+      "source": {
+        "table": "u203.json",
+        "id": "M2_span_closer_any_follower"
+      }
+    },
+    {
+      "id": "u203.M3_no_sentence_cut",
+      "description": "_HEADING_END: cut only at a colon or comma, so Needs the machine. The card needs rekordbox is a hold",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "fda672776b615384",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_known_heading_reads_through_trailing_punctuation_and_emphasis",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[Landed; merge 5c8b26a-landed]",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[Needs the machine. The card needs rekordbox-needs the machine]",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[Question for Phillip? Which one-question for phillip]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_HEADING_END = re.compile(r\"[:,]|[.?!;\\u2026](?=\\s)\")",
+      "new": "_HEADING_END = re.compile(r\"[:,]\")",
+      "source": {
+        "table": "u203.json",
+        "id": "M3_no_sentence_cut"
+      }
+    },
+    {
+      "id": "u203.M4_sentence_cut_anywhere",
+      "description": "_HEADING_END: cut at any stop, whitespace after it or not, so Landed v0.6.0 today is cut inside the version",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "05bc7fde5cd42e1a",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[Landed v0.6.0 today-landed v0.6.0 today]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_HEADING_END = re.compile(r\"[:,]|[.?!;\\u2026](?=\\s)\")",
+      "new": "_HEADING_END = re.compile(r\"[:,]|[.?!;\\u2026]\")",
+      "source": {
+        "table": "u203.json",
+        "id": "M4_sentence_cut_anywhere"
+      }
+    },
+    {
+      "id": "u203.M5_no_trailing_strip",
+      "description": "comment_heading: strip emphasis but no trailing punctuation, so ## Brainstorm. reads as a hold",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "a207084d1f2c4a5b",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 27,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-## Brainstorm?@1; !B@0.5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-## Brainstorm?@s+6; !B@s+5.5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-**Brainstorm.**@1; !B@0.5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-**Brainstorm.**@s+6; !B@s+5.5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-**Brainstorm.**@s+6; **Answer from Phillip.**@s+5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-**Question for Phillip.**@1; !B@0.5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-**Question for Phillip.**@s+6; !B@s+5.5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-Brainstorm!@1; !B@0.5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[answered-Brainstorm!@s+6; !B@s+5.5]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[landed-open-## Started@s+4; **Landed.**@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[ready-## Started@s+4; Withdrawn.@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[ready-**Answer from Phillip.**@s+6]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[set-aside-## Started@s+4; **Needs the machine.** It reads the live library.@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-## Brainstorm?@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-## Brainstorm?@s+6]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-**Brainstorm.**@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-**Brainstorm.**@s+4; **Progress.**@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-**Brainstorm.**@s+6]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-**Question for Phillip.**@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-**Question for Phillip.**@s+6]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-Brainstorm!@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-Brainstorm!@s+6]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[waiting-on-phillip-comments21]",
+        "tests/test_board_cloud.py::test_a_known_heading_reads_through_trailing_punctuation_and_emphasis",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[Brainstorm**.-brainstorm]",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[Landed_!-landed]",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[text5-brainstorm]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            text = text.strip().strip(\"*_\").rstrip(_TRAILING)",
+      "new": "            text = text.strip().strip(\"*_\")",
+      "source": {
+        "table": "u203.json",
+        "id": "M5_no_trailing_strip"
+      }
+    },
+    {
+      "id": "u203.M6_one_pass",
+      "description": "comment_heading: strip once instead of to a fixed point, so emphasis left behind a full stop survives",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "484039cd4805bbc8",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[Brainstorm**.-brainstorm]",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[Landed_!-landed]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        while text != settled:",
+      "new": "        for _ in (1,):",
+      "source": {
+        "table": "u203.json",
+        "id": "M6_one_pass"
+      }
+    },
+    {
+      "id": "u203.M7_rule_line_is_a_heading",
+      "description": "comment_heading: read a line of emphasis markers alone as the heading, so a rule above Started reads as empty",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "56c217ec98475f81",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[\\n***\\n\\nStarted\\n-started]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not text.strip(\"*_\").strip():\n            continue",
+      "new": "        if not text:\n            continue",
+      "source": {
+        "table": "u203.json",
+        "id": "M7_rule_line_is_a_heading"
+      }
+    },
+    {
+      "id": "u203.M8_ellipsis_not_trailing",
+      "description": "_TRAILING: leave the ellipsis character out, so Brainstorm followed by one reads as a hold",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4adda4180b9a9c46",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_known_heading_reads_through_trailing_punctuation_and_emphasis"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_TRAILING = \".?!;\\u2026# \\t\"",
+      "new": "_TRAILING = \".?!;# \\t\"",
+      "source": {
+        "table": "u203.json",
+        "id": "M8_ellipsis_not_trailing"
+      }
+    },
+    {
+      "id": "u203.M9_no_comma_cut",
+      "description": "_HEADING_END: drop the comma cut, so Started, 2026-10-13. reads as a hold",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "019223f46c8af454",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[**Brainstorm, round 2.**-brainstorm]",
+        "tests/test_board_cloud.py::test_headings_are_read_through_markdown_emphasis_and_punctuation[Started, 2026-10-13.-started]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_HEADING_END = re.compile(r\"[:,]|[.?!;\\u2026](?=\\s)\")",
+      "new": "_HEADING_END = re.compile(r\"[:]|[.?!;\\u2026](?=\\s)\")",
+      "source": {
+        "table": "u203.json",
+        "id": "M9_no_comma_cut"
+      }
+    },
+    {
+      "id": "u291.L1_lanes_back_to_five",
+      "description": "CLOUD_LANES: put the cap back at five, the count before 2026-11-21",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "eca4b541a65a5178",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_the_cloud_runs_ten_lanes_and_its_help_says_so",
+        "tests/test_board_cloud.py::test_the_lanes_bound_what_is_offered[None-12-comments2-0-said2-unsaid2]",
+        "tests/test_board_cloud.py::test_the_lanes_bound_what_is_offered[None-12-comments3-0-said3-unsaid3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "CLOUD_LANES = 10",
+      "new": "CLOUD_LANES = 5",
+      "source": {
+        "table": "u291.json",
+        "id": "L1_lanes_back_to_five"
+      }
+    },
+    {
+      "id": "u291.L2_lanes_one_short",
+      "description": "CLOUD_LANES: nine lanes, one short of the cap",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "081051e5dad3fcc2",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_the_cloud_runs_ten_lanes_and_its_help_says_so",
+        "tests/test_board_cloud.py::test_the_lanes_bound_what_is_offered[None-12-comments2-0-said2-unsaid2]",
+        "tests/test_board_cloud.py::test_the_lanes_bound_what_is_offered[None-12-comments3-0-said3-unsaid3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "CLOUD_LANES = 10",
+      "new": "CLOUD_LANES = 9",
+      "source": {
+        "table": "u291.json",
+        "id": "L2_lanes_one_short"
+      }
+    },
+    {
+      "id": "u291.L3_lanes_one_over",
+      "description": "CLOUD_LANES: eleven lanes, one over the cap",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "c15b1f0ad91ac46c",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_the_cloud_runs_ten_lanes_and_its_help_says_so",
+        "tests/test_board_cloud.py::test_the_lanes_bound_what_is_offered[None-12-comments2-0-said2-unsaid2]",
+        "tests/test_board_cloud.py::test_the_lanes_bound_what_is_offered[None-12-comments3-0-said3-unsaid3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "CLOUD_LANES = 10",
+      "new": "CLOUD_LANES = 11",
+      "source": {
+        "table": "u291.json",
+        "id": "L3_lanes_one_over"
+      }
+    },
+    {
+      "id": "u291.L4_help_names_a_literal",
+      "description": "--lanes help: name a literal five rather than read the constant",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "61b9b0d3833643ee",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_the_cloud_runs_ten_lanes_and_its_help_says_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        help=f\"how many cards the cloud builds at once (default {CLOUD_LANES})\",",
+      "new": "        help=\"how many cards the cloud builds at once (default 5)\",",
+      "source": {
+        "table": "u291.json",
+        "id": "L4_help_names_a_literal"
+      }
+    },
+    {
+      "id": "u291.L5_default_ignores_the_constant",
+      "description": "cmd_cloud: with no --lanes, count four lanes rather than CLOUD_LANES",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "7e2501dab4d30af5",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_the_lanes_bound_what_is_offered[None-12-comments2-0-said2-unsaid2]",
+        "tests/test_board_cloud.py::test_the_lanes_bound_what_is_offered[None-12-comments3-0-said3-unsaid3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    lanes = max(1, getattr(args, \"lanes\", None) or CLOUD_LANES)",
+      "new": "    lanes = max(1, getattr(args, \"lanes\", None) or 4)",
+      "source": {
+        "table": "u291.json",
+        "id": "L5_default_ignores_the_constant"
+      }
+    },
+    {
+      "id": "u313.B2_landed_twice",
+      "description": "land_residuals: number a file whose title the ledger already holds, so a file that came back through a conflict lands twice",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "27739e6e6a7d146b",
+      "subset": [
+        "tests/test_restart_and_residual_files.py",
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_landing_numbers_past_the_highest_in_any_file_and_archives_when_over",
+        "tests/test_restart_and_residual_files.py::test_a_landing_that_cannot_number_every_file_writes_nothing[files0-R-12 already]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if meta[\"title\"] in held",
+      "new": "        if meta[\"title\"] in held and False",
+      "source": {
+        "table": "u313.json",
+        "id": "B2_landed_twice"
+      }
+    },
+    {
+      "id": "u313.B3_stale_window_doubled",
+      "description": "cloud_state: read a hold as dead only after twice the stale window, so a dead session's card is not offered to resume",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "891f2259a5d168d7",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[resume-## Started@s+1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[resume-**Brainstorm notes**@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[resume-**Brainstorm**s@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[resume-**Brainstorms**@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[resume-**Brainstorms.**@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[resume-**Pre brainstorm.**@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[resume-Brainstorm notes.@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[resume-Not **Withdrawn**, held@s+2]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[resume-Question.@s+2]",
+        "tests/test_board_cloud.py::test_cloud_offers_answered_before_resumable_before_fresh"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if age is not None and age > STALE_HOURS:",
+      "new": "    if age is not None and age > STALE_HOURS * 2:",
+      "source": {
+        "table": "u313.json",
+        "id": "B3_stale_window_doubled"
+      }
+    },
+    {
+      "id": "u313.B4_withdrawn_held",
+      "description": "cloud_state: read a Withdrawn card as held, so a released card is never offered",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "0527d8addf486961",
+      "subset": [
+        "tests/test_board_cloud.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 91,
+      "baseline_collected": 91,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[ready-## Started@2; ## Withdrawn@1]",
+        "tests/test_board_cloud.py::test_a_cards_comments_give_its_state[ready-## Started@s+4; Withdrawn.@s+2]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if heading == HEAD_WITHDRAWN:",
+      "new": "    if heading == HEAD_WITHDRAWN and False:",
+      "source": {
+        "table": "u313.json",
+        "id": "B4_withdrawn_held"
+      }
+    },
+    {
+      "id": "u313.B5_owed_unit_closes",
+      "description": "unresolved_closes: pass a unit a register still owes a module, so a closing trailer closes it early",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4e8a6c3d47917f4d",
+      "subset": [
+        "tests/test_pending_units.py",
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 41,
+      "collected": 149,
+      "baseline_collected": 149,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_closing_trailer_is_refused_while_a_register_still_owes_that_unit",
+        "tests/test_pending_units.py::test_a_hash_leading_body_line_survives_the_range_check",
+        "tests/test_pending_units.py::test_a_pull_request_range_closing_a_unit_still_owed_is_refused",
+        "tests/test_pending_units.py::test_a_refusal_names_what_the_package_actually_contains",
+        "tests/test_pending_units.py::test_an_issue_number_is_resolved_to_its_unit_when_the_board_says_they_differ",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Close #36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Closed #36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Closes #36, #33]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Closes #36.]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Closes #36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Closes GH-36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Closes: #36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Fix #36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Fixed #36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Fixes #36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Resolve #36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Resolved #36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Resolves #36]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[Revert \"feat(write): converge (closes #36)\"]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[This closes #36.]",
+        "tests/test_pending_units.py::test_every_spelling_github_closes_on_is_refused[feat: a thing\\n\\nCloses #36\\n]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Close #36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Closed #36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Closes #36, #33]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Closes #36.]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Closes #36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Closes GH-36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Closes: #36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Fix #36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Fixed #36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Fixes #36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Resolve #36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Resolved #36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Resolves #36]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[Revert \"feat(write): converge (closes #36)\"]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[This closes #36.]",
+        "tests/test_pending_units.py::test_every_spelling_is_refused_through_a_real_commit_range[feat: a thing\\n\\nCloses #36\\n]",
+        "tests/test_pending_units.py::test_the_card_a_head_names_is_judged_even_when_the_range_is_unreadable",
+        "tests/test_pending_units.py::test_the_message_file_path_reads_the_file_and_refuses_on_it",
+        "tests/test_pending_units.py::test_the_network_free_path_says_that_it_guessed_the_unit_number",
+        "tests/test_pending_units.py::test_the_two_message_paths_are_cleaned_differently_because_they_have_to_be"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not modules:",
+      "new": "        if modules or not modules:",
+      "source": {
+        "table": "u313.json",
+        "id": "B5_owed_unit_closes"
+      }
+    },
+    {
+      "id": "u313.B6_refusal_exit_code",
+      "description": "_refuse: print the refusal and return 0, so a refused residuals command reads as done",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "aae00f4f00f41537",
+      "subset": [
+        "tests/test_restart_and_residual_files.py",
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_a_missing_ledger_is_refused_never_read_as_no_match",
+        "tests/test_board_residual_search.py::test_the_command_prints_hits_and_refuses_an_empty_search",
+        "tests/test_restart_and_residual_files.py::test_check_against_a_revision_refuses_a_removed_heading_and_a_changed_entry",
+        "tests/test_restart_and_residual_files.py::test_the_landing_refuses_off_main_and_behind_origin"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    print(f\"board: {message}\", file=sys.stderr)\n    return code",
+      "new": "    print(f\"board: {message}\", file=sys.stderr)\n    return 0",
+      "source": {
+        "table": "u313.json",
+        "id": "B6_refusal_exit_code"
+      }
+    },
+    {
+      "id": "u314.L10_search_names_no_file",
+      "description": "cmd_residuals: print a search hit without the file it is in",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "ccfbd50962e21860",
+      "subset": [
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 7,
+      "baseline_collected": 7,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_a_search_reads_every_archive_and_says_where_each_hit_is",
+        "tests/test_board_residual_search.py::test_the_command_prints_hits_and_refuses_an_empty_search"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            print(f\"R-{number}. {title}  ({path.relative_to(LEDGER.parent.parent)})\")",
+      "new": "            print(f\"R-{number}. {title}\")",
+      "source": {
+        "table": "u314.json",
+        "id": "L10_search_names_no_file"
+      }
+    },
+    {
+      "id": "u314.L1_archives_unread",
+      "description": "ledger_files: read the working file alone, so search, the highest number and the title check never see an archive",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6e0d1ac2e7ad512c",
+      "subset": [
+        "tests/test_board_residual_search.py",
+        "tests/test_restart_and_residual_files.py",
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 156,
+      "baseline_collected": 156,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_board_residual_search.py::test_a_search_reads_every_archive_and_says_where_each_hit_is",
+        "tests/test_pending_units.py::test_the_residual_heading_reader_reads_the_document_as_it_is_written",
+        "tests/test_restart_and_residual_files.py::test_a_landing_numbers_past_the_highest_in_any_file_and_archives_when_over",
+        "tests/test_restart_and_residual_files.py::test_check_against_a_revision_refuses_a_removed_heading_and_a_changed_entry",
+        "tests/test_restart_and_residual_files.py::test_check_refuses_a_file_over_the_limit_and_archives_that_overlap",
+        "tests/test_restart_and_residual_files.py::test_check_refuses_a_heading_in_two_archives_and_a_misnamed_one",
+        "tests/test_restart_and_residual_files.py::test_the_archive_moves_every_entry_byte_for_byte_and_a_rerun_changes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return sorted((ledger.parent / \"ledger\").glob(\"*.md\"), key=first) + [ledger]",
+      "new": "    return [ledger]",
+      "source": {
+        "table": "u314.json",
+        "id": "L1_archives_unread"
+      }
+    },
+    {
+      "id": "u314.L2_landing_never_archives",
+      "description": "land_residuals: append without archiving, so the working file grows past the limit",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "e4ed41e739f1adbd",
+      "subset": [
+        "tests/test_restart_and_residual_files.py",
+        "tests/test_board_residual_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 55,
+      "baseline_collected": 55,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_a_landing_numbers_past_the_highest_in_any_file_and_archives_when_over"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    ledger.write_text(text)\n    archive_ledger(ledger)",
+      "new": "    ledger.write_text(text)",
+      "source": {
+        "table": "u314.json",
+        "id": "L2_landing_never_archives"
+      }
+    },
+    {
+      "id": "u314.L3_archive_header_undercounted",
+      "description": "archive_ledger: count a two line header where four are written, so an archive can pass the limit",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "d8c4ecb4ef0d31e0",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_check_against_a_revision_refuses_a_removed_heading_and_a_changed_entry",
+        "tests/test_restart_and_residual_files.py::test_check_refuses_a_heading_in_two_archives_and_a_misnamed_one",
+        "tests/test_restart_and_residual_files.py::test_the_archive_moves_every_entry_byte_for_byte_and_a_rerun_changes_nothing",
+        "tests/test_restart_and_residual_files.py::test_the_working_file_archives_at_one_line_over_the_limit_and_not_at_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        while last < count - 1 and 4 + len(body(first, last + 1)) <= LEDGER_LIMIT:",
+      "new": "        while last < count - 1 and 2 + len(body(first, last + 1)) <= LEDGER_LIMIT:",
+      "source": {
+        "table": "u314.json",
+        "id": "L3_archive_header_undercounted"
+      }
+    },
+    {
+      "id": "u314.L5_duplicate_heading_passes",
+      "description": "ledger_problems: never report a heading held by two files",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "e09024276d9ef34f",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_check_refuses_a_heading_in_two_archives_and_a_misnamed_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if number in where:",
+      "new": "            if False:",
+      "source": {
+        "table": "u314.json",
+        "id": "L5_duplicate_heading_passes"
+      }
+    },
+    {
+      "id": "u314.L6_misnamed_archive_passes",
+      "description": "ledger_problems: never compare an archive's name with the range it holds",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6ddf4ad9bb64afc9",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_check_refuses_a_heading_in_two_archives_and_a_misnamed_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if path != ledger and (not numbers or path.name != _archive_name(numbers[0], numbers[-1])):",
+      "new": "        if path != ledger and not numbers:",
+      "source": {
+        "table": "u314.json",
+        "id": "L6_misnamed_archive_passes"
+      }
+    },
+    {
+      "id": "u314.L7_removed_heading_reversed",
+      "description": "ledger_problems: look for headings added since the revision rather than removed, so a removed heading passes",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "42b9adcd29bd74f9",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_check_against_a_revision_refuses_a_removed_heading_and_a_changed_entry"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    missing = [f\"R-{n}\" for n in sorted(set(before) - set(now))]",
+      "new": "    missing = [f\"R-{n}\" for n in sorted(set(now) - set(before))]",
+      "source": {
+        "table": "u314.json",
+        "id": "L7_removed_heading_reversed"
+      }
+    },
+    {
+      "id": "u314.L8_unchanged_ignored",
+      "description": "ledger_problems: never report an entry that differs from the revision, so the move's byte comparison passes anything",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "7c3ec4c3de44c0ed",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_check_against_a_revision_refuses_a_removed_heading_and_a_changed_entry"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unchanged and changed:",
+      "new": "    if False:",
+      "source": {
+        "table": "u314.json",
+        "id": "L8_unchanged_ignored"
+      }
+    },
+    {
+      "id": "u314.L9_archives_at_rev_unread",
+      "description": "_ledger_at: read only the working file at the revision, so a heading removed from an archive passes the check against it",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "e879cbd046702557",
+      "subset": [
+        "tests/test_restart_and_residual_files.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 48,
+      "baseline_collected": 48,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restart_and_residual_files.py::test_check_against_a_revision_refuses_a_removed_heading_and_a_changed_entry"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for name in [*(n for n in listed.stdout.split() if n.endswith(\".md\")), ledger.name]:",
+      "new": "    for name in [ledger.name]:",
+      "source": {
+        "table": "u314.json",
+        "id": "L9_archives_at_rev_unread"
+      }
+    },
+    {
+      "id": "u59.B1_per_message_split",
+      "description": "Concatenate the range again, manufacturing a trailer across two commits",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1613c6ec451bdf61",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_closing_reference_is_never_manufactured_across_two_commit_messages"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            [\"git\", \"log\", \"--format=%B%x00\", f\"{args.since}..HEAD\"],",
+      "new": "            [\"git\", \"log\", \"--format=%B\", f\"{args.since}..HEAD\"],",
+      "source": {
+        "table": "u59.json",
+        "id": "B1_per_message_split"
+      }
+    },
+    {
+      "id": "u59.B2_raw_true_on_range",
+      "description": "Strip comments on the CI path, which can only delete a real trailer",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "44b83ac51dd797fb",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_hash_leading_body_line_survives_the_range_check"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                problems += unresolved_closes(message, raw=False)",
+      "new": "                problems += unresolved_closes(message, raw=True)",
+      "source": {
+        "table": "u59.json",
+        "id": "B2_raw_true_on_range"
+      }
+    },
+    {
+      "id": "u59.B3_unit_mapping_ignored",
+      "description": "Ignore the supplied issue-to-unit map, restoring the number conflation",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "40e1f46b53de5302",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_an_issue_number_is_resolved_to_its_unit_when_the_board_says_they_differ"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        uid = reference if units is None else units.get(reference)",
+      "new": "        uid = reference",
+      "source": {
+        "table": "u59.json",
+        "id": "B3_unit_mapping_ignored"
+      }
+    },
+    {
+      "id": "u59.B4_guess_caveat_dropped",
+      "description": "Stop saying the unit number was guessed, so the reader trusts it",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "cfc393b38beb5912",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_the_network_free_path_says_that_it_guessed_the_unit_number"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if units is None and reference == uid:",
+      "new": "        if False:",
+      "source": {
+        "table": "u59.json",
+        "id": "B4_guess_caveat_dropped"
+      }
+    },
+    {
+      "id": "u59.B6_duplicate_unit_kept",
+      "description": "Let a duplicated unit number resolve to whichever issue was seen last",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "beda12ba1d82e91a",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_register_owing_a_unit_with_no_issue_at_all_is_silence_not_a_crash",
+        "tests/test_pending_units.py::test_the_unit_to_issue_map_is_read_off_the_titles_and_drops_a_duplicate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return {unit: number for unit, number in seen.items() if unit not in duplicated}",
+      "new": "    return seen",
+      "source": {
+        "table": "u59.json",
+        "id": "B6_duplicate_unit_kept"
+      }
+    },
+    {
+      "id": "u59.B8_missing_file_raises",
+      "description": "Let a missing message file raise instead of refusing with a sentence",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3619b80eacee5f2f",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_missing_message_file_refuses_with_a_sentence_not_a_traceback"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not path.is_file():",
+      "new": "        if False:",
+      "source": {
+        "table": "u59.json",
+        "id": "B8_missing_file_raises"
+      }
+    },
+    {
+      "id": "u81-round-2.B5_owed_argument_ignored",
+      "description": "Ignore a supplied register and always read the live one",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3689fe56250d87fd",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exits_2_on",
+        "tests/test_pending_units.py::test_the_register_defaults_to_the_live_one_when_no_caller_supplies_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    owed = owed_by_unit() if owed is None else owed\n    issues_by_unit = units_by_issue_number(graph)",
+      "new": "    owed = owed_by_unit()\n    issues_by_unit = units_by_issue_number(graph)",
+      "source": {
+        "table": "u81-round-2.json",
+        "id": "B5_owed_argument_ignored"
+      }
+    },
+    {
+      "id": "u81-round-3.B5_audit_drops_the_detector",
+      "description": "Have the audit find no contradictions at all, keeping its drift report",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "98c2dcb069f68f11",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_the_audit_reports_a_contradiction_as_exit_2_and_drift_as_exit_1"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    clashes = contradictions(graph)",
+      "new": "    clashes = []",
+      "source": {
+        "table": "u81-round-3.json",
+        "id": "B5_audit_drops_the_detector"
+      }
+    },
+    {
+      "id": "u81-round-3.B5_audit_exit_code",
+      "description": "Report a contradiction as exit 1, the code that sends a session to sync",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "945922a12babe90f",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_the_audit_reports_a_contradiction_as_exit_2_and_drift_as_exit_1"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return 2 if clashes else 1",
+      "new": "    return 1",
+      "source": {
+        "table": "u81-round-3.json",
+        "id": "B5_audit_exit_code"
+      }
+    },
+    {
+      "id": "u81-round-3.B5_owed_default_dropped",
+      "description": "Collapse the no-register default into a falsy test, so an empty register reads as none",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e98b1d8e742d8a6e",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_the_audit_reports_a_contradiction_as_exit_2_and_drift_as_exit_1",
+        "tests/test_pending_units.py::test_the_register_defaults_to_the_live_one_when_no_caller_supplies_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    owed = owed_by_unit() if owed is None else owed\n    issues_by_unit = units_by_issue_number(graph)",
+      "new": "    owed = owed or {}\n    issues_by_unit = units_by_issue_number(graph)",
+      "source": {
+        "table": "u81-round-3.json",
+        "id": "B5_owed_default_dropped"
+      }
+    },
+    {
+      "id": "u81.B5_composite",
+      "description": "What B5 does hold: report a contradiction over an OPEN issue as well",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "2c6dcde4b6b66e63",
+      "subset": [
+        "tests/test_pending_units.py",
+        "tests/test_adoption.py",
+        "tests/test_cli_contract.py",
+        "tests/test_deferred_routing.py",
+        "tests/test_mutation_driver.py",
+        "tests/test_pool_sizing.py",
+        "tests/test_restore.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 2374,
+      "baseline_collected": 2374,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exits_2_on"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if node and node[\"unit\"] and node[\"closed\"]:",
+      "new": "        if node and node[\"unit\"]:",
+      "source": {
+        "table": "u81.json",
+        "id": "B5_composite"
+      }
+    },
+    {
+      "id": "u81.B5_contradictions_by_number",
+      "description": "Index the graph by unit number again in contradictions()",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "28fc7c876976f026",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exits_2_on",
+        "tests/test_pending_units.py::test_the_audit_reports_a_contradiction_as_exit_2_and_drift_as_exit_1",
+        "tests/test_pending_units.py::test_the_register_defaults_to_the_live_one_when_no_caller_supplies_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        number = issues_by_unit.get(uid)\n        node = graph.get(number) if number is not None else None",
+      "new": "        node = graph.get(uid)",
+      "source": {
+        "table": "u81.json",
+        "id": "B5_contradictions_by_number"
+      }
+    },
+    {
+      "id": "u81.B5_residual_repoint_dropped",
+      "description": "Return only the register contradictions, dropping the repointed residuals",
+      "file": "scripts/board.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1291c95ba45cee48",
+      "subset": [
+        "tests/test_pending_units.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 101,
+      "baseline_collected": 101,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pending_units.py::test_a_repointed_residual_issue_is_reported_through_the_same_call"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return found + repointed_residuals(graph)",
+      "new": "    return found",
+      "source": {
+        "table": "u81.json",
+        "id": "B5_residual_repoint_dropped"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}

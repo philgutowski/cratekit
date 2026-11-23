@@ -263,6 +263,15 @@ KEBAB_LITERALS = {
         'tag-remap-unwritten',
         'tag-retag-folder-unknown',
         'tag-retag-unwritten',  # 2026-11-01, R-1103
+        # 2026-11-23, U340: tag second's refusals.
+        'tag-second-genre-undeclared',
+        'tag-second-no-rows',
+        'tag-second-playlist-unknown',
+        'tag-second-rows-unreadable',
+        'tag-second-unwritten',
+        'tag-second-usage',
+        'tag-set-scope-unknown',  # 2026-11-23, U339
+        'tag-set-unwritten',  # 2026-11-23, U339
         'tag-suggest-unwritten',
         'target-lufs-out-of-range',
         'taxonomy-genre-unknown',  # 2026-11-02, U194
@@ -282,16 +291,9 @@ KEBAB_LITERALS = {
         'write-lock-held',
         'yt-dlp-missing',
     ],
-    # 2026-11-22, U299: the state inventory moved to its own module.
-    'core/config.py': [
-        'fix-config-values',
-        'record-rekordbox-pin',
-        'repair-config-file',
-        'retry-when-unlocked',
-        'run-setup',
-        'upgrade-cratekit',
-        'utf-8',
-    ],
+    # 2026-11-23, U329: config.Remedy is exit_codes.Remedy, its six tokens
+    # declared there once.
+    'core/config.py': ['utf-8'],
     'core/config_schema.py': ['utf-8'],  # 2026-11-22, U299
     'core/convergence.py': [
         'library-fingerprint-unreadable',
@@ -585,7 +587,7 @@ NAMED_WITHOUT_OWN = {
         'install-binary-source-unknown',
         'unsupported-platform',
     ],
-    'core/config.py': ['upgrade-cratekit'],
+    # 2026-11-23, U329: core/config.py left, config.Remedy is exit_codes.Remedy.
     'core/jobs.py': ['cancelled'],
     # 2026-11-02, U193: the call ceiling's stop joined.
     # 2026-11-21, U293: the night pass's line joined.
@@ -612,15 +614,7 @@ NAMED_WITH_OWN = {
         'install-binary-source-unknown',
         'unsupported-platform',
     ],
-    # 2026-11-22, U299: the state inventory's literals moved to core/state_files.py,
-    # and the pin's refusal to core/config_schema.py.
-    'core/config.py': [
-        'fix-config-values',
-        'repair-config-file',
-        'retry-when-unlocked',
-        'run-setup',
-        'upgrade-cratekit',
-    ],
+    # 2026-11-23, U329: core/config.py left, config.Remedy is exit_codes.Remedy.
     'core/convergence.py': ['rows-moved-at-a-standstill', 'sequence-went-backward'],
     'core/exit_codes.py': [
         'acknowledge-backup',
@@ -696,7 +690,7 @@ LITERAL_HOLDERS = {
         'unsupported-platform',
     ],
     'core/binary_refusal.py': ['yt-dlp-missing'],
-    'core/config.py': ['upgrade-cratekit'],
+    # 2026-11-23, U329: core/config.py left, config.Remedy is exit_codes.Remedy.
     'core/convergence.py': ['library-fingerprint-unreadable', 'tree-convergence-unusable', 'tree-unconverged'],
     'core/discovery.py': ['internal-error'],
     'core/exit_codes.py': [

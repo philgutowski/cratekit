@@ -45,6 +45,7 @@ from cratekit.core import config, convergence, rb_writer, session, taxonomy, tre
 from cratekit.core.cause import Remedy, refuse
 from cratekit.intake import batch_name, ingest, landing, native
 from cratekit.write import trees
+from cratekit.write.row_defaults import watched_roots
 
 #: The session workflow a rotation is recorded under.
 WORKFLOW = "inbox-rotate"
@@ -215,18 +216,6 @@ def identity(plan: RotationPlan) -> dict[str, Any]:
         "kept": [batch.to_json() for batch in plan.kept],
         "left": [node.identity() for node in plan.left],
     }
-
-
-def watched_roots(analysis_roots: Iterable[Path | str]) -> list[Path]:
-    """The roots a write's analysis watch covers, refusing none: an empty watch passes anything."""
-    watched = [Path(root) for root in analysis_roots]
-    if not watched:
-        raise ValueError(
-            "analysis_roots is empty, so the analysis-file watch would watch nothing "
-            "and this session would report itself clean whatever happened to the "
-            "library's grids; name the roots this write could touch"
-        )
-    return watched
 
 
 def old_node(declared: taxonomy.Taxonomy) -> taxonomy.Node:

@@ -2144,6 +2144,8 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         "organize/mirror_edits.py::write",
         # R-816, a row's genre written from its file.
         "tagging/rows.py::apply_rows",
+        # U339, a chosen genre written on the file and the row.
+        "tagging/genre_set.py::apply_set",
         # U120, the favourites backfill.
         "favorites/backfill.py::apply",
         # U145, the quarters split into months.

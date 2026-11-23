@@ -76,7 +76,7 @@ class Remedy(StrEnum):
     ``tests/test_cli_contract.py`` finds them by walking the package (P3, KTD13).
     """
 
-    # Configuration (the six ``config.Remedy`` already declares).
+    # Configuration (``config.Remedy`` is this vocabulary, re-exported).
     RUN_SETUP = "run-setup"
     REPAIR_CONFIG_FILE = "repair-config-file"
     UPGRADE_CRATEKIT = "upgrade-cratekit"
