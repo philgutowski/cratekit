@@ -27,7 +27,7 @@ from cratekit.cli import tail as tail_chain
 from cratekit.core import config, jobs, rb_writer
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from tests._sync_builders import exited
+from tests._sync_builders import exited, failed
 from tests.acquire_fakes import FAKE_ADAPTER, FAKE_DECLARATION, FakeAdapter, Landing, Script
 from tests.cli_drive import drive
 from tests.intake.test_workers import owned
@@ -44,9 +44,7 @@ from tests.test_sync_all import (
 ENTRY = registry.entry("sync.land")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The machine, the account and the stand ins
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _machine(tmp_path, monkeypatch, profile: str) -> tuple[config.Config, Script]:
@@ -219,9 +217,7 @@ def _staged(cfg: config.Config) -> Path:
     return cfg.paths.download_staging.expanduser().absolute()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The declaration
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_verb_queues_nothing_of_its_own_and_declares_one_gate_of_its_own():
@@ -250,9 +246,7 @@ def test_the_tail_is_the_four_verbs_in_their_order():
     assert sync_land.STEPS.index(sync_land.LAND) == len(sync_land.STEPS) - 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The brief's four scenarios
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_pass_with_only_owned_tracks_ends_without_a_download_or_a_landing(
@@ -382,9 +376,7 @@ def test_a_backup_job_whose_driver_died_does_not_hold_the_pass(machine, monkeypa
     assert _check(envelope, sync_land.PREFLIGHT)["status"] == "ok"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The order, the tail and the stop
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_staging_path(
@@ -549,9 +541,7 @@ def test_a_tail_step_with_nothing_to_queue_plans_no_landing(machine, monkeypatch
 
     monkeypatch.setattr(tail, "_job", emptied)
 
-    code, envelope = drive(["sync", "land"])
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(drive(["sync", "land"]))
     assert envelope["cause"]["reason"] == "source-missing"
     assert ("analyze", "run") not in tail.verbs()
     assert ("intake", "land") not in tail.verbs()
@@ -590,9 +580,7 @@ def test_a_parked_download_ends_the_pass_blocked_before_the_tail(machine, monkey
     assert ("tag", "folder") not in tail.verbs()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. Continuing a pass
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_continued_pass_drives_the_download_it_queued_and_queues_no_second(
@@ -627,16 +615,12 @@ def test_a_continued_pass_over_an_open_intake_job_drives_it_first(machine, monke
 
 
 def test_a_continued_pass_naming_no_intake_job_is_refused_in_the_preflight(machine, tail):
-    code, envelope = drive(["sync", "land", "--pass-run", "no-such-run"])
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(drive(["sync", "land", "--pass-run", "no-such-run"]))
     assert envelope["cause"]["reason"] == "job-unknown"
     assert tail.calls == [], "a step ran before the unknown id was refused (U183)"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. What the pass carries through
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_hearts_the_provider_withholds_are_reported_once_and_not_retried(
@@ -674,9 +658,7 @@ def test_the_outbound_hearts_write_stays_behind_its_own_gate(tmp_path, monkeypat
 def test_a_step_with_no_readable_envelope_is_a_defect_not_a_success(machine, monkeypatch):
     monkeypatch.setattr(tail_chain, "dispatch", lambda argv: (int(ExitCode.OK), {}))
 
-    code, envelope = drive(["sync", "land"])
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(drive(["sync", "land"]))
     assert envelope["cause"]["reason"] == "internal-error"
     assert "sync all" in envelope["cause"]["message"]
 
@@ -737,9 +719,7 @@ def test_a_job_another_driver_holds_ends_the_pass_with_that_drivers_refusal(
     assert ("intake", "missing") not in tail.verbs()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. Passes queued by hand, transient failures and foreign jobs
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_pass_queued_by_hand_and_never_driven_is_the_one_this_verb_takes(
@@ -857,9 +837,7 @@ def test_a_transient_download_failure_ends_the_pass_and_lands_nothing(
     _account(monkeypatch, script, "101", "102")
     script.landings["102"] = Landing(fetch_raises=TimeoutError("the provider timed out"))
 
-    code, envelope = drive(["sync", "land"])
-
-    assert code != int(ExitCode.OK), envelope
+    failed(drive(["sync", "land"]))
     (download,) = _by_key("acquire.download")
     assert download.state is jobs.JobState.FAILED and download.cause.retryable
     assert ("tag", "folder") not in tail.verbs()
@@ -874,8 +852,7 @@ def test_a_continued_pass_retries_a_download_that_failed_transiently(
     script.landings["102"] = Landing(
         fetch_raises=TimeoutError("the provider timed out"), fetch_raises_times=1
     )
-    code, first = drive(["sync", "land"])
-    assert code != int(ExitCode.OK), first
+    first = failed(drive(["sync", "land"]))
     run_id = _summary(first)["pass_run"]
 
     exited(drive(["sync", "land", "--pass-run", run_id]), ExitCode.PENDING_HUMAN)
@@ -899,8 +876,7 @@ def test_a_cancelled_download_over_the_same_list_is_not_reused(machine, monkeypa
         return real(argv)
 
     tail.real = undriven
-    code, first = drive(["sync", "land"])
-    assert code != int(ExitCode.OK), first
+    first = failed(drive(["sync", "land"]))
     (download,) = _by_key("acquire.download")
     with jobs.open_store() as store:
         jobs.cancel(store, download.job_id)
@@ -1031,9 +1007,7 @@ def test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask(
     assert "Analyze Tracks" in steps[replan + 2]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. Earlier passes and repeated downloads
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_earlier_pass_left_open_beside_a_new_one_is_named_with_its_way_on(
@@ -1189,9 +1163,7 @@ def test_an_earlier_pass_that_ended_or_belongs_to_another_library_is_not_continu
         assert jobs.get(store, foreign.job_id).state is jobs.JobState.QUEUED
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U182: stale intake jobs, named by playlist, let go by a cancel
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _age(job_id: str, days: float) -> None:
@@ -1366,9 +1338,7 @@ def test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_r
     assert sorted(job["job_id"] for job in group["jobs"]) == ["swept", "typed"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U181. A pass refuses to land rows with no vocal score, unless told to go on
-# ═══════════════════════════════════════════════════════════════════════════
 
 _NO_EXTRA = (
     "the 'vocals' extra is not installed here; "
@@ -1561,9 +1531,7 @@ def test_the_tail_asks_the_vocal_model_before_analyze_run_binds_its_loader(
     assert ("analyze", "vocals") not in tail.verbs()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U183. Either run id continues the pass
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _record(run_id: str) -> dict[str, Any]:

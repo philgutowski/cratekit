@@ -18,7 +18,7 @@ from cratekit.core import held_plan, jobs
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli
-from tests._sync_builders import exited
+from tests._sync_builders import exited, failed
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
@@ -29,9 +29,7 @@ from tests.test_sync_pair import db as db  # noqa: PLC0414
 from tests.test_sync_pair import world as world  # noqa: PLC0414
 from tests.test_sync_pair_resume import CEILING, VERB, gate_the_account, to_the_write, write
 
-# ═══════════════════════════════════════════════════════════════════════════
 # One paired playlist: a stop inside the account's writes
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -130,8 +128,6 @@ def test_a_step_that_cannot_be_recorded_stops_the_write(paired, monkeypatch):
     assert world.on_account() == ["t1", "t2", "t3", "t4"], "the account was written"
 
 
-
-
 def test_a_reorder_by_hand_on_the_part_written_playlist_refuses_stale(paired):
     """The order the plan read is held until the write orders."""
     world = paired
@@ -173,8 +169,7 @@ def test_a_job_queued_before_a_stop_is_not_queued_again_by_the_continue(world, m
     # The account's addition fails after rekordbox's commit and the queue.
     made.account.fail_on = frozenset({ACCOUNT})
     made.account.provider_error = True
-    code, failed = write(run_id, args, 100)
-    assert code != int(ExitCode.OK), failed
+    failed(write(run_id, args, 100))
     with jobs.open_store() as store:
         queued = pair_cli.pair_jobs(made.cfg, store)
     assert len(queued) == 1
@@ -198,8 +193,7 @@ def test_a_first_sync_named_by_hand_that_failed_after_its_mark_is_continued_on_i
     lookups = len(made.account.matches)
     made.account.fail_on = frozenset({ACCOUNT})
     made.account.provider_error = True
-    code, failed = write(run_id, args, 100)
-    assert code != int(ExitCode.OK), failed
+    failed(write(run_id, args, 100))
     assert pairs.PairStore(cfg).get(ACCOUNT) is not None, "the pair was not marked"
 
     made.account.fail_on = frozenset()

@@ -88,9 +88,7 @@ def fresh_cache():
     intake_cli.reset_cache()
 
 
-# ---------------------------------------------------------------------------
 # Fixtures: files, rows and a finished set job
-# ---------------------------------------------------------------------------
 
 
 def _tagged(path: Path, silence: Path, title: str) -> Path:
@@ -172,8 +170,7 @@ def _inspiration(job_id: str, *extra: str) -> list[str]:
 def _decided(verb: list[str], gate: str = APPROVE, answer: str = "apply") -> dict:
     """The first act refused at the gate and the person's answer recorded: its refusal."""
     refused = exited(drive(verb), ExitCode.DECISION_REQUIRED)
-    decided, _ = drive(["run", "decide", refused["run_id"], gate, answer, "--actor", "a-person"])
-    assert decided == int(ExitCode.OK)
+    exited(drive(["run", "decide", refused["run_id"], gate, answer, "--actor", "a-person"]))
     return refused
 
 
@@ -289,9 +286,7 @@ def _refused_before_the_gate(cfg: config.Config, code: int, envelope: dict, reas
     assert not _set_records(cfg)
 
 
-# ---------------------------------------------------------------------------
 # The name
-# ---------------------------------------------------------------------------
 
 
 def test_the_name_is_the_source_systems_form_to_the_character():
@@ -414,9 +409,7 @@ def test_a_posted_flag_that_is_not_a_day_is_refused_by_name(given):
     assert caught.value.cause.remediation.remedy is Remedy.FIX_COMMAND_LINE
 
 
-# ---------------------------------------------------------------------------
 # The landing given --set
-# ---------------------------------------------------------------------------
 
 
 def test_a_landing_from_a_set_job_writes_the_set_playlist_with_owned_and_landed_rows_in_job_order(
@@ -679,9 +672,7 @@ def test_a_landing_on_the_bridge_given_set_is_refused_by_name_before_anything_mo
     assert _still_staged(cfg)
 
 
-# ---------------------------------------------------------------------------
 # The backfill: crate intake inspiration
-# ---------------------------------------------------------------------------
 
 
 def test_the_backfill_over_a_landed_set_adds_the_playlist_and_nothing_to_inbox(
@@ -789,9 +780,7 @@ def test_a_folder_that_went_between_the_plan_and_the_write_is_refused_as_stale(
         assert landed == [(0,)]
 
 
-# ---------------------------------------------------------------------------
 # What the review added: answers read back, nothing offered, a pair of rows, a gap filled
-# ---------------------------------------------------------------------------
 
 
 def _offered_item(cfg: config.Config, job_id: str, title: str) -> tuple[str, str]:
@@ -843,8 +832,7 @@ def test_an_unanswered_question_is_left_out_and_the_plan_offers_nothing(native_l
     assert shown["set tracks"] == 0 and shown["set left out"] == 1
     assert _unresolved(cfg) == before
     run_id = refused["run_id"]
-    decided, _ = drive(["run", "decide", run_id, APPROVE, "abort", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK)
+    exited(drive(["run", "decide", run_id, APPROVE, "abort", "--actor", "a-person"]))
     code, acted = drive(["--run", run_id, *_inspiration(job_id, *WORDS)])
     assert code == int(ExitCode.OK) and acted["outcome"] == "no_op", acted
     assert _unresolved(cfg) == before
@@ -910,9 +898,7 @@ def test_a_second_write_that_fills_a_gap_mid_set_is_not_a_failed_write(native_li
     assert set_playlist.RECORD_KEY not in nothing.detail
 
 
-# ---------------------------------------------------------------------------
 # What the table added: the engine's own stale checks
-# ---------------------------------------------------------------------------
 
 
 def _backfill_inputs(cfg: config.Config, job_id: str):
@@ -973,9 +959,7 @@ def test_the_engine_refuses_a_folder_removed_after_the_plan_even_with_no_gate_in
     assert _under_folder(cfg) == []
 
 
-# ---------------------------------------------------------------------------
 # What the watcher's review added
-# ---------------------------------------------------------------------------
 
 
 def _soft_delete_playlist(cfg: config.Config, playlist_id: str) -> None:
@@ -1114,9 +1098,7 @@ def test_the_backfill_creates_the_declared_folder_at_the_root_when_the_library_l
     assert record.detail[set_playlist.RECORD_KEY]["folder"] == str(folder_id)
 
 
-# ---------------------------------------------------------------------------
 # U129: the landing archives the account playlist (driven)
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -1235,9 +1217,7 @@ def test_export_set_backfill_lists_inspiration_playlists_from_the_disposable_dat
     assert ledger.set_playlist_names(cfg) == ()
 
 
-# ---------------------------------------------------------------------------
 # U140: the account playlist follows a renamed INSPIRATION playlist
-# ---------------------------------------------------------------------------
 
 
 def _landed_and_renamed(cfg, held, silence, *, record_first: bool) -> tuple[str, str, dict]:

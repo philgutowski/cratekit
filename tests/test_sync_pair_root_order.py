@@ -131,9 +131,7 @@ def test_a_pair_whose_order_is_kept_still_follows_a_rekordbox_reorder(world, mon
     assert w.held() == ["3", "1", "2"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1416: a hand pair's first sync outside GIG READY keeps rekordbox's order
-# ═══════════════════════════════════════════════════════════════════════════
 #
 # Outside GIG READY Tidal's order is never written (U231), so taking it on the
 # first sync would lose the DJ's arrangement for good (608-outside-order-2). A

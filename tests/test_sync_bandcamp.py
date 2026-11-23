@@ -28,7 +28,7 @@ from cratekit.core import config, jobs, rb_writer, tags
 from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import batch_name
-from tests._sync_builders import exited
+from tests._sync_builders import exited, failed
 from tests.bandcamp_fakes import FakeAccount, item
 from tests.cli_drive import drive
 from tests.test_bandcamp_cli import (
@@ -62,9 +62,7 @@ TODAY = date(2026, 11, 1)
 OTHER_FILE = "Coral Arc - Drift - 01 Drift.flac"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The stand ins
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Landing:
@@ -141,9 +139,7 @@ def _verbs(stand_in: Tail) -> list[tuple[str, ...]]:
     return [tuple(argv[:2]) if argv[:1] != ["-d"] else ("name", "apply") for argv in stand_in.calls]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The declaration
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_verb_queues_nothing_of_its_own_and_declares_no_gate():
@@ -160,9 +156,7 @@ def test_the_steps_are_the_plan_the_fetch_the_shared_tail_the_rehearsal_and_the_
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. One label's purchases to the gate
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_label(
@@ -219,7 +213,6 @@ def test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_lab
     assert any("Analyze Tracks" in step for step in steps)
 
 
-
 def test_the_labels_release_reaches_the_same_gate_with_rekordbox_open_on_the_host(
     rekordbox_on_the_host, signed_in, account, puls, chain, library
 ):
@@ -243,9 +236,7 @@ def test_the_tail_runs_on_the_absolute_batch_folder(signed_in, account, puls, ch
     assert named[-1] == folder
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. What ends before a download, and what has nothing to do
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_expired_session_stops_at_the_plan_with_the_login_step_before_any_download(
@@ -314,9 +305,7 @@ def test_rekordbox_running_refuses_before_the_plan(signed_in, account, monkeypat
     assert chain.calls == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. Sellers, labels and the batch's name
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_seller_no_label_names_lands_unlabelled_and_is_named(signed_in, account, puls, chain):
@@ -391,9 +380,7 @@ def test_a_taken_batch_name_takes_the_next_number(cfg, monkeypatch):
     assert batch_name.bandcamp(cfg, ("PULS",)) == "2026-11-01 Bandcamp PULS 2"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The landing is never planned over files the tail did not run on
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _analysis_fails(job: jobs.Job, item_: jobs.Item) -> None:
@@ -412,9 +399,7 @@ def test_a_failed_tail_step_plans_no_landing_and_names_the_continuation(
 ):
     chain.work[tail_chain.ANALYZE] = _analysis_fails
 
-    code, envelope = run("--seller", "PULS", "--batch", BATCH)
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(run("--seller", "PULS", "--batch", BATCH))
     assert chain.landing.landed == [] and chain.landing.rehearsed == []
     assert ("name", "apply") not in _verbs(chain)
     assert _summary(envelope)["stopped_at"] == "analyze"
@@ -481,9 +466,7 @@ def test_a_rehearsal_that_needs_the_acknowledgment_names_the_rehearsal_then_the_
     assert any("Analyze Tracks" in step for step in steps)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. The fetch: refused releases, a parked fetch, an open one elsewhere
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none(
@@ -517,9 +500,7 @@ def test_a_fetch_failed_by_a_transient_answer_ends_the_verb_and_lands_nothing(
 
     account.get = unavailable
 
-    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(run("--seller", "otherlabel", "--batch", BATCH))
     assert envelope["outcome"] != "pending"
     assert _summary(envelope)["stopped_at"] == "fetch"
     assert _summary(envelope)["fetch_refused"] == []
@@ -552,8 +533,7 @@ def test_a_fetch_parked_by_the_session_ends_blocked_and_the_next_run_drives_it_o
         return original(url, cookie=cookie)
 
     account.get = expiring
-    code, envelope = run("--seller", "otherlabel", "--batch", BATCH)
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(run("--seller", "otherlabel", "--batch", BATCH))
     assert envelope["outcome"] == "blocked"
     (job,) = _fetch_jobs()
     assert str(job.state) == "blocked"

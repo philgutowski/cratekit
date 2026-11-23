@@ -184,11 +184,9 @@ def test_the_bound_is_five_days_as_the_author_set_it():
     assert session.SESSION_MAX_BACKUP_AGE == FIVE_DAYS
 
 
-# ---------------------------------------------------------------------------
 # U184: ``crate session ack --as session``, the session's mint in one command.
 # The age rule is the only guard, so every drive below is one invocation with
 # nobody at a terminal and ends with no run left waiting on an answer.
-# ---------------------------------------------------------------------------
 
 #: The one command, spelled as a session types it.
 ONE_COMMAND = ["session", "ack", "--as", SESSION]

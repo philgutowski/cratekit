@@ -197,8 +197,7 @@ def sync(args: list[str], *, rekordbox: str = "apply", account: str = "apply"):
             return code, envelope
         run_id = envelope["run_id"]
         gate = envelope["cause"]["detail"]["gate"]
-        decided, said = drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"])
-        assert decided == int(ExitCode.OK), said
+        exited(drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"]))
     raise AssertionError("the verb kept asking after both gates were answered")
 
 
@@ -956,8 +955,7 @@ def _held_at_its_gate(w):
 def _finished(run_id: str, gate: str):
     """Answer each gate the run asks and resume it, until it answers."""
     for _ in range(3):
-        decided, said = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
-        assert decided == int(ExitCode.OK), said
+        exited(drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"]))
         code, envelope = drive(["--run", run_id, *VERB])
         if code != int(ExitCode.DECISION_REQUIRED):
             return code, envelope

@@ -94,9 +94,7 @@ def an_entry(*names: str, verb: str = "tag.rows"):
     return SimpleNamespace(name=verb, gates=tuple(SimpleNamespace(name=name) for name in names))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. cli.output: what a verb's shell needs
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_readable_config_is_returned_as_config_load_reads_it(cfg):
@@ -223,9 +221,7 @@ def test_the_two_shells_name_the_one_report_the_one_no_op_and_the_one_resume():
         assert shell.no_op is output.no_job
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. core.jobs: where one item's report is staged, and where it lands
-# ═══════════════════════════════════════════════════════════════════════════
 
 REPORTS = jobs.Artifacts(final="home-artifacts", staging="home-staging")
 
@@ -423,9 +419,7 @@ def test_the_report_base_never_resolves_the_queue_root_for_itself():
     assert all(isinstance(call.args[0], ast.Name) and call.args[0].id == "cfg" for call in resolvers)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. core.private_store: the store both queues open
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("kind", [jobs.JobStore, review.ReviewStore])
@@ -510,9 +504,7 @@ def test_a_store_that_cannot_be_opened_names_its_path_on_the_drivers_own_error(t
     assert getattr(raised.value, DATABASE_PATH_ATTRIBUTE) == str(missing)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. core.config: the lock and the read every state document's store shared
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class StoreRefused(Exception):
@@ -869,9 +861,7 @@ def test_a_config_failure_and_an_adapter_failure_are_remedied_and_neither_is_the
     assert not issubclass(config.ConfigError, acquire_adapter.AdapterError)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The small readers a second package came to need
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -945,9 +935,7 @@ def test_a_registry_entry_is_found_by_its_tree_identifier_and_the_first_recorded
     assert tree_registry.by_tree_id(iter(()), "genres") is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. core.jobs: the tail of every resume
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def a_job(job_id: str, *, is_open: bool):
@@ -1005,9 +993,7 @@ def test_a_job_that_ended_cleanly_before_the_ask_is_returned_with_no_warnings(mo
     assert jobs.resumed(SimpleNamespace(run_job=None), "the store", done) == (done, ())
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. write: what every guarded writer does on its way in and on its way out
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def a_handle(rollback):
@@ -1106,9 +1092,7 @@ def test_the_two_row_writes_report_through_one_shape_and_one_adds_what_it_renumb
     assert not isinstance(genres, row_defaults.Written)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 8. What two modules of one feature each wrote, held where it now lives
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_module_this_build_can_import_is_importable_and_one_it_cannot_is_not(tmp_path, monkeypatch):

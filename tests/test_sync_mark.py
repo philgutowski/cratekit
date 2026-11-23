@@ -34,7 +34,7 @@ from cratekit.intake import cli as intake_cli
 from cratekit.intake import land_cli, missing_cli, native
 from cratekit.sync import mark_cli, mark_record, marks, playlists, watermarks
 from tests import outbound_fakes
-from tests._sync_builders import exited
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.intake.test_workers import Track
 from tests.test_intake_missing import tombstone
@@ -54,9 +54,7 @@ def fresh_cache():
     intake_cli.reset_cache()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The sequence a mark comes after
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _swept_pass(monkeypatch, *listed, failing: tuple[str, ...] = ()) -> tuple[object, str]:
@@ -80,8 +78,7 @@ def _swept_pass(monkeypatch, *listed, failing: tuple[str, ...] = ()) -> tuple[ob
             with jobs.open_store() as store:
                 jobs.transition(store, job.job_id, jobs.JobState.FAILED, cause=stopped)
             continue
-        code, resumed = drive(cli_jobs.argv_for(job))
-        assert code == int(ExitCode.OK), resumed
+        resumed = exited(drive(cli_jobs.argv_for(job)))
         assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
     extra = ["--skip-failed"] if failing else []
     exited(drive(["intake", "missing", "--run", run_id, *extra]))
@@ -151,9 +148,7 @@ TWO = (
 )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The declaration
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_verb_declares_no_write_surface_behind_an_explicit_gate():
@@ -165,9 +160,7 @@ def test_the_verb_declares_no_write_surface_behind_an_explicit_gate():
     assert gate.digest_source == "plan"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The file check reads the path once (R-398)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_file_check_makes_one_stat_and_refuses_whatever_it_raises(tmp_path, monkeypatch):
@@ -244,9 +237,7 @@ def test_a_missing_intake_file_refuses_the_verb_before_anything_is_listed(slim, 
     assert _took(slim, account) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. Which playlists a landed file finishes
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_landed_pass_marks_its_playlists_only_after_the_answer(slim, monkeypatch):
@@ -428,8 +419,7 @@ def test_an_answer_to_one_plan_does_not_carry_out_another(slim, monkeypatch):
 
     music = Path(slim.library.root) / slim.library.music_dir
     (music / "Artist 102 - Title 102.flac").write_bytes(b"")
-    code, stale = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
-    assert code != int(ExitCode.OK), stale
+    failed(drive(["--run", run_id, "sync", "mark", "--xml", str(xml)]))
     assert _took(slim, account) == []
 
 
@@ -496,9 +486,7 @@ def test_the_mark_reads_the_cursor_and_never_writes_it(slim, monkeypatch):
     assert watermarks.WatermarkStore(slim).read(playlists.SOURCE_ID) == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. A failure part way
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _record_refusing(monkeypatch, playlist_id: str, raised: Exception) -> None:
@@ -570,9 +558,7 @@ def test_a_failure_before_any_rename_says_nothing_was_marked(slim, monkeypatch):
     assert "no playlist was recorded as taken" in failed["cause"]["message"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. What the verb refuses to guess
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_file_not_named_as_an_intake_file_refuses(slim, monkeypatch):
@@ -755,14 +741,11 @@ def test_an_answer_is_stale_once_the_intake_file_is_rewritten(slim, monkeypatch)
     run_id = refused["run_id"]
     exited(drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"]))
     xml.write_bytes(xml.read_bytes() + b"\r\n<!-- landed again -->\r\n")
-    code, stale = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
-    assert code != int(ExitCode.OK), stale
+    failed(drive(["--run", run_id, "sync", "mark", "--xml", str(xml)]))
     assert _took(slim, account) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-777. A pass landed on a database native intake tree, named with --pass
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _cut_over_intake(cfg: config.Config) -> str:
@@ -1065,9 +1048,7 @@ def test_a_plan_given_both_proofs_or_neither_is_refused(slim, tmp_path):
         mark_cli.plan_pass(slim, tmp_path / "x_inboxed.xml", pass_name="x")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U174: --playlist narrows a pass's mark to the playlists named
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_playlist_narrows_the_plan_the_gate_and_the_renames_to_the_one_named(slim, monkeypatch):
@@ -1101,9 +1082,7 @@ def test_an_answer_to_the_narrowed_plan_does_not_carry_out_the_whole_pass(slim, 
     run_id = refused["run_id"]
     assert drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])[0] == 0
 
-    code, whole = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
-
-    assert code != int(ExitCode.OK), whole
+    failed(drive(["--run", run_id, "sync", "mark", "--xml", str(xml)]))
     assert _took(slim, account) == []
 
 
@@ -1129,9 +1108,7 @@ def test_a_playlist_of_no_pass_of_this_name_is_refused_before_the_account_is_lis
     xml = _land(slim, name, "101", "102", "201")
     listings = fake.account_listings
 
-    code, refused = _mark(xml, "--playlist", "pl-b", "--playlist", "pl-elsewhere")
-
-    assert code != int(ExitCode.OK), refused
+    refused = failed(_mark(xml, "--playlist", "pl-b", "--playlist", "pl-elsewhere"))
     cause = refused["cause"]
     assert cause["reason"] == "sync-marks-blocked"
     assert "pl-elsewhere" in cause["message"] and "pl-b" not in cause["detail"]["not_of_pass"]
@@ -1147,9 +1124,7 @@ def test_a_named_playlist_the_pass_did_not_complete_is_refused_by_name(slim, mon
     bind_account(monkeypatch, account)
     xml = _land(slim, name, "101", "201")
 
-    code, refused = _mark(xml, "--playlist", "pl-a")
-
-    assert code != int(ExitCode.OK), refused
+    refused = failed(_mark(xml, "--playlist", "pl-a"))
     cause = refused["cause"]
     assert cause["reason"] == "sync-marks-blocked"
     assert cause["detail"]["not_complete"] == ["pl-a"]
@@ -1224,9 +1199,7 @@ def test_a_native_pass_takes_playlist_as_the_file_does(slim, monkeypatch):
     assert [item["id"] for item in data["items"]] == ["pl-a"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U174, R-915: organize plans a mark for every pass a native landing committed
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _mark_steps(cfg: config.Config):

@@ -103,9 +103,7 @@ def _landable(script) -> None:
         script.landings.setdefault(n, Landing())
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. A label go's download waiting at its landing's gate
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_label_gos_download_at_its_landings_gate_renamed_refuses_the_pass_before_it_downloads(
@@ -164,9 +162,7 @@ def test_a_gos_download_arriving_while_the_pass_downloads_refuses_its_tail(
     assert _check(envelope, "download")["status"] == "ok"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. A plain download, and an earlier pass's
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_plain_download_beside_the_pass_refuses_naming_it(machine, monkeypatch, tail, tmp_path):
@@ -272,9 +268,7 @@ def test_a_pass_whose_landing_is_proven_is_not_named(machine, monkeypatch, renam
     assert cause["detail"]["unnamed"] == ["Artist - 101.wav"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The pass's own tracks, renamed by its own tail
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _refusing_landing(tail: Tail) -> None:
@@ -391,9 +385,7 @@ def test_a_record_that_cannot_be_kept_is_a_warning_and_the_next_run_refuses(
     ) in cause["remediation"]["steps"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. A folder or a root that cannot be read
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_unreadable_staging_folder_refuses_the_pass_before_it_downloads(
@@ -443,9 +435,7 @@ def test_an_unreadable_library_root_refuses_over_the_passes_renamed_tracks(
     assert code != int(ExitCode.OK)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The go reads a sync pass's download the same way
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_fresh_go_beside_a_sync_passes_download_names_its_continue_command(
@@ -465,9 +455,7 @@ def test_a_fresh_go_beside_a_sync_passes_download_names_its_continue_command(
     assert our_jobs() == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. What arrives while the tail runs
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class ArrivingTail(RenamingTail):
@@ -563,9 +551,7 @@ def test_a_download_finished_while_a_gos_tail_runs_refuses_its_landing(
     assert staged_reading.kept(staged_reading.go_record(cfg, go_job.job_id)) == frozenset()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. Whose a download is, by its list
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _download_over(cfg, listed: str, *, key: str = "acquire.download") -> str:

@@ -16,7 +16,7 @@ from cratekit.core import rb_writer
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli, pair_discover, pair_merge, pair_reverse
-from tests._sync_builders import exited
+from tests._sync_builders import exited, failed
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
@@ -424,8 +424,7 @@ def test_a_failure_after_the_commit_still_pairs_the_playlist_made(world, cfg, gi
         raise OSError("the fingerprint could not be recorded")
 
     monkeypatch.setattr(convergence, "record_fingerprint", broken)
-    code, envelope = sync()
-    assert code != int(ExitCode.OK)
+    envelope = failed(sync())
     # The failure that happened is the one reported, raised once the pair is.
     assert "the fingerprint could not be recorded" in envelope["cause"]["message"]
     made = in_rekordbox(world, gig)["Closer"]
@@ -548,8 +547,7 @@ def test_a_commit_that_lands_and_then_raises_still_pairs_the_playlist(world, cfg
         raise IsADirectoryError("the legacy playlist file could not be saved")
 
     monkeypatch.setattr(rb_writer, "commit_guarded", lands_then_raises)
-    code, envelope = sync()
-    assert code != int(ExitCode.OK)
+    envelope = failed(sync())
     assert "legacy playlist file" in envelope["cause"]["message"]
     made = in_rekordbox(world, gig)["Closer"]
     held = pairs.PairStore(cfg).get(closer)
@@ -608,8 +606,7 @@ def test_a_write_outside_the_playlist_made_is_refused_with_nothing_written(
         return added
 
     monkeypatch.setattr(rb_writer, "add_memberships", strays)
-    code, _envelope = sync()
-    assert code != int(ExitCode.OK)
+    failed(sync())
     names = {name for (name,) in world.sql("SELECT Name FROM djmdPlaylist")}
     assert "Stray" not in names and "Closer" not in names
     assert pairs.PairStore(cfg).get(closer) is None

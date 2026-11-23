@@ -42,7 +42,7 @@ from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import genre_favorites, metadata_cli, rebuild, routing_cli, routing_pass, trees
 from tests._readings import serve_readings
-from tests._sync_builders import exited
+from tests._sync_builders import exited, failed
 from tests.test_active_taxonomy import shipped_without, write_active
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import (
@@ -63,8 +63,7 @@ ARRIVED = "Second Track.flac"
 
 def _fails(result: tuple[int, dict]) -> dict:
     """The envelope of a drive that did not exit OK."""
-    code, envelope = result
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(result)
     return envelope
 
 

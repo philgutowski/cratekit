@@ -14,7 +14,7 @@ from cratekit.core.cause import Remedy, Scope, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli
-from tests._sync_builders import exited
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -91,8 +91,7 @@ def test_a_refused_order_stops_its_pair_alone_and_every_other_write_lands(
     second_account = world.titled("GIG READY Second")
     _refusing(world, monkeypatch, {opener_account})
 
-    code, stopped = sync()
-    assert code != int(ExitCode.OK), stopped
+    stopped = failed(sync())
     # Every other write landed, the addition and the playlist brought into rekordbox.
     assert world.account.playlists[second_account] == ["t4", "t5", "t6"]
     inside = in_rekordbox(world, gig)
@@ -120,8 +119,7 @@ def test_a_continue_of_the_run_puts_the_refused_pair_in_order_and_moves_nothing_
     opener_account = world.titled("GIG READY Opener")
     refused_on = {opener_account}
     _refusing(world, monkeypatch, refused_on)
-    code, stopped = sync()
-    assert code != int(ExitCode.OK), stopped
+    stopped = failed(sync())
     run_id = stopped["run_id"]
     added = list(world.account.added)
 
@@ -149,8 +147,7 @@ def test_a_first_order_is_asked_with_nothing_to_agree_with_but_what_the_adapter_
 def test_a_rejected_session_on_the_order_still_stops_the_whole_write(world, owed, monkeypatch):
     opener_account = world.titled("GIG READY Opener")
     _refusing(world, monkeypatch, {opener_account}, reason="credential-missing")
-    code, stopped = sync()
-    assert code != int(ExitCode.OK), stopped
+    stopped = failed(sync())
     assert stopped["cause"]["reason"] == "credential-missing"
     assert "unordered" not in (stopped["cause"].get("detail") or {})
 
@@ -186,8 +183,7 @@ def test_a_continue_after_a_change_no_move_of_the_run_recorded_holds_it_as_moved
         return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
 
     monkeypatch.setattr(world.account, "order_tracks", order_tracks)
-    code, stopped = sync()
-    assert code != int(ExitCode.OK), stopped
+    stopped = failed(sync())
     refused_on.clear()
     asked = len(world.account.expected)
     exited(drive(["--run", stopped["run_id"], *VERB]), ExitCode.DECISION_STALE)
@@ -239,8 +235,7 @@ def refused_once(world, monkeypatch):
     account_id = world.titled("GIG READY Opener")
     refused_on = {account_id}
     _refusing(world, monkeypatch, refused_on)
-    code, stopped = sync()
-    assert code != int(ExitCode.OK), stopped
+    stopped = failed(sync())
     assert stopped["cause"]["reason"] == "outbound-remove-refused", stopped
     assert world.account.playlists[account_id] == _ids("1", "2", "3", "4")
     refused_on.clear()
@@ -314,8 +309,7 @@ def _refused_with_an_addition(world, monkeypatch):
     account_id = world.titled("GIG READY Opener")
     refused_on = {account_id}
     _refusing(world, monkeypatch, refused_on)
-    code, stopped = sync()
-    assert code != int(ExitCode.OK), stopped
+    stopped = failed(sync())
     assert world.account.playlists[account_id] == _ids("1", "2", "3", "4", "5")
     refused_on.clear()
     return opener, account_id, stopped["run_id"]
@@ -441,8 +435,7 @@ def test_a_continue_of_an_order_that_moved_nothing_hands_the_adapter_the_checks_
         return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
 
     monkeypatch.setattr(world.account, "order_tracks", order_tracks)
-    code, stopped = sync()
-    assert code != int(ExitCode.OK), stopped
+    stopped = failed(sync())
     exited(drive(["--run", stopped["run_id"], *VERB]))
     assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
@@ -477,8 +470,7 @@ def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_list
         return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
 
     monkeypatch.setattr(world.account, "order_tracks", order_tracks)
-    code, stopped = sync()
-    assert code != int(ExitCode.OK), stopped
+    stopped = failed(sync())
     run_id = stopped["run_id"]
     where = held_plan.steps_path(run_id)
     if damage == "gone":

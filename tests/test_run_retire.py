@@ -66,9 +66,7 @@ def _retire(*argv: str) -> tuple[int, dict]:
     return _json(["-d", f"{CONFIRM}=apply", "run", "retire", *argv])
 
 
-# ---------------------------------------------------------------------------
 # crate status
-# ---------------------------------------------------------------------------
 
 
 def test_status_collapses_old_gates_into_one_line_and_lists_new_ones_as_before(configured):
@@ -141,9 +139,7 @@ def test_a_run_started_recently_is_not_old_whatever_its_file_says(configured):
     assert f"run.{run_id}" in {check["key"] for check in _status()["checks"]}
 
 
-# ---------------------------------------------------------------------------
 # crate run retire
-# ---------------------------------------------------------------------------
 
 
 def test_retire_asks_once_over_every_old_gate_and_answers_only_those(configured):
@@ -278,9 +274,7 @@ def test_older_than_reads_whole_days():
     assert runs.older_than(f"{config.MAX_OPEN_GATE_STALE_DAYS}d").days == config.MAX_OPEN_GATE_STALE_DAYS
 
 
-# ---------------------------------------------------------------------------
 # the one predicate
-# ---------------------------------------------------------------------------
 
 
 def test_a_gate_exactly_at_the_threshold_is_not_yet_old(configured):
@@ -336,9 +330,7 @@ def test_retire_says_nothing_about_an_old_run_already_answered(configured):
     assert envelope["data"]["summary"]["kept"] == 0
 
 
-# ---------------------------------------------------------------------------
 # reports.open_gate_stale_days
-# ---------------------------------------------------------------------------
 
 
 def test_the_threshold_defaults_to_a_week_and_moves_with_the_file(library):
@@ -358,9 +350,7 @@ def test_the_ceiling_itself_is_a_threshold(library):
     assert config.validate({**document_for(library), "reports": {"open_gate_stale_days": ceiling}}) == []
 
 
-# ---------------------------------------------------------------------------
 # Guards against a run or gate moving under the plan
-# ---------------------------------------------------------------------------
 
 
 def test_retire_reads_its_default_threshold_from_the_file(library):

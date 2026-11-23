@@ -126,8 +126,7 @@ def test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label
     assert apply_argv == [
         "crate", "--run", run_id, "intake", "land", str(folder), "--name", NAME, "--label-from-tags",
     ]
-    decided, answered = drive(decide_argv[1:])
-    assert decided == int(ExitCode.OK), answered
+    exited(drive(decide_argv[1:]))
     exited(drive(apply_argv[1:]))
     assert _filed(cfg) == {"PULS": {"PULS 2026": ["Sun Path", "Tide"]}}
     (batch,) = _query(

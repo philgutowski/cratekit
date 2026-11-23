@@ -129,9 +129,7 @@ def _tree(*roots: Path) -> dict[str, bytes]:
     return found
 
 
-# ---------------------------------------------------------------------------
 # The registry, and the guards
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name", ["schedule.install", "schedule.show", "schedule.remove"])
@@ -271,15 +269,11 @@ def test_the_default_directory_is_the_persons_own_launch_agents():
     assert schedule.launch_agents_dir() == Path.home() / "Library" / "LaunchAgents"
 
 
-# ---------------------------------------------------------------------------
 # install
-# ---------------------------------------------------------------------------
 
 
 def test_install_writes_one_agent_that_runs_the_night_alone_and_loads_it(mac, agents, crate):
-    code, envelope = drive(["schedule", "install"])
-
-    assert code == 0, envelope
+    envelope = exited(drive(["schedule", "install"]))
     assert sorted(p.name for p in agents.iterdir()) == [schedule.PLIST_NAME]
     document = _plist(agents)
     log = config.state_path(schedule.LOG_KEY)
@@ -348,9 +342,7 @@ def test_the_crate_is_the_one_this_process_was_started_as(monkeypatch, tmp_path)
 
 def test_install_twice_replaces_the_agent_and_never_duplicates_it(mac, agents):
     drive(["schedule", "install"])
-    code, envelope = drive(["schedule", "install", "--at", "22:05"])
-
-    assert code == 0, envelope
+    envelope = exited(drive(["schedule", "install", "--at", "22:05"]))
     assert sorted(p.name for p in agents.iterdir()) == [schedule.PLIST_NAME]
     assert _plist(agents)["StartCalendarInterval"] == {"Hour": 22, "Minute": 5}
     assert mac.loaded[schedule.LABEL]["StartCalendarInterval"] == {"Hour": 22, "Minute": 5}
@@ -363,9 +355,7 @@ def test_a_plist_left_without_launchd_holding_it_is_replaced(mac, agents):
     agents.mkdir(parents=True)
     (agents / schedule.PLIST_NAME).write_bytes(b"left by hand")
 
-    code, envelope = drive(["schedule", "install"])
-
-    assert code == 0, envelope
+    envelope = exited(drive(["schedule", "install"]))
     assert _plist(agents)["Label"] == schedule.LABEL
     assert "bootout" not in mac.verbs()
     assert envelope["data"]["summary"]["schedule"]["replaced"] is True
@@ -375,9 +365,7 @@ def test_a_plist_left_without_launchd_holding_it_is_replaced(mac, agents):
     ("text", "at"), [("4:05", (4, 5)), ("00:00", (0, 0)), ("23:59", (23, 59))]
 )
 def test_at_sets_the_time(mac, agents, text, at):
-    code, envelope = drive(["schedule", "install", "--at", text])
-
-    assert code == 0, envelope
+    exited(drive(["schedule", "install", "--at", text]))
     assert _plist(agents)["StartCalendarInterval"] == {"Hour": at[0], "Minute": at[1]}
 
 
@@ -439,9 +427,7 @@ def test_an_installation_found_through_xdg_alone_is_the_one_the_agent_reads(
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
     state, conf, gate = config.installation_state_dir(), config.config_dir(), config.provider_gate_dir()
 
-    code, envelope = drive(["schedule", "install"])
-
-    assert code == 0, envelope
+    exited(drive(["schedule", "install"]))
     document = _plist(agents)
     env = document["EnvironmentVariables"]
     assert env[config.ENV_STATE_DIR] == str(state)
@@ -466,9 +452,7 @@ def test_a_relative_override_is_carried_absolute(mac, agents, monkeypatch, tmp_p
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, "library")
     monkeypatch.setenv("CRATEKIT_BIN_FFMPEG", os.path.join("tools", "ffmpeg"))
 
-    code, envelope = drive(["schedule", "install"])
-
-    assert code == 0, envelope
+    exited(drive(["schedule", "install"]))
     document = _plist(agents)
     env = document["EnvironmentVariables"]
     assert env[config.ENV_STATE_DIR] == str(tmp_path / "scratch" / "state")
@@ -558,9 +542,7 @@ def test_install_writes_only_the_plist_and_the_logs_directory(mac, agents, tmp_p
     assert config.state_path(schedule.LOG_KEY).parent.is_dir()
 
 
-# ---------------------------------------------------------------------------
 # show
-# ---------------------------------------------------------------------------
 
 
 def _show(expect: int = 0) -> dict[str, Any]:
@@ -685,17 +667,13 @@ def test_show_writes_nothing_and_asks_launchd_only_to_print(mac, tmp_path):
     assert set(mac.verbs()) == {"print"}
 
 
-# ---------------------------------------------------------------------------
 # remove
-# ---------------------------------------------------------------------------
 
 
 def test_remove_boots_the_agent_out_and_deletes_its_plist(mac, agents):
     drive(["schedule", "install"])
 
-    code, envelope = drive(["schedule", "remove"])
-
-    assert code == 0, envelope
+    envelope = exited(drive(["schedule", "remove"]))
     assert envelope["outcome"] == "ok"
     assert not (agents / schedule.PLIST_NAME).exists()
     assert schedule.LABEL not in mac.loaded
@@ -703,9 +681,7 @@ def test_remove_boots_the_agent_out_and_deletes_its_plist(mac, agents):
 
 
 def test_remove_over_nothing_installed_is_a_no_op(mac, agents):
-    code, envelope = drive(["schedule", "remove"])
-
-    assert code == 0, envelope
+    envelope = exited(drive(["schedule", "remove"]))
     assert envelope["outcome"] == "no_op"
     assert "bootout" not in mac.verbs()
     assert not agents.exists()
@@ -746,9 +722,7 @@ def test_a_remove_launchd_does_not_confirm_keeps_the_plist(mac, agents, how):
     assert (agents / schedule.PLIST_NAME).exists(), "the plist went while launchd may still hold it"
 
 
-# ---------------------------------------------------------------------------
 # Any platform but macOS
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("verb", ["install", "show", "remove"])
@@ -763,9 +737,7 @@ def test_any_platform_but_macos_refuses_naming_it(mac, agents, monkeypatch, verb
     assert not agents.exists()
 
 
-# ---------------------------------------------------------------------------
 # Review round one
-# ---------------------------------------------------------------------------
 
 
 def test_show_fails_over_an_agent_whose_crate_is_gone(mac, crate):
@@ -882,9 +854,7 @@ def test_a_bootout_refused_over_an_agent_then_absent_boots_out_nothing(mac, agen
 
     monkeypatch.setattr(schedule, "launchctl", flaky)
 
-    code, envelope = drive(["schedule", "remove"])
-
-    assert code == 0, envelope
+    envelope = exited(drive(["schedule", "remove"]))
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["summary"]["schedule"]["removed"] is False
 
@@ -951,9 +921,7 @@ def test_show_fails_over_an_agent_launchd_holds_with_no_plist(mac, agents):
     assert envelope["data"]["summary"]["schedule"]["loaded"] == schedule.LOADED
 
 
-# ---------------------------------------------------------------------------
 # Review round two
-# ---------------------------------------------------------------------------
 
 
 def test_a_binary_the_install_finds_on_its_path_alone_is_on_the_agents_path(

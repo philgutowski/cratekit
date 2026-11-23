@@ -14,3 +14,10 @@ def exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
     code, envelope = result
     assert code == int(expected), f"exited {code}, expected {int(expected)}: {envelope!r}"
     return envelope
+
+
+def failed(result: tuple[int, dict]) -> dict:
+    """The envelope of a drive that did not exit OK."""
+    code, envelope = result
+    assert code != int(ExitCode.OK), f"exited OK: {envelope!r}"
+    return envelope

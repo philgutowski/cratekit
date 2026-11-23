@@ -35,7 +35,7 @@ from cratekit.modules.outbound import source as outbound_source
 from cratekit.sync import cli as sync_cli
 from cratekit.sync import playlists, sources, watermarks
 from tests import outbound_fakes
-from tests._sync_builders import exited
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.intake.test_workers import Track
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, catalogue_factory
@@ -113,9 +113,7 @@ def _confirmed(exported: Path, option: str = "sync") -> tuple[str, int, dict]:
     return run_id, code, passed
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The declarations the composition rests on
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_source_with_a_worker_names_a_key_the_registry_binds():
@@ -184,9 +182,7 @@ def test_the_composer_declares_one_explicit_gate_compared_against_a_digest():
     assert gate.prompt == favourites.prompt
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. A full pass
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_full_pass_queues_each_source_under_its_own_key_with_one_run(
@@ -367,8 +363,7 @@ def test_a_source_that_refuses_does_not_stop_the_other(installed, monkeypatch):
 def test_nothing_queued_because_every_source_refused_is_a_refusal(installed):
     """A pass that did nothing for a reason the person can fix says so."""
     del installed
-    code, refused = drive(["sync", "all"])
-    assert code != int(ExitCode.OK), refused
+    refused = failed(drive(["sync", "all"]))
     assert refused["cause"]["reason"] == "outbound-export-required"
     assert refused["cause"]["detail"]["sources"]["summary"]["not_queued"] == {
         "favorites": "outbound-export-required",
@@ -387,9 +382,7 @@ def test_nothing_queued_because_every_source_refused_is_a_refusal(installed):
     assert _jobs() == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2b. Labels are not swept here, and the pass says where they went (U109)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class NoLabelCalls(FakeCatalogue):
@@ -489,9 +482,7 @@ def test_a_profile_without_the_labels_module_names_no_guided_verb(slim, monkeypa
     assert "sync.labels" not in {c["key"] for c in passed["data"]["checks"]}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The slim profile, and the playlists source it runs alone (U64)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _playlist(playlist_id: str, name: str, tracks: int | None = None) -> AccountPlaylist:
@@ -539,8 +530,7 @@ def test_the_playlists_source_names_the_intake_worker_it_composes():
 
 def test_a_slim_pass_with_no_provider_session_refuses_and_queues_nothing(slim):
     del slim
-    code, refused = drive(["sync", "all"])
-    assert code != int(ExitCode.OK), refused
+    refused = failed(drive(["sync", "all"]))
     assert refused["cause"]["reason"] == "credential-missing"
     assert _jobs() == []
 
@@ -963,8 +953,7 @@ def test_an_account_listing_that_fails_is_a_refusal_not_an_empty_account(slim, m
             raise RuntimeError("the provider stopped answering")
 
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(Unlistable()))
-    code, refused = drive(["sync", "all"])
-    assert code != int(ExitCode.OK), refused
+    refused = failed(drive(["sync", "all"]))
     assert refused["cause"]["reason"] == "sync-source-lookups-failed"
     assert _jobs() == []
 
@@ -998,13 +987,11 @@ def test_a_refusal_part_way_through_the_playlists_keeps_the_filed_ones_named(
     assert check["status"] == "fail" and job.job_id in check["detail"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3b. The deferred mark, R-358 code half
 #
 # THE PRODUCER IS THE PASS, NOT A HAND BUILT DATACLASS. ``recorded_now`` is
 # non empty only once a queued playlist's intake job SUCCEEDED, so each mark
 # test drives that sequence for real.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _recording_pass(cfg, fake) -> playlists.Sweep:
@@ -1337,12 +1324,10 @@ def test_a_recorded_playlist_says_in_the_default_output_it_was_resolved_not_acqu
         assert claim not in lowered, text
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3d. The pass names its next step, U73
 #
 # A pass ends in one list, one download and one landed file (R29), so it
 # names the command that turns its intake jobs into that list, by default.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_default_output_of_a_pass_that_queued_intake_jobs_names_the_run_verb(
@@ -1391,8 +1376,7 @@ def test_a_pass_through_to_one_list_holds_a_shared_track_once_with_both_playlist
     )
     passed = exited(drive(["sync", "all"]))
     for job in _playlist_jobs():
-        code, resumed = drive(cli_jobs.argv_for(job))
-        assert code == int(ExitCode.OK), resumed
+        resumed = exited(drive(cli_jobs.argv_for(job)))
         assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
 
     command = passed["data"]["summary"]["next"].split()
@@ -1463,9 +1447,7 @@ def test_the_sync_package_defines_no_remove_write():
     assert sorted(defined & FORBIDDEN_WRITE_NAMES) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. What the pass queued, run by the workers that already exist
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_jobs_a_pass_queues_run_to_done_through_the_existing_workers(
@@ -1502,9 +1484,7 @@ def test_the_favourites_job_carries_a_gate_run_its_own_verb_owns(installed, expo
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The hand off copies an answer and never supplies one
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _gates() -> gates.Gates:
@@ -1645,9 +1625,7 @@ def test_a_hand_off_to_a_gate_that_compares_no_digest_refuses(installed, monkeyp
         asked.hand_off(spec, verb="sync.favorites", gate="sync.favorites.confirm")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. The hearts listing, favourites' read only half (U74)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _hearts(*ids: str) -> list[Track]:
@@ -1860,8 +1838,7 @@ def test_nothing_queued_because_every_half_refused_is_still_a_refusal(installed,
             raise RuntimeError("the favourites listing failed")
 
     bind_hearts(monkeypatch, NoHearts())
-    code, refused = drive(["sync", "all"])
-    assert code != int(ExitCode.OK), refused
+    refused = failed(drive(["sync", "all"]))
     assert refused["cause"]["reason"] == "outbound-export-required"
     sources_data = refused["cause"]["detail"]["sources"]
     assert sources_data["summary"]["favorites"]["inbound"]["not_queued"] == (
@@ -1952,8 +1929,7 @@ def test_an_open_hearts_job_is_not_queued_twice(installed, monkeypatch):
 
     # NOTHING NEW AND TWO SOURCES REFUSED, so the second pass is the refusal
     # naming the export, not an OK over an open job.
-    code, again = drive(["sync", "all"])
-    assert code != int(ExitCode.OK), again
+    again = failed(drive(["sync", "all"]))
     assert again["cause"]["reason"] == "outbound-export-required"
     assert _hearts_jobs() == [job], "an open hearts job was queued a second time"
     block = _inbound(again)
@@ -1970,8 +1946,7 @@ def test_a_hearts_job_queued_by_hand_is_not_queued_beside(installed, monkeypatch
     bind_hearts(monkeypatch)
     exited(drive(["intake", "playlist", "favorites"]))
     (job,) = _hearts_jobs()
-    code, passed = drive(["sync", "all"])
-    assert code != int(ExitCode.OK), passed
+    passed = failed(drive(["sync", "all"]))
     assert _hearts_jobs() == [job]
     assert _inbound(passed)["open_jobs"] == [job.job_id]
 
@@ -2104,9 +2079,7 @@ def test_a_declined_pass_whose_hearts_refused_is_a_refusal_not_a_no_op(
     assert _jobs() == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-515: the sweep carries a short playlist listing per playlist
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_sweep_summary_carries_the_shortfall_per_playlist(slim, monkeypatch):
@@ -2141,10 +2114,8 @@ def test_a_sweep_of_full_playlists_carries_no_shortfall(slim, monkeypatch):
     assert "sync-playlists-withheld" not in {w["code"] for w in passed["warnings"]}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1289: the sweep reads each playlist row by row, so one track the account
 # lists with no title or no artist never leaves the whole playlist out
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _unread_warning(passed) -> str:
@@ -2258,8 +2229,7 @@ def test_a_refusal_not_about_one_playlist_still_stops_the_sweep(slim, monkeypatc
         account=[_playlist("pl-a", "Warmup"), _playlist("pl-b", "Peak")],
     )
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
-    code, refused = drive(["sync", "all"])
-    assert code != int(ExitCode.OK), refused
+    refused = failed(drive(["sync", "all"]))
     assert refused["cause"]["reason"] == "credential-missing"
     assert _jobs() == []
 

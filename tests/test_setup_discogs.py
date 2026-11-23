@@ -31,9 +31,7 @@ NEW = "NewToken5555aaaa7777bbbb"
 IDENTITY = json.dumps({"id": 4242, "username": "someone", "resource_url": "x"})
 
 
-# ---------------------------------------------------------------------------
 # Fixtures and fakes
-# ---------------------------------------------------------------------------
 
 
 def document_for(root, profile: str = "full") -> dict:
@@ -156,9 +154,7 @@ def everything_said(wizard, person: Person) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
 # The client's identity call
-# ---------------------------------------------------------------------------
 
 
 def check(token: str, *answers: searchers.Fetched) -> tuple[searchers.TokenCheck, Discogs]:
@@ -270,9 +266,7 @@ def test_the_check_never_asks_through_the_shared_asker(monkeypatch):
     assert found.verdict is searchers.TokenVerdict.ACCEPTED
 
 
-# ---------------------------------------------------------------------------
 # The step: linking
-# ---------------------------------------------------------------------------
 
 
 def test_a_valid_token_is_checked_and_then_stored_where_login_stores_it(configured):
@@ -480,9 +474,7 @@ def test_a_store_that_refuses_is_a_note_and_stores_nothing(configured, monkeypat
     assert GOOD not in everything_said(wizard, person)
 
 
-# ---------------------------------------------------------------------------
 # The step: not linking
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -546,9 +538,7 @@ def test_an_unreadable_presence_index_is_a_note_not_a_raise(configured, monkeypa
     assert person.asked_secret == 0
 
 
-# ---------------------------------------------------------------------------
 # A token already recorded
-# ---------------------------------------------------------------------------
 
 
 def test_a_recorded_token_is_acknowledged_with_no_question_and_no_request(configured):
@@ -612,9 +602,7 @@ def test_a_replacement_discogs_could_not_check_keeps_the_recorded_token(configur
     assert NEW not in everything_said(wizard, person)
 
 
-# ---------------------------------------------------------------------------
 # The taxonomy copy's Discogs table
-# ---------------------------------------------------------------------------
 
 
 def _shipped() -> str:
@@ -664,9 +652,7 @@ def test_an_unlinked_discogs_is_not_pointed_to_the_table(configured):
     assert not notes(wizard, "setup.discogs.vocabulary")
 
 
-# ---------------------------------------------------------------------------
 # Wiring: the verb, the loop and the flag
-# ---------------------------------------------------------------------------
 
 
 def test_the_credential_loop_no_longer_offers_discogs(configured):

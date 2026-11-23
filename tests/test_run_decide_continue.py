@@ -18,7 +18,7 @@ from cratekit.cli.verbs import runs
 from cratekit.core import session
 from cratekit.core.exit_codes import ExitCode
 from tests import test_session_cli as session_suite
-from tests._sync_builders import exited
+from tests._sync_builders import exited, failed
 from tests.test_session_ack_by_session import _backed_up
 from tests.test_session_cli import (  # noqa: F401
     ACK_GATE,
@@ -46,9 +46,7 @@ def _asked() -> str:
     return refused["run_id"]
 
 
-# ---------------------------------------------------------------------------
 # One command per gate
-# ---------------------------------------------------------------------------
 
 
 def test_a_session_answers_and_mints_in_one_command_with_no_actor_given(nobody_at_a_terminal):
@@ -76,9 +74,7 @@ def test_a_continuation_that_refuses_answers_with_its_refusal_and_keeps_the_answ
     _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=6))
     run_id = _asked()
 
-    code, envelope = _drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--continue"])
-
-    assert code != int(ExitCode.OK), envelope
+    envelope = failed(_drive(["run", "decide", run_id, ACK_GATE, "acknowledged", "--continue"]))
     assert envelope["verb"] == "session.ack"
     assert session.read_acknowledgment(cfg) is None
     assert gates.load(run_id).decisions[ACK_GATE].actor == "session"
@@ -114,9 +110,7 @@ def test_a_run_that_keeps_no_command_line_is_refused_with_the_answer_recorded(
     assert gates.load(run_id).decisions[ACK_GATE].option == "acknowledged"
 
 
-# ---------------------------------------------------------------------------
 # Who answered, by default
-# ---------------------------------------------------------------------------
 
 
 def test_with_no_terminal_and_no_actor_the_answer_is_the_sessions(nobody_at_a_terminal):
@@ -144,9 +138,7 @@ def test_an_actor_given_is_recorded_whatever_the_terminal(nobody_at_a_terminal):
     assert gates.load(run_id).decisions[ACK_GATE].actor == "a-person"
 
 
-# ---------------------------------------------------------------------------
 # The explicit gate is unchanged
-# ---------------------------------------------------------------------------
 
 
 def test_an_explicit_gate_still_refuses_an_inline_answer_on_the_verb(nobody_at_a_terminal):
@@ -154,7 +146,5 @@ def test_an_explicit_gate_still_refuses_an_inline_answer_on_the_verb(nobody_at_a
     cfg = nobody_at_a_terminal
     _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=4))
 
-    code, envelope = _drive(["-d", f"{ACK_GATE}=acknowledged", "session", "ack"])
-
-    assert code != int(ExitCode.OK), envelope
+    failed(_drive(["-d", f"{ACK_GATE}=acknowledged", "session", "ack"]))
     assert session.read_acknowledgment(cfg) is None

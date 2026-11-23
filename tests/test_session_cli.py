@@ -124,9 +124,7 @@ def _a_process_that_is_gone() -> session.Holder:
     return gone
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # session ack
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_cli_mints_an_acknowledgment_a_real_destructive_verb_then_spends(installed):
@@ -311,9 +309,7 @@ def test_a_second_mint_replaces_the_record_and_moves_the_window(installed):
     assert second["data"]["summary"]["shown"], "the mint reported no ages"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # session release
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_dead_holders_claim_is_cleared_and_the_refusal_named_it_first(installed):
@@ -407,9 +403,7 @@ def test_aborting_the_release_clears_nothing(installed):
     assert session.read_lock_holder(path) == gone
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # session release, and the open records a hard killed write left (R-598)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _hard_killed_gated_write(cfg) -> str:
@@ -597,9 +591,7 @@ def test_a_release_that_only_abandons_is_a_change_and_passes_the_contract(instal
     assert output.envelope_problems(envelope) == [], envelope
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The registry, and what landing the module turned on
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_both_verbs_are_reachable_from_the_command_line(installed):

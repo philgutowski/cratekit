@@ -172,9 +172,7 @@ def foreign():
         lock.release()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The declaration
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_verb_declares_no_gate_and_writes_only_files():
@@ -218,9 +216,7 @@ def test_the_night_module_reaches_no_launcher_no_decide_and_no_acknowledgment():
     assert sync_night.LAND_ARGV == ("sync", "land")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The pass, driven to its gate
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_night_pass_reaches_the_landing_gate_and_answers_nothing_but_the_name_confirm(
@@ -299,9 +295,7 @@ def test_a_night_pass_the_vocal_model_cannot_score_waits_at_that_gate_and_queues
         assert jobs.list_jobs(store) == (), "the pass queued work behind an unanswered gate"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The refusals before any call
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -411,9 +405,7 @@ def test_a_staging_folder_with_nothing_a_landing_takes_lets_the_night_run(plain,
     assert one_pass.calls == [["sync", "land"]]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The night's budget around the pass
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_pass_runs_under_the_nights_line_and_hour(plain, one_pass):
@@ -480,9 +472,7 @@ def test_what_the_pass_spent_is_added_to_the_night(plain, monkeypatch):
     assert "37 provider call(s), 37 of the night's" in record["line"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. How the pass ended, and the next firing
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _stopped_by(reason: str, pass_run: str = "pass-1") -> tuple[int, dict[str, Any]]:
@@ -552,9 +542,7 @@ def test_a_record_that_cannot_be_read_continues_nothing(plain, monkeypatch):
     assert stand_in.calls == [["sync", "land"]]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. The line: --last and doctor
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_last_prints_the_record_and_runs_nothing(plain, one_pass):
@@ -602,9 +590,7 @@ def test_doctor_runs_the_night_check_beside_the_hours_budget():
     assert keys.index(doctor.NIGHT_CHECK) == keys.index(doctor.BUDGET_CHECK) + 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. The staging lock on a pass by hand and a label go
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_pass_by_hand_refuses_while_the_night_holds_the_lock(machine, monkeypatch, tail, foreign):
@@ -684,9 +670,7 @@ def test_the_night_never_reaches_tail_names_it_does_not_own():
     assert Tail  # the stand in this file shares with the sync land suite
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 8. Review round one: the record is what is owed, not the last snapshot
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_refused_firing_keeps_the_pass_waiting_at_its_gate(machine, monkeypatch, tail):

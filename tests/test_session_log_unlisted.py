@@ -21,9 +21,8 @@ import pytest
 from cratekit.analysis import rekordbox_check as rc
 from cratekit.core import session, tree_registry
 from cratekit.core.cause import CratekitError
-from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import batch_name, native, refill, refill_cli, rotate, rotate_cli
-from tests._sync_builders import exited
+from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.test_restore import _nothing_is_running as _nothing_is_running  # noqa: PLC0414
 from tests.test_restore import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -290,13 +289,11 @@ def test_restore_list_and_run_refuse_a_log_they_cannot_list(cfg, monkeypatch):
     listing = exited(drive(["restore", "list"]))
     assert [row["session_id"] for row in listing["data"]["items"]] == [record.session_id]
     _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
-    code, refused = drive(["restore", "list"])
-    assert code != int(ExitCode.OK), refused
+    refused = failed(drive(["restore", "list"]))
     assert refused["cause"]["message"].startswith(
         f"{UNLISTED}, so no session recorded in it can be read"
     )
-    code, refused = drive(["restore", "run", record.session_id])
-    assert code != int(ExitCode.OK), refused
+    refused = failed(drive(["restore", "run", record.session_id]))
     assert "cannot be listed by this account" in refused["cause"]["message"]
     assert "is recorded under" not in refused["cause"]["message"]
 

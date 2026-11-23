@@ -202,8 +202,7 @@ def sync(args: list[str] = VERB, *, rekordbox: str = "apply", account: str = "ap
             return code, envelope
         run_id = envelope["run_id"]
         gate = envelope["cause"]["detail"]["gate"]
-        decided, said = drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"])
-        assert decided == int(ExitCode.OK), said
+        exited(drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"]))
     raise AssertionError("the verb kept asking after both gates were answered")
 
 

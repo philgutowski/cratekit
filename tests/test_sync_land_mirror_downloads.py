@@ -70,9 +70,7 @@ def _said(envelope: dict, step: str) -> list[str]:
     return [row["detail"] for row in data["checks"] if row["key"] == f"sync.land.{step}"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The pass takes it
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_pass_takes_the_open_mirror_download_and_lands_its_track(machine, monkeypatch, tail):
@@ -125,9 +123,7 @@ def test_a_pass_whose_sync_all_queued_nothing_takes_the_mirror_download(
     assert _left_open(envelope) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. What the pass leaves alone
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_continued_pass_takes_no_mirror_download_and_names_it(machine, monkeypatch, tail):
@@ -192,9 +188,7 @@ def test_a_hand_queued_playlist_job_and_a_cancelled_mirror_job_are_not_taken(
     assert "mirror_downloads_taken" not in _summary(envelope)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The queue's one write
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_join_run_gives_a_queued_job_with_no_run_the_run_and_nothing_else(machine, monkeypatch):
