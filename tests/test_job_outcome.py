@@ -320,9 +320,17 @@ def test_the_tables_name_only_keys_that_are_bound():
 
 
 @functools.cache
-def _parsed() -> tuple[tuple[Path, ast.Module], ...]:
-    """Every source module parsed once, read only by the walks below."""
-    return tuple((path, ast.parse(path.read_text())) for path in sorted(SRC.rglob("*.py")))
+def _tree(path: Path) -> ast.Module:
+    """A source module parsed once, read only by the walks below."""
+    return ast.parse(path.read_text())
+
+
+def _parsed(*spellings: str):
+    """Every source module whose text holds one of ``spellings``, the only ones that
+    can hold a node naming it."""
+    for path in sorted(SRC.rglob("*.py")):
+        if any(spelling in path.read_text() for spelling in spellings):
+            yield path, _tree(path)
 
 
 def _functions(tree: ast.AST):
@@ -346,7 +354,7 @@ def _shells() -> list[tuple[Path, ast.FunctionDef, frozenset[str]]]:
     names its module declares as never returning."""
     own = {SRC / "cli" / "__init__.py", SRC / "cli" / "handlers.py"}
     found = []
-    for path, module in _parsed():
+    for path, module in _parsed("run_job"):
         if path in own:
             continue
         for function in _functions(module):
@@ -559,7 +567,7 @@ def test_no_shell_keeps_a_hand_rolled_copy_of_the_mapping():
     """No shell keeps its own copy of the mapping (R-290), matched as a condition
     reading both ``is_open()`` and ``cause`` whatever the job is named."""
     offenders = []
-    for path, module in _parsed():
+    for path, module in _parsed("is_open"):
         if path == SRC / "core" / "jobs.py":
             continue
         for node in ast.walk(module):
@@ -595,7 +603,7 @@ def test_a_reworded_refusal_is_rebuilt_in_one_place_only():
     """``cause.rebuilt`` is the only rebuild: no ``CratekitError(replace(...))`` by
     hand, and no carried type constructed outside the mapping."""
     by_hand, constructed = [], []
-    for path, module in _parsed():
+    for path, module in _parsed("CratekitError", "JobBlocked", "JobCancelled"):
         where = str(path.relative_to(SRC))
         if where == "core/cause.py":
             continue

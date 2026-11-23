@@ -189,9 +189,11 @@ def test_exactly_one_place_in_the_package_calls_the_job_driver():
     also appears in tuples and prose a text search would count."""
     sites = {}
     for path in sorted((SRC_ROOT / "cratekit").rglob("*.py")):
-        if "_vendor" in path.parts:
+        text = path.read_text()
+        # A module that never spells ``drive`` holds no call to it, so it is not parsed.
+        if "_vendor" in path.parts or "drive" not in text:
             continue
-        count = _drive_calls(ast.parse(path.read_text()))
+        count = _drive_calls(ast.parse(text))
         if count:
             sites[path.relative_to(SRC_ROOT).as_posix()] = count
     assert sites == {"cratekit/cli/handlers.py": 1}, sites
