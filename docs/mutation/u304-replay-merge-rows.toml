@@ -1,0 +1,124 @@
+name = "u304-replay-merge"
+pass_kind = "replay"
+
+[[rows]]
+id = "r835-c.S2_sync_hands_the_ledger_to_the_sweep_again"
+source = { table = "r835-c.json", id = "S2_sync_hands_the_ledger_to_the_sweep_again" }
+description = "sync.cli._plan_playlists: the sweep is handed no label built playlists, so every year playlist is swept as intake"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_export_collection.py", "tests/test_intake_writers_native.py", "tests/test_label_playlists.py", "tests/test_sync_all.py"]
+old = '    label_built = ledger.label_playlist_ids(cfg)'
+new = '    label_built = frozenset()'
+
+[[rows]]
+id = "r837-a.A17_sweep_hand_off"
+source = { table = "r837-a.json", id = "A17_sweep_hand_off" }
+description = "sync.cli: the sweep is handed no set playlist, so the exclusion has nothing to exclude"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_export_collection.py", "tests/test_export_set.py", "tests/test_intake_writers_native.py", "tests/test_label_playlists.py", "tests/test_sync_all.py"]
+old = '            set_built=set_built,'
+new = '            set_built=frozenset(),'
+
+[[rows]]
+id = "u147-c.M19_sweep_handoff"
+source = { table = "u147-c.json", id = "M19_sweep_handoff" }
+description = "sync.cli: the sync source hands the sweep no mirrored playlist"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '            mirrored=mirrored,'
+new = ''
+
+[[rows]]
+id = "r1056.S1_no_landing_step_names_intake_missing"
+source = { table = "r1056.json", id = "S1_no_landing_step_names_intake_missing" }
+description = "_native_proof: drop the named source from the no landing step, so a label batch is told intake missing"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py", "tests/test_sync_mark.py"]
+old = '            f"land the pass with crate intake land --pass and {named}, then run {verb} "'
+new = '            f"land the pass with crate intake land --pass and {SYNC_PASS_NAMED}, then run {verb} "'
+
+[[rows]]
+id = "r1056.S2_unreachable_step_names_sync"
+source = { table = "r1056.json", id = "S2_unreachable_step_names_sync" }
+description = "_native_proof: name sync mark in the unreachable library step whatever verb asked"
+file = "src/cratekit/sync/mark_cli.py"
+surface = "user"
+tests = ["tests/test_label_mark_native.py", "tests/test_sync_mark.py"]
+old = '            f"mount the library volume, then run {verb} again",'
+new = '            "mount the library volume, then run crate sync mark again",'
+
+[[rows]]
+id = "u147-c.M20_pair_scope"
+source = { table = "u147-c.json", id = "M20_pair_scope" }
+description = "sync.pair_cli._scope_account: a mirrored playlist may be paired"
+file = "src/cratekit/sync/pair_model.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/sync/pair_model.py, was in src/cratekit/sync/pair_cli.py"
+tests = ["tests/test_organize_mirror.py"]
+old = '    if account_id in mirrored:'
+new = '    if False:'
+
+[[rows]]
+id = "r835-b.S1_built_year_excluded_from_sweep"
+source = { table = "r835-b.json", id = "S1_built_year_excluded_from_sweep" }
+description = "sync.playlists.exclusion: a year playlist a label build recorded is swept as intake"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_incremental_sync.py", "tests/test_label_playlists.py", "tests/test_sync_all.py", "tests/test_sync_mark.py"]
+old = '''
+    if playlist.playlist_id in label_built:
+        return Excluded.LABEL_FOLDER'''
+new = '''
+    if False:
+        return Excluded.LABEL_FOLDER'''
+
+[[rows]]
+id = "r837-a.A16_sweep_excludes_set"
+source = { table = "r837-a.json", id = "A16_sweep_excludes_set" }
+description = "sync.playlists.exclusion: a set playlist export set recorded is swept as intake"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_incremental_sync.py", "tests/test_label_playlists.py", "tests/test_sync_all.py", "tests/test_sync_mark.py"]
+old = '''
+    if playlist.playlist_id in set_built:
+        return Excluded.SET_PLAYLIST'''
+new = '''
+    if False:
+        return Excluded.SET_PLAYLIST'''
+
+[[rows]]
+id = "u113-a.A6_sweep_passes_no_name"
+source = { table = "u113-a.json", id = "A6_sweep_passes_no_name" }
+description = "The sweep queues each playlist job without the account's name"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_sync_all.py"]
+old = '                name=names.get(playlist_id),'
+new = '                name=None,'
+
+[[rows]]
+id = "u147-c.M18_sweep_exclusion"
+source = { table = "u147-c.json", id = "M18_sweep_exclusion" }
+description = "sync.playlists.exclusion: a mirrored playlist is swept as intake"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '''
+    if playlist.playlist_id in mirrored:
+        return Excluded.MIRROR
+'''
+new = ''
+
+[[rows]]
+id = "u149.T21_landing_paired_again"
+source = { table = "u149.json", id = "T21_landing_paired_again" }
+description = "plan_landing: plan a twin for an account playlist already paired"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_intake_land_twins.py"]
+old = '    wanted = [(account_id, name) for account_id, name in accounts if account_id not in held]'
+new = '    wanted = list(accounts)'

@@ -1,8 +1,7 @@
 """Register every file a run creates, at creation time.
 
-Crash debris in the staging directory is just a file. Next-run intake must not
-pick it up. The register is the difference: a path is intake only when this
-document says it was created by a run and marked complete.
+A path is intake only when this register says a run created it and marked it
+complete, so crash debris in staging is never taken in by a later run.
 """
 
 from __future__ import annotations
@@ -124,8 +123,7 @@ class ArtifactRegistry:
         with self._locked():
             records = self._load()
             records[self._key(path)] = item
-            # Also index by the unresolved string the caller handed us, so a
-            # later intake walk that sees the same path finds it either way.
+            # Also index the unresolved string, so a later walk finds it either way.
             records[str(path)] = item
             self._write(records)
         return item

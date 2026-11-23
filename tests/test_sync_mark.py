@@ -1,13 +1,11 @@
 """``crate sync mark``: a landed sync pass marks the playlists it finished (U82).
 
-THE PRODUCER IS THE REAL SEQUENCE AND NOT A HAND BUILT REPORT. Every test below
-drives ``crate sync all``, finishes the intake jobs it queued, and lists the
-pass with ``crate intake missing --run``, so the reports the verb reads, the
-name the pass goes by and the jobs that spell it are the ones the product writes. What is faked is
-the two provider seams, the catalogue and the account, and the landing itself:
-the landed files are written where ``intake land`` puts them and the intake file
-is a real export shape naming them, because a real landing needs a Fresh Export
-and its own gate, and that verb is driven in ``tests/test_intake_land.py``.
+THE PRODUCER IS THE REAL SEQUENCE, NOT A HAND BUILT REPORT. Each test drives
+``crate sync all``, finishes its jobs and lists the pass with ``crate intake
+missing --run``, so the reports, the pass name and its jobs are the product's
+own. Faked are the catalogue, the account and the landing: files go where
+``intake land`` puts them under a real export shape, since a real landing
+needs a Fresh Export (driven in ``tests/test_intake_land.py``).
 """
 
 from __future__ import annotations
@@ -61,12 +59,11 @@ def fresh_cache():
 
 
 def _swept_pass(monkeypatch, *listed, failing: tuple[str, ...] = ()) -> tuple[object, str]:
-    """``sync all`` over ``listed``, every job finished, the pass listed. Returns
-    the fake catalogue and the name the pass's list and batch share.
+    """``sync all`` over ``listed``, every job finished, the pass listed.
 
-    A playlist named in ``failing`` has its job FAILED and never run, and the
-    pass is then listed with ``--skip-failed``, which is the one way the product
-    lists a pass holding a failed job.
+    Returns the fake catalogue and the pass's name. A playlist in ``failing``
+    has its job FAILED, and the pass is listed with ``--skip-failed``, the one
+    way the product lists a pass holding a failed job.
     """
     fake = bind_playlists(monkeypatch, *listed)
     code, passed = drive(["sync", "all"])
@@ -97,16 +94,15 @@ def _land(
 ) -> Path:
     """Put each track's file where a landing puts it, and write the intake file.
 
-    ``named=False`` leaves the files out of the intake file, which is a track
-    the library holds that this landing did not bring. ``spelled`` is another
-    way to reach the library root, a link to it, and the intake file then
-    spells every file through that and not through the configured root.
+    ``named=False`` leaves the files out, a held track this landing did not
+    bring. ``spelled`` is a link to the library root through which the intake
+    file then spells every file.
     """
     batch = Path(cfg.library.root) / cfg.library.music_dir / name
     batch.mkdir(parents=True, exist_ok=True)
     collection = ['  <COLLECTION Entries="0">'.replace("0", str(len(track_ids) + 1))]
-    # One track that is nobody's, so an intake file naming none of the wanted
-    # files is still an intake file and the verb reaches its comparison.
+    # One track that is nobody's, so an intake file naming no wanted file is
+    # still one and the verb reaches its comparison.
     elsewhere = batch / "Somebody Else - Another Tune.flac"
     elsewhere.write_bytes(b"")
     paths = [elsewhere]
@@ -178,11 +174,10 @@ def test_the_verb_declares_no_write_surface_behind_an_explicit_gate():
 
 
 def test_the_file_check_makes_one_stat_and_refuses_whatever_it_raises(tmp_path, monkeypatch):
-    """The window R-398 recorded, closed by there being no second read to race.
+    """R-398: the file check reads the path once, so no second read can race.
 
-    ``Path.is_file`` and ``Path.stat`` both arrive at ``os.stat``, so counting
-    that one function counts every read of the path, and a check that went back
-    to two would count two.
+    ``Path.is_file`` and ``Path.stat`` both reach ``os.stat``, so counting it
+    counts every read of the path.
     """
     output = tmp_path / "pass_inboxed.xml"
     output.write_text("<COLLECTION/>", encoding="utf-8")
@@ -215,9 +210,8 @@ def test_the_file_check_makes_one_stat_and_refuses_whatever_it_raises(tmp_path, 
     assert unreadable.value.cause.reason == "sync-marks-blocked"
     assert "Input/output error" in unreadable.value.cause.message
 
-    # A PERMISSION IS STILL A DECLARED REFUSAL, under the slug ``core.cause``
-    # gives every refusal whose cause chain holds one, because that slug
-    # carries the remedy that works. What it never is, is a bare OSError.
+    # A PERMISSION IS STILL A DECLARED REFUSAL, under the ``core.cause`` slug
+    # whose remedy works, never a bare OSError.
     def denied(path, *args, **kwargs):
         raise PermissionError(errno.EACCES, "Permission denied", str(path))
 
@@ -281,8 +275,7 @@ def test_a_landed_pass_marks_its_playlists_only_after_the_answer(slim, monkeypat
 
 
 def test_a_playlist_with_one_row_not_landed_is_not_marked(slim, monkeypatch):
-    """The brief's fourth scenario. ``102`` never arrived, so ``pl-a`` is left
-    alone with the track named, and ``pl-b``, which is whole, is still marked."""
+    """``102`` never arrived, so ``pl-a`` is left with the track named, and whole ``pl-b`` is marked."""
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -314,12 +307,10 @@ def test_a_row_the_library_holds_and_the_file_does_not_name_is_owned(slim, monke
 def test_a_library_reached_through_a_link_still_reads_its_files_as_landed(
     slim, monkeypatch, tmp_path
 ):
-    """Row B2 of ``docs/mutation/u82-b.md`` killed nothing until this existed.
+    """Row B2 of ``docs/mutation/u82-b.md``: one file spelled through a link and the configured root.
 
-    The intake file spells every landed file through a link to the library and
-    the index spells it through the configured root, which is an ordinary state
-    on a volume mounted under two names. Compared as spelled, no landed file is
-    found in the intake file and the screen credits the landing with nothing.
+    A volume mounted under two names is ordinary, and comparing as spelled
+    would credit the landing with nothing.
     """
     _fake, name = _swept_pass(monkeypatch, *TWO)
     bind_account(monkeypatch, outbound_fakes.FakeAccount())
@@ -335,8 +326,7 @@ def test_a_library_reached_through_a_link_still_reads_its_files_as_landed(
 
 
 def test_a_track_two_playlists_share_holds_both_back_until_it_lands(slim, monkeypatch):
-    """Each playlist's own reports carry the shared track, so neither is whole
-    until it lands, whichever of the two the pass's list credits it to."""
+    """A shared track holds both playlists until it lands, whichever the list credits it to."""
     _fake, name = _swept_pass(
         monkeypatch,
         (_playlist("pl-a", "Warmup"), _tracks("101", "900")),
@@ -355,8 +345,7 @@ def test_a_track_two_playlists_share_holds_both_back_until_it_lands(slim, monkey
 
 
 def test_an_already_prefixed_playlist_is_skipped(slim, monkeypatch):
-    """The brief's second scenario, second half. The account renamed it between
-    the pass and the mark, which is what the source system's own sweep does."""
+    """The account renamed it between the pass and the mark, as the source system's sweep does."""
     fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -371,11 +360,11 @@ def test_an_already_prefixed_playlist_is_skipped(slim, monkeypatch):
 
 
 def test_the_label_batch_debris_is_said_and_never_renamed(slim, monkeypatch):
-    """R-361, the renaming path. A pass no longer queues a ` LIBRARY` name, so
-    the job here is queued the way the fourth sitting's eleven were, before the
-    rule existed, by lifting the rule for the pass alone. Its job succeeds and
-    its tracks land, and the mark still leaves the source system's throwaway
-    alone, with the reason spelled the way the pass spells it."""
+    """R-361, the renaming path: the mark leaves a ` LIBRARY` throwaway alone, with the pass's reason.
+
+    The job is queued by lifting the rule for this pass alone, as such jobs
+    were queued before the rule existed, and its tracks land.
+    """
     with pytest.MonkeyPatch.context() as before_the_rule:
         before_the_rule.setattr(playlists, "is_library_debris", lambda name: False)
         fake, name = _swept_pass(
@@ -405,8 +394,7 @@ def test_the_label_batch_debris_is_said_and_never_renamed(slim, monkeypatch):
 
 
 def test_a_playlist_the_account_no_longer_lists_is_said_and_not_planned(slim, monkeypatch):
-    """Nothing could rename it, so a plan that showed it as a rename would be a
-    declared write the run never performs."""
+    """Nothing could rename it, so planning a rename would declare a write never performed."""
     fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -437,9 +425,11 @@ def test_a_playlist_whose_job_failed_is_said_and_not_planned(slim, monkeypatch):
 
 
 def test_an_answer_to_one_plan_does_not_carry_out_another(slim, monkeypatch):
-    """The intake file is untouched, so only the plan's own marks can make the
-    answer stale. ``102`` arrives after the answer, ``pl-a`` becomes whole, and
-    a rename nobody was shown must not ride in on the answer to the smaller plan."""
+    """A rename nobody was shown must not ride in on the answer to a smaller plan.
+
+    The intake file is untouched, so only the plan's marks can make the answer
+    stale: ``102`` arrives after it and ``pl-a`` becomes whole.
+    """
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -461,14 +451,11 @@ def test_an_answer_to_one_plan_does_not_carry_out_another(slim, monkeypatch):
 
 
 def test_a_playlist_renamed_after_the_plan_was_shown_is_skipped_and_said(slim, monkeypatch):
-    """The brief's second scenario, first half: a stale recheck skips.
+    """A stale recheck skips.
 
-    The plan is taken and answered against one listing, and the account changes
-    before the run that carries the answer out. That run plans against the new
-    name, so the digest moves and the answer is refused as stale, which is the
-    gate doing the recheck's job one step earlier. The engine's own recheck is
-    driven below it, through ``mark_swept`` with a listing that moves between
-    the sweep and the rename.
+    The account changes between the answer and the run, so the digest moves
+    and the gate refuses the answer one step before the engine's recheck,
+    which is driven below through ``mark_swept``.
     """
     fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
@@ -517,7 +504,7 @@ def test_only_narrows_the_pending_set_and_an_empty_set_is_nothing(slim, monkeypa
 
 
 def test_the_mark_reads_the_cursor_and_never_writes_it(slim, monkeypatch):
-    """Out of scope by the brief, so held: no verb run here moves the cursor."""
+    """Out of scope by the brief, so held: no verb here moves the cursor."""
     _fake, name = _swept_pass(monkeypatch, *TWO)
     bind_account(monkeypatch, outbound_fakes.FakeAccount())
     xml = _land(slim, name, "101", "102", "201")
@@ -545,8 +532,7 @@ def _record_refusing(monkeypatch, playlist_id: str, raised: Exception) -> None:
 
 
 def test_a_partial_failure_names_what_was_marked(slim, monkeypatch):
-    """The brief's third scenario. ``pl-a`` is taken, ``pl-b``'s take raises,
-    and the refusal says which is which rather than losing the first."""
+    """``pl-a`` is taken and ``pl-b``'s take raises; the refusal says which, not losing the first."""
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -556,8 +542,7 @@ def test_a_partial_failure_names_what_was_marked(slim, monkeypatch):
         code, failed = _answered(xml)
     assert code == int(ExitCode.INTERNAL), failed
     cause = failed["cause"]
-    # A BARE RuntimeError is reported as this build's defect and not as a
-    # provider to wait out.
+    # A BARE RuntimeError is this build's defect, not a provider to wait out.
     assert cause["reason"] == "internal-error"
     assert cause["detail"]["marked"] == ["pl-a"]
     assert cause["detail"]["unmarked"] == ["pl-b"]
@@ -621,8 +606,7 @@ def test_a_file_not_named_as_an_intake_file_refuses(slim, monkeypatch):
 
 
 def test_an_intake_file_of_no_pass_is_a_gated_plan_of_nothing(slim, monkeypatch):
-    """Decided before the manifest, the listing or a credential is touched, so
-    the catalogue here is one that fails the test if it is asked anything."""
+    """Decided before the manifest, listing or a credential is touched; the catalogue fails if asked."""
     fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -641,9 +625,11 @@ def test_an_intake_file_of_no_pass_is_a_gated_plan_of_nothing(slim, monkeypatch)
 
 
 def test_a_track_the_pass_offered_for_review_holds_its_playlist_back(slim, monkeypatch):
-    """The track no manifest row ever stood for, which is why the reports are
-    read. The library holds another version of ``102``, so the pass OFFERS it
-    and never lists it for download, and everything that was listed lands."""
+    """A track no manifest row stood for, why the reports are read.
+
+    The library holds another version of ``102``, so the pass offers it and
+    never lists it, and everything listed lands.
+    """
     music = Path(slim.library.root) / slim.library.music_dir
     (music / "Artist 102 - Title 102 (Someone Remix).flac").write_bytes(b"")
     _fake, name = _swept_pass(monkeypatch, *TWO)
@@ -662,8 +648,7 @@ def test_a_track_the_pass_offered_for_review_holds_its_playlist_back(slim, monke
 
 
 def test_the_pass_is_decided_without_its_manifest(slim, monkeypatch):
-    """The manifest is another pass's as easily as this one's, and a pass whose
-    every missing track was handed on has none, so nothing here reads it."""
+    """The manifest may be another pass's, and a pass that handed every track on has none, so it is unread."""
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -676,11 +661,9 @@ def test_the_pass_is_decided_without_its_manifest(slim, monkeypatch):
 
 
 def test_a_track_deleted_on_purpose_since_the_pass_is_not_owed(slim, monkeypatch):
-    """The pass never owes a suppressed track, and a tombstone recorded after it
-    is the same decision made later, so it does not hold the playlist for ever."""
-    # A TRACK THAT RESEMBLES NOTHING ELSE HERE. The engine asks the tombstones
-    # last, immediately before it calls a track missing, so a title close to
-    # one the library holds is a question for a person and never reaches them.
+    """A tombstone recorded after the pass is the same decision later, so it holds no playlist for ever."""
+    # A TRACK THAT RESEMBLES NOTHING ELSE HERE. Tombstones are asked last,
+    # before a track is called missing, so a near title never reaches them.
     _fake, name = _swept_pass(
         monkeypatch,
         (_playlist("pl-a", "Warmup"), [*_tracks("101"), Track("102", "Nova Reef", "Tide")]),
@@ -754,10 +737,7 @@ def test_a_location_on_another_host_is_passed_over_and_never_a_traceback(slim, m
 
 
 def test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said(slim, monkeypatch):
-    """Through the verb, which is where the skip is reported. The answered run
-    lists the account once to plan and once more to recheck, and the account
-    moves between those two reads, so the plan still matches the answer and the
-    recheck is what catches it."""
+    """The account moves between the plan's listing and the recheck's, and the recheck catches it."""
     fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -861,8 +841,7 @@ def _record_landing(
 
 
 def _hold(cfg: config.Config, *track_ids: str) -> None:
-    """Put each track's file in the music folder the way a native landing does,
-    with no intake file written."""
+    """Put each track's file in the music folder as a native landing does, no intake file."""
     batch = Path(cfg.library.root) / cfg.library.music_dir / "2026-10-07 Tidal playlists"
     batch.mkdir(parents=True, exist_ok=True)
     for track_id in track_ids:
@@ -953,7 +932,7 @@ def test_a_pass_name_no_landing_could_have_been_given_is_refused(slim, monkeypat
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "sync-marks-blocked"
     # SAID AS A NAME NO LANDING COULD HAVE BEEN GIVEN, before any record is
-    # read, and not as a pass that never landed.
+    # read, not as a pass that never landed.
     assert "not a pass name a landing could have been given" in refused["cause"]["message"]
 
 
@@ -1046,8 +1025,7 @@ def test_the_engine_refuses_a_mark_with_neither_proof():
 def test_a_native_pass_no_closed_committed_landing_names_is_refused(
     slim, monkeypatch, landing
 ):
-    """The finding the review drove: files on disk are not a landing. A landing
-    refused after its moves leaves its files and no closed committed record."""
+    """Files on disk are not a landing: one refused after its moves leaves no committed record."""
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -1064,11 +1042,9 @@ def test_a_native_pass_no_closed_committed_landing_names_is_refused(
 
 
 def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_landing(slim, monkeypatch):
-    """R-1255, review round two: the pass landed, and the mark said it never had.
+    """R-1255: a log this account cannot list refuses naming the listing, not as no landing.
 
-    A log this account cannot list read as no landing, so the verb refused with
-    "no landing ... committed" and sent the person to land the pass again. It
-    refuses naming the listing now; the readable twin reaches the question.
+    Reading it as no landing would send the person to land the pass again.
     """
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
@@ -1150,7 +1126,7 @@ def test_a_plan_given_both_proofs_or_neither_is_refused(slim, tmp_path):
 
 
 def test_playlist_narrows_the_plan_the_gate_and_the_renames_to_the_one_named(slim, monkeypatch):
-    """Sitting 48: one playlist of a pass marked, its sibling left as it was."""
+    """One playlist of a pass marked, its sibling left as it was."""
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -1174,8 +1150,7 @@ def test_playlist_narrows_the_plan_the_gate_and_the_renames_to_the_one_named(sli
 
 
 def test_an_answer_to_the_narrowed_plan_does_not_carry_out_the_whole_pass(slim, monkeypatch):
-    """The narrowing is in the digest: the run that answered for one playlist,
-    re-invoked without ``--playlist``, is asked again and renames nothing."""
+    """The narrowing is in the digest, so a rerun without ``--playlist`` is asked again."""
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -1200,8 +1175,7 @@ def test_playlist_repeated_takes_each_named_and_no_playlist_is_the_whole_pass(sl
     assert sorted(both.planned) == sorted(whole.planned) == ["pl-a", "pl-b"]
     assert whole.named == ()
     assert mark_cli.ONLY_SAID not in mark_cli.shown(whole)
-    # The same marks, two questions: the narrowing is in the digest, so an
-    # answer to one screen is never read as an answer to the other.
+    # The narrowing is in the digest, so one screen's answer never answers the other.
     assert both.payload["digest"] != whole.payload["digest"]
 
 
@@ -1226,8 +1200,7 @@ def test_a_playlist_of_no_pass_of_this_name_is_refused_before_the_account_is_lis
 
 
 def test_a_named_playlist_the_pass_did_not_complete_is_refused_by_name(slim, monkeypatch):
-    """``102`` never arrived, so naming ``pl-a`` is refused with the track, not
-    planned as a skip the person asked to be marked."""
+    """``102`` never arrived, so naming ``pl-a`` is refused with the track, not planned as a skip."""
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -1326,11 +1299,10 @@ def _mark_steps(cfg: config.Config):
 
 
 def test_organize_plans_every_native_pass_not_only_the_latest(slim, monkeypatch):
-    """Sitting 48: an earlier pass's playlist sat unmarked at the account root,
-    because only the latest pass was marked and organize found none at all."""
+    """An earlier pass's playlist is marked too, not only the latest pass's."""
     fake, earlier = _swept_pass(monkeypatch, (_playlist("pl-old", "Aa-Phil 10-14-26"), _tracks("301")))
-    # A second pass, later, over the same account: rebind with both playlists
-    # listed, so the earlier one's name is still on the account.
+    # A later second pass over the same account, both playlists listed, so the
+    # earlier name is still on the account.
     _fake, later = _swept_pass(
         monkeypatch,
         (_playlist("pl-old", "Aa-Phil 10-14-26"), _tracks("301")),
@@ -1423,8 +1395,7 @@ def test_landed_passes_reads_only_closed_committed_landings(slim):
 
 
 def test_an_unreachable_root_is_a_refused_step_and_never_no_pass(slim, monkeypatch):
-    """The landings' records live under the root, so an unmounted volume would
-    read as no pass at all and organize would ask over a clean plan."""
+    """The landings' records live under the root, so an unmounted volume must not read as no pass."""
     _cut_over_intake(slim)
     _record_landing(slim, "a pass")
     monkeypatch.setattr(

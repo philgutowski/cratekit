@@ -1,11 +1,9 @@
 """U225, pure: a write stopped part way through its order, read back from its run's steps.
 
-The front rule copied from the account adapter is held to the adapter's own,
-the orders a stopped write can have left are the ones that rule passes
-through, and a record of a write is read back only as this unit writes it.
-``tests/test_sync_pair_stopped_order.py`` drives the same rules through the verb.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+The front rule is held to the adapter's own, and a record of a write is read
+back only as it was written. ``tests/test_sync_pair_stopped_order.py`` drives
+the same rules through the verb. D1 applies, nothing here names a real
+account, person or track.
 """
 
 from __future__ import annotations
@@ -28,9 +26,7 @@ START = ("a", "b", "c", "d", "e")
 TARGET = ("d", "a", "e", "b", "c")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The front rule, held to the adapter's
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("before", list(itertools.permutations("abcd")))
@@ -49,9 +45,7 @@ def test_the_front_rule_passes_over_a_track_held_twice_or_not_held():
     assert "a" not in pair_stopped.front_moves(before, ("c", "a", "b"))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The orders a stopped write can have left
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_order_the_moves_pass_through_ends_at_the_target():
@@ -96,9 +90,7 @@ def test_finishing_from_part_way_lands_on_the_target_with_an_addition_where_it_s
     assert pair_stopped.finished(START, TARGET) == TARGET
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The record of a write, read back
-# ═══════════════════════════════════════════════════════════════════════════
 
 _WHEN = datetime(2026, 11, 5, 17, 42, 49, tzinfo=UTC)
 
@@ -161,7 +153,7 @@ def test_an_ordering_step_of_this_version_with_no_moving_step_sent_nothing():
 
 
 def test_an_ordering_step_from_before_u234_says_nothing_of_its_moves():
-    """Sitting 86's records sent their moves with no moving step, so none is read as sending nothing."""
+    """A record from before U234 has no moving step, so none is read as sending nothing."""
     began = _WHEN.isoformat()
     old = _ordering()
     old.pop(pair_stopped.MOVES_RECORDED)
@@ -204,7 +196,7 @@ def test_a_later_run_that_finished_the_pair_hides_the_stopped_write_in_either_or
 
 
 def test_a_later_run_that_stopped_before_its_order_began_hides_nothing():
-    """Round one's review: its steps are kept, and it is no finish."""
+    """Its steps are kept, and it is no finish."""
     early = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}})
     later = _WHEN.replace(hour=18).isoformat()
     failed = _steps("run-2", {"pl-1": {"account": later, "rekordbox": {}, "queued": ""}})
@@ -264,9 +256,7 @@ def test_a_record_from_before_u225_reads_as_no_write_at_all():
     assert _read(early, untimed)["pl-1"][1].run_id == "run-1"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Every run's steps, read by a later plan
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_kept_runs_steps_are_read_and_an_unreadable_one_is_named(cfg):
@@ -299,9 +289,7 @@ def test_a_record_older_than_a_held_plan_is_kept_is_none(cfg):
     assert held_plan.recorded_steps() == ([], [])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1372: a pair's steps carried past its run
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _age(where, days: int = 31) -> None:
@@ -435,12 +423,14 @@ def test_a_stop_from_before_the_pair_was_marked_again_is_not_its_stop():
     from datetime import timedelta
     from types import SimpleNamespace
 
+    from cratekit.sync import pair_read
+
     write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
     reader = SimpleNamespace(stopped=(write, ()))
 
     def read(marked: str, synced: str = ""):
         held = SimpleNamespace(marked=marked, synced=synced)
-        return pair_cli._Reader.stopped_write(reader, "pl-1", held)
+        return pair_read._Reader.stopped_write(reader, "pl-1", held)
 
     assert read((_WHEN + timedelta(seconds=1)).isoformat()) is None
     assert read((_WHEN - timedelta(seconds=1)).isoformat()).run_id == "run-1"
@@ -457,15 +447,17 @@ def test_a_first_sync_reads_the_stop_on_its_account_playlist_whatever_the_mark()
     from datetime import timedelta
     from types import SimpleNamespace
 
+    from cratekit.sync import pair_read
+
     write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
     reader = SimpleNamespace(stopped=(write, ()))
-    assert pair_cli._Reader.first_stop(reader, "pl-1").run_id == "run-1"
-    assert pair_cli._Reader.first_stop(reader, "pl-9") is None
+    assert pair_read._Reader.first_stop(reader, "pl-1").run_id == "run-1"
+    assert pair_read._Reader.first_stop(reader, "pl-9") is None
     # An account side still to be made has no playlist to have stopped on.
-    assert pair_cli._Reader.first_stop(reader, "") is None
+    assert pair_read._Reader.first_stop(reader, "") is None
     # The pair's own rule still keeps it from a pair marked after it.
     held = SimpleNamespace(marked=(_WHEN + timedelta(seconds=1)).isoformat(), synced="")
-    assert pair_cli._Reader.stopped_write(reader, "pl-1", held) is None
+    assert pair_read._Reader.stopped_write(reader, "pl-1", held) is None
 
 
 def test_a_carried_record_naming_another_run_is_named(cfg):
@@ -488,7 +480,7 @@ def test_a_carried_record_naming_another_run_is_named(cfg):
 
 
 def test_a_carried_directory_that_cannot_be_listed_is_named_never_read_as_none(cfg):
-    """No directory is no record; one that cannot be listed says so (the round one review)."""
+    """No directory is no record; one that cannot be listed says so."""
     assert held_plan.carried() == ([], [])
     where = held_plan.carried_dir()
     where.parent.mkdir(parents=True, exist_ok=True)
@@ -500,21 +492,20 @@ def test_a_carried_directory_that_cannot_be_listed_is_named_never_read_as_none(c
 
 def test_a_carried_copy_gives_way_to_its_own_runs_steps_kept_under_the_same_plan(cfg):
     """The run's steps say whether the pair finished, which the copy, taken before, cannot."""
+    from cratekit.sync import pair_read
     began = {"account": _WHEN.isoformat(), "ordering": _ordering()}
     held_plan.Steps("run-1", "d1", {"pl-1": {**began, "done": "pl-1"}}).begin()
     held_plan.carry(held_plan.Steps("run-1", "d1", {"pl-1": dict(began)}), "pl-1")
-    stopped, unread = pair_cli._Reader.stopped.func(None)
+    stopped, unread = pair_read._Reader.stopped.func(None)
     assert unread == ()
     assert stopped == {}, "a pair its own run finished is read as stopped from its copy"
     # Steps under another plan of the same run are not the copy's run as it wrote.
     held_plan.Steps("run-1", "d2", {"pl-1": {**began, "done": "pl-1"}}).begin()
-    stopped, _unread = pair_cli._Reader.stopped.func(None)
+    stopped, _unread = pair_read._Reader.stopped.func(None)
     assert stopped["pl-1"][1].run_id == "run-1"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1394: how far a pending write's moves can have got
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_positions_counts_the_moves_that_leave_each_order_on_the_path():
@@ -527,8 +518,7 @@ def test_positions_counts_the_moves_that_leave_each_order_on_the_path():
 
 
 def test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count():
-    # The first move fronts e and the second a, back in front of it; with e
-    # taken off since, the order before them and after each read the same.
+    # Moves front e then a; with e taken off since, before and after read the same.
     seen = pair_stopped.passed(START, TARGET)
     assert seen[1][0] == "e"
     shown = tuple(one for one in seen[0] if one != "e")
@@ -604,7 +594,7 @@ def _read_moving(*records):
 
 
 def test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one():
-    """R-1394, round two: a refused finish left the account where the pending moves left it."""
+    """R-1394: a refused finish left the account where the pending moves left it."""
     early = _WHEN.replace(second=40).isoformat()
     pending = _steps(
         "run-1",
@@ -629,9 +619,7 @@ def test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one():
     assert _read_moving(pending, sending)["pl-1"][1].run_id == "run-3"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U234. A reading kept after a stop, and what shows a reorder against it
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_reading_in_another_order_is_a_reorder():
@@ -741,19 +729,20 @@ def test_a_kept_reading_counts_only_for_its_run_at_or_after_its_moves():
     from types import SimpleNamespace
 
     from cratekit.modules.outbound import pairs
+    from cratekit.sync import pair_plan
 
     def held(at: str, run: str = "run-a"):
         return SimpleNamespace(stop_seen=pairs.StopReading(run, ("t1", "t2"), at))
 
     write = _write()
-    found = pair_cli._kept_after(held("2026-11-07T10:00:00+00:00"), write)
+    found = pair_plan._kept_after(held("2026-11-07T10:00:00+00:00"), write)
     assert found is not None and found.order == ("t1", "t2")
-    assert pair_cli._kept_after(held("2026-11-07T09:59:59+00:00"), write) is None
-    assert pair_cli._kept_after(held("2026-11-07T11:00:00+00:00", "run-b"), write) is None
-    assert pair_cli._kept_after(held("not a moment"), write) is None
-    assert pair_cli._kept_after(None, write) is None
-    assert pair_cli._kept_after(SimpleNamespace(stop_seen=None), write) is None
+    assert pair_plan._kept_after(held("2026-11-07T09:59:59+00:00"), write) is None
+    assert pair_plan._kept_after(held("2026-11-07T11:00:00+00:00", "run-b"), write) is None
+    assert pair_plan._kept_after(held("not a moment"), write) is None
+    assert pair_plan._kept_after(None, write) is None
+    assert pair_plan._kept_after(SimpleNamespace(stop_seen=None), write) is None
     # A write that sent its moves blind is read after they began, not its order step.
     blind = _write(moving_at=datetime(2026, 11, 7, 12, tzinfo=UTC))
-    assert pair_cli._kept_after(held("2026-11-07T11:00:00+00:00"), blind) is None
-    assert pair_cli._kept_after(held("2026-11-07T12:00:00+00:00"), blind) is not None
+    assert pair_plan._kept_after(held("2026-11-07T11:00:00+00:00"), blind) is None
+    assert pair_plan._kept_after(held("2026-11-07T12:00:00+00:00"), blind) is not None

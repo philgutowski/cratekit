@@ -1,14 +1,11 @@
-"""U226: a sync pair plan reads an account playlist as it stands, not the window that lags it.
+"""U226: a sync pair plan reads an account playlist as it stands, not the lagging window.
 
-Sitting 84's rehearsal of ``crate sync pair`` read Space Moods in an order the
-provider's window read still served minutes after the playlist was moved
-back, and planned a rekordbox ``order`` item from it: applying it would have
-put an order nobody holds into rekordbox. These tests drive the verb through
-the dispatcher on the disposable database and the discovery suite's live
-catalogue, whose window read is made to serve an older order while its
-unpaged read serves the playlist as it stands.
+Planning from a stale window read would write an order nobody holds into
+rekordbox. The verb runs through the dispatcher on the disposable database
+and the discovery catalogue, whose window read serves an older order while
+the unpaged read serves the playlist as it stands.
 
-D1 applies. Nothing here names a real account, a real person or a real track.
+D1 applies. Nothing here names a real account, person or track.
 """
 
 from __future__ import annotations
@@ -34,11 +31,10 @@ from tests.test_sync_pair_discover import world as world  # noqa: PLC0414
 
 
 def _lagging_window(world, monkeypatch, served: dict[str, list[str]], *, whole: bool) -> None:
-    """Serve each named account playlist's window read in an older order; the unpaged read as it is.
+    """Serve each named playlist's window read in an older order, the unpaged read as it is.
 
-    ``whole`` declares the playlist's count, so the unpaged read can be read
-    as the whole playlist; without it the count is undeclared, as the
-    discovery suite's catalogue leaves it.
+    ``whole`` declares the count so the unpaged read reads as the whole
+    playlist; without it the count is undeclared, as the catalogue leaves it.
     """
 
     def tracks(self, limit=None, offset=0):
@@ -85,11 +81,10 @@ def test_a_window_that_serves_an_old_order_plans_no_rekordbox_order(world, monke
 def test_a_window_that_lags_an_order_past_the_unpaged_reads_first_page_plans_no_order(
     world, monkeypatch, cfg
 ):
-    """R-1360: the unpaged read capped at a first page the window begins with, the window lagging past it.
+    """R-1360: an unpaged read capped at a first page that matches a lagging window.
 
-    On main the first page agreed with the window and the plan wrote
-    rekordbox the order 1, 2, 5, 3, 4, which nobody holds. The unpaged read
-    is walked on past its first page and read whole, so nothing is planned.
+    The unpaged read is walked past its first page and read whole, so no
+    order nobody holds is planned.
     """
     gig = world.folder("GIG READY")
     long = world.playlist("Long", "1", "2", "3", "4", "5", under=gig)
@@ -156,7 +151,7 @@ def test_the_check_before_the_write_reads_the_playlist_as_it_stands(world, monke
 
 
 def test_a_window_that_starts_lagging_after_the_plan_stops_the_write_as_moved(world, monkeypatch):
-    """Round one's review: the check reads a partial unpaged read's lag as a move, naming it."""
+    """The check reads a partial unpaged read's lag as a move, and names it."""
     opener, second = _two_pairs(world)
     second_id = world.titled("GIG READY Second")
     world.rekordbox_add(second, "6")

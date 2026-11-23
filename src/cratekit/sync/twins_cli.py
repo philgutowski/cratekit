@@ -1,27 +1,16 @@
 """``crate sync twins``: every downloaded custom playlist gets its permanent rekordbox twin (U149).
 
-The backfill, run once and safe to run again. It lists every root folder on the
-account titled as a year, and in each every playlist the account lists as the
-author's own that is taken, held in Cratekit's record or titled with the old
-``DOWNLOADED `` prefix (U242), leaving out a label's, a set's,
-a mirrored one and any already paired. For each it plans the twin,
-``Custom Playlists <year> / <name less any old prefix>``, matches every account
-track to a library row (``sync/twins.py`` says how), and names each track the
-twin will not hold. One explicit gate shows every twin and every miss; the
-approved write makes the folders and twins in one guarded commit, reads them
-back, and marks each pair, so ``crate sync pair`` keeps the two one list from
-then on. Each twin's missing tracks are recorded as its pair's hold (U221):
-``crate sync pair`` names them and queues none, and ``crate sync release``
-lets one twin's go at the author's choice.
+The backfill: for every taken custom playlist in an account year folder that
+is unpaired, plan its twin (``sync/twins.py``), gate every twin and miss, then
+write in one guarded commit, read back and mark each pair. Misses become the
+pair's hold (U221) until ``crate sync release``.
 
-A SECOND RUN PLANS NOTHING. Every playlist the first run made a twin for is
-paired, and a paired playlist is counted and never planned, so the second run
+A SECOND RUN PLANS NOTHING, since a paired playlist is never planned, so it
 opens no gate and ends NO_OP.
 
 THE ORDER IS THE OTHER DATABASE WRITERS': the backup acknowledgment before
-anything is read (R-733), the plan on a handle opened to read and closed, the
-gate over the digested plan, the write on a handle opened with write intent
-that reads the folders, names and rows again and refuses any that moved.
+anything is read (R-733), the plan on a read handle closed after, the gate,
+then the write on a write handle that rechecks the plan.
 
 Layer: modules.
 """
@@ -141,8 +130,7 @@ def sync_twins(ctx) -> Envelope:
     data = twins.payload(plan)
     notes = _notes(plan)
     if not plan.writes:
-        # NOTHING TO MAKE, NO QUESTION, so a second run over a backfilled
-        # account opens no gate.
+        # NOTHING TO MAKE, NO QUESTION.
         return ctx.envelope(
             data=data,
             outcome=Outcome.NO_OP,
