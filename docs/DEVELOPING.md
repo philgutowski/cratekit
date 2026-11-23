@@ -272,7 +272,8 @@ Four rules keep the split invisible:
   `session*.py`, `restore*.py`), so a part must be named that way.
   `tests/test_split_modules.py` fails on a part the glob misses that this
   table names, that only its module and its parts import by an absolute
-  import, or that holds an accessor in the parts' spelling. The beat grid suite's writer scans are applied to the parts by
+  import, or that defines an accessor in the parts' spelling or imports one
+  from its family's call time part. The beat grid suite's writer scans are applied to the parts by
   `tests/test_rb_writer_parts_guard.py`, since that suite is not edited.
 - **A restore part takes `restore`'s write rank** by one line of its own in
   `tests/test_layering.py`, as the ladder provides.

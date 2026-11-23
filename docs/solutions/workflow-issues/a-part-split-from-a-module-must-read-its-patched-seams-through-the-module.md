@@ -44,10 +44,11 @@ U300 met three shapes of it on one split:
 - In the part, read every such name, every name the module still defines and
   every name another part defines through the module at call time: an
   accessor that imports the module inside the function, and
-  `_writer().name` at each use. Since U329 each family has one accessor in a
-  part of its own (`rb_call_time.writer`, `session_call_time.session`), which
-  every part binds as `_writer` or `_session` rather than copying; a new
-  family's first split adds its own. Import the part's leaf data directly.
+  `_writer().name` at each use. Since U329 the writer's and the session's
+  families each have one accessor in a part of its own (`rb_call_time.writer`,
+  `session_call_time.session`), which every part binds as `_writer` or
+  `_session` rather than copying; the restore's is `_restore` in
+  `restore_perform`, which its two other parts import. Import the part's leaf data directly.
 - Read module objects a test patches (`os`, `shutil`, `tempfile`) through the
   module as well, and keep them imported on it.
 - After the split, check every attribute anything reads off the module still

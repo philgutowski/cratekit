@@ -332,6 +332,25 @@ def test_a_body_under_three_lines_or_in_one_file_is_not_a_copy():
     assert not identical_bodies({"a.py": twice})
 
 
+def test_a_body_of_exactly_three_lines_is_a_copy_and_two_is_not():
+    """The floor is three physical lines, the size of the accessor U329 gave one home."""
+    three = "found = read(path)\n\nreturn found"
+    two = "found = read(path)\nreturn found"
+    assert identical_bodies({"a.py": _function("load", three), "b.py": _function("load", three)})
+    assert not identical_bodies({"a.py": _function("load", two), "b.py": _function("load", two)})
+
+
+def test_a_method_a_nested_function_and_an_async_function_are_read():
+    nested = "def outer():\n" + "".join(f"    {line}\n" for line in _function("load", _BODY).splitlines())
+    method = "class Reader:\n" + "".join(f"    {line}\n" for line in _function("load", _BODY).splitlines())
+    asynchronous = "async " + _function("load", _BODY)
+    for shape in (nested, method, asynchronous):
+        found = identical_bodies({"a.py": shape, "b.py": shape})
+        assert ["a.py:" in places[0] and places[0].endswith(" load") for places in found].count(
+            True
+        ) == 1, shape
+
+
 def test_bodies_that_differ_in_an_argument_or_a_statement_are_not_copies():
     other_args = _function("load", _BODY).replace("strict=False", "strict=True")
     other_body = _function("load", _BODY.replace("ValueError", "KeyError"))
@@ -349,3 +368,18 @@ def test_no_function_body_is_defined_identically_in_two_files():
         "Give it one home and import it from each place:\n"
         + "\n".join(", ".join(places) for places in found)
     )
+
+
+
+def test_every_duplication_allowance_is_empty():
+    """U329 emptied every allowance; a line put back is a copy excused, so none may stand."""
+    directory = REPO_ROOT / measure.DUPLICATION_ALLOWANCES
+    files = sorted(directory.glob("*.txt"))
+    assert len(files) > 10, f"read {len(files)} allowance files, too few to be the packages"
+    held = {
+        path.name: lines
+        for path in files
+        if (lines := [line for line in path.read_text(encoding="utf-8").splitlines()
+                      if line.strip() and not line.startswith("#")])
+    }
+    assert not held, f"an allowance holds a line again, give the copy one home: {held}"
