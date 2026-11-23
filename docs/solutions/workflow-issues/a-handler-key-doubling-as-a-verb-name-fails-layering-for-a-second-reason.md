@@ -106,7 +106,7 @@ The reason rule 2 catches the key side is a real invariant in the verb table
 ~64 `handler_key=` assignments in the file, e.g. `name="master"` at
 `registry.py:1475`). A handler-key table built
 in `core/` would therefore be a core module holding, as dict keys, a list of
-strings that are *also* the CLI's verb vocabulary — precisely what rule 2's
+strings that are *also* the CLI's verb vocabulary, precisely what rule 2's
 "names the verb" branch exists to forbid, independent of whether the table
 also imports anything.
 
@@ -149,7 +149,7 @@ kinds of rules that do not compose the way intuition suggests:
 
 Rule 1 alone would make "hold the target as a string instead of an import"
 look like a valid workaround. Rule 2 exists specifically because that
-workaround is a real upward dependency wearing a disguise —
+workaround is a real upward dependency wearing a disguise,
 `importlib.import_module` on a string is exactly as much of an upward
 dependency as a static import, just invisible to an import-graph walk.
 Missing that a second rule exists, or assuming both rules are "really" the
@@ -171,7 +171,7 @@ from it. Specifically:
   maps a higher layer's vocabulary (verb names, command names, route names,
   feature flags) to something the lower layer executes.
 - Any design that reaches for "use a string instead of an import" to satisfy
-  an import-direction rule — treat that as a trigger to check whether a
+  an import-direction rule, treat that as a trigger to check whether a
   string-scanning rule exists before assuming the workaround is clean.
 - Placing a new module and needing to decide its layer rank when its natural
   home (by directory convention) conflicts with what it is allowed to name.
@@ -219,7 +219,7 @@ be left relative instead of absolutized (auto memory [claude]).
 ## Related
 
 - [The brief Files line is not the landing path](the-brief-files-line-is-not-the-landing-path.md):
-  the closest existing sibling. Same mechanism — `test_layering` surprises an
+  the closest existing sibling. Same mechanism, `test_layering` surprises an
   author who only reads its rules on paper rather than running them, and a
   brief's stated file path disagreed with where the code could legally
   land. Different content: that doc is about `registry.Entry.module` staying
