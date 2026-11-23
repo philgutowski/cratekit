@@ -179,3 +179,40 @@ def test_the_soft_delete_guard_stays_quiet_on_the_parts_correct_reads():
         "def read(row):\n    return row[_writer().SOFT_DELETE_COLUMN]\n",
     ):
         assert not guard.permissive_soft_delete_reads(_ACCESSOR + correct), correct
+
+
+# ── the accessor's one home (U329) ───────────────────────────────────────────
+
+
+def test_the_accessor_imported_from_its_one_home_names_the_column():
+    """``from cratekit.core.rb_call_time import writer as _writer``, the parts' spelling since U329."""
+    reads = "def read(row):\n    return getattr(row, _writer().SOFT_DELETE_COLUMN, 0)\n"
+    for accessor in (
+        "from cratekit.core.rb_call_time import writer as _writer\n",
+        "from .rb_call_time import writer as _writer\n",
+    ):
+        assert guard.permissive_soft_delete_reads(accessor + reads), accessor
+    bare = "from cratekit.core.rb_call_time import writer\n"
+    assert guard.permissive_soft_delete_reads(bare + reads.replace("_writer()", "writer()"))
+    for not_one in (
+        "from cratekit.core.session_call_time import session as _writer\n",
+        "from cratekit.core.other import writer as _writer\n",
+    ):
+        assert not guard.permissive_soft_delete_reads(not_one + reads), not_one
+
+
+def test_every_accessor_read_of_the_column_in_the_parts_is_seen_by_the_guard():
+    """Each ``_writer().SOFT_DELETE_COLUMN`` in a part names the column, so none is unread."""
+    seen = 0
+    for name, source in _parts():
+        tree = ast.parse(source)
+        names = guard.SoftDeleteNames(tree)
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and node.attr == guard.SOFT_DELETE_CONSTANT
+                and isinstance(node.value, ast.Call)
+            ):
+                assert names._is_column(node), f"{name}:{node.lineno} is not read as the column"
+                seen += 1
+    assert seen >= 4, f"only {seen} accessor reads of the column in the parts; the scan reads nothing"

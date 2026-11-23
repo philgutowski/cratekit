@@ -3683,3 +3683,300 @@ not measured; both come from one container.
 
 **Closes when:** a census that could not read a second genre leaves that
 track's R&B band alone, or names the file on the gate. Ledger only.
+
+---
+
+## R-1958. board.py residuals --archive with no ledger file ends in a traceback, where every other residuals command refuses or reads it as empty
+
+**Found:** at the build of #979, U330, 2026-11-23.
+
+**The mechanism.** `cmd_residuals` calls `archive_ledger()` for `--archive` with no check that `docs/residual-findings.md` exists, and `archive_ledger` reads it with `read_text`, so a checkout without the working file raises `FileNotFoundError` out of `main`, which catches only `Fail`. `--search` refuses the same state with a one line `board:` message and exit 2, and the listing and `--check` read it as empty.
+
+**Measured cost.** Driven in U330's capture harness on a fixture with the ledger deleted: exit 1 and a Python traceback, identical on the base and the branch. Nothing is written. Maintainer facing only, since every checkout of the repository carries the ledger; no producer of a missing working file was found among the commands.
+
+**Closes when:** `--archive` refuses a missing ledger the way `--search` does, with a test. Ledger only.
+
+---
+
+## R-1959. board.py's register readers and near miss notes are held by almost no test, so a broken reader lets a closing trailer through on a green suite
+
+**Found:** at the reviews of #979, U330, 2026-11-23.
+
+**The mechanism.** `pending_units`, `planned_units`, `_unit` and `_near_misses` in `scripts/board.py` decide which unit a register still owes a module, which is what `board.py closing` refuses a trailer on. `tests/_pending.py` holds no entry today (`EXPECTED_PENDING` is empty) and every closing test replaces `owed_by_unit` with a lambda, so the parse never sees a register entry from a test. Review round one drove 21 mutations of the lines U330 rewrote through the eight board test files: 5 killed on the head, and the 17 base equivalents show the same survivors, so this predates U330. Round two emptied `pending_units`' loop on the head and the full suite gave 0 deaths beyond the clean head. U330's own table measures the same, its row `A1_annotated_register_unread` among the zeros.
+
+**Measured cost.** None today, since no register entry exists for a broken reader to drop. The day a unit next registers a pending module, a reader that misses it lets `closing` pass a trailer that closes a unit still owed work, and the suite stays green. Maintainer facing.
+
+**Closes when:** a test drives `pending_units` and `planned_units` on a synthetic register in each shape (annotated and plain `PENDING`, a constant through a name, a key with a suffix, a `path:` key, a present package), and `closing` end to end on it without the lambda, killing the rows above. Ledger only; the test slice cards #981 to #984 own these files now.
+
+---
+
+## R-1960. Nothing runs board.py under a Python below 3.10, though the commit-msg hook calls it with the bare python3
+
+**Found:** at review round two of #979, U330, 2026-11-23.
+
+**The mechanism.** `.pre-commit-config.yaml` runs `python3 scripts/board.py closing` with `language: system`, so the hook uses whatever `python3` the committing shell finds, while `pyproject.toml` requires 3.12 and the suite and CI run 3.12 and 3.13. U330's first head used `isinstance(node, ast.AnnAssign | ast.Assign)`, which raises `TypeError` below 3.10; review round one drove it under CPython 3.9 (24 of 166 captured commands changed exit code) and the fix round put the tuple back. Reverting that fix kills no test.
+
+**Measured cost.** Every commit refused by a traceback on a machine whose `python3` is older than 3.10. Reachability unmeasured: this container's `python3` is 3.13, and no machine whose own `python3` is below 3.10 was driven.
+
+**Closes when:** a check runs `board.py`'s offline commands under the oldest interpreter the hook may meet, or the hook names the venv's interpreter. Ledger only.
+
+---
+
+## R-1961. A tag set commit that raises after the files were written leaves the files' old genre in a session the next run's answer does not name
+
+**Found:** at the review of #988, U339, round one, 2026-11-23.
+
+**The mechanism.** `tagging/genre_set.py` `apply_set` writes the files inside the session, then the rows' commit. When `rb_writer.commit_guarded` raises, the run ends `internal-error` naming no session, the files carry the new genre and the rows the old one. The next run plans the row only (its file already agrees), keeps no file in its record, and its answer says a restore of its session puts each file's old genre back, which it cannot: the old values are in the first, abandoned session's record.
+
+**Measured cost.** Driven with the commit made to raise: restoring the second session leaves row Melodic House and file Deep House (`planned: 0`); restoring the first puts the files back (`read_back: 2`). The producer was injected; a real commit refusing after files is the guard's own refusal or a disk failure.
+
+**Closes when:** a refusal after the files names the session whose record keeps them and the restore that undoes them, and the success message says "each file's old genre" only when the record kept one, with the injected failure as its test.
+
+---
+
+## R-1962. A file genre with leading or trailing spaces is kept trimmed, so a restore of tag set puts it back without them
+
+**Found:** at the build of #988, U339, 2026-11-23.
+
+**The mechanism.** `tag set` keeps each file's old genre as `tags.read_tags_checked` reads it, which trims every value, and `core/restore_tags.py` compares and writes the trimmed value. A genre tag stored with surrounding spaces is put back without them.
+
+**Measured cost.** Not driven: no file in the fixtures or the brief carries a padded genre, and the trimmed value is the one every reader in the product uses, so routing and adoption read the restored file as before.
+
+**Closes when:** the exact value is kept (`tags.read_tag_values_checked`) and the restore's read back compares exact values, or a test shows no container in use stores padded genres.
+
+---
+
+## R-1963. A genre move entry outlives a membership taken out by hand, so a later hand placement in the old folder is moved again
+
+**Found:** at the build of #988, U339, 2026-11-23; driven at its review round one.
+
+**The mechanism.** `tag set` records, in `adopt/genre_moves.py`, the genre folder the tree files a written row in under its old genre, and the entry is spent when an `adopt move` job reads the row back out of that folder, or when a later `tag set` gives the row that folder's genre again. Review round one drove three producers of an entry nothing spends, a row the tree did not hold in its old folder, a genre moved there and back, and a genre moved twice; the fix round records a folder only where the tree holds the row and spends an entry a row is given back, which closes the first two, and round two's fix spends every folder a track leaves in one job, which closes the third and a fourth round two drove (a track leaving two folders in one job spent one entry). Left: when the person takes the track out of the old folder in rekordbox before `adopt move` runs, no move is planned and the entry stays, and a later hand placement of the track in that folder, as a second genre folder (U340), is planned for removal.
+
+**Measured cost.** The removal a stale entry plans is shown at `adopt.move.approve`, naming the folder it leaves, so it is never made unseen; a person approving without reading it loses that one placement. Review round one drove the removal with the placement seeded through `rb_writer`, since a hand placement in rekordbox cannot be driven here.
+
+**Closes when:** an entry is spent when the move plan finds the row holds nothing in its folder, read on the worker's own pass, with a test placing a track back by hand after the entry is moot.
+
+---
+
+## R-1964. tag set --playlist cannot name a playlist whose name starts or ends with a slash, or a path spelled without the spaces around the separator
+
+**Found:** at the review of #988, U339, round two, 2026-11-23.
+
+**The mechanism.** `tagging/genre_set.py` `playlist_members` refuses a path that starts or ends with `/` or holds an empty name between ` / ` separators, before walking the tree, and matches names joined by ` / ` exactly. A playlist named `Sets w/` or `/r/ house` therefore cannot be named, a path typed `INBOX/Picks` refuses, and a folder `A / B` beside a folder `A` holding `B` reads as two nodes and refuses.
+
+**Measured cost.** Driven on seeded names in round two; none of the shipped taxonomy's 110 folder and sub paths is affected (0 share a spelling, 8 of 22 bucket names hold the separator and resolve). The rows can still be named with `--row` or `--rows-from`, and the refusal says how a path is written.
+
+**Closes when:** the walk accepts a name whose own text starts or ends with `/` when a live node carries it, with seeded nodes as its test.
+
+---
+
+## R-1965. adopt move takes a row tag set moved out of its old genre folder's energy band and leaves its with vox and Favorites memberships there
+
+**Found:** at the review of #988, U339, round two, 2026-11-23.
+
+**The mechanism.** The move across genre folders `adopt/move.py` `moved_out_of` plans removes the old bucket's competing subs, the energy bands, read from `Placements`. The derived sub classes adoption also files, `with vox` (from the vox My Tag) and Favorites, are read apart (`adopt/placements.py` `read_holdings`, `Vocals`) and are never in the move's `remove`, so a vocal track given another genre by `tag set` ends in the new folder's band and `with vox` and still in the old folder's `with vox`. Nothing else plans it out: review round two drove `adopt move` (plans nothing, lists nothing), `adopt apply` (sees the vocal membership present in the new bucket only) and `converge` (matching).
+
+**Measured cost.** Driven end to end through the dispatcher in round two (`metadata mytags-vocals`, `adopt apply`, `tag set`, `adopt apply`, `adopt move`). The fix round made the run's answer and the guide say the membership stays and is the person's to remove in rekordbox, so nothing false is said; the workflow cannot finish from the command line for a vocal track (board bar c).
+
+**Closes when:** the cross folder move also removes the old bucket's derived sub class memberships the track holds (read with the vocal subs, resolved by `placements.named_place` or its sub class counterpart, checked again in `move_cli.remaining` and read back in `read_back`), with the vocal track drive as its test, and the caveat in `set-file-next` and `docs/GUIDE.md` removed.
+
+---
+
+## R-1966. An unparseable genre_moves.json reads as no entry, and the next tag set overwrites it
+
+**Found:** at the review of #988, U339, round one, 2026-11-23.
+
+**The mechanism.** `adopt/genre_moves.py` `read` answers no entry for a file it cannot parse, on purpose, so a damaged file never removes a membership. `record` then writes the merged entries over it, so the entries it held are gone and `adopt move` never plans those rows' moves out of their old genre folders.
+
+**Measured cost.** Driven with the file corrupted by hand after one run: the next `tag set` rewrote it and the earlier rows were not moved. Nothing in the product writes the file other than atomically, so the producer is a hand edit or a disk fault; the cost is a track left in its old folder as well, as before U339, and visible in rekordbox.
+
+**Closes when:** `record` refuses, or keeps the unreadable file beside under a dated name, when the file exists and does not parse, with a corrupted file as its test.
+
+---
+
+## R-1967. tag set cannot make a genre row the library lacks, so a new genre folder still needs one hand edit in rekordbox first
+
+**Found:** at the battery of #988, U339, 2026-11-23.
+
+**The mechanism.** U339's brief asks `crate tag set GENRE` to mint the `djmdGenre` row for a word the library has no active row for, linked on the same commit. `tests/test_rb_writer_guard.py::test_every_other_writer_in_the_package_asks_for_no_creation` allows only `intake/native.py` to pass `creations=` to `rb_writer.commit_guarded`, and `test_rb_writer_guard.py` keeps the lookup tables out of `PERMITTED_ROW_TABLES`. A build session may not edit that suite, so `tag set` (`tagging/genre_set.py`) links an existing active row and, when there is none, leaves every named row `genre-unknown`, writes nothing on any file or row, and warns `set-genre-has-no-row`.
+
+**Measured cost.** Driven: `tests/test_tag_set.py::test_a_genre_the_library_has_no_row_for_writes_nothing_and_names_the_act`. A DJ who makes a new genre folder, as Phillip did with Deep and Soulful House on 2026-11-22, must give one track that genre in rekordbox before `tag set` files anything under it: the workflow cannot finish from the command line (board bar c).
+
+**Closes when:** the guard suite names `tagging/genre_set.py` as a second asker, admitting `djmdGenre` alone on the commit that links it, and `tag set` mints the row by hand as `intake/native.py`'s `_Mints._mint` does (ID from `generate_unused_id`, text; `Name`; a fresh `UUID`), flushed before `metadata.plan_genre_retag` resolves it, with tests for a mint shared by many rows, a tombstoned namesake skipped, and nothing minted when no row is written. The decision is on #988's card.
+
+---
+
+## R-1968. Two rows recording one file, both named to tag set, end refused as if the file had changed by another hand
+
+**Found:** at the review of #988, U339, round one, 2026-11-23.
+
+**The mechanism.** `write_files` in `tagging/genre_set.py` reads each file again before writing it and leaves one no longer carrying the word the plan read. Two rows recording one file both plan the same file; the first write changes it, so the second row is listed as moved and the run ends `tag-set-unwritten`, "no longer carry the genre the plan read", when the verb's own first write is the cause.
+
+**Measured cost.** Driven with two rows seeded on one file: the file and the first row carry the genre, the second row keeps its old one, and the refusal's reason names the wrong cause. A second run writes the second row. Two rows on one file is a duplicate the collection should not hold.
+
+**Closes when:** the plan lists a second row on a file already named as `file-shared` (or writes the file once for both), with the seeded pair as its test.
+
+---
+
+## R-1969. Ten writers still spell the empty analysis roots refusal inline beside watched_roots
+
+**Found:** at the build of #978, U329, 2026-11-23.
+
+**The mechanism.** `write.row_defaults.watched_roots` is the one home of
+"the roots a write's analysis-file watch covers, refused when empty" since
+U329, which `intake.rotate`, `intake.analyzed`, `intake.refill`,
+`intake.shelve`, `write.row_link` and `analysis.head_adopt` call. Ten other
+writers raise the same `ValueError` with the same three sentences inline,
+inside a longer function: `write/trees.py`, `write/genre_favorites.py`,
+`write/playlist_pair.py`, `tagging/rows.py`, `sync/twins.py`,
+`sync/pair_reverse.py`, `sync/removed.py`, `favorites/spine.py`,
+`intake/native.py` and `intake/set_playlist.py`. Neither reading
+U290 measures sees them: each copy is under six logical lines and is not a
+function body of its own.
+
+**Measured cost.** None to a user: every copy refuses the same empty list
+with the same words, measured by grep, and no test reads the words. A change
+to the refusal made in the home alone would leave ten writers saying the old
+thing.
+
+**Closes when:** each of the ten calls `row_defaults.watched_roots`, or the
+measure grows a reading of copied statement runs shorter than six lines.
+Ledger only.
+
+---
+
+## R-1970. Helper bodies identical as syntax trees escape the identical body reading when an annotation or a blank line differs
+
+**Found:** at review round one of #978, U329, 2026-11-23.
+
+**The mechanism.** U329's reading of an identical body (`tests/test_duplication.py`,
+`identical_bodies`) keys a function on its arguments and its statements as
+syntax trees, the rule the card and U298 named, so a parameter annotation
+that differs makes two bodies distinct. Three pairs are identical statement
+for statement with the arguments set aside: `_planned_over` in
+`cli/label_sync.py` and `cli/sync_land.py` (`tail.Attend` against `_Attend`,
+which `sync_land.py` binds to `tail.Attend`), `_as_left` in `adopt/apply.py`
+and `identity_of` in `analysis/ahead.py`, and `declared_gate` in
+`cli/output.py` and `_gate` in `cli/verbs/taxonomy_word.py`. The size is
+physical lines per copy, so a two line body beside a twin wrapped to three
+is not counted, and `_folder_and_path` in `analysis/cli.py` and
+`vocals/cli.py` is an identical two line body today. Round two drove the
+other side of that: the floor reads each copy's own blank lines, so the
+accessor this card gave one home, copied into a new part with its blank line
+deleted, passes 37 of 37 where the same copy with the blank line fails, and a
+blank line added to both `_folder_and_path` copies turns the suite red with
+no code changed.
+
+**Measured cost.** None to a user, by the review's independent syntax tree
+pass with the arguments ignored. The card's title, "no identical helper body
+left", reads wider than its rule; the rule is what the guard holds.
+
+**Closes when:** each pair is given one home, or the reading compares bodies
+with the annotations dropped and the guard is tightened to it. Ledger only.
+
+---
+
+## R-1971. The soft delete guard reads the writer's shared accessor in one import spelling, so a permissive read through any other passes
+
+**Found:** at review round one of #978, U329, 2026-11-23.
+
+**The mechanism.** Since U329 the writer's parts bind `_writer` with
+`from cratekit.core.rb_call_time import writer as _writer`, and
+`tests/_source_guards.py` (`_writer_accessors`) recognises that import and
+`from .rb_call_time import writer` inside `core`. The review drove five
+other spellings through the guard and each names nothing:
+`from ..core.rb_call_time import writer`, `rb_call_time.writer()` after a
+module import, `import cratekit.core.rb_call_time as ct` with `ct.writer()`,
+`from . import rb_call_time`, and `_writer = writer` after the import. A
+permissive read appended to `write/row_defaults.py` through the level two
+relative import passed the beat grid suites and the parts guard (271
+passed). It extends R-1901, which records the same limit for the accessor
+defined in a file.
+
+**Measured cost.** None today: the five imports of the accessor in `src`
+all use the recognised spelling, so none of them produces it. A part written
+in another spelling with a falsey default would read a removed row as active
+and pass the guard.
+
+**Closes when:** the guard resolves the writer by value rather than by
+spelling, as R-1901 asks, or a test holds every import of the accessor to
+the recognised spelling. Ledger only: a maintainer facing gap with no
+producer in the tree.
+
+---
+
+## R-1972. config.Remedy is the whole remedy vocabulary since U329, so a configuration failure is no longer held to its six tokens
+
+**Found:** at review round one of #978, U329, 2026-11-23.
+
+**The mechanism.** U329 gave the six configuration remedy tokens one home by
+making `core.config.Remedy` the canonical `core.exit_codes.Remedy`,
+re-exported, rather than a subset enum of its own. So
+`config.Remedy("quit-rekordbox")` is accepted where the base refused it,
+`tests/test_config.py`'s `isinstance(kind.remedy, config.Remedy)` holds for
+any canonical token, and `core.config` left the subset walk in
+`tests/test_cli_contract.py`. A subset read off the canonical text was
+driven first and broke the reserved causes guard's static enum rule (R-1905),
+whose module may import only `ast` and `re`.
+
+**Measured cost.** None to a user: for all six tokens `str`, `repr`, JSON, the
+rendered fix line and the cause text are byte identical on base and head, and
+`src` holds no iteration, `isinstance` or constructor on `config.Remedy`.
+What is lost is a statement of which remedies a configuration failure may
+name.
+
+**Closes when:** a test names the remedies each configuration failure carries,
+or the static enum rule reads a member written as another enum's value and
+config declares its subset again by reading it. Ledger only.
+
+---
+
+## R-1973. No test passes empty analysis roots to the four intake writes that share watched_roots
+
+**Found:** at review round one of #978, U329, 2026-11-23.
+
+**The mechanism.** `tests/test_inbox_rotate.py`'s empty roots test calls
+`rotate.watched_roots([])` alone, though it is named for every write that
+shares it. The review replaced the call with a plain list in turn at
+`intake/analyzed.py`, `intake/refill.py`, `intake/shelve.py` and
+`intake/rotate.py`'s apply, and five intake suites stayed green each time.
+Before U329 as after it; the full suite was not run for these mutants.
+
+**Measured cost.** None driven: every caller passes the roots the
+configuration names, and no verb produces an empty list for these writes
+that the review found. A write whose watch covers nothing would report a
+session clean whatever happened to the library's grids.
+
+**Closes when:** each of the four writes is driven with empty roots and
+refuses before the gate. Ledger only.
+
+---
+
+## R-1974. The split module scan derives a part from its imported accessor in one spelling, and its fixture covers the writer's family alone
+
+**Found:** at review round two of #978, U329, 2026-11-23.
+
+**The mechanism.** U329's fix round taught `tests/test_split_modules.py`'s
+`_accessor_parts` to derive a part from an accessor it imports as well as one
+it defines, reading `from cratekit.core.<home> import <accessor>` at level
+zero. Round two drove four other spellings of a part off the glob holding the
+accessor, each passing the suite: from a sibling part, by a relative import,
+module then attribute, and a dotted alias; the whole producer in the sibling
+and relative spellings, imported by `rb_writer` and by `core.tags`, passed 143
+of 143 over five structural files, and that part raising a bare
+`RuntimeError` passed the writer scans. The branch's own
+`tests/_source_guards.py` `_writer_accessors` accepts
+`from .rb_call_time import writer`, so two readers of one accessor disagree on
+the relative spelling. The fixture test plants the writer's family in one
+spelling, so limiting the derivation to `rb_writer`, counting any name
+imported from a home, or reading top level imports only each kill nothing.
+
+**Measured cost.** None today: 399 files read, 10 accessor imports, all in the
+absolute spelling, no relative import anywhere, so 10 candidates were driven
+and none produces it. A part named off the glob that took the accessor
+another way would escape every scan that reads through
+`tests/_split_modules.py`.
+
+**Closes when:** the derivation resolves an imported accessor by value (the
+function it binds, however reached), with a fixture per family and spelling;
+or a test holds every accessor import to the absolute spelling. Ledger only.
