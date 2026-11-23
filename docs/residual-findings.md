@@ -4088,3 +4088,146 @@ unmeasured. R-1950's tests do not pin it either way.
 library and either the move is shown to be what the verdict means, recorded,
 or `adopt move` leaves a track in the folder its withheld entry names as it
 does for a one genre track. Ledger only until it is driven.
+
+---
+
+## R-1979. In the default output a restamp told a run's job never says what it left out, and its no op reads as an empty folder's
+
+**Found:** at the review of #996, U344, round one, 2026-11-23.
+
+**The mechanism.** `analyze restamp --scored-by RUN_JOB_ID` counts the files
+it left out at `progress.left_out` in its queue answer and at
+`progress.analysis.left_out` in its job answer. The default renderer prints
+neither, so a person reading the plain answer sees `items: 1 of 1 settled`
+with no count and no reason, and when the run scored every file the answer
+is `analyze.restamp: no_op`, the same words an empty folder gives.
+
+**Measured cost.** Driven by the review through `drive_human` over the
+suite's fixtures. The tail reads the JSON answer and says the count on its
+own `restamp` row, so a sync pass is not affected; only a person running
+the flag by hand reads less than the answer holds.
+
+**Closes when:** the default output names the count and the run job, and
+the no op says the run scored every file. Ledger only.
+
+---
+
+## R-1980. A restamp told a run's job decides what it leaves out at its queue, and a calibration refit before its drive does not reopen those files
+
+**Found:** at the review of #996, U344, round one, 2026-11-23.
+
+**The mechanism.** `scored_in_pass` compares each run report's calibration
+fingerprint with the calibration active when the restamp is queued, and the
+left out files are frozen on the payload. The worker reads the calibration
+again when the job is driven. A refit saved between the queue and the drive
+restamps the queued files under the new calibration and leaves the left out
+ones at the level the old one gave, with no warning.
+
+**Measured cost.** Driven by the review by hand: `analyze restamp
+--scored-by RUN --queue-only`, a refit saved through
+`energy.save_calibration`, then the job's `--job` command: the queued file
+stamped 1 under the refit, the left out file still 6 where the refit gives
+1. The tail queues and drives back to back and replaces a stale tail job, so
+only a hand sequence of three steps reaches it; the refit was not made
+through `analyze calibrate`.
+
+**Closes when:** the drive compares the calibration it reads with the one
+the queue left files out under, and restamps them, or refuses, when they
+differ. Ledger only.
+
+---
+
+## R-1981. analyze run decodes an M4A whole twice, once for the head and once for the energy slice, 1.3 seconds a track more than before U344
+
+**Found:** at the build of #996, U344, 2026-11-23.
+
+**The mechanism.** Since U344 the head measures energy through the
+restamp's own measure, `energy.features_from_path`, so the slice is decoded
+on its own after the head's whole decode. For a file libsndfile opens that
+is a seek and a two minute read. A file only ffmpeg reads, an M4A on
+librosa 1.0, has no seek: the measure decodes it whole once more (once,
+since U344 closed R-1556's second decode) and cuts the slice from it.
+
+**Measured cost.** One reading each on the cloud container, the 16 M4A
+transcodes of the fixed set in `scripts/analyze_stages.py`: the head's
+energy stage 28.2 s before, 48.7 s after, so `analyze run` by hand takes
+about 1.3 s a track more on an M4A. A tail pass over the same files is
+faster, 49.4 s in all, since the restamp no longer measures them, and a
+hand `analyze restamp` over them went from 69.9 s to 52.5 s.
+
+**Closes when:** the head hands the energy measure the native samples it
+already decoded for a file only ffmpeg reads, cut and resampled as the
+restamp cuts them, within the light worker's declared memory. Ledger only.
+
+---
+
+## R-1982. no real stack test holds the two warm up calls U344 added, and the reason for measuring energy from a file in the warm up is not measured
+
+**Found:** at round two of the review of #996, U344, 2026-11-23.
+
+**The mechanism.** U344 closed R-1491 by two calls: `features_from_path`
+asks `warm.kernels()` before it decodes, and the warm up's own head also
+measures energy from its file, so the restamp's and calibrate's measure
+compile the same kernel specialisations a worker's head does. The first is
+held by `test_the_energy_measure_asks_for_the_warm_up_before_it_decodes`
+against a librosa stand in. On the real stack (librosa and soundfile),
+dropping either call fails no test, since no test measures a worker's head
+against the driver's restamp across two processes; that was measured by
+hand (23 of 23 and 32 of 32 identical, against 21 of 23 and 19 of 32
+before). The review dropped the warm up's file measure and found 10 of 10
+files bit identical head against plain measure over fresh caches in both
+orders. The file measure's reason is R-1491's own measurement, eleven
+cache files written by the file path on an empty cache, one a second
+specialisation of `utils._cabs2`; the empty cache coverage test no longer
+sees that difference with the line removed, so on this librosa the reason
+is unconfirmed. The mutation table agrees: row M6, dropping it, killed
+nothing.
+
+**Cost today.** None measured: every comparison made on the branch agreed.
+A later edit dropping either call fails nothing on any stack.
+
+**Closes when:** a real stack test runs a head in one process and the
+restamp's measure in another over a fresh kernel cache, in both orders, and
+asserts the features bit equal; and either a measurement shows the file
+measure is needed, or it is removed with that test green. Ledger only.
+
+---
+
+## R-1983. under a librosa before 1.0, decode.centred reads ffmpeg's samples where the old composition read audioread's, when the length read fails
+
+**Found:** at round two of the review of #996, U344, 2026-11-23.
+
+**The mechanism.** `decode.centred` replaced the energy measure's two calls
+(a length, then a windowed load). When `librosa.get_duration` fails for a
+file libsndfile does not open, `centred` decodes it through ffmpeg; the old
+composition's load went through `librosa.load`, which under a librosa
+before 1.0 reads the file through audioread. The review forced
+`get_duration` to raise under librosa 0.10.2.post1 and found 3 of 4 M4As
+measured from different samples. Untouched, 15 of 15 files were identical,
+and so were 165 comparisons on librosa 1.0.1. No real file was found that
+takes that path.
+
+**Cost today.** None produced: the shipped stack is librosa 1.0, and the
+path needs a length read that fails on a file audioread can decode.
+
+**Closes when:** a real file is found that takes the path, or `centred`
+under a librosa before 1.0 falls back as `load` does. Ledger only.
+
+---
+
+## R-1984. analyze restamp and analyze calibrate now wait on the warm up lock with no bound
+
+**Found:** at round two of the review of #996, U344, 2026-11-23.
+
+**The mechanism.** Since U344 the energy measure asks `warm.kernels()`
+before its first decode, so a restamp or a calibrate takes the warm up's
+file lock as `analyze run` already did. `warm.py` says the run's wait is
+unbounded; U344 extends that wait to the two verbs.
+
+**Measured cost.** With another process holding the lock for 20 seconds, a
+fresh process's first measure took 23.49 s against 4.42 to 4.95 s unheld.
+A sleeping holder stood in for a suspended one; a holder that never lets go
+would hold the restamp as long.
+
+**Closes when:** the warm up lock is taken with a bound, after which a
+process measures unwarmed and says so. Ledger only.
