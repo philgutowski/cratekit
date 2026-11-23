@@ -3385,3 +3385,51 @@ holds, so they cannot overlap. Each runs every scenario under
 commit compare equal without serial runs into one root (a root per capture
 with paths rewritten, or bytecode allowed under a private cache), or measures
 that nothing cheaper holds the same promise.
+
+---
+
+## R-1943. The two beat grid suites took 341 added lines from three feature cards during the refactor, so U315's literal log over them is not empty
+
+**Found:** at the build of #872, U315, 2026-11-23.
+
+**The mechanism.** U315's brief measures point 7 as `git log ff8e5ec..main` over `tests/test_no_beatgrid_ever.py` and `tests/test_rb_writer_guard.py` being empty. It prints six commits: `eac3d93c` (U288), `75146b96`, `c8c25cea`, `dc262e14` (R-1830), `6940bf84` and `c8e604f9` (U327), all feature cards outside the epic. `git diff --stat ff8e5ec main` over the two files is 341 insertions and 0 deletions: every line at `ff8e5ec` is still there, and no epic card's commit touches either file. The definition of done says the suites are untouched by the refactor; the instrument the audit brief chose also counts feature cards that added guards.
+
+**Measured cost.** None to a user: the guards only grew. The audit took the conservative reading that point 7 holds for the refactor, named the six commits, and asked Phillip on #872 which reading holds.
+
+**Closes when:** Phillip answers on #872, and #987 (U338) measures point 7 by the epic's commits, or by every commit, as he answers. Ledger only.
+
+---
+
+## R-1944. The behaviour scenarios cannot run against the survey's commit as written, since they import test modules that import names the refactor made
+
+**Found:** at the build of #872, U315, 2026-11-23.
+
+**The mechanism.** `scripts/behaviour_compare.py capture --rev ff8e5ec` collects nothing: 22 of the 69 scenario files import fixture builders from test modules (`tests/test_outbound_workers.py`, `tests/test_adoption.py`, `tests/test_favorites_order.py` and others) that import `core.private_store`, `adopt.revert_changed` and `favorites.spine`, which the refactor created, and the autouse fixture `_no_live_launchd` in `tests/conftest.py` imports `cli.schedule` (U295). Every scenario then errors at setup. U315 ran them against `ff8e5ec`'s source with four import only aliases and `config.mkdir_private` added as an alias of `_mkdir_private`, none read by the product, in a scratch clone; 214 scenarios ran both sides, and six whose verbs were born after `ff8e5ec` were taken across the epic's span alone.
+
+**Measured cost.** Maintainer facing: the comparison the audit is asked for needs a hand built overlay, described in `docs/restart/u315.md`, rather than the instrument's own flag.
+
+**Closes when:** a re-audit can compare against `ff8e5ec` with the instrument as it stands, for example by the scenarios importing their builders from a support module that does not import product modules at top level. Ledger only.
+
+---
+
+## R-1945. The suite's time bar was read against an absolute number measured on another container, so U312's met is not reproduced like for like
+
+**Found:** at the build of #872, U315, 2026-11-23.
+
+**The mechanism.** Point 5 of U290 asks the suite to run at least 30 percent faster on the cloud runner, and the survey turned that into 351 seconds, 70 percent of the 501.69 it measured at `ff8e5ec` on its container. #869 (U312) timed its branch at a 314.95 second median on its own container and called the bar met, but did not time `ff8e5ec` there. U315 timed both on one four core container: `main` at `d289f61` 425.13, 408.64 and 399.36 seconds (median 408.64), `ff8e5ec` from its own clone and venv 479.45, 489.08 and 512.87 (median 489.08), each a `compare` run as `main`'s were, its `baseline` run (554.96) set aside as `main`'s was. So `main` is 16.4 percent faster, not 30, on a container whose `ff8e5ec` reading is within 3 percent of the survey's. Containers differ by more than the margin the bar leaves.
+
+**Measured cost.** Maintainer facing: a time bar read as met was not. No verb is affected.
+
+**Closes when:** #985 (U336) meets the bar with both commits timed on one container, and METHOD or the cloud-unit skill says a timing bar is a ratio measured base and branch on the same container. Ledger only.
+
+---
+
+## R-1946. U319's record opens with twenty two lines of a mutation table's head, an invalid batch's, where its own opening paragraph should be
+
+**Found:** at the build of #872, U315, 2026-11-23.
+
+**The mechanism.** `docs/restart/u319.md`, lines 1 to 22, is the head of a mutation table the driver printed for an invalid batch ("# Mutation table: u319" down to "THIS BATCH IS INVALID"), and the record's own opening paragraph, which names the unit and what landed, is not in the file; it was committed that way in `094a0a4d`. The record proper starts at line 24 with "Measured".
+
+**Measured cost.** Maintainer facing: a reader of U319's record meets a driver printout first and no statement of what the unit landed.
+
+**Closes when:** the driver's printout moves under the record's own head, or into `docs/mutation/`, in a docs sweep card. Ledger only.

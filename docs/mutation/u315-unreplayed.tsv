@@ -1,0 +1,177 @@
+file	table	row	changed since the survey	state on main	replay rows file
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M10_gate_abort	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M11_gate_actor	file_changed_ff8e5ec..main=True	state_on_main=ambiguous	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M12_job_verb	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M13_output_flag_after_verb	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M14_scope_value	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M15_postcheck_scope_dropped	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M16_batch_counts_rows	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M17_count_every_anlz	file_changed_ff8e5ec..main=True	state_on_main=ambiguous	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M18_marker_not_handed	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M1_mode_dynamic	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M2_vocal_on	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M3_key_off	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M4_precision_row_dropped	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M5_wrong_playlist	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M6_agent_name	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M7_waiting_code	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M8_suspect_code	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.claude/skills/rekordbox-visit/SKILL.md	u173.json	M9_precheck_code	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+.github/workflows/ci.yml	u158.json	M4_shallow_checkout	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+.github/workflows/ci.yml	u158.json	M5_head_not_passed	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+.github/workflows/ci.yml	u158.json	M6_pull_request_from_previous_tip	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+.github/workflows/ci.yml	u158.json	M7_no_base_refuses	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+.github/workflows/ci.yml	u158.json	M8_zero_tip_judged	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+README.md	u233.json	D7_readme_invents_a_flag	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+docs/GUIDE.md	u233.json	D2_guide_invents_a_verb	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+docs/GUIDE.md	u233.json	D3_guide_invents_a_flag	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+docs/GUIDE.md	u233.json	D4_guide_default_moves	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+docs/GUIDE.md	u233.json	D5_guide_drops_a_key_row	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+docs/GUIDE.md	u233.json	D6_guide_misspells_a_key	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+pyproject.toml	u251.json	W1_drop_worksteal	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+pyproject.toml	u251.json	W2_dist_load	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+pyproject.toml	u269.json	M1_lxml_declared_again	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+pyproject.toml	u269.json	M2_unused_dependency_by_another_import_name	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+pyproject.toml	u269.json	M4_comment_names_the_missing_file	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+pyproject.toml	u269.json	M5_comment_names_a_missing_function	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+pyproject.toml	u269.json	M6_heavy_dependency_in_the_core	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+pyproject.toml	u269.json	M8_comment_names_a_missing_doc	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/_vendor/downloader/__init__.py	u197.json	M7_display_name	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/_vendor/downloader/helper/path.py	u197.json	M10_adoption_copies	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/_vendor/downloader/helper/path.py	u197.json	M11_failed_move_fallback	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/_vendor/downloader/helper/path.py	u197.json	M12_lost_race_fallback	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/_vendor/downloader/helper/path.py	u197.json	M13_adopt_only_a_directory	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/_vendor/downloader/helper/path.py	u197.json	M8_adoption_off	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/_vendor/downloader/helper/path.py	u197.json	M9_adoption_ignores_new	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/analysis/cli.py	u241-dsp.json	D4_settings_not_handed_to_the_head	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+src/cratekit/analysis/decode.py	u264.json	M10_window_dropped	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/decode.py	u264.json	M11_ffmpeg_left_channel	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/decode.py	u264.json	M12_resampler	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/decode.py	u264.json	M14_ffmpeg_numpy_mean	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/decode.py	u264.json	M1_fast_path_never	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/decode.py	u264.json	M7_three_channels_one_add	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/decode.py	u264.json	M8_finite_check	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/decode.py	u264.json	M9_read_at_target_rate	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/detect.py	r744-b.json	E7_no_prior	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+src/cratekit/analysis/detect.py	r744.json	E1_no_floor	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+src/cratekit/analysis/detect.py	r744.json	E2_no_ceiling	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+src/cratekit/analysis/detect.py	r744.json	E3_no_interpolation	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+src/cratekit/analysis/detect.py	r744.json	E4_offset_not_held	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+src/cratekit/analysis/detect.py	r744.json	E5_answer_not_held_in_window	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+src/cratekit/analysis/detect.py	r744.json	E6_flat_run_divides	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+src/cratekit/analysis/detect.py	u157.json	D10_verdict_cut	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/detect.py	u157.json	D1_band_narrow	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/detect.py	u157.json	D2_band_wide	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/detect.py	u157.json	D3_pulse_gate	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/detect.py	u157.json	D4_onset_floor	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/detect.py	u157.json	D6_min_counted	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/detect.py	u157.json	D8_percentile	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/detect.py	u157.json	D9_no_interpolation	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/detect.py	u241-dsp.json	D3_windows_method_reads_the_whole_track	file_changed_ff8e5ec..main=True	state_on_main=live	toml=u306-replay-before-c-rows.toml[dropped] reason=every test its source table recorded as killing it is in a test file that skips whole on this container without the audio libraries, so it r
+src/cratekit/analysis/separation.py	u241-dsp.json	D1_margin_not_applied	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+src/cratekit/backup/cli.py	r757-c1.json	S2_payload_freezes_fast	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/backup/cli.py	u50-review-fixes.json	R3_fact_file_failure_untranslated	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/cli/verbs/taxonomy_word.py	u194.json	W15_alias_stale_digest	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/cli/verbs/taxonomy_word.py	u194.json	W17_alias_nothing_to_do	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/core/backup_facts.py	r757-b2.json	F4_damaged_entry_accepted	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/core/rb_writer.py	r758-a.json	W6_removed_row_counts_as_present	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/modules/tools/backup.py	r222-a.json	A11_floor_from_the_wrong_portion	file_changed_ff8e5ec..main=True	state_on_main=ambiguous	toml=none
+src/cratekit/modules/tools/backup.py	r338-a.json	B1_share_never_carried	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/modules/tools/backup.py	r338-a.json	B2_absent_share_synced	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/modules/tools/backup.py	r757-a.json	E3_planner_ignores_the_mode	file_changed_ff8e5ec..main=True	state_on_main=ambiguous	toml=none
+src/cratekit/modules/tools/backup.py	r757-a.json	E4_compare_by_size_alone	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/session/restore_cli.py	u27-restore-cli-author.json	L3_the_listing_drops_the_per_tree_counts	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/session/restore_cli.py	u27-restore-cli-author.json	O1_the_change_summary_leaves_the_digest	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/sync/removed_cli.py	u287.json	M12_hearts_read	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/sync/removed_cli.py	u287.json	M15_job_playlists_are_synced	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/tagging/published.py	r796-b.json	O4_beatport_must_have_answered	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/tagging/searchers.py	u244.json	M14_track_artist_checked	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/tagging/searchers.py	u289.json	S3_match_on_question	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/tagging/suggest.py	u244.json	M22_suggest_stop_ignores_passed_over	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/tagging/titles.py	u289.json	N1_unheaded_name_split	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+src/cratekit/templates/taxonomy.default.toml	u118-d.json	T1_old_playlist_split_row	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u118-d.json	T2_named_word	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u118-d.json	T4_hip_hop_former	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u133-b-rerun.json	T6_former_sub	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u133-b.json	T10_family	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u133-b.json	T11_nonelec_alias_back	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u133-b.json	T1_keyword_back	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u133-b.json	T2_alias_gone	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u133-b.json	T4_rates	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u133-b.json	T5_former_display	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u133-b.json	T7_former_gone	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u133-b.json	T8_bpm	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u133-b.json	T9_energy_off	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+src/cratekit/templates/taxonomy.default.toml	u88-b.json	X6_template_bound	file_changed_ff8e5ec..main=False	state_on_main=live	toml=none
+tests/_host_processes.py	u232.json	A9_fake_host_iter	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_parse_memo.py	u258.json	M1_key_on_length	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_parse_memo.py	u258.json	M2_scope_shares_nothing	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_parse_memo.py	u258.json	M3_scope_never_ends	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_parse_memo.py	u258.json	M4_inner_scope_ends_the_outer	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_parse_memo.py	u258.json	M5_decorator_opens_no_scope	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_parse_memo.py	u258.json	M6_decorator_returns_the_test	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_pinned_reserved_populations.py	u125.json	P1_drop_module_entry	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+tests/_pinned_reserved_populations.py	u125.json	P3_pin_without_tree_member	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+tests/_pinned_reserved_populations.py	u125.json	P4_literal_added_to_pinned_module	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+tests/_source_guards.py	u12-independent-round-6.json	S2_package_never_resolved	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_source_guards.py	u12-independent-round-6.json	S3_only_the_module_itself_counts	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_source_guards.py	u258.json	M7_a_question_writes_the_shared_tree	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_source_guards.py	u258.json	M8_tree_form_answers_nothing	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_source_guards.py	u59.json	G1_load_context	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_source_guards.py	u59.json	G2_local_names_targets	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+tests/_source_guards.py	u59.json	G3_with_as_dropped	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/_source_guards.py	u59.json	G4_except_as_dropped	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/intake/test_repair_apply.py	r658-b.json	S12_repair_real_read	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_active_taxonomy.py	r685-b.json	G1_the_guard_forgets_aliases	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_active_taxonomy.py	r685-b.json	G2_the_guard_forgets_attributes	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_adoption.py	r658-b.json	S1_adoption_unreadable_revert	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+tests/test_adoption.py	r658-b.json	S2_adoption_unreadable_stamp	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+tests/test_adoption.py	r658-b.json	S5_adoption_swap	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+tests/test_cli_contract.py	u27-restore-cli-independent.json	I_H5_the_anti_vacuity_set_names_a_landed_verb	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_isolation_survives_undo.py	r658-d.json	D2_the_ban_looks_for_another_name	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L10_relative_is_the_name	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L11_guard_narrowed_root	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L12_guard_drops_the_sweep	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L1_relative_per_node	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+tests/test_locations.py	u253.json	L2_relative_before_exclusions	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L3_no_decoder_skip	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L4_no_vendor_skip	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L5_vendor_skip_by_part	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L6_permit_by_name_only	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L7_bare_calls_only	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L8_three_names	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_locations.py	u253.json	L9_one_line_per_file	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_outbound_workers.py	r658-b.json	S10_outbound_zone	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_pending_units.py	u28-skills-independent.json	P1_annassign_branch	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_pending_units.py	u28-skills-independent.json	P2_empty_call_args	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_pool_sizing.py	u25-author-light.json	G4_sizing_countdown	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_process_scan.py	u232.json	A10_real_walk_restored	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_rb_writer_db.py	u256.json	T1_existing_path_fallback	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_rb_writer_db.py	u256.json	T2_sidecars_in_the_check	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_rb_writer_db.py	u256.json	T3_key_carries_the_pin	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_rb_writer_db.py	u256.json	T4_key_carries_the_variant	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_rb_writer_db.py	u256.json	T5_template_kept	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_rb_writer_db.py	u256.json	T7_wal_mode_kept	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_rb_writer_db.py	u256.json	T8_private_copy_per_call	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_rb_writer_db.py	u256.json	T9_copy_mode	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_reserved_causes.py	r658-b.json	S8_reserved_short_walk	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_reserved_causes.py	r658-b.json	S9_reserved_moved_module	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_reserved_causes.py	u125.json	D1_derive_test_tautology	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_reserved_causes.py	u258.json	M11_kebab_reads_a_second_package	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_restart_and_residual_files.py	u199.json	M1_table_not_applied	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_restart_and_residual_files.py	u199.json	M2_entry_widened_to_paragraph	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_restart_and_residual_files.py	u199.json	M3_only_the_opening_compared	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_restart_and_residual_files.py	u199.json	M4_exactly_once_relaxed	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_restart_and_residual_files.py	u199.json	M5_old_text_unchecked	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_restart_and_residual_files.py	u199.json	M6_new_text_unchecked	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_restart_and_residual_files.py	u199.json	M7_new_text_in_any_fragment	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_restart_and_residual_files.py	u199.json	M8_stale_table_applied	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+tests/test_restore.py	r658-b.json	S6_restore_full_disk	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_restore.py	r658-d.json	D1_an_undo_comes_back	file_changed_ff8e5ec..main=True	state_on_main=stale	toml=none
+tests/test_skills_lint.py	u28-skills-independent.json	L11_rule_d_scanner	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_skills_lint.py	u28-skills-independent.json	L14_rule_a_name_match	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_skills_lint.py	u28-skills-independent.json	L6_rule_h_fenced_half	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_skills_lint.py	u28-skills-independent.json	L7_rule_h_code_span_half	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_skills_lint.py	u28-skills-independent.json	L8_rule_h_substring_to_equality	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_skills_lint.py	u28-skills-independent.json	L9_command_comment_split	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
+tests/test_uncredited_tombstone.py	r658-b.json	S7_tombstone_full_disk	file_changed_ff8e5ec..main=True	state_on_main=live	toml=none
