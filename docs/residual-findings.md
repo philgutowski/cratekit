@@ -3260,3 +3260,128 @@ said; the files a person is about to have rewritten are unsaid.
 **Closes when:** the gate, or the dry run's items, list each file and the
 session its value came from, and the run keeps the values it overwrote.
 Ledger only.
+
+---
+
+## R-1938. Five source guards on main skip a module whose text spells the guarded name only in a compatibility form
+
+**Found:** at the second review of #869, U312, 2026-11-23.
+
+**The mechanism.** A guard that parses only modules whose raw text contains
+the name it hunts misses a module that spells the name in a form Python folds
+by NFKC, a fullwidth letter for one, since the parser reads that identifier
+as the ASCII name. U312 found and fixed four such prefilters it had added
+itself; the second review found five that were already on `main`, outside the
+branch's diff: `tests/test_analysis_store.py`, `tests/test_rb_writer_db.py`,
+`tests/test_analysis_key_default.py`, `tests/test_write_session.py` and
+`tests/test_gate_shown_plan.py`. Driven on the first: a planted call with the
+keyword's first letter fullwidth passes the guard, and the ASCII spelling
+fails it. It is the shape of the ledger's entry "The monkeypatch undo ban
+reads only files whose text spells the call in ASCII, so an NFKC spelling
+passes it", one guard family over.
+
+**Measured cost.** Maintainer facing: the only producer is a deliberate
+spelling, and no recorded mutation uses one.
+
+**Closes when:** each of the five folds its text with
+`unicodedata.normalize("NFKC", ...)` before the membership test, as
+`tests/test_adapter_listing.py` does, with a planted fullwidth spelling shown
+to fail each. Three of the five are in the write path's tests, so the card
+that owns them closes it.
+
+---
+
+## R-1939. killset.py rows writes a row a later replay anchored without the moved reason the driver requires
+
+**Found:** at the replay of #869, U312, 2026-11-23.
+
+**The mechanism.** `read_kill_set` lets the newest replay table that still
+applies speak for a row, so a guard that a split moved to another file is
+written at its new file and text. `cmd_rows` renders it with `render_row` and
+no `moved` reason, and `mutate_table.refuse_unrecorded_sources` refuses at
+load any replay row whose file or text differs from its source table's unless
+it says `moved`. Driven: `killset.py rows src/cratekit/write/routing_export.py`
+writes `u88.L3_existing_members_replanned` at `routing_export.py` with no
+`moved`, against `u88.json`'s `routing_cli.py`; on `a5d458bb`, 474 of
+U312's 1,591 replay rows were such rows, and all eight before batches were
+refused at load until each carried the replay's own `moved` text.
+
+**Measured cost.** Maintainer facing: a replay built by `killset.py rows`
+over any file a split touched is refused before it measures anything, which
+cost U312 one round of eight helper containers.
+
+**Closes when:** `cmd_rows` carries the `moved` reason of the replay that
+anchored the row, and a test drives `rows` over a moved row and loads its
+output through the driver's source check.
+
+---
+
+## R-1940. The deferred off interface core imports cannot be settled without a source change or a wider interface
+
+**Found:** at the build of #869, U312, 2026-11-23.
+
+**The mechanism.** Area cards left their off interface core imports in
+`tests/ratchets/imports/` for U312 to settle in `tests/test_import_rules.py`
+(#868 named `core.processes` from `modules.tools` and `session`, and
+`core.restore` from `session`). `CORE_INTERFACE` is at its cap of 25, and
+every module on it is reached by at least one feature package (`snapshot` by
+one, five others by three), so no listed module can give up its place
+without moving an allowance line to another package. Fifteen reaches by ten
+modules stay off the list. Settling them takes either a re-export from an
+interface module (#868's alternative: `core.session` re-exporting the five
+process names and the restore entry points), which is a source change U312's
+brief rules out, or raising `CORE_INTERFACE_LIMIT`, which relaxes U296's
+measure.
+
+**Measured cost.** Maintainer facing: the allowance files keep fifteen
+`off-interface` lines; nothing a person runs changes.
+
+**Closes when:** a card that may edit `src/` adds the re-exports and empties
+the allowance lines, or Phillip raises the limit.
+
+---
+
+## R-1941. The suite ends 4.4 percent smaller, not a quarter, because what is left of it is not restatement
+
+**Found:** at the build of #869, U312, 2026-11-23.
+
+**The mechanism.** U290's survey set `tests/` at most 249,132 lines, a quarter
+under 332,177. The thirteen area cards brought it to 300,722; U312 then cut
+nine disjoint slices by the card's own rules (prose to rule and reason, near
+identical tests folded into tables with every case kept, repeated setup
+shared, slow setup built once, nothing reformatted to win lines) and ended at
+289,090 lines with later cards merged, 13,296 fewer than `main` beside it. Every slice measured why it stopped: test docstrings were
+already one line, near duplicate scans (same tree but constants, then names
+normalized) found a few dozen lines of foldable tests per slice, and the
+helper copies across files were short. The support files reached 20,110
+lines against the card's 17,650.
+
+**Measured cost.** None to a person using the verbs. Point 5 of #847's
+definition of done stays open on lines, and #872's audit reads the miss.
+Reaching the bar would mean deleting tests: 4,728 tests of 51,458 lines on
+`1fab8cbd` are named by no recorded kill, and they guard behaviour the
+mutation tables never sampled.
+
+**Closes when:** Phillip answers the question on #869 (land with the miss
+named, delete unrecorded tests, or lower the bar), or a later card folds the
+suite further by a means this card's rules did not allow.
+
+---
+
+## R-1942. Two serial behaviour captures are the suite's largest single cost and only the script can make them cheaper
+
+**Found:** at the build of #869, U312, 2026-11-23.
+
+**The mechanism.** `tests/test_behaviour_compare.py::test_two_captures_of_one_commit_are_equal`
+runs `scripts/behaviour_compare.py capture` twice, one after the other, into
+one `--root` so the paths agree, and the script refuses a root another capture
+holds, so they cannot overlap. Each runs every scenario under
+`tests/behaviour/` serially with `PYTHONDONTWRITEBYTECODE=1`. Measured on
+`1fab8cbd`: 125 of the suite's 1,210 summed test seconds in one test.
+
+**Measured cost.** Maintainer facing: about 10 percent of the suite's CPU.
+
+**Closes when:** a card that may edit `scripts/` lets two captures of one
+commit compare equal without serial runs into one root (a root per capture
+with paths rewritten, or bytecode allowed under a private cache), or measures
+that nothing cheaper holds the same promise.
