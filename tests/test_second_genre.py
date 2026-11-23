@@ -23,7 +23,7 @@ from cratekit.adopt import scan as adopt_scan
 from cratekit.cli import converge as converge_cli
 from cratekit.core import rb_writer, routing, tags, taxonomy, tree_registry
 from cratekit.organize import mirror_edits
-from cratekit.write import rebuild, routing_pass, trees
+from cratekit.write import genre_favorites, rebuild, routing_pass, trees
 from tests import test_rebuild as _rebuild_suite
 from tests.test_adopt_move import _scanned
 
@@ -337,6 +337,115 @@ def test_the_converge_verb_says_differing_over_a_cleared_second_genre(
     assert after["status"] == converge_cli.DIFFERING, after
     assert f"unexpected:{TWO}/{HIGH}:1" in after["detail"]
     assert after["remedy"] is not None
+
+
+def test_a_hand_filled_candy_playlist_alone_in_its_folder_stays_a_persons_own(
+    cfg, gates_pass, db, adopted_root
+):
+    """Candy is a manual class: nothing derives into it, so its names are no evidence."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=None)
+    _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, "candy"): ("1", "2")})
+    report = _rebuild_suite._check(cfg, db, adopted_root, DECLARED, _derived(track))
+    assert report.converged, report.summaries()
+    assert report.foreign == ("/".join(routing_pass.destination(DECLARED, TWO, "candy")),)
+
+
+def test_a_cleared_second_genre_leaves_its_genre_sub_named_as_well(
+    cfg, gates_pass, db, adopted_root
+):
+    """A second genre that names a genre sub files the track there too, so the clear leaves both."""
+    second = next(
+        source
+        for bucket in DECLARED.buckets
+        for genre in bucket.genre_subs
+        for source in genre.sources
+        if routing.second_bucket(DECLARED, DEEP, source) == bucket.id
+    )
+    folder = routing.second_bucket(DECLARED, DEEP, second)
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=second)
+    filed = {(one.bucket, one.sub) for one in _derived(track)}
+    (genre_sub,) = [sub for bucket, sub in filed if bucket == folder and sub != HIGH]
+    _by_hand(db, adopted_root, {place: ("1",) for place in filed})
+    check = _rebuild_suite._check
+    assert check(cfg, db, adopted_root, DECLARED, _derived(track)).converged
+
+    report = check(cfg, db, adopted_root, DECLARED, _derived(replace(track, second_genre=None)))
+    assert sorted(_left(report)) == sorted([("1", folder, HIGH), ("1", folder, genre_sub)])
+
+
+def test_a_recorded_playlist_renamed_to_another_bands_names_keeps_its_own_destination(
+    cfg, gates_pass, db, adopted_root
+):
+    """A node a record resolves is never compared again under the names it now bears."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=None)
+    _rebuild_suite._rebuild(cfg, db, adopted_root, DECLARED, [], truth=[track])
+    (built,) = rebuild.read_tree(db, str(adopted_root.ID))
+    playlist = db.get_playlist(ID=built.playlist_id)
+    playlist.Name = routing_pass.destination(DECLARED, ONE, MED)[1]
+    db.session.commit()
+
+    report = _rebuild_suite._check(cfg, db, adopted_root, DECLARED, _derived(track))
+    assert report.converged, report.summaries()
+    assert report.renamed == (f"{ONE}/{HIGH}",)
+
+
+def test_a_playlist_rekordbox_removed_is_not_compared_through_its_names(
+    cfg, gates_pass, db, adopted_root
+):
+    """A removed playlist is one nobody sees; its names are no evidence."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=None)
+    made = _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, HIGH): ("1",)})
+    check = _rebuild_suite._check
+    assert _left(check(cfg, db, adopted_root, DECLARED, _derived(track))) == [("1", TWO, HIGH)]
+
+    row = db.get_playlist(ID=made[(TWO, HIGH)])
+    setattr(row, rb_writer.SOFT_DELETE_COLUMN, 1)
+    db.session.commit()
+    report = check(cfg, db, adopted_root, DECLARED, _derived(track))
+    assert report.converged, report.summaries()
+
+
+def test_a_cleared_second_genre_under_a_folder_renamed_in_rekordbox_is_named(
+    cfg, gates_pass, db, adopted_root
+):
+    """The folder a rebuild recorded is read by its bucket's name, as a write resolves it."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=TECH)
+    other = _truth(music(cfg, _rebuild_suite.PLAIN), energy=1, second=None)
+    _rebuild_suite._rebuild(cfg, db, adopted_root, DECLARED, [], truth=[track, other])
+    folder_id = next(
+        node.folder_id
+        for node in rebuild.read_tree(db, str(adopted_root.ID))
+        if node.folder_display == DECLARED.bucket(TWO).display
+    )
+    folder = db.get_playlist(ID=folder_id)
+    folder.Name = _rebuild_suite.RENAMED_FOLDER
+    low = rb_writer.ensure_playlist(db, routing_pass.destination(DECLARED, TWO, LOW)[1], folder)
+    rb_writer.add_membership(db, low, "2")
+    db.session.commit()
+
+    report = _rebuild_suite._check(cfg, db, adopted_root, DECLARED, _derived(track, other))
+    assert _left(report) == [("2", TWO, LOW)]
+    assert report.foreign == ()
+
+
+def test_a_favorites_playlist_the_run_did_not_compare_stays_foreign(
+    cfg, gates_pass, db, adopted_root
+):
+    """With the favourites source unread, a Favorites playlist is left as it stands (U119)."""
+    music = _rebuild_suite._music
+    track = _truth(music(cfg, _rebuild_suite.COMPOSED), energy=8, second=None)
+    _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, "favorites"): ("1",)})
+    report = _rebuild_suite._check(
+        cfg, db, adopted_root, DECLARED, _derived(track),
+        not_compared=(genre_favorites.FAVORITES_DIMENSION,),
+    )
+    assert report.converged, report.summaries()
+    assert report.foreign == ("/".join(routing_pass.destination(DECLARED, TWO, "favorites")),)
 
 
 # 3. Adoption's census and plan
