@@ -8,6 +8,7 @@ provider listing directly, which covers call sites not yet written."""
 from __future__ import annotations
 
 import ast
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -594,13 +595,20 @@ def test_the_guard_leaves_ordinary_accessors_alone(source):
 
 
 def test_no_product_module_calls_a_provider_listing_directly():
-    """The real tree, less the vendored client wrapper, which is third-party source."""
+    """The real tree, less the vendored client wrapper, which is third-party source.
+
+    A file whose folded text names no guarded method cannot call one, so it is not
+    parsed: the parser folds identifiers by NFKC too."""
     problems: list[str] = []
     for path in sorted(SRC_ROOT.rglob("*.py")):
         if path == LISTING_MODULE or VENDOR_ROOT in path.parents:
             continue
+        source = path.read_text()
+        folded = unicodedata.normalize("NFKC", source)
+        if not any(name in folded for name in listing.GUARDED_METHODS):
+            continue
         module = ".".join(path.relative_to(SRC_ROOT).with_suffix("").parts)
-        problems += direct_listing_calls(path.read_text(), module)
+        problems += direct_listing_calls(source, module)
     assert not problems, "provider listings called outside the wrappers:\n" + "\n".join(problems)
 
 
