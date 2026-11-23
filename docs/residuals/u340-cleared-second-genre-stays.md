@@ -5,7 +5,8 @@ issue: yes
 ---
 
 **The mechanism.** `crate tag second --clear` writes the file tag only. No
-filing path removes a membership that no genre files any more: `adopt move`
+filing path removes a membership that no genre files any more, but for a Soul
+track's cleared R&B, whose R&B band is Soul's split place again: `adopt move`
 moves a track between the bands of a bucket it claims, and with the second
 genre gone the track's entry no longer claims that bucket, so the track stays
 in the second folder. `crate converge` names the membership as unexpected

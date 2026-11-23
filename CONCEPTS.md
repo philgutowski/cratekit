@@ -1115,7 +1115,8 @@ bucket and of the one whose folder holds it; only ever left, never filed into.
 ### Split place
 `[[bucket.split_from]]`: a place another bucket still files into that this
 bucket's tracks sit in (Soul in R&B's bands). Competes in the declaring bucket
-only; `crate adopt move` moves its tracks to their own band.
+only; `crate adopt move` moves its tracks to their own band, except a track
+whose second genre names the holder, for which that band is its own (U340).
 
 ### Genre sub
 `[[bucket.genre_sub]]` (`id`, `display`, `sources`): an additive playlist under an

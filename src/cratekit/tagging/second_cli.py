@@ -40,7 +40,9 @@ FILES_FOLLOW = (
     "the tree follows the files at the next filing: `crate adopt apply`, or "
     "`crate organize --only adopt`, files each track into its second genre's "
     "folder in the band its energy names; a track whose second genre is "
-    "cleared here stays in that folder until it is taken out there, and "
+    "cleared here stays in that folder until it is taken out there (a Soul "
+    "track's cleared R&B is the one exception, which `crate adopt move` "
+    "takes it out of, as for any Soul track in an R&B band), and "
     "`crate converge` names it only while that playlist holds another track "
     "filed into it"
 )

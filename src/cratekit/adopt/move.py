@@ -270,9 +270,8 @@ def standing(
         or routing.split_place(declared, entry.bucket, entry.sub) is not None
     ):
         return None
-    kept = kept_beside(declared, entry.bucket, elsewhere)
     held = tuple(
-        sorted((set(placements.holds(entry.bucket, entry.content_id)) & competing) - kept)
+        sorted(held_in(placements, declared, entry.bucket, entry.content_id, elsewhere=elsewhere))
     )
     stale = tuple(sub for sub in held if sub != entry.sub)
     if not stale:
@@ -282,6 +281,23 @@ def standing(
     if reason:
         return _left(entry, entry.bucket, kind, reason, entry.sub, held, unnamed)
     return _move(entry, entry.bucket, kind, entry.sub, held, tree=tree)
+
+
+def held_in(
+    placements: Placements,
+    declared: taxonomy.Taxonomy,
+    bucket: str,
+    content_id: str,
+    *,
+    elsewhere: frozenset[str] = frozenset(),
+) -> frozenset[str]:
+    """The competing subs of ``bucket`` a track holds, less a split place its
+    other entry keeps (U340). ONE BODY for the plan, the worker's check of it
+    and the worker's read back, so all three agree a split pair's other band
+    is never a place it is leaving."""
+    _kind, competing = routing.competing_subs(declared, bucket)
+    held = set(placements.holds(bucket, content_id)) & competing
+    return frozenset(held - kept_beside(declared, bucket, elsewhere))
 
 
 def _unnamed(

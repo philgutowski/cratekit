@@ -1345,6 +1345,8 @@ band there, never a place `adopt move` takes it out of. A track with one
 genre is filed exactly as before. A cleared second genre leaves the track in
 that folder until it is taken out there; `converge` names it as a membership
 no genre files only while that playlist holds another track filed into it.
+The one exception is a Soul track's cleared R&B: its R&B band is Soul's split
+place again, which `adopt move` takes it out of.
 On the account, an edit inside one of the two folders leaves the other
 (below, under Organize).
 

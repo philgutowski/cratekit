@@ -359,6 +359,23 @@ def test_an_energy_change_moves_a_split_pair_in_both_and_the_worker_agrees(first
     assert gone == ()
 
 
+def test_only_a_split_place_whose_holder_the_other_genre_names_is_kept():
+    soul, rnb = (DECLARED.bucket_for_display(word) for word in (SOUL, RNB))
+    every = {place.id for place in DECLARED.bucket(soul).split_from}
+    assert adopt_plan.kept_beside(DECLARED, soul, frozenset({rnb})) == every
+    assert adopt_plan.kept_beside(DECLARED, soul, frozenset({ONE})) == frozenset()
+    assert adopt_plan.kept_beside(DECLARED, soul, frozenset()) == frozenset()
+
+
+def test_a_soul_track_whose_second_genre_is_another_folder_still_leaves_the_rnb_band():
+    """The other genre names Deep House, not R&B, so R&B's band is Soul's split place."""
+    soul = DECLARED.bucket_for_display(SOUL)
+    plan = _plan([_split_pair("t", SOUL, DEEP, energy=5)], _in_both("t", MED))
+    (move,) = [one for one in adopt_move.build_move_plan(plan, DECLARED).moves if one.bucket == soul]
+    (place,) = [one for one in DECLARED.bucket(soul).split_from if one.sub == MED]
+    assert (move.target, move.remove) == (MED, (place.id,))
+
+
 def test_a_one_genre_soul_track_still_leaves_the_rnb_band():
     """THE CONTROL: with no second genre, R&B's band is Soul's split place."""
     soul = DECLARED.bucket_for_display(SOUL)
@@ -457,7 +474,10 @@ def test_a_move_into_the_fallback_folder_is_not_taken(out_of):
     )
     why = mirror_edits._second_genre_tags(DECLARED, edit, TRUTH, TWO)
     assert isinstance(why, str) and "crate tag second" in why
-    assert DECLARED.bucket(fallback).display in why
+    # WHERE IT WOULD END: the fallback by the first genre, which rebuild
+    # derives; the first folder alone when the second genre is the fallback's.
+    ends = DECLARED.bucket(fallback if out_of == "first" else ONE).display
+    assert f"file it into {ends} where" in why
 
 
 def test_left_folders_reads_the_folders_a_band_left():

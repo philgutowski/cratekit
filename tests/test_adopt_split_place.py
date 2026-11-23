@@ -569,3 +569,35 @@ def test_an_approved_move_files_soul_and_hip_hop_in_their_folders_and_keeps_r_an
         assert (entry.bucket, entry.sub) == (bucket.id, sub), content_id
         assert not entry.held_elsewhere, content_id
     assert _rows(split) == rows
+
+
+# ── U340: a Soul track whose second genre is R&B keeps its R&B band ────────
+
+
+@pytest.mark.parametrize(("genre", "second"), [("Soul", "R&B"), ("R&B", "Soul")], ids=["soul", "rnb"])
+def test_a_split_pairs_soul_band_move_is_written_read_back_and_keeps_its_r_and_b_band(
+    machine, silence, genre, second  # noqa: F811
+):
+    """Round two of U340: the worker's own check and read back keep R&B's band,
+    which is the track's by its other genre, so the move finishes."""
+    from cratekit.core import tags
+
+    seed_library(
+        machine, silence, [("t", genre, "5")],
+        [(*destination(DECLARED, SOUL.id, LOW), "t"), (*destination(DECLARED, RNB.id, MED), "t")],
+        on=date(2026, 10, 1),
+    )
+    assert tags.write_tags(machine.library.root / "Music" / "t.flac", {"secondgenre": second})
+    collection.reset_cache()
+    shown = _shown(VERB)
+    assert [(row["bucket"], row["target"], row["remove"]) for row in shown["items"]] == [
+        (SOUL.id, MED, [LOW])
+    ]
+    job_id, code, resumed = _approve_and_run()
+    assert code == int(ExitCode.OK), resumed
+    assert _live(machine)["t"] == {
+        destination(DECLARED, SOUL.id, MED), destination(DECLARED, RNB.id, MED)
+    }
+    report = artifacts.committed(machine, job_id)[-1]
+    assert report["moved"] == ["t"]
+    assert report["in_both"] == report["untouched"] == report["neither"] == []
