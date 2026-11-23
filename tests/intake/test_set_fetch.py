@@ -110,10 +110,8 @@ def _set_over_url(monkeypatch, fake) -> tuple[int, dict]:
 def test_a_mix_url_runs_the_ordinary_set_pipeline_over_the_fetched_file(
     cfg, library, recognised, fetcher
 ):
-    """Over a scratch folder cleared first, since a killed process can leave one.
-
-    A fetch that left no info document freezes an empty page, and a resume of
-    the job fetches nothing.
+    """Over a scratch folder cleared first, since a killed process can leave one; a
+    fetch with no info document freezes an empty page, and a resume fetches nothing.
     """
     three_tracks(recognised)
     stale = fetch.scratch_for(URL)
@@ -250,10 +248,8 @@ def test_a_scratch_folder_that_cannot_be_made_is_a_fact_about_this_machine(
 
 
 def test_a_local_path_never_consults_the_fetch_seam(cfg, library, recognised):
-    """The conftest's refusing fetcher is in force, so reaching the seam fails.
-
-    A local recording freezes an empty page.
-    """
+    """The conftest's refusing fetcher is in force; a local recording freezes an
+    empty page."""
     three_tracks(recognised)
     path = recording(library)
     code, envelope = drive(["intake", "set", str(path)])
@@ -603,11 +599,8 @@ class PageWritingFetcher(FakeFetcher):
 
 
 def test_the_page_a_mix_came_from_is_frozen_on_the_set_job(cfg, library, recognised, monkeypatch):
-    """U121. The uploader, the title and the upload day name the set's permanent
-    playlist later, so the job carries them; nothing else of the document does.
-
-    U129 asks the account gate from that page before recognition; abort here so
-    this test stays about the frozen page and not the account write.
+    """U121. The uploader, title and upload day name the set's playlist later, so the
+    job carries them and nothing else; the U129 account gate is aborted here.
     """
     three_tracks(recognised)
     page = {

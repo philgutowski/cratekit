@@ -1,13 +1,9 @@
 """R-797: a bucket promoted to its own folder leaves the playlist its tracks sat in.
 
-R&B became a top level folder split by energy, and its old playlist in the non
-electronic folder is its FORMER PLACE. Held here: what competes, what the reader
-finds, what adoption withholds, what the move plans and lists, the writer's
-refusal to file into a former place, and the verb against a disposable library
-with real tags. Identifiers are derived from the shipped declarations, the old
-shape rebuilt from the shipped text and checked to be the shape it claims.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+R&B became a top level folder split by energy, and its old playlist is its
+former place: what competes, what the reader finds, what adoption withholds,
+what the move plans, the writer's refusal, and the verb over real tags. The old
+shape is rebuilt from the shipped text and checked. D1 applies.
 """
 
 from __future__ import annotations
@@ -99,13 +95,9 @@ def _scanned(content_id: str, *, energy: int | None, genre: str = PROMOTED_GENRE
 
 
 def _in_old(content_id: str, *also: str) -> dict:
-    """What the placement reader answers for a track in the old playlist.
-
-    Under BOTH buckets the playlist competes in, as the reader reports it,
-    and under the bucket split out of the promoted one since U118, which
-    declares the playlist as one of its split places. ``also`` is the bands
-    of the promoted bucket the track holds as well.
-    """
+    """What the placement reader answers for a track in the old playlist: under both
+    buckets it competes in and the one split out since U118, ``also`` the
+    promoted bucket's bands it holds as well."""
     return {
         PROMOTED.id: {content_id: (FORMER.id, *also)},
         HOLDER.id: {content_id: (FORMER.id,)},
@@ -517,12 +509,8 @@ _BAND = {
 
 
 def old_shape_text() -> str:
-    """The shipped template with the promotion undone, as a library set up before
-    R-797 holds it; checked below to be the shape it claims.
-
-    The bucket split out of the promoted one goes too (U118), since its split
-    places name a bucket this shape has not got. Hip-Hop's promotion stays.
-    """
+    """The shipped template with the promotion undone, as a library from before
+    R-797 holds it, with the U118 split bucket gone too; checked below."""
     text = taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
     start = text.index("# R&B AT THE TOP LEVEL")
     end = text.index("# HIP-HOP AT THE TOP LEVEL")

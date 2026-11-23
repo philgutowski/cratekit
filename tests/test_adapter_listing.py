@@ -1,9 +1,9 @@
 """U14: one pagination wrapper per listing shape, and no call site paging by hand.
 
-The provider's client returns one server page when asked for a listing without pagination
-arguments, so a truncated answer and a complete one look the same. Behavioural tests prove
-the wrappers page, retry and deduplicate against fakes; the structural tests prove no module
-calls a provider listing method directly, which covers call sites not yet written."""
+The provider's client returns one server page when asked without pagination
+arguments, so a truncated answer looks complete. Behavioural tests prove the
+wrappers page, retry and deduplicate; structural tests prove no module calls a
+provider listing directly, which covers call sites not yet written."""
 
 from __future__ import annotations
 
@@ -21,11 +21,9 @@ VENDOR_ROOT = SRC_ROOT / "cratekit" / "_vendor"
 
 
 class Paged:
-    """A provider listing that serves a fixed corpus in server pages.
-
-    With no arguments it returns only the first page, as the real client does, so truncation is
-    real. It publishes no count, so every wrapper driven against it takes the degraded walk
-    (ending on an empty page); ``Omitting`` is the fake that publishes a count."""
+    """A provider listing that serves a fixed corpus in server pages, only the first
+    with no arguments. It publishes no count, so its walks end on an empty page;
+    ``Omitting`` is the fake that publishes one."""
 
     def __init__(self, items: list, page_size: int) -> None:
         self._items = items
@@ -69,9 +67,8 @@ def test_the_same_fixture_truncates_under_an_unpaginated_re_fetch():
 
 
 def test_a_listing_with_no_declared_total_walks_to_an_empty_page():
-    """U65. With no count the walk takes the weaker rule, and reading 150 items costs a third,
-    empty request. Asserted so reverting to the short page rule has to delete a test saying what
-    the saving buys."""
+    """U65. With no count, reading 150 items costs a third, empty request, asserted so
+    reverting to the short page rule must delete what the saving buys."""
     playlist = Paged(corpus(150), 100)
     listing.playlist_tracks(playlist)
     assert playlist.calls == [(100, 0), (100, 100), (100, 200)]
@@ -134,11 +131,9 @@ def test_the_short_page_rule_still_stops_short_when_a_caller_declares_it():
 
 
 class Omitting:
-    """A provider listing that omits items from the window it serves (R-383).
-
-    It holds ``held`` rows and counts them when slicing the window, so a request returns the
-    servable subset of ``held[offset : offset + page_size]``, shorter than the page while items
-    remain. The omission is the provider's, not the client's (tidalapi 0.8.11)."""
+    """A provider listing that omits items from the window it serves (R-383): a
+    request returns the servable subset of ``held[offset : offset + page_size]``,
+    short while items remain, as tidalapi 0.8.11 does."""
 
     def __init__(self, held: list[Item], omitted: set[str], *, declares: bool = True) -> None:
         self._held = held
@@ -172,9 +167,8 @@ def omitting_corpus(held: int, omit: range, prefix: str = "t") -> Omitting:
 
 
 def test_the_favourites_listing_reads_the_whole_account_and_not_its_newest_fraction():
-    """R-383 at its measured numbers (2026-09-17): 204 rows counted, 7 unservable, page size 100.
-    The short page rule read 93 as the end of 197; the declared total ends the walk in three
-    requests and one count."""
+    """R-383 at its measured numbers: 204 counted, 7 unservable, page size 100. The
+    declared total ends the walk in three requests and one count."""
     favorites = omitting_corpus(204, range(7))
     session = Session(User(favorites=favorites))
 
@@ -261,9 +255,8 @@ def test_a_listing_that_rejects_pagination_arguments_refuses():
 
 
 def test_the_refusal_is_immediate_and_is_not_slept_on():
-    """U65. Waiting cannot change a client's signature, so the refusal is not retried.
-
-    The sleep is captured, not timed, since a wall clock assertion measures the machine."""
+    """U65. Waiting cannot change a client's signature, so the refusal is not retried;
+    the sleep is captured, not timed."""
     slept: list[float] = []
 
     class Old:
@@ -404,10 +397,8 @@ class _ItemParser:
 
 
 class AccountRequest:
-    """The account playlist endpoint behind the user's request object (R-1016).
-
-    Serves whatever ``serve(limit, offset)`` returns, each playlist under ``playlist`` beside the
-    ``created`` the walk moves onto it."""
+    """The account playlist endpoint behind the user's request object (R-1016),
+    serving ``serve(limit, offset)``, each under ``playlist`` beside ``created``."""
 
     def __init__(self, serve) -> None:
         self._serve = serve
@@ -533,10 +524,8 @@ def test_an_artist_listing_longer_than_a_page_is_read_fully():
 
 
 def direct_listing_calls(source: str, module: str) -> list[str]:
-    """Return every direct call to a provider listing method in ``source``.
-
-    ``tracks`` is a violation only when called with a pagination argument: it is an ordinary
-    accessor name, and a guard with false positives is routed around (P7)."""
+    """Return every direct call to a provider listing method in ``source``; ``tracks``
+    only with a pagination argument, as an ordinary accessor name (P7)."""
     problems: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
@@ -565,10 +554,8 @@ PLANTED_PAGINATION_METHODS = frozenset(
 
 
 def test_the_planted_pagination_loop_cases_cover_the_guarded_set():
-    """P4: the planted names and the production set describe the same thing.
-
-    The names live here because the mutation driver edits ``src``, never the suite; both a
-    missing planted case and a stale one fail."""
+    """P4: the planted names and the production set describe the same thing, here
+    because the mutation driver edits ``src``, never the suite."""
     assert PLANTED_PAGINATION_METHODS == listing.GUARDED_METHODS
 
 
@@ -753,10 +740,9 @@ def _raw_playlist(index: int) -> dict:
 class CursorEndpoint:
     """The provider's collection folder endpoint as R-878 measured it.
 
-    ``offset`` is ignored: without a cursor it serves the first window. Each response carries
-    ``items``, ``totalNumberOfItems`` and, while more remain, a ``cursor``. ``page`` is the
-    window served, possibly narrower than the limit. ``stuck`` hands back the same cursor for
-    ever, so only the budget ends the walk."""
+    ``offset`` is ignored; each response carries ``items``,
+    ``totalNumberOfItems`` and, while more remain, a ``cursor``. ``page`` is the
+    window served; ``stuck`` repeats one cursor, so only the budget ends the walk."""
 
     def __init__(self, held: list[dict], *, page: int, total: int | None = -1,
                  cursors: bool = True, stuck: bool = False) -> None:
@@ -1062,9 +1048,8 @@ def test_a_client_whose_request_rejects_the_arguments_refuses_by_name_unslept():
         listing.account_folders(session, sleep=lambda _: pytest.fail("slept"))
 
 
-# R-1016: a playlist listing costs its pages and nothing more
-# 624 playlists cost 637 requests because the client refetches each created one (2026-10-14).
-# The tests drive the real client over a counting transport, which a method fake cannot.
+# R-1016: a playlist listing costs its pages and nothing more, driven through the
+# real client over a counting transport.
 
 OWNER = 42
 
@@ -1102,11 +1087,8 @@ def _owned_playlist(index: int, owner: int = OWNER) -> dict:
 
 
 class CountingTransport:
-    """The HTTP session under a real client, counting every request by path.
-
-    Serves the account playlist endpoint by offset, the folder endpoint by cursor, one playlist
-    by identifier, and a playlist's tracks, empty; the single read is served so the client's own
-    listing method can be watched making it."""
+    """The HTTP session under a real client, counting every request by path: the
+    account playlists by offset, folders by cursor, one playlist, and its tracks."""
 
     def __init__(self, playlists: list[dict], *, page: int = 50) -> None:
         self.playlists = playlists

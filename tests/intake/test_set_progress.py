@@ -72,10 +72,8 @@ def test_human_output_says_the_fetch_then_the_plan_then_the_count(
 class WatchedFetcher(FakeFetcher):
     """Notes whether a progress watcher was running while it fetched.
 
-    AT THE SHIPPED INTERVAL, never a shortened one. A watcher started where no
-    progress was handed calls None on its first tick and dies, so a short
-    interval kills it before this looks and the row the mutation table
-    measured as a zero reads as covered (r924 table, row F6).
+    At the shipped interval, never a shorter one, which would kill a watcher
+    started with no progress before this looks (r924 table, row F6).
     """
 
     watched: bool | None = None

@@ -782,10 +782,9 @@ def test_a_failure_mid_set_fails_that_item_leaves_the_job_resumable_and_the_resu
 def test_the_frozen_library_reaches_the_worker_not_the_live_one(
     cfg, library, recognised, tmp_path, monkeypatch
 ):
-    """KTD9. The library root moves after the queue; the worker resolves
-    against the one the job froze. THE DIVERGENCE HAS TO COME FROM THE FILE:
-    with the root variable still set both readings relocate onto it and agree
-    whatever the saved file says (docs/solutions/workflow-issues/
+    """KTD9. The root moves after the queue and the worker resolves against the one
+    the job froze; the divergence must come from the file, since a still set root
+    variable relocates both readings (docs/solutions/workflow-issues/
     a-frozen-config-is-frozen-against-the-file-not-against-an-env-override.md).
     """
     three_tracks(recognised)
@@ -1078,12 +1077,10 @@ def queued_hearts(cfg, library, monkeypatch, spelled: str = "favorites") -> tupl
 def test_favorites_lists_the_hearts_resolves_each_and_rereads_the_reasons_on_every_resume(
     cfg, library, monkeypatch
 ):
-    """The reserved reference never asks for a playlist. The missing hearts
-    carry the provider id ``intake missing --job`` asks for (that verb's drive
-    is ``tests/test_intake_missing.py``). The reasons are read from the
-    committed artifacts, so a second resume counts the same. A rerun after
-    acquiring reports the heart owned, with no cursor. The json a consumer
-    reads cannot have moved: every human case is a tripwire here."""
+    """The reserved reference never asks for a playlist; missing hearts carry the
+    provider id ``intake missing --job`` asks for. Reasons come from the committed
+    artifacts, so a second resume counts the same, and a rerun after acquiring
+    reports the heart owned. Every human case is a tripwire on the json."""
     from cratekit import cli
     from cratekit.cli import render
 
@@ -1219,9 +1216,8 @@ def test_a_recognised_track_is_keyed_by_recording_version_and_isrc_and_a_provide
     assert intake_cli.item_key(provider) == "101"
     assert intake_cli.item_key(plain).startswith("rc_")
     assert "Sun" not in intake_cli.item_key(plain), "an item identifier is never a display name"
-    # Two titles of emoji alone fold to one recording token, and the key hashes
-    # the recording's identity, so they are two items; a title that folds to
-    # something keeps the key it always had.
+    # Two emoji titles fold to one recording token but the key hashes the
+    # identity, so they are two items; a title that folds keeps its key.
     fire = match.Wanted(artist="Aurora Bloom", title="\U0001f525")
     drop = match.Wanted(artist="Aurora Bloom", title="\U0001f4a7")
     assert intake_cli.item_key(fire) != intake_cli.item_key(drop)
@@ -1304,10 +1300,8 @@ def test_the_configured_host_and_month_are_the_ones_every_paid_call_meets(librar
 def test_queueing_and_resolving_favorites_name_the_job_each_count_its_reasons_and_the_next_command(
     cfg, library, monkeypatch
 ):
-    """The sittings read the identifier out of ``job list --output json`` every
-    time, and 206 settled rows printed ``intake.playlist: ok`` (R-678), the
-    reasons too (R-682). Each count's reasons sit on the line under it, and a
-    state no row reached prints none."""
+    """The sittings read the identifier from ``job list --output json`` every time
+    (R-678, R-682): each count's reasons sit under it, and an empty state prints none."""
     hearts_library(library, monkeypatch)
     code, text = drive_human(["intake", "playlist", "favorites"])
     assert code == OK, text

@@ -241,8 +241,7 @@ def test_non_audio_files_are_not_reported(tmp_path):
 def test_a_directory_it_cannot_list_is_reported(tmp_path):
     """A directory the walk is refused is reported, not skipped (``Path.rglob`` swallowed it).
 
-    No skip guard (``tests/test_pending_units.py`` forbids one): the precondition is
-    asserted, so root fails saying the environment cannot produce it.
+    No skip guard: the precondition is asserted, so root fails saying why.
     """
     root = tmp_path / "Music"
     (root / "open").mkdir(parents=True)
