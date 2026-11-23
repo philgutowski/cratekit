@@ -2920,3 +2920,99 @@ since a parallel worker's probe could otherwise read as a leak.
 **Closes when:** the three tests probe a read only volume a fixture can
 make, or read the volume they stand on before probing it, so no
 test writes at the real filesystem root. Ledger only.
+
+---
+
+## R-1924. A restore of an analyze adopt session puts the rows' titles back and not the files' title and key tags
+
+**Found:** at the review of #944, U327, 2026-11-23.
+
+**The mechanism.** `crate analyze adopt` keeps each file's old title tag and
+`initialkey` in its session record under `head_adopt_before`, persisted with
+the capture before the first file is written, as the brief asks ("before
+values kept in the run's record so a restore can put both sides back").
+`crate restore run SESSION` restores the database capture and its coupled
+state, and nothing under `src` reads `head_adopt_before`, so the files keep
+rekordbox's key and tempo while the rows go back to Cratekit's.
+
+**Measured cost.** Driven at review round one: adopt, then `restore run` on
+its session, exit 0 `ok` with no warning; Golf read back with the database
+Title `01A - 124 - Golf`, the title tag `09A - 98 - Golf` and `initialkey`
+`09A`. Nothing is lost, since the record keeps every old value, and the
+adopt's own answer now says a restore puts the rows back and not the files,
+but an undo needs a hand edit per file and the two surfaces disagree until it
+is made. A plan run again after such a restore reads the title tag's body as
+the row's and plans each row again, so the next adopt re-corrects the rows.
+
+**Closes when:** a restore of a session whose record holds
+`head_adopt_before` writes each file's title tag and key tag back, read back,
+or names the files it could not, and says so in its answer. An issue, since
+an undo a DJ needs cannot finish with the shipped verbs (board bar (c)).
+
+---
+
+## R-1925. An analyze adopt whose commit fails after the files were written says only the database's error, not that the files already carry the new head
+
+**Found:** at the review of #944, U327, 2026-11-23.
+
+**The mechanism.** The adopt writes the title tags and key tags inside the
+session, then the rows, then commits. A commit that raises (a locked
+database, a guard refusal) ends the verb with the engine's own cause, for a
+lock `internal-error` "OperationalError: database is locked", and nothing in
+the message says the files had already taken rekordbox's key and tempo.
+
+**Measured cost.** Driven at review round one with the commit raising a lock
+error. No data is lost: the record keeps every old value, and the plan run
+again sees the files corrected and writes only the rows (`test_a_file_already
+_corrected_is_continued_by_planning_again`). A person reading the refusal is
+not told the two surfaces now disagree until the rerun.
+
+**Closes when:** a failure after the first file names the files written and
+the rerun that finishes the rows. Ledger only: nothing is lost and the next
+run converges.
+
+---
+
+## R-1926. name apply now reads the title tag's head before the file name's for every file, not only a file the collection references
+
+**Found:** at the review of #944, U327, 2026-11-23.
+
+**The mechanism.** The brief asked that a reader which would give the old
+head for a corrected track read the title tag's head first "for a row that is
+in the collection". `write/naming_cli._spec_for` cannot know that when it
+builds a spec (the collection is read after the walk, and only when a
+candidate exists), and for a referenced file the rename is held back either
+way, so the order matters only once a corrected track has left the
+collection, when no flag can say it was ever in it. The session made the title
+tag lead for every file; `acquire/match_library._read_fresh` the same.
+
+**Measured cost.** None driven: 0 producers were driven of a file outside the
+collection whose title tag and file name carry different heads. Every file
+`analyze run` stamps and every file the live system wrote carries the same
+head on both surfaces, so the order changes nothing for them. A file renamed
+by hand to another head while its tag kept the old one would now be renamed
+back to the tag's head where it used to have its tag rewritten.
+
+**Closes when:** Phillip confirms the title tag leads for every file, or a
+card scopes it to files the collection references. Ledger only.
+
+---
+
+## R-1927. A rehearsal of analyze adopt taken past its gate on a database copy writes the real files' title and key tags
+
+**Found:** at the review of #944, U327, 2026-11-23.
+
+**The mechanism.** The plan resolves each row's recorded path to the real
+file, so a copy of the database redirected for a rehearsal still names the
+library's files, and an apply on the copy writes their tags. The
+`rekordbox-visit` skill says the rehearsal stops at the gate and never goes
+past it; nothing in the code refuses it.
+
+**Measured cost.** Not driven. A rehearsal taken past the gate writes the same
+values the live run would, so nothing is lost, and the live plan then reads
+the files corrected and differs from the rehearsed digest in what it writes,
+which stops the sitting by CLAUDE.md's rehearsal rule.
+
+**Closes when:** a rehearsal environment the verb can recognise refuses the
+file half, or the rehearsal tooling redirects the library root for this verb.
+Ledger only: the skill holds the rule and a mistake stops rather than harms.
