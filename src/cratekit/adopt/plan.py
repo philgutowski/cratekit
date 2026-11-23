@@ -248,7 +248,8 @@ class Collision:
 
 @dataclass(frozen=True, slots=True)
 class PlanEntry:
-    """One track's place in the plan. Every scanned track has exactly one.
+    """One track's place in the plan. Every scanned track has exactly one, and a
+    track filed into a second genre's folder too has a second, ``second`` set (U340).
 
     ``entry_id`` HASHES THE WORK, the tree, row and destination, so a track whose
     destination changes is new work the applied ledger does not report as done,
@@ -285,6 +286,9 @@ class PlanEntry:
     vocal: str = ""
     #: The vocal sub the bucket declares, empty when ``vocal`` is or there is none.
     vocal_sub: str = ""
+    #: The entry for the track's second genre folder (U340), its ``genre`` the
+    #: second genre's word. A track has at most one, beside its first entry.
+    second: bool = False
 
     @property
     def vocal_planned(self) -> bool:
@@ -336,6 +340,14 @@ class AdoptionPlan:
     def content_ids(self) -> frozenset[str]:
         return frozenset(entry.content_id for entry in self.entries)
 
+    def firsts(self) -> tuple[PlanEntry, ...]:
+        """One entry per track, its first genre's: what a per track count counts (U340)."""
+        return tuple(entry for entry in self.entries if not entry.second)
+
+    def seconds(self) -> tuple[PlanEntry, ...]:
+        """Every entry for a second genre's folder (U340), in plan order."""
+        return tuple(entry for entry in self.entries if entry.second)
+
     def counts(self) -> dict[str, int]:
         """One count per disposition and one per category, zeroes included.
 
@@ -344,7 +356,7 @@ class AdoptionPlan:
         their value sets are disjoint.
         """
         counts = {str(member): 0 for member in (*Disposition, *Readability)}
-        for entry in self.entries:
+        for entry in self.firsts():
             counts[str(entry.disposition)] += 1
             counts[str(entry.category)] += 1
         return counts
@@ -356,7 +368,7 @@ class AdoptionPlan:
         counting it as holding no reading would read absence as evidence.
         """
         readings = {"read": 0, "absent": 0, "unreadable": 0}
-        for entry in self.entries:
+        for entry in self.firsts():
             if entry.category is not Readability.READABLE:
                 continue
             if entry.energy_unreadable:
@@ -507,6 +519,8 @@ def review_row(entry: PlanEntry) -> dict[str, Any]:
         "planned": entry.sub,
         "energy": entry.energy,
         "energy_unreadable": entry.energy_unreadable,
+        # Only on a second genre's entry (U340), so a one genre row reads as before.
+        **({"second_genre": entry.genre} if entry.second else {}),
     }
 
 
@@ -663,8 +677,36 @@ def build_adoption_plan(
         elif track.disposition is not Disposition.WITHHELD:
             bucket = ""
         entries.append(_destined(declared, placements, vocals, sub_of, unplaced, bucket, sub))
+        second = _second_entry(declared, placements, vocals, sub_of, unplaced, track)
+        if second is not None:
+            entries.append(second)
     collisions = find_collisions(entries, declared, tree=tree, existing=existing)
     return AdoptionPlan(tree, tuple(entries), collisions, placements, vocals)
+
+
+def _second_entry(
+    declared: taxonomy.Taxonomy,
+    placements: Placements,
+    vocals: Vocals,
+    sub_of: Callable[[str], str | None],
+    unplaced: PlanEntry,
+    track: ScannedTrack,
+) -> PlanEntry | None:
+    """The entry filing a routed track into its second genre's folder, or None (U340).
+
+    By the same rules as its first entry, with the second genre's word: its
+    own band from the one energy reading, its own competing place, its own
+    vocal place. NONE when the census named no second bucket, the track does
+    not route by its first genre, or the second bucket declares no place for
+    the reading, since such an entry would file nothing.
+    """
+    if track.disposition is not Disposition.ROUTE or not track.second_bucket:
+        return None
+    sub = _sub_for(declared, track.second_bucket, track.second_genre, track.energy)
+    if sub is None:
+        return None
+    entry = replace(unplaced, genre=track.second_genre, second=True)
+    return _destined(declared, placements, vocals, sub_of, entry, track.second_bucket, sub)
 
 
 def _destined(
@@ -900,6 +942,8 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
                 "holds": list(entry.holds),
                 "holds_under_another_name": list(entry.holds_unnamed),
                 "vocal": entry.vocal,
+                # Only on a second genre's entry, so a one genre plan reads as before.
+                **({"second_genre": entry.genre} if entry.second else {}),
             }
             for entry in plan.entries
         ],

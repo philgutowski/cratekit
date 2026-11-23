@@ -584,6 +584,8 @@ def buckets_asked(
     placements: Placements,
     declared: taxonomy.Taxonomy,
     competing: Mapping[str, tuple[routing.Competing, frozenset[str]]],
+    *,
+    elsewhere: frozenset[str] = frozenset(),
 ) -> tuple[str, ...]:
     """Every bucket the plan asks about one track, in the taxonomy's order.
 
@@ -592,11 +594,18 @@ def buckets_asked(
     (U118), and every band bucket that holds the track twice or more, through
     two subs or two rows of one. Declared order, so two plans over one tree
     list the same rows in the same order and digest the same.
+
+    A BUCKET IN ``elsewhere`` IS NEVER ASKED (U340): the track's other entry
+    claims it, a second genre's folder beside the first's, and that entry's
+    own question decides it, so no tree path question plans a move or a
+    listing there from this one.
     """
     asked: list[str] = []
     for bucket in declared.buckets:
         if claims(entry, bucket.id):
             asked.append(bucket.id)
+            continue
+        if bucket.id in elsewhere:
             continue
         kind, subs = competing[bucket.id]
         # ONLY A BUCKET THAT DECLARES A FORMER PLACE CAN MATCH, whatever its kind.
@@ -635,6 +644,47 @@ def _doubled_rows(
     return _left(entry, bucket, routing.Competing.BAND, LEFT_DOUBLED_ROWS, target, held, ())
 
 
+def claimed_buckets(entries: Sequence[PlanEntry]) -> dict[str, frozenset[str]]:
+    """Each track's buckets claimed by any of its entries (U340).
+
+    A track with a second genre has two entries, each claiming its own bucket,
+    and both are the track's: what one claims is never another's tree path.
+    """
+    found: dict[str, set[str]] = {}
+    for entry in entries:
+        found.setdefault(entry.content_id, set()).update(_own(entry))
+    return {content_id: frozenset(buckets) for content_id, buckets in found.items()}
+
+
+def _own(entry: PlanEntry) -> frozenset[str]:
+    """The bucket one entry claims, or nothing."""
+    return frozenset({entry.bucket}) if claims(entry, entry.bucket) else frozenset()
+
+
+def entry_for(
+    entries: Mapping[str, Sequence[PlanEntry]], content_id: str, bucket: str
+) -> PlanEntry | None:
+    """The entry of a track that speaks for ``bucket``: the one claiming it, else its first.
+
+    THE WORKER'S LOOKUP (U340), so a move approved in a second genre's folder
+    is checked against the entry that planned it. None when the plan has no
+    entry for the track at all.
+    """
+    found = entries.get(content_id, ())
+    for entry in found:
+        if claims(entry, bucket):
+            return entry
+    return next((entry for entry in found if not entry.second), found[0] if found else None)
+
+
+def entries_by_track(entries: Sequence[PlanEntry]) -> dict[str, tuple[PlanEntry, ...]]:
+    """Every entry of a plan, by track, in plan order."""
+    found: dict[str, list[PlanEntry]] = {}
+    for entry in entries:
+        found.setdefault(entry.content_id, []).append(entry)
+    return {content_id: tuple(group) for content_id, group in found.items()}
+
+
 def build_move_plan(plan: AdoptionPlan, declared: taxonomy.Taxonomy) -> MovePlan:
     """Every track holding a competing sub its reading does not name.
 
@@ -650,8 +700,12 @@ def build_move_plan(plan: AdoptionPlan, declared: taxonomy.Taxonomy) -> MovePlan
             bucket.id: routing.competing_subs(declared, bucket.id) for bucket in declared.buckets
         }
         refused = refused_buckets(plan.entries)
+        claimed = claimed_buckets(plan.entries)
         for entry in plan.entries:
-            for bucket in buckets_asked(entry, plan.placements, declared, competing):
+            elsewhere = claimed.get(entry.content_id, frozenset()) - _own(entry)
+            for bucket in buckets_asked(
+                entry, plan.placements, declared, competing, elsewhere=elsewhere
+            ):
                 found = standing_in(
                     entry, bucket, plan.placements, declared, tree=plan.tree, refused=refused
                 )

@@ -303,7 +303,7 @@ def remaining(
     shown leaving, in either order, and nothing else. What competes is asked of
     the taxonomy as it is now, so a sub made a sub class since is not removed.
     """
-    entries = {entry.content_id: entry for entry in current.entries}
+    entries = move_engine.entries_by_track(current.entries)
     refused = move_engine.refused_buckets(current.entries)
     todo: list[move_engine.Move] = []
     gone: set[str] = set()
@@ -311,7 +311,7 @@ def remaining(
     if not current.placements.read:
         raise _stale(approved, {move.content_id: "the tree could not be read" for move in approved})
     for move in approved:
-        entry = entries.get(move.content_id)
+        entry = move_engine.entry_for(entries, move.content_id, move.bucket)
         if entry is None:
             # ONCE PER TRACK, since a track may carry a move in each of two
             # buckets and is gone from the collection only once.

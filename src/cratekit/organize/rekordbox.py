@@ -98,12 +98,12 @@ def _adoption(
     applicable = plan.applicable()
     vocal = len(plan.vocal_additions())
     counts = {
-        "tracks read": len(plan.entries), "placeable": len(applicable),
+        "tracks read": len(plan.firsts()), "placeable": len(applicable),
         "to file": len(pending), "vocal memberships to add": vocal,
     }
     if not pending and not vocal:
         detail = (
-            f"nothing to file: {len(plan.entries)} track(s) read, "
+            f"nothing to file: {len(plan.firsts())} track(s) read, "
             f"{len(applicable)} already filed by an apply, the rest unplaceable"
         )
         return planned_step(ADOPT, title, False, detail, digest=screen["digest"], counts=counts)

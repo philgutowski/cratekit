@@ -209,6 +209,7 @@ def scanned(
         prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),
         probe=probe,
         energy_reader=_no_energy,
+        second_reader=None,
     )
 
 

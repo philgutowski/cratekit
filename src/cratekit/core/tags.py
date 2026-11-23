@@ -120,6 +120,11 @@ FIELDS: dict[str, TagSpec] = {
     # TEMPO, so the table still has no tempo entry; ``core.drift`` says what each is.
     "driftlevel": TagSpec("driftlevel", "TXXX:DriftLevel", "----:com.apple.iTunes:DriftLevel"),
     "drift": TagSpec("drift", "TXXX:Drift", "----:com.apple.iTunes:Drift"),
+    # U340, the second genre folder a track is filed into beside the one its
+    # genre names. A genre word, never a tempo; ``routing.second_bucket`` reads it.
+    "secondgenre": TagSpec(
+        "secondgenre", "TXXX:SecondGenre", "----:com.apple.iTunes:SecondGenre"
+    ),
 }
 
 FLAC_SUFFIXES = (".flac",)
@@ -634,6 +639,15 @@ def read_energy_checked(path: Path) -> int | None:
 def read_genre_from_file(path: Path) -> str | None:
     """The file's own genre tag, or None. The file is live where an export can be stale."""
     return read_tag(path, "genre")
+
+
+def read_second_genre_checked(path: Path) -> str | None:
+    """The file's second genre (U340), None only when the file holds none.
+
+    Raises :class:`TagReadFailed` when the file cannot be read, so a census
+    never reads an unreadable file as one with a single genre.
+    """
+    return read_tags_checked(path, ("secondgenre",))["secondgenre"]
 
 
 def read_vox_from_file(path: Path) -> int | None:
