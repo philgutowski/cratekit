@@ -422,8 +422,7 @@ def record(
         **held,
         "portions": {
             fact.portion.value: {
-                "completed_at": fact.completed_at.isoformat(),
-                "destination": fact.destination,
+                **_as_held(fact),
                 **({"kind": fact.kind} if fact.kind is not None else {}),
                 **({"summary": dict(fact.summary)} if fact.summary is not None else {}),
             }

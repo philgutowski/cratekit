@@ -407,16 +407,13 @@ def _free_bytes(root: Path) -> int | None:
 
     Asked of the nearest existing ancestor. None refuses in :func:`assert_room_for`.
     """
-    probe = root
-    while True:
-        if probe.exists():
-            try:
-                return shutil.disk_usage(probe).free
-            except OSError:
-                return None
-        if probe.parent == probe:
-            return None
-        probe = probe.parent
+    probe = nearest_existing(root)
+    if not probe.exists():
+        return None
+    try:
+        return shutil.disk_usage(probe).free
+    except OSError:
+        return None
 
 
 def assert_room_for_capture(
@@ -509,12 +506,20 @@ _NO_ROOM_ERRNOS = frozenset(
 )
 
 
-def _device(path: Path) -> int:
-    """The device of the nearest ancestor of ``path`` that exists, as ``stat`` reads it."""
+def nearest_existing(path: Path) -> Path:
+    """``path`` or its nearest ancestor that exists, or the root when none does.
+
+    A capacity or permission question about a path not yet made is asked of it.
+    """
     probe = path
     while not probe.exists() and probe.parent != probe:
         probe = probe.parent
-    return os.stat(probe).st_dev
+    return probe
+
+
+def _device(path: Path) -> int:
+    """The device of the nearest ancestor of ``path`` that exists, as ``stat`` reads it."""
+    return os.stat(nearest_existing(path)).st_dev
 
 
 def _same_volume(first: Path, second: Path) -> bool:

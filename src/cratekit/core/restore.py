@@ -1145,9 +1145,7 @@ def _assert_writable(step: Step) -> None:
 
 
 def _assert_directory_writable(step: Step, wanted: Path) -> None:
-    probe = wanted
-    while not probe.exists() and probe.parent != probe:
-        probe = probe.parent
+    probe = snapshot.nearest_existing(wanted)
     writable = probe if probe.is_dir() else probe.parent
     if os.access(writable, os.W_OK):
         return
