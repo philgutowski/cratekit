@@ -118,6 +118,13 @@ def _one_track_tree(root_children: list[str], root_count: int = 1) -> export.Lib
     )
 
 
+def _refused(content: bytes):
+    """The cause ``read_export`` refuses ``content`` with."""
+    with pytest.raises(CratekitError) as raised:
+        export.read_export(content)
+    return raised.value.cause
+
+
 def _aged(view, cfg):
     return aging.intake_aging(
         view, intake=INTAKE, thresholds=aging.thresholds_from(cfg), today=TODAY
@@ -197,10 +204,9 @@ def view():
 
 def test_a_document_that_is_not_an_export_refuses_rather_than_reading_as_empty():
     """The U11 shape, one package along."""
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(b'{"tracks": []}')
-    assert raised.value.cause.reason == "library-export-unusable"
-    assert "not a rekordbox collection export" in raised.value.cause.message
+    cause = _refused(b'{"tracks": []}')
+    assert cause.reason == "library-export-unusable"
+    assert "not a rekordbox collection export" in cause.message
 
 
 @pytest.mark.parametrize(
@@ -232,17 +238,13 @@ def test_a_document_that_is_not_an_export_refuses_rather_than_reading_as_empty()
 )
 def test_each_missing_structure_is_refused_by_name(content, expected):
     """Recognized positively, one structure at a time, so the failure is legible."""
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert expected in raised.value.cause.message
+    assert expected in _refused(content).message
 
 
 def test_a_playlist_section_with_no_root_node_refuses():
     content = _document(collection=_collection([]))
     stripped = content.replace(b'    <NODE Type="0" Name="ROOT" Count="0">\r\n', b"")
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(stripped)
-    assert "no root node" in raised.value.cause.message
+    assert "no root node" in _refused(stripped).message
 
 
 def test_a_document_carrying_both_names_in_the_wrong_order_refuses():
@@ -253,9 +255,7 @@ def test_a_document_carrying_both_names_in_the_wrong_order_refuses():
     assert section in body and opening in body
     moved = body.replace(section, b"").replace(opening, section + opening)
 
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(moved)
-    assert "outside the document element" in raised.value.cause.message
+    assert "outside the document element" in _refused(moved).message
 
 
 def test_the_entry_count_is_read_from_the_section_and_never_from_a_track():
@@ -270,9 +270,7 @@ def test_the_entry_count_is_read_from_the_section_and_never_from_a_track():
     )
     assert b'Entries="99"' in content
 
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert "declares no entry count" in raised.value.cause.message
+    assert "declares no entry count" in _refused(content).message
 
 
 def test_a_truncated_export_refuses_because_the_declared_count_disagrees():
@@ -280,10 +278,9 @@ def test_a_truncated_export_refuses_because_the_declared_count_disagrees():
     content = _document(
         collection=_collection([(1, "a", "b", "file://localhost/library/a.flac")], declared=4),
     )
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert raised.value.cause.detail["declared"] == 4
-    assert raised.value.cause.detail["located"] == 1
+    cause = _refused(content)
+    assert cause.detail["declared"] == 4
+    assert cause.detail["located"] == 1
 
 
 def test_a_track_element_with_no_identifier_makes_the_count_disagree():
@@ -296,9 +293,7 @@ def test_a_track_element_with_no_identifier_makes_the_count_disagree():
             "  </COLLECTION>",
         ],
     )
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert raised.value.cause.detail["located"] == 1
+    assert _refused(content).detail["located"] == 1
 
 
 def test_a_track_element_spanning_several_lines_is_read_whole():
@@ -329,10 +324,9 @@ def test_one_track_identifier_used_twice_refuses():
             "  </COLLECTION>",
         ],
     )
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert "the same TrackID more than once" in raised.value.cause.message
-    assert raised.value.cause.detail["repeated"] == ["7"]
+    cause = _refused(content)
+    assert "the same TrackID more than once" in cause.message
+    assert cause.detail["repeated"] == ["7"]
 
 
 def test_the_reader_reports_the_folders_it_walked_through(view):
@@ -393,11 +387,10 @@ def test_a_node_whose_kind_cannot_be_read_refuses_rather_than_reading_as_a_folde
 
     content = library_export().replace(old, new)
     assert content != library_export(), "the substitution changed nothing"
-    with pytest.raises(CratekitError) as raised:
-        export.read_export(content)
-    assert raised.value.cause.reason == "library-export-unusable"
-    assert "kind it does not declare" in raised.value.cause.message
-    assert f"{INTAKE.display} / phil_07_01_2026" in raised.value.cause.detail["nodes"]
+    cause = _refused(content)
+    assert cause.reason == "library-export-unusable"
+    assert "kind it does not declare" in cause.message
+    assert f"{INTAKE.display} / phil_07_01_2026" in cause.detail["nodes"]
 
 
 def _paths_the_shipped_classification_called_folders(content: bytes) -> tuple:
