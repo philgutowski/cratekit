@@ -1,10 +1,7 @@
 """R-1308: a removal from an account playlist whose read lags the removal is taken as done.
 
-Driven against the U220 stand in, whose read can lag a write in its tracks, its
-declared count, or both. Each reading of the read back is judged on those two
-halves, each before the removal or after it: both after is done; either still
-before is a lag, read again after a pause, bounded; anything else refuses at
-once. Nothing is ever sent again. D1 applies.
+On the U220 stand in: tracks and count both after is done, either before is a
+bounded lag, anything else refuses; nothing is sent again. D1 applies.
 """
 
 from __future__ import annotations

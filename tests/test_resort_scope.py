@@ -1,11 +1,8 @@
 """U219: a resort after a genre sub is added writes only under the genre tree.
 
-R-789, found by sitting 61 (A69): with the intake tree cut over on the taxonomy
-source (R-746), a resort's rebuild of it wrote ``INBOX / Minimal / Deep Tech``
-with every band and the genre sub in it.
-
-Every expected value here is spelled from the brief or read off the database
-the fixture built, never from the code under test.
+R-789 (sitting 61, A69): with the intake tree cut over (R-746), a resort rebuilt
+it with every band and the genre sub. Expected values come from the brief or the
+fixture's database, never the code under test.
 """
 
 from __future__ import annotations
@@ -44,8 +41,7 @@ BATCH = "a landed batch"
 BUCKET_FOLDER = "Minimal / Deep Tech"
 GENRE_SUB = "Rominimal"
 
-#: Two files under the music directory, each tagged with the genre sub's one
-#: source, so both file into their band and into the genre sub.
+#: Two files tagged with the genre sub's one source, filing into their band and the sub.
 FIRST = "Puls One.flac"
 SECOND = "Puls Two.flac"
 
@@ -119,8 +115,7 @@ def _handle(cfg: config.Config):
 
 @pytest.fixture
 def tagged(configured, monkeypatch) -> config.Config:
-    """Both files read as Rominimal at one energy, through the readings seam
-    ``declared_membership`` names for readings and not rules."""
+    """Both files read as Rominimal at one energy, through ``declared_membership``'s seam."""
     for name in (FIRST, SECOND):
         (_music(configured) / name).write_bytes(b"")
 
@@ -136,9 +131,7 @@ def tagged(configured, monkeypatch) -> config.Config:
 
 @pytest.fixture
 def both_native(tagged, monkeypatch) -> dict[str, str]:
-    """A disposable database where BOTH declared trees have cut over (R-746).
-
-    The genre root is empty; the intake root holds one landed batch of both rows."""
+    """A disposable database, BOTH trees cut over (R-746): an empty genre root, one landed batch."""
     monkeypatch.setattr(
         preflight,
         "default_identity_provider",
@@ -199,9 +192,7 @@ def _drive(argv: list[str]) -> tuple[int, dict]:
 
 
 def _below(cfg: config.Config, root_id: str) -> dict[str, set[str]]:
-    """Every node under a root by its path from the root, and the rows each holds.
-
-    Read with sqlite, since the engine's own walk stops two levels down."""
+    """Every node under a root by path, with its rows, read with sqlite past the engine's depth."""
     conn = sqlite3.connect(Path(cfg.library.db_path))
     try:
         found: dict[str, set[str]] = {}
@@ -352,9 +343,7 @@ def test_a_library_that_moved_after_the_gate_refuses_before_writing(
 
 
 def test_an_answer_over_one_database_file_does_not_approve_another(both_native):
-    """An apply recorded over a disposable copy refuses over the live file (U161).
-
-    The plans and digests agree, so only the pin on the file read tells them apart."""
+    """An apply recorded over a copy refuses over the live file (U161), by the file pin alone."""
     cfg = config.load()
     live = Path(cfg.library.db_path)
     copy = live.with_name("rehearsal.db")
@@ -469,8 +458,7 @@ FAVORITES_SOURCE = "All Favorites"
 
 @pytest.fixture
 def with_favourite(both_native):
-    """Track 1 is in All Favorites; its genre Favorites is derived only after the
-    first write files it, the shape round one's review drove past the gate."""
+    """Track 1's genre Favorites is derived only after the first write files it."""
     with _handle(config.load()) as handle:
         folder = handle.create_playlist_folder("Favorites")
         source = handle.create_playlist(FAVORITES_SOURCE, parent=folder)
@@ -533,10 +521,7 @@ def _restore(cfg: config.Config, ahead_by: int, taken_on: str):
 
 
 def _landing_refuses(cfg: config.Config, tree_id: str = "inbox") -> bool:
-    """Whether ``assert_tree_writable``, the latch every intake write meets, refuses.
-
-    It runs the restore detection before reading the flag; reading the flag
-    alone passed round one's acceptance while the landing still refused."""
+    """Whether ``assert_tree_writable``, which runs the restore detection first, refuses."""
     with _handle(cfg) as handle:
         try:
             convergence.assert_tree_writable(cfg, handle, tree_id, tree_registry.read(cfg))

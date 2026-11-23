@@ -1,16 +1,8 @@
 """The reserved cause pins are read from one file per package (U296).
 
-U125 keyed the pins by module so that two cards touching different modules
-edit different lines. U296 holds them one file per package, under
-``tests/ratchets/reserved_causes/``, so that a card splitting a module edits
-no register another package's card edits. ``tests/_pinned_reserved_populations.py``
-merges those files into the tables ``tests/test_reserved_causes.py`` reads.
-
-That suite still compares every table with the tree, which is what holds the
-merged pins equal to what was pinned before the split: the tree did not
-change, so a pin lost or misfiled in the move fails there by its module's
-name. What is proven here is the reader: that it merges, and that it refuses
-a file it would otherwise read wrongly, at import, where nobody can miss it.
+``tests/_pinned_reserved_populations.py`` merges ``tests/ratchets/reserved_causes/``
+into the tables ``tests/test_reserved_causes.py`` compares with the tree. Proven
+here: the reader merges, and refuses at import a file it would read wrongly.
 """
 
 from __future__ import annotations
@@ -50,16 +42,20 @@ def test_each_packages_tables_are_merged_into_one_mapping_per_table(tmp_path):
     assert set(merged) == set(pins.PER_MODULE_TABLES)
 
 
-def test_a_module_pinned_in_another_packages_file_is_refused(tmp_path):
-    _write(tmp_path, "core", "KEBAB_LITERALS = {'write/trees.py': ['internal-error']}\n")
-    with pytest.raises(ValueError, match=r"core\.py pins 'write/trees\.py'.*belongs in write\.py"):
-        pins.read_package_pins(tmp_path)
-
-
-def test_a_table_the_reader_does_not_know_is_refused_rather_than_ignored(tmp_path):
-    """A misspelt table would otherwise be a pin that silently stopped pinning."""
-    _write(tmp_path, "core", "KEBAB_LITERAL = {'core/config.py': ['config-unusable']}\n")
-    with pytest.raises(ValueError, match=r"core\.py defines \['KEBAB_LITERAL'\]"):
+@pytest.mark.parametrize(
+    "text,says",
+    [
+        ("KEBAB_LITERALS = {'write/trees.py': ['internal-error']}\n",
+         r"core\.py pins 'write/trees\.py'.*belongs in write\.py"),
+        ("KEBAB_LITERAL = {'core/config.py': ['config-unusable']}\n",
+         r"core\.py defines \['KEBAB_LITERAL'\]"),
+    ],
+    ids=["a-module-pinned-in-another-packages-file", "a-table-the-reader-does-not-know"],
+)
+def test_a_file_the_reader_would_read_wrongly_is_refused(tmp_path, text, says):
+    """A misfiled pin or a misspelt table would otherwise silently stop pinning."""
+    _write(tmp_path, "core", text)
+    with pytest.raises(ValueError, match=says):
         pins.read_package_pins(tmp_path)
 
 

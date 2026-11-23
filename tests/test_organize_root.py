@@ -1,9 +1,7 @@
 """U143: organize keeps the account root to working custom playlists.
 
-The root step's plan and apply over the recording fake account, then the
-adapter's two root removals over a stand in for the client, each refusal sending
-no removal; the verb level drive is in ``tests/test_organize.py``. D1 applies:
-nothing here names a real account, person or track.
+The root step's plan and apply over the recording fake account, then the adapter's
+two root removals over a stand in client, each refusal sending no removal. D1 applies.
 """
 
 from __future__ import annotations
@@ -144,8 +142,7 @@ def test_a_label_folder_with_no_downloaded_playlist_proves_nothing(installed, wo
     world.playlist("year-1", f"{LABEL} {YEAR}", CATALOGUE, folder=folder)
     world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
     row = _rows(world.kept(installed))["debris-1"]
-    # The folder's own reason, not the missing track list a folder with no
-    # DOWNLOADED playlist would also produce: the u143 table's R4 zero.
+    # The folder's own reason, not a missing track list (the u143 table's R4 zero).
     assert row.action == root.LEFT and "folder holds no downloaded playlist" in row.why
 
 
@@ -423,8 +420,7 @@ class _Client:
 
 def _adapter(client: _Client, cfg) -> tidal_account.TidalAccount:
     adapter = tidal_account.TidalAccount(client, sleep=lambda seconds: None, cfg=cfg)
-    # THE FOLDER READS ARE THE ADAPTER'S OWN PAGED WALKS, read here off the
-    # stand in so the removal member is what is driven.
+    # THE FOLDER READS ARE THE ADAPTER'S OWN PAGED WALKS, read off the stand in.
     adapter.folders = lambda: dict(client.root)
     adapter.folder_playlists = lambda folder_id: {
         f"p{n}": "x" for n in range(client.inside.get(folder_id, 0))

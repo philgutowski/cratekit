@@ -1,8 +1,7 @@
 """U270. Exporting a crate adds its tracks a hundred to a request, each recorded once named.
 
-On the fake account and the real client over U255's counting transport: the
-ledger never records a track the playlist does not hold, a resume adds nothing
-twice, a person's edit is never overwritten. The request count is the assertion.
+On the fake account and the real client over U255's counting transport; the
+request count is the assertion.
 """
 
 from __future__ import annotations
@@ -52,8 +51,7 @@ def _rows(*tracks: str) -> tuple[tuple[str, str], ...]:
 
 
 class LandsThenFails(outbound_fakes.FakeAccount):
-    """The add lands on the playlist and the call then raises, as a refused
-    read after the provider's POST does (R-1543), before anything is recorded."""
+    """The add lands, then the call raises before anything is recorded (R-1543)."""
 
     def __init__(self, *args, raising: Exception, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -204,8 +202,7 @@ def test_a_person_who_took_a_track_off_between_batches_is_not_overwritten(cfg):
 # The writer, on the real provider client over the counting transport
 
 class FailsTheReadAfterAdding(Account):
-    """The provider takes the add and then refuses every playlist read for a
-    while: the client's own read after its POST, and the retry's."""
+    """The provider takes the add, then refuses the client's read after it and the retry's."""
 
     def __init__(self, *uuids: str, refusals: int) -> None:
         super().__init__(*uuids)
@@ -244,8 +241,7 @@ def test_a_batch_answered_in_part_on_the_real_client_is_settled_by_one_read_back
     assert report.refused == ("101",)
     assert provider.items["pl0"] == ["100", "102"]
     assert provider.posts("pl0") == 1
-    # The membership's open and tracks read, the add's open and the client's
-    # read after its POST, then the one read back: an open and a tracks read.
+    # Membership open and read, the add's open and read after POST, then the read back.
     assert provider.gets("pl0") == 7
     assert provider.track_reads("pl0") == 2
     assert _recorded(cfg)[KEY]["added"] == ["100", "102"]
@@ -355,8 +351,7 @@ def test_a_job_of_two_hundred_and_fifty_tracks_makes_fifteen_requests(cfg, monke
     wanted = [str(1000 + n) for n in range(1, 251)]
     assert provider.items["pl0"] == wanted
     assert provider.posts("pl0") == 3
-    # The membership's open (two GETs) and its one tracks read, then each
-    # batch's open (two GETs) and the client's read after its POST.
+    # The membership's open and read, then per batch an open and the read after its POST.
     assert provider.gets("pl0") == 2 + 3 * 3
     assert provider.track_reads("pl0") == 1
     assert sum(provider.requests.values()) == 15

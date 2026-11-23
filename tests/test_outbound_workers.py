@@ -67,11 +67,10 @@ _PARSERS: dict = {}
 
 @pytest.fixture(autouse=True)
 def _less_work(monkeypatch):
-    """Neither durability nor the command tree's construction is under test here:
-    a temporary directory need not reach the disk, so neither a file nor a store
-    syncs, and one membership's tree is built once rather than on every drive.
-    The cached tree binds each verb's handler and registry entry when first
-    built, so a test patching either must not rely on this fixture."""
+    """No syncs and one cached command tree per membership; neither is under test here.
+
+    The cached tree binds each handler when first built, so a test patching one must not use this.
+    """
     monkeypatch.setattr(os, "fsync", lambda _fd: None)
     opened = private_store.PrivateStore.__init__
     def unsynced(self, path):

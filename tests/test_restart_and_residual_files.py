@@ -1,8 +1,7 @@
 """U124: the restart state and the residuals are per unit files.
 
-A restart paragraph is ``docs/restart/<unit>.md``, and a residual waits in
-``docs/residuals/`` until ``scripts/board.py residuals --land`` numbers it on
-main. ``scripts/scan_repo.py`` guards the restart state.
+``docs/restart/<unit>.md`` and ``docs/residuals/``, numbered on main by
+``scripts/board.py residuals --land``; ``scripts/scan_repo.py`` guards the former.
 """
 
 from __future__ import annotations
@@ -262,8 +261,7 @@ def test_the_shipped_residual_folder_holds_only_files_that_can_land(board):
 
 # U314: the ledger archived by number range in docs/ledger/.
 
-#: Every separator shape the real ledger carries: none, a rule with no blank
-#: line, a doubled rule, a comment, and a section that is not a finding.
+#: Every separator shape the ledger carries, and a section that is not a finding.
 _SEPARATORS = ("\n---\n\n", "\n", "\n---\n", "\n---\n\n---\n\n", "\n<!-- x -->\n\n---\n\n")
 
 
@@ -505,11 +503,9 @@ class Rewording(NamedTuple):
     new: str
 
 
-#: The deliberate rewordings of moved text since the split, applied before the
-#: byte for byte comparison and checked first, so a stale entry fails.
+#: Deliberate rewordings since the split, applied first, so a stale entry fails.
 REWORDINGS = (
-    # U195 (#469) stopped the public prose naming the service beside the
-    # vendored downloader; restoring the old sentence would undo that unit.
+    # U195 (#469) stopped naming the service beside the vendored downloader.
     Rewording(
         unit="U195",
         fragment="r301.md",
@@ -573,6 +569,17 @@ def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
     assert _lost(_fragments()) == []
 
 
+@functools.cache
+def _held_once() -> tuple[tuple[str, str], ...]:
+    """Moved paragraphs held by exactly one fragment other than R-301's, with that fragment."""
+    fragments = _fragments()
+    joined = "\n\n".join(fragments.values())
+    return tuple(
+        (name, p) for p in _moved_paragraphs() if joined.count(p) == 1
+        for name, text in fragments.items() if name != "r301.md" and p in text
+    )
+
+
 @pytest.mark.parametrize(
     "change",
     [
@@ -589,12 +596,7 @@ def test_a_changed_or_removed_paragraph_still_fails(change):
         fragments["r301.md"] = fragments["r301.md"].replace(*change)
         opening = "**The session before: R-301, issue #168"
     else:
-        joined = "\n\n".join(fragments.values())
-        # Paragraphs held by exactly one fragment other than R-301's.
-        held_once = [
-            (name, p) for p in _moved_paragraphs() if joined.count(p) == 1
-            for name, text in fragments.items() if name != "r301.md" and p in text
-        ]
+        held_once = _held_once()
         assert len(held_once) > 200
         name, paragraph = held_once[{"first": 0, "middle": len(held_once) // 2, "last": -1}[change]]
         fragments[name] = fragments[name].replace(paragraph, "")

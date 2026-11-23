@@ -1,8 +1,7 @@
 """U131: every playlist on the account sits in a folder chosen by a readable rule.
 
-Driven at the filing step's plan and apply and ``export playlist``'s apply,
-against the recording fake account, so each reads where the account says a
-playlist sits. D1 applies: nothing here names a real account, person or track.
+The filing step's plan and apply and ``export playlist``'s apply, against the
+recording fake account. D1 applies.
 """
 
 from __future__ import annotations
@@ -19,8 +18,7 @@ from tests.test_config import valid_data
 
 MARKED_WHEN = "2026-10-08T21:00:00+00:00"
 
-#: The author's, for Mine: downloaded, with no sync recorded to give it a year.
-#: Since U143 one with no prefix is a working custom playlist left at the root.
+#: The author's, for Mine; since U143 one with no prefix is left at the root.
 OWN = "DOWNLOADED Sunday warmup"
 
 

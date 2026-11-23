@@ -1,9 +1,7 @@
 """U15: the cap holds, the throttle is waited out, and the ban is never retried.
 
-The cap is observed as real simultaneous work, a throttle honours the provider's own hint,
-a ban stops everything and is never retried (retrying into a block is a lockout), and two
-runs do not fall into step. Every source is a double and every sleep is recorded, so the
-suite asserts on the SCHEDULE a run would have slept.
+Every source is a double and every sleep is recorded, so the suite asserts on the
+SCHEDULE a run would have slept.
 """
 
 from __future__ import annotations
@@ -92,8 +90,7 @@ def blocked(message: str = "403 Forbidden") -> ProviderError:
 
 @dataclass
 class Instrumented:
-    """A ``TrackSource`` that records concurrency (``peak``) and replays a per-key script,
-    one entry per successive attempt."""
+    """A ``TrackSource`` recording concurrency (``peak``) and replaying a per key script."""
 
     script: dict[str, list[object]] = field(default_factory=dict)
     lossless: bool = True
@@ -204,8 +201,7 @@ def test_every_rate_limit_phrase_only_slows_the_run(marker):
 
 
 def test_a_bot_wall_describing_itself_as_a_rate_limit_still_stops():
-    """A bot wall often reads as rate limiting; retrying into a block has no recovery, so the
-    block reading wins."""
+    """A bot wall reads as rate limiting; retrying into a block cannot recover, so block wins."""
     exc = ProviderError("Access denied: rate limit exceeded for this client")
     assert classify_signal(exc) is ProviderSignal.BLOCKED
 
@@ -232,16 +228,15 @@ def test_the_status_is_read_from_whichever_attribute_the_client_exposes():
 
 
 
-def test_a_delta_seconds_header_is_honoured():
-    exc = rate_limited(headers={"Retry-After": "45"})
-    assert retry_hint_seconds(exc, now=FIXED_NOW) == 45.0
-
-
-def test_a_header_is_found_whatever_case_the_client_stored_it_in():
-    """A plain dictionary is case-sensitive and a client library's is not; a missed hint
-    falls back to a shorter backoff."""
-    exc = rate_limited(headers={"retry-after": "20"})
-    assert retry_hint_seconds(exc, now=FIXED_NOW) == 20.0
+@pytest.mark.parametrize(
+    "name,value,seconds",
+    [("Retry-After", "45", 45.0), ("retry-after", "20", 20.0)],
+    ids=["delta-seconds-honoured", "found-whatever-case-the-client-stored"],
+)
+def test_a_delta_seconds_header_is_honoured_whatever_its_case(name, value, seconds):
+    """Header names match case insensitively, as a client library's dictionary does."""
+    exc = rate_limited(headers={name: value})
+    assert retry_hint_seconds(exc, now=FIXED_NOW) == seconds
 
 
 def test_a_date_form_header_is_parsed_rather_than_dropped():
@@ -500,8 +495,7 @@ def test_a_blocked_run_never_advances_a_watermark_and_never_quarantines(settings
 
 
 def test_a_permanent_verdict_reached_before_a_block_is_softened(settings):
-    """A bot wall answers with any status, so a track called delisted before a block stays
-    re-queueable."""
+    """A bot wall answers with any status, so a delisted track before a block stays requeueable."""
     source = Instrumented(script={"gone": [ProviderError("404 not found")], "wall": [blocked()]})
     run = run_pool(
         source, settings, requests=requests_for("gone", "wall"),
@@ -529,8 +523,7 @@ def test_a_retry_hint_longer_than_the_ceiling_is_a_refusal_wearing_a_wait(settin
 
 
 def test_the_parked_cause_is_what_a_job_engine_can_actually_park_on(settings):
-    """The U10 seam: the engine re-invokes the command line (KTD26), so ``retryable`` must
-    survive the JSON."""
+    """The U10 seam re-invokes the command line (KTD26), so ``retryable`` survives the JSON."""
     source = Instrumented(script={"t": [blocked()]})
     run = run_pool(
         source, settings, requests=requests_for("t"),
@@ -657,8 +650,7 @@ class Paced(BaseAdapter):
 
 
 def test_a_built_adapter_runs_through_the_pool_under_its_own_settings(tmp_path):
-    """``acquire_paced`` is the paced twin of ``BaseAdapter.acquire``; only the wrapped tool
-    is replaced, so this tests the driver."""
+    """``acquire_paced`` is the paced twin of ``BaseAdapter.acquire``; only the tool is replaced."""
     staging = tmp_path / "staging"
     staging.mkdir()
     settings = AdapterSettings(download_staging=staging, concurrency=2, pacing_delay_s=0.0)
@@ -691,8 +683,7 @@ def test_a_built_adapter_that_cannot_run_reports_the_contract_shape(tmp_path):
 
 
 def test_the_pool_declares_no_second_cap_and_no_second_delay():
-    """R10's second half: pacing is owned by the adapter, not a shared file; read from the
-    source since the property is what the module CONTAINS."""
+    """R10's second half: pacing is the adapter's, never a shared file, read from the source."""
     source = DOWNLOAD_SOURCE.read_text()
     assert "settings.concurrency" in source
 

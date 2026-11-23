@@ -1,9 +1,7 @@
-"""``crate repair link``: chosen values written into the row probe columns of
-chosen live rows through the guard (A32, R-928).
+"""``crate repair link``: chosen values into the probe columns of chosen live rows (A32, R-928).
 
-The library, seams and acknowledgment are ``repair rows``'s; rows rekordbox
-made carry its ContentLink and empty ISRC, the two landed rows the binding's,
-so those two columns are the whole difference.
+``repair rows``'s library, seams and acknowledgment, where ContentLink and ISRC
+are the whole difference between rekordbox's rows and the two landed ones.
 """
 
 # ruff: noqa: F811, the fixtures below are imported from the repair rows suite by name
@@ -48,9 +46,7 @@ MADE = ("1", "2", "201", "401", "501", "601")
 
 
 def seed(cfg) -> None:
-    """``repair rows``'s library with the probe columns set: rekordbox's values on every row it
-    made, the binding's on the two rows a landing made, each made whole so the probe columns are
-    the one difference."""
+    """``repair rows``'s library with the probe columns set, the only difference between rows."""
     build(cfg)
     _sql(cfg, f"UPDATE djmdContent SET {LINK} = ?, {ISRC} = ''", HOUSE)
     _sql(
@@ -237,8 +233,7 @@ def test_a_row_already_at_a_value_nobody_else_carries_still_plans_nothing(machin
 
 
 def test_the_bindings_value_onto_a_row_rekordbox_made_refuses_as_the_minority(machine):
-    """The probe moves a row toward the value most rows carry, never away: the reverse write would
-    take a row that loads and make the question worse."""
+    """The probe moves a row toward the value most rows carry, never away from it."""
     seed(machine)
     with pytest.raises(CratekitError) as caught:
         _planned(machine, f"201:{LINK}={BINDING}")
@@ -465,9 +460,7 @@ def test_rekordbox_running_refuses_at_the_apply_and_writes_nothing(acknowledged,
 
 
 def test_a_column_moved_after_the_commit_refuses_through_the_verb(acknowledged, monkeypatch):
-    """The read back is what the verb answers with: a judge that finds a moved column after the
-    commit refuses the run as the guard's defect, naming the session whose capture undoes the
-    durable write."""
+    """A moved column found after the commit refuses as the guard's defect, naming the session."""
     seed(acknowledged)
     monkeypatch.setattr(row_link, "judge", lambda plan, before, after: ((), ("101: BPM",)))
     code, acted, _ = _two_acts(f"101:{LINK}={HOUSE}")
@@ -497,8 +490,7 @@ def test_the_guard_refuses_a_probe_column_written_without_the_policy(acknowledge
 
 
 def test_a_plan_writing_one_column_admits_only_that_one_to_the_guard(acknowledged, monkeypatch):
-    """The policy is built from the columns written, so a ContentLink only plan that also sets an
-    ISRC beside it is refused by the guard before the commit."""
+    """The policy is the columns written, so an ISRC beside a ContentLink plan is refused."""
     seed(acknowledged)
     real = rb_writer.write_metadata_field
 
@@ -596,8 +588,7 @@ def test_judge_names_a_value_that_did_not_take_and_a_column_that_moved():
 
 
 def test_judge_counts_a_column_written_on_another_row_as_moved_here():
-    """The planned columns are per row: an ISRC written on 102 does not excuse an ISRC that moved
-    on 101, where only the ContentLink was written."""
+    """Planned columns are per row: an ISRC written on 102 excuses none moved on 101."""
     plan = _plan_of(_probe(), _probe(content_id="102", column=ISRC, value="", was=None))
     before = {"101": {LINK: BINDING, ISRC: None}, "102": {ISRC: None}}
     after = {"101": {LINK: HOUSE, ISRC: ""}, "102": {ISRC: ""}}

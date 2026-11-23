@@ -1,9 +1,7 @@
 """The renderer's job and import proof cases, and the gates that bound them (R-678).
 
-The verbs themselves are driven in human mode beside their own fixtures. This
-file holds what a verb cannot reach: a payload of the right schema from a verb
-the case was not written for, and the dispatcher's refusal to name a second
-driver.
+What a verb cannot reach: a right schema payload from another verb, and the
+dispatcher's refusal to name a second driver.
 """
 
 from __future__ import annotations
@@ -77,8 +75,7 @@ def test_an_empty_job_id_is_a_queue_that_held_nothing_and_renders_nothing():
 
 
 def test_the_job_case_is_gated_on_the_schema_not_a_job_id_key():
-    """A job identifier at the top of another surface's data, where the job case
-    reads it, so the schema gate alone stops it rather than the empty identifier gate."""
+    """Another surface's job identifier, stopped by the schema gate, not the empty one."""
     review_set = envelope(
         "review.list",
         "review_set",
@@ -228,8 +225,7 @@ def test_each_proof_action_is_worded_and_an_unknown_one_keeps_its_fields(item, s
 
 
 def test_a_verb_showing_a_queued_job_it_did_not_queue_names_no_drive(tmp_path, monkeypatch):
-    """``job show`` and ``job resume`` answer with a queued job too, and must not name a
-    second driver for it. Driven through the dispatcher, because the check lives there."""
+    """``job show`` and ``job resume`` with a queued job name no second driver (dispatcher)."""
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(tmp_path))
     built = config.from_dict(valid_data(tmp_path))
     config.save(built)
@@ -304,10 +300,7 @@ def test_the_proven_run_count_is_the_verbs_own_total():
 
 
 def test_a_shown_item_value_that_would_break_its_line_is_quoted():
-    """A value with a comma, an equals sign or a line break is quoted, since it
-    would otherwise read as a field of its own or split the item (R-692). Each
-    breaker is alone in its value, so dropping one from the set is seen; a plain
-    value and a non string one print unquoted."""
+    """A comma, equals sign or line break quotes its value (R-692); plain and non strings do not."""
     (header, line) = render._shown_lines({
         "items": [{
             "artist": "\u00c2me, Dixon",
@@ -326,9 +319,7 @@ def test_a_shown_item_value_that_would_break_its_line_is_quoted():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-850: what an export wrote and every track it left out
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _exported(state: str = "succeeded", **outbound) -> output.Envelope:
@@ -378,8 +369,7 @@ def test_a_favourites_answer_counts_in_its_own_words_and_names_each_unhearted_ro
 
 
 def test_an_outbound_summary_that_does_not_count_prints_no_track_line():
-    """A summary carrying lists and no ``counts``, as any outbound verb that
-    does not count still answers."""
+    """A summary with lists and no ``counts``, as an outbound verb that does not count answers."""
     lines = render.render_job_state(
         _exported(hearted=["1"], already=[], unmatched=["2"], reasons=[])
     )
@@ -403,9 +393,7 @@ def test_an_unmatched_title_holding_a_line_break_stays_on_its_line():
     assert '    unmatched: A, B - "T\\nU": r' in lines
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U169: ``job list`` prints the jobs it found, not only a run id
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _listed(handler: str, state: str, *, settled: int = 0, total: int = 0, **extra) -> dict:
@@ -494,8 +482,7 @@ def test_a_filtered_empty_job_list_names_the_states_it_was_filtered_to():
 
 
 def test_the_job_list_case_belongs_to_the_listing_alone():
-    """Another verb's ``job_state`` with a jobs key is not a listing, and a
-    listing is never read as a single job."""
+    """Another verb's ``job_state`` with jobs is not a listing; a listing is never one job."""
     rows = [_listed("tag.folder", "queued", total=1)]
     other = job_state(verb="job.show", job_id="", progress={"jobs": rows, "counts": {}})
 
@@ -531,9 +518,7 @@ def test_job_list_is_driven_end_to_end_in_the_default_output(tmp_path, monkeypat
     assert "  jobs: 1 (queued 1)" in text.splitlines(), text
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U182: the playlist an intake job was made for, and the stale cancel's list
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_renderer_spells_the_playlist_and_stale_fields_cli_jobs_writes():

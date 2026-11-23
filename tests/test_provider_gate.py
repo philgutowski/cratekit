@@ -1,17 +1,9 @@
 """R-705: one gate for every call to the streaming provider.
 
-1. Pacing holds the configured interval, measured from the last call any
-   process made, and a ``Retry-After`` holds the next call at least that long.
-2. The breaker trips on a rate limit that survives the ladder, as the job
-   engine's own park, with the rest of a sweep pending.
-3. The cooldown outlives the process.
-4. One driver at a time: two real processes never overlap and keep the
-   interval, read off the gate's stamps and an ``O_EXCL`` marker (R-759).
-5. Spend is counted across processes. 6. Only the two build sites build a
-   client, and both attach the gate. 7. The call ceiling per command (U193).
-
-Schedules run on a fake clock whose ``sleep`` advances it. The two process
-tests use the real clock and real sleeps, since a kernel lock cannot be faked.
+Pacing and ``Retry-After``, the breaker, a cooldown outliving the process, one
+driver at a time across real processes (R-759), spend counted across processes,
+the two build sites, and the call ceiling per command (U193). Schedules run on a
+fake clock; the two process tests use real sleeps, as a kernel lock cannot be faked.
 """
 
 from __future__ import annotations
@@ -86,8 +78,7 @@ class Response:
 
 
 class Transport:
-    """A stand-in for the client's ``requests.Session``: answers in order, the
-    last answer repeating, and records every request it was asked to make."""
+    """A stand-in ``requests.Session``: answers in order, the last repeating, recording each."""
 
     def __init__(self, *answers: Any) -> None:
         self.answers = list(answers) or [Response()]
@@ -338,8 +329,7 @@ def _item_states(store, job) -> dict[str, Any]:
 def test_the_breaker_stops_a_sweep_at_the_first_surviving_rate_limit_with_the_rest_pending(
     paths, clock, queue, cfg
 ):
-    """The first label's ladder trips the gate; the job blocks with all three
-    items pending and the second label is never claimed."""
+    """The first label's ladder trips the gate: three items pending, the second never claimed."""
     store, root = queue
     transport = Transport(rate_limited())
     page = _paged(make_gate(paths, clock), transport)
@@ -428,8 +418,7 @@ print(json.dumps(report))
 
 
 def test_a_cooldown_written_by_one_process_refuses_a_verb_started_in_another(paths, tmp_path):
-    """A REAL second process refuses before any call, naming the lift time. The
-    trip runs on a fake clock set to the real time, so its waits pass at once."""
+    """A REAL second process refuses before any call, naming the lift time."""
     state, lock = paths
     clock = Clock(time.time())
     trip(make_gate(paths, clock, cooldown_s=900.0))
@@ -445,10 +434,8 @@ def test_a_cooldown_written_by_one_process_refuses_a_verb_started_in_another(pat
 
 # ── 4. One driver at a time ──────────────────────────────────────────────
 
-#: One driver for both process tests. It waits at a barrier for the other,
-#: then calls through one real gate, recording in each send the ``last_call``
-#: stamp the gate just wrote, the wall clock, and whether another send held
-#: the ``O_EXCL`` in flight marker.
+#: One driver for both process tests: past a barrier it calls through one real gate,
+#: recording the gate's ``last_call`` stamp, the wall clock, and the ``O_EXCL`` marker.
 _DRIVER = """
 import json, os, sys, time
 from pathlib import Path
@@ -492,16 +479,14 @@ for _ in range(count):
 out.write_text(json.dumps({"calls": calls, "overlaps": overlaps}))
 """
 
-#: How far a send may begin BEFORE its own stamp: the gate sleeps on the
-#: monotonic clock and stamps with the wall clock. Load only makes sends later.
+#: How far a send may begin BEFORE its stamp: the gate sleeps monotonic, stamps wall clock.
 _CLOCK_SKEW_S = 0.001
 
 
 def _drive_two_processes(
     paths: tuple[Path, Path], tmp_path: Path, *, count: int, interval: float, hold: float
 ) -> list[dict[str, Any]]:
-    """Run two drivers over one gate and return what each recorded; a driver
-    still running on the way out is killed so it cannot hold the lock."""
+    """Run two drivers over one gate; one still running on the way out is killed."""
     state, lock = paths
     script = tmp_path / "driver.py"
     script.write_text(_DRIVER)
@@ -527,8 +512,7 @@ def _drive_two_processes(
 
 
 def test_two_processes_keep_the_interval_between_every_call(paths, tmp_path):
-    """Every stamp is at least the interval after the one before, and no send
-    begins before its own stamp. R-759: stamps, never send times measured here."""
+    """Each stamp is an interval after the last, no send before its stamp (R-759)."""
     interval = 0.05
     reports = _drive_two_processes(paths, tmp_path, count=4, interval=interval, hold=0.0)
     calls = sorted(call for report in reports for call in report["calls"])
@@ -541,8 +525,7 @@ def test_two_processes_keep_the_interval_between_every_call(paths, tmp_path):
 
 
 def test_two_processes_never_have_a_call_in_flight_together(paths, tmp_path):
-    """Each call holds the provider ten times the interval, so only the lock
-    keeps two sends apart. The verdict reads no clock."""
+    """Each call holds the provider ten intervals, so only the lock keeps sends apart."""
     reports = _drive_two_processes(paths, tmp_path, count=4, interval=0.01, hold=0.1)
     assert [report["overlaps"] for report in reports] == [0, 0], (
         f"two calls were in flight at once: {reports}"
@@ -577,8 +560,7 @@ def test_the_lock_file_is_never_unlinked(paths, clock):
 
 
 def test_a_wait_the_provider_asked_for_is_taken_with_the_lock_released(paths, clock):
-    """A Retry-After past the interval is slept OUTSIDE the lock; one interval
-    is slept under it. The sleep probes the lock and records whether it got it."""
+    """A Retry-After past the interval is slept OUTSIDE the lock, one interval under it."""
     lock = paths[1]
     gate = make_gate(paths, clock, min_interval_s=1.0)
     taken_while_sleeping: list[tuple[float, bool]] = []
@@ -649,8 +631,7 @@ def test_process_spend_is_this_process_alone(paths, clock):
 
 
 def test_one_offered_release_costs_two_calls_on_the_catalogue():
-    """The figure docs/mutation/r705-notes.md stands on, measured on the tree's
-    own ``release_tracks``: one album read and one page of its tracks."""
+    """The figure docs/mutation/r705-notes.md stands on, from the real ``release_tracks``."""
     reads: list[str] = []
 
     class Album:
@@ -675,8 +656,7 @@ def test_one_offered_release_costs_two_calls_on_the_catalogue():
 # ── 6. The seam ──────────────────────────────────────────────────────────
 
 class _Answering(requests.adapters.BaseAdapter):
-    """An adapter for a real ``requests.Session`` that answers every request
-    with one status and records it, so the wrap is proven on the real object."""
+    """A real ``requests.Session`` answering every request with one status, recording it."""
 
     def __init__(self, status: int, content: bytes = b"") -> None:
         super().__init__()
@@ -820,8 +800,7 @@ _BAD = {
     ids=[f"{key}={value!r}" for key, (values, _) in _BAD.items() for value in values],
 )
 def test_a_pacing_or_ceiling_number_that_is_not_positive_is_refused_naming_the_key(tmp_path, key, value, phrase):
-    """A non positive interval, or a cooldown or ceiling that is not a positive
-    whole number, is one problem naming the key, refused at load."""
+    """A bad interval, cooldown or ceiling is one problem naming the key, refused at load."""
     data = _config_data(tmp_path, provider={key: value})
     problems = config.validate(data)
     assert len(problems) == 1
@@ -846,8 +825,7 @@ STORED = {
 
 
 class _LoginClient:
-    """A provider client whose login goes out through its transport, as the
-    real one's does, so the wrap is proven to cover the login itself."""
+    """A provider client whose login goes out through its transport, as the real one's does."""
 
     def __init__(self, transport: Transport | None = None) -> None:
         self.request_session = transport or Transport()
@@ -866,8 +844,7 @@ def _record_session() -> None:
 
 @pytest.fixture
 def login(monkeypatch):
-    """Store a session and make the client factory hand out one fake client
-    answering ``answers``; returns that client."""
+    """Store a session and have the factory hand out one fake client answering ``answers``."""
 
     def make(*answers: Any) -> _LoginClient:
         client = _LoginClient(Transport(*answers))
@@ -966,8 +943,7 @@ def _vendored(tmp_path: Path, paths, clock, **kwargs: Any) -> vendored._Vendored
 
 
 def _swallowing(action):
-    """A downloader that runs ``action`` in ``item`` and, as the tool does,
-    swallows any exception and answers "no file"."""
+    """A downloader running ``action`` in ``item`` that swallows any failure as "no file"."""
 
     class SwallowingDownload:
         def __init__(self, **_kwargs: Any) -> None:
@@ -1009,8 +985,7 @@ def test_a_rate_limited_login_comes_out_of_client_session_as_the_park(paths, clo
 
 
 def test_a_rate_limited_login_comes_out_of_the_vendored_adapter_as_the_park(tmp_path, paths, clock, monkeypatch):
-    """Never a rejected session parked as credential-missing. The tool's two
-    classes are the smallest doubles the real ``authenticate`` accepts."""
+    """A rejected session is never parked as credential-missing."""
     import cratekit._vendor.downloader.config as tool_config
     source = _vendored(tmp_path, paths, clock)
     gate = source._gate
@@ -1046,8 +1021,7 @@ def test_a_rate_limited_login_comes_out_of_the_vendored_adapter_as_the_park(tmp_
 
 
 def test_a_trip_the_tool_swallowed_during_a_download_comes_out_of_fetch_as_the_park(tmp_path, paths, clock):
-    """``fetch`` asks the gate again after the tool returns, so the track goes
-    back to pending rather than failing."""
+    """``fetch`` asks the gate again after the tool returns, so the track goes back to pending."""
     source = _vendored(tmp_path, paths, clock, session=_ToolSession())
     source.authenticate()
     source._downloader = _swallowing(lambda: trip(source._gate))
@@ -1153,8 +1127,7 @@ HARVEST = ["label", "harvest", "https://example.invalid/playlist/harvest"]
 
 @pytest.fixture
 def installed(tmp_path, monkeypatch):
-    """A machine the real dispatcher can load, with every module on, paced
-    through a REAL gate on a short interval."""
+    """A machine the real dispatcher loads, every module on, paced through a REAL gate."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True, exist_ok=True)
     (root / "db").mkdir(parents=True, exist_ok=True)
@@ -1207,9 +1180,7 @@ def _line(calls: int, limited: str) -> str:
 def test_a_run_that_reached_the_provider_reports_its_calls(
     installed, monkeypatch, login, answers, after, reason, said
 ):
-    """Through the REAL dispatcher, only the client faked. Rate limit answers
-    are named, a refused run reports its cost, another process's calls are not
-    this run's. Requests after opening are plain requests on the gated transport."""
+    """Through the REAL dispatcher, only the client faked, requests on the gated transport."""
     client = login(*answers)
     if after == "two-requests":
         _after_opening(monkeypatch, lambda: [
@@ -1377,8 +1348,7 @@ def test_a_detached_child_reads_the_raised_ceiling_off_the_environment(monkeypat
 
 
 def test_the_ceiling_parks_a_job_and_the_resumed_job_continues(paths, clock, queue, cfg):
-    """Three items, two calls each, a ceiling of three: the job blocks naming
-    itself with the second item pending, and the resume the refusal names finishes it."""
+    """Ceiling three over three items of two calls: blocks on the second, the resume finishes."""
     store, root = queue
     gate = ceiling_gate(paths, clock, 3)
     transport = Transport()
@@ -1425,8 +1395,7 @@ def test_a_park_that_names_its_job_keeps_its_own_job_id(paths, clock, queue, cfg
 
 
 def test_a_separate_session_such_as_the_media_segment_fetch_is_not_counted(paths, clock):
-    """The downloader fetches media segments through a session of its own; a
-    command at its ceiling still fetches them."""
+    """The downloader's own media session still fetches for a command at its ceiling."""
     gate = ceiling_gate(paths, clock, 1)
     client = SimpleNamespace(request_session=Transport())
     assert gate.attach(client)
@@ -1456,8 +1425,7 @@ def test_the_ceiling_reason_is_declared_as_a_policy_refusal():
 # ── 7, through the real dispatcher ───────────────────────────────────────
 
 def _two_more_calls(monkeypatch, client, *, swallow: bool = False) -> list[str]:
-    """Two calls beyond the login, as the catalogue would make; ``swallow``
-    catches the stop as a verb that walks a list per item might."""
+    """Two calls beyond the login; ``swallow`` catches the stop as a per item verb might."""
     caught: list[str] = []
 
     def more() -> None:
@@ -1482,8 +1450,7 @@ def _capped(tmp_path, login, monkeypatch, **provider: Any) -> _LoginClient:
 
 @pytest.fixture
 def capped(installed, tmp_path, login, monkeypatch):
-    """The installed machine at one call per command, a client logged in, and
-    two calls beyond the login."""
+    """The installed machine at one call per command, logged in, two calls beyond the login."""
     return _capped(tmp_path, login, monkeypatch, calls_per_command=1)
 
 
@@ -1495,8 +1462,7 @@ def capped(installed, tmp_path, login, monkeypatch):
 def test_a_verb_at_its_line_is_blocked_and_the_call_past_it_is_not_sent(
     installed, tmp_path, login, monkeypatch, provider, reason
 ):
-    """A park, never a failure. A ceiling stop names the exact command that
-    continues, global options kept, and says the stop once."""
+    """A park, never a failure, naming the exact continuing command once, global options kept."""
     client = _capped(tmp_path, login, monkeypatch, **provider)
     code, envelope = drive(HARVEST)
     assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
@@ -1539,8 +1505,7 @@ def test_a_calls_that_is_not_a_positive_whole_number_is_a_usage_error(value, cap
 
 
 def test_a_ceiling_stop_a_verb_swallowed_is_still_said(installed, tmp_path, login, monkeypatch):
-    """Else a verb that catches the park per item shows a report over reads the
-    ceiling stopped."""
+    """Else a verb catching the park per item reports over reads the ceiling stopped."""
     _save(tmp_path, min_interval_s=0.01, calls_per_command=1)
     caught = _two_more_calls(monkeypatch, login(), swallow=True)
     _, envelope = drive(HARVEST)
@@ -1584,8 +1549,7 @@ def test_a_ceiling_stop_a_verb_swallowed_is_still_said(installed, tmp_path, logi
          "a-run-that-cannot-continue-starts-anew"],
 )
 def test_the_continue_command_names_the_job_or_run_to_continue(verb, detail, asked):
-    """U210. A cause naming its run continues THAT run, once, whatever the
-    command line held; a write that recorded no steps is named without it."""
+    """U210: a cause naming its run continues THAT run, once; a stepless write is named without."""
     entry = next(one for one in landed_entries() if one.name == verb)
     cause = _cause(CEILING, jobs.Remedy.FIX_COMMAND_LINE, "stopped", **detail)
     for argv, expected in asked:

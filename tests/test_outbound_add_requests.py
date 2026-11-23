@@ -1,10 +1,8 @@
 """U255. Adding a track to an account playlist costs one write and one read.
 
-It cost four (the speed survey of 2026-11-12); the adapter now holds the object
-its membership read opened and adds through it. Driven on the REAL client over a
-transport that keeps the account's playlists, moves each one's version tag on
-every write, answers a write on a stale tag 412 (Sitting 62), and counts every
-request by method and path. The request count is the assertion, never a clock.
+Driven on the REAL client over a transport that keeps versioned playlists,
+answers a stale tag 412 (Sitting 62), and counts every request. The request
+count is the assertion, never a clock.
 """
 
 from __future__ import annotations
@@ -65,12 +63,9 @@ class _Answer:
 
 
 class Account:
-    """The provider's side of the account's playlists, served to a real client.
+    """The provider's playlists for a real client: a stale ``If-None-Match`` is a 412.
 
-    Each playlist holds its track identifiers in order and a version every
-    write moves on. A write whose ``If-None-Match`` is not the current tag is
-    answered 412 and changes nothing. An add skips a track the playlist holds
-    and one in ``missing``, and answers with the identifiers it added.
+    An add skips a held track and any in ``missing``, answering with what it added.
     """
 
     def __init__(self, *uuids: str) -> None:
@@ -225,8 +220,7 @@ def test_k_adds_to_one_owned_playlist_make_k_plus_two_gets_and_k_posts(count):
     wanted = _ids(count)
     for one in wanted:
         remote.add_to_playlist("pl0", one)
-    # The one open is two GETs (a ``Playlist``, then the ``UserPlaylist`` its
-    # factory builds), and the client reads the playlist once after each POST.
+    # One open is two GETs, and the client reads the playlist after each POST.
     assert provider.gets("pl0") == count + 2
     assert provider.posts("pl0") == count
     assert provider.track_reads("pl0") == 1
@@ -251,8 +245,7 @@ def test_each_add_writes_what_it_wrote_before_one_track_at_the_end_on_the_curren
         {"onArtifactNotFound": "SKIP", "trackIds": one, "toIndex": position, "onDupes": "SKIP"}
         for position, one in enumerate(wanted, start=1)
     ]
-    # Each add carried the playlist's tag when sent, the client's read after
-    # each POST being what the next one sends, so none was refused.
+    # Each add carried the tag the client's read after the last POST gave it.
     assert _forms(provider, "tag") == [f'"{n}"' for n in range(2, 7)]
     assert provider.items["pl0"] == ["7", *wanted]
 
@@ -294,8 +287,7 @@ def test_an_add_refused_for_a_stale_tag_is_sent_once_more_on_a_fresh_open_and_la
     provider.outside_add("pl0", "7")
     gets_before = provider.gets("pl0")
     remote.add_to_playlist("pl0", "101")
-    # The refused add, then one open (two GETs) and the add again, which the
-    # client reads after: three GETs and two POSTs for this track.
+    # The refused add, one open and the add again: three GETs and two POSTs.
     assert provider.gets("pl0") - gets_before == 3
     assert [tag for _, _, tag in provider.adds[1:]] == ['"2"', '"3"']
     assert provider.items["pl0"] == ["100", "7", "101"]
@@ -356,8 +348,7 @@ def test_an_add_answered_without_the_track_reads_the_playlist_back_and_refuses()
     with pytest.raises(CratekitError) as excinfo:
         remote.add_to_playlist("pl0", "101")
     assert "added nothing" in excinfo.value.cause.message
-    # The client's read after the POST, then the read back's own open (two
-    # GETs) and its read of the tracks.
+    # The read after the POST, then the read back's open and tracks read.
     assert provider.gets("pl0") - gets_before == 3
     assert provider.track_reads("pl0") - reads_before == 1
     assert remote.playlist_tracks("pl0") == ("100",)
@@ -399,8 +390,7 @@ def test_a_held_playlist_never_outlives_its_adapter(monkeypatch):
 def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_requests(
     installed, count
 ):
-    """``export.apply`` over the real client: one ``add_tracks`` (U270), so seven requests
-    whatever the count: the membership's open and tracks read, an open, a POST, a read."""
+    """``export.apply`` on the real client: one ``add_tracks`` (U270), seven requests always."""
     provider = Account("pl0")
     remote = _adapter(provider)
     ledger.reserve_playlist(installed, "crate-one", lambda: "pl0")

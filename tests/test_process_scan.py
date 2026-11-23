@@ -1,9 +1,7 @@
 """U211: a process the rekordbox scan cannot read never ends a gated write as INTERNAL.
 
-psutil's ``name()`` raised ``SystemError`` out of a dying process. Driven over
-a fake process table raising what psutil raises: the scan, the writer's probe,
-the binding's probe at open and commit, a gated ``sync pair`` continued with
-``--run``, doctor's process checks and the backup's plan.
+Over a fake process table raising what psutil raises: the scan, both probes, a
+gated ``sync pair`` continued with ``--run``, doctor and the backup's plan.
 """
 
 from __future__ import annotations
@@ -426,9 +424,7 @@ def _answered(w) -> str:
 def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
     world, cfg, monkeypatch, table, dying_binding
 ):
-    """End to end: both gates answered, the write meets the scan, the run is
-    kept with both answers, and ``--run`` writes both sides once the process
-    has died, with no gate asked again."""
+    """Both gates answered, the run kept, and ``--run`` writes both sides once it has died."""
     w = world(account=("1", "2"), rekordbox=("2", "3"))
     assert sync_both(w.args())[0] == int(ExitCode.OK)
     before = pairs.PairStore(cfg).get(ACCOUNT)
