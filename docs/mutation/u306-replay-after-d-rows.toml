@@ -1855,7 +1855,7 @@ source = { table = "u244.json", id = "M06_gone_release_passed_over" }
 description = "DiscogsAsker._read: hold a gone release as unreachable instead of passing it over"
 file = "src/cratekit/tagging/discogs.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/tagging/discogs.py, was in src/cratekit/tagging/searchers.py"
+moved = "DiscogsAsker's release walk moved whole from tagging/searchers.py to tagging/discogs.py (U306); the test that killed it, test_a_gone_release_is_passed_over, was folded into test_a_release_is_taken_only_when_a_track_and_its_artist_match in the same file, and its only gone assertion is now that test's only gone case, the same 404 page and the same miss"
 tests = ["tests/test_discogs_searcher.py"]
 old = '        if release and page.status in _GONE_STATUSES:'
 new = '        if False:'
@@ -1902,7 +1902,7 @@ source = { table = "u244.json", id = "M10_unread_outranks_styleless" }
 description = "DiscogsAsker._search: return a styleless match ahead of a pressing that could not be read, round two's R1"
 file = "src/cratekit/tagging/discogs.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/tagging/discogs.py, was in src/cratekit/tagging/searchers.py"
+moved = "DiscogsAsker's release walk moved whole from tagging/searchers.py to tagging/discogs.py (U306); the test that killed it, test_a_styleless_match_beside_an_unread_pressing_is_unread_not_a_match, is now the styleless beside unread case of test_a_release_is_taken_only_when_a_track_and_its_artist_match in the same file, a styleless release beside a 503 and the same unreachable answer"
 tests = ["tests/test_discogs_searcher.py"]
 old = '''
         if held is not None:
@@ -1953,7 +1953,7 @@ source = { table = "r791-a.json", id = "S10_track_unread_returned" }
 description = "_search_bandcamp: drop the unread track page and answer MISS, the pre R-791 fall through"
 file = "src/cratekit/tagging/shops.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/tagging/shops.py, was in src/cratekit/tagging/searchers.py"
+moved = "the Bandcamp reader moved whole from tagging/searchers.py to tagging/shops.py (U306); the two tests that killed it, the Bandcamp track page behind a challenge and the one that cannot be reached, are now the challenge and outage cases of test_a_bandcamp_track_page_unread_is_not_a_miss in the same file, the same track page replies and the same blocked and unreachable answers"
 tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
 old = '''
     if track_unread is not None:
@@ -2026,7 +2026,7 @@ source = { table = "r791-a.json", id = "S5_challenge_body" }
 description = "_unread: never read Cloudflare's challenge script in the body"
 file = "src/cratekit/tagging/catalogues.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/tagging/catalogues.py, was in src/cratekit/tagging/searchers.py"
+moved = "the challenge check moved whole from tagging/searchers.py to tagging/catalogues.py with the shared matchers (U306); the test that killed it, test_cloudflare_challenge_machinery_in_the_body_blocks_whatever_the_title_says, is now the challenge script case of test_a_fallbacks_refusal_is_blocked_and_its_outage_unreachable in the same file, Cloudflare's interstitial retitled on a 200 from Traxsource and the same blocked answer"
 tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
 old = '    if _CHALLENGE_BODY.search(page.text):'
 new = '    if False:'
