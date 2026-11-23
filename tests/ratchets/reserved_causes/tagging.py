@@ -254,6 +254,14 @@ LITERAL_HOLDERS = {
         'tag-retag-folder-unknown',
     ],
     'tagging/rows.py': ['decision-stale', 'internal-error', 'whitelist-violation'],
+    # 2026-11-23, U340: tag second's refusals.
+    'tagging/second.py': [
+        'tag-second-genre-undeclared',
+        'tag-second-no-rows',
+        'tag-second-playlist-unknown',
+        'tag-second-rows-unreadable',
+    ],
+    'tagging/second_cli.py': ['tag-second-unwritten', 'tag-second-usage'],
     # 2026-11-22, U306: searchers split by source; the literals moved with their code.
     'tagging/catalogues.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
     # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.

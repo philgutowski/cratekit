@@ -92,7 +92,9 @@ def _shown(named: dict[str, str], key: str, place: str) -> None:
     A column holds two places only for a track filed into a second genre's
     folder too (U340), so the gate names both rather than the last written.
     """
-    named[key] = f"{named[key]}; {place}" if named.get(key) and named[key] != place else place
+    held = named.get(key, "")
+    if place not in held.split("; "):
+        named[key] = f"{held}; {place}" if held else place
 
 
 def _placed_counts(tracks: list[dict[str, str]]) -> dict[str, int]:

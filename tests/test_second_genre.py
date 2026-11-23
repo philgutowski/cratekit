@@ -394,3 +394,12 @@ def test_the_write_reads_back_the_second_genre_and_leaves_a_one_genre_file_as_be
     one = mirror_edits.Change("1", "t", "move", "t", str(path), DEEP, DEEP, 9, 5)
     assert mirror_edits._write_tags(one) and tags.read_energy_from_file(path) == 5
     assert "second genre" not in one.item() and len(one.identity()) == 9
+
+
+def test_a_route_gate_column_names_both_folders_rather_than_the_last():
+    from cratekit.write import routing_export
+
+    named: dict[str, str] = {}
+    for place in ("Deep House/High", "Tech House/High", "Tech House/High"):
+        routing_export._shown(named, "k", place)
+    assert named == {"k": "Deep House/High; Tech House/High"}
