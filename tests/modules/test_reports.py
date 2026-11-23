@@ -11,6 +11,7 @@ an import allowlist and a filesystem mutation rule.
 from __future__ import annotations
 
 import ast
+import functools
 import hashlib
 import os
 import re
@@ -1347,18 +1348,23 @@ _SCOPES = (
 )
 
 
-def _memoized_on_node(walk):
-    """Keep a walk's answer on its node; no tree is mutated after it is parsed."""
-    key = f"_cached_{walk.__name__}"
+def _kept_on_node(read):
+    """Keep a read's answer on its node; no tree is mutated after it is parsed."""
+    key = f"_cached_{read.__name__}"
 
-    def cached(node: ast.AST) -> tuple[ast.AST, ...]:
+    def cached(node: ast.AST):
         found = node.__dict__.get(key)
         if found is None:
-            found = tuple(walk(node))
+            found = read(node)
             setattr(node, key, found)
         return found
 
     return cached
+
+
+def _memoized_on_node(walk):
+    """A walk's nodes as a tuple, kept on the node it was asked of."""
+    return _kept_on_node(functools.wraps(walk)(lambda node: tuple(walk(node))))
 
 
 def _walk_scope(node: ast.AST):
@@ -1398,6 +1404,7 @@ _BRANCHING = (
 )
 
 
+@_kept_on_node
 def _branched(scope: ast.AST) -> frozenset[int]:
     """Every statement in one scope a single run can skip, by node identity."""
     found: set[int] = set()
@@ -1506,6 +1513,7 @@ def _rebound_to_itself(node: ast.AST, instance: _Instance = _Instance()) -> froz
     )
 
 
+@_kept_on_node
 def _names_taken(node: ast.AST) -> frozenset[str]:
     """Every bare name one scope binds to something of its OWN."""
     taken = set(_defined_here(node))
@@ -2476,6 +2484,7 @@ RESIDUAL_FINDINGS_NAME = "docs/residual-findings.md"
 RESIDUAL_ARCHIVES_NAME = "docs/ledger/"
 
 
+@functools.cache
 def _residual_document_text() -> str:
     """The residual document as one text, its archives first, in number order."""
     archives = sorted((REPO_ROOT / RESIDUAL_ARCHIVES_NAME).glob("*.md"))
@@ -2509,8 +2518,9 @@ CITED_FLOOR = (
 UNIT_COMMIT_TAG = "(U34)"
 
 
+@functools.cache
 def _git(*argv: str) -> str:
-    """One git read, from the repository root, for the derivations below."""
+    """One git read, from the repository root, read once per run."""
     return subprocess.run(
         ["git", *argv], cwd=REPO_ROOT, capture_output=True, text=True, check=True
     ).stdout
