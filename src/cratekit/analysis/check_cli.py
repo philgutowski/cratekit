@@ -183,8 +183,8 @@ def checks_of(found: rc.Check) -> list[dict[str, Any]]:
         # adopt stamps rekordbox's (U342), so the line names the verb for them too.
         agreement += (
             f"; {len(headless)} title(s) rekordbox keyed carry no head, and {ADOPT_VERB} "
-            f"plans each one built from rekordbox's key and tempo: "
-            + _named(list(headless), _title)
+            f"gives each it can one built from rekordbox's key and tempo, naming any "
+            f"it leaves: " + _named(list(headless), _title)
         )
     checks.append(
         _check("check.key_agreement", "info" if differing or headless else "ok", agreement)

@@ -670,7 +670,8 @@ def _write_or_refuse(path: Path, fields: dict[str, Any], *, untouched: str) -> N
 def _untitled(cfg: config.Config, path: Path) -> str | None:
     """The title a file with no title tag is given, or None for a file that has one.
 
-    The naming engine's title for the file with no head, its stem, so the title
+    The naming engine's title for the file with no head: its stem, a lossy
+    marker in it set before it as R21 marks a lossy title, so the title
     the landing lands and the file's title tag are one, the equality ``analyze
     adopt`` asks of a bare title before it stamps one (review round one): a run
     before U343 gave every file a title in its headed write.

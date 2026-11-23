@@ -1124,7 +1124,7 @@ def test_the_check_names_adopt_for_the_bare_titles_a_landing_since_u343_leaves(
     assert line["status"] == "info"
     assert (
         f"; {len(BARE)} title(s) rekordbox keyed carry no head, and {check_cli.ADOPT_VERB} "
-        f"plans each one built from rekordbox's key and tempo: "
+        f"gives each it can one built from rekordbox's key and tempo, naming any it leaves: "
     ) in line["detail"]
     for title in BARE.values():
         assert title in line["detail"], title

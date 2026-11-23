@@ -2848,3 +2848,25 @@ def test_a_restamp_over_a_title_analyze_adopt_corrected_brings_no_head_or_key_ba
         "initialkey": "09A",
     }
     assert [path.name for path in folder.iterdir()] == ["01A - 124 - Golf.flac"]
+
+
+@pytest.mark.parametrize(
+    ("stem", "fields", "title"),
+    [
+        pytest.param("Ada - Plain", {}, "Ada - Plain", id="untitled-the-stem"),
+        pytest.param(
+            "Ada - Body [MP3]", {}, "[MP3] Ada - Body [MP3]", id="untitled-lossy-marked-first"
+        ),
+        pytest.param("Ada - Kept", {"title": "Kept"}, "Kept", id="a-title-kept"),
+    ],
+)
+def test_the_run_titles_only_a_file_with_no_title_and_never_with_a_head(
+    cfg, folder, silence, monkeypatch, stem, fields, title
+):
+    """U343 review rounds one and two: the naming engine's title with no head, R21's
+    marker set first for a lossy stem, so the landing's title and the tag are one."""
+    path = place(folder, silence, stem, **fields)
+    bind_scoring(monkeypatch)
+    resumed_ok(queued("run", folder))
+    assert tags.read_tag(path, "title") == title
+    assert tags.read_tag(path, "initialkey") is None

@@ -1564,7 +1564,8 @@ crate metadata mytags-vocals [--apply]
   (`drift` reads `steady`, `variable` or `unknown`; `driftlevel` is the
   spread), and the mark `analyzed` (`TXXX:CratekitAnalyzed`, its MP4 and
   Vorbis twins) in the same write, with a file's stem as its title tag only
-  when it has none, the title the landing lands and `analyze adopt` stamps.
+  when it has none (the lossy marker set before it when the stem carries
+  one), the title the landing lands and `analyze adopt` stamps.
   Since U343 it measures no key and writes no head and no `initialkey`, and
   renames nothing: the key and
   the head come only from rekordbox, after the visit, through `analyze

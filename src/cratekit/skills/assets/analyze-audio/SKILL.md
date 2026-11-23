@@ -17,7 +17,7 @@ a person has to rediscover.
 A pass reads one file and returns a measured tempo, how far it drifts, an energy
 level and the vocal scores, and writes the drift, the energy and the vocals to
 the file's tags with a mark saying the pass measured it, and its stem as the
-title tag of a file that has none. It measures no key and
+title tag of a file that has none, a lossy marker in the stem set before it. It measures no key and
 writes no head and no name: the key and the tempo a DJ reads in the head come
 from rekordbox's own analysis after the visit, given to the title by `crate
 analyze adopt`. The tempo is measured for the drift, which marks a track whose
