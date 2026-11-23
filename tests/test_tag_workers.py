@@ -387,6 +387,22 @@ def bound(monkeypatch, searcher):
     return searcher
 
 
+def shipped_over(monkeypatch, fetch, *, token) -> None:
+    """Bind the shipped searcher per call over ``fetch``, Discogs holding ``token``.
+
+    The general catalogue fails any request, as :func:`bound` leaves it.
+    """
+    asker = searchers.discogs_asker(token=token, fetch=fetch, sleep=lambda _s: None)
+    monkeypatch.setattr(
+        searchers,
+        "for_taxonomy",
+        lambda declared=None, refusals=None: searchers.catalogue_searcher(
+            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
+        ),
+    )
+    general(monkeypatch, None)
+
+
 def general(monkeypatch, track, album=None, seen: list[str] | None = None):
     """Bind the general catalogue's lookup, which ``published.for_taxonomy`` reads at call time."""
     lookup = published.genre_lookup(
@@ -473,9 +489,10 @@ def item_causes(job_id: str) -> dict[str, str]:
 # The binding
 
 
-def test_the_tag_folder_key_resolves_to_a_worker():
+@pytest.mark.parametrize("verb", ["tag.folder", "tag.retag"])
+def test_the_tagging_key_resolves_to_a_worker(verb):
     """R-203: only an assertion naming this key tells unbound from bound."""
-    key = registry.entry("tag.folder").handler_key
+    key = registry.entry(verb).handler_key
 
     assert handlers.is_known(key), f"{key} still has no worker"
     assert handlers.unbound_reason(key) is None
@@ -879,15 +896,7 @@ def test_a_resumed_run_asks_a_refusing_beatport_again_from_its_first_file(
             return BEATPORT_CHALLENGE
         return searchers.Fetched(text=results(), status=200)
 
-    asker = searchers.discogs_asker(token=None, fetch=fetch, sleep=lambda _s: None)
-    monkeypatch.setattr(
-        searchers,
-        "for_taxonomy",
-        lambda declared=None, refusals=None: searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        ),
-    )
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=None)
 
     drive(["tag", "folder", "--queue-only", str(folder)])
     job = tag_job()
@@ -918,15 +927,7 @@ def test_a_discogs_refusal_remembered_for_the_run_is_not_counted_as_a_search_sen
 
     from tests.test_discogs_searcher import SENT
 
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-    monkeypatch.setattr(
-        searchers,
-        "for_taxonomy",
-        lambda declared=None, refusals=None: searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        ),
-    )
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=SENT)
 
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
@@ -980,15 +981,7 @@ def test_an_outage_keeps_its_own_word_in_the_sweeps_warning(cfg, folder, silence
             return searchers.Fetched(note="HTTP 503", status=503)
         return searchers.Fetched(text=results(), status=200)
 
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-    monkeypatch.setattr(
-        searchers,
-        "for_taxonomy",
-        lambda declared=None, refusals=None: searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        ),
-    )
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=SENT)
 
     drive(["tag", "folder", "--queue-only", str(folder)])
     code, resumed = drive(resume_argv(tag_job().job_id))
@@ -1548,15 +1541,7 @@ def test_the_sweeps_unread_warning_names_discogs_first(cfg, folder, silence, mon
             return searchers.Fetched(note="timed out")
         return searchers.Fetched(text=results(), status=200)
 
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-    monkeypatch.setattr(
-        searchers,
-        "for_taxonomy",
-        lambda declared=None, refusals=None: searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        ),
-    )
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=SENT)
 
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
@@ -1584,15 +1569,7 @@ def test_a_token_discogs_refuses_is_warned_about_even_when_beatport_settles_ever
         beatport=beatport_page([beatport_track(ARTIST, TITLE, BUCKET_GENRE)]),
         seen=seen,
     )
-    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
-    monkeypatch.setattr(
-        searchers,
-        "for_taxonomy",
-        lambda declared=None, refusals=None: searchers.catalogue_searcher(
-            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
-        ),
-    )
-    general(monkeypatch, None)
+    shipped_over(monkeypatch, fetch, token=SENT)
 
     job, code, resumed = swept(folder)
     assert code == int(ExitCode.OK), resumed
@@ -1950,15 +1927,6 @@ def retag_reports(cfg: config.Config, job_id: str) -> dict:
 
 
 # The binding
-
-
-def test_the_tag_retag_key_resolves_to_a_worker():
-    """R-203: only an assertion naming this key tells unbound from bound."""
-    key = registry.entry("tag.retag").handler_key
-
-    assert handlers.is_known(key), f"{key} still has no worker"
-    assert handlers.unbound_reason(key) is None
-    assert callable(handlers.resolve(key))
 
 
 # The happy path

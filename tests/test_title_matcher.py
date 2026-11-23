@@ -112,9 +112,7 @@ SAME = [
     ("Summer 1999 (Original Mix)", "Summer 1999"),
 ]
 
-#: SAME pairs whose file names a mix its row does not write: the shared
-#: matcher reads them as one recording, and Discogs, since U318, takes no
-#: release on them, since a named mix is not its plain title.
+#: SAME pairs whose file names a mix its row lacks: Discogs takes no release on them (U318).
 NAMED_MIX_UNWRITTEN = [("Sunrise Mood (Mike's (Dub) Mix)", "Sunrise Mood")]
 
 #: (searched, found) pairs that name different recordings and must not match.
@@ -173,10 +171,8 @@ DIFFERENT = [
     ("Summer 1999 Club Mix", "Summer 2000 Club Mix"),
 ]
 
-#: (file title, catalogue row) pairs that name the same recording, read one way
-#: round: the file's title carries a head before a dash, the ``KEY - BPM - ``
-#: the live library writes into the title tag or the "Artist - Title" stem of a
-#: file with no title tag, and a catalogue row never does.
+#: (file title, catalogue row) pairs naming one recording, read one way round: the
+#: file's head before a dash (``KEY - BPM - `` or "Artist - Title") no row carries.
 HEADED = [
     ("04A - 126 - Burning (Extended Mix)", "Burning"),
     ("04A - 126 - Burning (Extended Mix)", "Burning (Original Mix)"),
@@ -195,10 +191,8 @@ HEADED = [
     ("08A - 124 - 909", "909 (Original Mix)"),
 ]
 
-#: (file title, catalogue row) pairs that name different recordings, read one
-#: way round: what the file's head is, a key, a tempo or an artist's name, is
-#: never its title, and a row that is the artist's name and another title is
-#: never the file's.
+#: (file title, catalogue row) pairs naming different recordings, read one way round:
+#: the file's head is never its title, nor is the artist's name and another title.
 HEADED_NOT = [
     ("04A - 126 - Burning (Extended Mix)", "126"),
     ("04A - 126 - Burning (Extended Mix)", "04A"),
@@ -538,8 +532,7 @@ def test_a_file_titled_in_brackets_still_takes_its_own_tracks_genre(tmp_path, si
     assert tags.read_genre_from_file(path) == BUCKET_GENRE
 
 
-#: (file title, another recording by the artist) pairs R-1631 drove to a wrong
-#: genre written through ``tag_one``.
+#: (file title, another recording by the artist) pairs R-1631 drove to a wrong genre.
 R1631_WRITES = [
     ("Knee (Not Just) Deep (Part 1)", "Knee Slapper"),
     (f"{OTHER} (Intro)", "Intro"),
@@ -632,12 +625,9 @@ def test_a_file_whose_title_tag_carries_its_head_still_takes_its_own_genre(
 
 # F. R-1636: a dash part of the file's title that is not its title
 
-#: (file title, another recording by the artist) pairs in which the file's
-#: title was read from a dash part that is not its title: a version tail with a
-#: word the version list lacks ("vocal"), the album of an untagged "KEY - BPM -
-#: Title - Artist - Album" name, or the artist of a "KEY - BPM - Artist -
-#: Title" name. R-1631's review drove the first two shapes to a wrong genre
-#: through ``tag_one``.
+#: (file title, another recording by the artist) pairs read from a dash part that is
+#: not the title: a version tail the list lacks ("vocal"), an untagged name's album,
+#: or the artist of a "KEY - BPM - Artist - Title" name.
 NOT_THE_TITLE = [
     ("08A - 124 - Other Song - Vocal Mix", "Vocal Mix"),
     ("08A - 124 - Other Song - Vocal Mix", "Vocal"),
@@ -654,9 +644,7 @@ NOT_THE_TITLE = [
     (f"{ARTIST} - Sun Path - 02 Tide", "Sun Path"),
 ]
 
-#: (file title, its own row) pairs the same rule must keep: the title after the
-#: head, after the artist's part, before a version, an artist or an album, a
-#: self titled record, and the track numbered title of an untagged name.
+#: (file title, its own row) pairs the same rule keeps.
 OWN_TITLE = [
     (f"08A - 124 - Tide - {ARTIST} - Sun Path", "Tide"),
     (f"08A - 124 - Tide - {ARTIST} - Sun Path", "Tide (Extended Mix)"),
@@ -719,9 +707,7 @@ def _file(tmp_path: Path, silence: Path, name: str, wanted: dict[str, str]) -> P
     return path
 
 
-#: The genre the file's own row gives when both catalogues carry it. Discogs
-#: is asked first since U282, so its release, styled Nu-Disco by the fixture,
-#: is the row that decides; Beatport's genre was this before.
+#: The genre the file's own row gives; Discogs is asked first since U282, styled Nu-Disco.
 OWN_ROWS_GENRE = routing.suggest_tag(TAXONOMY, "Nu-Disco", source=searchers.DISCOGS).tag
 
 
@@ -788,11 +774,8 @@ def test_an_untagged_file_still_takes_its_own_rows_genre_by_its_name(tmp_path, s
 
 # G. R-1636, review round one: the artist's part as a name writes it
 
-#: (artist tag, file title, its own row): the artist's part of the title is
-#: the tag's artist written as a name writes it, a collaboration, "The", an
-#: accent, the naming verb's "[MP3]" marker, a track number before it, or a
-#: track number written as its own part. Each found its own row on main and
-#: lost it at round one's head.
+#: (artist tag, file title, its own row): the artist's part written as a name writes
+#: it; each found its own row on main and lost it at round one's head.
 ARTIST_AS_WRITTEN = [
     (ARTIST, f"08A - 124 - [MP3] {ARTIST} - Sun Path", "Sun Path"),
     (ARTIST, f"08A - 124 - {ARTIST} & Tide - Sun Path", "Sun Path"),
@@ -893,8 +876,7 @@ def test_each_rule_of_the_title_start_holds(artist, title, own, other):
     assert not searchers._title_matches(title, other, artist=artist)
 
 
-# H. R-1636, review round two: a title holding the artist's name, and where
-#    the both ways reading stops
+# H. R-1636, review round two: a title holding the artist's name, and both ways' end
 
 #: (artist tag, file title, its own row, another recording by the artist).
 ROUND_TWO = [
@@ -992,13 +974,9 @@ def test_what_is_not_the_artists_credit_is_never_passed_over(artist, title, othe
 
 # I. R-1646: "Artist - X" with X ending in a version is read neither way alone
 
-#: (file title, a row) pairs in the card's shape: the searched artist's part,
-#: then a part ending in a version word. The name is a title X by the artist,
-#: or the artist's self titled track in its version X, and only a list of
-#: version words could say which ("vocal" is a version, "sunrise mood" a
-#: title), so a row that reads one way only is a miss. Since R-1636 both were
-#: read, and a "Vocal" row, a Discogs "Vocal Mix" track, or a self titled row
-#: wrote its genre.
+#: (file title, a row) pairs in the card's shape: the artist's part, then a part
+#: ending in a version word, which only a list could read as a title X or the self
+#: titled track in version X, so a row reading one way only is a miss.
 SPLIT_UNCONFIRMED = [
     (f"08A - 124 - {ARTIST} - Vocal Mix", "Vocal"),
     (f"08A - 124 - {ARTIST} - Vocal Mix", "Vocal Mix"),
@@ -1019,9 +997,7 @@ SPLIT_UNCONFIRMED = [
     (f"[MP3] {ARTIST} - Vocal Dub", "Vocal"),
 ]
 
-#: (file title, a row) pairs in the same shape where the row writes the same
-#: split itself, its title and its version apart: the catalogue, never a
-#: list, says which reading holds.
+#: The same shape where the row writes the split itself, so the catalogue says which.
 SPLIT_CONFIRMED = [
     (f"08A - 124 - {ARTIST} - Vocal Mix", f"{ARTIST} (Vocal Mix)"),
     (f"08A - 124 - {ARTIST} - Vocal Mix", f"{ARTIST} - Vocal Mix"),
@@ -1036,8 +1012,7 @@ SPLIT_CONFIRMED = [
     (f"[MP3] {ARTIST} - Vocal Dub", f"{ARTIST} (Vocal Dub)"),
 ]
 
-#: The same artist's part before a part that does not end in a version, or a
-#: version alone, or a version in brackets: one reading only, as before.
+#: One reading only, as before: no version ending, a version alone or in brackets.
 SPLIT_NOT_THE_SHAPE = [
     (f"{ARTIST} - Sunrise Mood (Extended Mix)", "Sunrise Mood", ARTIST),
     (f"{ARTIST} - Sunrise Mood", "Sunrise Mood", ARTIST),
@@ -1116,15 +1091,13 @@ def _split_page(rows: list[tuple[str, str, str]], tracks: list[str], number: int
 @pytest.mark.parametrize(
     ("title", "rows", "tracks"),
     [
-        # The card's first scenario: a Beatport "Vocal" row and a Discogs
-        # "Vocal Mix" track are another recording by the artist.
+        # The card's first scenario: a "Vocal" row and a "Vocal Mix" track are another recording.
         (f"08A - 124 - {ARTIST} - Vocal Mix", [("Vocal", "Original Mix", BUCKET_GENRE)], ["Vocal Mix"]),
         (f"08A - 124 - {ARTIST} - Vocal Mix", [("Vocal", "", BUCKET_GENRE)], ["Vocal"]),
         # The second: a self titled row is another recording.
         (f"{ARTIST} - Sunrise Mood Extended Mix", [(ARTIST, "Original Mix", BUCKET_GENRE)], [ARTIST]),
         (f"{ARTIST} - Sunrise Mood Extended Mix", [(ARTIST, "Extended Mix", BUCKET_GENRE)], [f"{ARTIST} (Extended Mix)"]),
-        # The recorded cost: the self titled track's own row under another
-        # mix reads one way only, so it is a miss rather than a guess.
+        # The recorded cost: the own row under another mix is a miss rather than a guess.
         (f"08A - 124 - {ARTIST} - Vocal Mix", [(ARTIST, "Extended Mix", BUCKET_GENRE)], [ARTIST]),
     ],
 )
@@ -1194,12 +1167,10 @@ def test_an_untagged_file_in_the_shape_writes_no_genre_off_a_row_that_reads_it_o
     assert tags.read_genre_from_file(path) is None
 
 
-# J. R-1646, review round one: the whole title never collapses onto the
-#    artist's part, and the split guards each hold
+# J. R-1646, review round one: the whole title never collapses onto the artist's part
 
-#: (file title, the self titled row it must not match): a feature credit in
-#: the artist's part cut the whole title reading down to the artist's name
-#: (round one's B1), in the card's shape and, as on main, outside it.
+#: (file title, the self titled row it must not match): a feature credit cut the
+#: whole title to the artist's name (round one's B1), in the card's shape and out.
 FEATURED_ARTIST = [
     f"{ARTIST} feat. Tide - Sunrise Mood Extended Mix",
     f"{ARTIST} ft. Tide - Sunrise Mood Extended Mix",
@@ -1283,8 +1254,7 @@ def test_a_track_numbered_title_after_a_version_ending_album_is_still_the_title(
     assert not _matches(title, "Summer")
 
 
-# K. R-1646, review round two: only the artist's own name before a feature
-#    credit keeps the whole name unshed
+# K. R-1646, review round two: only the artist's own name before a feature keeps it whole
 
 
 @pytest.mark.parametrize(
@@ -1339,9 +1309,8 @@ def test_a_bracketed_title_before_a_feature_is_read_without_the_credit(title, ow
 
 # L. U280: a title read once into typed parts, ambiguity an outcome
 
-#: (artist tag, file title, each part's role, the outcome): the parse says what
-#: each dash part is, and a name only a list of version words could read is
-#: ambiguous rather than read both ways.
+#: (artist tag, file title, each part's role, the outcome): a name only a version
+#: list could read is ambiguous.
 PARSED = [
     (ARTIST, "08A - 124 - Sunrise Mood", "head head title", "titled"),
     (ARTIST, f"08A - 124 - {ARTIST} - Sun Path - Original Mix", "head head credit title after", "titled"),
@@ -1354,8 +1323,7 @@ PARSED = [
     (ARTIST, f"Tide - {ARTIST} - Sun Path", "title credit after", "titled"),
     (ARTIST, f"{ARTIST} - Vocal Mix", "credit title", "ambiguous"),
     (ARTIST, f"08A - 124 - {ARTIST} - Sunrise Mood Extended Mix", "head head credit title", "ambiguous"),
-    # R-1651: a feature credit after the version, and two parts crediting
-    # the artist before it, hide the shape no longer.
+    # R-1651: a feature after the version, and two credits before it, hide the shape no longer.
     (ARTIST, f"{ARTIST} - Vocal Mix feat. Tide", "credit title", "ambiguous"),
     (f"{ARTIST} & Tide", f"{ARTIST} - Tide - Sunrise Mood Extended Mix", "credit credit title", "ambiguous"),
     (ARTIST, "()", "", "unreadable"),
@@ -1396,10 +1364,8 @@ def test_a_titled_name_says_where_each_title_it_reads_comes_from():
     assert all(why.startswith("parts ") for why in read.why)
 
 
-#: (artist tag, file title, a row only one reading of the name fits, a row
-#: writing the same split): R-1651's first two shapes, which main read one
-#: way, are ambiguous now, so the row that reads them one way writes nothing
-#: and the row writing the split still does.
+#: (artist tag, file title, a row one reading fits, a row writing the split): R-1651's
+#: first two shapes are ambiguous now, so only the split row writes.
 R1651 = [
     (ARTIST, f"{ARTIST} - Vocal Mix feat. Tide", "Vocal", f"{ARTIST} (Vocal Mix)"),
     (ARTIST, f"08A - 124 - {ARTIST} - Vocal Mix feat. Tide", "Vocal Mix", f"{ARTIST} (Vocal Mix feat. Tide)"),
@@ -1440,9 +1406,8 @@ def test_every_ambiguous_shape_writes_no_genre_off_a_row_that_reads_it_one_way(
 
 # The property: names the naming verb renders find their own row and no other.
 
-#: Titles no two of which a catalogue could take for one recording, none a
-#: version word, a head or an artist's name, and one of bracket groups alone
-#: (review round one's F6).
+#: Titles no catalogue could take for one recording, none a version word, head or
+#: artist, one of bracket groups alone (review round one's F6).
 GENERATED_TITLES = (
     "Sunrise Mood",
     "Glass Hour",
@@ -1537,35 +1502,28 @@ def test_every_name_the_naming_verb_renders_finds_its_own_row_and_no_other(monke
 
 
 #: (artist tag, file title, a row): a whole name is read as written, never shed
-#: across its dashes, so a feature credit cut from it never leaves the
-#: artist's name alone (R-1646 round one's class, here in a name of two
-#: credits), and what main found only that way is read by the parse instead.
+#: across its dashes, so a cut feature never leaves the artist alone (R-1646).
 WHOLE_NAME_NOT = [
     (f"{ARTIST} & Tide", f"{ARTIST} feat. Someone - Tide - Vocal Mix", ARTIST),
     (f"{ARTIST} & Tide", f"{ARTIST} - Tide feat. Someone - Sunrise Mood Extended Mix", ARTIST),
     (ARTIST, "08A - 124 - Interlude", "08A - 124 - (Intro)"),
     # A tempo is a title only before nothing but a version.
     (ARTIST, "124 - Dub - Sunrise Mood", "124"),
-    # Review round one: a track number read past the marker across a dash
-    # (F1), and a bracket group shed across a dash (F2), each left the
-    # artist's name alone.
+    # Review round one: a track number past the marker across a dash (F1) and a bracket
+    # group shed across a dash (F2) each left the artist's name alone.
     (ARTIST, f"[MP3] 01 - {ARTIST} - (Intro)", ARTIST),
     (ARTIST, f"[MP3] 01 - {ARTIST} - Vocal (Live)", ARTIST),
     (ARTIST, f"{ARTIST} - (Intro)", ARTIST),
     (ARTIST, f"{ARTIST} - (Intro) (Live)", ARTIST),
     (ARTIST, f"01A - 150 - (Intro) - {ARTIST} - Night Shapes", ARTIST),
-    # And the first part naming the artist only as featured is read as a
-    # title only where main read it, with no head before it (F3).
+    # A first part naming the artist only as featured is a title only with no head (F3).
     ("Tide", f"08A - 124 - {ARTIST} feat. Tide - Sunrise Mood", ARTIST),
-    # Review round two: a number of three figures before brackets is the
-    # title's own, never a track number read past.
+    # Review round two: three figures before brackets are the title's own.
     (ARTIST, "007 (Intro)", "Intro"),
     (ARTIST, "010 (Intro)", "(Intro)"),
     (ARTIST, f"08A - 124 - {ARTIST} - 007 (Intro)", "Intro"),
-    # The mutation table's zeros, pinned: a track number past the marker is
-    # its first part's own (M29), and a square group is read past only where
-    # the naming verb writes its marker, so two leading groups never meet on
-    # what is left (M06).
+    # The mutation table's zeros: a number past the marker is its part's own (M29), and
+    # a square group is read past only where the naming verb writes its marker (M06).
     (ARTIST, "[MP3] 01 - Original Mix", "Original Mix"),
     (ARTIST, f"{ARTIST} - [Love] Is The Message", "(Hate) Is The Message"),
 ]
@@ -1580,8 +1538,7 @@ WHOLE_NAME_STILL = [
     (ARTIST, "[MP3] 01 Sunrise Mood", "Sunrise Mood"),
     (ARTIST, f"{ARTIST} - (Intro)", "Intro"),
     (ARTIST, f"[MP3] 01 - {ARTIST} - (Intro)", "(Intro)"),
-    # A part naming the artist only as featured is no credit among several,
-    # so the name is no ambiguous shape and its title is read (M11).
+    # An artist only featured is no credit among several, so the title is read (M11).
     (f"{ARTIST} & Tide", f"08A - 124 - Sunrise Mood (feat. Tide) - {ARTIST} - Vocal Mix", "Sunrise Mood"),
 ]
 
@@ -1621,13 +1578,10 @@ def test_what_the_whole_name_found_the_parse_still_reads(artist, title, row):
 
 # U324. A credit spelled with a letter accent stripping leaves alone
 
-#: (artist tag, file title, the credit as a row would write it, the title a
-#: catalogue is asked): the artist's part is the tag's artist spelled with a
-#: letter NFKD leaves whole, "ø", "æ", "ß", "ł" or "þ", written plain on one
-#: side, as "Âme" and "Ame" always were; and an initial the fold spells with
-#: two letters, "Þ." of "Þórður" or "Æ." of "Æsop", still stands for the
-#: word it opens. The question reads past a part that is the artist's name
-#: alone, as on main, never past a collaboration or an initial.
+#: (artist tag, file title, the credit as a row writes it, the title asked): the
+#: tag's artist spelled with a letter NFKD leaves whole, written plain on one side,
+#: and an initial the fold spells with two letters still stands for its word. The
+#: question reads past the artist's name alone, never a collaboration or an initial.
 FOLDED_CREDITS = (
     ("Trentemøller", "08A - 124 - Trentemoller - Sun Path", "Trentemoller", "Sun Path"),
     ("Trentemoller", "08A - 124 - Trentemøller - Sun Path", "Trentemøller", "Sun Path"),
@@ -1660,12 +1614,10 @@ def test_a_credit_spelled_with_a_letter_nfkd_leaves_is_the_artists(artist, title
         # "o" is not "oe": a fold reads a letter one way only.
         ("Trentemøller", "08A - 124 - Trentemoeller - Sun Path", "Sun Path"),
         ("Straße Bloom", "08A - 124 - Strase Bloom - Sun Path", "Sun Path"),
-        # An initial stands only for a word it opens: "Æ." is no initial of
-        # "Þórður", nor "C." of "Bernard" (the mutation table's F20).
+        # An initial stands only for a word it opens (the mutation table's F20).
         ("Þórður Badie", "08A - 124 - Æ. Badie - Sun Path", "Sun Path"),
         ("Bernard Badie", "08A - 124 - C. Badie - Sun Path", "Sun Path"),
-        # A word outside the table that folds to two letters is no initial,
-        # as on main: only the table's letters are read as written.
+        # A word outside the table folding to two letters is no initial, as on main.
         ("Ijsbrand Badie", "08A - 124 - Ĳ. Badie - Sun Path", "Sun Path"),
         # A title holding the folded name is still a title.
         ("Trentemøller", "08A - 124 - Trentemoller Theme - Sun Path", "Sun Path"),
