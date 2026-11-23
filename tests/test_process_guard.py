@@ -68,11 +68,13 @@ def test_no_module_hardcodes_a_rekordbox_process_name_outside_the_one_list():
     Scoped to comparisons and collection literals so it does not fire on prose,
     on config keys, or on the many legitimate uses of the word (seam decision
     P7: a guard that fires on correct code gets routed around). ``core.processes``
-    is exempt because defining them is precisely its purpose, and
-    ``core.rb_writer`` is exempt only for its probe table, which is keyed by
-    those names by construction and is pinned by the coverage test below.
+    is exempt because defining them is precisely its purpose, and nothing else
+    is. ``core/rb_writer.py`` was exempt for its probe table until U300 moved the
+    table to ``core/rb_probes.py``, a part the exemption never named, as a
+    mapping this scan does not flag; the stale exemption is gone (R-1890), so
+    the writer and every part it was split into are held to the one rule.
     """
-    exempt = {"core/processes.py", "core/rb_writer.py"}
+    exempt = {"core/processes.py"}
     offenders: list[str] = []
     for path in _module_paths():
         rel = path.relative_to(SRC).as_posix()

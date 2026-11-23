@@ -565,9 +565,11 @@ def test_the_capture_unit_derives_its_source_set_rather_than_listing_it():
 
 def test_the_restore_unit_derives_its_target_set_rather_than_listing_it():
     """A text search only; ``tests/test_restore.py`` drives whether the derivation is used."""
-    import cratekit.core.restore as restore  # noqa: PLC0415
+    # The restore and its parts (R-1890): the replacement moved to
+    # ``restore_perform``, so a suffix typed there is the same regression.
+    from tests._split_modules import source_of  # noqa: PLC0415
 
-    source = Path(restore.__file__).read_text()
+    source = source_of("cratekit.core.restore")
     assert "sidecar_paths" in source or "snapshot_sources" in source, (
         "the restore unit does not resolve its targets through the inventory"
     )

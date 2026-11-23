@@ -238,7 +238,7 @@ anywhere else.
 | `core.session` | `session_holders` (the holder and the library lock), `session_ack` (the backup acknowledgment), `session_volumes` (the volume gates), `session_analysis` (the analysis-file fingerprint) |
 | `core.restore` | `restore_perform`, `restore_retention`, `restore_recovery` |
 
-Three rules keep the split invisible:
+Four rules keep the split invisible:
 
 - **A part reads its module's seams through the module, at call time.** A
   name defined in the module, in another part, or patched on the module by a
@@ -252,6 +252,14 @@ Three rules keep the split invisible:
   one read of the soft-delete marker, `commit_guarded`, the write lock, and
   `CollectionRemoval`, whose two calls `test_sync_removed.py` pins to
   `core/rb_writer.py`.
+- **Every scan that forbids a shape in a split module reads its parts too**
+  (R-1890): such a guard reads the module by way of `tests/_split_modules.py`,
+  which finds the parts by the glob of the module's file name (`rb_*.py`,
+  `session*.py`, `restore*.py`), so a part must be named that way.
+  `tests/test_split_modules.py` fails on a part the glob misses that this
+  table names, that only its module and its parts import by an absolute
+  import, or that holds an accessor in the parts' spelling. The beat grid suite's writer scans are applied to the parts by
+  `tests/test_rb_writer_parts_guard.py`, since that suite is not edited.
 - **A restore part takes `restore`'s write rank** by one line of its own in
   `tests/test_layering.py`, as the ladder provides.
 

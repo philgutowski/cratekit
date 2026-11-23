@@ -2335,3 +2335,117 @@ what the done verdict prints.
 
 **Closes when:** a scenario reaches the done verdict through a fake the
 product itself reads at call time, kept where the reader lives. Ledger only.
+
+---
+
+## R-1899. A relative import of a split module's part passes the night job's and the heard path's import bans
+
+**Found:** at review round one of #952, R-1890, 2026-11-23.
+
+**The mechanism.** `tests/test_sync_night.py` and `tests/test_label_heard.py`
+read imports by their absolute dotted names, and R-1890 widened both bans to
+the parts' names. A relative import is read as its written module, so
+`from ..core import session_holders` appended to `cli/sync_night.py`, and
+`from ..core import rb_nodes` appended to `label/heard_cli.py`, each passed
+(driven by the review). The same was true of `from ..core import session`
+before R-1890. Round two drove the same class in
+`tests/test_split_modules.py`: its import graph drops every import with a
+level, so a part off the convention imported only by `from . import x` in its
+module has no importer and is not derived; with `Kind.UNCONVERGED_TREE` and a
+typed suffix in such a part, 102 tests passed across the restore scans.
+
+**Measured cost.** None today: `src` holds no relative import, measured, though
+the lint selection does not ban one. The night job taking the library lock
+through a relative import of the session would pass the ban written to stop
+it.
+
+**Closes when:** the bans resolve a relative import against the module's
+package (`tests/_source_guards.py` has `_absolute_module` for this), or a lint
+rule bans relative imports in `src`. Ledger only.
+
+---
+
+## R-1900. A split module's part named off the glob, imported from elsewhere and holding no accessor, falls out of every scan
+
+**Found:** at review round one of #952, R-1890, 2026-11-23.
+
+**The mechanism.** `tests/_split_modules.py` finds each split module's parts
+by the glob of its file name, and `tests/test_split_modules.py` fails on a
+part the glob misses when the `docs/DEVELOPING.md` table names it, when only
+its module and its parts import it by an absolute import, or when it holds
+an accessor back to its module in the parts' spelling (a module level
+function returning a name `from cratekit.core import X` bound; round two
+drove `import cratekit.core.restore as r; return r` and an accessor nested
+under `if True:`, both passing). A part named off the convention that some
+other module also imports, or only a relative import reaches, holds no
+accessor in that spelling, and is missing from the table matches none of the three,
+so every scan reading the module through the helper skips it. `rb_tables`
+and `session_analysis` already hold no accessor, so that half is the house's
+shape.
+
+**Measured cost.** None today: all thirteen parts follow the convention and
+the import graph derives exactly the glob's sets. A part breaking the
+`DEVELOPING.md` rule that a part is imported from nowhere else would be needed
+first.
+
+**Closes when:** a part declares its module (a module level marker every part
+carries, held by a test), so the scope no longer rests on naming. Ledger only.
+
+---
+
+## R-1901. The soft delete guard resolves the writer's accessor in one spelling, so a permissive read through any other passes
+
+**Found:** at review round one of #952, R-1890, 2026-11-23.
+
+**The mechanism.** `tests/_source_guards.py` now resolves
+`_writer().SOFT_DELETE_COLUMN` when `_writer` is a function of the same file
+that imports `cratekit.core.rb_writer` and returns the name it bound. The
+review drove other spellings through the beat grid suite's two package wide
+tests and each passed: `getattr(row, _restore().rb_writer.SOFT_DELETE_COLUMN,
+0)` in `restore_perform.py`, the `_session()` twin in `session_ack.py`,
+`getattr(row, getattr(_writer(), "SOFT_DELETE_COLUMN"), 0)`, and
+`writer = writer or _writer()` in `rb_copies.py`; on fixtures an accessor
+reached through `importlib` or `sys.modules`, a lambda, a method, or one
+imported from a sibling part is not recognized either. Round two drove five
+more that return nothing: a module level import returned by `def _writer():
+return rb_writer`, `w = rb_writer; return w`, `return rb_writer if True else
+None`, `from cratekit import core; return core.rb_writer`, and `(w :=
+_writer()).SOFT_DELETE_COLUMN` at the call. And reading an accessor at any
+depth makes an outer function wrapping one, or a method named like a free
+function, read as the writer too: `outer().SOFT_DELETE_COLUMN` fires though
+`outer()` returns `object()`, a false firing on shapes not in the tree (366
+files, five accessors, all module level `_writer`). The fix rounds added the
+dotted return and an accessor at any depth; the rest are named in the guard's
+known limits.
+
+**Measured cost.** None today: every accessor in `src` uses the one recognized
+spelling, and no `_restore().rb_writer` or `_session().rb_writer` exists. A
+part written in one of the other spellings with a falsey default would read
+a removed row as active and pass the guard.
+
+**Closes when:** the guard resolves the writer by value rather than by
+spelling (a call whose result is the writer module however reached), or the
+parts' accessors are held to the one spelling by a guard of their own.
+Ledger only: a maintainer facing gap with no producer in the tree.
+
+---
+
+## R-1902. The writer parts guard reads only refusals raised through the two factories, so a part's own refusal route is outside it
+
+**Found:** at review round one of #952, R-1890, 2026-11-23.
+
+**The mechanism.** `tests/test_rb_writer_parts_guard.py` applies the beat grid
+suite's refusal scan to the writer's parts, and like that scan reads calls of
+`_unavailable` and `_running`. A part's `_node_refusal("node-change-unconfined",
+...)` at `rb_nodes.py`, a factory bound to a local name first, and a bare
+`raise Exception(...)` each passed it (driven by the review).
+
+**Measured cost.** None to a person: the population pins in
+`tests/test_reserved_causes.py` failed on the unreserved slug through
+`_node_refusal`, so a wider guard holds that route; the bare exception is the
+same limit the beat grid suite's scan has. The file's docstring now says what
+it reads.
+
+**Closes when:** the writer's refusal scan reads every `CratekitError` a part
+constructs, or the parts are held to raising through the two factories.
+Ledger only.
