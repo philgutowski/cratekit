@@ -58,6 +58,6 @@ zero, but it is the clearer expression of intent and is kept.
 
 Land a file (a new row) in the same commit as a write to an existing content
 row, and assert the commit succeeds and both rows carry their intended values.
-`tests/test_intake_land_owned_hearts_native.py::test_an_owned_heart_beside_a_landed_file_takes_pink_in_the_same_commit`
+`tests/test_intake_land_owned_hearts_native.py::test_an_owned_heart_joins_in_the_same_commit_as_a_downloaded_one`
 is that shape. The guard that fixes it is pinned by the `N1_restamp_id_text`
 mutation, ten deaths.

@@ -26,9 +26,9 @@ is the one path the residual was about, would have ignored the guard.
 ## Why
 
 `intake playlist` does not resolve the `Wanted` the reader built. It freezes
-each track into the job payload with `intake.cli._frozen`, and the worker, in
-another process, resolves the object `thawed` rebuilds. `_frozen` and `thawed`
-name every field by hand. A field neither names is silently reset to the
+each track into the job payload with `intake.cli.frozen`, and the worker, in
+another process, resolves the object `thawed` rebuilds. `frozen`, through its `_FROZEN` field
+tuple, and `thawed` name every field by hand. A field neither names is silently reset to the
 dataclass default on the far side, and the default for a guard like this one is
 the permissive answer. So SUPPRESSED would have been decided from a track that
 had forgotten its second artist.
@@ -45,7 +45,7 @@ already taken the credits off, so "no credit in it" meant nobody looked.
 
 ## The rule
 
-- A new `Wanted` field goes into `_frozen` and `thawed` in the same commit, with
+- A new `Wanted` field goes into `_FROZEN` and `thawed` in the same commit, with
   a test that round trips it through `intake_cli.frozen` and `intake_cli.thawed`
   and asserts the BEHAVIOUR on the far side, not the key.
 - In `thawed`, a payload that lacks the field was frozen by a build that never
@@ -58,7 +58,7 @@ already taken the credits off, so "no credit in it" meant nobody looked.
 
 ## Where to look
 
-`src/cratekit/intake/cli.py` `_frozen` and `thawed`,
+`src/cratekit/intake/cli.py` `frozen`, `_FROZEN` and `thawed`,
 `src/cratekit/acquire/match_list.py` `Wanted.uncredited_spellings`, and
 `test_a_billed_guest_survives_the_freeze_the_worker_resolves_from` in
 `tests/test_intake_missing.py`. Rows B9 and B10 of `docs/mutation/r431-b.md`

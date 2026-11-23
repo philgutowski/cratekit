@@ -1,0 +1,285 @@
+name = "u307"
+pass_kind = "light"
+
+[[rows]]
+id = "R1_landed_failure_swallowed"
+description = "native.apply_rows: a failure after the commit landed is recorded and then swallowed, so the landing reports success over a failed step"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_land_dyn_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_u135_set_inbox_join.py"]
+old = '''        if failed is not None:
+            raise failed'''
+new = '''        if failed is not None:
+            pass'''
+
+[[rows]]
+id = "R2_landed_failure_unrecorded"
+description = "native.apply_rows: a failure after the commit landed is raised at once without the session record, so a committed landing is left unrecorded"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_land_dyn_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_u135_set_inbox_join.py"]
+old = '''            if not witness.landed:
+                raise'''
+new = '''            raise'''
+
+[[rows]]
+id = "R3_native_getattr_forwards_dunder"
+description = "native.__getattr__: forward a dunder to native_plan too, so the import system's question for __path__ reaches a plan module not yet bound"
+file = "src/cratekit/intake/native.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_inbox_rotate.py", "tests/test_delete_landed_removed.py"]
+old = '''    if name.startswith("__"):
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(native_plan, name)'''
+new = '''    return getattr(native_plan, name)'''
+
+[[rows]]
+id = "R4_land_cli_getattr_answers_none"
+description = "land_cli.__getattr__: answer None for every native medium name read on the verb's module, so ask_then_write, the warning codes and the analysis step read as nothing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_hearts_native.py", "tests/test_intake_land_owned_hearts_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_native.py", "tests/test_inbox_analyzed.py"]
+old = '''    return getattr(land_native, name)'''
+new = '''    return None'''
+
+[[rows]]
+id = "R5_refuse_past_drops_inner_reason"
+description = "landing.refuse_past: report every failure past the moves as internal-error, so a refusal this product raised loses its reason"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_land_dyn_native.py", "tests/test_intake_writers_native.py"]
+old = '''        inner.reason if inner is not None else "internal-error",'''
+new = '''        "internal-error",'''
+
+[[rows]]
+id = "R6_refuse_past_drops_inner_message"
+description = "landing.refuse_past: leave the inner failure's own sentence out of the message, so a person reads what was left but not what failed"
+file = "src/cratekit/intake/landing.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_land_dyn_native.py", "tests/test_intake_writers_native.py"]
+old = '''        f"{head} ({inner.message if inner is not None else exc}); {tail}",'''
+new = '''        f"{head}; {tail}",'''
+
+[[rows]]
+id = "R7_landing_refuse_drops_origin"
+description = "landing.refuse: the module partial carries no origin, so a landing refusal raised through it names no engine"
+file = "src/cratekit/intake/landing.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land.py", "tests/test_intake_land_native.py", "tests/test_intake_land_names.py"]
+old = '''refuse = partial(cause.refuse, origin=_ORIGIN)'''
+new = '''refuse = partial(cause.refuse, origin=())'''
+
+[[rows]]
+id = "R8_anchored_root_drops_cutover_step"
+description = "rotate.anchored_root: the bridge refusal shared by every INBOX writer no longer names crate tree cutover as its step"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_analyzed.py", "tests/test_inbox_rotate.py", "tests/test_inbox_refill.py"]
+old = '''                f"run crate tree cutover {tree_id} --export with a Fresh Export to "
+                f"move the intake tree to the database",'''
+new = '''                "move the intake tree to the database",'''
+
+[[rows]]
+id = "R9_watched_roots_accepts_empty"
+description = "rotate.watched_roots: accept an empty list of analysis roots, so a write's analysis watch watches nothing and reports itself clean"
+file = "src/cratekit/intake/rotate.py"
+surface = "maintainer"
+tests = ["tests/test_inbox_rotate.py", "tests/test_inbox_refill.py", "tests/test_inbox_analyzed.py"]
+old = '''    watched = [Path(root) for root in analysis_roots]
+    if not watched:'''
+new = '''    watched = [Path(root) for root in analysis_roots]
+    if False:'''
+
+[[rows]]
+id = "R10_refill_writing_watches_nothing"
+description = "refill_cli.writing: hand the write no analysis roots, so refill and analyzed apply with an empty analysis watch"
+file = "src/cratekit/intake/refill_cli.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py", "tests/test_inbox_analyzed.py"]
+old = '''        return apply(db, analysis_store.watch_roots(cfg))'''
+new = '''        return apply(db, ())'''
+
+[[rows]]
+id = "R11_imported_session_ignored"
+description = "imported_cli._considered: ignore --session, so every intake run is considered and an unknown run is not refused"
+file = "src/cratekit/intake/imported_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_export_collection.py"]
+old = '''        if record.workflow != ingest.INTAKE_WORKFLOW or wanted not in (None, record.session_id):'''
+new = '''        if record.workflow != ingest.INTAKE_WORKFLOW:'''
+
+[[rows]]
+id = "R12_summary_head_written_zero"
+description = "missing_cli._summary_head: report written as zero, so the summary says nothing was listed when rows were written"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_staged.py"]
+old = '''    head.update(written=len(written.listed))'''
+new = '''    head.update(written=0)'''
+
+[[rows]]
+id = "R13_named_by_isrc_resolves_unasked"
+description = "missing_cli._named_by_isrc: resolve the catalogue even when no row carries an askable ISRC, so a job with none spends a login"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_screen.py"]
+old = '''    if askable:
+        found = (resolve or _catalogue_once())()'''
+new = '''    if True:
+        found = (resolve or _catalogue_once())()'''
+
+[[rows]]
+id = "R14_search_pages_default_one_page"
+description = "candidates.search_pages: the default bound is one page, not as many as fit under the ceiling, so a full first page refuses the row"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_export_set.py", "tests/test_intake_missing_search.py", "tests/test_acquire_fallback.py"]
+old = '''    bound = SEARCH_CEILING // TRACK_SEARCH_PAGE if bound is None else bound'''
+new = '''    bound = 1 if bound is None else bound'''
+
+[[rows]]
+id = "R15_search_pages_constant_off_by_one"
+description = "candidates.__getattr__: SEARCH_PAGES answers one page more than the walk reads, so the constant and the default bound disagree"
+file = "src/cratekit/intake/candidates.py"
+surface = "maintainer"
+tests = ["tests/test_export_set.py", "tests/test_intake_missing_search.py"]
+old = '''        return SEARCH_CEILING // TRACK_SEARCH_PAGE
+    raise AttributeError'''
+new = '''        return SEARCH_CEILING // TRACK_SEARCH_PAGE + 1
+    raise AttributeError'''
+
+[[rows]]
+id = "R16_identify_only_drops_a_field"
+description = "pipeline.identify_only: copy every field of recognize.Identified but the last, so the parts count falls to its default"
+file = "src/cratekit/intake/pipeline.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/intake/test_workers.py"]
+old = '''for one in fields(recognize.Identified)}'''
+new = '''for one in fields(recognize.Identified)[:-1]}'''
+
+[[rows]]
+id = "R17_made_on_drops_posted"
+description = "set_playlist._made_on: a pinned day wins over --posted, so a posted override does not survive a re-plan"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py", "tests/test_organize_inspiration.py", "tests/test_u129_set_account_playlist.py"]
+old = '''    if on is not None and posted is None:'''
+new = '''    if on is not None:'''
+
+[[rows]]
+id = "R18_no_match_drops_unanswered"
+description = "set_playlist._NO_MATCH: a match nobody answered reads as no library file matching it"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_removed.py"]
+old = '''_NO_MATCH = {match.MatchState.NEEDS_REVIEW: UNANSWERED, match.MatchState.SUPPRESSED: TOMBSTONED}'''
+new = '''_NO_MATCH = {match.MatchState.SUPPRESSED: TOMBSTONED}'''
+
+[[rows]]
+id = "R19_flag_day_invalid_date_unrefused"
+description = "set_playlist._flag_day: a date flag that matches the pattern but names no real day raises a bare ValueError, not the refusal naming the flag"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py", "tests/test_organize_inspiration.py"]
+old = '''    try:
+        return date(int(found.group(1)), int(found.group(2)), int(found.group(3) or 1))
+    except ValueError as exc:
+        raise _not_a(flag, value, kind, forms, exc) from exc'''
+new = '''    return date(int(found.group(1)), int(found.group(2)), int(found.group(3) or 1))'''
+
+[[rows]]
+id = "R20_land_only_by_default"
+description = "land_cli flags table: --land-only stores false, so every landing skips filing unless the flag is given"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_filing.py", "tests/test_u129_set_account_playlist.py", "tests/test_intake_land_filed.py"]
+old = '''    ("--land-only", {"action": "store_true"},'''
+new = '''    ("--land-only", {"action": "store_false"},'''
+
+[[rows]]
+id = "R21_unrunnable_reason_lost"
+description = "land_cli._unrunnable: a command line the landing cannot run is refused as internal-error, not intake-list-unusable"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_intake_land.py", "tests/test_set_inspiration_playlist.py", "tests/test_intake_land_rehearse.py"]
+old = '''        "intake-list-unusable", message, remedy=Remedy.FIX_COMMAND_LINE, steps=steps,'''
+new = '''        "internal-error", message, remedy=Remedy.FIX_COMMAND_LINE, steps=steps,'''
+
+[[rows]]
+id = "R22_colour_notes_drop_held"
+description = "land_native._colour_notes: leave out the note naming the rows that keep a colour a person chose"
+file = "src/cratekit/intake/land_native.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py", "tests/test_intake_land_hearts_native.py"]
+old = '''    if placed.held:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R23_batch_order_keeps_claimed"
+description = "native._batch_order: rows an account playlist claimed join the batch playlist as well"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_u135_set_inbox_join.py"]
+old = '''by_target[one] for one in targets if one in by_target and one not in claimed)'''
+new = '''by_target[one] for one in targets if one in by_target)'''
+
+[[rows]]
+id = "R24_batch_order_drops_set_order"
+description = "native._batch_order: a set landing's batch playlist falls to name order, not the set's order"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_u135_set_inbox_join.py", "tests/test_set_inspiration_playlist.py", "tests/test_intake_land_native.py"]
+old = '''    members = plan.set_playlist.members if plan.set_playlist is not None else ()'''
+new = '''    members = ()'''
+
+[[rows]]
+id = "R25_toggle_imported_at_top"
+description = "candidates: import the label catalogue's page size at the top of the module again, so intake reaches a toggleable package at import"
+file = "src/cratekit/intake/candidates.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py"]
+old = '''from cratekit.acquire import match
+'''
+new = '''from cratekit.acquire import match
+from cratekit.label.catalogue import TRACK_SEARCH_PAGE as _TOP_PAGE  # noqa: F401
+'''
+
+[[dropped]]
+id = "D1_beside_cache_removed"
+description = "beside.beside: call land_cli.pass_landed per job rather than once per proof through functools.cache"
+reason = "the cache saves repeated reads and changes no answer, so no test can die; a timing guard, not a behaviour guard"
+
+[[dropped]]
+id = "D2_ingest_and_label_filing_origin"
+description = "ingest.refuse and label_filing.refuse: the module partials carry no origin"
+reason = "same guard family as R7, which measures the landing partial"
+
+[[dropped]]
+id = "D3_anchored_root_translates_every_refusal"
+description = "rotate.anchored_root: translate every TreeModeRefused into the bridge refusal, not only an unconverged xml tree"
+reason = "ranked below the cap: R8 measures the shared refusal, and the other modes need a fixture no suite builds"
+
+[[dropped]]
+id = "D4_refill_anchored_root_wording"
+description = "refill.anchored_root: pass the rotate defaults, so the refusal says batches to move instead of playlists to fill"
+reason = "a wording change in a sentence no suite pins; R8 measures the step a person acts on"
+
+[[dropped]]
+id = "D5_refill_writing_require_closed"
+description = "refill_cli.writing: open the write handle without requiring rekordbox closed"
+reason = "the session gates refuse a running rekordbox before the handle opens, so the guard is a second line no suite reaches alone"
+
+[[dropped]]
+id = "D6_list_playlist_index"
+description = "cli.list_playlist: answer the shortfall rather than the tracks of list_playlist_declared"
+reason = "only a test calls it; ranked below the user facing rows"
+
+[[dropped]]
+id = "D7_word_flags_table"
+description = "set_playlist._WORD_FLAGS: drop --posted from the shared word flags"
+reason = "argparse refuses the flag at once in every suite that passes it; a structural row that measures nothing a person relies on beyond R17"
+
+[[dropped]]
+id = "D8_note_keys"
+description = "land_native._note: swap the code and message keys"
+reason = "same family as R22, which reads a note by its code"

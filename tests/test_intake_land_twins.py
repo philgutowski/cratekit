@@ -1,12 +1,7 @@
 """U149 at the landing: each account playlist a native landing writes gets its custom playlist twin.
 
-The landing of an account playlist pass writes, in its one commit, the twin of
-each account playlist it writes an INBOX playlist for, into ``Custom Playlists
-<landing year>``, with the INBOX playlist's rows, and marks the pair with no
-hand step. Driven on the disposable database the native landing suite builds,
-with the sweep's jobs queued and run as a sync pass does.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+In the landing's one commit, into ``Custom Playlists <landing year>``, with the
+INBOX playlist's rows, marked as a pair. Nothing here is real (D1).
 """
 
 from __future__ import annotations
@@ -19,25 +14,16 @@ from cratekit.intake import land_cli, native
 from cratekit.modules.outbound import pairs
 from cratekit.sync import twins
 from tests.cli_drive import drive
-from tests.test_intake_land_account_playlists_native import (
-    _inbox,
-    _land,
-    _stage,
-    swept,
-)
-from tests.test_intake_land_account_playlists_native import (
-    pinned_day as pinned_day,  # noqa: PLC0414
-)
+from tests.test_intake_land_account_playlists_native import _inbox, _land, _stage, swept
+from tests.test_intake_land_account_playlists_native import pinned_day as pinned_day
 from tests.test_intake_land_native import GATE, _members, _query, _two_acts
-from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
-from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
-from tests.test_intake_land_native import library as library  # noqa: PLC0414
-from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
-from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
-from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_intake_land_native import _platform_seams as _platform_seams
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
+from tests.test_intake_land_native import acknowledged as acknowledged
+from tests.test_intake_land_native import library as library
+from tests.test_intake_land_native import machine as machine
+from tests.test_intake_land_native import native_library as native_library
+from tests.test_intake_land_native import silence as silence
 
 FOLDER = twins.folder_name(2026)
 
@@ -92,9 +78,7 @@ def test_a_landing_that_finishes_two_custom_playlists_writes_two_twins_and_marks
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Two")), "pl-b": ("Deep Cuts", ("Three",))})
     for title in ("One", "Two", "Three"):
         _stage(cfg, silence, title)
-
     code, acted, refused = _two_acts(_land())
-
     assert code == int(ExitCode.OK), acted
     assert _twins(cfg) == {"Sunset Warmup": ["One", "Two"], "Deep Cuts": ["Three"]}
     assert _inbox(cfg, root_id) == {
@@ -113,18 +97,9 @@ def test_a_landing_that_finishes_two_custom_playlists_writes_two_twins_and_marks
     assert twins.LANDED in _codes(acted)
     shown = refused["cause"]["detail"]["shown"]
     assert shown["custom playlist twins"] == f"{FOLDER} / Sunset Warmup; {FOLDER} / Deep Cuts"
-
-
-def test_the_twin_folder_is_made_once_at_the_top_level(native_library, silence):
-    cfg, _root_id = native_library
-    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",)), "pl-b": ("Deep Cuts", ("Two",))})
-    for title in ("One", "Two"):
-        _stage(cfg, silence, title)
-    assert _two_acts(_land())[0] == int(ExitCode.OK)
+    # The twin folder is made once, at the top level.
     folders = _query(
-        cfg,
-        "SELECT ID, ParentID FROM djmdPlaylist WHERE Name = ? AND rb_local_deleted = 0",
-        FOLDER,
+        cfg, "SELECT ID, ParentID FROM djmdPlaylist WHERE Name = ? AND rb_local_deleted = 0", FOLDER
     )
     assert len(folders) == 1
     assert str(folders[0][1]) in rb_writer.ROOT_PARENT_SENTINELS
@@ -180,17 +155,8 @@ def test_a_folder_made_after_the_gate_refuses_and_moves_nothing(native_library, 
 
 def test_a_plan_with_no_account_playlist_plans_no_twin_and_digests_as_before():
     plan = native.NativePlan(
-        tree_id="t",
-        root_id="r",
-        root_name="INBOX",
-        playlist="b",
-        database=Path("x"),
-        device_id="d",
-        master_db_id="m",
-        base_drive=None,
-        current_drive=None,
-        rows=(),
-        link=None,
+        tree_id="t", root_id="r", root_name="INBOX", playlist="b", database=Path("x"),
+        device_id="d", master_db_id="m", base_drive=None, current_drive=None, rows=(), link=None,
         digest="",
     )
     assert "twins" not in native.identity(plan)
