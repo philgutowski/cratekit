@@ -3,14 +3,14 @@
   "pass_kind": "replay",
   "branch": "HEAD",
   "head": "539638eb",
-  "when": "2026-11-22 23:21 UTC",
+  "when": "2026-11-23 01:21 UTC",
   "valid": true,
   "invalid_reason": "in progress",
   "baseline_collected": 22663,
   "baseline_exit": 1,
-  "pytest_runs": 34,
+  "pytest_runs": 18,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
-  "reused_rows": 24,
+  "reused_rows": 46,
   "known_failures": 251,
   "known_source": ".cloud-battery/baseline.txt",
   "temp_place": "disk",
@@ -1567,6 +1567,299 @@
       "source": {
         "table": "u96-a.json",
         "id": "A14_target_is_required"
+      }
+    },
+    {
+      "id": "u96-a.A15_report_names_where_the_database_is",
+      "description": "_recovered: always report the rebased database path, so a database that was never recovered is reported at the top of the target",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "13fc5ebe48f29b4b",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "            \"database_target\": str(report.database_elsewhere or report.database_target),",
+      "new": "            \"database_target\": str(report.database_target),",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A15_report_names_where_the_database_is"
+      }
+    },
+    {
+      "id": "u96-a.A16_no_absent_companion_for_a_half_that_did_not_run",
+      "description": "Report the plan's absent companions even when the database half was skipped",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "38d11177736866de",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "            absent=decided.absent_sidecars if elsewhere is None else (),",
+      "new": "            absent=decided.absent_sidecars,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A16_no_absent_companion_for_a_half_that_did_not_run"
+      }
+    },
+    {
+      "id": "u96-a.A1_acceptance_reaches_the_engine",
+      "description": "recover_under_bare_metal_session: hand the engine acknowledged=True whatever the caller accepted, so the replacement is never a person's decision",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "82efb3c673f732bb",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_refusal_before_the_lock_leaves_the_disk_untouched[the replacement was not accepted]",
+        "tests/test_restore_cli.py::test_the_verb_refuses_without_the_acceptance_flag"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        acknowledged=accepted,",
+      "new": "        acknowledged=True,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A1_acceptance_reaches_the_engine"
+      }
+    },
+    {
+      "id": "u96-a.A2_flag_reaches_the_function",
+      "description": "perform_bare_metal: pass accepted=True instead of the flag, so the verb recovers without --accept-replacement",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "43fac9377ff0cd84",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_verb_refuses_without_the_acceptance_flag"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        accepted=ctx.args.accept_replacement,",
+      "new": "        accepted=True,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A2_flag_reaches_the_function"
+      }
+    },
+    {
+      "id": "u96-a.A4_run_inside_the_held_session",
+      "description": "Drop gates=held.guard from the run_restore call of each half",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4ae30a02efba521f",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left",
+        "tests/test_restore_cli.py::test_the_verb_recovers_both_halves_and_reports_them_apart"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    portion,\n                    cfg,\n                    dry_run=dry_run,\n                    gates=held.guard,",
+      "new": "                    portion,\n                    cfg,\n                    dry_run=dry_run,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A4_run_inside_the_held_session"
+      }
+    },
+    {
+      "id": "u96-a.A5_the_mirror_is_pulled",
+      "description": "Plan with include_mirror=False, so a recovery onto an empty drive brings a database and no music",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bcf1da5cc251a20c",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left",
+        "tests/test_restore_cli.py::test_the_verb_recovers_both_halves_and_reports_them_apart"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                include_mirror=True,",
+      "new": "                include_mirror=False,",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A5_the_mirror_is_pulled"
+      }
+    },
+    {
+      "id": "u96-a.A6_a_half_at_a_time",
+      "description": "_halves: put every command in the mirror half, which is spending the plan whole, so a failed mirror still lands the database",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6fea5f3923e219ab",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left",
+        "tests/test_restore_cli.py::test_the_verb_recovers_both_halves_and_reports_them_apart"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    mirror = tuple(c for c in decided.commands if c.label == backup.RESTORE_MIRROR)",
+      "new": "    mirror = decided.commands",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A6_a_half_at_a_time"
+      }
+    },
+    {
+      "id": "u96-a.A7_rekordbox_asked_again",
+      "description": "Disarm the second rekordbox check, the one before the database half",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d79aee7f31415466",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "                    if running:\n                        raise backup.BackupRefused(",
+      "new": "                    if False:\n                        raise backup.BackupRefused(",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A7_rekordbox_asked_again"
+      }
+    },
+    {
+      "id": "u96-a.A8_database_elsewhere_is_skipped",
+      "description": "Run the database half even when the configured database was never on the lost volume",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "94648b4f2d17fbe3",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "            if half == DATABASE_HALF and elsewhere is not None:",
+      "new": "            if False:",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A8_database_elsewhere_is_skipped"
       }
     }
   ],
