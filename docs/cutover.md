@@ -2927,7 +2927,7 @@ their units but U243 and U260. Two worker tabs, W1 and W2.
 
 **Open attended cards, as of 2026-11-23, after sitting 104.**
 - **A183 (#879):** a night that runs unattended to its gate. The schedule is loaded for 03:17, and staging holds nothing a landing takes.
-- **A202 (#929):** step 1 waits on U955 (#1002). R-1716 (#1010) is built: a `sync removed` stopped at the ceiling or the hour's line keeps what it read, so running it again reads only what is left; step 1 records the calls the whole step spent.
+- **A202 (#929):** step 1 no longer waits: U955 (#1002) and R-1716 (#1010) are built. A `sync removed` stopped at the ceiling or the hour's line holds what it read, so running it again reads only what is left; step 1 records the calls the whole step spent.
 - **A207 (#947):** an `export set` or `export playlist`, and organize's root and mirror steps, driven by this checkout.
 - **A208 (#950):** `adopt apply`, which waits on U956 (#1020).
 - **A211 (#962):** `sync pair` through both gates, which Phillip put off today.
