@@ -13,8 +13,9 @@ holds.
 THE ENERGY MEASURE ASKS FOR IT TOO (U344, closing R-1491): every head,
 restamp and calibrate scores energy through ``energy.features_from_path``,
 which warms first, and the warm up measures energy from its file as well as
-from samples, so whatever that path compiles is compiled under the lock. A
-kernel keeps the code it was first compiled to, so warming first in every
+from samples, since on an empty cache that path wrote a second
+specialisation of ``utils._cabs2`` that a warmed cache did not hold
+(R-1491's measurement, under the librosa of its day). A kernel keeps the code it was first compiled to, so warming first in every
 process also gives a head in a worker and a restamp in the driver the same
 features to the last bit. NOT COVERED: a platform with no ``fcntl`` takes no
 lock. A WAIT ON THE LOCK IS NOT BOUNDED: a holder

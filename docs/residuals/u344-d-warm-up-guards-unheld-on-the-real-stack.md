@@ -15,9 +15,12 @@ against the driver's restamp across two processes; that was measured by
 hand (23 of 23 and 32 of 32 identical, against 21 of 23 and 19 of 32
 before). The review dropped the warm up's file measure and found 10 of 10
 files bit identical head against plain measure over fresh caches in both
-orders, so whether the file measure is needed is unmeasured; `warm.py` no
-longer claims it compiles a specialisation of its own. The mutation table
-agrees: row M6, dropping it, killed nothing.
+orders. The file measure's reason is R-1491's own measurement, eleven
+cache files written by the file path on an empty cache, one a second
+specialisation of `utils._cabs2`; the empty cache coverage test no longer
+sees that difference with the line removed, so on this librosa the reason
+is unconfirmed. The mutation table agrees: row M6, dropping it, killed
+nothing.
 
 **Cost today.** None measured: every comparison made on the branch agreed.
 A later edit dropping either call fails nothing on any stack.
