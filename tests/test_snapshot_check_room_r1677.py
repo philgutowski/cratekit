@@ -88,9 +88,8 @@ def test_a_temporary_volume_too_small_for_the_check_refuses_before_anything_is_w
     _separate_volumes(monkeypatch)
     _free_on(monkeypatch, scratch, 1000)
 
-    refused = _refusal(snapshot.capture, cfg)
+    cause = _refusal(snapshot.capture, cfg)
 
-    cause = refused
     assert cause.reason == ROOM
     assert str(scratch) in cause.message
     assert "1000 bytes free" in cause.message
@@ -301,9 +300,8 @@ def test_a_check_whose_copy_runs_out_of_room_is_refused_and_recorded_unverified(
     """The measure passed and the volume filled anyway: the room slug, never verified."""
     _no_room_in(scratch, monkeypatch, code)
 
-    refused = _refusal(snapshot.capture, cfg)
+    cause = _refusal(snapshot.capture, cfg)
 
-    cause = refused
     assert cause.reason == ROOM
     assert str(scratch) in cause.message
     assert cause.detail["errno"] == code

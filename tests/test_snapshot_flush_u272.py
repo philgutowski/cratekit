@@ -4,6 +4,8 @@ Every file, directory and the store are flushed before the manifest's sync, a
 failing flush is never recorded verified, and the full flush is asked for where
 the platform has one (macOS)."""
 
+# ruff: noqa: F811, the fixture below is imported from the capture suite by name
+
 from __future__ import annotations
 
 import errno
@@ -16,25 +18,14 @@ import pytest
 from cratekit.core import config, rb_writer, snapshot
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
-from tests.test_config import valid_data
 from tests.test_restore import _refusal, _refused
 from tests.test_snapshot import _fails, _passes, _write_coupled_state
+from tests.test_snapshot import cfg as cfg  # noqa: PLC0414 - the fixture, used by name
 
 try:
     import fcntl
 except ImportError:  # pragma: no cover - every platform the suite runs on has it
     fcntl = None  # type: ignore[assignment]
-
-
-@pytest.fixture
-def cfg(tmp_path, monkeypatch):
-    library = tmp_path / "library"
-    (library / "Music").mkdir(parents=True)
-    (library / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
-    resolved = config.from_dict(valid_data(library))
-    config.state_path("rekordbox_db", resolved).write_bytes(b"a database")
-    return resolved
 
 
 def _identity(path: Path) -> tuple[int, int]:
@@ -191,8 +182,7 @@ def _failing_flush(monkeypatch, fails_on, *, after: int = 0) -> list[Path]:
 
 
 def _refused_capture(cfg, stamp: str) -> CratekitError:
-    refused = _refused(snapshot.capture, cfg, stamp=stamp, verifier=_passes)
-    return refused
+    return _refused(snapshot.capture, cfg, stamp=stamp, verifier=_passes)
 
 
 @pytest.mark.parametrize(
