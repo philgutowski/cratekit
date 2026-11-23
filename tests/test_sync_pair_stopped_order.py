@@ -76,10 +76,7 @@ def _stopping(world, monkeypatch, playlist_id: str, moves: int) -> list[int]:
 
 @pytest.fixture
 def stopped(world, monkeypatch):
-    """Synced on four, three added in rekordbox, the order stopped after two moves.
-
-    Answers the rekordbox playlist, the account playlist and the stopped run.
-    """
+    """Synced on four, three added, stopped after two moves: (rekordbox, account, run)."""
     gig = world.folder("GIG READY")
     intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
     code, envelope = sync()
@@ -144,10 +141,7 @@ def test_the_gate_names_the_pair_as_finishing_the_stopped_run(world, stopped):
 def test_a_move_the_person_made_on_the_account_after_a_sync_read_it_still_leads(
     world, stopped, monkeypatch
 ):
-    """U234: settled readings off the path after the stop, in two orders, show the move.
-
-    A reading on the path may be a lag and is never kept; a new order waits the agreement window.
-    """
+    """U234: settled readings off the path in two orders show the move; none on it is kept."""
     _agreeing_at_once(monkeypatch)
     intro, account_id, _run = stopped
     plan_only()
@@ -548,10 +542,7 @@ def test_a_run_that_finished_the_pair_without_moving_its_snapshot_keeps_nothing_
 
 
 def _released(world, intro: str, account_id: str, *, root: bool = False) -> str:
-    """The stopped pair released, and a new playlist in rekordbox's order made after the release.
-
-    In GIG READY the account order is kept (U231), at the root it is not.
-    """
+    """The stopped pair released and a new one made, its account order kept in GIG READY (U231)."""
     world.delete_rekordbox(intro)
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
@@ -807,10 +798,7 @@ def _left_off_the_path(world, monkeypatch, playlist_id: str) -> list[int]:
 
 @pytest.fixture
 def strayed(world, monkeypatch):
-    """A GIG READY pair of seven, reversed in rekordbox, its order stopped off the path.
-
-    Answers the rekordbox playlist, the account playlist and the stopped run.
-    """
+    """A GIG READY pair of seven reversed, stopped off the path: (rekordbox, account, run)."""
     gig = world.folder("GIG READY")
     closer = world.playlist("Closer", "1", "2", "3", "4", "5", "6", "7", under=gig)
     code, envelope = sync()

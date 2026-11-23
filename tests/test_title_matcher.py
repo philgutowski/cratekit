@@ -394,10 +394,7 @@ def test_beatport_prefers_the_headed_files_own_row_over_another_by_the_artist():
 
 
 def test_a_title_written_only_inside_the_rows_trailing_brackets_is_a_known_cost():
-    """A known cost of R-1631, pinned so a change is seen: a title only inside the other's brackets.
-
-    "Untitled (How Does It Feel)" and "Sunrise Mood (Intro)" carry the same evidence.
-    """
+    """A known cost of R-1631, pinned: a title written only inside the other's brackets."""
     name = "Untitled (How Does It Feel)"
     hit = _beatport_hit("How Does It Feel", [_beatport_track(ARTIST, name, BUCKET_GENRE)])
     assert _beatport_answer(hit) == "miss"
@@ -405,8 +402,7 @@ def test_a_title_written_only_inside_the_rows_trailing_brackets_is_a_known_cost(
 
 
 def test_beatport_reads_no_artist_from_a_row_crediting_an_empty_name():
-    """The same empty substring on the artist side: a credit with no name was
-    read as contained in every searched artist."""
+    """An empty credit was read as contained in every searched artist."""
     row = _beatport_track("", OTHER, BUCKET_GENRE)
     assert _beatport_answer(_beatport_hit(OTHER, [row])) == "miss"
 
@@ -577,8 +573,7 @@ def test_a_headed_file_takes_its_own_rows_genre_over_another_listed_first(
 def test_a_file_takes_no_genre_off_another_recording_named_in_its_title(
     tmp_path, silence, title, other
 ):
-    """R-1631, as its review drove it: Beatport's row and Discogs' track are
-    another recording by the artist, and neither may write its genre."""
+    """R-1631: neither another recording's Beatport row nor Discogs track writes its genre."""
     path = tmp_path / "a.flac"
     path.write_bytes(Path(silence).read_bytes())
     assert tags.write_tags(path, {"artist": ARTIST, "title": title})
@@ -599,8 +594,7 @@ def test_a_file_takes_no_genre_off_another_recording_named_in_its_title(
 def test_a_file_whose_title_tag_carries_its_head_still_takes_its_own_genre(
     tmp_path, silence, source
 ):
-    """The live library writes ``KEY - BPM - `` into the title tag, so a file
-    is asked by that title and must still find its own row on either source."""
+    """The live library writes ``KEY - BPM - `` into the title tag; its own row is still found."""
     path = tmp_path / "a.flac"
     path.write_bytes(Path(silence).read_bytes())
     assert tags.write_tags(path, {"artist": ARTIST, "title": "04A - 126 - Burning (Extended Mix)"})
@@ -686,15 +680,13 @@ def test_a_files_title_among_its_dash_parts_still_finds_its_own_row(searched, fo
 
 
 def test_the_artists_part_is_read_word_for_word_never_by_characters():
-    """Only a part that is the artist's name is passed over: "Badie" is not
-    "Bernard Badie", so it is the title, and its later part is not."""
+    """"Badie" is not "Bernard Badie", so it is the title and its later part is not."""
     assert _matches("08A - 124 - Badie - Sun Path", "Badie")
     assert not _matches("08A - 124 - Badie - Sun Path", "Sun Path")
 
 
 def test_a_name_with_no_artist_is_read_from_its_first_part():
-    """With no artist to tell "Artist - Title" from "Title - Version", the part
-    after the first is never read alone: a miss, never another recording."""
+    """With no artist the later part is never read alone: a miss, never another recording."""
     assert not searchers._title_matches("Other Song - Vocal Mix", "Vocal", artist="")
     assert searchers._title_matches("Other Song - Vocal Mix", "Other Song", artist="")
     assert not searchers._title_matches(f"{ARTIST} - Sun Path", ARTIST, artist="")
@@ -744,8 +736,7 @@ def test_a_files_title_tag_writes_no_genre_off_a_dash_part_that_is_not_its_title
 def test_an_untagged_file_writes_no_genre_off_its_names_album_or_artist(
     tmp_path, silence, name, other
 ):
-    """A file with no title tag is asked by its name, which carries its album
-    and its artist as dash parts; neither is its title."""
+    """An untagged name's album and artist dash parts are never its title."""
     path = _file(tmp_path, silence, name, {"artist": ARTIST})
     assert tags.read_tag(path, "title") is None
 
@@ -832,10 +823,7 @@ def test_an_untagged_file_named_with_its_artist_as_written_takes_its_own_genre(
 def test_a_self_titled_tracks_dash_version_the_list_lacks_finds_its_own_row_only_when_it_writes_the_version(
     tmp_path, silence
 ):
-    """R-1636 B1 as R-1646 settles it: "Artist - Vocal Mix" is read neither way alone.
-
-    The own row under another mix is the known cost, recorded for Phillip on #788.
-    """
+    """R-1646: "Artist - Vocal Mix" is read neither way alone, the cost recorded on #788."""
     title = f"08A - 124 - {ARTIST} - Vocal Mix"
     assert not _matches(title, ARTIST)
     assert not _matches(title, f"{ARTIST} (Extended Mix)")
@@ -1199,8 +1187,7 @@ def test_a_featured_artists_part_never_reads_the_name_as_the_self_titled_track(t
 def test_a_featured_artists_name_takes_no_self_titled_genre_on_a_mixed_page(
     tmp_path, silence, tagged, order
 ):
-    """Round one drove it: the branch dropped the title reading and kept the
-    collapse, so the self titled row won in either order, tagged or not."""
+    """Round one: the title reading dropped and the collapse kept let the self titled row win."""
     name = f"{ARTIST} feat. Tide - Sunrise Mood Extended Mix"
     wanted = {"artist": ARTIST, "title": name} if tagged else {"artist": ARTIST}
     path = _file(tmp_path, silence, name, wanted)
@@ -1247,8 +1234,7 @@ def test_the_self_titled_split_reads_the_artists_part_past_its_marker(searched, 
     ],
 )
 def test_a_track_numbered_title_after_a_version_ending_album_is_still_the_title(title):
-    """A track numbered part is the title, so the part before it, though it
-    ends in a version, is the album and the name is not the card's shape."""
+    """The part before a track numbered title is the album, so this is not the card's shape."""
     assert _matches(title, "Sunrise Mood")
     assert not _matches(title, ARTIST)
     assert not _matches(title, "Summer")
@@ -1456,8 +1442,7 @@ _TEMPLATE = NameTemplate(markers=(MarkerRule(field="lossy", literal="[MP3]"),))
 
 
 def _rendered(chance) -> tuple[str, str, str, str]:
-    """One name the naming verb renders, as the tag reader asks it: (artist
-    tag, the searched title, its title, its album)."""
+    """One rendered name as the reader asks it: (artist tag, searched title, title, album)."""
     artist, credit = chance.choice(GENERATED_CREDITS)
     title = chance.choice(GENERATED_TITLES)
     album = chance.choice(ALBUMS)
@@ -1483,10 +1468,7 @@ def _rendered(chance) -> tuple[str, str, str, str]:
 
 
 def test_every_name_the_naming_verb_renders_finds_its_own_row_and_no_other(monkeypatch):
-    """Names rendered from the naming verb's grammar match their own row only, however written.
-
-    Through the shipped matcher, its two pure readers remembered (U306).
-    """
+    """Rendered names match their own row only, through the shipped matcher (U306)."""
     monkeypatch.setattr(titles, "read_file", functools.lru_cache(maxsize=None)(titles.read_file))
     monkeypatch.setattr(titles, "read_row", functools.lru_cache(maxsize=None)(titles.read_row))
     chance = random.Random(791)

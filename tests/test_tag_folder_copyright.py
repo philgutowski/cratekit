@@ -132,8 +132,7 @@ def genre_seam(table: dict[str, str]):
 
 
 def needles(table: dict[str, str], genres: dict[str, str] | None = None):
-    """A copyright seam over ``{name: needle}``, the shell's own matcher over them,
-    each label carrying its genre from ``genres`` (the module's GENRES by default)."""
+    """A copyright seam over ``{name: needle}``, each label's genre from ``genres``."""
     held = GENRES if genres is None else genres
     return tag_cli.copyright_matcher((name, needle, held.get(name)) for name, needle in table.items())
 
@@ -149,8 +148,7 @@ def names(matcher, line: str) -> tuple[str, ...]:
 
 @pytest.mark.parametrize("suffix", [".flac", ".m4a", ".mp3"])
 def test_the_copyright_line_is_read_from_the_key_the_downloader_writes(tmp_path, suffix):
-    """``_vendor/downloader/metadata.py`` writes Vorbis ``COPYRIGHT``, ID3
-    ``TCOP`` and MP4 ``cprt``; each is written here by mutagen directly."""
+    """Vorbis ``COPYRIGHT``, ID3 ``TCOP`` and MP4 ``cprt``, as the vendored downloader writes."""
     path = synth_container(tmp_path, suffix)
     line = "℗ 2023 Rawax"
     if suffix == ".flac":
@@ -351,8 +349,7 @@ def test_the_matcher_names_a_label_by_its_needle_in_whole_words(line, named):
 
 
 def test_the_matcher_reads_a_labels_match_needle_and_not_its_name():
-    """A label registered as ``Some Label`` with ``--match "SL Recordings"``: a
-    line carrying the needle and not the name names it, and the name alone does not."""
+    """The ``--match`` needle names the label; its registered name alone does not."""
     matcher = needles({"Some Label": "SL Recordings"})
     assert names(matcher, "℗ 2024 SL Recordings") == ("Some Label",)
     assert names(matcher, "℗ 2024 Some Label") == ()
@@ -369,8 +366,7 @@ def test_a_line_carrying_only_part_of_a_needle_names_no_label(line):
 
 
 def test_a_sublabels_own_line_names_the_sublabel_and_the_parents_names_the_parent():
-    """The needle carrying every other needle named wins; review round one found
-    the parent's own line answered both and settled neither."""
+    """The needle carrying every other named wins (review round one)."""
     matcher = needles({RAWAX: RAWAX, "Rawax Motor City Edition": "Rawax Motor City Edition"})
     assert names(matcher, "℗ 2023 Rawax") == (RAWAX,)
     assert names(matcher, "℗ 2023 Rawax Motor City Edition") == ("Rawax Motor City Edition",)
@@ -570,8 +566,7 @@ def test_files_whose_line_named_two_labels_are_counted_and_warned(
 def test_a_sweep_one_file_of_which_fails_still_reports_every_file(
     cfg, folder, silence, monkeypatch
 ):
-    """Review round one: with the catalogues blocked, one unsettled file made the
-    sweep a refusal that said nothing of the files the labels had tagged."""
+    """Review round one: one unsettled file hid the files the labels had tagged."""
     five_labels()
     downloaded(folder, silence, "a", "\u2117 2023 Rawax")
     downloaded(folder, silence, "b", "\u2117 2024 Atipic")
@@ -606,8 +601,7 @@ def test_a_sweep_one_file_of_which_fails_still_reports_every_file(
 def test_two_labels_sharing_a_display_name_never_lend_each_other_a_genre(
     cfg, folder, silence, monkeypatch
 ):
-    """Review round one: the seam keyed the needles by display name, so a rename
-    onto a taken name gave one label's files the other's genre."""
+    """Review round one: needles keyed by display name lent one label's genre to the other."""
     registered("Alpha", "--genre", SPECIFIC)
     registered("Omega")
     code, envelope = drive(["label", "registry", "rename", "omega", "--to", "Alpha"])

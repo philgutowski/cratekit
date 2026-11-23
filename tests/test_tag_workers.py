@@ -72,10 +72,7 @@ def store(tmp_path):
 
 
 class Ctx:
-    """The dispatcher context reduced to the one attribute ``advance`` uses (KTD23).
-
-    ``settle`` moves the rows as a real driver does, so ``advance`` re-reads a moved job.
-    """
+    """The dispatcher context cut to ``run_job`` (KTD23); ``settle`` moves rows as a driver does."""
 
     def __init__(self, store, *, warnings=(), settle=True):
         self._store = store
@@ -152,10 +149,7 @@ def test_the_honest_zero_validates_against_the_job_state_surface():
 
 
 def test_a_job_with_no_items_is_refused_rather_than_driven(store, cfg):
-    """A job with no items reads SUCCEEDED, so driving one would be a false success.
-
-    ``internal-error``, because only a build that recorded no items queues one.
-    """
+    """A job with no items reads SUCCEEDED, so it is refused as ``internal-error``, never driven."""
     ctx = Ctx(store)
     job = a_job(store, cfg)
 
@@ -388,10 +382,7 @@ def bound(monkeypatch, searcher):
 
 
 def shipped_over(monkeypatch, fetch, *, token) -> None:
-    """Bind the shipped searcher per call over ``fetch``, Discogs holding ``token``.
-
-    The general catalogue fails any request, as :func:`bound` leaves it.
-    """
+    """Bind the shipped searcher per call over ``fetch``, Discogs holding ``token``, as bound."""
     asker = searchers.discogs_asker(token=token, fetch=fetch, sleep=lambda _s: None)
     monkeypatch.setattr(
         searchers,
@@ -432,10 +423,7 @@ def raising_on(searcher, title: str):
 
 
 def hit(source_genre: str, genre: str | None = None, *, off_taxonomy: bool = False) -> SearchHit:
-    """One catalogue answer, carrying what it answered even when it declines (R24).
-
-    ``off_taxonomy`` goes with a genre, never a decline, as the shipped searcher builds one.
-    """
+    """One answer, naming what it answered even declining (R24); ``off_taxonomy`` with a genre."""
     return SearchHit(
         genre=genre,
         source=searchers.BEATPORT,
@@ -505,10 +493,7 @@ def test_the_tagging_key_resolves_to_a_worker(verb):
 def test_a_folder_of_three_tags_the_two_with_no_genre_and_leaves_the_third(
     cfg, folder, silence, monkeypatch
 ):
-    """Queue, drive, write and read back off disk; the third file holds fill if empty.
-
-    It carries a picture too, since a tagged file with none is asked for art (U85).
-    """
+    """Read back off disk; the third holds fill if empty and a picture, so no art search (U85)."""
     from tests.test_tagging_engine import _jpeg, plant
 
     place(folder, silence, "a")
@@ -765,10 +750,7 @@ BEATPORT_CHALLENGE = searchers.Fetched(note="Cloudflare challenge, HTTP 403", st
 
 
 def _refusing_sweep(monkeypatch, seen: list[str]):
-    """Bind the shipped searcher, per call, over a Beatport refusing every lookup.
-
-    Discogs answers empty, so every file settles ``sources-unread``.
-    """
+    """Bind the shipped searcher per call over a refusing Beatport; Discogs answers empty."""
     from tests.test_discogs_searcher import SENT, results
 
     def fetch(url: str) -> searchers.Fetched:
@@ -801,10 +783,7 @@ def _beatport_asked(seen: list[str]) -> int:
 def test_a_sweep_stops_asking_a_refusing_beatport_after_three_and_says_it_refused(
     cfg, folder, silence, monkeypatch
 ):
-    """U281: three of five requests reach Beatport, the rest are recorded blocked and unsent.
-
-    Every file stays askable, Discogs is asked on all five, and the warning names a refusal.
-    """
+    """U281: three of five reach Beatport, the rest recorded unsent, every file askable."""
     for name in ("a", "b", "c", "d", "e"):
         place(folder, silence, name)
     seen: list[str] = []
@@ -1092,8 +1071,7 @@ def test_a_sweep_beatport_matched_whole_names_no_fallback_as_blocked(
 
 
 def test_four_real_misses_are_no_hit_and_carry_no_unread_warning(cfg, folder, silence, monkeypatch):
-    """Every catalogue asked, the general one included, and none knows the
-    track. That is the absence ``no-hit`` means, and no warning qualifies it."""
+    """Every catalogue asked and none knows the track: the absence ``no-hit`` means, unqualified."""
     place(folder, silence, "a")
     assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
@@ -1118,8 +1096,7 @@ def test_four_real_misses_are_no_hit_and_carry_no_unread_warning(cfg, folder, si
 def test_a_published_genre_reaches_the_file_the_artifact_and_the_summary(
     cfg, folder, silence, monkeypatch
 ):
-    """AE1 end to end, in the state measured on the author's machine: Beatport
-    misses, both fallbacks refuse, and the general catalogue knows the album."""
+    """AE1: Beatport misses, both fallbacks refuse, and the general catalogue knows the album."""
     place(folder, silence, "a")
     assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": REFUSED_FALLBACKS}))
@@ -1219,8 +1196,7 @@ def test_a_general_catalogue_unread_on_every_file_is_named_in_the_summary(
 def test_a_general_catalogue_unread_on_some_files_says_how_many_of_how_many(
     cfg, folder, silence, monkeypatch
 ):
-    """A miss on one file and an outage on the other. The catalogue was there
-    for the run, and the file it was not there for is still said."""
+    """A miss on one file and an outage on the other: the second is still said."""
     for name in ("a", "b"):
         place(folder, silence, name)
         assert tags.write_tags(folder / f"{name}.flac", {"isrc": ISRC})
@@ -1314,8 +1290,7 @@ def test_files_with_no_isrc_are_counted_and_warned_about_whatever_their_skip_rea
 
 
 def test_a_published_word_with_no_folder_is_listed_as_unresolved(cfg, folder, silence, monkeypatch):
-    """R3 at the report. The catalogue's own word is the one a person would add
-    an alias for, so it is the string the summary names."""
+    """R3: the catalogue's own word is the one to alias, so the summary names it."""
     place(folder, silence, "a")
     assert tags.write_tags(folder / "a.flac", {"isrc": ISRC})
     bound(monkeypatch, _catalogues({"a": ALL_MISSED}))
@@ -1869,8 +1844,7 @@ def test_the_retag_gate_shows_every_row_the_digest_was_taken_over(repair_on, fol
 
 
 def test_the_retag_resume_gate_shows_the_frozen_rows_it_asks_about(repair_on, folder, silence):
-    """A resume on a run holding no answer shows the rows the confirmation was
-    recorded against, read off the frozen payload and never off a fresh walk."""
+    """A resume shows the rows read off the frozen payload, never off a fresh walk."""
     del repair_on
     for name in ("a", "b"):
         coarse(folder, silence, name)
@@ -2308,10 +2282,7 @@ def test_a_half_corrected_retag_carries_the_reload_on_its_refusal(
 
 
 def refusing_writes_on(monkeypatch, *names: str) -> None:
-    """The genre writer answering False for the files named, as for a locked file (R-1103).
-
-    Patched after the fixture files are placed; root ignores a read only mode.
-    """
+    """The genre writer answering False for the files named, as for a locked file (R-1103)."""
     real = tags.write_genre
 
     def writer(path: Path, genre: str) -> bool:
@@ -2648,8 +2619,7 @@ def test_an_interrupted_sweep_names_its_job_command_and_that_command_finishes_it
 
 
 def test_the_off_taxonomy_warning_names_a_folders_own_name_with_its_one_answer():
-    """R-1184: a folder's own name in another case is named with the one
-    answer it has, and without a readable taxonomy the warning is unchanged."""
+    """R-1184: named with its one answer; with no readable taxonomy the warning is unchanged."""
     from cratekit.core import taxonomy
 
     declared = taxonomy.load_taxonomy(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))

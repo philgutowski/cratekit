@@ -62,8 +62,7 @@ SHIPPED = taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
 
 @pytest.fixture(autouse=True)
 def _lookups(monkeypatch):
-    """The off taxonomy words get lookup rows too, so a row can carry one, and
-    R&B does, so an alias to it can be followed by ``tag rows``."""
+    """Off taxonomy words get lookup rows too, R&B among them, for ``tag rows`` to follow."""
     monkeypatch.setattr(
         _suggest_suite,
         "LOOKUPS",
@@ -246,8 +245,7 @@ def test_a_folder_that_would_file_the_threshold_is_recommended_first():
 
 
 def test_the_threshold_is_what_the_folder_files_not_every_spelling():
-    """Round one: 30 rows carry the spelling and 25 another case, and the
-    folder was recommended on 55."""
+    """Round one: 30 rows of the spelling and 25 of another case recommended the folder on 55."""
     members = [*_members(30), *_members(25, "indie tech", start=100)]
     word = _word_of(members, {MELODIC: 8}, rows_write=_on_row(members[:30]))
     assert word.options[0].answer == backlog.ALIAS
@@ -272,8 +270,7 @@ def test_neighbours_agreeing_at_medium_recommend_their_alias():
 
 
 def test_an_alias_the_verb_refuses_is_never_offered():
-    """Round one: House is a genre adoption files by, and taxonomy alias
-    refuses it as a GENRE, so a recommendation naming it was a refused command."""
+    """Round one: taxonomy alias refuses House as a genre, so recommending it was refused."""
     with pytest.raises(word_edit.Refused):
         word_edit.alias(SHIPPED, INDIE, SUB_GENRE)
     refused = _word_of(_members(3), {SUB_GENRE: 16})
@@ -321,8 +318,7 @@ def test_a_word_counts_its_spellings_files_and_rows_apart():
 
 
 def test_a_row_whose_file_holds_another_word_is_counted_elsewhere():
-    """Round one: a row carrying the word over a file carrying a catch all was
-    in none of the three counts."""
+    """Round one: a word row over a catch-all file was in none of the three counts."""
     members = [replace(row, row_word=INDIE, file_word=COARSE) for row in _members(1)]
     word = _word_of(members, {})
     assert (word.files_carry, word.several, word.elsewhere) == (0, 0, 1)
@@ -340,8 +336,7 @@ def test_a_word_neither_answer_takes_asks_nothing_and_says_why():
 
 
 def test_a_word_already_saved_as_an_alias_has_one_answer_the_verb_takes():
-    """Round one: such a word was called unanswerable, and taxonomy alias
-    reaches its gate with its files as writes."""
+    """Round one: called unanswerable, though taxonomy alias reaches its gate with it."""
     edit = word_edit.alias(SHIPPED, AMAPIANO, AFRO)
     assert not edit.writes
     word = _word_of(_members(2, AMAPIANO), {MELODIC: 8})
@@ -720,8 +715,7 @@ def test_rows_whose_file_is_not_here_are_counted_and_said(machine, silence):
 
 
 def test_a_row_tag_rows_would_move_into_needs_genre_is_counted_back(machine, silence):
-    """Round one: a routed row whose file carries a word no folder takes is
-    written that word by tag rows, the campaign's first step."""
+    """Round one: tag rows, the campaign's first step, writes a routed row that word."""
     build(machine, silence, Track("70", MELODIC, INDIE), Track("71", "", MELODIC))
     plan = _planned(machine)
     assert plan.joining == ("70",)
@@ -731,8 +725,7 @@ def test_a_row_tag_rows_would_move_into_needs_genre_is_counted_back(machine, sil
 
 
 def test_a_neighbour_votes_with_its_files_word_as_tag_suggest_votes_it(machine, silence):
-    """Round one: eight neighbours with blank rows and Melodic House files said
-    nothing, and after tag rows wrote their rows the alias was recommended."""
+    """Round one: blank neighbour rows over Melodic House files said nothing until tag rows."""
     build(
         machine,
         silence,
@@ -745,8 +738,7 @@ def test_a_neighbour_votes_with_its_files_word_as_tag_suggest_votes_it(machine, 
 
 
 def test_a_folder_counts_a_row_only_where_tag_rows_would_write_its_word(machine, silence):
-    """Round one: a file holding the word beside another genre was counted as
-    filed by a folder, and tag rows leaves such a row."""
+    """Round one: a file holding the word beside another genre is left by tag rows."""
     paths = build(machine, silence, Track("15", "", INDIE), Track("16", "", INDIE))
     from cratekit.core import tags
 
@@ -904,8 +896,7 @@ def test_the_catalogue_line_names_the_rows_the_walk_stopped_before(machine, sile
 def test_a_token_discogs_refused_is_said_and_beatport_is_asked_on_every_row(
     machine, silence, monkeypatch
 ):
-    """U322's review, round one, 2: a token Discogs refused beside a Beatport
-    that answers no longer stops the walk, and the warning says the token."""
+    """U322 review: a refused token no longer stops the walk, and the warning says so."""
     from cratekit.tagging import published, searchers
     from tests.test_beatport_refusal import MISSED, _beatport_requests, _over_the_wire, _Response
     from tests.test_discogs_searcher import SENT

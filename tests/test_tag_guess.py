@@ -116,8 +116,7 @@ def test_a_playlist_mostly_of_one_genre_gives_it_to_a_track_no_artist_knows():
 
 
 def test_a_long_playlist_does_not_drown_three_tracks_by_the_artist():
-    """One voice per playlist: ten Melodic House members weigh four, the
-    artist's three Deep House tracks six. A vote per member would give ten."""
+    """One voice per playlist: ten members weigh four, the artist's three tracks six."""
     members = [_staged(f"m{n}", artist=f"Other {n}", genre=MELODIC) for n in range(10)]
     lone = _staged("lone", artist="Ana Vale")
     plan = _plan(
@@ -407,8 +406,7 @@ def test_a_pass_that_cannot_be_read_is_said_and_the_artist_still_votes(
 
 
 def test_a_pass_no_job_carries_is_said_and_never_read_as_no_playlists(machine, silence):
-    """Review round 1, through the real reader: a mistyped pass name is a pass
-    that could not be read, not one whose playlists knew nothing."""
+    """Review round 1: a mistyped pass could not be read, which is not knowing nothing."""
     build(machine, silence)
     _stage(machine, silence, "lone", artist="Nobody Known", title="Lone")
 
@@ -583,8 +581,7 @@ def test_a_go_stopped_at_its_tag_step_names_the_guess_next_with_no_pass():
 
 
 def test_an_unreadable_file_is_counted_apart_from_the_files_left_with_none(monkeypatch):
-    """Review round 2: a file whose genre could not be read is not one the
-    guess left untagged, and the chain's sentence says which is which."""
+    """Review round 2: an unreadable genre is not one the guess left untagged."""
     chain = tail.Chain(
         progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again="a"
     )
@@ -637,8 +634,7 @@ def test_a_soft_deleted_row_is_no_neighbour(machine, silence):
 
 
 def test_the_files_left_are_the_files_still_without_a_genre(monkeypatch):
-    """Mutation row C3: of ten files, seven carried a genre and two were
-    guessed, so one is left, whatever the guess wrote."""
+    """Mutation row C3: seven carried a genre and two were guessed, so one is left."""
     chain = tail.Chain(
         progress=None, namespace="t", title="t", steps=tail.STEPS, origin=("test",), again="a"
     )

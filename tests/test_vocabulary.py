@@ -84,8 +84,7 @@ def filed(taxonomy, genre: str) -> tuple[str, str | None, Match]:
 
 
 def test_the_shipped_template_declares_the_catalogues_table_and_the_cards_rows():
-    """Two tables since U244, the general catalogue's and Discogs'; this card's
-    rows are the first one's, and Discogs' are ``tests/test_discogs_searcher.py``'s."""
+    """Two tables since U244; Discogs' rows are ``tests/test_discogs_searcher.py``'s."""
     assert {one.source for one in TAXONOMY.vocabularies} == {CATALOGUE, searchers.DISCOGS}
     (table,) = [one for one in TAXONOMY.vocabularies if one.source == CATALOGUE]
     assert {row.word: (row.tag, row.bucket, row.sub) for row in table.words} == SHIPPED
@@ -152,8 +151,7 @@ def test_a_top_level_word_with_no_row_is_declined_and_never_written(word):
 def test_a_word_with_no_row_goes_on_to_the_aliases_and_is_written_when_it_names_a_folder(
     word, written
 ):
-    """The table is asked first and is not the whole answer. A specific word
-    the aliases already file correctly is still written."""
+    """The table is asked first, and a word the aliases file correctly is still written."""
     assert TAXONOMY.vocabulary(CATALOGUE).get(word.lower()) is None
     assert routing.suggest_tag(TAXONOMY, word, source=CATALOGUE) == routing.suggest_tag(
         TAXONOMY, word
@@ -208,15 +206,13 @@ def test_an_empty_word_is_declined_before_any_table_is_read():
 
 @pytest.mark.parametrize("source", [None, searchers.BEATPORT, searchers.TRAXSOURCE, "bandcamp"])
 def test_a_record_shops_pop_goes_where_it_went_before(source):
-    """The pin the card asks for. The record shops have no table, and a caller
-    that names no source is the shops' own caller."""
+    """The shops have no table, and a caller naming no source is theirs."""
     answer = routing.suggest_tag(TAXONOMY, "Pop", source=source)
     assert (answer.tag, answer.bucket_id, answer.sub_id) == ("Dance / Pop", "dance_pop", None)
 
 
 def test_the_record_shops_searcher_names_no_source_to_the_resolver():
-    """Driven, not read: Beatport's Pop through the shipped searcher is the
-    dance bucket's name, on the template that declares the catalogue's table."""
+    """Driven: Beatport's Pop through the shipped searcher is the dance bucket's name."""
     page = _beatport_page([_beatport_track("an artist", "a title", "Pop")])
     refused = Fetched(note="HTTP 403", status=403)
     search = searchers.catalogue_searcher(
@@ -377,8 +373,7 @@ def test_a_source_name_that_no_record_could_carry_is_refused(default_raw, name):
 
 @pytest.mark.parametrize("name", ["dezer", "beatport", "traxsource", "bandcamp"])
 def test_a_table_nothing_would_read_is_refused_and_not_ignored(default_raw, name):
-    """A misspelled name and a record shop's. Each would load clean and change
-    nothing, and the review found nothing said so."""
+    """A misspelled source and a shop's would each load clean and change nothing."""
 
     def mutate(data):
         data["vocabulary"][name] = {"words": [{"word": "Pop", "tag": "Rock"}]}
@@ -508,8 +503,7 @@ def test_a_tag_the_taxonomy_calls_too_coarse_is_refused(default_raw, tag):
 
 
 def test_the_bare_name_of_a_bucket_that_files_by_source_is_refused(default_raw):
-    """R-799's second measured fault: Alternative written as the bucket's name,
-    filed in the default sub with the word lost."""
+    """R-799: Alternative as the bucket's name filed in the default sub, the word lost."""
 
     def mutate(data):
         rows_of(data).append({"word": "Metal", "tag": "NonElectronic"})
@@ -559,8 +553,7 @@ def test_every_problem_in_a_table_is_reported_at_once(default_raw):
 
 
 def test_a_template_at_schema_version_1_may_declare_a_vocabulary(default_raw):
-    """No schema version moves for this table. A build older than this unit
-    ignores it and files the catalogue's words as it did before."""
+    """No schema version moves; an older build ignores the table."""
 
     def mutate(data):
         data["schema_version"] = 1

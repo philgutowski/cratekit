@@ -86,8 +86,7 @@ def _steps(envelope: dict) -> dict[str, dict]:
 
 
 def _tempo(cfg: config.Config, paths) -> dict[str, object]:
-    """Every row's BPM column and every file's tags but its genre, for the beat
-    grid rule: a written file moved its genre and nothing else."""
+    """Every BPM column and every file's tags but genre: a written file moved its genre alone."""
     import mutagen
 
     connection = sqlite3.connect(cfg.library.db_path)
@@ -414,8 +413,7 @@ def test_rows_joining_needs_genre_and_any_other_routed_row_are_never_written(
 def test_a_proposal_that_appears_after_the_first_step_is_left_for_the_next_run(
     acknowledged, silence
 ):
-    """R-1732: row 30 had no proposal when the gate was answered, and the first
-    step's rows gave it one. It was never shown, so it is left and named."""
+    """R-1732: a proposal the first step made was never shown, so it is left and named."""
     cfg = acknowledged
     build(
         cfg,
@@ -975,8 +973,7 @@ def test_needing_counts_only_live_rows_with_a_readable_file(machine, silence):
 def test_the_same_folder_answer_once_the_word_has_left_the_backlog_is_taken_as_given(
     acknowledged, silence
 ):
-    """Round two: the row and the file both carry the word, so once its folder
-    lands the backlog no longer holds it, and the same command still runs."""
+    """Round two: once its folder lands the word leaves the backlog, and the command still runs."""
     cfg = acknowledged
     build(cfg, silence, *_backlog_suite._eight(), Track("15", INDIE, INDIE, artist="X", folder="w"))
     code, acted, _refused = _two_acts(["--folder", INDIE])
@@ -1005,8 +1002,7 @@ ZOUK = "zouk bass"
 def test_an_alias_to_the_folder_another_answer_makes_is_planned_on_that_folder(
     acknowledged, silence
 ):
-    """M15: each word is planned on the copy the words before it leave, so an
-    alias may name the genre folder the same campaign's folder answer makes."""
+    """M15: each word is planned on the copy the words before it leave."""
     cfg = acknowledged
     paths = build(cfg, silence, *_library(), Track("97", ZOUK, ZOUK, artist="Z", folder="z"))
     argv = ["--folder", INDIE, "--alias", f"{ZOUK}={INDIE}"]

@@ -93,10 +93,7 @@ def swept(
     run_id: str = RUN,
     codes: bool = False,
 ) -> None:
-    """One job per playlist, ``id -> (account name, titles)``, queued as a sweep does and run.
-
-    ``codes`` puts an ISRC on each track, for the identity rule's second test.
-    """
+    """One job per playlist, ``id -> (name, titles)``, queued and run; ``codes`` adds ISRCs."""
     queued = []
     with jobs.open_store() as store:
         for playlist_id, (name, titles) in listed.items():
@@ -941,10 +938,7 @@ def _without(tables: dict[str, list[tuple]], cfg: config.Config, gone: set[str])
 
 
 def _closed_up(tables: dict[str, list[tuple]], cfg: config.Config, before: dict[str, list[tuple]], gone: set[str]) -> dict:
-    """``tables`` with each playlist a removed membership left renumbered one through N (R-1830).
-
-    Written apart from the writer's rule, as rekordbox renumbers (A197), on a fixture with no gap.
-    """
+    """``tables`` with each removed membership's playlist renumbered 1 to N (R-1830, A197)."""
     columns = _columns_of(cfg, "djmdSongPlaylist")
     pid, cid, number = (columns.index(name) for name in ("PlaylistID", "ContentID", "TrackNo"))
     by_playlist: dict[str, list[tuple]] = {}
@@ -1232,10 +1226,7 @@ def test_delete_review_after_the_apply_offers_the_removed_file_and_none_other(
 
 @functools.cache
 def _package_calls() -> tuple[tuple[str, str, tuple[str | None, ...]], ...]:
-    """Every call in the package outside ``_vendor``: its module, its callee's name, its keywords.
-
-    Parsed once per worker for the two source guards that sweep for callers.
-    """
+    """Each call in the package but ``_vendor``, as (module, callee, keywords), once per worker."""
     import ast
 
     root = Path(rb_writer.__file__).resolve().parents[1]
@@ -1886,10 +1877,7 @@ def test_a_renumbering_that_moved_between_the_gate_and_the_write_refuses_as_stal
 def test_a_track_only_marked_out_of_a_playlist_renumbers_none_of_its_live_members(
     native_library, silence, monkeypatch, offline
 ):
-    """``sync pair`` marks a removed membership, so marked New1 and live Held2 share 2.
-
-    Counting the marked row would put two live rows on one number.
-    """
+    """Marked New1 and live Held2 share 2, so counting the marked row doubles a number."""
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "Held3")

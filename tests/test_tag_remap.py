@@ -1,8 +1,7 @@
 """R-799: ``crate tag remap`` corrects the genres an older mapping wrote.
 
-The engine over real containers and committed records, and the verb through
-the real dispatcher. EVERY EXPECTED GENRE IS A LITERAL, so a template row that
-drifts fails. Nothing here reaches a network or a database. D1 applies.
+The engine over real containers and records, and the verb through the dispatcher.
+EVERY EXPECTED GENRE IS A LITERAL. No network, no database. D1 applies.
 """
 
 from __future__ import annotations
@@ -132,8 +131,7 @@ def genre_of(path: Path) -> str | None:
 
 
 def did(written: remap.Written) -> remap.Written:
-    """An apply's counts and named paths, with the list of rewritten items set
-    aside. That list is asserted where it is the point."""
+    """An apply's counts and named paths, without the rewritten items asserted where they matter."""
     return replace(written, rewritten=())
 
 
@@ -237,8 +235,7 @@ def test_a_word_the_taxonomy_now_has_no_folder_for_is_listed_and_left(machine, s
 
 
 def test_a_word_with_no_row_that_the_aliases_still_file_agrees(machine, silence):
-    """The one House / Funky House / Disco of sitting 26. Its word has no row
-    and is filed as it was."""
+    """Sitting 26's House / Funky House / Disco: no row, and filed as it was."""
     tagged(machine, silence, "a disco record", "House / Funky House / Disco", "Disco")
     plan = planned(machine)
     counts(plan, agree=1)
@@ -246,8 +243,7 @@ def test_a_word_with_no_row_that_the_aliases_still_file_agrees(machine, silence)
 
 
 def test_a_genre_two_records_explain_with_different_sources_is_left(machine, silence):
-    """Which job wrote last is not recorded, so a genre a record shop may have
-    supplied is not rewritten on the general catalogue's say."""
+    """Which job wrote last is unrecorded, so a shop's possible genre is not rewritten."""
     path = tagged(machine, silence, "a record", OLD_POP, "Pop", job="job-a")
     record(machine, path, OLD_POP, source=SHOP, word="Pop", job="job-b")
     plan = planned(machine)
@@ -350,8 +346,7 @@ def test_a_record_shops_genre_is_never_resolved_as_the_catalogues_word(machine, 
 
 
 def test_two_cases_of_one_file_are_one_file_where_the_volume_folds_case(machine, silence):
-    """Resolving a path folds neither case, so the file itself is the key. Both
-    kinds of volume are asserted, so this never passes by not running."""
+    """The file itself is the key; both kinds of volume are asserted."""
     path = tagged(machine, silence, "a record", OLD_POP, "Pop", job="job-a")
     typed = Path(str(machine.library.root).upper()) / "Music" / "a record.flac"
     record(machine, typed, OLD_POP, source=SHOP, word="Pop", job="job-b")
@@ -385,8 +380,7 @@ def test_a_file_no_tag_library_opens_is_unreadable_and_not_changed_since(machine
 def test_a_file_outside_this_librarys_root_is_counted_and_never_opened(
     machine, silence, tmp_path, monkeypatch
 ):
-    """The queue is the installation's. A folder tagged before it was landed,
-    and another library's files, are not this library's taxonomy's to resolve."""
+    """The queue is the installation's; files outside this library are not its to resolve."""
     staging = tmp_path / "staging"
     staging.mkdir()
     outside = staging / "a pop record.flac"
@@ -603,8 +597,7 @@ def test_both_exact_readers_refuse_a_field_the_table_does_not_name(tmp_path, sil
 def test_a_genre_frame_holding_two_values_is_two_values_on_an_id3_container(
     machine, id3_silence
 ):
-    """The plan reads every value on every container, so a second genre in a
-    frame is seen as one and the file is left."""
+    """A second genre in one frame is seen, and the file is left."""
     from mutagen.aiff import AIFF
     from mutagen.id3 import TCON
 
@@ -769,8 +762,7 @@ def with_pop_written_as(tag: str) -> taxonomy.Taxonomy:
 def test_a_file_this_verb_rewrote_is_corrected_again_when_the_word_moves_again(
     machine, silence
 ):
-    """What the review found. With no record of its own write, a rewritten file
-    read as edited by hand, and a second change of the word left it for good."""
+    """With no record of its own write, a rewritten file read as edited by hand (review)."""
     path = tagged(machine, silence, "a pop record", OLD_POP, "Pop")
     remap.apply(machine, planned(machine))
     assert genre_of(path) == NEW_POP
@@ -808,8 +800,7 @@ def test_a_genre_put_back_by_hand_after_a_rewrite_is_left_alone(machine, silence
 
 
 def test_a_word_given_its_first_genre_back_is_still_followed(machine, silence):
-    """A rewrite's record is in force however its genre compares with an older
-    record's. The genre goes there and back, and then moves a third time."""
+    """A rewrite's record holds however its genre compares with an older record's."""
     path = tagged(machine, silence, "a pop record", OLD_POP, "Pop")
     remap.apply(machine, planned(machine))
     back = with_pop_written_as(OLD_POP)
@@ -881,8 +872,7 @@ def test_a_file_that_moved_since_the_plan_is_named_and_not_written(machine, sile
 def test_a_file_the_writer_could_not_write_is_named_as_untouched_and_the_rest_are_written(
     machine, silence, monkeypatch
 ):
-    """The writer's own answer is kept. A file it did not write is not counted
-    as written and is not reported as one that failed to read back."""
+    """The writer's own answer is kept: an unwritten file is neither written nor a failed read."""
     stuck = tagged(machine, silence, "a pop record", OLD_POP, "Pop")
     fine = tagged(machine, silence, "another pop record", OLD_POP, "Pop")
     real = tags.write_genre
@@ -1061,8 +1051,7 @@ def test_a_record_that_could_not_be_parsed_is_said(machine, silence):
 
 
 def test_an_active_taxonomy_with_no_table_says_so_and_plans_nothing(machine, silence):
-    """The library's copy before the attended edit. A clean answer there would
-    read as a library already corrected."""
+    """A clean answer before the attended edit would read as a library already corrected."""
     active = config.state_path("taxonomy_active", machine)
     active.parent.mkdir(parents=True, exist_ok=True)
     active.write_text(shipped_text_with_no_vocabulary(), encoding="utf-8")
