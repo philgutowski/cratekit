@@ -225,13 +225,26 @@ def test_the_watcher_reports_the_bytes_written_while_the_download_runs(cfg, libr
 
 
 def test_a_fetch_that_raises_still_stops_the_watcher(cfg, library, monkeypatch):
+    """The fetch fails while the watcher is inside a report, so a watcher left
+    unjoined is still running when the block has ended, whatever the scheduler does."""
     monkeypatch.setattr(fetch, "FETCH_PROGRESS_SECONDS", 0.01)
     lines: list[str] = []
+    reporting = threading.Event()
+
+    def progress(line: str) -> None:
+        lines.append(line)
+        if "so far" in line and not reporting.is_set():
+            reporting.set()
+            time.sleep(0.5)
+
+    class FailsMidReport(FakeFetcher):
+        def fetch(self, url: str, directory: Path) -> Path:
+            assert reporting.wait(10), "the watcher never reported"
+            return super().fetch(url, directory)
+
     with pytest.raises(fetch.SetFetchFailed):
-        with fetch.fetched(URL, library, FakeFetcher(fail="404"), progress=lines.append):
+        with fetch.fetched(URL, library, FailsMidReport(fail="404"), progress=progress):
             pass
-    # The watcher may have read the partial before the raise; it never says
-    # anything landed.
     assert lines[0] == f"fetching: {URL}"
     assert not [one for one in lines if one.startswith("fetched:")]
     assert not [one for one in threading.enumerate() if one.name == fetch.WATCHER_NAME]
