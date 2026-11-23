@@ -1,11 +1,8 @@
 """A gated database verb says when another run of it holds or just answered its gate (U186).
 
-The write is already safe, since the apply plans again and refuses
-``decision-stale``; the warning saves a second session from guessing why its
-numbers moved. The clear is driven through the real dispatcher against the
-disposable native database, and the run records it persisted are read. The
-warning refuses nothing, so the second run still exits at its gate with its
-usual code. D1 applies.
+The write is already safe, since the apply refuses ``decision-stale``; the
+warning tells a second session why its numbers moved, and refuses nothing.
+D1 applies.
 """
 
 from __future__ import annotations
@@ -471,11 +468,8 @@ def test_decide_says_nothing_when_the_sibling_answered_another_gate(native_libra
 def test_decide_continue_says_a_sibling_once_when_the_verb_stops_at_its_gate_again(
     native_library,
 ):
-    """The answer was given over a plan the continuation no longer reads, so it stops stale.
-
-    The decide names the sibling and so does the dispatcher at the stale gate:
-    the envelope carries it once.
-    """
+    """The answer was over a plan the continuation no longer reads, so it stops stale,
+    the sibling named once."""
     first = _answered()
     held = gates.load(first)
     held.decisions = {n: gates.Decision(d.option, d.actor, d.recorded, "sha256:moved") for n, d in held.decisions.items()}

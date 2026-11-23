@@ -1,9 +1,7 @@
 """U206: an ISRC the provider already answered is not asked again.
 
-The cache sits at the account's ``match_track`` and the catalogue's
-``tracks_for_isrc``, and every scenario is driven through one of those classes over
-a fake client that counts what it is asked. The client's own exception classes are
-used where the seams read a failure by its class.
+Driven through the account's ``match_track`` and the catalogue's
+``tracks_for_isrc`` over a fake client that counts what it is asked.
 """
 
 from __future__ import annotations

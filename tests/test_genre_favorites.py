@@ -1,8 +1,7 @@
 """Every genre folder has a Favorites playlist that mirrors All Favorites (U119).
 
-The engine is driven on a disposable database with a cut over routing tree made
-on the handle, and the verb through the command line for its gate and refusals.
-D1: nothing here names a real volume, person or track.
+The engine on a disposable database with a cut over routing tree, and the verb
+through the command line for its gate and refusals. D1 applies.
 """
 
 from __future__ import annotations
