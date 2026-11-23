@@ -1062,6 +1062,9 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # An approved suggested genre a file did not take; its row is left
         # without one so file and row agree.
         "tag-suggest-unwritten": ExitCode.PRECONDITION,
+        # U327. A title tag or key tag ``analyze adopt`` could not write; the
+        # row keeps its old title so title and file agree.
+        "analyze-adopt-unwritten": ExitCode.PRECONDITION,
         # ── R-835's refusals ──
         # A label's catalogue was not read in full; refused before the gate.
         "label-playlists-incomplete": ExitCode.PRECONDITION,

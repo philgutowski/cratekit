@@ -155,9 +155,12 @@ def test_a_file_the_pass_must_leave_proposes_no_rename(configured, name, title, 
             "1A - 124 - Cola.flac", "1A - 124 - Cola", "Amaj", "01A - 124 - Cola.flac",
             id="a-key-tag-not-camelot-is-ignored",
         ),
+        # U327 REVERSED THE ORDER: ``analyze adopt`` corrects the title tag to
+        # rekordbox's key and tempo and never renames, so the title's head is the
+        # newer answer and the filename's must not be written back over it.
         pytest.param(
-            "1A - 124 - Cola.flac", "5B - 95 - Cola", None, "01A - 124 - Cola.flac",
-            id="the-filename-head-wins-over-the-title-head",
+            "1A - 124 - Cola.flac", "5B - 95 - Cola", None, "05B - 95 - Cola.flac",
+            id="the-title-head-wins-over-the-filename-head",
         ),
         pytest.param(
             "1A - 124 - Artist Name - Song Title.flac", "1A - 124 - Song Title", "1A",

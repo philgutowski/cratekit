@@ -275,13 +275,46 @@ Quit rekordbox and confirm `rekordbox` and `rekordboxAgent` are gone. Then:
 
 ```bash
 crate analyze check        # exit 0 done, 12 rows still waiting, 27 suspect
+crate analyze adopt        # titles whose key or tempo differs take rekordbox's
 crate inbox analyzed       # take the analysed rows out of INBOX / Analyze
 ```
 
 `analyze check` reads a copy and writes nothing: every row analysed, every
 grid one tempo (or moving on a `dyn` row), Key filled, and how often the
-title's key agrees with rekordbox's. `--pass` or `--session` names one
-landing.
+title's key and tempo agree with rekordbox's. A title that differs never makes
+the visit suspect; the check counts it and names `crate analyze adopt`.
+`--pass` or `--session` names one landing.
+
+`analyze adopt` gives each analysed row whose title head names another key or
+tempo rekordbox's answer, since rekordbox's is the more reliable. The key is
+the Key column's and wins on any difference, one Camelot step included; the
+tempo is rekordbox's rounded, and wins only when the head is more than one
+beat away. Only those two parts of the head change, in the row's title in
+rekordbox, the file's title tag and the file's key tag; the rest of the title,
+the lossy marker included, keeps every character. It never writes the Key or
+BPM columns, a grid or a tempo tag, and it never renames a file, so the file
+name keeps its old head; `name apply` and the library index read the title
+tag's head first, so the old head is never written back. It reads the backup
+acknowledgment first, shows every row before and after with its key relation
+and tempo behind an explicit gate (`analyze.adopt.confirm`), and `--leave
+CONTENT_ID` holds a row out, given again on the run that applies. A row is
+left and named when it has left the collection, rekordbox has not analysed it,
+its title has no head, rekordbox gave neither a key nor a tempo, its file's
+path resolves to no file on this machine or the file is missing or unreadable,
+the file's title tag says another title, or `--leave` holds it; a missing key
+never stops the tempo, nor a missing tempo the key. The tempo compared is
+rekordbox's rounded half up to a whole beat. A file that cannot take its new
+title keeps its row's old title, and the run ends refused under
+`analyze-adopt-unwritten` naming it, after the rest landed; run it again once
+the file can be written, and every row left is named on that answer as on any
+other. An intake tree that cannot be read, one still on the XML bridge, refuses
+before the gate with its own reason; an INBOX / Analyze that is absent or empty
+plans nothing and says why (`adopt-scope-empty`). The scope is
+the check's: INBOX / Analyze by default, `--pass` or `--session` for a landing
+already cleared from it, never the back catalogue. The run's session record
+keeps each file's old title and key tag beside the database capture; a restore
+of that session puts the rows back, and the files are put back by hand from
+the record.
 
 **A night pass.** `crate sync night` is the same pass with nobody watching,
 for a schedule to run overnight, so the time at the Mac is the landing's
@@ -1414,7 +1447,9 @@ crate metadata mytags-vocals [--apply]
   tags (`drift` reads `steady`, `variable` or `unknown`; `driftlevel` is the
   spread), then renames the file to the naming template's Camelot head. It
   skips a file already carrying the head, so `analyze vocals --unscored`
-  scores the ones it finished with no `voxlevel`. Doctor's `install.extras`
+  scores the ones it finished with no `voxlevel`, and a title that took
+  rekordbox's key and tempo with `analyze adopt` is never stamped again;
+  `analyze restamp` writes the energy tag alone. Doctor's `install.extras`
   row says when vocals cannot score.
 - `analyze run` measures key, tempo, drift and energy in worker processes
   ahead of the one process that scores vocals and writes, as many as the
@@ -1614,6 +1649,7 @@ without one.
 | `intake.set.account.confirm` | apply | `intake set` |
 | `tag.retag.confirm` | apply | `tag retag` |
 | `tag.rows.confirm` | apply | `tag rows` |
+| `analyze.adopt.confirm` | apply | `analyze adopt` |
 | `tag.remap.confirm` | apply | `tag remap` |
 | `tag.suggest.confirm` | apply | `tag suggest` |
 | `tag.campaign.approve` | apply | `tag campaign` |

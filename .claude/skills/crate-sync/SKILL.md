@@ -179,11 +179,12 @@ Follow the project's `rekordbox-visit` skill step by step: its preflight, the
 analysis of INBOX / Analyze on Phillip's standard settings, by its Auto
 Analysis path when the launch dialog shows them or else by Analyze Tracks,
 the wait counted in analysis files, the second run for rows marked `dyn`,
-the quit, `crate analyze check`, and the clear with `crate inbox analyzed`. It is the one
-procedure for the visit, and nothing it says is repeated here. Its verdict is
-this pass's: a check that ends waiting or suspect stops the pass there, and
-the report says what it named, except the suspect for keys alone that skill
-clears.
+the quit, `crate analyze check`, `crate analyze adopt` giving every title
+whose key or tempo differs rekordbox's, and the clear with `crate inbox
+analyzed`. It is the one procedure for the visit, and nothing it says is
+repeated here. Its verdict is this pass's: a check that ends waiting or
+suspect stops the pass there, and the report says what it named. A title that
+differs from rekordbox's never makes the check suspect; the adopt corrects it.
 
 ## 5. The account's tail: every finished pass marked, then filed
 
@@ -261,8 +262,9 @@ One message, in this order, and nothing before it except a stop:
 
 1. **What landed.** The count, the batch folder on the volume, and the
    playlists in rekordbox it joined, from step 3.
-2. **The visit.** `crate analyze check`'s verdict, its key agreement, and the
-   rows cleared from INBOX / Analyze.
+2. **The visit.** `crate analyze check`'s verdict, its key agreement, the
+   titles `crate analyze adopt` gave rekordbox's key and tempo and the rows it
+   left with why, and the rows cleared from INBOX / Analyze.
 3. **The account.** The playlists marked, by pass, and where each was filed,
    and every track `sync removed` offered, kept or left, with those it took
    out of the collection and their files, waiting for `delete review`.

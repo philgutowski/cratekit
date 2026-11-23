@@ -281,9 +281,10 @@ def _read_fresh(path: Path, template: naming.NameTemplate) -> tuple[Owned, bool]
 
     Artist and title fall back as a pair and a present value is never discarded:
     both tags win when both are there, otherwise the name when it carries both
-    halves, otherwise each field takes what it has. The key runs the other way,
-    the filename's Camelot head first, since this product writes it there, then a
-    head found in the title tag, then ``initialkey``. The title tag is stripped of
+    halves, otherwise each field takes what it has. The key is a head's: the
+    title tag's Camelot head first, since ``analyze adopt`` corrects it to
+    rekordbox's key and leaves the filename's older head in place (U327), then
+    the filename's, then ``initialkey``. The title tag is stripped of
     its head as the stem is, since the live library writes ``KEY - BPM - `` there
     too and a head inside the token would match no provider row.
     """
@@ -310,7 +311,7 @@ def _read_fresh(path: Path, template: naming.NameTemplate) -> tuple[Owned, bool]
     title, version = split_title(spelled)
 
     tag_head = naming.parse_head(spelled_tag, template=template) or {}
-    written_key = head.get("key") or tag_head.get("key")
+    written_key = tag_head.get("key") or head.get("key")
     key = written_key or read["initialkey"]
     return Owned(
         path=path,
