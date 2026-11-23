@@ -1,8 +1,4 @@
-"""U212: a rename held back by a second copy of one recording says so.
-
-When the file in the way carries the same ISRC as the file held back, the plan
-and the refusal say it is one recording twice and carry the ISRC.
-"""
+"""U212: a rename held back by a second copy of one recording says so, with the ISRC."""
 
 # ruff: noqa: F811, the fixtures below are imported from the naming apply suite by name
 from __future__ import annotations
@@ -74,8 +70,7 @@ def test_a_target_held_by_another_recording_keeps_the_plain_collision(configured
 
 
 def test_a_copy_with_no_isrc_on_either_side_is_never_called_the_same_recording(configured):
-    """Absence of a read is not a match: no ISRC on the file in the way, then none on the file held
-    back."""
+    """Absence of a read is not a match, on either side."""
     folder = _folder(configured)
     _copies(folder, earlier=None, newer=ISRC)
     (item,) = _plan(folder)["items"]
@@ -90,8 +85,7 @@ def test_a_held_back_copy_with_no_isrc_is_never_called_the_same_recording(config
 
 
 def test_two_movers_sharing_a_target_a_copy_holds_carry_no_isrc(configured):
-    """Review round one, F3: the reason is the two movers', so the item carries no ISRC that would
-    describe the file on disk instead."""
+    """Review round one, F3: the reason is the two movers', not the file on disk."""
     folder = _folder(configured)
     _copies(folder, earlier=ISRC, newer=ISRC)
     third = _track(folder, "102.flac")

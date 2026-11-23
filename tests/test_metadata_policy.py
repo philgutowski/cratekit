@@ -1,8 +1,6 @@
 """The per-field metadata policy, and the key field it may never author (U21).
 
-The behavioural half drives real decisions on real rows; the structural half
-walks the syntax tree, never the source text, since a module explaining why it
-never authors a key names ``KeyID`` in prose. Sets are derived by walking (P3).
+The structural half walks the syntax tree, not text, since prose may name ``KeyID`` (P3).
 """
 
 from __future__ import annotations
@@ -16,6 +14,7 @@ from cratekit.core import naming, rb_writer, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import metadata
+from tests.test_config import parsed
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 
@@ -99,8 +98,7 @@ def test_enabling_only_one_operation_widens_the_column_set_by_exactly_its_fields
 
 
 def test_a_rating_backfill_fills_an_empty_rating_with_a_star_not_a_byte():
-    """R-414. The database stores 0 to 5, read off a real library, so the cut's export byte 255
-    lands as five stars."""
+    """R-414. The database stores 0 to 5, so the cut's export byte 255 lands as five stars."""
     metadata.enable()
     row = Row("1", Rating=0)
     plan = metadata.plan_rating_backfill([row], {"1": 8}, cuts=CUTS)
@@ -110,8 +108,7 @@ def test_a_rating_backfill_fills_an_empty_rating_with_a_star_not_a_byte():
 
 
 def test_a_rating_backfill_never_overwrites_a_rating_a_person_set():
-    """The case that matters. Afterwards, a wrong overwrite is indistinguishable from a right one,
-    because the evidence it destroyed was the disagreement."""
+    """A wrong overwrite destroys the disagreement that would show it."""
     metadata.enable()
     row = Row("1", Rating=1)
     plan = metadata.plan_rating_backfill([row], {"1": 9}, cuts=CUTS)
@@ -122,8 +119,7 @@ def test_a_rating_backfill_never_overwrites_a_rating_a_person_set():
 
 
 def test_the_shipped_curve_plans_one_to_five_stars_for_the_database():
-    """The curve is read from the shipped template, whose cuts stay on the export scale for the
-    export writer, and every value planned for the database is a star."""
+    """From the shipped template, whose cuts stay on the export scale."""
     cuts = taxonomy.default_taxonomy().energy.rating_cuts
     assert {cut.rating for cut in cuts} <= {51, 102, 153, 204, 255}
     rows = [Row(str(level), Rating=0) for level in range(1, 11)]
@@ -145,8 +141,7 @@ def test_a_curve_already_on_the_star_scale_passes_through():
 
 
 def test_a_cut_that_declares_zero_skips_its_band_and_keeps_the_rest():
-    """Zero is unrated on both scales. A curve that leaves the lowest band unrated on purpose still
-    rates every other band."""
+    """Zero is unrated on both scales."""
     curve = (taxonomy.RatingCut(max=2, rating=0), taxonomy.RatingCut(max=10, rating=204))
     rows = [Row("1", Rating=0), Row("2", Rating=0)]
     plan = metadata.plan_rating_backfill(rows, {"1": 1, "2": 7}, cuts=curve)
@@ -165,15 +160,13 @@ def test_a_curve_mixing_the_two_scales_is_refused_at_plan_time():
 
 @pytest.mark.parametrize("value", [20, 50, 256, 6, -1])
 def test_a_cut_value_on_neither_scale_is_refused_at_plan_time(value):
-    """Refused before any row is planned, even a row that lands in a good cut, so a misdeclared
-    curve never produces a partial plan that reads as a sweep that worked."""
+    """Before any row is planned, so a misdeclared curve never gives a partial plan."""
     curve = (taxonomy.RatingCut(max=5, rating=255), taxonomy.RatingCut(max=10, rating=value))
     with pytest.raises(CratekitError) as excinfo:
         metadata.plan_rating_backfill([Row("1", Rating=0)], {"1": 2}, cuts=curve)
     assert excinfo.value.cause.reason == "rating-scale-unknown"
     assert excinfo.value.cause.detail["rating"] == value
-    # The fix is an edit to the taxonomy's curve, the token every other
-    # taxonomy declaration refusal carries.
+    # The fix is an edit to the taxonomy's curve.
     assert excinfo.value.cause.remediation.remedy == Remedy.FIX_CONFIG_VALUES
 
 
@@ -270,9 +263,8 @@ def test_no_operation_in_the_table_declares_an_unwritable_field():
         assert not clash, f"{owner} declares {sorted(clash)}"
 
 
-#: Constructing the table class IS authoring a key row. ``add_key`` and
-#: ``create_key`` do not exist in the pinned binding and are forbidden anyway, so
-#: the guard fires on a future binding that grows one.
+#: Constructing the table class IS authoring a key row; ``add_key`` and ``create_key`` are
+#: forbidden for a future binding that grows one.
 FORBIDDEN_KEY_SYMBOLS = frozenset({"DjmdKey", "add_key", "create_key", "resolve_key_id"})
 
 
@@ -291,12 +283,10 @@ def _package_modules():
 def key_authoring_violations(source: str, module: str) -> list[str]:
     """Names and assignments that would author a key value."""
     problems: list[str] = []
-    tree = ast.parse(source)
+    tree = parsed(source)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            # DEFINING the shape counts, not only calling it. The brief's words are
-            # that the resolve-then-create shape "does not exist", and a module can
-            # define one without ever naming it again.
+            # DEFINING the resolve-then-create shape counts, not only calling it.
             if node.name in FORBIDDEN_KEY_SYMBOLS:
                 problems.append(f"{module}: defines {node.name} (line {node.lineno})")
         elif isinstance(node, ast.Name) and node.id in FORBIDDEN_KEY_SYMBOLS:

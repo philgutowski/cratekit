@@ -1,7 +1,6 @@
 """U39: ``name.apply`` carries an existing head through instead of destroying it.
 
-Every test drives the real dispatcher over real audio files. The tempo is text,
-parsed from the filename and the title, and lands in those alone, never a tag.
+Real dispatcher, real audio; the tempo is text in the filename and title, never a tag.
 """
 
 from __future__ import annotations
@@ -59,8 +58,7 @@ def drive(argv: list[str]) -> tuple[int, str, str]:
     return code, out.getvalue(), err.getvalue()
 
 
-#: One second of silence, synthesized once per process: ffmpeg writes the same
-#: bytes every time, and a subprocess per track was half of each test's time.
+#: One second of silence, synthesized once per process, as ffmpeg writes the same bytes.
 _SILENCE: list[bytes] = []
 
 

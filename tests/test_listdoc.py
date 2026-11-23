@@ -1,8 +1,6 @@
 """U68: the shared emitter's list document, read back by the product's own reader.
 
-Every expected value is a literal taken from the fixture rows, never a value
-``listdoc.document`` produced, since a round trip against the emitter's own output
-passes whatever the emitter writes.
+Every expected value is a literal from the fixture rows, never the emitter's own output.
 """
 
 from __future__ import annotations
@@ -20,8 +18,7 @@ from cratekit.core.cause import CratekitError
 
 SOURCE = Provenance(source="playlists", source_ref="pl-9", year=2024)
 
-#: Three provider rows, the second embedding its version in the title and the
-#: third declaring it in its own field.
+#: Three provider rows: the version in the title, then in its own field.
 ROWS = (
     Row(ref="101", artist="Aurora Bloom", title="Sun Path", isrc="GBAAA2400001", key="8A"),
     Row(ref="202", artist="Nova Reef", title="Tide Line - Nightwave Remix"),

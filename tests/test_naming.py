@@ -1,9 +1,7 @@
 """The name template and the ONE head parser.
 
-Eight regexes once read or wrote the ``{key} - {bpm} - `` head; each delta of the
-deleted looser parser has a test with the input that separates it. Three
-templates render in one process, the evidence the engine is template-driven.
-No real library string appears here (D1).
+Eight regexes once read or wrote the ``{key} - {bpm} - `` head; each delta of the deleted
+looser parser has a separating input. Three templates render in one process. D1 applies.
 """
 
 from __future__ import annotations
@@ -141,8 +139,7 @@ def test_parse_and_strip_head(name, fields, rest, note):
 
 
 class TestTheDeletedDuplicate:
-    """The claims that justified deleting the looser parser (zero live names
-    only it matched)."""
+    """The claims that justified deleting the looser parser."""
 
     #: The pattern as the deleted module actually spelled it.
     LOOSE = re.compile(r"^\s*0?\d{1,2}[ABab]\s*-\s*\d{1,3}\s*-\s*")
@@ -159,8 +156,7 @@ class TestTheDeletedDuplicate:
         assert parse_head(name, template=DEFAULT) is None
 
     def test_it_did_not_know_the_marker_was_part_of_the_head(self):
-        """A stripper built on it left the marker behind, so a marked lossy copy
-        and its lossless twin never deduped against each other."""
+        """So a marked lossy copy and its lossless twin never deduped."""
         name = "08A - 124 - [MP3] Cola"
         assert self.LOOSE.sub("", name, count=1) == f"{MARKER} Cola"
         assert strip_head(name, template=DEFAULT) == "Cola"
@@ -551,8 +547,7 @@ class TestBudgetInteraction:
 
 # Shape coverage against the live library.
 
-# Measured 2026-08-01 on 10,070 exported rows: 9,897 carry a readable head; 169
-# have none, 3 start with a digit, 1 is key-only. The names are SYNTHESIZED (D1).
+# Measured on 10,070 exported rows: 9,897 readable heads, 169 none, 3 digits, 1 key-only.
 SHAPE_CORPUS = [
     ("08A - 124 - Plain Body", True, "Plain Body", "padded head, space in the body"),
     ("8A - 124 - Plain Body", True, "Plain Body", "unpadded head, pre-pad stage"),
@@ -590,8 +585,7 @@ def test_a_composition_form_difference_does_not_change_the_head():
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 
-#: A class of exactly the two Camelot letters, the shape all eight copies shared,
-#: so a pattern assembled from pieces is caught too (a false hit is a review).
+#: A class of exactly the two Camelot letters, so a pattern built from pieces is caught too.
 _LETTER_CLASS = re.compile(r"\[\s*[AaBb]{2,4}\s*\]|\[Aa\]\[Bb\]")
 
 

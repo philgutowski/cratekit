@@ -1,7 +1,4 @@
-"""U204: an edit made on the account to the Favorites folder or INBOX changes the library.
-
-U201's library grown a Favorites folder and an INBOX of two live batches. D1 applies.
-"""
+"""U204: an account edit to the Favorites folder or INBOX changes the library. D1 applies."""
 
 from __future__ import annotations
 
@@ -411,8 +408,7 @@ def test_a_landed_track_the_provider_ties_to_another_release_is_still_filed(worl
     (change,) = _items(step)
     assert change["edit"] == edits.MOVE
     assert world.places("3") == {("Tech House", "Med")}
-    # The row is answered as the track the account holds, so the mirror never
-    # swaps it for the other release.
+    # Answered as the track the account holds, so the mirror never swaps the release.
     world.run_all()
     assert world.held("Tech House Med") == ["r3"]
     assert "r3-other-release" not in world.held("INBOX 2026-11-02 Landed")
@@ -631,8 +627,7 @@ def test_a_favorites_edit_planned_and_not_applied_is_taken_whole_by_the_next_run
     world.take_off(f"Favorites {MONTH}", "r1")
     # Later than rekordbox's own addition, so the account's move is the one carried.
     world.put_in("Favorites 2026-09", "r1", at="2099-01-01T00:00:00+00:00")
-    # The run that plans records its snapshots and its account side, and the
-    # edits step is never applied (rekordbox was open, say).
+    # The plan records its snapshots and account side; the edits step is never applied.
     area, step, _queue, _shared = world.plan_all()
     assert step.state == PLANNED
     for one in area.steps:

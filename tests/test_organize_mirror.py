@@ -1,6 +1,6 @@
 """U147: the genre tree and the Favorites folder mirrored onto the account.
 
-At :func:`account_mirror.add_steps` over the recording fake account, the library handed in. D1 applies.
+At :func:`account_mirror.add_steps` over the recording fake account. D1 applies.
 """
 
 from __future__ import annotations
@@ -463,8 +463,7 @@ def test_a_persons_playlist_left_alone_costs_no_match(world):
 def test_rows_a_folder_with_nothing_to_write_matched_are_linked_by_another_folders_apply(world, installed):
     world.mirror(folder("Techno", Low=(1,)))
     world.run()
-    # The Techno rows' links are lost, so its plan matches them again and has
-    # nothing to write, and the new Soul folder's apply records them anyway.
+    # Techno's links are lost, so its plan rematches and the new Soul folder records them.
     path = config.state_path("outbound_writes", installed)
     document = json.loads(path.read_text())
     document["mirror_links"] = {}

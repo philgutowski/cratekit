@@ -1,6 +1,6 @@
-"""U236: the library's own month placement of a favourite is never read as rekordbox's addition.
+"""U236: the library's own month placement of a favourite is never rekordbox's addition.
 
-Sitting 88 on U204's library: put in on the account, taken off before the next organize. D1 applies.
+Sitting 88: put in on the account, taken off before the next organize. D1 applies.
 """
 
 from __future__ import annotations

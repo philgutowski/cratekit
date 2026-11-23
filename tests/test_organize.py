@@ -1,9 +1,7 @@
 """U112: ``crate organize`` tidies both sides by the product's own rules.
 
-Driven through the real dispatcher against a disposable database, with the
-catalogue answering from memory and a strict account recording every call;
-each scenario reads the database from SQL and the account from the fake.
-D1 applies: nothing here names a real volume, person or track.
+Through the real dispatcher on a disposable database, a catalogue from memory and a strict
+recording account. D1 applies.
 """
 
 from __future__ import annotations
@@ -65,8 +63,7 @@ ASKED = int(ExitCode.DECISION_REQUIRED)
 STALE = int(ExitCode.DECISION_STALE)
 ARCHIVE = f"archive:{SET_NAME}"
 
-#: The batch named for its run, forty days old: the rotation moves it into Old,
-#: where it is younger than the expiry and stays.
+#: The run's batch, forty days old: rotated into Old, younger than the expiry.
 RUN_NAMED = "2026-06-25T101010Z-1_inboxed"
 #: A batch named the way U110 names one, which no suggestion touches.
 DATED = "2026-09-28 Tidal playlists"
@@ -224,8 +221,7 @@ def _proof(cfg: config.Config, name: str) -> Path:
 
 @pytest.fixture
 def world(seams):
-    """The brief's library: unfiled tracks, an old batch, a label with no folder,
-    a downloaded set at the account root, and one thing of the author's each side."""
+    """The brief's library, with one thing of the author's on each side."""
     cfg, fake, held = seams
     session.record_acknowledgment(cfg, terminal=lambda: True)
     inbox, made = _cut_over(
@@ -244,8 +240,7 @@ def world(seams):
     tracklist.write_text("".join(f"{a} - {t}\n" for a, t in ROWS), encoding="utf-8")
     _two_acts_ok(["export", "set", str(tracklist)], SET_BUILD)
     _proof(cfg, SET_NAME)
-    # THE ACCOUNT LISTS WHAT THE PRODUCT MADE TOO, at its root, so an
-    # assertion that the set is not the author's has something to exclude.
+    # THE ACCOUNT LISTS WHAT THE PRODUCT MADE TOO, so the author's test excludes something.
     fake.account.append(
         AccountPlaylist(ledger.set_playlist(cfg, SET_NAME).remote_id, SET_NAME, len(ROWS))
     )
@@ -419,8 +414,7 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     assert mine_db[MINE_IN_REKORDBOX]["suggested_home"] == f"{DECLARED.catalog.display} / {LABEL}"
     assert mine_db["listen later"]["suggested_home"] is None
     mine_account = {one["name"]: one for one in areas[account_area.AREA]["yours"]}
-    # A WORKING CUSTOM PLAYLIST STAYS AT THE ROOT (U143), reversing U131's move
-    # into Mine: unmarked and unclaimed, it is listed and never planned.
+    # A WORKING CUSTOM PLAYLIST STAYS AT THE ROOT (U143), listed and never planned.
     assert set(mine_account) == {MINE_ON_ACCOUNT}
     assert mine_account[MINE_ON_ACCOUNT]["suggested_home"] == "the 2024 year folder"
     # The set the product made is listed by the account and is not the author's.
@@ -440,8 +434,7 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     for area in _areas(done).values():
         for step in area["steps"]:
             if step["step"] == account_area.FILE:
-                # THE FILING STEP NAMES EVERY PLAYLIST AT THE ROOT (U116), and an
-                # unmarked one of the author's is left there (U143), with why.
+                # THE FILING NAMES EVERY ROOT PLAYLIST (U116), the author's left (U143).
                 (row,) = [one for one in step["plan"] if one["name"] == MINE_ON_ACCOUNT]
                 assert row["action"] == filing.LEFT and row["why"] == filing.WORKING_CUSTOM
                 assert "kind_folder" not in row
@@ -468,8 +461,7 @@ def test_deadca7s_folder_is_named_once_as_foreign_and_a_full_apply_leaves_it_as_
         assert name not in str(envelope)
     _applied()
     assert deadca7_fixtures.written(cfg.library.db_path, pushed) == before
-    # Organize filed the tracks the push holds, into its own tree, and that
-    # took nothing from the push's playlists.
+    # Organize filed the push's tracks into its own tree, taking nothing from the push.
     filed_outside = _query(
         cfg,
         "SELECT s.ContentID FROM djmdSongPlaylist s JOIN djmdPlaylist p ON p.ID = s.PlaylistID "
@@ -522,8 +514,7 @@ def test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc(e
     assert set(stamps) == {(deadca7_fixtures.ZERO_STAMP, deadca7_fixtures.ZERO_STAMP)}
     after_push, area = _readings()
     assert after_push == before_push
-    # The readings read the database: converge compared a governed tree, which
-    # walks every playlist row through the binding.
+    # The readings read the database, every playlist row through the binding.
     _code, checks = after_push["converge"]
     statuses = {status for key, status, _detail in checks if key.startswith("tree.")}
     assert statuses & {"matching", "differing"}, checks
@@ -577,9 +568,8 @@ def test_one_steps_refusal_leaves_every_other_plan_on_screen(world):
 
 def test_a_second_run_after_a_full_apply_plans_nothing(world):
     _applied()
-    # U147. THE MIRROR READS THE TREE BEFORE THE DATABASE AREA WRITES IT, plan
-    # then ask then write, so a playlist the adoption made in a run is mirrored
-    # by the next one, and the mirror is all the second run plans.
+    # U147. THE MIRROR READS THE TREE BEFORE THE DATABASE AREA WRITES IT, so a playlist
+    # the adoption made is mirrored by the next run, and that is all it plans.
     lagging = [
         step["step"]
         for area in _areas(_report()).values()
@@ -626,8 +616,7 @@ def test_an_area_with_nothing_to_do_still_asks(seams):
     assert code == ASKED, first
     assert first["cause"]["detail"]["gate"] == DB_GATE
     shown = first["cause"]["detail"]["shown"]
-    # No tree has cut over here, so the adoption and the rotation each refuse
-    # on their own, and the area has nothing to write and says so.
+    # No tree has cut over, so adoption and rotation each refuse and the area says so.
     assert "nothing to do" in shown, shown
     states = {item["step"]: item["state"] for item in shown["items"]}
     assert states[rekordbox.ADOPT] == "refused" and states[rekordbox.ROTATE] == "refused"
@@ -825,8 +814,7 @@ def test_a_marked_playlist_at_the_root_moves_into_its_year_folder(world):
     folder = held.placed[MARKED_ID]
     assert held.folder_names[folder] == MARKED_YEAR
     applied = _steps(done, account_area.AREA)[account_area.FILE]["applied"]
-    # The marked playlist to its year, nothing else: the author's working
-    # custom playlist stays at the root (U143).
+    # The marked playlist to its year; the working custom stays at the root (U143).
     assert applied["moved"] == [[MARKED_ID, folder]]
     assert "mine-1" not in held.placed
     assert MARKED_NAME not in _yours(done, account_area.AREA)
@@ -953,8 +941,7 @@ def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(
     _marked(cfg, fake, held)
     _two_acts_ok(VERB, ACCOUNT_GATE, "apply")
     assert held.placed[MARKED_ID] == existing
-    # No folder is made: the year's is adopted, and the author's working custom
-    # playlist stays at the root (U143) rather than making a Mine for it.
+    # No folder is made: the year's is adopted, and the working custom stays (U143).
     assert held.folders_created == []
 
 
@@ -1032,8 +1019,7 @@ def _filed_alone() -> tuple[int, dict]:
 def test_only_file_plans_the_filing_alone_and_the_database_is_not_asked(world, monkeypatch):
     cfg, fake, held, inbox, ids = world
     monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
-    # A marked playlist, so the filing alone has a move to make (U143 left the
-    # author's unmarked one at the root).
+    # A marked playlist, so the filing alone has a move to make (U143).
     _marked(cfg, fake, held)
     folders, renamed, added = list(held.folders_created), list(held.renamed), list(held.added)
     areas = _areas(_ok([*ONLY_FILE, "--report"]))
@@ -1058,8 +1044,7 @@ def _account_steps(envelope: dict) -> list[dict]:
 def test_only_mirror_plans_and_writes_the_mirror_alone_and_a_rerun_plans_nothing(world, monkeypatch):
     """U147. The mirror runs alone under the account's one gate, and is kept by a rerun."""
     held = world[2]
-    # The full verb files the batch into the tree, whose new folders the mirror
-    # read before they existed, so the mirror alone has them to plan.
+    # The full verb made folders the mirror read before they existed.
     assert _answered()[0] == OK
     monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
     folders, renamed = list(held.folders_created), list(held.renamed)
@@ -1101,8 +1086,7 @@ def _mirror_between_acts(cfg, held, monkeypatch) -> tuple[int, dict, int]:
     """``--only mirror``'s two acts with a library write between them (R-1031)."""
     monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
     run_id = _refused(ONLY_MIRROR)["run_id"]
-    # A PLAYLIST MADE IN A MIRRORED FOLDER after the gate was shown, so a plan
-    # read afresh would move its digest.
+    # A PLAYLIST MADE IN A MIRRORED FOLDER after the gate, so a fresh plan would move.
     _made_after(cfg)
     _decided(run_id, ACCOUNT_GATE)
     asked = len(held.matches)
@@ -1120,8 +1104,7 @@ def test_a_library_write_between_the_mirrors_two_acts_applies_the_approved_plan(
     assert facts["mirror plan frozen"].startswith("rebuilt from the plan frozen on run ")
     assert "rebuild" in facts["mirror plan"], facts
     assert asked == 0
-    # THE APPROVED PLAN, not the moved library: the playlist made after the
-    # gate is not on the account until the next refresh plans it.
+    # THE APPROVED PLAN: the later playlist waits for the next refresh.
     assert not _on_account(held, "Made After The Gate")
     frozen = config.state_path("mirror_plans", cfg)
     before = sorted(path.name for path in frozen.glob("*.json"))
@@ -1315,8 +1298,7 @@ def test_only_yours_shows_a_refused_rotation_since_it_is_why_the_listing_is_shor
         (account_area.MARKS, ["_mark_steps"]),
         (account_area.FILE, ["_file_step"]),
         (account_area.ROOT, ["_root_step"]),
-        # The filing is planned for yours too, so what it moves is not listed;
-        # the root step is not, since yours reads its empties off the filing.
+        # The filing is planned for yours too, so the root step does not list its moves.
         (account_area.YOURS, ["_file_step", "_yours"]),
     ],
 )
@@ -1392,8 +1374,7 @@ def test_a_set_already_prefixed_in_its_downloaded_sets_folder_plans_nothing(worl
     cfg, _fake, held, _inbox, _ids = world
     _proven_by_inspiration(cfg)
     recorded = ledger.set_playlist(cfg, SET_NAME)
-    # NOT CLEARED: the fake numbers a folder by how many it made, so a clear
-    # lets the next one take this folder's identifier.
+    # NOT CLEARED: the fake numbers folders by count, so a clear reuses an identifier.
     held.placed[recorded.remote_id] = held.create_folder(f"Downloaded Sets {recorded.year}")
     held.titles[recorded.remote_id] = f"DOWNLOADED {SET_NAME}"
     assert _archive()["state"] == "nothing"
@@ -1546,8 +1527,7 @@ LEGACY_NAME = "2026 Custom Playlists"
 
 
 def _root_world(world) -> tuple:
-    """The 2026-10-13 root in small: debris, an empty, a legacy year folder, a working
-    custom playlist, and two folders of the author's that no step may name."""
+    """The 2026-10-13 root in small, with two author's folders no step may name."""
     cfg, fake, held, _inbox, _ids = world
 
     def playlist(playlist_id, name, tracks, folder=""):
@@ -1599,8 +1579,7 @@ def test_only_root_removes_debris_and_empties_on_the_gate_and_files_the_legacy_f
     ]
     assert held.folder_names[held.placed["old-1"]] == "2026"
     assert applied["moved"] == [["old-1", held.placed["old-1"]]]
-    # The legacy folder stays through the apply that emptied it, and the
-    # label folder, the author's folders and the working custom are untouched.
+    # The emptied legacy folder stays, and the rest is untouched.
     assert "hand-legacy" in held.folder_names and held.folders_removed == []
     assert held.placed["year-1"] == "hand-label" and held.playlists["year-1"] == ["t1", "t2", "t3"]
     assert held.placed["spotify-1"] == "hand-spotify" and "custom-1" not in held.placed
@@ -1776,8 +1755,7 @@ def test_an_account_answer_ahead_continued_is_refused_before_the_verb_runs(world
     run_id = _refused(VERB)["run_id"]
     _decided(run_id, DB_GATE, "approve")
     reached = _parent(cfg, ids["batch"])
-    # The run waits at nothing now (the database answer is recorded, the
-    # account gate not reached), so the refusal names the run to continue.
+    # The run waits at nothing now, so the refusal names the run to continue.
     code, early = drive(
         ["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person", "--continue"]
     )
@@ -1814,8 +1792,7 @@ def test_a_gate_with_no_digest_source_still_takes_an_answer_before_it_is_reached
 
 
 def test_an_answer_ahead_of_a_gate_the_continue_may_not_reach_promises_no_stop_there(world):
-    """Round one's drive: with the acknowledgment lapsed the rekordbox area refuses before it
-    plans, so the refused decide's steps promise no stop at a gate the run never reaches."""
+    """Round one's drive: with the acknowledgment lapsed the area refuses before it plans."""
     session.ack_path(world[0]).unlink()
     run_id = _refused(VERB, ACCOUNT_GATE)["run_id"]
     code, early = _decide(run_id, DB_GATE, "approve")

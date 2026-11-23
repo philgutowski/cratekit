@@ -1,9 +1,7 @@
 """The byte budget and the album-dedupe rule every renamer shares.
 
-Both ceilings arrive as a ``NameBudget`` parameter (S3); the last test measures
-one name against two budgets in one process, which an engine reading global
-state cannot do. Pure functions throughout. Directory literals are synthetic
-(D1), built to the byte lengths of real session directories.
+Both ceilings arrive as a ``NameBudget`` (S3), and one name is measured against two budgets
+in one process. Pure; directory literals are synthetic (D1) at real byte lengths.
 """
 
 from __future__ import annotations
@@ -61,8 +59,7 @@ DEDUPE_CASES = [
 
 
 class TestDedupeStem:
-    """Ambiguity means identity: every identity case is a file a greedier rule
-    would have mutilated beyond repair."""
+    """Every identity case is a file a greedier rule would have mutilated."""
 
     @pytest.mark.parametrize(
         "stem,kwargs,expected", [c[:3] for c in DEDUPE_CASES], ids=[c[3] for c in DEDUPE_CASES]
@@ -124,8 +121,7 @@ class TestFitStemToBudget:
         assert len(unpadded.encode("utf-8")) <= BUDGET.path_budget_bytes
 
     def test_distinct_long_stems_get_distinct_names(self):
-        """Remix variants differ only in the part the cut removes; without the
-        disambiguator the second overwrites the first or collides for ever."""
+        """Remix variants differ only in the part the cut removes."""
         a = "Z" * 200 + " (Extended Mix)"
         b = "Z" * 200 + " (Original Mix)"
         out_a = fit_stem_to_budget(DEEP_DIR, self.HEAD, a, self.SUFFIX, budget=BUDGET)

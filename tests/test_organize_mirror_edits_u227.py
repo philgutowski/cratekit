@@ -1,6 +1,6 @@
 """U227: a download an account edit queued is filed where the edit put it, once it lands.
 
-Sitting 85 on U204's world: the landing's own filing is never read as rekordbox's change. D1 applies.
+Sitting 85: the landing's own filing is never read as rekordbox's change. D1 applies.
 """
 
 from __future__ import annotations
@@ -68,8 +68,7 @@ def test_a_queued_track_filed_elsewhere_by_its_tags_is_filed_where_the_account_p
     assert change["edit"] == edits.MOVE and change["joins"] == ["Tech House / Med"]
     assert "landed for the account's edit" in change["why"]
     assert world.places("3") == {("Tech House", "Med")}
-    # The account keeps it where the person put it, and is not given the band
-    # its tags chose.
+    # The account keeps it where the person put it, not its tags' band.
     assert world.held("Tech House Med") == ["r3"]
     assert "r3" not in world.held("Deep House Low")
     # ONCE: the next run reads nothing to carry and nothing to undo.
@@ -93,8 +92,7 @@ def test_a_filing_recorded_before_the_download_was_queued_is_not_the_landings(wo
     world.put_in("Tech House Med", "r3", at=ACCOUNT_AT)
     _land_and_file(world, matched_as="r3")
     _file_by_tags(world, "3", ("Deep House", "Low"), FILED_AT)
-    # The job is queued after the filing: a hand made stand in for a queue
-    # that froze a track the library already filed.
+    # Queued after the filing: a queue that froze a track the library already filed.
     from cratekit.intake import cli as intake_cli
     from cratekit.organize import mirror_downloads
     with jobs.open_store() as store:

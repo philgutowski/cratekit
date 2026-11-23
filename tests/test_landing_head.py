@@ -1,7 +1,4 @@
-"""R-740: a landed track's library Name carries the head its file carries.
-
-Real FLAC files land through ``landing.apply``; the Name the intake file wrote is read.
-"""
+"""R-740: a landed track's library Name carries the head its file carries."""
 
 from __future__ import annotations
 
