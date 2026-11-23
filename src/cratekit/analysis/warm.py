@@ -13,7 +13,7 @@ holds.
 THE ENERGY MEASURE ASKS FOR IT TOO (U344, closing R-1491): every head,
 restamp and calibrate scores energy through ``energy.features_from_path``,
 which warms first, and the warm up measures energy from its file as well as
-from samples, since that path compiles a kernel specialisation of its own. A
+from samples, so whatever that path compiles is compiled under the lock. A
 kernel keeps the code it was first compiled to, so warming first in every
 process also gives a head in a worker and a restamp in the driver the same
 features to the last bit. NOT COVERED: a platform with no ``fcntl`` takes no
