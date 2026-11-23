@@ -810,3 +810,21 @@ def test_the_gate_line_counts_the_synced_playlists_and_the_held_ones_apart(five_
     assert "3 of the 4 synced playlist(s) were taken from a read made whole" in json.dumps(
         held["cause"]["detail"]
     )
+
+
+@pytest.mark.parametrize("key", ["refs", "isrcs", "recordings"])
+@pytest.mark.parametrize("damaged", ["tid-1", ["tid-1", 2], None])
+def test_a_held_read_whose_sets_do_not_hold_together_is_read_again(
+    native_library, pinned, key, damaged
+):
+    """The mutation table's K17: a damaged set is never read as empty, which would claim the
+    playlist holds nothing and offer its tracks."""
+    cfg, _root = native_library
+    store = removed_kept.SyncedReads(cfg, NOW)
+    store.keep("acc-x", _shown(), _listing())
+    store.flush()
+    document = _kept_document(cfg)
+    document["reads"]["acc-x"][key] = damaged
+    config.state_path(removed_kept.STATE_KEY, cfg).write_text(json.dumps(document))
+
+    assert removed_kept.SyncedReads(cfg, NOW).get("acc-x", _shown()) is None
