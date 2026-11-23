@@ -41,6 +41,7 @@ from cratekit.write.routing_export import (
     _native_trees,
     _placed_counts,
     _plan,
+    _shown,
     export_remedy,
     route_inbox_export,
     route_unplaced_export,
@@ -179,7 +180,7 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
         for placement in placed:
             folder_name, sub = routing_pass.destination(declared, placement.bucket, placement.sub)
             named = _column(declared, placement, destined=destined, vocal=vocal, genre=genre)
-            named.setdefault(placement.location, f"{folder_name}/{sub}")
+            _shown(named, placement.location, f"{folder_name}/{sub}")
     items = [
         {
             "path": str(path),

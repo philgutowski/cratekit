@@ -264,8 +264,13 @@ download, which then runs unattended.
 crate label sync
 crate label sync --next
 crate label sync --next --label "Some Label"
+crate label sync --genre GENRE
 crate label sync --go
 ```
+
+`--genre` asks only the labels registered with that genre, the group
+`crate label registry list --genre GENRE` lists, and a run stopped with
+`quit` resumes inside the group when it is named again.
 
 Every go downloads into the one staging folder and its landing takes the
 whole folder, so land each go before the next. A go refuses before its gate

@@ -148,7 +148,7 @@ def file_landed(
         plan = apply_cli.current_plan(cfg, declared, scope=frozenset(expected))
     except CratekitError as exc:
         return Filed(state=NOT_FILED, why=exc.cause.message)
-    found = {entry.content_id: entry for entry in plan.entries}
+    found = {entry.content_id: entry for entry in plan.firsts()}
     differing: list[str] = []
     for content_id, one in expected.items():
         entry = found.get(content_id)

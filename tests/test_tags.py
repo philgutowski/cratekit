@@ -55,6 +55,7 @@ ALL_FIELDS = {
     "copyright": "\u2117 2021 Probe Label",
     "driftlevel": "4.4",
     "drift": "variable",
+    "secondgenre": "Probe Second Genre",
 }
 
 

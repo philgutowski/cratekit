@@ -345,6 +345,26 @@ class Registry:
         found = self.claimants(account)
         return found[0] if len(found) == 1 else None
 
+    def of_genre(self, genre: str) -> tuple[LabelEntry, ...]:
+        """Every label whose genre is ``genre``, in registry order (U341).
+
+        Matched NFC then casefold, as a name is, so the group a person typed
+        one way is the group set another.
+        """
+        wanted = _name_key(genre)
+        return tuple(
+            entry for entry in self.labels.values()
+            if entry.genre is not None and _name_key(entry.genre) == wanted
+        )
+
+    def genres(self) -> tuple[str, ...]:
+        """Each genre the labels carry once, as its first label spells it, in registry order."""
+        held: dict[str, str] = {}
+        for entry in self.labels.values():
+            if entry.genre is not None:
+                held.setdefault(_name_key(entry.genre), entry.genre)
+        return tuple(held.values())
+
     def resolve(self, name_or_id: str) -> LabelEntry | None:
         found = self.by_id(name_or_id) or self.by_name(name_or_id)
         if found is not None or not name_or_id.strip():
