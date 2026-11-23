@@ -349,18 +349,19 @@ def _item(content_id: str, asked: suggest.Asked) -> suggest.Item:
     )
 
 
-def test_tag_suggest_says_a_partly_read_row_apart_from_one_nobody_could_read():
+def _unread_warning(*items: suggest.Item) -> str:
+    """The one catalogue unread advisory ``tag suggest`` gives over these rows."""
     plan = suggest.SuggestPlan(
-        items=(_item("1", REFUSED_ROW), _item("2", PARTLY), _item("3", PARTLY)),
-        counts=defaultdict(int),
-        changes=None,
-        band="",
-        catalogue=True,
+        items=items, counts=defaultdict(int), changes=None, band="", catalogue=True
     )
     (warning,) = [
         w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD
     ]
-    message = warning["message"]
+    return warning["message"]
+
+
+def test_tag_suggest_says_a_partly_read_row_apart_from_one_nobody_could_read():
+    message = _unread_warning(_item("1", REFUSED_ROW), _item("2", PARTLY), _item("3", PARTLY))
     assert "the catalogues could not be read for 1 row(s), 1," in message
     assert "beatport could not be read for 2 row(s) another catalogue answered, 2, 3," in message
 
@@ -417,20 +418,9 @@ DEEZER_MATCH = _fake(
 def test_a_row_written_from_deezer_while_beatport_refused_is_named_in_the_warning():
     """Round one, 1: a Deezer genre past a refusing Beatport was suggested with
     no word that Beatport was read for none of the rows."""
-    plan = suggest.SuggestPlan(
-        items=(_item("1", DEEZER_MATCH), _item("2", REFUSED_ROW)),
-        counts=defaultdict(int),
-        changes=None,
-        band="",
-        catalogue=True,
-    )
-    (warning,) = [
-        w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD
-    ]
-    assert "beatport could not be read for 1 row(s) another catalogue answered, 1," in (
-        warning["message"]
-    )
-    assert "the catalogues could not be read for 1 row(s), 2," in warning["message"]
+    message = _unread_warning(_item("1", DEEZER_MATCH), _item("2", REFUSED_ROW))
+    assert "beatport could not be read for 1 row(s) another catalogue answered, 1," in message
+    assert "the catalogues could not be read for 1 row(s), 2," in message
 
 
 def test_rows_are_sorted_by_why_they_were_not_read_whole():
@@ -588,21 +578,12 @@ def test_the_suggest_verb_says_a_token_that_could_not_be_used():
         note=f"unread: discogs, {suggest.TOKEN_UNUSABLE}",
         passed_over=("discogs",),
     )
-    plan = suggest.SuggestPlan(
-        items=(_item("1", unusable),),
-        counts=defaultdict(int),
-        changes=None,
-        band="",
-        catalogue=True,
-    )
-    (warning,) = [
-        w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD
-    ]
-    assert warning["message"].startswith(
+    message = _unread_warning(_item("1", unusable))
+    assert message.startswith(
         "Discogs was not read for 1 row(s), 1, because the recorded Discogs token could "
         "not be used, so those were suggested without it; to record a new one: "
     )
-    assert "no Discogs token is recorded" not in warning["message"]
+    assert "no Discogs token is recorded" not in message
 
 
 def test_a_backlog_rows_digest_leaves_the_words_out_and_its_envelope_keeps_them():
