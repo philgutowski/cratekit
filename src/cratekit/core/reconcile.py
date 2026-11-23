@@ -50,6 +50,11 @@ LOCK_KEY = "restore_reconciliation_lock"
 SCHEMA_VERSION = 1
 
 
+def _refuse(reason: str, message: str, **fields: Any) -> CratekitError:
+    """``refuse`` with the run scope and this module's origin, which every refusal here carries."""
+    return refuse(reason, message, scope=Scope.RUN, origin=("reconcile",), **fields)
+
+
 class Kind(StrEnum):
     """The three things a restore leaves behind, which are not the same thing.
 
@@ -156,7 +161,7 @@ def lock_path(cfg: config.Config) -> Path:
 
 def _unusable(cfg: config.Config, what: str) -> CratekitError:
     """One refusal for every way this document is not this document."""
-    return refuse(
+    return _refuse(
         "restore-record-unusable",
         f"the restore reconciliation record at {path_for(cfg).name} could not be "
         f"read ({what}), so what a restore left outstanding is unknown; treating "
@@ -166,8 +171,6 @@ def _unusable(cfg: config.Config, what: str) -> CratekitError:
             "repair or restore the reconciliation record before running anything "
             "that writes to this library",
         ),
-        scope=Scope.RUN,
-        origin=("reconcile",),
         detail={"path": str(path_for(cfg)), "problem": what},
     )
 
@@ -193,9 +196,7 @@ def _assert_library_is_writable(cfg: config.Config) -> None:
     state directory or the configured database; a husk has neither.
     """
     _assert_library_is_readable(cfg)
-    if config.library_state_dir(cfg).is_dir():
-        return
-    if Path(cfg.library.db_path).exists():
+    if config.library_state_dir(cfg).is_dir() or Path(cfg.library.db_path).exists():
         return
     raise _unusable(
         cfg,
@@ -231,14 +232,12 @@ def _locked(cfg: config.Config) -> Iterator[None]:
     try:
         handle = config.flock_exclusive(target, _own_only)
     except (ImportError, OSError) as exc:
-        raise refuse(
+        raise _refuse(
             "restore-record-unusable",
             f"the restore reconciliation record could not be locked ({exc}), and "
             f"writing it unlocked loses whatever a second process is writing at "
             f"the same time, silently, while reporting success",
             steps=("make the library's state directory writable by this account",),
-            scope=Scope.RUN,
-            origin=("reconcile",),
             detail={"lock": str(target)},
         ) from exc
     try:
@@ -272,11 +271,10 @@ def _recognize(cfg: config.Config, raw: Any) -> dict[str, Record]:
         identity = entry.get("identity")
         if not isinstance(identity, str) or not identity.strip():
             raise _unusable(cfg, f"marker {position} names no identity")
-        raw_kind = entry.get("kind")
         raw_effect = entry.get("effect")
         raw_disposition = entry.get("disposition")
         try:
-            kind = Kind(str(raw_kind))
+            kind = Kind(str(entry.get("kind")))
             effect = None if raw_effect is None else config.RollbackEffect(str(raw_effect))
             closed = None if raw_disposition is None else Disposition(str(raw_disposition))
         except ValueError as exc:
@@ -562,12 +560,10 @@ def close_marker(
         recorded = _read(cfg)
         existing = recorded.get(marker_id)
         if existing is None:
-            raise refuse(
+            raise _refuse(
                 "restore-record-unusable",
                 f"no reconciliation marker has the identifier {marker_id!r}",
                 steps=("list the outstanding markers and take the identifier from one",),
-                scope=Scope.RUN,
-                origin=("reconcile",),
                 detail={"marker_id": marker_id},
             )
         if not existing.outstanding:
@@ -617,7 +613,7 @@ def assert_converged(cfg: config.Config) -> None:
     in_flight = [r for r in open_records if r.marker.kind is Kind.IN_FLIGHT_RESTORE]
     trees = sorted({r.marker.identity for r in open_records if r.marker.kind is Kind.UNCONVERGED_TREE})
     lines = [f"  - {r.marker.marker_id}: {r.marker.detail}" for r in open_records]
-    raise refuse(
+    raise _refuse(
         "restore-reconciliation-outstanding",
         "a restore of this library left "
         + ", ".join(
@@ -642,8 +638,6 @@ def assert_converged(cfg: config.Config) -> None:
             if in_flight
             else Remedy.COMPLETE_PENDING_ACTION
         ),
-        scope=Scope.RUN,
-        origin=("reconcile",),
         detail={
             "markers": [r.marker.marker_id for r in open_records],
             "effects": [r.marker.marker_id for r in effects],
@@ -652,27 +646,3 @@ def assert_converged(cfg: config.Config) -> None:
         },
     )
 
-
-__all__ = [
-    "LATCHING_KINDS",
-    "LOCK_KEY",
-    "SCHEMA_VERSION",
-    "STATE_KEY",
-    "Disposition",
-    "Kind",
-    "Marker",
-    "Record",
-    "assert_converged",
-    "close_marker",
-    "converged",
-    "effect_markers",
-    "in_flight_marker",
-    "lock_path",
-    "outstanding",
-    "path_for",
-    "record_markers",
-    "records",
-    "retract_in_flight",
-    "tree_markers",
-    "unconverged_trees",
-]
