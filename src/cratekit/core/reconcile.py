@@ -196,9 +196,7 @@ def _assert_library_is_writable(cfg: config.Config) -> None:
     state directory or the configured database; a husk has neither.
     """
     _assert_library_is_readable(cfg)
-    if config.library_state_dir(cfg).is_dir():
-        return
-    if Path(cfg.library.db_path).exists():
+    if config.library_state_dir(cfg).is_dir() or Path(cfg.library.db_path).exists():
         return
     raise _unusable(
         cfg,
@@ -273,11 +271,10 @@ def _recognize(cfg: config.Config, raw: Any) -> dict[str, Record]:
         identity = entry.get("identity")
         if not isinstance(identity, str) or not identity.strip():
             raise _unusable(cfg, f"marker {position} names no identity")
-        raw_kind = entry.get("kind")
         raw_effect = entry.get("effect")
         raw_disposition = entry.get("disposition")
         try:
-            kind = Kind(str(raw_kind))
+            kind = Kind(str(entry.get("kind")))
             effect = None if raw_effect is None else config.RollbackEffect(str(raw_effect))
             closed = None if raw_disposition is None else Disposition(str(raw_disposition))
         except ValueError as exc:

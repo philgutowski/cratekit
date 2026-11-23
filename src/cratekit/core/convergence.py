@@ -20,7 +20,7 @@ LAYER: infrastructure. It names no verb (D2) and no display name (R19).
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -123,12 +123,7 @@ class Fingerprint:
     taken: str = ""
 
     def to_json(self) -> dict[str, Any]:
-        return {
-            "schema_version": self.schema_version,
-            "active_rows": self.active_rows,
-            "local_usn": self.local_usn,
-            "taken": self.taken,
-        }
+        return asdict(self)
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> Fingerprint:
@@ -383,10 +378,7 @@ class TreeConvergence:
         return self.unconverged and self.disposition is None
 
     def node(self, bucket: str, sub: str) -> DestinationNode | None:
-        for entry in self.nodes:
-            if entry.bucket == bucket and entry.sub == sub:
-                return entry
-        return None
+        return next((e for e in self.nodes if e.bucket == bucket and e.sub == sub), None)
 
     def with_nodes(self, nodes: Iterable[DestinationNode]) -> TreeConvergence:
         """This record with ``nodes`` replacing any entry for the same destination."""
