@@ -1,0 +1,944 @@
+name = "u325-after-l-03"
+pass_kind = "replay"
+
+[[rows]]
+id = "u67.R1_refusal_to_empty"
+source = { table = "u67.json", id = "R1_refusal_to_empty" }
+description = "A classified open failure reads as an empty collection instead of refusing"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    except CratekitError as exc:
+        inner = exc.cause'''
+new = '''
+    except CratekitError as exc:
+        return ()
+        inner = exc.cause'''
+
+[[rows]]
+id = "u67.R2_generic_to_empty"
+source = { table = "u67.json", id = "R2_generic_to_empty" }
+description = "A read that fails after the open reads as an empty collection instead of refusing"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    except Exception as exc:  # noqa: BLE001 - every failed read is one refusal
+        raise refuse('''
+new = '''
+    except Exception as exc:  # noqa: BLE001 - every failed read is one refusal
+        return ()
+        raise refuse('''
+
+[[rows]]
+id = "u67.R3_remedy_passthrough"
+source = { table = "u67.json", id = "R3_remedy_passthrough" }
+description = "Drop the inner remedy, so the refusal defaults to restore-from-snapshot"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+            remedy=inner.remediation.remedy or (None if steps else Remedy.REPORT_DEFECT),
+            steps=steps,'''
+new = '''
+            remedy=None,
+            steps=(),'''
+
+[[rows]]
+id = "u254-m08.M08_never_append"
+source = { table = "u254-m08.json", id = "M08_never_append" }
+description = "mark_applied: rewrite the whole ledger on every mark that misses the cache, the square this card ends"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+            if appendable:
+                config.append_durable_bytes(line, path)'''
+new = '''
+            if False:
+                config.append_durable_bytes(line, path)'''
+
+[[rows]]
+id = "u254.M01_mark_validates_record"
+source = { table = "u254.json", id = "M01_mark_validates_record" }
+description = "mark_applied: drop the reader's field rules on the record before it is written, so a record the reader refuses lands"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+    _record_from(
+        entry.to_json(),
+        path=path,
+        where=f"was refused a record for the entry {entry.entry_id!r}, one",
+    )'''
+new = '    pass'
+
+[[rows]]
+id = "u254.M02_cache_identity_ignored"
+source = { table = "u254.json", id = "M02_cache_identity_ignored" }
+description = "mark_applied: append whenever this process has marked the path before, whatever happened to the file since"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '        if known is not None and known == _as_left(path):'
+new = '        if known is not None:'
+
+[[rows]]
+id = "u254.M03_cache_identity_no_size"
+source = { table = "u254.json", id = "M03_cache_identity_no_size" }
+description = "_as_left: leave the size out of the identity, so a same inode file another hand changed reads as left"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)'
+new = '    return (found.st_dev, found.st_ino, 0, found.st_mtime_ns)'
+
+[[rows]]
+id = "u254.M04_cache_identity_no_mtime"
+source = { table = "u254.json", id = "M04_cache_identity_no_mtime" }
+description = "_as_left: leave the modification time out of the identity"
+file = "src/cratekit/adopt/apply.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)'
+new = '    return (found.st_dev, found.st_ino, found.st_size, 0)'
+
+[[rows]]
+id = "u254.M05_cache_identity_no_inode"
+source = { table = "u254.json", id = "M05_cache_identity_no_inode" }
+description = "_as_left: leave the inode out of the identity, so a replaced file of the same size reads as left"
+file = "src/cratekit/adopt/apply.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)'
+new = '    return (found.st_dev, 0, found.st_size, found.st_mtime_ns)'
+
+[[rows]]
+id = "u254.M06_never_cache"
+source = { table = "u254.json", id = "M06_never_cache" }
+description = "mark_applied: never remember what this process left, so every mark reads the whole ledger again"
+file = "src/cratekit/adopt/apply.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+        if left is not None:
+            _LEFT[key] = left'''
+new = '''
+        if left is not None:
+            pass'''
+
+[[rows]]
+id = "u254.M07_always_append"
+source = { table = "u254.json", id = "M07_always_append" }
+description = "mark_applied: append even to a torn, absent or schema 1 ledger"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+            if appendable:
+                config.append_durable_bytes(line, path)'''
+new = '''
+            if True:
+                config.append_durable_bytes(line, path)'''
+
+[[rows]]
+id = "u254.M09_any_line_torn"
+source = { table = "u254.json", id = "M09_any_line_torn" }
+description = "_read_journal: read a damaged line anywhere as torn and stop, so the records after it are lost"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '            if index == len(body) - 1 and whole:'
+new = '            if whole:'
+
+[[rows]]
+id = "u254.M10_torn_needs_terminated_tail"
+source = { table = "u254.json", id = "M10_torn_needs_terminated_tail" }
+description = "_read_journal: read a damaged last whole line as torn even when an unterminated line follows it"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '            if index == len(body) - 1 and whole:'
+new = '            if index == len(body) - 1:'
+
+[[rows]]
+id = "u254.M11_unterminated_tail_whole"
+source = { table = "u254.json", id = "M11_unterminated_tail_whole" }
+description = "_read_journal: call a journal with an unterminated last line appendable"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    whole = not tail'
+new = '    whole = True'
+
+[[rows]]
+id = "u254.M12_header_upgrade"
+source = { table = "u254.json", id = "M12_header_upgrade" }
+description = "_read_journal: drop the upgrade refusal of a newer journal header"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+            f"{SCHEMA_VERSION}",
+            Remedy.UPGRADE_CRATEKIT,
+        )
+    if version != SCHEMA_VERSION:'''
+new = '''
+            f"{SCHEMA_VERSION}",
+            Remedy.RUN_DOCTOR,
+        )
+    if version != SCHEMA_VERSION:'''
+
+[[rows]]
+id = "u254.M13_header_older_version"
+source = { table = "u254.json", id = "M13_header_older_version" }
+description = "_read_journal: accept a journal header at a schema no build wrote as a journal"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    if version != SCHEMA_VERSION:'
+new = '    if version > SCHEMA_VERSION:'
+
+[[rows]]
+id = "u254.M14_header_unterminated"
+source = { table = "u254.json", id = "M14_header_unterminated" }
+description = "_read_journal: accept a header with no line ending after it"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    if len(lines) < 2:'
+new = '    if len(lines) < 1:'
+
+[[rows]]
+id = "u254.M15_header_string_version"
+source = { table = "u254.json", id = "M15_header_string_version" }
+description = "_read_journal: drop the integer check on the header's schema_version"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+    header = json.loads(lines[0].decode("utf-8"))
+    version = header.get("schema_version")
+    if not isinstance(version, int):'''
+new = '''
+    header = json.loads(lines[0].decode("utf-8"))
+    version = int(header.get("schema_version"))
+    if not isinstance(version, int):'''
+
+[[rows]]
+id = "u254.M16_journal_needs_format"
+source = { table = "u254.json", id = "M16_journal_needs_format" }
+description = "_is_journal: take any object on the first line as a journal header"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    return isinstance(header, dict) and header.get("format") == JOURNAL_FORMAT'
+new = '    return isinstance(header, dict)'
+
+[[rows]]
+id = "u254.M17_document_at_journal_schema"
+source = { table = "u254.json", id = "M17_document_at_journal_schema" }
+description = "_read_document: read a whole document that claims schema 2"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    if version > DOCUMENT_SCHEMA_VERSION:'
+new = '    if version > SCHEMA_VERSION:'
+
+[[rows]]
+id = "u254.M18_remark_first_wins"
+source = { table = "u254.json", id = "M18_remark_first_wins" }
+description = "_read_journal: fold a re-mark first one wins, unlike the document's writer"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '        folded[record.entry_id] = record'
+new = '        folded.setdefault(record.entry_id, record)'
+
+[[rows]]
+id = "u254.M19_already_inverted"
+source = { table = "u254.json", id = "M19_already_inverted" }
+description = "apply_plan: report as already applied the entries the ledger does not hold"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '        entry.entry_id for entry in plan.applicable() if entry.entry_id in done'
+new = '        entry.entry_id for entry in plan.applicable() if entry.entry_id not in done'
+
+[[rows]]
+id = "u254.M21_record_needs_actor"
+source = { table = "u254.json", id = "M21_record_needs_actor" }
+description = "_record_from: drop actor from the fields every record must carry"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '    for name in ("entry", "tree", "content", "actor"):'
+new = '    for name in ("entry", "tree", "content"):'
+
+[[rows]]
+id = "r658-c.S4c_dataless_skip_returns"
+source = { table = "r658-c.json", id = "S4c_dataless_skip_returns" }
+description = "Composite for S4, run as its own table: put back a skip that refuses to read a dataless file, which only the scoped evicted stat can reach"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    if recorded_size is not None and info.st_size != recorded_size:
+        return _Looked(ByteRead.A_DIFFERENT_SIZE)
+    try:
+        found = digest_of(target)
+'''
+new = '''
+    if recorded_size is not None and info.st_size != recorded_size:
+        return _Looked(ByteRead.A_DIFFERENT_SIZE)
+    if getattr(info, "st_flags", 0) & 0x40000000:
+        return _Looked(ByteRead.UNREADABLE)
+    try:
+        found = digest_of(target)
+'''
+
+[[rows]]
+id = "u23-round-8-independent.A1_at_risk_always_true"
+source = { table = "u23-round-8-independent.json", id = "A1_at_risk_always_true" }
+description = "Nothing is ever at risk, so _settled_or_refused can never refuse"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    held = current()
+    if held == record.original:
+        return True
+    return held in ((record.written,), (written,))
+'''
+new = '''
+    return True
+'''
+
+[[rows]]
+id = "u23-round-8-independent.A2_at_risk_always_false"
+source = { table = "u23-round-8-independent.json", id = "A2_at_risk_always_false" }
+description = "Everything is at risk, so every re-run falls through to the digest"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    held = current()
+    if held == record.original:
+        return True
+    return held in ((record.written,), (written,))
+'''
+new = '''
+    return False
+'''
+
+[[rows]]
+id = "u23-round-8-independent.A3_at_risk_drops_the_original_clause"
+source = { table = "u23-round-8-independent.json", id = "A3_at_risk_drops_the_original_clause" }
+description = "A field holding this record's own original is no longer accounted for"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    held = current()
+    if held == record.original:
+        return True
+    return held in ((record.written,), (written,))
+'''
+new = '''
+    held = current()
+    return held in ((record.written,), (written,))
+'''
+
+[[rows]]
+id = "u23-round-8-independent.A4_at_risk_drops_the_record_value"
+source = { table = "u23-round-8-independent.json", id = "A4_at_risk_drops_the_record_value" }
+description = "The value the record says adoption wrote no longer accounts for the field"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    held = current()
+    if held == record.original:
+        return True
+    return held in ((record.written,), (written,))
+'''
+new = '''
+    held = current()
+    if held == record.original:
+        return True
+    return held in ((written,),)
+'''
+
+[[rows]]
+id = "u23-round-8-independent.A5_at_risk_drops_this_call"
+source = { table = "u23-round-8-independent.json", id = "A5_at_risk_drops_this_call" }
+description = "The value THIS call is about to write no longer accounts for the field"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    held = current()
+    if held == record.original:
+        return True
+    return held in ((record.written,), (written,))
+'''
+new = '''
+    held = current()
+    if held == record.original:
+        return True
+    return held in ((record.written,),)
+'''
+
+[[rows]]
+id = "u23-round-8-independent.A6_at_risk_original_by_identity"
+source = { table = "u23-round-8-independent.json", id = "A6_at_risk_original_by_identity" }
+description = "The original clause compares by object identity rather than by value"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    held = current()
+    if held == record.original:
+        return True
+    return held in ((record.written,), (written,))
+'''
+new = '''
+    held = current()
+    if held is record.original:
+        return True
+    return held in ((record.written,), (written,))
+'''
+
+[[rows]]
+id = "u23-round-8-independent.B1_settled_never_refuses"
+source = { table = "u23-round-8-independent.json", id = "B1_settled_never_refuses" }
+description = "Round 7 restored: the two converging-address shapes accept unconditionally"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    if _nothing_unrecorded_is_at_risk(record, written=written, current=current):
+        return _re_addressed(
+            record, identity=identity, path_text=path_text, keep_path=keep_path
+        )
+    if _the_bytes_agree(record, look, size_here):
+'''
+new = '''
+    if True:
+        return _re_addressed(
+            record, identity=identity, path_text=path_text, keep_path=keep_path
+        )
+    if _the_bytes_agree(record, look, size_here):
+'''
+
+[[rows]]
+id = "u23-round-8-independent.B3_settled_bytes_clause_inverted"
+source = { table = "u23-round-8-independent.json", id = "B3_settled_bytes_clause_inverted" }
+description = "The bytes acceptance fires when the bytes DISAGREE"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    if _the_bytes_agree(record, look, size_here):
+        # THE BYTES ARE EXACTLY WHAT ADOPTION LEFT'''
+new = '''
+    if not _the_bytes_agree(record, look, size_here):
+        # THE BYTES ARE EXACTLY WHAT ADOPTION LEFT'''
+
+[[rows]]
+id = "u23-round-8-independent.C1_shape2_bypasses_the_check"
+source = { table = "u23-round-8-independent.json", id = "C1_shape2_bypasses_the_check" }
+description = "Shape 2, both addresses agreeing, returns re-addressed with no check at all"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+        if by_identity is by_path:
+            return _settled_or_refused(
+                by_identity,
+                resolved,
+                identity=identity,
+                path_text=path_text,
+                keep_path=True,
+                written=written,
+                look=look,
+                current=current,
+                size_here=size_here,
+            )
+'''
+new = '''
+        if by_identity is by_path:
+            return _re_addressed(
+                by_identity, identity=identity, path_text=path_text, keep_path=True
+            )
+'''
+
+[[rows]]
+id = "u23-round-8-independent.C2_shape3_bypasses_the_check"
+source = { table = "u23-round-8-independent.json", id = "C2_shape3_bypasses_the_check" }
+description = "Shape 3, one file under two names, returns re-addressed with no check at all"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+            # a different question and the shape below is where it is asked.
+            return _settled_or_refused(
+'''
+new = '''
+            # a different question and the shape below is where it is asked.
+            return _re_addressed(
+                by_identity, identity=identity, path_text=path_text, keep_path=True
+            )
+            return _settled_or_refused(
+'''
+
+[[rows]]
+id = "u23-round-8-independent.D1_bytes_agree_drops_the_size_gate"
+source = { table = "u23-round-8-independent.json", id = "D1_bytes_agree_drops_the_size_gate" }
+description = "The size shortcut round 8 restored is removed again"
+file = "src/cratekit/adopt/revert.py"
+surface = "maintainer"
+tests = ["tests/test_adoption.py"]
+old = '''
+    if record.size is not None and size_here is not None and record.size != size_here:
+        return False
+'''
+new = ''
+
+[[rows]]
+id = "u23-round-8-independent.D2_bytes_agree_size_gate_inverted"
+source = { table = "u23-round-8-independent.json", id = "D2_bytes_agree_size_gate_inverted" }
+description = "The size shortcut refuses on AGREEING sizes"
+file = "src/cratekit/adopt/revert.py"
+surface = "maintainer"
+tests = ["tests/test_adoption.py"]
+old = '    if record.size is not None and size_here is not None and record.size != size_here:'
+new = '    if record.size is not None and size_here is not None and record.size == size_here:'
+
+[[rows]]
+id = "u23-round-8-independent.E1_vacancy_is_mere_absence"
+source = { table = "u23-round-8-independent.json", id = "E1_vacancy_is_mere_absence" }
+description = "Round 7 restored: an unmounted volume reads as a deleted file"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    recorded = Path(record.path)
+    try:
+        if not recorded.parent.is_dir():
+            return False
+        return not recorded.exists()
+    except OSError:
+        return False
+'''
+new = '''
+    recorded = Path(record.path)
+    try:
+        return not recorded.exists()
+    except OSError:
+        return False
+'''
+
+[[rows]]
+id = "u23-round-8-independent.E2_vacancy_parent_check_inverted"
+source = { table = "u23-round-8-independent.json", id = "E2_vacancy_parent_check_inverted" }
+description = "Vacancy requires the containing directory to be ABSENT"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+        if not recorded.parent.is_dir():
+            return False
+        return not recorded.exists()'''
+new = '''
+        if recorded.parent.is_dir():
+            return False
+        return not recorded.exists()'''
+
+[[rows]]
+id = "u23-round-8-independent.E4_vacancy_always_true"
+source = { table = "u23-round-8-independent.json", id = "E4_vacancy_always_true" }
+description = "Every record is stranded, so every record is a byte-search candidate"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    recorded = Path(record.path)
+    try:
+        if not recorded.parent.is_dir():
+            return False
+        return not recorded.exists()
+    except OSError:
+        return False
+'''
+new = '''
+    return True
+'''
+
+[[rows]]
+id = "u23-round-8-independent.F1_byte_search_drops_the_vacancy_filter"
+source = { table = "u23-round-8-independent.json", id = "F1_byte_search_drops_the_vacancy_filter" }
+description = "A record whose path still holds its file is a byte-search candidate"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '    vacant = [record for record in possible if _the_recorded_path_is_vacant(record)]'
+new = '    vacant = list(possible)'
+
+[[rows]]
+id = "u23-round-8-independent.F4_byte_search_reads_before_it_filters"
+source = { table = "u23-round-8-independent.json", id = "F4_byte_search_reads_before_it_filters" }
+description = "Round 7 order restored: the whole-file read runs before the filters that empty the list"
+file = "src/cratekit/adopt/revert.py"
+surface = "maintainer"
+tests = ["tests/test_adoption.py"]
+old = '''
+    vacant = [record for record in possible if _the_recorded_path_is_vacant(record)]
+    if not vacant or size_here is None:
+        return None
+    same_size = [record for record in vacant if record.size == size_here]
+    if not same_size:
+        return None
+    looked = look()
+    if looked.outcome is not ByteRead.ANSWERED:
+        return None
+'''
+new = '''
+    looked = look()
+    if looked.outcome is not ByteRead.ANSWERED:
+        return None
+    vacant = [record for record in possible if _the_recorded_path_is_vacant(record)]
+    if not vacant or size_here is None:
+        return None
+    same_size = [record for record in vacant if record.size == size_here]
+    if not same_size:
+        return None
+'''
+
+[[rows]]
+id = "u23-round-8-independent.G1_locked_passes_no_size"
+source = { table = "u23-round-8-independent.json", id = "G1_locked_passes_no_size" }
+description = "_record_locked hands size_here=None, disabling every size gate below it"
+file = "src/cratekit/adopt/revert.py"
+surface = "maintainer"
+tests = ["tests/test_adoption.py"]
+old = '        size_here=_size_of(resolved),'
+new = '        size_here=None,'
+
+[[rows]]
+id = "u23-round-8-independent.S1_size_of_always_none"
+source = { table = "u23-round-8-independent.json", id = "S1_size_of_always_none" }
+description = "_size_of never answers, so every size shortcut on every path is disabled"
+file = "src/cratekit/adopt/revert.py"
+surface = "maintainer"
+tests = ["tests/test_adoption.py"]
+old = '''
+    try:
+        return target.stat().st_size
+    except OSError:
+        return None
+'''
+new = '''
+    return None
+'''
+
+[[rows]]
+id = "u23-round-8-independent.X12_look_at_drops_the_regular_file_test"
+source = { table = "u23-round-8-independent.json", id = "X12_look_at_drops_the_regular_file_test" }
+description = "A directory or a fifo at the recorded path reaches the hash"
+file = "src/cratekit/adopt/revert.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '''
+    if not stat_module.S_ISREG(info.st_mode):
+        return _Looked(ByteRead.NOT_A_REGULAR_FILE)
+'''
+new = ''
+
+[[rows]]
+id = "u23-round-8-independent.X13_look_at_drops_the_recorded_size_shortcut"
+source = { table = "u23-round-8-independent.json", id = "X13_look_at_drops_the_recorded_size_shortcut" }
+description = "The prefetch reads a file whose size already rules the record out"
+file = "src/cratekit/adopt/revert.py"
+surface = "maintainer"
+tests = ["tests/test_adoption.py"]
+old = '''
+    if recorded_size is not None and info.st_size != recorded_size:
+        return _Looked(ByteRead.A_DIFFERENT_SIZE)
+'''
+new = ''
+
+[[rows]]
+id = "u23-round-8-independent.X9_outstanding_returns_everything"
+source = { table = "u23-round-8-independent.json", id = "X9_outstanding_returns_everything" }
+description = "A resume re-applies every entry from the top"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adoption.py"]
+old = '    return tuple(entry for entry in plan.applicable() if entry.entry_id not in done)'
+new = '    return tuple(plan.applicable())'
+
+[[rows]]
+id = "u95-a.A1_never_rerooted"
+source = { table = "u95-a.json", id = "A1_never_rerooted" }
+description = "_rooted hands every session its configuration back unchanged, which is main's state: a bare-metal session resolves from the configured root again"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    if held.issued_by is not Guard.BARE_METAL:
+        return cfg
+    target = Path(held.authorises)'''
+new = '''
+    if held.issued_by is not None:
+        return cfg
+    target = Path(held.authorises)'''
+
+[[rows]]
+id = "u95-a.A2_library_sessions_rerooted_too"
+source = { table = "u95-a.json", id = "A2_library_sessions_rerooted_too" }
+description = "Drop the guard test in _rooted, so a library session handed a configuration for ANOTHER library is quietly re-aimed at what it authorises instead of refused"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    if held.issued_by is not Guard.BARE_METAL:
+        return cfg
+    target = Path(held.authorises)'''
+new = '    target = Path(held.authorises)'
+
+[[rows]]
+id = "u95-a.A3_database_not_carried"
+source = { table = "u95-a.json", id = "A3_database_not_carried" }
+description = "The relocated root no longer carries its database: db_path stays at the configured root while the root moves to the target"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    return replace(cfg, library=replace(cfg.library, root=target, db_path=database))'
+new = '    return replace(cfg, library=replace(cfg.library, root=target))'
+
+[[rows]]
+id = "u95-a.A4_outside_database_refusal_removed"
+source = { table = "u95-a.json", id = "A4_outside_database_refusal_removed" }
+description = "Delete the by-name refusal for a database kept outside the library, leaving the defect-flavoured authorisation refusal to catch it later"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    if not held.authorises_path(database):
+        raise _refuse_target('''
+new = '''
+    if False:
+        raise _refuse_target('''
+
+[[rows]]
+id = "u95-a.A5_capture_path_not_rebased"
+source = { table = "u95-a.json", id = "A5_capture_path_not_rebased" }
+description = "plan reads the session record's capture path as written, so the capture is taken from the configured root, the volume the identity gate refused"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    root = capture_root_of(_rebased(record.snapshot_path, recorded_root, rooted_at))'
+new = '    root = capture_root_of(record.snapshot_path)'
+
+[[rows]]
+id = "u95-a.A6_manifest_not_rebased_in_plan"
+source = { table = "u95-a.json", id = "A6_manifest_not_rebased_in_plan" }
+description = "plan uses the manifest as read from disk, every path in it still naming the dead root"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    captured = _rebased_capture(snapshot.read_manifest(root), recorded_root, rooted_at)'
+new = '    captured = snapshot.read_manifest(root)'
+
+[[rows]]
+id = "u95-a.A7_manifest_not_rebased_in_preflight"
+source = { table = "u95-a.json", id = "A7_manifest_not_rebased_in_preflight" }
+description = "The run's preflight re-reads the manifest and checks it un-rebased, so it asks the DEAD volume whether the capture is still whole"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    captured = _rebased_capture(
+        snapshot.read_manifest(decided.capture_root),
+        recorded_root,
+        Path(cfg.library.root),
+    )'''
+new = '    captured = snapshot.read_manifest(decided.capture_root)'
+
+[[rows]]
+id = "u95-a.A8_run_not_rooted"
+source = { table = "u95-a.json", id = "A8_run_not_rooted" }
+description = "run resolves from the caller's configuration while plan resolves from the session, the two sources for one answer R-20 forbids"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    cfg = _rooted(configured, held)
+    assert_gates_are_open(held, writing=cfg.library.root)
+    _assert_rekordbox_closed(process_lister)
+    _preflight('''
+new = '''
+    cfg = configured
+    assert_gates_are_open(held, writing=cfg.library.root)
+    _assert_rekordbox_closed(process_lister)
+    _preflight('''
+
+[[rows]]
+id = "u95-b.B2_manifest_database_not_moved"
+source = { table = "u95-b.json", id = "B2_manifest_database_not_moved" }
+description = "_rebased_capture leaves Capture.database at the dead root, the file assert_verified asks the disk about"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '        database=moved(captured.database),'
+new = '        database=captured.database,'
+
+[[rows]]
+id = "u95-b.B3_sources_not_moved"
+source = { table = "u95-b.json", id = "B3_sources_not_moved" }
+description = "The WRITE side is not re-based: every manifest source still names the configured root"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '                source=_rebased(entry.source, recorded_root, root),'
+new = '                source=entry.source,'
+
+[[rows]]
+id = "u95-b.B4_captured_not_moved"
+source = { table = "u95-b.json", id = "B4_captured_not_moved" }
+description = "The READ side is not re-based: writes aim at the target while the bytes come from the dead volume, the bypass run the other way"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '                captured=moved(entry.captured),'
+new = '                captured=entry.captured,'
+
+[[rows]]
+id = "u95-b.B5_not_idempotent"
+source = { table = "u95-b.json", id = "B5_not_idempotent" }
+description = "Drop the already-under-the-new-root clause, so a path naming a target mounted inside the configured root is moved twice"
+file = "src/cratekit/core/restore.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    if parts[: len(here)] == here or parts[: len(there)] != there:'
+new = '    if parts[: len(there)] != there:'
+
+[[rows]]
+id = "u95-b.B6_recorded_path_not_normalised"
+source = { table = "u95-b.json", id = "B6_recorded_path_not_normalised" }
+description = "Compare the recorded path's raw parts, so a dotted spelling config calls inside is left unmoved and one it calls outside is moved"
+file = "src/cratekit/core/restore.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    parts = Path(os.path.normpath(str(recorded))).parts'
+new = '    parts = recorded.parts'
+
+[[rows]]
+id = "u95-b.B8_outside_path_moved_anyway"
+source = { table = "u95-b.json", id = "B8_outside_path_moved_anyway" }
+description = "A path under NEITHER root is joined onto the target instead of left where it says it is"
+file = "src/cratekit/core/restore.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    if parts[: len(here)] == here or parts[: len(there)] != there:
+        return recorded
+    return Path(root).joinpath(*parts[len(there) :])'''
+new = '''
+    if parts[: len(here)] == here:
+        return recorded
+    return Path(root).joinpath(*parts[len(there) :])'''
+
+[[rows]]
+id = "u95-b1.B1_manifest_root_not_moved"
+source = { table = "u95-b1.json", id = "B1_manifest_root_not_moved" }
+description = "RE-MEASURED after test_u95_a_bare_metal_plan_is_the_library_plan_moved_and_nothing_else learned to compare decisions. _rebased_capture leaves Capture.root at the dead root, which is what _captured_by_key composes coupled entries from"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '        root=_rebased(captured.root, recorded_root, root),'
+new = '        root=captured.root,'
+
+[[rows]]
+id = "u95-c.C1_plan_side_guard_removed"
+source = { table = "u95-c.json", id = "C1_plan_side_guard_removed" }
+description = "plan no longer checks its own answer, so only a run would find a plan naming an outside path"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    _assert_plan_is_authorised(steps, pre_restore_root, cfg, held)
+'''
+new = ''
+
+[[rows]]
+id = "u95-c.C2_run_side_guard_removed"
+source = { table = "u95-c.json", id = "C2_run_side_guard_removed" }
+description = "The preflight no longer asks the session about a plan value, so a plan built for one directory runs under a session for another"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    _assert_plan_is_authorised(decided.steps, decided.pre_restore_root, cfg, held)
+'''
+new = ''
+
+[[rows]]
+id = "u95-c.C3_step_authorisation_removed"
+source = { table = "u95-c.json", id = "C3_step_authorisation_removed" }
+description = "Inside the guard, drop the per step authorisation and leave only the membership test"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+        assert_gates_are_open(held, writing=step.target)
+        if step.target not in allowed:'''
+new = '        if step.target not in allowed:'
+
+[[rows]]
+id = "u95-c.C4_restorable_membership_removed"
+source = { table = "u95-c.json", id = "C4_restorable_membership_removed" }
+description = "Inside the guard, drop the re-derived membership test, so a step aimed at the authorised directory itself is admitted"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+        if step.target not in allowed:
+            raise refuse('''
+new = '''
+        if False:
+            raise refuse('''
+
+[[rows]]
+id = "u95-c.C5_staging_authorisation_removed"
+source = { table = "u95-c.json", id = "C5_staging_authorisation_removed" }
+description = "Inside the guard, drop the authorisation of the staging directory and leave only the store rule"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    assert_gates_are_open(held, writing=pre_restore_root)
+    store = _pre_restore_root(cfg).parent'''
+new = '    store = _pre_restore_root(cfg).parent'
+
+[[rows]]
+id = "u95-c.C6_staging_store_rule_removed"
+source = { table = "u95-c.json", id = "C6_staging_store_rule_removed" }
+description = "Inside the guard, drop the store rule, so an authorised staging directory such as the library root hands the closing prune the directory ABOVE the library"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    if pre_restore_root.parent != store:'
+new = '    if False:'
+
+[[rows]]
+id = "u95-c.C7_staging_store_itself_admitted"
+source = { table = "u95-c.json", id = "C7_staging_store_itself_admitted" }
+description = "A nearby value: admit the store itself as the staging directory, which makes the prune run one level up, inside the database directory"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    if pre_restore_root.parent != store:'
+new = '    if pre_restore_root.parent != store and pre_restore_root != store:'

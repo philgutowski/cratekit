@@ -24,21 +24,16 @@ KEBAB_LITERALS = {
         'internal-error',
         'revert-nothing-recorded',
     ],
-    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
-    # ONE kebab literal joined in cli/doctor.py and nothing left, internal-error,
-    # the cause the taxonomy.schema check reads to tell a shipped template defect
-    # from the copy's. Measured on the merged tree; do not bring back a
-    # package-wide total tuple.
-    # U159, 2026-10-28: ls-remote joined, the git subcommand install.release
-    # reads the published tags with.
-    # U185, 2026-10-31: rekordbox-backups joined, the folder DEADCA7 backs the
-    # database up into before a push, which deadca7.push reads.
-    'cli/doctor.py': [
+    # 2026-11-22, U303: doctor's checks moved into their family modules, each
+    # literal with the check that reads it (U125, U132, U159, U185 joined them).
+    # Measured on the merged tree; do not bring back a package-wide total tuple.
+    'cli/doctor.py': ['doctor-check-failed', 'utf-8'],
+    'cli/doctor_backup.py': ['rekordbox-backups'],
+    'cli/doctor_library.py': ['internal-error', 'utf-8'],
+    'cli/doctor_model.py': ['ls-remote'],
+    'cli/doctor_state.py': [
         'commit-msg',
-        'doctor-check-failed',
         'hook-impl',
-        'internal-error',
-        'ls-remote',
         'merge-commit',
         'post-checkout',
         'post-commit',
@@ -49,8 +44,6 @@ KEBAB_LITERALS = {
         'pre-push',
         'pre-rebase',
         'prepare-commit-msg',
-        'rekordbox-backups',
-        'utf-8',
     ],
     'cli/exit_codes.py': [
         'archive-holds-a-different-recording',
@@ -351,9 +344,9 @@ LITERAL_HOLDERS = {
         'cutover-tree-undeclared',
         'internal-error',
     ],
-    # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
-    # internal-error joined, read by the taxonomy.schema check (U132).
-    'cli/doctor.py': ['doctor-check-failed', 'internal-error'],
+    # 2026-11-22, U303: internal-error moved with the taxonomy.schema check (U132).
+    'cli/doctor.py': ['doctor-check-failed'],
+    'cli/doctor_library.py': ['internal-error'],
     'cli/export_collection.py': ['library-export-unusable', 'output-exists', 'path-permission-denied'],
     'cli/gates.py': [
         'blocked-by-pending-action',

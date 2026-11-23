@@ -1,0 +1,1285 @@
+name = "u325-before-l-02"
+pass_kind = "replay"
+
+[[rows]]
+id = "u95-c.C6_staging_store_rule_removed"
+source = { table = "u95-c.json", id = "C6_staging_store_rule_removed" }
+description = "Inside the guard, drop the store rule, so an authorised staging directory such as the library root hands the closing prune the directory ABOVE the library"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    if pre_restore_root.parent != store:'
+new = '    if False:'
+
+[[rows]]
+id = "u95-c.C7_staging_store_itself_admitted"
+source = { table = "u95-c.json", id = "C7_staging_store_itself_admitted" }
+description = "A nearby value: admit the store itself as the staging directory, which makes the prune run one level up, inside the database directory"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    if pre_restore_root.parent != store:'
+new = '    if pre_restore_root.parent != store and pre_restore_root != store:'
+
+[[rows]]
+id = "u95-c.C8_plan_root_assertion_removed"
+source = { table = "u95-c.json", id = "C8_plan_root_assertion_removed" }
+description = "plan drops its assertion on the rooted root, which is also where it asks whether the session is still open and is a recovery"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    assert_gates_are_open(held, writing=cfg.library.root)
+    _assert_rekordbox_closed(process_lister)
+    record = session.read_record(session_id, cfg)'''
+new = '''
+    _assert_rekordbox_closed(process_lister)
+    record = session.read_record(session_id, cfg)'''
+
+[[rows]]
+id = "u95-c.S1_authorises_everything"
+source = { table = "u95-c.json", id = "S1_authorises_everything" }
+description = "EXISTING GUARD, fixed sample: Held.authorises_path answers yes to every path, which is the original bypass"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '        return where == root or root in where.parents'
+new = '        return True'
+
+[[rows]]
+id = "u95-c.S2_issued_terms_not_compared"
+source = { table = "u95-c.json", id = "S2_issued_terms_not_compared" }
+description = "EXISTING GUARD, fixed sample: still_open stops comparing the claim to what the guard issued, so a live token can be rebuilt around another directory"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+        if terms != (self.issued_by, str(self.authorises), str(self.lock.absolute())):
+            return False'''
+new = ''
+
+[[rows]]
+id = "r351.A2_unresolved_seed_skipped"
+source = { table = "r351.json", id = "A2_unresolved_seed_skipped" }
+description = "crawl the seeds that resolved and skip the one that did not"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if unresolved:
+            bits = []
+'''
+new = '''
+        if unresolved and not artists:
+            bits = []
+'''
+
+[[rows]]
+id = "r351.A3_empty_roster_returned"
+source = { table = "r351.json", id = "A3_empty_roster_returned" }
+description = "return an empty roster for a label nothing resolved"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not artists:
+            raise LabelUnresolvable('''
+new = '''
+        if not artists:
+            return LabelRoster([])
+            raise LabelUnresolvable('''
+
+[[rows]]
+id = "r351.A5_ambiguity_takes_first"
+source = { table = "r351.json", id = "A5_ambiguity_takes_first" }
+description = "take the first of two artists named exactly the same"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if len(distinct) > 1:'
+new = '        if len(distinct) > 2:'
+
+[[rows]]
+id = "r351.G10_identifier_message_says_named"
+source = { table = "r351.json", id = "G10_identifier_message_says_named" }
+description = "an unresolved identifier is reported as a name the provider does not carry"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+                if seed_identifier(seed) is not None:
+                    bits.append(f"no artist with identifier {seed!r}")
+                else:
+                    bits.append(f"no artist named exactly {seed!r}")
+'''
+new = '''
+                bits.append(f"no artist named exactly {seed!r}")
+'''
+
+[[rows]]
+id = "r351.G3_unresolved_id_skipped"
+source = { table = "r351.json", id = "G3_unresolved_id_skipped" }
+description = "a seed that does not resolve is skipped rather than refusing the label"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+            if artist is None:
+                unresolved.append(seed)
+'''
+new = '''
+            if artist is None:
+                continue
+'''
+
+[[rows]]
+id = "r351.G4_any_remainder_is_an_id"
+source = { table = "r351.json", id = "G4_any_remainder_is_an_id" }
+description = "treat anything after id: as an identifier, including a name"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+_ID_SEED = re.compile(r"^id:(\d+)$")
+'''
+new = '''
+_ID_SEED = re.compile(r"^id:(.+)$")
+'''
+
+[[rows]]
+id = "r351.G5_except_everything"
+source = { table = "r351.json", id = "G5_except_everything" }
+description = "a provider outage looking up an identifier is read as a missing seed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        except tidalapi.exceptions.ObjectNotFound:
+            return None
+        except LookupError as exc:
+            # Bare LookupError is the fake's not found. KeyError and IndexError
+            # are subclasses, and those are parse failures, not a missing id.
+            if type(exc) is not LookupError:
+                raise
+            return None
+'''
+new = '''
+        except Exception:
+            return None
+'''
+
+[[rows]]
+id = "r351.G7_drop_object_not_found"
+source = { table = "r351.json", id = "G7_drop_object_not_found" }
+description = "the live client's ObjectNotFound is no longer treated as a missing seed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        except tidalapi.exceptions.ObjectNotFound:
+            return None
+        except LookupError as exc:
+'''
+new = '''
+        except LookupError as exc:
+'''
+
+[[rows]]
+id = "r351.G8_id_prefix_case_insensitive"
+source = { table = "r351.json", id = "G8_id_prefix_case_insensitive" }
+description = "ID:99 is treated as an identifier, against the locked id:<digits> shape"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+_ID_SEED = re.compile(r"^id:(\d+)$")
+'''
+new = '''
+_ID_SEED = re.compile(r"^id:(\d+)$", re.IGNORECASE)
+'''
+
+[[rows]]
+id = "r351.G9_all_lookuperror_is_absence"
+source = { table = "r351.json", id = "G9_all_lookuperror_is_absence" }
+description = "KeyError and IndexError from the identifier lookup are read as a missing seed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+            if type(exc) is not LookupError:
+                raise
+            return None
+'''
+new = '''
+            return None
+'''
+
+[[rows]]
+id = "r352.A2_empty_roster_returned"
+source = { table = "r352.json", id = "A2_empty_roster_returned" }
+description = "return an empty roster for a label nothing resolved"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not artists:
+            raise LabelUnresolvable(
+'''
+new = '''
+        if False and not artists:
+            raise LabelUnresolvable(
+'''
+
+[[rows]]
+id = "r352.G10_no_collaborator_enqueue"
+source = { table = "r352.json", id = "G10_no_collaborator_enqueue" }
+description = "BFS does not enqueue credited artists from listed matching releases"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+            for release in releases:
+                if _credits_label(release, needle):
+                    for identity in _credited_ids(release):
+                        enqueue(identity)
+'''
+new = '''
+            for release in releases:
+                if _credits_label(release, needle):
+                    pass
+'''
+
+[[rows]]
+id = "r352.G11_discovered_not_added"
+source = { table = "r352.json", id = "G11_discovered_not_added" }
+description = "credited artists are walked but never appended to the roster"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+            if identity not in held_ids:
+                discovered.append(artist)
+                held_ids.add(identity)
+'''
+new = '''
+            if identity not in held_ids:
+                held_ids.add(identity)
+'''
+
+[[rows]]
+id = "r352.G13_duplicate_roster_member"
+source = { table = "r352.json", id = "G13_duplicate_roster_member" }
+description = "a discovered artist already on the roster is appended again"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+            if identity not in held_ids:
+                discovered.append(artist)
+                held_ids.add(identity)
+'''
+new = '''
+            discovered.append(artist)
+            held_ids.add(identity)
+'''
+
+[[rows]]
+id = "r352.G2_skip_when_roster_nonempty"
+source = { table = "r352.json", id = "G2_skip_when_roster_nonempty" }
+description = "discovery does not run when the label already has an artist page"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        needle = entry.match or entry.name
+        seen: set[str] = set()
+'''
+new = '''
+        if held:
+            return []
+        needle = entry.match or entry.name
+        seen: set[str] = set()
+'''
+
+[[rows]]
+id = "r352.G4_empty_message_omits_discovery"
+source = { table = "r352.json", id = "G4_empty_message_omits_discovery" }
+description = "an empty roster still says only that the label names no seed artists"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+                f"the provider has no artist named exactly {entry.name!r}, the "
+                f"label names no seed artists, and discovery found nothing"
+'''
+new = '''
+                f"the provider has no artist named exactly {entry.name!r} and the "
+                f"label names no seed artists to crawl instead"
+'''
+
+[[rows]]
+id = "r352.G5_compilation_range_shrunk"
+source = { table = "r352.json", id = "G5_compilation_range_shrunk" }
+description = "numbered compilation searches stop at 001"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+COMPILATION_RANGE = range(1, 80)
+'''
+new = '''
+COMPILATION_RANGE = range(1, 2)
+'''
+
+[[rows]]
+id = "r352.G6_name_query_only"
+source = { table = "r352.json", id = "G6_name_query_only" }
+description = "discovery searches the bare label name and no numbered compilations"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+    return (name, *(f"{name} {number:03d}" for number in COMPILATION_RANGE))
+'''
+new = '''
+    return (name,)
+'''
+
+[[rows]]
+id = "r352.G7_ignore_match_needle"
+source = { table = "r352.json", id = "G7_ignore_match_needle" }
+description = "copyright match uses the display name and ignores entry.match"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        needle = entry.match or entry.name
+'''
+new = '''
+        needle = entry.name
+'''
+
+[[rows]]
+id = "r504-a.A1_lt_to_le"
+source = { table = "r504-a.json", id = "A1_lt_to_le" }
+description = "Adapter compares with <= instead of <, so a listing that reached its count raises a shortfall of zero"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if declared is not None and len(rows) < declared:'
+new = '        if declared is not None and len(rows) <= declared:'
+
+[[rows]]
+id = "r504-a.A2_lt_to_gt"
+source = { table = "r504-a.json", id = "A2_lt_to_gt" }
+description = "Adapter compares the wrong way round, so a short listing returns and a long one raises"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if declared is not None and len(rows) < declared:'
+new = '        if declared is not None and len(rows) > declared:'
+
+[[rows]]
+id = "r504-a.A3_no_none_guard"
+source = { table = "r504-a.json", id = "A3_no_none_guard" }
+description = "Adapter drops the guard for a count the provider did not publish"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if declared is not None and len(rows) < declared:'
+new = '        if len(rows) < declared:'
+
+[[rows]]
+id = "r504-a.A4_no_raise"
+source = { table = "r504-a.json", id = "A4_no_raise" }
+description = "Adapter never raises the shortfall, which is the pre R-504 behaviour"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '            raise HeartsShortfall(rows, declared)'
+new = '            pass'
+
+[[rows]]
+id = "r515-operator.S7_adapter_no_count"
+source = { table = "r515-operator.json", id = "S7_adapter_no_count" }
+description = "The release adapter ignores the album's num_tracks"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        short = ListingShortfall.of(tracks, getattr(album, "num_tracks", None))'
+new = '        short = None'
+
+[[rows]]
+id = "r840-c.C3_the_adapter_reads_a_name"
+source = { table = "r840-c.json", id = "C3_the_adapter_reads_a_name" }
+description = "TidalCatalogue.release_artist: answer with the text of the album's artist object, which is its address, the defect R-379 named"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        return artist_name(self._album(release_id))'
+new = '        return str(getattr(self._album(release_id), "artist", "") or "")'
+
+[[rows]]
+id = "r879-b.T2_offset_not_sent"
+source = { table = "r879-b.json", id = "T2_offset_not_sent" }
+description = "TidalCatalogue.search_tracks: send offset 0 to the client whatever page was asked"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '                query, models=[tidalapi.media.Track], limit=limit, offset=offset'
+new = '                query, models=[tidalapi.media.Track], limit=limit, offset=0'
+
+[[rows]]
+id = "u62.A1_missing_playlist_returns_none"
+source = { table = "u62.json", id = "A1_missing_playlist_returns_none" }
+description = "Return None for a playlist the client returned nothing for"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if playlist is None:
+            raise PlaylistUnresolvable('''
+new = '''
+        if playlist is None:
+            return None
+            raise PlaylistUnresolvable('''
+
+[[rows]]
+id = "u62.A4_first_hit_not_exact"
+source = { table = "u62.json", id = "A4_first_hit_not_exact" }
+description = "Take any hit the search returned rather than an exact name"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '            if label_verify.fold_label(str(getattr(artist, "name", "") or "")) == wanted'
+new = '            if label_verify.fold_label(str(getattr(artist, "name", "") or ""))'
+
+[[rows]]
+id = "u62.A6_no_reread_for_missing_copyright"
+source = { table = "u62.json", id = "A6_no_reread_for_missing_copyright" }
+description = "Judge a release with no copyright line unconfirmed instead of re-reading it"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if not resolved and identity:'
+new = '        if not resolved and not identity:'
+
+[[rows]]
+id = "u62.A7_any_search_hit_confirms"
+source = { table = "u62.json", id = "A7_any_search_hit_confirms" }
+description = "Confirm a harvested label on any album with a copyright line"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '            if resolved and label_verify.labels_match(name, resolved):'
+new = '            if resolved:'
+
+[[rows]]
+id = "u70.A1_no_favourites_refused"
+source = { table = "u70.json", id = "A1_no_favourites_refused" }
+description = "A client exposing no favourites is not refused by name, so the read fails as an attribute error"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if getattr(user, "favorites", None) is None:'
+new = '        if False:'
+
+[[rows]]
+id = "u75-c.C1_gone_is_never_retried"
+source = { table = "u75-c.json", id = "C1_gone_is_never_retried" }
+description = "Stop classifying a not found answer first, so a withdrawn release climbs the whole retry ladder"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+                if _gone(exc):
+                    return _GONE
+                raise'''
+new = '                raise'
+
+[[rows]]
+id = "u75-c.C5_none_album_raises"
+source = { table = "u75-c.json", id = "C5_none_album_raises" }
+description = "Let a client that returned nothing for a release through to the listing"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if album is _GONE or album is None:'
+new = '        if album is _GONE:'
+
+[[rows]]
+id = "u75-c.C7_tracks_through_the_paging_wrapper"
+source = { table = "u75-c.json", id = "C7_tracks_through_the_paging_wrapper" }
+description = "List the tracks with one direct call instead of the paging wrapper, which serves one page"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        tracks = listing.playlist_tracks(album, shape="release_tracks", sleep=_pause)'
+new = '        tracks = album.tracks()'
+
+[[rows]]
+id = "u78-c.D2_blank_isrc"
+source = { table = "u78-c.json", id = "D2_blank_isrc" }
+description = "A blank ISRC is sent to the provider"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not wanted:
+            raise ValueError("no ISRC was given to look up")'''
+new = ''
+
+[[rows]]
+id = "u78-c.D3_no_lookup_method"
+source = { table = "u78-c.json", id = "D3_no_lookup_method" }
+description = "A client with no ISRC lookup climbs the whole ladder before failing"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "maintainer"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not callable(lookup):
+            # A client without the method cannot be asked, and waiting on the
+            # ladder cannot grow one.
+            raise LookupError("the provider client exposes no ISRC lookup")'''
+new = ''
+
+[[rows]]
+id = "u79-c.D1_search_shape_read_as_empty"
+source = { table = "u79-c.json", id = "D1_search_shape_read_as_empty" }
+description = "A search answer with no track listing is read as no candidate"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '''
+        if not present:
+            raise LookupError("the provider's search answer carries no track listing")'''
+new = '''
+        if False:
+            raise LookupError("the provider's search answer carries no track listing")'''
+
+[[rows]]
+id = "r515-operator.S1_of_takes_bool"
+source = { table = "r515-operator.json", id = "S1_of_takes_bool" }
+description = "Let ListingShortfall.of trust a bool as a declared count"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:'
+new = '        if not isinstance(declared, int) or declared <= 0:'
+
+[[rows]]
+id = "r515-operator.S2_of_takes_non_int"
+source = { table = "r515-operator.json", id = "S2_of_takes_non_int" }
+description = "Let ListingShortfall.of trust a count that is not an integer"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:'
+new = '        if isinstance(declared, bool) or declared is None or declared <= 0:'
+
+[[rows]]
+id = "r515-operator.S4_of_short_at_count"
+source = { table = "r515-operator.json", id = "S4_of_short_at_count" }
+description = "Mint a shortfall when the listing reaches the count exactly"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if listed >= declared:'
+new = '        if listed > declared:'
+
+[[rows]]
+id = "r515-operator.S5_of_short_over_count"
+source = { table = "r515-operator.json", id = "S5_of_short_over_count" }
+description = "Mint a shortfall when the listing runs past the count"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py"]
+old = '        if listed >= declared:'
+new = '        if listed == declared:'
+
+[[rows]]
+id = "r1114.M10_message_reworded_many"
+source = { table = "r1114.json", id = "M10_message_reworded_many" }
+description = "_unlisted_cause: reword the many label message so it no longer says none could be read"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '        else f"none of the {len(entries)} labels asked about could be read ({names}), "'
+new = '        else f"the {len(entries)} labels asked about were skipped ({names}), "'
+
+[[rows]]
+id = "r1114.M11_message_reworded_one"
+source = { table = "r1114.json", id = "M11_message_reworded_one" }
+description = "_unlisted_cause: reword the single label message so it no longer says the label could not be read"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '        f"the label asked about could not be read ({names}), so whether it has"'
+new = '        f"the label asked about was skipped ({names}), so whether it has"'
+
+[[rows]]
+id = "r1114.M12_match_step_dropped"
+source = { table = "r1114.json", id = "M12_match_step_dropped" }
+description = "_UNLISTED_STEPS: drop the step naming the registry's --match needle, the remedy for a listing that confirmed nothing, from the cause and the line"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+    "a listing that confirmed nothing: check the label's --match needle "
+    "with: crate label registry",
+'''
+new = ''
+
+[[rows]]
+id = "r1114.M13_detail_labels_empty"
+source = { table = "r1114.json", id = "M13_detail_labels_empty" }
+description = "_unlisted_cause: carry no label identifiers in the detail, so a script cannot tell which labels failed"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '        detail={"labels": [entry.label_id for entry in entries]},'
+new = '        detail={"labels": []},'
+
+[[rows]]
+id = "r1114.M14_withheld_reads_no_op"
+source = { table = "r1114.json", id = "M14_withheld_reads_no_op" }
+description = "_next, existing guard sampled: a run whose gate withheld an item ends no_op though it wrote"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        # back has left review even when no question was left to ask.
+        outcome=Outcome.OK if withheld else Outcome.NO_OP,
+    )
+
+
+#: What to do about a label'''
+new = '''
+        # back has left review even when no question was left to ask.
+        outcome=Outcome.NO_OP,
+    )
+
+
+#: What to do about a label'''
+
+[[rows]]
+id = "r1114.M15_skipped_line_not_fail"
+source = { table = "r1114.json", id = "M15_skipped_line_not_fail" }
+description = "_skipped_check, existing guard sampled: a skipped label's line is a note rather than a fail"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    return _check(f"label.{entry.label_id}", "fail", f"{entry.name}: not asked; {why}")'
+new = '    return _check(f"label.{entry.label_id}", "info", f"{entry.name}: not asked; {why}")'
+
+[[rows]]
+id = "r1114.M16_remedy_line_dropped"
+source = { table = "r1114.json", id = "M16_remedy_line_dropped" }
+description = "_next: refuse without the info line naming what to do, so the human rendering shows no remedy, the review's round one finding"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '        checks.append(_check("next", "info", _UNLISTED_REMEDY))'
+new = '        pass'
+
+[[rows]]
+id = "r1114.M17_remedy_line_only_doctor"
+source = { table = "r1114.json", id = "M17_remedy_line_only_doctor" }
+description = "_UNLISTED_REMEDY: the line carries only the first step, so a listing that confirmed nothing is told to run doctor"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '_UNLISTED_REMEDY = "; ".join(_UNLISTED_STEPS)'
+new = '_UNLISTED_REMEDY = _UNLISTED_STEPS[0]'
+
+[[rows]]
+id = "r1114.M1_every_skipped_not_refused"
+source = { table = "r1114.json", id = "M1_every_skipped_not_refused" }
+description = "_next: drop the refusal of a run whose every label was skipped, so it ends no_op with exit 0 again, the defect R-1114 names"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    if not nothing:'
+new = '    if False:'
+
+[[rows]]
+id = "r1114.M2_single_label_not_refused"
+source = { table = "r1114.json", id = "M2_single_label_not_refused" }
+description = "_next: refuse only the walk over every label, so --next --label on a label whose listing failed ends no_op with exit 0"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    if not nothing:'
+new = '    if not nothing and only is None:'
+
+[[rows]]
+id = "r1114.M3_mixed_run_refused"
+source = { table = "r1114.json", id = "M3_mixed_run_refused" }
+description = "_next: refuse whenever any label was skipped, so a run with one label listed and nothing new also fails"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    if not nothing:'
+new = '    if len(nothing) < len(entries):'
+
+[[rows]]
+id = "r1114.M4_closing_line_ignores_skips"
+source = { table = "r1114.json", id = "M4_closing_line_ignores_skips" }
+description = "_next: say no label has anything new whatever was skipped, the false closing line on a mixed run"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '            if len(nothing) == len(entries)'
+new = '            if True'
+
+[[rows]]
+id = "r1114.M5_closing_line_names_every_label"
+source = { table = "r1114.json", id = "M5_closing_line_names_every_label" }
+description = "_next: name every label in the mixed closing line, the skipped ones included, as having nothing new"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''{', '.join(nothing)}"'''
+new = '''{', '.join(one.name for one in entries)}"'''
+
+[[rows]]
+id = "r1114.M6_nothing_new_not_counted"
+source = { table = "r1114.json", id = "M6_nothing_new_not_counted" }
+description = "_next: stop counting a label listed with nothing new, so every run with no question refuses as unlisted"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+                    nothing.append(entry.name)
+'''
+new = ''
+
+[[rows]]
+id = "r1114.M7_refusal_drops_the_lines"
+source = { table = "r1114.json", id = "M7_refusal_drops_the_lines" }
+description = "_next: refuse without the run's checks as data, so the per label fail lines vanish from the refusal"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+            cause=_unlisted_cause(entries),
+            data=data,'''
+new = '''
+            cause=_unlisted_cause(entries),
+            data=None,'''
+
+[[rows]]
+id = "r1114.M8_refusal_not_retryable"
+source = { table = "r1114.json", id = "M8_refusal_not_retryable" }
+description = "_unlisted_cause: mark the refusal not retryable, though a provider answering later clears it"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        retryable=True,
+        origin=("label.sync",),
+        detail={"labels": [entry.label_id for entry in entries]},'''
+new = '''
+        retryable=False,
+        origin=("label.sync",),
+        detail={"labels": [entry.label_id for entry in entries]},'''
+
+[[rows]]
+id = "u108-a.G01_unsettled_skips_settled"
+source = { table = "u108-a.json", id = "G01_unsettled_skips_settled" }
+description = "sync_cli.unsettled: read every saved answer as unsettled, so a go summarises answers an earlier go already took"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        if isinstance(entry, Mapping) and not entry.get(SETTLED)
+    ]'''
+new = '''
+        if isinstance(entry, Mapping)
+    ]'''
+
+[[rows]]
+id = "u108-c.G19_settle_keeps"
+source = { table = "u108-c.json", id = "G19_settle_keeps" }
+description = "sync_cli.settle_in: an answer holding a release named in keep is settled anyway"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        if isinstance(taken, list) and any(one in keep for one in taken):
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "u108-c.G24_walk_ends_at_gate"
+source = { table = "u108-c.json", id = "G24_walk_ends_at_gate" }
+description = "sync_cli._walk: a walk that answered every label ends without asking the gate"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+    if stopped_at is None:
+        # EVERY LABEL WITH SOMETHING NEW IS ANSWERED'''
+new = '''
+    if False:
+        # EVERY LABEL WITH SOMETHING NEW IS ANSWERED'''
+
+[[rows]]
+id = "u108-d.G18_settle_matches_identity_again"
+source = { table = "u108-d.json", id = "G18_settle_matches_identity_again" }
+description = "sync_cli.settle_in: an answer is settled by its place alone, without checking it is the answer the summary covered"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        if (
+            _text(entry.get("label_id")) != label_id
+            or _text(entry.get("answered_at")) != answered_at
+        ):
+            continue'''
+new = '''
+        if False:
+            continue'''
+
+[[rows]]
+id = "u108-d.G20_settle_skips_settled_again"
+source = { table = "u108-d.json", id = "G20_settle_skips_settled_again" }
+description = "sync_cli.settle_in: an answer already settled is settled again, its first marker overwritten"
+file = "src/cratekit/label/sync_cli.py"
+surface = "maintainer"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+        if not isinstance(entry, Mapping) or entry.get(SETTLED):
+            continue
+        if ('''
+new = '''
+        if not isinstance(entry, Mapping):
+            continue
+        if ('''
+
+[[rows]]
+id = "u189.M11_answer_remedy_plain_next"
+source = { table = "u189.json", id = "M11_answer_remedy_plain_next" }
+description = "record_answer: the remedy of an answer with nothing waiting names the plain --next again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '                    else f"ask it first with: crate label sync --next --label {entry.label_id}"'
+new = '                    else "ask it first with: crate label sync --next"'
+
+[[rows]]
+id = "u189.M12_pick_remedy_plain_next"
+source = { table = "u189.json", id = "M12_pick_remedy_plain_next" }
+description = "record_answer: the remedy of a pick outside the question names the plain --next again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+                    f"take the identifiers from: crate label sync --next --label "
+                    f"{entry.label_id}",'''
+new = '                    "take the identifiers from: crate label sync --next",'
+
+[[rows]]
+id = "u189.M13_walk_remedy_plain_next"
+source = { table = "u189.json", id = "M13_walk_remedy_plain_next" }
+description = "_walk: the unanswerable refusal's remedy names the plain --next and a placeholder label again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+                        f"sync --next --label {entry.label_id}, then crate label sync "
+                        f"--answer ANSWER --label {entry.label_id}",'''
+new = '''
+                        f"sync --next, then crate label sync "
+                        f"--answer ANSWER --label NAME",'''
+
+[[rows]]
+id = "u189.M14_pick_no_release_remedy_plain_next"
+source = { table = "u189.json", id = "M14_pick_no_release_remedy_plain_next" }
+description = "label_sync: the remedy of --answer pick with no --release names the plain --next again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '                f"--next --label {args.label!r}",'
+new = '                f"--next",'
+
+[[rows]]
+id = "u189.M15_pick_remedy_unquoted"
+source = { table = "u189.json", id = "M15_pick_remedy_unquoted" }
+description = "label_sync: the pick remedy names the label unquoted, so a name with a space pastes as two words"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '                f"--next --label {args.label!r}",'
+new = '                f"--next --label {args.label}",'
+
+[[rows]]
+id = "u189.M16_empty_label_alone_walks"
+source = { table = "u189.json", id = "M16_empty_label_alone_walks" }
+description = "label_sync: test --label for truth again, so an empty --label alone runs the whole walk"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    elif not args.next_question and (args.label is not None or args.releases):'
+new = '    elif not args.next_question and (args.label or args.releases):'
+
+[[rows]]
+id = "u189.M1_next_label_refused_again"
+source = { table = "u189.json", id = "M1_next_label_refused_again" }
+description = "label_sync: restore the old refusal of --label without --answer, so --next --label is refused and no single label can be asked"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    elif not args.next_question and (args.label is not None or args.releases):'
+new = '    elif args.label is not None or args.releases:'
+
+[[rows]]
+id = "u189.M2_label_alone_not_refused"
+source = { table = "u189.json", id = "M2_label_alone_not_refused" }
+description = "label_sync: drop the refusal of --label or --release alone, so they fall through to the interactive walk and name nothing"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    elif not args.next_question and (args.label is not None or args.releases):'
+new = '    elif False:'
+
+[[rows]]
+id = "u189.M3_next_release_not_refused"
+source = { table = "u189.json", id = "M3_next_release_not_refused" }
+description = "label_sync: drop the refusal of --next with --release, so the named releases are silently ignored"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    elif args.next_question and args.releases:'
+new = '    elif False:'
+
+[[rows]]
+id = "u189.M4_empty_name_not_refused"
+source = { table = "u189.json", id = "M4_empty_name_not_refused" }
+description = "label_sync: drop the refusal of --next with an empty --label, so a blank name reaches the registry as an unfollowed label"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    elif args.next_question and args.label is not None and not args.label.strip():'
+new = '    elif False:'
+
+[[rows]]
+id = "u189.M5_alone_hint_drops_the_label"
+source = { table = "u189.json", id = "M5_alone_hint_drops_the_label" }
+description = "label_sync: reword the --label alone hint to the plain --next, which walks from the top"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '            "to ask about one label: crate label sync --next --label NAME",'
+new = '            "to ask about one label: crate label sync --next",'
+
+[[rows]]
+id = "u189.M6_label_not_passed"
+source = { table = "u189.json", id = "M6_label_not_passed" }
+description = "label_sync: call _next without the named label, so --next --label walks every label from the top"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '        return _next(ctx, cfg, args.label)'
+new = '        return _next(ctx, cfg)'
+
+[[rows]]
+id = "u189.M7_unknown_name_not_refused"
+source = { table = "u189.json", id = "M7_unknown_name_not_refused" }
+description = "_next: resolve the name without refusing, so an unfollowed name walks every label"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    only = _entry_or_refuse(followed, name) if name is not None else None'
+new = '    only = followed.resolve(name) if name is not None else None'
+
+[[rows]]
+id = "u189.M8_entries_ignore_the_one"
+source = { table = "u189.json", id = "M8_entries_ignore_the_one" }
+description = "_next: walk every followed label even when one is named"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '    entries = [only] if only is not None else list(followed.labels.values())'
+new = '    entries = list(followed.labels.values())'
+
+[[rows]]
+id = "u189.S1_saved_question_relisted"
+source = { table = "u189.json", id = "S1_saved_question_relisted" }
+description = "_next, sample of the unit's existing guards: never reuse a saved question, so every --next lists the label again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+            if isinstance(pending, Mapping) and pending.get("releases"):
+                question = Question.from_json(pending)
+            else:
+                listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))'''
+new = '''
+            if False:
+                question = Question.from_json(pending)
+            else:
+                listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))'''
+
+[[rows]]
+id = "u189.S2_question_not_saved"
+source = { table = "u189.json", id = "S2_question_not_saved" }
+description = "_next, sample of the unit's existing guards: print a new question without saving it, so no answer can apply to it"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''
+                question = listed.question
+                _save_pending(cfg, question)'''
+new = '                question = listed.question'
+
+[[rows]]
+id = "r598-a.A1_state_check_widened_to_non_terminal"
+source = { table = "r598-a.json", id = "A1_state_check_widened_to_non_terminal" }
+description = "orphaned: accept any non terminal record rather than only open, so awaiting-import and committed-unverified records with a dead holder are abandoned and their own remedies hidden"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''
+    if record.state is not SessionState.OPEN:
+        return False
+    recorded = record.detail.get(HOLDER_KEY)'''
+new = '''
+    if record.terminal:
+        return False
+    recorded = record.detail.get(HOLDER_KEY)'''
+
+[[rows]]
+id = "r598-a.A2_no_holder_read_as_gone"
+source = { table = "r598-a.json", id = "A2_no_holder_read_as_gone" }
+description = "orphaned: read a record with no recorded holder as orphaned, so every intake landing left open for a deferred placement is abandoned"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''
+    if not isinstance(recorded, Mapping):
+        return False'''
+new = '''
+    if not isinstance(recorded, Mapping):
+        return True'''
+
+[[rows]]
+id = "r598-a.A3_liveness_not_consulted"
+source = { table = "r598-a.json", id = "A3_liveness_not_consulted" }
+description = "orphaned: skip holder_alive and judge every open record with a holder orphaned, so a running write's record is ended behind it"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '    return not holder_alive(holder, here=here)'
+new = '    return True'
+
+[[rows]]
+id = "r598-a.A4_unreadable_holder_read_as_gone"
+source = { table = "r598-a.json", id = "A4_unreadable_holder_read_as_gone" }
+description = "orphaned: judge a holder this build cannot parse as gone rather than alive"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''
+    except (TypeError, ValueError):
+        return False
+    return not holder_alive(holder, here=here)'''
+new = '''
+    except (TypeError, ValueError):
+        return True
+    return not holder_alive(holder, here=here)'''
+
+[[rows]]
+id = "r598-a.A5_holder_never_recorded"
+source = { table = "r598-a.json", id = "A5_holder_never_recorded" }
+description = "open_session: drop the holder instead of recording it, so no record is ever provably orphaned and a hard kill is a dead end again"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '        detail={HOLDER_KEY: holder.to_json()} if holder is not None else {},'
+new = '        detail={},'
+
+[[rows]]
+id = "r647-a.B10_live_identifier_not_asked"
+source = { table = "r647-a.json", id = "B10_live_identifier_not_asked" }
+description = "_gone_since_an_earlier_boot: skip the live process check, so a live holder read through a moved clock has its claim cleared mid write"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '    return process_exists(holder.pid) is False'
+new = '    return True'
+
+[[rows]]
+id = "r647-a.B11_start_time_compared_again"
+source = { table = "r647-a.json", id = "B11_start_time_compared_again" }
+description = "_gone_since_an_earlier_boot: the review's defect restored, a live identifier keeps the claim only when its start time matches, so the Linux shape of a stepped clock clears a live claim"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '    return process_exists(holder.pid) is False'
+new = '''
+    exists = process_exists(holder.pid)
+    if exists is None:
+        return False
+    return not (exists and process_started(holder.pid) == holder.started)'''
+
+[[rows]]
+id = "r647-a.B12_cross_boot_never_judged"
+source = { table = "r647-a.json", id = "B12_cross_boot_never_judged" }
+description = "holder_alive: every other boot judged alive again, the state before this unit, so a power loss stays a dead end"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''
+    if holder.boot != reference.boot:
+        return not _gone_since_an_earlier_boot(holder, reference)'''
+new = '''
+    if holder.boot != reference.boot:
+        return True'''
+
+[[rows]]
+id = "r647-a.B13_current_holder_names_no_machine"
+source = { table = "r647-a.json", id = "B13_current_holder_names_no_machine" }
+description = "current_holder: record the declared unknown instead of the machine identity, so no holder is ever provably this machine's"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '        machine=machine_identity(),'
+new = '        machine=UNKNOWN_IDENTITY,'
+
+[[rows]]
+id = "r647-a.B14_machine_not_read_back"
+source = { table = "r647-a.json", id = "B14_machine_not_read_back" }
+description = "Holder.from_json: ignore the recorded machine, so a record or lock read from disk never names one"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '            machine=str(data.get("machine", UNKNOWN_IDENTITY)),'
+new = '            machine=UNKNOWN_IDENTITY,'
+
+[[rows]]
+id = "r647-a.B15_machine_not_written"
+source = { table = "r647-a.json", id = "B15_machine_not_written" }
+description = "Holder.to_json: omit the machine, so nothing on disk carries it"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''
+            "machine": self.machine,
+'''
+new = ''
+
+[[rows]]
+id = "r647-a.B1_unknown_machine_not_refused"
+source = { table = "r647-a.json", id = "B1_unknown_machine_not_refused" }
+description = "_gone_since_an_earlier_boot: drop the unknown machine check, so two holders that both name no machine compare equal as text and a holder recorded before the field existed is cleared on a machine that cannot name itself"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''
+    if UNKNOWN_IDENTITY in (holder.machine, reference.machine):
+        return False
+    if holder.machine != reference.machine:'''
+new = '    if holder.machine != reference.machine:'
+
+[[rows]]
+id = "r647-a.B2_machine_equality_dropped"
+source = { table = "r647-a.json", id = "B2_machine_equality_dropped" }
+description = "_gone_since_an_earlier_boot: stop comparing machine identities, so another machine sharing the host name and the library drive has its claim cleared on the host name alone"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''
+    if holder.machine != reference.machine:
+        return False'''
+new = '''
+    if holder.machine is None:
+        return False'''
+
+[[rows]]
+id = "r647-a.B3_unparsable_boot_read_as_gone"
+source = { table = "r647-a.json", id = "B3_unparsable_boot_read_as_gone" }
+description = "_gone_since_an_earlier_boot: judge a boot that is not a number as proof of an earlier boot rather than as no proof"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '''
+    except ValueError:
+        return False
+    if not math.isfinite(earlier_by)'''
+new = '''
+    except ValueError:
+        return process_exists(holder.pid) is False
+    if not math.isfinite(earlier_by)'''
+
+[[rows]]
+id = "r647-a.B4_infinite_boot_accepted"
+source = { table = "r647-a.json", id = "B4_infinite_boot_accepted" }
+description = "_gone_since_an_earlier_boot: drop the finiteness check, so a boot recorded as minus infinity reads as infinitely earlier"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '    if not math.isfinite(earlier_by) or earlier_by <= BOOT_DRIFT_SECONDS:'
+new = '    if earlier_by <= BOOT_DRIFT_SECONDS:'
+
+[[rows]]
+id = "r647-a.B5_drift_margin_halved"
+source = { table = "r647-a.json", id = "B5_drift_margin_halved" }
+description = "BOOT_DRIFT_SECONDS: 60 to 30, a realistic nearby value, so a clock adjustment of forty seconds reads as a restart"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = 'BOOT_DRIFT_SECONDS = 60.0'
+new = 'BOOT_DRIFT_SECONDS = 30.0'
+
+[[rows]]
+id = "r647-a.B6_drift_margin_doubled"
+source = { table = "r647-a.json", id = "B6_drift_margin_doubled" }
+description = "BOOT_DRIFT_SECONDS: 60 to 120, so a restart a minute and a half apart is kept for no reason"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = 'BOOT_DRIFT_SECONDS = 60.0'
+new = 'BOOT_DRIFT_SECONDS = 120.0'
+
+[[rows]]
+id = "r647-a.B7_margin_boundary_exclusive"
+source = { table = "r647-a.json", id = "B7_margin_boundary_exclusive" }
+description = "_gone_since_an_earlier_boot: less than instead of less than or equal, so a boot exactly at the margin is judged earlier"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = 'earlier_by <= BOOT_DRIFT_SECONDS:'
+new = 'earlier_by < BOOT_DRIFT_SECONDS:'
+
+[[rows]]
+id = "r647-a.B8_direction_ignored"
+source = { table = "r647-a.json", id = "B8_direction_ignored" }
+description = "_gone_since_an_earlier_boot: take the distance between the boots rather than which came first, so a LATER boot reading reads as an earlier boot"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '        earlier_by = float(reference.boot) - float(holder.boot)'
+new = '        earlier_by = abs(float(reference.boot) - float(holder.boot))'
+
+[[rows]]
+id = "r647-a.B9_platform_silence_read_as_gone"
+source = { table = "r647-a.json", id = "B9_platform_silence_read_as_gone" }
+description = "_gone_since_an_earlier_boot: read a platform declining to say whether the process exists as gone"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_write_session.py", "tests/test_session_cli.py", "tests/test_doctor.py"]
+old = '    return process_exists(holder.pid) is False'
+new = '    return process_exists(holder.pid) is not True'
+
+[[rows]]
+id = "r187-a.C1_blank_not_key"
+source = { table = "r187-a.json", id = "C1_blank_not_key" }
+description = "names_something: ask the text and not the comparison key, so a name of punctuation alone is searched for"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_cli.py"]
+old = '    return bool(setbuilder.match_key("", text))'
+new = '    return bool(text.strip())'

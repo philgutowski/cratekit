@@ -1,25 +1,12 @@
 """U27: the setup wizard, the doctor, and the two reports beside them.
 
-The suite is in six parts, and each one answers a specific way this unit could be
-green and wrong:
-
-1. **The check table is complete and ordered.** Every run answers every declared
-   key, in the declared order, with the interpreter first. A report whose length
-   depends on the machine is a report nobody can diff, and a check silently
-   absent is a precondition nobody is checking.
-2. **The three derived families really are derived.** Credentials, binaries and
-   the acquisition contract are all expanded from somebody else's declaration.
-   Each is asserted against its source, because "derived" that is 90 percent
-   complete is worse than an honest list: it invites trust (P4).
-3. **The five scenarios in the brief**, driven against synthetic machines through
-   the real checks rather than through a copy of them.
-4. **The wizard**, including the three things it must refuse to do: overwrite a
-   configuration it cannot understand, re-derive a volume identity it already
-   recorded, and adopt a version pin nobody agreed to.
-5. **``crate login``**, which must never accept a credential as an argument.
-6. **The guards this unit arms**, checked against the EVASION as well as against
-   correct code, because running a guard only against correct code is the half
-   that keeps getting skipped.
+Six parts, each against a way this unit could be green and wrong: the check
+table is complete and ordered; the credential, binary and acquisition families
+really are derived from their sources (P4); the brief's five scenarios run
+through the real checks; the wizard refuses to overwrite a config it cannot
+read, re-derive a recorded volume identity, or adopt an unagreed pin;
+``crate login`` never takes a credential as an argument; and each guard is run
+against the evasion as well as against correct code.
 """
 
 from __future__ import annotations
@@ -28,24 +15,47 @@ import ast
 import errno
 import json
 import os
+import pathlib
 import subprocess
 import sys
 import tomllib
 from datetime import datetime, timedelta, timezone
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 import pytest
 
-from cratekit import cli
+from cratekit import acquire, cli
 from cratekit.acquire import adapter as adapter_contract
-from cratekit.cli import doctor, prompt, registry, render
+from cratekit.cli import (
+    doctor,
+    doctor_backup,
+    doctor_keys,
+    doctor_library,
+    doctor_model,
+    doctor_state,
+    prompt,
+    registry,
+    render,
+)
 from cratekit.cli import jobs as jobs_cli
 from cratekit.cli import setup as setup_verb
 from cratekit.cli.doctor import Probes as RealProbes
 from cratekit.cli.verbs import login as login_verb
-from cratekit.core import backup_facts, binaries, config, jobs, profiles, secrets, session, taxonomy
+from cratekit.core import (
+    backup_facts,
+    binaries,
+    config,
+    jobs,
+    profiles,
+    rb_writer,
+    secrets,
+    session,
+    taxonomy,
+)
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.deletion import trash
 from tests import doctor_machines
 from tests._hardware import filesystem_kind, hdiutil_available, read_only_volume
 from tests.test_active_taxonomy import shipped_without, write_active
@@ -54,15 +64,12 @@ from tests.test_session_log_unlisted import _refuse_listing
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 
-#: A synthetic volume identity, from the shared machine description so the two
-#: suites cannot describe two different disks. R1 forbids a shipped artifact from
-#: carrying a real library string, which is why it is invented rather than read.
+#: A synthetic volume identity from the shared machine description, so the two
+#: suites describe one disk; invented because R1 forbids a real library string.
 VOLUME = doctor_machines.VOLUME
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ Fixtures ═══════════════════════════════════════════════════════════════
 
 
 def document_for(root: Path, **library_overrides) -> dict:
@@ -84,13 +91,10 @@ def document_for(root: Path, **library_overrides) -> dict:
 
 @pytest.fixture(autouse=True)
 def _trap_standard_input(monkeypatch):
-    """No test in this file may reach a real terminal, however pytest was invoked.
+    """No test may reach a real terminal, however pytest was invoked.
 
-    The wizard is the one verb that prompts, so a drive of it that fell through to
-    the real standard input would BLOCK rather than fail, and it would do so only
-    under ``pytest -s``, where capture is off. A test that hangs on one person's
-    machine and passes on the build's is the worst shape a test can have, so the
-    stream is replaced here rather than relied on being replaced by the runner.
+    Under ``pytest -s`` a wizard drive that fell through to standard input would
+    hang rather than fail, so the stream is replaced here, not left to the runner.
     """
 
     class Trapped:
@@ -108,10 +112,8 @@ def _trap_standard_input(monkeypatch):
 def library(tmp_path, monkeypatch):
     """A synthetic library root, and the environment pointed at it.
 
-    The override is re-set over the one the suite-wide fixture installs, because
-    an override RELOCATES ``library.root`` on every load: leaving the suite's own
-    temporary directory in place would silently move every config this file
-    builds onto a different path than the one it is asserting about (P2).
+    Re-set over the suite-wide override, because an override relocates
+    ``library.root`` on every load (P2).
     """
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
@@ -130,19 +132,10 @@ def configured(library):
 def probes(**overrides) -> doctor.Probes:
     """A machine on which every check passes, minus whatever a test breaks.
 
-    Written as a green baseline rather than as a bare ``Probes()`` so a test
-    naming one broken seam is asserting about that seam alone. A test that
-    started from the real machine would pass or fail on whatever happens to be
-    installed on it.
-
-    The baseline itself moved to ``tests/doctor_machines.py`` when the verb
-    conformance suite needed the same one: two copies of a machine description
-    are two machines, and the property conformance 8 asserts is a comparison
-    BETWEEN two runs, so the green one it compares against has to be this green
-    one. The module holds the class captured at import time for the reason this
-    function did, which is that a test replacing ``doctor.Probes`` to drive a
-    synthetic machine through the real dispatcher must not thereby replace the
-    thing that builds one.
+    A green baseline, so a test breaking one seam asserts about that seam alone.
+    It lives in ``tests/doctor_machines.py``, shared with the verb conformance
+    suite, and holds the class captured at import so a test replacing
+    ``doctor.Probes`` does not replace the builder.
     """
     return doctor_machines.green(**overrides)
 
@@ -164,17 +157,12 @@ def drive(argv: list[str]) -> tuple[int, str, str]:
     return code, out.getvalue(), err.getvalue()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The check table
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 1. The check table ═════════════════════════════════════════════════════
 
 
 def test_every_run_answers_every_declared_check_in_the_declared_order(configured):
-    """Not "the failures are reported": every key, every run, same order.
-
-    A report whose contents depend on which branch a machine took cannot be
-    diffed between two runs or two machines, and a check that quietly stops
-    appearing is a precondition that quietly stops being one.
+    """Every key, every run, same order, so two reports diff and no check can
+    quietly disappear.
     """
     report = doctor.run(configured, probes=probes())
     assert tuple(f.key for f in report.findings) == doctor.CHECK_KEYS
@@ -182,28 +170,15 @@ def test_every_run_answers_every_declared_check_in_the_declared_order(configured
 
 
 def test_the_interpreter_is_checked_before_anything_else():
-    """The brief says so, and the reason is that nothing below it means anything.
-
-    On an interpreter the vendored tree has never run on, a green report about
-    binaries and credentials is a report about a machine that cannot run the
-    product at all.
-    """
+    """Nothing below the interpreter means anything on one the tree cannot run on."""
     assert doctor.CHECK_KEYS[0] == "interpreter.version"
 
 
 def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
-    """The whole table, spelled out, because the previous version could not fail.
+    """The whole table spelled out, so dropping, renaming or reordering a check fails.
 
-    It asserted ``CHECK_KEYS == tuple(check.key for check in CHECKS)`` and
-    ``doctor.py`` DEFINES ``CHECK_KEYS`` as exactly that expression, so the
-    assertion was the implementation restated and its own docstring conceded it.
-    Round two removed this shape from ``tests/test_cli_contract.py`` and left
-    this instance.
-
-    The three families stay derived from the declarations doctor derives them
-    FROM, rather than from ``CHECKS``, which is the whole difference: a binary
-    added to ``core/binaries`` is still checked here with no edit, and dropping,
-    renaming or reordering a check is a failure a reviewer reads.
+    The three families stay derived from doctor's own sources rather than
+    ``CHECKS``, so a binary added to ``core/binaries`` is covered with no edit.
     """
     assert doctor.CHECK_KEYS == (
         "interpreter.version",
@@ -249,11 +224,8 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
 
 
 def test_doctor_never_raises_when_there_is_no_configuration_at_all(tmp_path, monkeypatch):
-    """The first machine doctor meets is the one with nothing on it.
-
-    Everything downstream of configuration reports as unchecked rather than as a
-    failure, because the failure is already reported once and repeating it twenty
-    times buries it.
+    """Everything downstream of a missing configuration reports as unchecked, so
+    the one failure is not buried under twenty repeats.
     """
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "empty"))
     config.reset_cache()
@@ -268,12 +240,7 @@ def test_doctor_never_raises_when_there_is_no_configuration_at_all(tmp_path, mon
 
 
 def test_a_configuration_from_a_newer_build_keeps_its_own_remedy(tmp_path, monkeypatch):
-    """Five ways a config can be unusable, five remediations, and doctor carries
-    the one that arrived rather than the class default.
-
-    ``getattr(error, "remedy", something)`` would have handed back a permissive
-    answer for a field whose whole point is that these five differ.
-    """
+    """Each way a config can be unusable keeps its own remedy, not the class default."""
     directory = tmp_path / "cfg"
     directory.mkdir()
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(directory))
@@ -287,15 +254,11 @@ def test_a_configuration_from_a_newer_build_keeps_its_own_remedy(tmp_path, monke
     assert present.remedy is Remedy.UPGRADE_CRATEKIT
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. The derived families
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 2. The derived families ═══════════════════════════════════════════════
 
 
 def test_every_stored_credential_is_covered_by_exactly_one_check():
-    """P4. A derivation that misses one member is a list wearing a derivation's
-    clothes, and the member it misses is the credential nobody notices is unchecked.
-    """
+    """A derivation that misses one credential leaves it silently unchecked (P4)."""
     covered = [
         name
         for names in doctor.CREDENTIALS_BY_CHECK.values()
@@ -315,27 +278,20 @@ def test_every_credential_check_the_registry_declares_has_a_group_and_a_remedy()
     assert declared <= set(doctor.CREDENTIALS_BY_CHECK)
     for key in doctor.CREDENTIALS_BY_CHECK:
         assert f"binary.{key}" not in doctor.CHECK_KEYS
-        assert isinstance(Remedy(str(doctor._CREDENTIAL_REMEDY[key])), Remedy)
+        assert isinstance(Remedy(str(doctor_keys._CREDENTIAL_REMEDY[key])), Remedy)
 
 
 def test_every_binary_the_resolver_knows_about_is_probed():
-    """The source system's doctor hand-listed six binaries. This one cannot.
-
-    Both halves of ``core/binaries``' own tables are expanded, so a binary added
-    there is checked here the day it is added rather than the day somebody
-    remembers (P3).
+    """Both of ``core/binaries``' tables are expanded, so a new binary is checked
+    the day it is added (P3).
     """
     probed = {key[len("binary.") :] for key in doctor.CHECK_KEYS if key.startswith("binary.")}
     assert probed == set(binaries.INSTALLABLE_BINARIES) | set(binaries.PLATFORM_BINARIES)
 
 
 def test_the_acquisition_contract_is_read_off_the_protocol():
-    """Derived, so a member added to the protocol is checked without an edit.
-
-    Asserted against the protocol itself rather than against a copy: the point of
-    the check is that a substitute adapter is measured against the WHOLE contract,
-    and a hand-listed pair of names stops being the whole contract the moment the
-    protocol grows a third member.
+    """Asserted against the protocol itself, so a member added to it is checked
+    without an edit.
     """
     assert doctor.contract_members() == ("acquire", "name")
 
@@ -348,28 +304,21 @@ def test_the_acquisition_contract_is_read_off_the_protocol():
 
 
 def test_every_backup_portion_gets_its_own_answer():
-    """One aggregate timestamp reports a half-protected library as protected.
-
-    The normal state of a library backed up without quitting rekordbox is "files
-    current, database stale", which is the one thing the warning exists to say.
+    """One aggregate timestamp would report "files current, database stale", the
+    normal state, as protected.
     """
     reported = {key for key in doctor.CHECK_KEYS if key.startswith("backup.age.")}
     assert reported == {f"backup.age.{portion}" for portion in backup_facts.PORTIONS}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. The five scenarios in the brief
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 3. The five scenarios in the brief ═════════════════════════════════════
 
 
 def test_an_unmounted_volume_and_a_moved_volume_produce_different_messages(
     tmp_path, monkeypatch
 ):
-    """The brief's second scenario, and the reason ``preflight`` has five outcomes.
-
-    "The volume is wrong" sends a user to unplug a drive that was never the
-    problem. One of these says the disk is not attached; the other says it IS
-    attached, somewhere else, and nothing needs plugging in.
+    """Not mounted and moved differ: one says attach the disk, the other says it
+    is attached elsewhere and nothing needs plugging in.
     """
     absent = tmp_path / "not-mounted"
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(absent))
@@ -400,10 +349,8 @@ def test_an_unmounted_volume_and_a_moved_volume_produce_different_messages(
 
 
 def test_a_foreign_volume_at_the_configured_root_is_its_own_answer(library):
-    """The restored clone: right layout, right filenames, wrong disk.
-
-    A directory check answers yes on a clone, which is why identity is asked for
-    at all, and why this is not folded into "not mounted".
+    """A restored clone at the root is its own answer, since a directory check
+    answers yes on it.
     """
     report = doctor.run(
         config.from_dict(document_for(library)),
@@ -416,12 +363,8 @@ def test_a_foreign_volume_at_the_configured_root_is_its_own_answer(library):
 
 
 def test_a_module_enabled_without_its_credential_is_reported_with_the_fix(library):
-    """The brief's third scenario, and it is derived rather than decided.
-
-    Recognition is gated by the ``identify`` module. Switching that module off
-    makes the same missing credential a note; switching it on makes it a failure.
-    Nothing in the doctor module knows which module that is: it asks the registry
-    which verbs declare the check and whether the profile switches any of them on.
+    """Derived from the registry: the same missing credential is a failure with
+    ``identify`` on and a note with it off.
     """
     missing = probes(credential_recorded=lambda name: name != str(secrets.Credential.IDENTIFY_KEY))
 
@@ -440,10 +383,8 @@ def test_a_module_enabled_without_its_credential_is_reported_with_the_fix(librar
 def _break_the_presence_index(monkeypatch) -> Path:
     """Leave a credential recorded and the index unreadable. Returns its path.
 
-    Driven through the REAL ``secrets.exists`` rather than a probe that raises,
-    because the finding being closed is that the reader answered False and the
-    report believed it. A seam handed a prepared exception would pass over a
-    reader that still answers False.
+    Driven through the real ``secrets.exists``, since the defect was the reader
+    answering False, which a probe that raises would not exercise.
     """
     secrets.set(secrets.Credential.PROVIDER_SESSION, "value-from-the-user")
     index = config.state_path("credential_index")
@@ -461,14 +402,8 @@ def _break_the_presence_index(monkeypatch) -> Path:
 def test_an_unreadable_credential_index_is_reported_as_unread_not_as_unrecorded(
     library, monkeypatch
 ):
-    """Item 4 of the five-places residual finding, and the second half of its
-    closing condition: doctor says which
-    it saw.
-
-    "Not recorded, record it" over a credential the keychain is holding is the
-    loop R-116 measured, and the remedy never completes because recording it
-    again does not move the index. The report now names the file and sends the
-    person to the permission instead.
+    """An unreadable index is named as unread, not "not recorded", since recording
+    again never moves the index (R-116).
     """
     index = _break_the_presence_index(monkeypatch)
     machine = probes(credential_recorded=secrets.exists)
@@ -487,9 +422,7 @@ def test_an_unreadable_credential_index_is_reported_as_unread_not_as_unrecorded(
 def test_an_unreadable_credential_index_costs_one_check_and_not_the_report(
     library, monkeypatch
 ):
-    """Every other check still answers, which is doctor's standing contract: a
-    report whose length depends on the machine is a report a consumer cannot diff.
-    """
+    """Every other check still answers, so the report's length stays fixed."""
     _break_the_presence_index(monkeypatch)
     machine = probes(credential_recorded=secrets.exists)
 
@@ -501,11 +434,8 @@ def test_an_unreadable_credential_index_costs_one_check_and_not_the_report(
 def test_the_wizard_notes_an_unreadable_credential_index_rather_than_dying(
     configured, monkeypatch
 ):
-    """``_capture_credentials`` runs AFTER the configuration is saved, so a raise
-    here loses the whole report over a file already on disk. That is the shape
-    the same residual's third item spent four rounds closing, and the presence
-    question is a new way
-    into it.
+    """``_capture_credentials`` runs after the config is saved, so a raise would
+    lose the report over a file already on disk.
     """
     index = _break_the_presence_index(monkeypatch)
     wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes"], ["k3y", "s1gn", "s3cret"]))
@@ -523,20 +453,11 @@ def test_the_wizard_notes_an_unreadable_credential_index_rather_than_dying(
 def test_the_wizard_notes_an_index_that_refuses_the_write_rather_than_dying(
     configured, monkeypatch
 ):
-    """The other way into the wizard, and it was open after the first leg closed.
+    """An index that refuses the ``secrets.set`` write is noted, not raised.
 
-    ``secrets.set`` notes the name in the presence index after the keychain write,
-    through the same reader, so an unusable index refuses on the WRITE as well as
-    on the probe. ``secrets.CredentialError`` is not a ``CratekitError``, so the
-    handler already beside it does not catch this, and the window is a person
-    typing a secret.
-
-    DAMAGED WHILE THE SECRET IS BEING TYPED, which is the only arrangement that
-    reaches the write leg at all: an index that is already unusable refuses at the
-    probe one line above and the write is never attempted. Writing it that way
-    passed against the build this test was written to fail, and the window it
-    models is the real one, since a person at a password prompt is as long as
-    windows in this product get.
+    ``secrets.CredentialError`` is not a ``CratekitError``. The index is damaged
+    while the secret is typed, since one already unusable refuses at the probe
+    and never reaches the write.
     """
     index = config.state_path("credential_index")
     answers = ["yes", "yes", "yes"]
@@ -561,17 +482,15 @@ def test_the_wizard_notes_an_index_that_refuses_the_write_rather_than_dying(
     assert all(note.status is doctor.Status.FAIL for note in offered)
     assert all(str(index) in note.detail for note in offered)
     assert all(note.remedy is Remedy.REPAIR_CREDENTIAL_STORE for note in offered)
-    # And no typed value reaches the report, which is the standing rule for every
-    # note this function writes and is worth re-asserting on a new branch of it.
+    # No typed value reaches the report.
     rendered = json.dumps([note.to_json() for note in wizard.notes])
     for value in ("k3y", "s1gn", "s3cret"):
         assert value not in rendered
 
 
 def test_a_missing_binary_is_reported_with_where_it_comes_from(library):
-    """The brief's fourth scenario. Reported BEFORE any spend, which is what a
-    precondition means: the alternative is discovering it part way through a
-    download whose identification calls have already been paid for.
+    """A missing binary is reported before any spend, not part way through a
+    paid download.
     """
     report = doctor.run(
         config.from_dict(document_for(library)),
@@ -584,9 +503,8 @@ def test_a_missing_binary_is_reported_with_where_it_comes_from(library):
 
 
 def test_a_missing_ffmpeg_names_the_analysis_whose_decoder_it_is(library):
-    """U263: an M4A is decoded through ffmpeg on a librosa that cannot read it,
-    so with the analysis module on, the failing row names the analysis verbs
-    it stops and not only that some verb shells out to it."""
+    """U263: with analysis on, a missing ffmpeg names the analysis verbs it stops,
+    since an M4A is decoded through it."""
     document = document_for(library)
     document["profile"] = {"name": "slim"}
     document["modules"] = {"analysis": True}
@@ -603,9 +521,8 @@ def test_a_missing_ffmpeg_names_the_analysis_whose_decoder_it_is(library):
 
 
 def test_a_binary_no_enabled_verb_needs_is_a_note_rather_than_a_failure(library):
-    """P7 in the report itself. rclone is only reachable through the backup
-    module, so on an install without it a missing rclone is worth knowing and is
-    not a problem, and painting it red teaches people to ignore red.
+    """A missing binary only a disabled module needs is a note, since red that is
+    not a problem teaches people to ignore red (P7).
     """
     document = document_for(library)
     document["profile"] = {"name": "slim"}
@@ -618,9 +535,8 @@ def test_a_binary_no_enabled_verb_needs_is_a_note_rather_than_a_failure(library)
 
 
 def test_doctor_verifies_the_configured_adapter_against_the_contract(library):
-    """The brief's fifth scenario. R9's whole promise is that the downloader is
-    replaceable, and a substitute that does not satisfy the protocol is a
-    substitution that fails at the first download rather than at configuration.
+    """A substitute adapter is checked against the protocol at configuration, not
+    at the first download (R9).
     """
     document = document_for(library)
     document["acquisition"] = {"adapter": "streamrip"}
@@ -636,9 +552,8 @@ def test_doctor_verifies_the_configured_adapter_against_the_contract(library):
 
 
 def test_a_configuration_naming_the_retired_vendored_key_passes_the_adapter_check(library):
-    """U197. The check refuses a configured name the resolved class does not call
-    itself, so the retired key would read as a mismatch unless it is folded where
-    the file is read. Folded, the check passes and names the current key."""
+    """U197: the retired vendored key is folded when the file is read, so the
+    check passes and names the current key."""
     document = document_for(library)
     document["acquisition"] = {"adapter": "tidal_dl_ng"}
     finding = find(doctor.run(config.from_dict(document), probes=probes()), "adapter.contract")
@@ -650,11 +565,7 @@ def test_a_configuration_naming_the_retired_vendored_key_passes_the_adapter_chec
 def test_an_adapter_whose_name_disagrees_with_the_configuration_is_refused(
     library, monkeypatch
 ):
-    """The identity every result is reported under has to be the one selected.
-
-    Two names for one adapter means a run reports work against an adapter nobody
-    chose, and the mismatch is invisible in every other check.
-    """
+    """Two names for one adapter would report work against an adapter nobody chose."""
 
     class Impostor:
         name = "something-else"
@@ -699,38 +610,25 @@ def test_an_adapter_missing_a_contract_member_is_refused(library, monkeypatch):
         ((3, 12, 1), "!=3.12.1", False),
         ((3, 12, 1), "~=3.12", None),
         ((3, 12, 1), ">=3.12.*", None),
-        # A specifier that yields NO clause compares nothing, so it answers
-        # nothing. Returning True for these was the initialisation showing
-        # through: ``verdict`` started at True and a loop that ran no comparison
-        # handed it straight back, which made "this bound says nothing" and "this
-        # version satisfies it" the same answer.
+        # A specifier with no clause compares nothing, so it answers nothing.
         ((3, 12, 1), "", None),
         ((3, 12, 1), "   ", None),
         ((3, 12, 1), ",,", None),
-        # And a bound that DOES compare still answers, including when only one of
-        # several clauses is meaningful.
+        # A bound that compares still answers, even with one meaningful clause.
         ((3, 12, 1), ">=3.12,", True),
     ],
 )
 def test_the_interpreter_specifier_parser_answers_or_says_it_cannot(
     version, specifier, expected
 ):
-    """Three answers, not two. A specifier shape this parser does not know
-    returns None, and the caller reports "not asserted" rather than a pass:
-    guessing at a shape is how a bound stops being a bound.
+    """An unknown specifier shape returns None, reported as "not asserted", never
+    a guessed pass.
     """
     assert doctor.satisfies(version, specifier) is expected
 
 
 def test_a_specifier_that_compares_nothing_is_not_a_pass():
-    """The evasion, run against the initialisation that permitted it.
-
-    ``verdict = True`` at the top of the loop meant any specifier the parser
-    walked without executing a comparison returned True. It is degenerate for a
-    real build backend, which is exactly why nothing caught it, and it is the
-    same shape as every other defect in this unit's review: a positive claim
-    reached by falling through rather than by observing anything.
-    """
+    """A specifier the loop walks without a comparison must not fall through to True."""
     for specifier in ("", "   ", ",", " , ", "\t"):
         assert doctor.satisfies((3, 12, 5), specifier) is None, specifier
 
@@ -751,25 +649,22 @@ def test_an_unsupported_interpreter_fails_and_an_unreadable_bound_does_not(libra
 
 
 def test_the_declared_bound_is_read_from_packaging_rather_than_repeated():
-    """KTD19's bound lives in one place, and this is not it.
-
-    A constant in the doctor module would be a second copy of one decision, and
-    the copy that drifts is always the one nobody is looking at.
-    """
+    """KTD19's bound is read from packaging, not copied into doctor."""
     declared = (REPO_ROOT / "pyproject.toml").read_text()
-    source = (SRC_ROOT / "cratekit" / "cli" / "doctor.py").read_text()
+    cli_dir = SRC_ROOT / "cratekit" / "cli"
+    sources = {path.name: path.read_text() for path in cli_dir.glob("doctor*.py")}
+    assert {"doctor.py", "doctor_library.py", "doctor_model.py"} <= set(sources)
     for bound in (">=3.12", "<3.14"):
         assert bound in declared
-        assert bound not in source
+        for name, source in sources.items():
+            assert bound not in source, name
 
 
 # ── the pins, the processes, the sessions ────────────────────────────────────
 
 
 def test_an_unrecorded_application_pin_fails_and_names_the_installed_version(library):
-    """S2. An unset pin refuses every database write, and doctor says so on every
-    run rather than leaving the user to meet it at the write.
-    """
+    """S2: an unset pin refuses every database write, so doctor says so every run."""
     document = document_for(library)
     document["rekordbox"] = {}
     finding = find(
@@ -817,10 +712,8 @@ def test_a_running_rekordbox_agent_is_reported_even_with_the_window_closed(libra
 
 
 def test_a_committed_unverified_session_is_reported_before_the_next_write(configured):
-    """The refusal a user would otherwise meet at their next write, surfaced early.
-
-    The session log SURVIVES a rollback, so the condemning record outlives the
-    restore that answers it; doctor is where it stays visible in between.
+    """A committed unverified session is reported before the next write; the log
+    survives a rollback, so doctor keeps it visible until a restore answers it.
     """
     record = session.SessionRecord(
         session_id="s-1",
@@ -837,10 +730,8 @@ def test_a_committed_unverified_session_is_reported_before_the_next_write(config
 
 
 def test_an_open_session_whose_process_is_gone_names_the_verb_that_ends_it(configured):
-    """R-598. Listed bare, a record a hard kill left reads as a run in progress.
-
-    The live record beside it is the control: the clause is about the dead
-    holder, not about being open.
+    """R-598: a record a hard kill left must not read as a run in progress; the
+    live record beside it is the control.
     """
     import subprocess
     import sys
@@ -861,11 +752,7 @@ def test_an_open_session_whose_process_is_gone_names_the_verb_that_ends_it(confi
 
 
 def test_an_unreadable_session_record_is_reported_rather_than_dropped(configured):
-    """A gate reading its own state through a tolerant reader fails OPEN.
-
-    ``scan_log`` returns both halves for exactly this reason, and doctor reports
-    the half that will refuse rather than the half it can read.
-    """
+    """A tolerant reader would fail open, so doctor reports the half that refuses."""
     log = session.log_dir(configured)
     log.mkdir(parents=True, exist_ok=True)
     (log / "wrecked.json").write_text("{not json")
@@ -878,9 +765,7 @@ def test_an_unreadable_session_record_is_reported_rather_than_dropped(configured
 def test_a_backup_recorded_in_the_future_is_refused_rather_than_treated_as_fresh(
     configured,
 ):
-    """A negative age reads as the freshest possible value to any comparison, so
-    a skewed clock silently satisfies every freshness check it should fail.
-    """
+    """A negative age would satisfy every freshness check, so it is refused."""
     backup_facts.record(
         configured,
         backup_facts.Portion.FILES,
@@ -978,11 +863,8 @@ def test_no_acknowledgment_is_claimed_absent_off_a_volume_nobody_read(configured
 
 
 def test_a_remote_whose_provider_trashes_on_delete_is_reported(configured):
-    """The residual finding "Backup pruning reclaims space only if the remote is
-    configured to", closed. The source system passed a provider flag from inside the
-    prune, which is the one-provider assumption this port removed; without the
-    per-remote option a pruned archive keeps counting against the quota, which is
-    the whole point of pruning.
+    """A remote whose provider trashes on delete is reported, since a pruned
+    archive would keep counting against the quota.
     """
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:"}
@@ -1000,8 +882,8 @@ def test_a_remote_whose_provider_trashes_on_delete_is_reported(configured):
 
 
 def test_a_backup_module_with_no_destination_is_a_note_rather_than_a_failure(library):
-    """The full preset switches backup on for everybody. Failing here would paint
-    a correct install red on the day it is set up (P7).
+    """The full preset turns backup on for everyone, so failing would paint a
+    correct new install red (P7).
     """
     finding = find(
         doctor.run(config.from_dict(document_for(library)), probes=probes()), "backup.remote"
@@ -1009,9 +891,8 @@ def test_a_backup_module_with_no_destination_is_a_note_rather_than_a_failure(lib
     assert finding.status is doctor.Status.INFO
 
 
-#: What pre-commit's own installer writes, reduced to the lines that decide
-#: whether the hook dispatches: the tool's hook implementation, the stage it was
-#: installed for, and the configuration it reads.
+#: What pre-commit's installer writes, reduced to the lines that decide whether
+#: the hook dispatches: implementation, stage and configuration.
 INSTALLED_HOOK = (
     "#!/usr/bin/env bash\n"
     "# File generated by pre-commit: https://pre-commit.com\n"
@@ -1040,9 +921,7 @@ def hook_finding(library, checkout) -> doctor.Finding:
 
 
 def test_the_commit_hook_check_says_nothing_on_an_installed_package(library):
-    """The commit hook finding is a developer check. Reporting a missing developer tool to somebody
-    who is not a developer is noise, and noise is what stops the report being read.
-    """
+    """The commit hook check is for developers, so an installed package hears nothing."""
     installed = find(
         doctor.run(config.from_dict(document_for(library)), probes=probes()),
         "repo.commit_hook",
@@ -1062,8 +941,7 @@ def test_the_commit_hook_check_says_nothing_on_an_installed_package(library):
 @pytest.mark.parametrize(
     "body, config_file, because",
     [
-        # The EVASION the substring test admitted: a hook whose entire content is
-        # a mention of the word. It runs nothing.
+        # A hook that only mentions the word runs nothing.
         ("#!/bin/sh\n# pre-commit\nexit 0\n", True, "hook-impl"),
         # A hook installed for a different stage, copied into this file.
         (
@@ -1090,13 +968,8 @@ def test_the_commit_hook_check_says_nothing_on_an_installed_package(library):
 def test_a_hook_that_does_not_dispatch_to_this_repository_is_refused(
     library, tmp_path, body, config_file, because
 ):
-    """The sentence of the residual finding "The commit hook is off by default on a
-    fresh clone", made true.
-
-    The check CLAIMED it refused when the hook "does not dispatch to this
-    repository's pre-commit configuration" and tested ``"pre-commit" in body``,
-    which is satisfied by a comment. Each row here is a hook that passes that
-    substring and runs no scan over this repository's commits.
+    """Each row passes a ``"pre-commit" in body`` substring test yet runs no scan
+    over this repository's commits.
     """
     checkout = hooked_checkout(tmp_path / "checkout", body, config_file=config_file)
     finding = hook_finding(library, checkout)
@@ -1105,28 +978,23 @@ def test_a_hook_that_does_not_dispatch_to_this_repository_is_refused(
 
 
 def test_the_repositorys_own_installed_hook_passes_the_check(library):
-    """The other half of every guard: it must also pass on correct code.
-
-    Run against this checkout's REAL hook when there is one, because a guard
-    tightened until only its fixtures pass it is a guard that fires on the
-    correct setup, and those get worked around rather than fixed (P7).
+    """This checkout's real hook passes, so the guard does not fire on the correct
+    setup (P7).
     """
-    root = doctor._checkout_root()
+    root = doctor_model._checkout_root()
     if root is None:  # pragma: no cover - an installed wheel has no checkout
         return
-    git_dir, unreadable, _remedy = doctor._git_dir(root)
+    git_dir, unreadable, _remedy = doctor_model._git_dir(root)
     assert unreadable is None, unreadable
     hook = git_dir / "hooks" / "pre-commit" if git_dir else None
     if hook is None or not hook.is_file():  # pragma: no cover - a clone with no hook
         return
-    assert doctor._hook_dispatch_problem(hook.read_text(), root) is None
+    assert doctor_state._hook_dispatch_problem(hook.read_text(), root) is None
 
 
 def test_a_worktree_finds_the_hook_in_the_common_git_directory(tmp_path):
-    """A worktree's ``.git`` is a FILE naming a directory that names the COMMON
-    one, where hooks actually live. Following only the first pointer reports every
-    worktree as unhooked while the hook is installed and running, which is a guard
-    that fires on correct setups (P7).
+    """A worktree's ``.git`` file leads to the common directory where hooks live;
+    following only the first pointer reports every worktree unhooked (P7).
     """
     common = tmp_path / "main" / ".git"
     (common / "hooks").mkdir(parents=True)
@@ -1139,8 +1007,8 @@ def test_a_worktree_finds_the_hook_in_the_common_git_directory(tmp_path):
     worktree.mkdir()
     (worktree / ".git").write_text(f"gitdir: {per_tree}\n")
 
-    assert doctor._git_dir(worktree) == (common.resolve(), None, None)
-    assert doctor._git_dir(tmp_path / "main") == (common, None, None)
+    assert doctor_model._git_dir(worktree) == (common.resolve(), None, None)
+    assert doctor_model._git_dir(tmp_path / "main") == (common, None, None)
 
 
 #: The shape of this repository's own configuration that decides the answer: one
@@ -1179,13 +1047,8 @@ def two_stage_checkout(root: Path, *, commit_msg: str | None = INSTALLED_COMMIT_
 
 
 def test_a_configured_commit_msg_stage_with_no_hook_is_refused(library, tmp_path):
-    """The widened half of the residual finding "The commit hook is off by default
-    on a fresh clone".
-
-    `pre-commit install` alone writes the pre-commit hook and nothing else, so a
-    clone set up from a one-line instruction has the scan and silently lacks the
-    closing check on the commit-msg stage. The check looked at one file and said
-    green over that clone.
+    """``pre-commit install`` alone omits the commit-msg hook, so a configured
+    commit-msg stage with no hook is refused.
     """
     finding = hook_finding(library, two_stage_checkout(tmp_path / "checkout", commit_msg=None))
     assert finding.status is doctor.Status.FAIL, finding.detail
@@ -1315,7 +1178,7 @@ def _stage_config(stages: str) -> str:
 def test_the_hook_types_a_configuration_needs(tmp_path, text, expected):
     config_file = tmp_path / ".pre-commit-config.yaml"
     config_file.write_text(text)
-    assert doctor._configured_hook_types(config_file) == (expected, None, None)
+    assert doctor_state._configured_hook_types(config_file) == (expected, None, None)
 
 
 @pytest.mark.parametrize(
@@ -1330,17 +1193,17 @@ def test_a_configuration_this_cannot_understand_is_a_sentence(tmp_path, text, be
     """An unknown stage is not a stage that needs nothing."""
     config_file = tmp_path / ".pre-commit-config.yaml"
     config_file.write_text(text)
-    types, problem, _remedy = doctor._configured_hook_types(config_file)
+    types, problem, _remedy = doctor_state._configured_hook_types(config_file)
     assert types == ()
     assert problem is not None and because in problem
 
 
 def test_this_repositorys_own_configuration_needs_both_hook_types():
     """Pinned against the tree rather than a fixture authored beside the reader."""
-    root = doctor._checkout_root()
+    root = doctor_model._checkout_root()
     if root is None:  # pragma: no cover - an installed wheel has no checkout
         return
-    types, problem, _remedy = doctor._configured_hook_types(root / ".pre-commit-config.yaml")
+    types, problem, _remedy = doctor_state._configured_hook_types(root / ".pre-commit-config.yaml")
     assert problem is None, problem
     assert types == ("pre-commit", "commit-msg")
 
@@ -1383,9 +1246,7 @@ def test_the_install_line_names_a_configuration_that_is_not_the_default(library,
     ) in finding.detail
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. The wizard
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 4. The wizard ══════════════════════════════════════════════════════════
 
 
 class Scripted(prompt.Prompter):
@@ -1413,11 +1274,8 @@ def silent() -> prompt.Prompter:
 def test_the_wizard_on_a_clean_machine_produces_a_valid_config_and_a_green_doctor(
     tmp_path, monkeypatch
 ):
-    """The brief's first scenario, end to end through the real dispatcher.
-
-    Every answer is supplied as a flag, which is the property that makes the ONE
-    interactive verb scriptable: a verb that can only be driven by typing at it
-    cannot be exercised end to end by anything except a person.
+    """The first scenario end to end, every answer a flag, so the one interactive
+    verb is scriptable.
     """
     root = tmp_path / "fresh"
     (root / "Music").mkdir(parents=True)
@@ -1456,10 +1314,8 @@ def test_the_wizard_on_a_clean_machine_produces_a_valid_config_and_a_green_docto
 def state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
     """Size and modification time of every file under each root.
 
-    "It wrote nothing" is asserted against the FILESYSTEM rather than inferred
-    from reading the code, for the same reason the destructive-session assertion
-    does it: the class of defect being guarded is a read-only path that already
-    wrote something before anybody noticed.
+    "It wrote nothing" is asserted against the filesystem, not inferred from the
+    code, since the defect guarded is a read-only path that already wrote.
     """
     import os
 
@@ -1477,15 +1333,11 @@ def state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
 
 
 def test_doctor_writes_nothing_at_all(configured):
-    """A diagnostic that changes the thing it is diagnosing is not a diagnostic.
+    """Doctor's ``run`` writes nothing, even on a foreign volume where a write
+    would land somewhere nobody intended.
 
-    It also has to be safe to run on a library whose volume is WRONG, which is
-    precisely the moment a write would land somewhere nobody intended, so the
-    probe here is the foreign-volume one.
-
-    Asserted about ``run`` rather than about the whole invocation on purpose: the
-    dispatcher persists a run record for every verb it dispatches, which is the
-    shell's own state and is not this module's to avoid.
+    Asserted on ``run``, not the whole invocation, since the dispatcher's own run
+    record is the shell's state.
     """
     seed_taxonomy(configured)
     roots = (
@@ -1502,13 +1354,8 @@ def test_doctor_writes_nothing_at_all(configured):
 def test_a_second_setup_run_asks_nothing_and_changes_nothing_it_was_not_asked_to(
     configured, monkeypatch
 ):
-    """The property that makes re-running the wizard cheap rather than dangerous.
-
-    Every answer resolves from what is already recorded, so nothing is prompted;
-    the file is rewritten with the same content, and the volume identity, the
-    profile and the taxonomy choice all survive untouched. A wizard that asked
-    everything again is a wizard people stop re-running, and then the checks it
-    performs at the end never run either.
+    """A re-run resolves every answer from the record, prompts nothing, and leaves
+    the volume identity, profile and taxonomy untouched, so re-running stays cheap.
     """
     seed_taxonomy(configured)
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
@@ -1525,9 +1372,8 @@ def test_a_second_setup_run_asks_nothing_and_changes_nothing_it_was_not_asked_to
 
 
 def test_the_wizard_reports_no_check_key_twice(configured, monkeypatch):
-    """One report, one row per thing. Two credentials share one check key, so a
-    note keyed on the check would emit that key twice and a consumer keying on it
-    would keep whichever arrived last.
+    """Two credentials share one check key, so a note keyed on the check would
+    emit it twice and a consumer would keep only the last.
     """
     seed_taxonomy(configured)
     monkeypatch.setattr(doctor, "Probes", lambda: probes(credential_recorded=lambda _n: False))
@@ -1537,10 +1383,8 @@ def test_the_wizard_reports_no_check_key_twice(configured, monkeypatch):
 
 
 def test_the_wizard_never_puts_a_credential_value_in_its_own_report(configured):
-    """The report is written to standard output and read by other processes.
-
-    Only the NAME of a credential ever appears in it. A value that reached the
-    envelope would be in every log and every job record that captured the run.
+    """Only a credential's name reaches the report, since the report lands in
+    every log and job record that captured the run.
     """
     wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes"], ["s3cret", "k3y", "s1gn"]))
     setup_verb._capture_credentials(wizard, configured)
@@ -1552,10 +1396,7 @@ def test_the_wizard_never_puts_a_credential_value_in_its_own_report(configured):
 def test_the_wizard_refuses_to_overwrite_a_configuration_it_cannot_understand(
     tmp_path, monkeypatch
 ):
-    """The reader that cannot tell a wrong document from an empty one, refused.
-
-    Treating an unreadable config as an absent one and writing a fresh document
-    over it destroys every answer the user gave. Only a genuinely MISSING file
+    """An unreadable config is refused, not overwritten; only a missing file
     starts from empty.
     """
     directory = tmp_path / "cfg"
@@ -1574,9 +1415,7 @@ def test_the_wizard_refuses_to_overwrite_a_configuration_it_cannot_understand(
 def test_the_wizard_completes_an_incomplete_configuration_rather_than_refusing(
     tmp_path, monkeypatch
 ):
-    """The one unusable state setup is FOR. A config missing a required key parses
-    fine and fails validation, and answering the missing key is the whole job.
-    """
+    """A config missing a required key is what setup is for, so it is completed."""
     directory = tmp_path / "cfg"
     directory.mkdir()
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(directory))
@@ -1592,11 +1431,8 @@ def test_the_wizard_completes_an_incomplete_configuration_rather_than_refusing(
 
 
 def test_the_wizard_never_re_derives_a_volume_identity_it_already_recorded(configured):
-    """R38's clone protection, arriving through the thing meant to provide it.
-
-    A wizard that re-read the identity on every run would record whatever disk
-    happened to be mounted, so a restored clone would be adopted as the library by
-    the act of running setup again.
+    """A recorded identity is never re-read, or a re-run would adopt a restored
+    clone as the library (R38).
     """
     wizard = setup_verb._Wizard(dict(configured.to_toml_dict()), silent())
     kept = setup_verb._resolve_volume_id(
@@ -1613,8 +1449,8 @@ def test_the_wizard_never_re_derives_a_volume_identity_it_already_recorded(confi
 def test_the_wizard_proposes_the_installed_pin_and_records_it_only_on_a_yes(
     configured, monkeypatch
 ):
-    """S2 as behaviour. A pin the software copies from whatever is installed
-    refuses nothing, forever, which is the entire property the pin provides.
+    """S2: a pin copied from the installed version refuses nothing, so it is only
+    recorded on a yes.
     """
     monkeypatch.setattr(
         setup_verb.rb_writer, "read_installed_app_version", lambda **_k: "9.9.9"
@@ -1631,8 +1467,7 @@ def test_the_wizard_proposes_the_installed_pin_and_records_it_only_on_a_yes(
     accepted = setup_verb._Wizard(document, Scripted(["yes"]))
     assert setup_verb._propose_pin(accepted, document, unpinned) is True
     assert document["rekordbox"]["pinned_app_version"] == "9.9.9"
-    # Never written here: it means "confirmed against a real write", and this verb
-    # has not made one.
+    # Never written here: it means "confirmed against a real write".
     assert "validated_on" not in document["rekordbox"]
 
 
@@ -1645,11 +1480,8 @@ def _no_backup_flags():
 
 
 def test_the_wizard_asks_for_the_backup_destinations_when_the_module_is_on(configured):
-    """The brief's fourth scenario (R-345). ``BackupConfig`` said every field was
-    wizard supplied and the wizard never asked, so the values were typed by hand
-    and the first dry run ran against bare folder names. On a full profile with
-    nothing recorded the set is offered, a yes asks all three, and the remote is
-    derived from the answers rather than asked a fourth time.
+    """R-345: on a full profile with nothing recorded the destinations are
+    offered, a yes asks all three, and the remote is derived from the answers.
     """
     document = dict(configured.to_toml_dict())
     assert "backup" not in document
@@ -1672,9 +1504,8 @@ def test_the_wizard_asks_for_the_backup_destinations_when_the_module_is_on(confi
 
 
 def test_the_wizard_records_nothing_for_backup_when_the_offer_goes_unanswered(configured):
-    """Offered the way the pin is offered, so a scripted run on a full profile
-    stays a run that asks nothing and refuses nothing. The note says what was
-    not recorded and names the flags, and doctor reports the unset remote.
+    """An unanswered offer records nothing, so a scripted run still asks and
+    refuses nothing; the note names the flags and doctor reports the unset remote.
     """
     document = dict(configured.to_toml_dict())
     wizard = setup_verb._Wizard(document, silent())
@@ -1704,8 +1535,7 @@ def test_the_wizard_asks_nothing_about_backup_when_the_module_is_off(configured)
 
 
 def test_backup_flags_are_recorded_even_when_the_module_is_off(configured):
-    """A flag is an answer whatever the profile says. Refusing it would send a
-    person to switch the module on and come back, and validation judges the
+    """A flag is an answer whatever the profile says, and validation judges its
     shape either way."""
     from types import SimpleNamespace
 
@@ -1734,9 +1564,8 @@ def test_backup_flags_are_recorded_even_when_the_module_is_off(configured):
 
 
 def test_a_declined_offer_still_records_the_flags_that_were_given(configured):
-    """Partial flags on a full profile: the two given land, the offer is about
-    the one still missing, a no leaves that one unset, and the remote is
-    derived from what did land."""
+    """Partial flags with a declined offer: the given ones land, the missing one
+    stays unset, and the remote is derived from what landed."""
     from types import SimpleNamespace
 
     document = dict(configured.to_toml_dict())
@@ -1765,11 +1594,8 @@ def test_a_declined_offer_still_records_the_flags_that_were_given(configured):
 def test_a_mistyped_module_name_is_still_a_named_problem_not_a_traceback(
     configured, monkeypatch
 ):
-    """The wizard reads membership off the document before validate runs, and
-    ``profiles.resolve`` raises on a module it does not know. A hand edit such
-    as ``bakcup = true`` has to stay validate's to report as a named problem
-    under config-unusable, the way it was before the wizard asked about backup,
-    rather than escape as an internal error the dispatcher files as a defect."""
+    """A mistyped module such as ``bakcup = true`` stays a named config-unusable
+    problem, not an internal error from ``profiles.resolve``."""
     seed_taxonomy(configured)
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
     path = config.config_path()
@@ -1785,8 +1611,7 @@ def test_a_mistyped_module_name_is_still_a_named_problem_not_a_traceback(
 
 
 def test_the_wizard_keeps_recorded_backup_destinations_without_asking(configured):
-    """A re-run changes nothing it was not asked to change: three recorded
-    destinations and a spelled remote reach no prompt and are left as spelled."""
+    """Recorded destinations and a spelled remote reach no prompt and are kept."""
     document = dict(configured.to_toml_dict())
     document["backup"] = {
         "remote": "gdrive:",
@@ -1807,12 +1632,10 @@ def test_the_wizard_keeps_recorded_backup_destinations_without_asking(configured
 
 
 def test_the_backup_flags_are_recorded_without_a_question(configured, monkeypatch):
-    """Every answer is also a flag, through the real dispatcher: the three
-    destinations land in the file, the remote is derived into it, and nothing
-    was prompted."""
+    """Through the real dispatcher, the three destination flags land, the remote
+    is derived, and nothing is prompted."""
     seed_taxonomy(configured)
-    # The closing doctor looks the derived remote up in rclone's configuration,
-    # so the green machine knows one by that name.
+    # The closing doctor looks the derived remote up in rclone's configuration.
     monkeypatch.setattr(
         doctor,
         "Probes",
@@ -1848,10 +1671,8 @@ def test_the_backup_flags_are_recorded_without_a_question(configured, monkeypatc
 def test_a_bare_folder_name_is_refused_by_the_wizard_however_it_arrives(
     configured, monkeypatch, how
 ):
-    """The producer of R-345 through the wizard, both ways in. The answer goes
-    through the same ``validate`` call as every other answer, so a bare folder
-    name is refused with the key named rather than written and handed to rclone
-    as a local path on the next backup."""
+    """A bare folder name is refused by ``validate`` with the key named, by flag
+    or by prompt, rather than handed to rclone as a local path (R-345)."""
     seed_taxonomy(configured)
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
     argv = ["--output", "json", "setup"]
@@ -1890,9 +1711,8 @@ def _spelled_remote_document(configured, spelled="remote"):
 
 
 def test_a_spelled_remote_rclone_lacks_is_replaced_by_the_destinations_remote(configured):
-    """R-662's producer at the wizard: the file spells a remote nothing can write
-    to and the destinations agree on another. rclone's configuration was READ
-    and lacks the spelled name, so a re-run repairs it and says so."""
+    """R-662: a spelled remote that rclone was read and lacks is replaced by the
+    destinations' remote, and the run says so."""
     document = _spelled_remote_document(configured)
     wizard = setup_verb._Wizard(document, silent())
     setup_verb._resolve_backup(
@@ -1920,9 +1740,8 @@ def test_a_spelled_remote_rclone_lacks_is_replaced_by_the_destinations_remote(co
     ],
 )
 def test_a_spelled_remote_is_kept_unless_rclone_was_read_and_lacks_it(configured, machine):
-    """R-345's rule stands where rclone knows the spelled remote, and where
-    rclone could not be asked, since a machine that could not say is not one
-    that said no. Nothing is replaced and validation still refuses."""
+    """A spelled remote is kept where rclone knows it or could not be asked, and
+    validation still refuses."""
     document = _spelled_remote_document(configured)
     wizard = setup_verb._Wizard(document, silent())
     setup_verb._resolve_backup(wizard, document, _no_backup_flags(), probes(**machine))
@@ -1933,10 +1752,8 @@ def test_a_spelled_remote_is_kept_unless_rclone_was_read_and_lacks_it(configured
 
 
 def test_no_disagreement_is_read_where_there_is_nothing_to_compare(configured):
-    """A blank spelled remote is unset, and destinations naming several remotes
-    give no one name to compare against. Neither is a disagreement, so neither
-    reaches the repair or adds a second problem naming an arbitrary remote
-    beside the several-remotes one validation already reports."""
+    """A blank spelled remote, or destinations naming several remotes, is not a
+    disagreement, so no repair or second problem is added."""
     blank = _spelled_remote_document(configured, spelled="  ")
     assert config.backup_remote_disagreement(blank) is None
 
@@ -1948,8 +1765,7 @@ def test_no_disagreement_is_read_where_there_is_nothing_to_compare(configured):
 
 
 def test_the_backup_remote_flag_replaces_a_spelled_remote_rclone_knows(configured):
-    """The explicit answer: a flag replaces the recorded value whatever rclone
-    says, which is the repair the refusal's fix line now names."""
+    """The flag replaces a recorded remote whatever rclone says."""
     from types import SimpleNamespace
 
     document = _spelled_remote_document(configured)
@@ -1986,11 +1802,8 @@ _GDRIVE_DESTINATIONS = [
 def test_the_disagreeing_remote_refusal_names_the_flag_and_the_flag_repairs_it(
     configured, monkeypatch
 ):
-    """Sitting 5 through the real dispatcher. The file spells ``remote``, rclone
-    knows a remote by that name so nothing is guessed, and the destinations on
-    the command line name ``gdrive``. The refusal's fix line used to be
-    ``crate setup``, the command that had just refused; it names the flag now,
-    and running what it names writes the file."""
+    """Through the real dispatcher, the disagreeing remote refusal's fix line
+    names the flag, and running it writes the file."""
     seed_taxonomy(configured)
     _spell_the_backup_remote("remote")
     monkeypatch.setattr(
@@ -2021,8 +1834,8 @@ def test_the_disagreeing_remote_refusal_names_the_flag_and_the_flag_repairs_it(
 
 
 def test_the_setup_token_stays_when_the_disagreement_is_not_the_only_problem(configured):
-    """Beside other problems the fix is still more answers, so the run-setup
-    token is kept and the flag leads the steps rather than replacing them."""
+    """Beside other problems the run-setup token stays and the flag leads the
+    steps."""
     document = _spelled_remote_document(configured)
     only = config.validate(document)
     alone = setup_verb._answers_remediation(document, only)
@@ -2037,9 +1850,8 @@ def test_the_setup_token_stays_when_the_disagreement_is_not_the_only_problem(con
 
 
 def test_a_re_run_repairs_a_spelled_remote_rclone_does_not_know(configured, monkeypatch):
-    """The other half of R-662 end to end: the spelled name is not among
-    rclone's, so the destinations given on the command line settle it with no
-    fourth flag and no hand move of the file."""
+    """R-662: a spelled name rclone lacks is settled by the destination flags,
+    with no fourth flag."""
     seed_taxonomy(configured)
     _spell_the_backup_remote("remote")
     monkeypatch.setattr(
@@ -2096,8 +1908,8 @@ def test_a_closed_question_refuses_a_default_outside_its_own_option_set():
 
 
 def test_the_active_taxonomy_is_copied_once_and_never_overwritten(configured):
-    """S6. The library's own copy is what makes it self-describing, and a second
-    run must not replace a template the user edited.
+    """S6: the library's taxonomy copy is written once, so a template the user
+    edited is never replaced.
     """
     wizard = setup_verb._Wizard({}, silent())
     setup_verb._seed_taxonomy(wizard, configured, probes())
@@ -2110,16 +1922,13 @@ def test_the_active_taxonomy_is_copied_once_and_never_overwritten(configured):
 
 
 def test_the_wizard_offers_every_credential_the_profile_needs_and_records_it(configured):
-    """What is offered is the same registry question doctor asks, so a module
-    switched on above is a credential offered here with no edit.
-    """
+    """Credentials offered come from the same registry question doctor asks."""
     values = ["one", "two", "three", "four"]
     wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes", "yes"], values))
     setup_verb._capture_credentials(wizard, configured)
 
-    # THE DISCOGS TOKEN IS ITS OWN STEP since U283, ``_link_discogs``, which
-    # checks it with Discogs before storing it; ``tests/test_setup_discogs.py``
-    # drives it. The loop passes it over so it is never asked for twice.
+    # The Discogs token is its own checked step, ``_link_discogs`` (U283), so the
+    # loop passes it over.
     assert not secrets.exists(str(secrets.Credential.DISCOGS_TOKEN))
     assert secrets.exists(str(secrets.Credential.PROVIDER_SESSION))
     assert secrets.exists(str(secrets.Credential.IDENTIFY_KEY))
@@ -2129,9 +1938,7 @@ def test_the_wizard_offers_every_credential_the_profile_needs_and_records_it(con
 def test_an_unanswered_credential_offer_leaves_it_outstanding_rather_than_empty(
     configured,
 ):
-    """Nobody answered and no is the same consequence, which is exactly why these
-    are the questions allowed to go unanswered.
-    """
+    """An unanswered offer leaves the credential outstanding, the same as a no."""
     wizard = setup_verb._Wizard({}, silent())
     setup_verb._capture_credentials(wizard, configured)
     assert not secrets.recorded()
@@ -2139,14 +1946,8 @@ def test_an_unanswered_credential_offer_leaves_it_outstanding_rather_than_empty(
 
 
 def test_only_the_wizard_and_the_label_sync_are_interactive_and_neither_reads_stdin():
-    """The exemption is one FILE, and neither interactive verb is it.
-
-    The registry marks setup and label.sync interactive; the static allowlist
-    names ``cli/prompt.py``. Those are two different things on purpose, and
-    asserting both here is what stops the second one drifting into "the setup
-    module may prompt", which would put a read of standard input in a module
-    the wizard's own helpers keep growing. U107's verb is held to the same
-    rule in ``tests/test_label_sync.py``.
+    """Setup and label.sync are interactive in the registry, yet the stdin
+    allowlist names only ``cli/prompt.py``, so neither module may read stdin.
     """
     interactive = [entry.name for entry in registry.entries() if entry.interactive]
     assert interactive == ["setup", "label.sync"]
@@ -2163,15 +1964,12 @@ def test_only_the_wizard_and_the_label_sync_are_interactive_and_neither_reads_st
             assert all(name.split(".")[0] != "getpass" for name in names)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. crate login
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 5. crate login ═════════════════════════════════════════════════════════
 
 
 def test_a_credential_offer_accepted_and_left_empty_is_the_same_note_as_a_no(configured):
-    """R-347. The provider session is a blob only login produces, so a person who
-    says yes and then has nothing to type has told the wizard the same fact as a
-    no, and it used to fail the whole run.
+    """R-347: a yes with nothing typed is the same fact as a no, since only login
+    produces the provider session.
     """
     wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes"], ["", "  ", ""]))
     setup_verb._capture_credentials(wizard, configured)
@@ -2183,7 +1981,7 @@ def test_a_credential_offer_accepted_and_left_empty_is_the_same_note_as_a_no(con
 
 
 def test_a_credential_offer_that_could_not_be_read_still_fails(configured):
-    """The other half. An empty answer is a person; a dead stream is not."""
+    """An empty answer is a person; a dead stream is not."""
     wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes", "yes"]))
     setup_verb._capture_credentials(wizard, configured)
 
@@ -2193,9 +1991,7 @@ def test_a_credential_offer_that_could_not_be_read_still_fails(configured):
 
 
 def test_an_empty_credential_leaves_the_exit_code_to_doctor(tmp_path, monkeypatch):
-    """R-347 end to end. With the offer accepted and left empty, the only failing
-    check is the one doctor itself reports on a clean machine, the unset pin.
-    """
+    """R-347: with the offer left empty, the only failing check is the unset pin."""
     root = tmp_path / "fresh"
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
@@ -2223,8 +2019,8 @@ def test_an_empty_credential_leaves_the_exit_code_to_doctor(tmp_path, monkeypatc
 
 
 def test_an_identity_typed_as_diskutil_prints_it_passes_the_mount_check(library):
-    """R-344 through setup. The uppercase UUID is recorded as given, the platform
-    reports it lowercase, and the taxonomy the sitting could not write is written.
+    """R-344: an uppercase UUID is recorded as given and still matches the
+    platform's lowercase one.
     """
     reported = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
     wizard = setup_verb._Wizard({}, silent())
@@ -2246,11 +2042,8 @@ def test_an_identity_typed_as_diskutil_prints_it_passes_the_mount_check(library)
 
 
 def test_a_question_reaches_a_real_pipe_before_its_answer_is_read():
-    """R-346. Every other test injects the writer, which is why none could see it.
-
-    A real interpreter, real pipes, and no ``PYTHONUNBUFFERED``: the question must
-    arrive on standard error while the child is still blocked waiting for the
-    answer. Unflushed, it sat in the buffer and a terminal showed nothing.
+    """R-346: through real pipes with no ``PYTHONUNBUFFERED``, the question
+    reaches standard error while the child still waits for the answer.
     """
     import select
     import subprocess
@@ -2289,9 +2082,7 @@ def test_a_question_reaches_a_real_pipe_before_its_answer_is_read():
 
 
 def test_login_never_accepts_a_credential_as_an_argument():
-    """An argument is visible in the process listing to every local account for
-    as long as the process runs, and in the shell history afterwards.
-    """
+    """An argument is visible in the process listing and the shell history."""
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -2328,9 +2119,8 @@ def test_login_records_a_value_from_a_file(configured, tmp_path):
 
 
 def test_login_refuses_a_file_holding_nothing(configured, tmp_path):
-    """An empty credential reads back as absent on some backends and as present on
-    others, so storing one makes the presence question unanswerable and doctor
-    starts giving an answer it cannot support.
+    """An empty credential reads back as absent on some backends and present on
+    others, so storing one breaks the presence question.
     """
     holder = tmp_path / "empty.txt"
     holder.write_text("   \n")
@@ -2344,10 +2134,8 @@ def test_login_refuses_a_file_holding_nothing(configured, tmp_path):
 def test_login_reads_the_environment_fallback_through_the_store_that_owns_it(
     configured, monkeypatch
 ):
-    """One rule about when the environment may supply a credential, in one place.
-
-    A second reader here would be a second rule, and the fallback would be on for
-    one caller and off for another with nothing in the configuration to explain it.
+    """The environment fallback is read through the store that owns it, so there
+    is one rule about it.
     """
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
     monkeypatch.setenv(secrets.ENV_CREDENTIAL_PREFIX + "IDENTIFY_KEY", "from-the-environment")
@@ -2358,15 +2146,11 @@ def test_login_reads_the_environment_fallback_through_the_store_that_owns_it(
     assert secrets.environment_value("identify-key") is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. The reports, and the rendering
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 6. The reports, and the rendering ══════════════════════════════════════
 
 
 def test_doctor_exits_with_a_precondition_status_and_keeps_its_report(configured, monkeypatch):
-    """A doctor that fails by throwing its checks away is useless in exactly the
-    case it exists for, which is why this verb builds its own envelope.
-    """
+    """A failing doctor keeps its report, which is why it builds its own envelope."""
     monkeypatch.setattr(doctor, "Probes", lambda: probes(keychain_available=lambda: False))
     code, out, err = drive(["--output", "json", "doctor"])
     envelope = json.loads(out)
@@ -2412,11 +2196,8 @@ def test_status_reports_open_runs_sessions_and_trees(configured):
 def test_status_names_a_session_log_it_cannot_list_and_still_reports_the_rest(
     configured, monkeypatch
 ):
-    """R-1255, review round one: a log nobody could list is said, not read as no source.
-
-    The status reports runs, sources and trees, and only the sources are in
-    the log, so the log is one failing finding of its own and the report goes
-    on; a source refused in it is not lost behind an empty read.
+    """R-1255: a session log nobody could list is its own failing finding, and
+    the runs and trees are still reported.
     """
     record = session.SessionRecord(
         session_id="s-2",
@@ -2439,11 +2220,8 @@ def test_status_names_a_session_log_it_cannot_list_and_still_reports_the_rest(
 
 
 def test_status_reads_one_damaged_record_as_a_record_not_as_an_unlisted_log(configured):
-    """Review round two: the listing's finding is for the listing alone.
-
-    A damaged record beside a readable one is skipped by the status as it was,
-    the readable one still reported; broadening the guard to any unread entry
-    would call one bad file a log nobody could list.
+    """One damaged record beside a readable one is skipped, not reported as an
+    unlisted log.
     """
     record = session.SessionRecord(
         session_id="s-2",
@@ -2464,9 +2242,7 @@ def test_status_reads_one_damaged_record_as_a_record_not_as_an_unlisted_log(conf
 def test_the_human_rendering_shows_the_checks_rather_than_only_a_status(
     configured, monkeypatch
 ):
-    """A doctor whose human output says only "failed" sends the reader to parse
-    JSON to find out what failed.
-    """
+    """The human output shows the checks, not only "failed"."""
     monkeypatch.setattr(doctor, "Probes", lambda: probes(keychain_available=lambda: False))
     _code, _out, err = drive(["doctor"])
     assert "keychain.reachable" in err
@@ -2476,16 +2252,11 @@ def test_the_human_rendering_shows_the_checks_rather_than_only_a_status(
 def test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_verb(
     configured, monkeypatch
 ):
-    """U97, closing R-411, and driven through the DEFAULT human output on purpose.
+    """U97 (R-411): the default human output offers the procedure, not bare
+    ``crate login``.
 
-    The token was always right and the rendering was not, so a test that read
-    the JSON envelope would compare a token to itself and pass over the wording
-    a person actually reads. This one goes through the dispatcher the way the
-    process does and asserts the check table's own ``fix:`` line.
-
-    The bare verb is pinned NEGATIVELY as a whole line rather than as a
-    substring, because the procedure that replaces it contains ``crate login``
-    inside a longer command, and a substring check would forbid the fix.
+    Read through the human rendering, since the token was always right. The bare
+    verb is pinned negatively as a whole line, as the procedure contains it.
     """
     monkeypatch.setattr(
         doctor,
@@ -2504,9 +2275,7 @@ def test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_ve
 
 
 def test_the_cause_steps_are_not_printed_twice_beside_the_check_table():
-    """The table already lists every failure with its own fix, so repeating the
-    cause's steps above it prints one list twice.
-    """
+    """The table lists each failure's fix, so the cause's steps are not repeated."""
     report = doctor.Report(
         (
             doctor.Finding(
@@ -2536,8 +2305,8 @@ def test_the_cause_steps_are_not_printed_twice_beside_the_check_table():
 
 
 def test_a_check_table_is_rendered_only_for_the_diagnostic_surface():
-    """Gated on the schema rather than on a ``checks`` key, so a later surface
-    that happens to carry one is not rendered in a shape built for another.
+    """Gated on the schema, not a ``checks`` key, so another surface carrying one
+    is not rendered in this shape.
     """
     from cratekit.cli import output
 
@@ -2551,15 +2320,12 @@ def test_a_check_table_is_rendered_only_for_the_diagnostic_surface():
     assert render.render_checks(plan) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 7. The prompt module, and the guard it is exempt from
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 7. The prompt module, and the guard it is exempt from ══════════════════
 
 
 def test_a_prompt_that_cannot_be_answered_is_a_typed_refusal(monkeypatch):
-    """Anything the reader raises becomes one type, so the wizard can treat a
-    required answer differently from an optional one instead of dying with a
-    traceback from whatever replaced the stream.
+    """Anything the reader raises becomes one type, so the wizard can tell a
+    required answer from an optional one.
     """
     for boom in (EOFError("closed"), OSError("descriptor gone"), AssertionError("trapped")):
 
@@ -2572,10 +2338,8 @@ def test_a_prompt_that_cannot_be_answered_is_a_typed_refusal(monkeypatch):
 
 
 def test_a_prompt_never_writes_to_standard_output(capsys):
-    """R32: standard output carries exactly one JSON envelope and nothing else.
-
-    A question printed there would sit in front of that object and the failure
-    would look like a schema problem rather than like a prompt.
+    """R32: standard output carries exactly one JSON envelope, so no question
+    goes there.
     """
     asking = prompt.Prompter(read_line=lambda: "yes\n")
     assert asking.confirm("proceed") is True
@@ -2595,16 +2359,15 @@ def test_an_answer_outside_a_closed_set_is_re_asked_and_then_abandoned():
 
 
 def test_no_mapping_in_this_unit_has_a_key_written_twice():
-    """The shape this repository has already shipped once with a green suite.
+    """No mapping literal in this unit's modules writes a key twice.
 
-    Every other test over a mapping iterates the RUNTIME object and is blind to an
-    entry collapsed at parse time: two branches append two rows, one key is
-    written twice, and the later value silently wins. The only check that can see
-    it counts the elements in the LITERAL and compares them against the runtime
-    length, so this walks the syntax tree of every module this unit ships.
+    A runtime check cannot see a key collapsed at parse time, so this counts
+    the literal's elements against the runtime length.
     """
-    for name in ("doctor.py", "setup.py", "prompt.py", "render.py"):
-        source = (SRC_ROOT / "cratekit" / "cli" / name).read_text()
+    cli_dir = SRC_ROOT / "cratekit" / "cli"
+    doctors = sorted(path.name for path in cli_dir.glob("doctor*.py"))
+    for name in (*doctors, "setup.py", "prompt.py", "render.py"):
+        source = (cli_dir / name).read_text()
         for node in ast.walk(ast.parse(source)):
             if not isinstance(node, ast.Dict):
                 continue
@@ -2618,29 +2381,24 @@ def test_no_mapping_in_this_unit_has_a_key_written_twice():
 
 
 def test_the_identity_check_never_reports_green_over_an_identity_that_did_not_match():
-    """Driven over EVERY mount outcome, because the shape that got this wrong was
-    a chain of branches with a fall-through at the end.
+    """Over every mount outcome, the identity is green only for the two that mean
+    the identities were equal.
 
-    ``resolve_mount_state`` fills in ``observed_identity`` for an unmounted volume
-    and for one mounted elsewhere alike, since it observed SOMETHING at the
-    configured path in both cases. A final "and otherwise it matched" therefore
-    reported a green identity beside a red mount for a volume sitting on another
-    mount point, and for one that is not attached at all. Only two outcomes mean
-    the identities were equal, and this asserts exactly those two.
+    ``observed_identity`` is filled in for unmounted and moved volumes alike, so
+    a fall-through "otherwise it matched" would report green beside a red mount.
     """
     from cratekit.core import preflight
 
     matched = {preflight.MountState.OK, preflight.MountState.LIBRARY_PATH_MISSING}
     for state in preflight.MountState:
-        verdict, remedy = doctor._IDENTITY_VERDICT[state]
+        verdict, remedy = doctor_library._IDENTITY_VERDICT[state]
         assert (verdict is doctor.Status.OK) == (state in matched), state
         assert (remedy is None) == (verdict is not doctor.Status.FAIL), state
 
 
 def test_a_volume_mounted_elsewhere_is_one_problem_reported_once(tmp_path, monkeypatch):
-    """The mount is wrong and the identity is fine, so exactly one of the two
-    findings carries a fix. Reporting it twice attaches the wrong remedy to one
-    of the copies, which is how a user ends up unplugging a healthy drive.
+    """Only one of the two findings carries a fix, or a copy carries the wrong
+    remedy and a healthy drive gets unplugged.
     """
     root = tmp_path / "configured"
     (root / "Music").mkdir(parents=True)
@@ -2675,31 +2433,25 @@ def test_an_unmounted_volume_never_reports_a_matching_identity(tmp_path, monkeyp
 
 
 def test_every_mount_outcome_has_a_sentence_of_its_own():
-    """A mapping over a closed enum has to be total, or one state renders as a
-    ``KeyError`` in the middle of the report that was supposed to explain it.
+    """The mapping over the mount enum is total, or a state renders as a
+    ``KeyError``.
     """
     from cratekit.core import preflight
 
-    assert set(doctor._MOUNT_DETAIL) == set(preflight.MountState)
-    assert len({str(v) for v in doctor._MOUNT_DETAIL.values()}) == len(preflight.MountState)
+    assert set(doctor_library._MOUNT_DETAIL) == set(preflight.MountState)
+    assert len({str(v) for v in doctor_library._MOUNT_DETAIL.values()}) == len(preflight.MountState)
 
 
 def test_a_seam_default_is_a_plain_function_and_never_a_bound_method():
-    """The landmine under a dataclass whose fields hold callables.
+    """Seam defaults stay plain functions, which ``slots=True`` guarantees.
 
-    ``slots=True`` deletes the class attribute, so a function default stays a
-    plain function and is called with the arguments it declares. Drop ``slots``
-    and every one of them becomes a descriptor: the first argument silently
-    becomes the instance, ``installed_app_version(cfg)`` passes the Probes object
-    where the config belongs, and no test that injects its own seam would ever
-    see it.
+    Without it each default becomes a descriptor and receives the instance as
+    its first argument, which a test injecting its own seam never sees.
     """
     import types
 
-    # The two seams the review added answer through the module that owns the
-    # rule, rather than through a copy of it here. Asserted by identity, because
-    # a second reader of the same environment variables is a second rule that
-    # will eventually disagree with the first.
+    # These seams answer through the module that owns the rule, asserted by
+    # identity, so there is no second reader of the same environment variables.
     assert RealProbes().environment_credential is secrets.environment_value
     assert RealProbes().binary_override_problem is binaries.override_problem
 
@@ -2713,11 +2465,8 @@ def test_a_seam_default_is_a_plain_function_and_never_a_bound_method():
 
 
 def test_the_interactive_allowlist_still_holds_exactly_one_file():
-    """The size of the hole, asserted from this unit's side as well.
-
-    ``tests/test_cli_contract.py`` owns the allowlist. This unit is the one that
-    filled it, so it is the one that would notice a second file being added to
-    make some later wizard helper convenient.
+    """``tests/test_cli_contract.py`` owns the allowlist; this unit filled it, so
+    it asserts no second file joins.
     """
     from tests.test_cli_contract import INTERACTIVE_ALLOWLIST
 
@@ -2725,27 +2474,19 @@ def test_the_interactive_allowlist_still_holds_exactly_one_file():
     assert (SRC_ROOT / "cratekit" / "cli" / "prompt.py").is_file()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 8. What the review found: a positive claim reached by falling through
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 8. A positive claim reached by falling through ═════════════════════════
 #
-# Every defect in this section has one shape. Something reported OK by arriving
-# at the end of a function rather than by observing the thing it claims, and each
-# one is asserted here against the machine that produced the false green as well
-# as against the machine where the answer really is yes.
+# Each defect here reported OK by reaching the end of a function rather than by
+# observing the thing claimed, and is asserted against the machine that gave the
+# false green as well as the one where the answer is yes.
 
 
 class _Volumes:
-    """A synthetic directory this platform mounts volumes into, and what is IN it.
+    """A synthetic directory this platform mounts volumes into, and what is in it.
 
-    Two facts rather than one, and the second is the correction. The table alone
-    says where a volume WOULD appear; on its own it cannot tell a mount point
-    with a volume in it from the empty directory an ejected volume leaves behind,
-    and those are the two states the derive has to answer differently. So the
-    fixture carries the mount table and the mount seam together, and a test says
-    which of the two it is building by calling ``attach`` or ``eject``.
-
-    ``__truediv__`` so a test still spells a path under it the obvious way.
+    The mount table alone cannot tell a mounted volume from the empty directory
+    an ejected one leaves, so the fixture carries the mount seam too; a test
+    calls ``attach`` or ``eject``.
     """
 
     def __init__(self, path):
@@ -2766,11 +2507,7 @@ class _Volumes:
         return mount
 
     def eject(self, name):
-        """The LEFTOVER: the directory is there and nothing is mounted in it.
-
-        The first of the three broken states ``core/preflight``'s opening
-        paragraphs name, and the one a rule about missing directories cannot see.
-        """
+        """The leftover: the directory is there and nothing is mounted in it."""
         mount = (self.path / name).resolve()
         mount.mkdir(parents=True, exist_ok=True)
         self.mounted.discard(mount)
@@ -2781,16 +2518,9 @@ class _Volumes:
 def volumes_directory(tmp_path, monkeypatch):
     """A synthetic directory that this platform mounts volumes into.
 
-    ``preflight`` declares those per platform, the way it declares identity
-    providers, because whether a volume will appear at a path is not something
-    the filesystem can be asked. Injecting the table and the mount seam is what
-    lets the suite drive every answer on any platform without touching the real
-    one, and without needing to mount anything.
-
-    RESOLVED, because the paths it is compared against are resolved. An
-    unresolved row silently matched nothing on a machine whose temporary
-    directory is reached through a symlink, which turned the whole guard into a
-    no-op with no symptom.
+    Injecting the table and mount seam drives every answer on any platform.
+    Resolved, because the paths compared are resolved and an unresolved row
+    matches nothing behind a symlinked temporary directory.
     """
     from cratekit.core import preflight
 
@@ -2807,14 +2537,10 @@ def volumes_directory(tmp_path, monkeypatch):
 def test_the_wizard_will_not_read_an_identity_from_a_volume_that_is_not_there(
     volumes_directory,
 ):
-    """BLOCKING. The reproduction: derive with the drive unplugged.
+    """With the drive unplugged, no identity is derived.
 
-    ``containing_mount`` climbs to the deepest EXISTING ancestor, so an absent
-    library root does not fail the read, it succeeds against the boot disk. That
-    identity was then recorded as the library's, and doctor reported four greens
-    over it: mounted, identity, taxonomy and containment, all true of the boot
-    disk. Every destructive verb's identity precondition passes there too, which
-    is R38 pointed at the wrong disk.
+    ``containing_mount`` climbs to the deepest existing ancestor, so the read
+    would succeed against the boot disk and point R38 at the wrong disk.
     """
     absent = volumes_directory / "not-attached"
     boot = "BOOT-DISK-IDENTITY"
@@ -2832,7 +2558,7 @@ def test_the_wizard_will_not_read_an_identity_from_a_volume_that_is_not_there(
 
 
 def test_an_identity_is_derived_when_the_root_really_is_on_the_volume(tmp_path):
-    """The other half. A guard that also refuses the correct case is not shipped."""
+    """The correct case still derives."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     wizard = setup_verb._Wizard({}, silent())
@@ -2847,11 +2573,8 @@ def test_an_identity_is_derived_when_the_root_really_is_on_the_volume(tmp_path):
 def test_setup_refuses_end_to_end_rather_than_recording_the_boot_disk(
     tmp_path, monkeypatch, volumes_directory
 ):
-    """The same reproduction through the real dispatcher, with nothing written.
-
-    A refusal that still saved the document would be the defect with an error
-    message attached: the next run would read the recorded identity back and keep
-    it, because an identity already recorded is never re-derived.
+    """Through the dispatcher the refusal writes nothing, since a recorded
+    identity is never re-derived.
     """
     absent = volumes_directory / "not-attached"
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(absent))
@@ -2876,20 +2599,17 @@ def test_setup_refuses_end_to_end_rather_than_recording_the_boot_disk(
 def test_setup_writes_nothing_beside_the_library_until_the_volume_is_asserted(
     tmp_path, monkeypatch
 ):
-    """BLOCKING. The wizard wrote library state first and checked last.
+    """Setup writes no library state until the volume is asserted.
 
-    Two permanent costs, and neither is visible in the report the run printed. On
-    macOS an occupied ``/Volumes/NAME`` sends the real volume to
-    ``/Volumes/NAME 1`` on its next attach, so the directory this created IS the
-    leftover mount point ``core/preflight`` names as the first of the three
-    states it exists to tell apart. And the copied template is COUPLED state on a
-    filesystem no snapshot of that library captures and no rollback reverts.
+    On macOS an occupied ``/Volumes/NAME`` sends the real volume to
+    ``/Volumes/NAME 1``, and the copied template is state no snapshot of the
+    library captures.
     """
     root = tmp_path / "Volumes" / "library"
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    # The recorded identity is supplied, so BLOCKING 1 is not in play: what is
-    # under test is the write, against a disk that is not the recorded one.
+    # The recorded identity is supplied, so what is tested is the write against
+    # a disk that is not the recorded one.
     monkeypatch.setattr(doctor, "Probes", lambda: probes(identity_provider=lambda _p: "0000"))
 
     code, out, _err = drive(
@@ -2917,13 +2637,8 @@ def test_setup_writes_nothing_beside_the_library_until_the_volume_is_asserted(
 def test_the_wizard_still_writes_on_a_platform_that_reports_no_volume_identity(
     configured,
 ):
-    """The correct case on the platform the guard could most easily lock out.
-
-    ``preflight.null_volume_identity`` is what every platform with no adapter
-    resolves to and it answers None for every volume, so a guard demanding
-    MountState.OK would refuse to write the active taxonomy on that platform
-    forever, with nothing wrong. The configured root existing is the signal that
-    is actually available there, and it is the one used.
+    """On a platform with no identity adapter, the existing root is the signal,
+    or the taxonomy could never be written there.
     """
     from cratekit.core import preflight
 
@@ -2938,7 +2653,7 @@ def test_the_wizard_still_writes_on_a_platform_that_reports_no_volume_identity(
 def test_the_wizard_writes_the_active_template_once_the_volume_is_the_recorded_one(
     tmp_path, monkeypatch
 ):
-    """The correct case still writes, or the guard is just a refusal to work."""
+    """The correct case still writes."""
     root = tmp_path / "Volumes" / "library"
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
@@ -2964,13 +2679,10 @@ def test_the_wizard_writes_the_active_template_once_the_volume_is_the_recorded_o
 def test_an_unresolved_session_is_never_reported_clean_because_its_disk_is_gone(
     configured, tmp_path
 ):
-    """BLOCKING. The library holds a condemning record and doctor said none.
+    """An empty scan of a missing log is not "none open".
 
-    ``scan_log`` returns two empty tuples for a directory that does not exist and
-    for one it cannot read, which is the same pair it returns for a library that
-    has never opened a session. Turning that into "0 recorded sessions, none of
-    them open" is a positive claim about a disk nobody looked at, and it is the
-    exact shape the identity check was already fixed for.
+    ``scan_log`` returns the same empty pair for a missing, unreadable or never
+    used directory, so reading it as clean is a claim about an unread disk.
     """
     record = session.SessionRecord(
         session_id="s-9",
@@ -2983,10 +2695,8 @@ def test_an_unresolved_session_is_never_reported_clean_because_its_disk_is_gone(
     assert mounted.status is doctor.Status.FAIL
     assert mounted.remedy is Remedy.RESTORE_FROM_SNAPSHOT
 
-    # THE VOLUME GOES AWAY, taking the log with it. The reproduction exactly: the
-    # record still exists, on a disk that is no longer at the configured path, so
-    # the scan finds no files and the old branch turned that into "0 recorded
-    # sessions, none of them open" over a library that cannot be vouched for.
+    # The volume goes away with the log, so the scan finds no files over a
+    # library that cannot be vouched for.
     configured.library.root.rename(tmp_path / "detached")
     for machine in (
         probes(),  # the identity still matches further up: the ROOT is missing
@@ -2999,18 +2709,11 @@ def test_an_unresolved_session_is_never_reported_clean_because_its_disk_is_gone(
 
 
 def test_an_unreadable_session_log_directory_is_not_an_empty_one(configured):
-    """The half no mount state can answer: the right disk, and no permission.
+    """The right disk and no permission is not an empty log.
 
-    BLOCKING, AND THE ASSERTIONS ARE THE FIX. This test passed with the handler
-    in ``_log_directory_unreadable`` deleted, because the exception then reached
-    ``answer``'s blanket rescue, whose detail interpolates the ``PermissionError``
-    and whose message CONTAINS THE PATH, so "status is FAIL" and "the path is in
-    the detail" were both satisfied by the rescue. A guard covered by another
-    guard is a guard nothing covers, and round four found this exact shape ten
-    lines up in the same function, fixed that one, and left this one.
-
-    So the answer has to be THIS check's answer: the sentence it writes, and not
-    the sentence the rescue writes.
+    The answer must be this check's own sentence, since ``answer``'s blanket
+    rescue also fails with the path in its detail and would hide a deleted
+    handler.
     """
     log = session.log_dir(configured)
     log.mkdir(parents=True, exist_ok=True)
@@ -3028,12 +2731,10 @@ def test_an_unreadable_session_log_directory_is_not_an_empty_one(configured):
 
 
 def test_a_session_log_this_account_cannot_list_is_failed_by_its_own_check(configured, monkeypatch):
-    """R-1255: the test above on a container that runs as root, which no mode bars.
+    """R-1255: the same under root, where no mode bars the listing.
 
-    The listing is refused for the one path, as an account the log is closed
-    to is refused. The scan answers that log as the one unread entry too, so
-    the check under it would still FAIL with "1 session record(s) cannot be
-    read" if this probe answered nothing; the sentence is the probe's own.
+    The sentence is the probe's own, since the scan also answers that log as an
+    unread entry.
     """
     log = Path(session.log_dir(configured))
     log.mkdir(parents=True, exist_ok=True)
@@ -3051,21 +2752,16 @@ def test_a_session_log_this_account_cannot_list_is_failed_by_its_own_check(confi
 
 
 def test_a_library_with_no_sessions_still_reports_a_clean_log(configured):
-    """And the OK says what it established, rather than what it failed to find."""
+    """The OK says what it established, not what it failed to find."""
     finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
     assert finding.status is doctor.Status.OK
     assert "on the recorded library volume was read" in finding.detail
     assert "0 recorded session(s), none of them open" in finding.detail
 
 
-#: What each mount outcome permits, WRITTEN OUT rather than derived from the
-#: thing under test. Duplicating the tables is the entire point: a mutation to
-#: either one has to be made in two places, and the second place is a test a
-#: reviewer reads. The version of this that only asserted the SHAPE of the tables
-#: survived setting MOUNTED_ELSEWHERE to yes in both of them, which says doctor
-#: may read and the wizard may write library state at the configured root while
-#: the recorded volume is attached somewhere else, and that is the leftover
-#: mount-point hazard the module exists to prevent.
+#: What each mount outcome permits, written out rather than derived, so a
+#: mutation must be made twice. A shape-only check passed MOUNTED_ELSEWHERE set
+#: to yes in both tables, the leftover mount-point hazard.
 EXPECTED_READABLE = {
     "ok": "always",
     "library_path_missing": "never",
@@ -3091,12 +2787,8 @@ EXPECTED_WRITABLE = {
     [("_STATE_READABLE", EXPECTED_READABLE), ("_STATE_WRITABLE", EXPECTED_WRITABLE)],
 )
 def test_every_mount_outcome_permits_exactly_what_it_is_declared_to(table, expected):
-    """Every row of both tables, spelled out, per table.
-
-    The weaker form of this asserted that the two tables were total and that
-    their conditional rows matched, which a mutation setting one state to yes in
-    BOTH tables passes: the shape is preserved and the meaning is inverted. Row
-    values are what carry the meaning, so row values are what is asserted.
+    """Every row of both tables, since a shape check passes a state flipped in
+    both.
     """
     from cratekit.core import preflight
 
@@ -3106,16 +2798,12 @@ def test_every_mount_outcome_permits_exactly_what_it_is_declared_to(table, expec
 
 
 def test_the_two_tables_differ_in_three_rows_and_every_one_is_a_read_signal_removed():
-    """THREE rows, not one, and each is a place a read answer stood in for a write.
+    """The tables differ in three rows, each a write that a read answer must not
+    decide.
 
-    ``library_path_missing`` is the visible one: the identity MATCHED and only the
-    directory is absent, which is nothing to read and exactly when creating it is
-    correct. The other two are the conditional rows, and they were the same
-    defect one leg further down: "is anything there" answers a read, while a
-    write needs to know whether CREATING the root lands on the volume this run is
-    talking about. Sharing the read's condition refused a first run on every
-    platform with no identity adapter, which is every platform that is not macOS
-    or Windows.
+    ``library_path_missing`` matched the identity with the directory absent. The
+    two conditional rows ask whether creating the root lands on this volume,
+    since sharing the read's condition refuses a first run without an adapter.
     """
     from cratekit.core import preflight
 
@@ -3136,12 +2824,8 @@ def test_the_two_tables_differ_in_three_rows_and_every_one_is_a_read_signal_remo
 def test_a_platform_with_no_identity_adapter_may_create_a_library_it_cannot_read_yet(
     tmp_path, state
 ):
-    """The guard must not fire on the correct case, and a first run IS the case.
-
-    ``null_volume_identity`` is what every platform without an adapter resolves
-    to, and it answers None for every volume, mounted or not. There is nothing to
-    READ at a root that does not exist yet, and creating it is exactly what setup
-    is for, so the two questions answer differently for the same machine.
+    """With no identity adapter there is nothing to read at a missing root, and
+    creating it is what setup is for.
     """
     from cratekit.core import preflight
 
@@ -3160,12 +2844,8 @@ def test_a_platform_with_no_identity_adapter_may_create_a_library_it_cannot_read
 def test_a_first_run_on_a_platform_with_no_identity_adapter_writes_its_template(
     configured, tmp_path
 ):
-    """Driven through the product's own seam, at the shape a first run is in.
-
-    Root not yet created, no identity adapter: the wizard used to report
-    "this run could not establish that the volume there is the one recorded for
-    this library (identity_unavailable...)" and write nothing, which is a refusal
-    aimed at every Linux and BSD install.
+    """Through the product seam, a first run with no root and no adapter writes
+    its template.
     """
     from cratekit.core import preflight
 
@@ -3185,13 +2865,8 @@ def test_a_first_run_on_a_platform_with_no_identity_adapter_writes_its_template(
 def test_a_renamed_library_folder_on_the_right_volume_is_written_not_refused(
     configured, tmp_path, monkeypatch
 ):
-    """Reachable with no flags at all: set up, rename the folder, run setup.
-
-    The identity still matches, because the volume is the same one; only the
-    directory is gone. The first version of this guard called that "the volume
-    recorded for this library is not the one mounted there" while printing
-    "recorded F1E2-D3C4, observed F1E2-D3C4" in the same sentence, and refused
-    the one write that was correct.
+    """A renamed folder on the right volume is written, since the identity still
+    matches and only the directory is gone.
     """
     configured.library.root.rename(tmp_path / "renamed-by-hand")
     wizard = setup_verb._Wizard({}, silent())
@@ -3205,11 +2880,7 @@ def test_a_renamed_library_folder_on_the_right_volume_is_written_not_refused(
 
 
 def test_a_refusal_to_write_never_contradicts_its_own_parenthetical(configured):
-    """The refusal that remains has to describe the state it printed.
-
-    A wrong volume is still a refusal, and the sentence has to be one the
-    observed and recorded identities beside it can support.
-    """
+    """A wrong volume is refused with a sentence the printed identities support."""
     wizard = setup_verb._Wizard({}, silent())
     setup_verb._seed_taxonomy(
         wizard, configured, probes(identity_provider=lambda _p: "0000-0000")
@@ -3225,11 +2896,8 @@ def test_a_refusal_to_write_never_contradicts_its_own_parenthetical(configured):
 
 
 def test_a_configured_template_that_ships_nowhere_is_refused(configured):
-    """The check said "template X is active" while comparing nothing to X.
-
-    ``config.validate`` accepts any bare token, so a transposed letter reached
-    the file and doctor reported it green with a bucket count read from whatever
-    copy happened to be beside the database.
+    """A configured template that ships nowhere is refused, since
+    ``config.validate`` accepts any bare token.
     """
     seed_taxonomy(configured)
     document = document_for(configured.library.root)
@@ -3243,9 +2911,8 @@ def test_a_configured_template_that_ships_nowhere_is_refused(configured):
 
 
 def test_the_active_template_is_not_reported_at_all_when_its_disk_is_absent(configured):
-    """FAIL here would send the user to setup, and setup would then copy a
-    template onto whatever filesystem is at that path, which is the write this
-    unit had to be stopped from making.
+    """With its disk absent the template is not reported, since a FAIL would send
+    setup to copy onto whatever filesystem is at that path.
     """
     seed_taxonomy(configured)
     gone = probes(identity_provider=lambda _p: "0000-0000", mount_enumerator=lambda: ())
@@ -3264,12 +2931,9 @@ def test_an_active_template_on_the_recorded_volume_reports_what_it_verified(conf
 
 # ── taxonomy.active: a stale copy told from an edited one (R-689) ────────────
 #
-# Setup records a digest of the shipped text it copied, beside the copy. Doctor
-# reads the record and answers with three digests: the recorded one, the copy's
-# and the shipped text's. The one INFO is a copy that still matches the record
-# while the shipped text has moved on, which is the tenth sitting's library:
-# set up before ``[long_tracks]`` shipped, never edited, and since R-685 missing
-# the section from every verb with nothing saying why.
+# Setup records a digest of the shipped text beside the copy. Doctor compares
+# the recorded, copy and shipped digests; a copy matching its record while the
+# shipped text has moved on is INFO, so a missing new section is explained.
 
 
 def _seed_with_origin(cfg: config.Config) -> Path:
@@ -3297,16 +2961,14 @@ def test_setup_records_which_shipped_text_the_copy_was_made_from(configured):
 
 
 def test_setup_writes_no_record_for_a_copy_it_left_alone(configured):
-    """It cannot know which shipped text an existing copy came from, so a record
-    would say "unedited" over a copy nothing established that about."""
+    """Setup cannot know where an existing copy came from, so it records nothing."""
     seed_taxonomy(configured)
     origin = _seed_with_origin(configured)
     assert not origin.exists()
 
 
 def test_a_copy_setup_made_that_the_shipped_template_has_since_outgrown_is_info(configured):
-    """The tenth sitting's library. The record says the copy is the one setup
-    made, the copy still matches it, and the shipped text has moved on."""
+    """A copy still matching its record while the shipped text moved on is INFO."""
     older = shipped_without("long_tracks")
     write_active(configured, older)
     origin = config.state_path("taxonomy_origin", configured)
@@ -3344,9 +3006,8 @@ def test_a_copy_setup_made_from_the_text_that_still_ships_is_ok_and_says_so(conf
 
 
 def test_a_copy_with_no_record_says_the_origin_is_unrecorded(configured):
-    """Every library set up before the record existed. Matching the shipped text
-    as it ships now is said; differing from it is said as undecidable, since
-    the two histories look the same from here."""
+    """With no record, matching the shipped text is said, and differing is said as
+    undecidable, since edited and outgrown look the same."""
     seed_taxonomy(configured)
     matching = _taxonomy_finding(configured)
     assert matching.status is doctor.Status.OK
@@ -3383,9 +3044,8 @@ def test_a_record_this_account_cannot_read_is_said_rather_than_read_as_no_record
 
 
 def test_a_shipped_template_that_dropped_a_section_the_copy_still_has_is_named_too(configured):
-    """The difference runs both ways. A shipped template that removed or renamed
-    a section leaves nothing gained, and the detail must not then claim the
-    change is inside sections both declare."""
+    """A section the shipped template dropped is named too, and the detail does
+    not claim the change is inside shared sections."""
     older = shipped_without("long_tracks") + "\n[retired_section]\nkept = true\n"
     write_active(configured, older)
     origin = config.state_path("taxonomy_origin", configured)
@@ -3413,8 +3073,7 @@ def test_a_shipped_change_inside_a_section_both_declare_is_said_as_such(configur
 
 
 def test_a_record_naming_a_template_other_than_the_configured_one_is_info(configured):
-    """The record carries the fact the name check alone cannot see: the copy came
-    from one shipped template and the configuration now names another."""
+    """A record naming another template than the configured one is INFO."""
     origin = _seed_with_origin(configured)
     record = origin.read_text(encoding="utf-8").replace('template = "default"', 'template = "club"')
     origin.write_text(record, encoding="utf-8")
@@ -3441,8 +3100,8 @@ def test_a_packaged_text_that_cannot_be_read_is_a_damaged_install_and_compares_n
 
 
 def test_a_record_that_cannot_be_written_does_not_uncopy_the_template(configured, monkeypatch):
-    """The copy is there and every verb routes by it. The note says the record is
-    missing and names no remedy, since a second run leaves the copy alone."""
+    """A failed record write keeps the copy and names no remedy, since a second
+    run leaves the copy alone."""
     real = config.atomic_write_bytes
     active = config.state_path("taxonomy_active", configured)
 
@@ -3472,9 +3131,8 @@ def test_the_origin_record_rolls_back_with_the_copy_it_describes():
 
 
 def test_a_taxonomy_typo_is_repaired_by_the_verb_whose_remedy_names_it(configured):
-    """The remedy has to be true. A recorded value outside the closed set was
-    returned by ``resolve`` ahead of the guard, so every re-run produced the same
-    refusal and the only escape was to hand-edit the TOML this verb abolishes.
+    """A recorded taxonomy outside the closed set is repaired by setup, since its
+    remedy names that verb.
     """
     document = dict(configured.to_toml_dict())
     document["taxonomy"] = {"template": "defualt"}
@@ -3492,26 +3150,16 @@ def test_a_taxonomy_typo_is_repaired_by_the_verb_whose_remedy_names_it(configure
 
 
 def test_the_taxonomy_flag_is_a_closed_set_like_the_profile_beside_it(capsys):
-    """argparse refuses the typo before anything can persist it.
-
-    Executed against the build without the choices: ``--taxonomy defualt`` exited
-    30, wrote the misspelling into config.toml, and then every re-run with no
-    flag at all read it back and failed the same way forever.
-    """
+    """argparse refuses a mistyped taxonomy before anything can persist it."""
     code, _out, _err = drive(["setup", "--taxonomy", "defualt"])
     assert code == int(ExitCode.USAGE)
-    # argparse owns this message and writes it to the process's own stream, which
-    # is the one thing in the product that is allowed to (KTD25 reserves status 2
-    # for it alone).
+    # argparse owns this message and its stream (KTD25 reserves status 2 for it).
     assert "invalid choice: 'defualt'" in capsys.readouterr().err
 
 
 def test_a_template_name_shaped_like_a_path_is_a_configuration_problem(library):
-    """What the foundation CAN assert about a name it may not resolve.
-
-    Membership is the taxonomy module's question and that module sits above
-    config, so validation asserts the shape instead: the name is composed into a
-    packaged resource path, and a separator in it would read some other file.
+    """Validation asserts a template name's shape, since a separator would read
+    another packaged file; membership is the taxonomy module's question.
     """
     document = document_for(library)
     document["taxonomy"] = {"template": "../../etc/passwd"}
@@ -3524,13 +3172,7 @@ def test_a_template_name_shaped_like_a_path_is_a_configuration_problem(library):
 
 @pytest.mark.parametrize("kind", ["onedrive", "box", "pcloud", "dropbox"])
 def test_a_provider_with_a_recycle_bin_is_no_longer_green_by_default(configured, kind):
-    """The one-row table reported OK for every type that was not in it.
-
-    The residual finding "Backup pruning reclaims space only if the remote is
-    configured to" is entirely about providers that trash on delete, and four of them read
-    green over the exact condition the check exists to find, because the branch
-    said "no row, therefore fine".
-    """
+    """A provider with a recycle bin is not green just for lacking a table row."""
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:"}
     cfg = config.from_dict(document)
@@ -3544,9 +3186,7 @@ def test_a_provider_with_a_recycle_bin_is_no_longer_green_by_default(configured,
 def test_a_provider_whose_no_trash_option_is_set_the_other_way_round_is_read_correctly(
     configured,
 ):
-    """Drive's option must be false and OneDrive's must be true. One shared "is
-    it false" test read one of the two backwards in both directions.
-    """
+    """Drive's option must be false and OneDrive's true, each read the right way."""
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:"}
     cfg = config.from_dict(document)
@@ -3564,12 +3204,8 @@ def test_a_provider_whose_no_trash_option_is_set_the_other_way_round_is_read_cor
 def test_a_onedrive_remote_where_hard_delete_does_nothing_is_a_note(
     configured, drive_type, hard_delete
 ):
-    """rclone honours hard_delete on business drives and document libraries only.
-
-    Its own backend help says a personal account does not support the permanent
-    delete call. Reading the option alone reported that remote green on a setting
-    that changes nothing, and red on one that nothing could change. An unset
-    drive_type is the same answer, because which kind of drive it is was not read.
+    """rclone honours OneDrive hard_delete only on business drives and document
+    libraries, so a personal or unread drive_type is a note.
     """
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:"}
@@ -3587,12 +3223,7 @@ def test_a_onedrive_remote_where_hard_delete_does_nothing_is_a_note(
 
 @pytest.mark.parametrize("extra", [{}, {"permanent_delete": "true"}])
 def test_dropbox_is_not_told_to_set_an_option_rclone_does_not_have(configured, extra):
-    """rclone's Dropbox backend has no per-remote delete option at all.
-
-    The row used to name ``permanent_delete``, so every Dropbox remote failed
-    with a fix nothing could apply, and one where somebody wrote that key by
-    hand went green while every prune still went to Dropbox's deleted files.
-    """
+    """rclone's Dropbox backend has no per-remote delete option, so none is named."""
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:"}
     cfg = config.from_dict(document)
@@ -3636,9 +3267,7 @@ def test_a_remote_where_a_delete_is_a_delete_is_the_one_that_reports_green(confi
 
 
 def test_the_remote_path_form_resolves_to_the_remote_it_names(configured):
-    """``remote:path`` is rclone's own spelling. Stripping the trailing colon
-    left the path attached, so a correct destination failed as an unknown remote.
-    """
+    """``remote:path`` resolves to the remote it names."""
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:library/archive"}
     cfg = config.from_dict(document)
@@ -3675,18 +3304,15 @@ def test_an_unknown_remote_is_not_sent_to_a_verb_that_cannot_fix_it(configured):
 def test_a_set_but_broken_binary_override_gets_the_remedy_that_exists_for_it(
     configured, tmp_path, monkeypatch
 ):
-    """``binaries.Remedy.FIX_BINARY_OVERRIDE`` existed, ``render`` carried its
-    sentence, and no check ever emitted it. Reported as "not found on PATH,
-    install it", a user installs a binary they already have and the override
-    keeps winning, because ``find`` deliberately does not fall through.
+    """A set but broken override gets ``FIX_BINARY_OVERRIDE``, since ``find`` does
+    not fall through and installing the binary would not help.
     """
     broken = tmp_path / "not-executable"
     broken.write_text("")
     monkeypatch.setenv(binaries.env_var("ffmpeg"), str(broken))
 
-    # The REAL rule, from the module that owns it, against a real variable. The
-    # green machine answers this seam with None like every other, so a test that
-    # let it stand would be asserting about the fake.
+    # The real rule against a real variable, since the green machine answers
+    # this seam with None.
     machine = probes(
         find_binary=lambda _n: None, binary_override_problem=binaries.override_problem
     )
@@ -3706,10 +3332,7 @@ def test_a_binary_that_is_simply_absent_still_says_install_it(configured):
 def test_a_headless_machine_that_opted_into_the_environment_fallback_is_not_red(
     configured, monkeypatch
 ):
-    """The check names the fallback as the alternative and never asked whether it
-    was in use, so a machine set up the documented way reported a failing keychain
-    beside two green credentials and exited PRECONDITION on the whole run.
-    """
+    """A headless machine using the documented environment fallback is not red."""
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
     for credential in secrets.Credential:
         monkeypatch.setenv(
@@ -3739,9 +3362,7 @@ def test_a_machine_with_no_keychain_and_no_fallback_is_still_red(configured):
 def test_a_fallback_supplying_only_some_of_what_is_needed_is_still_red(
     configured, monkeypatch
 ):
-    """Half a credential set is not a working machine, and saying so is the
-    difference between a note and a report that hides a missing value.
-    """
+    """A fallback supplying only some credentials is still red."""
     monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
     monkeypatch.setenv("CRATEKIT_CREDENTIAL_PROVIDER_SESSION", "value")
 
@@ -3754,18 +3375,14 @@ def test_a_fallback_supplying_only_some_of_what_is_needed_is_still_red(
     assert "identify-key" in finding.detail
 
 
-# ── the containment report, which nothing in this file asserted at all ───────
+# ── the containment report ──────────────────────────────────────────────────
 
 
 def test_a_database_outside_the_library_root_is_reported_on_every_run(
     library, tmp_path, monkeypatch
 ):
-    """The four-wave obligation ``tests/_pending.py`` held against this unit.
-
-    Refusing at load makes the consequence visible at setup, when the database
-    can still be moved, and does nothing at all about the install where somebody
-    accepted it eighteen months ago and has forgotten that their snapshots are
-    copies across two filesystems rather than one atomic commit.
+    """A database outside the root is reported every run, not only at load, since
+    its snapshots are then copies across two filesystems.
     """
     document = document_for(library)
     document["library"]["db_path"] = str(tmp_path / "elsewhere" / "master.db")
@@ -3798,12 +3415,10 @@ def test_a_volume_whose_trash_accepts_a_move_reads_green(configured):
 
 
 def test_a_volume_with_no_usable_trash_refuses_because_a_verb_depends_on_it(configured):
-    """R35 sends a confirmed deletion to the Trash and never to an unlink.
+    """R35 trashes a confirmed deletion, so a volume with no usable Trash fails
+    here rather than mid deletion.
 
-    Without this check a person meets that refusal in the middle of a deletion,
-    after the review and after the confirm gate, against a plan already digested.
-    The remedy is NOT run-doctor, which is what ``trash.assert_usable`` refuses
-    with: that token sends somebody here, and answering with it here is a loop.
+    The remedy is not run-doctor, which would loop back here.
     """
     finding = find(
         doctor.run(configured, probes=doctor_machines.hostile()), "library.trash"
@@ -3815,15 +3430,9 @@ def test_a_volume_with_no_usable_trash_refuses_because_a_verb_depends_on_it(conf
 
 
 def test_a_volume_with_no_trash_directory_yet_is_not_a_failure(configured):
-    """The false red the cross-model review found, driven both ways.
+    """A volume with no Trash yet is not red, since the deletion pass creates it.
 
-    ``trash.probe`` creates the per-volume Trash on first use because the desktop
-    does, and the deletion pass takes that default. Doctor asks with
-    ``create=False`` so its answer cannot be produced by its own asking, which
-    means a volume nobody has deleted from answers "not a directory" here and
-    works perfectly when a deletion actually runs. Reporting that as red told a
-    person deletion would refuse on a machine where it would succeed, which is the
-    one thing a precondition must never do.
+    Doctor probes with ``create=False`` so its answer is not produced by asking.
     """
     finding = find(
         doctor.run(configured, probes=probes(trash_probe=doctor_machines._absent_trash)),
@@ -3835,12 +3444,9 @@ def test_a_volume_with_no_trash_directory_yet_is_not_a_failure(configured):
 
 
 def test_the_two_probe_answers_that_made_the_false_red_are_really_different(tmp_path):
-    """The asymmetry itself, measured on the real probe rather than on a seam.
-
-    This is the evidence the finding rested on, kept as a test so the seam above
-    cannot drift away from what the module it stands in for actually does.
+    """The real probe answers differently with and without ``create``, so the
+    seam above cannot drift from it.
     """
-    from cratekit.deletion import trash
 
     volume = tmp_path / "volume"
     (volume / "Music").mkdir(parents=True)
@@ -3855,11 +3461,7 @@ def test_the_two_probe_answers_that_made_the_false_red_are_really_different(tmp_
 
 
 def test_a_broken_trash_is_informational_when_no_verb_this_profile_needs_it(library):
-    """The deletion module off means nothing on this machine trashes a file.
-
-    Reporting red for a capability nothing uses is how a person learns to ignore
-    red, which is the argument the INFO status carries everywhere else here.
-    """
+    """With deletion off, nothing trashes a file, so a broken Trash is INFO."""
     document = document_for(library)
     document["profile"] = {"name": "slim"}
     cfg = config.from_dict(document)
@@ -3873,22 +3475,11 @@ def test_a_broken_trash_is_informational_when_no_verb_this_profile_needs_it(libr
 
 
 def test_the_trash_check_cannot_pass_by_having_run(tmp_path, monkeypatch):
-    """The seam binds ``create=False``, and the BINDING is what is driven.
+    """The seam binds ``create=False``, and the binding is what is captured.
 
-    THE VERSION THIS REPLACES MEASURED NOTHING, and the author's own mutation
-    table is what said so: flipping the seam to ``create=True`` killed zero
-    tests. It watched a temporary directory for a new folder, and on this
-    platform ``layout_for`` resolves that directory's volume root to ``/``, so
-    the create it was watching for was refused by the filesystem rather than by
-    the argument. The test passed for a reason that had nothing to do with the
-    property.
-
-    So the call is captured instead. ``trash.probe`` creates the per-volume Trash
-    by default, because the desktop does too, and a health check taking that
-    default would make the directory it is asking about exist and then report the
-    pass it had itself produced.
+    Watching for a new folder measured nothing, since the filesystem refused the
+    create at ``/``; a check taking the default would report a pass it produced.
     """
-    from cratekit.deletion import trash
 
     seen: list[dict] = []
 
@@ -3896,7 +3487,7 @@ def test_the_trash_check_cannot_pass_by_having_run(tmp_path, monkeypatch):
         seen.append(dict(kwargs, path=path))
         return trash.TrashStatus(None, False, "not probed for real")
 
-    monkeypatch.setattr(doctor.trash, "probe", recording)
+    monkeypatch.setattr(trash, "probe", recording)
     volume = tmp_path / "volume"
     (volume / "Music").mkdir(parents=True)
 
@@ -3913,18 +3504,13 @@ def test_the_trash_check_cannot_pass_by_having_run(tmp_path, monkeypatch):
 def test_a_trash_probe_the_operating_system_refuses_is_a_failure_with_the_right_act(
     configured,
 ):
-    """An unanswerable question is not a pass, and the act follows the refusal.
-
-    The classification runs at ``Finding`` construction, so a permission error
-    reaches the report as grant-path-access and a read-only volume as
-    remount-writable, rather than as one hardcoded sentence for both.
+    """A refused probe fails, and the act follows the refusal: grant-path-access
+    for a permission error, remount-writable for a read-only volume.
     """
 
     def refuses(path):
-        # WITH A FILENAME, because ``access_refusal`` will not claim a refusal it
-        # cannot name a path for: a sentence with no path is one a user can do
-        # nothing with. Every real refusal on this route carries one, since the
-        # probe stats and opens named directories.
+        # With a filename, since ``access_refusal`` will not claim a refusal it
+        # cannot name a path for.
         raise PermissionError(errno.EACCES, "Operation not permitted", str(path))
 
     finding = find(
@@ -3937,15 +3523,7 @@ def test_a_trash_probe_the_operating_system_refuses_is_a_failure_with_the_right_
 
 
 def test_an_unanswerable_trash_probe_is_informational_when_no_verb_needs_it(library):
-    """The gate on the refusal branch, which the fix round left unmeasured.
-
-    Forcing that branch to FAIL regardless of the profile killed nothing in the
-    author's own table, because the only test of it ran on the full profile where
-    the answer is FAIL either way. A machine with the deletion module switched off
-    has nothing that moves a file to the Trash, so an unanswerable question about
-    it is worth knowing and is not a fault, which is the rule every neighbouring
-    check in this file applies.
-    """
+    """With deletion off, an unanswerable Trash probe is INFO, not a fault."""
 
     def refuses(path):
         raise PermissionError(errno.EACCES, "Operation not permitted", str(path))
@@ -3969,22 +3547,17 @@ def test_the_trash_check_is_unchecked_when_there_is_no_configuration(tmp_path, m
     assert "no usable configuration" in finding.detail
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 9. What the second review found: a truth teller that could refuse to run
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 9. A truth teller that could refuse to run ═════════════════════════════
 #
-# The pass that removed the false greens added three ways to be unavailable and
-# two claims nobody checked. A doctor that cannot start on a broken machine is
-# worse than one that reports the wrong thing about it, because the broken
-# machine is the one it exists for.
+# A doctor that cannot start on a broken machine is worse than one that reports
+# it wrongly, because the broken machine is the one it exists for.
 
 
 class _StubResources:
     """``importlib.resources`` with its package root pointed somewhere else.
 
-    A stand-in for a partial install: the package imports, and the packaged data
-    beside it is missing or unreadable. Injected rather than simulated by
-    deleting real files, because the real ones are the ones this suite runs on.
+    A partial install, injected rather than made by deleting the real files the
+    suite runs on.
     """
 
     def __init__(self, root: Path) -> None:
@@ -4021,14 +3594,8 @@ def unreadable_install(monkeypatch, tmp_path):
 def test_the_whole_command_line_survives_an_install_with_no_readable_templates(
     install, request, configured, monkeypatch
 ):
-    """BLOCKING. The command tree builds EVERY landed verb's parser on EVERY run.
-
-    Putting ``choices=shipped_template_names()`` on the wizard's flag therefore
-    walked packaged data before anything dispatched, so a missing or unreadable
-    templates directory took ``crate doctor`` and ``crate --help`` down with an
-    unhandled OSError. Doctor exists for the broken machine and a partial install
-    is a broken machine; it has to be able to report on one, and this was a
-    strict regression against the build before the fix.
+    """Every run builds every parser, so ``crate doctor`` and ``crate --help``
+    survive a missing or unreadable templates directory.
     """
     request.getfixturevalue(install)
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
@@ -4038,10 +3605,8 @@ def test_the_whole_command_line_survives_an_install_with_no_readable_templates(
     code, out, err = drive(["--output", "json", "doctor"])
     assert code == int(ExitCode.PRECONDITION), err
     checks = {c["key"]: c for c in json.loads(out)["data"]["checks"]}
-    # It reports, and what it reports is the truth about this install: the
-    # packaged data could not be READ. Saying instead that no template ships
-    # under the configured name is a claim about a directory nobody could open,
-    # and it carried run-setup, which cannot repair packaged data.
+    # It reports that the packaged data could not be read, not that no template
+    # ships under the name, since run-setup cannot repair packaged data.
     assert checks["taxonomy.active"]["status"] == "fail"
     assert "could not be listed" in checks["taxonomy.active"]["detail"]
     assert "not established" in checks["taxonomy.active"]["detail"]
@@ -4059,11 +3624,8 @@ def test_a_missing_templates_directory_is_an_empty_answer_not_an_exception(
 def test_an_install_with_no_templates_offers_no_closed_set_rather_than_an_empty_one(
     stripped_install, tmp_path, monkeypatch
 ):
-    """An empty ``choices`` rejects every value including the correct one.
-
-    So the flag carries no closed set when nothing ships, and the wizard reports
-    the missing template as a finding instead of arguing with the user about a
-    name that would have been right on a whole install.
+    """With nothing shipped the flag has no closed set, since empty ``choices``
+    rejects every value; the wizard reports the missing template instead.
     """
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
@@ -4084,10 +3646,8 @@ def test_an_install_with_no_templates_offers_no_closed_set_rather_than_an_empty_
     assert code != int(ExitCode.USAGE), err
     checks = {c["key"]: c for c in json.loads(out)["data"]["checks"]}
     assert checks["setup.taxonomy"]["status"] == "fail"
-    # A DIRECTORY THAT IS NOT THERE IS A DAMAGED INSTALL, not a name the user
-    # typed wrongly, and the wizard used to say the second for both. The finding
-    # here is the first, and it agrees with what doctor says about the same
-    # install two lines further down the same report.
+    # A missing directory is a damaged install, not a mistyped name, matching
+    # what doctor says further down the same report.
     assert "could not be listed" in checks["setup.taxonomy"]["detail"]
     assert "damaged or partial install" in checks["setup.taxonomy"]["detail"]
     assert checks["setup.taxonomy"]["remedy"] == str(Remedy.REPORT_DEFECT)
@@ -4096,13 +3656,8 @@ def test_an_install_with_no_templates_offers_no_closed_set_rather_than_an_empty_
 def test_a_shipped_name_configuration_would_reject_is_never_offered(
     monkeypatch, tmp_path
 ):
-    """Two layers, one question, one answer, one layer further down.
-
-    Anything between the prefix and the suffix is a candidate on disk, so
-    ``taxonomy.deep.house.toml`` yields ``deep.house``, which validation refuses
-    because the name is composed into a packaged resource path. Offering it as a
-    closed-set choice and then refusing it is the defect the shared walk exists
-    to prevent, reappearing one layer down.
+    """A shipped name such as ``deep.house`` that validation refuses is never
+    offered as a choice.
     """
     from cratekit.core import taxonomy as taxonomy_module
 
@@ -4127,20 +3682,14 @@ def test_every_name_the_wheel_actually_ships_is_one_configuration_accepts(librar
         assert config.validate(document) == [], name
 
 
-# ── the derive guard that over-fired ────────────────────────────────────────
+# ── the derive guard ─────────────────────────────────────────────────────────
 
 
 def test_a_library_folder_not_yet_created_under_a_real_mount_is_not_refused():
-    """BLOCKING. The first run this guard was most likely to meet, refused.
+    """A library folder not yet created directly under an attached mount derives,
+    since its identity comes from the right volume.
 
-    ``Path(root).is_dir()`` was too strong by exactly one case: a library folder
-    that does not exist yet, directly under a mount point that is attached and
-    readable. The identity read there comes from the right volume, and the
-    refusal told the user to attach a drive that was already attached, with the
-    only escape being a flag whose value nothing in the product prints.
-
-    The filesystem root is used as the mount, because it is a mount point on
-    every platform this runs on and needs no privileges to arrange.
+    The filesystem root serves as the mount, a mount point on every platform.
     """
     from cratekit.core import preflight
 
@@ -4161,13 +3710,8 @@ def test_a_library_folder_not_yet_created_under_a_real_mount_is_not_refused():
 def test_a_library_nested_under_an_attached_volume_derives_at_any_depth(
     volumes_directory, gap
 ):
-    """BLOCKING. The rule counted levels, and depth was never the hazard.
-
-    Driven on one attached volume in one run, ``<mount>/library`` was accepted
-    and ``<mount>/Music/library`` was refused with "attach the library volume and
-    run setup again", which is false: the volume is attached, the identity read
-    comes from it, and nothing in the product prints the identity a first-run
-    user would need for the only escape it offered.
+    """Depth is not the hazard: a library at any depth under an attached volume
+    derives.
     """
     attached = volumes_directory.attach("DISK_THAT_IS_ATTACHED")
     (attached / "Music" / "a" / "b").mkdir(parents=True, exist_ok=True)
@@ -4182,11 +3726,8 @@ def test_a_library_nested_under_an_attached_volume_derives_at_any_depth(
 
 
 def test_the_derive_still_refuses_when_the_mount_point_is_empty(volumes_directory):
-    """And the case that cost a library is still refused.
-
-    ``/Volumes/NAME/Music`` with the drive unplugged: ``/Volumes/NAME`` is where
-    a volume mounts and nothing is mounted there, so the identity a walk finds
-    now belongs to whatever filesystem is above it.
+    """With the drive unplugged, ``/Volumes/NAME/Music`` is still refused, since a
+    walk would find the filesystem above the empty mount point.
     """
     from cratekit.core import preflight
 
@@ -4211,18 +3752,11 @@ def test_the_derive_still_refuses_when_the_mount_point_is_empty(volumes_director
 def test_an_ejected_volume_leaves_a_mount_POINT_behind_and_the_derive_refuses_it(
     volumes_directory, gap
 ):
-    """BLOCKING, and it is the FIRST defect arriving through the second fix for it.
+    """An ejected volume's leftover mount point is refused, not walked past to the
+    boot disk.
 
-    The rule before this one refused a gap a volume would fill, which reads
-    absence as the hazard. An ejected volume routinely leaves its mount point
-    behind as an empty directory on the boot disk: ``core/preflight``'s own
-    opening paragraphs name that as the first of the three broken states the
-    module exists to tell apart.
-
-    With ``<mount>/NAME`` sitting there, nothing is missing, so nothing was
-    refused, and ``identity_source`` walked straight past it to the boot disk and
-    handed back its identity to be recorded as the library's. That is verbatim
-    the defect the guard was written for, reachable through the fix for it.
+    Nothing is missing there, so a rule about absence accepted it, the first of
+    the three states ``core/preflight`` names.
     """
     from cratekit.core import preflight
 
@@ -4249,35 +3783,23 @@ def test_an_ejected_volume_leaves_a_mount_POINT_behind_and_the_derive_refuses_it
 def test_the_identity_source_refuses_an_empty_mount_slot_and_nothing_else(
     tmp_path, volumes_directory
 ):
-    """The rule itself, over every shape that matters.
-
-    NEITHER DEPTH NOR ABSENCE IS ONE OF THEM, and each was a defect in turn: a
-    rule counting levels refused a library two directories under an attached
-    volume, and a rule about the missing directory accepted a mount point an
-    ejected volume left behind.
+    """The identity source refuses an empty mount slot and nothing else, neither
+    depth nor absence.
     """
     from cratekit.core import preflight
 
     existing = tmp_path / "library"
     existing.mkdir()
-    # No mount slot on the way down. It exists: the identity is the volume it
-    # is on.
-    #
-    # WHAT IS ASSERTED IS THE PROPERTY, NOT THE CALL. This read
-    # ``identity_source(x) == containing_mount(...)`` and ``identity_source``'s
-    # accept leg IS ``return containing_mount(resolved)``, so the assertion was
-    # the implementation restated and pinned only "it did not refuse". A literal
-    # path is not portable, since the mount holding a temporary directory is
-    # ``/`` on one machine and a tmpfs on another, so the three facts that make
-    # an answer usable are stated instead: it is an answer, it is a real mount
-    # point, and it holds the path asked about. A mutation returning the path
-    # itself, its parent, or a fixed string fails all three.
+    # No mount slot on the way down: the identity is the volume it is on. The
+    # property is asserted, not the call, since the mount under a temporary
+    # directory differs by machine: it is an answer, a real mount point, and
+    # holds the path asked about.
     source = preflight.identity_source(existing)
     assert source is not None
     assert os.path.ismount(source), "an identity may only be read from a mount"
     assert source == existing or source in existing.parents
-    # Still no mount slot, and any depth of ordinary missing directory: it would
-    # be created on the volume its parent is already on.
+    # Ordinary missing directories at any depth would be created on the parent's
+    # volume.
     for gap in ("one", "one/two", "one/two/three/four"):
         answer = preflight.identity_source(tmp_path / gap)
         assert answer == source, gap
@@ -4296,14 +3818,10 @@ def test_the_identity_source_refuses_an_empty_mount_slot_and_nothing_else(
 
 
 def test_more_than_one_declared_depth_may_answer_and_only_one_is_the_mount(tmp_path, monkeypatch):
-    """Linux declares ``<media>/<label>`` AND ``<media>/<user>/<label>``.
+    """Linux declares ``<media>/<label>`` and ``<media>/<user>/<label>``, so every
+    matching slot is asked and one mounted slot is enough.
 
-    So one real path matches two rows, and only one of them is where the volume
-    actually is. A rule consulting a single slot has to pick which, and both
-    choices are wrong for one of the two mounters: the deepest match refuses a
-    healthy volume mounted at the shallow row with an ordinary subdirectory under
-    it, and the shallowest refuses a healthy per-user mount. Every slot is asked,
-    and one mounted slot is enough.
+    Picking either the deepest or the shallowest refuses a healthy mount.
     """
     from cratekit.core import preflight
 
@@ -4319,11 +3837,9 @@ def test_more_than_one_declared_depth_may_answer_and_only_one_is_the_mount(tmp_p
         mount,
         media / "phil",
     )
-    # The shallow slot is an ordinary directory the automounter made, and the
-    # deep one is the volume. Accepted.
+    # The shallow slot is an ordinary directory and the deep one is the volume.
     assert preflight.identity_source(mount / "library") is not None
-    # And the mirror image: the volume at the SHALLOW slot, with an ordinary
-    # subdirectory below it that matches the deep row.
+    # The mirror: the volume at the shallow slot, an ordinary subdirectory below.
     monkeypatch.setattr(preflight, "is_mount_point", lambda path: Path(path) == media / "phil")
     assert preflight.identity_source(media / "phil" / "sub" / "library") is not None
 
@@ -4332,15 +3848,7 @@ def test_more_than_one_declared_depth_may_answer_and_only_one_is_the_mount(tmp_p
 
 
 def test_no_ok_detail_claims_a_volume_the_run_never_identified(configured):
-    """BLOCKING. Two greens asserting a disk nobody looked at.
-
-    Both are reached through the leg of the reachability rule whose entire
-    meaning is that the identity could not be ASKED, and on a machine with no
-    identity adapter they appeared on the same report as ``library.identity``
-    failing with "reports no volume identity". The pre-fix details claimed
-    nothing at all, so this was a claim ADDED by the round that exists to remove
-    exactly those.
-    """
+    """No OK detail claims a volume when the identity could not be asked."""
     from cratekit.core import preflight
 
     seed_taxonomy(configured)
@@ -4383,13 +3891,8 @@ def _refuse_the_index_lock(monkeypatch):
 def test_a_refused_index_lock_leaves_the_keychain_untouched_on_a_record(
     monkeypatch,
 ):
-    """BLOCKING. The lock's own refusal reintroduced the lie it was added to fix.
-
-    Taken AFTER the keychain write, an unobtainable lock refused a write that had
-    already happened: the keychain held the value, the index did not name it,
-    ``exists`` answered False, and doctor sent the user to record a credential
-    the machine already had. The lock is taken first now, so a refusal means
-    nothing changed anywhere.
+    """The index lock is taken before the keychain write, so a refused lock
+    changes nothing and ``exists`` never answers False over a stored value.
     """
     _refuse_the_index_lock(monkeypatch)
 
@@ -4403,11 +3906,8 @@ def test_a_refused_index_lock_leaves_the_keychain_untouched_on_a_record(
 
 
 def test_a_refused_index_lock_leaves_the_keychain_untouched_on_a_delete(monkeypatch):
-    """The other direction, which was the one that made doctor report green.
-
-    The keychain entry was removed first and the index write then failed, so
-    ``exists`` answered TRUE for a credential that was gone and doctor reported a
-    green credential over nothing.
+    """On a delete, a refused lock leaves the keychain entry too, so ``exists``
+    never answers True for a credential that is gone.
     """
     secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
     _refuse_the_index_lock(monkeypatch)
@@ -4420,11 +3920,8 @@ def test_a_refused_index_lock_leaves_the_keychain_untouched_on_a_delete(monkeypa
 
 
 def test_a_delete_that_fails_between_the_two_stores_never_reports_green(monkeypatch):
-    """The index entry goes first, so the surviving disagreement is the safe one.
-
-    Index absent with a keychain entry still there reads as work to do, and
-    re-recording is idempotent. The reverse reads as work already done, over a
-    credential that is gone.
+    """The index entry goes first, so a failed delete leaves the safe
+    disagreement: work to do, and re-recording is idempotent.
     """
     secrets.set(secrets.Credential.IDENTIFY_KEY, "value-from-the-user")
 
@@ -4457,13 +3954,10 @@ def test_recording_and_removing_still_work_when_the_lock_is_available():
 def test_a_hook_whose_configuration_name_needed_quoting_still_passes(
     library, tmp_path, filename
 ):
-    """``pre_commit`` builds that line with ``shlex.join``, which QUOTES.
+    """A configuration name ``shlex.join`` quoted still passes.
 
-    A greedy match over non-space characters therefore stopped at the space and
-    reported "the configuration it names, my, does not exist", so doctor exited
-    30 for a developer whose hook was installed and working. Built here with the
-    real ``shlex.join`` rather than with a hand-written string, because the
-    hand-written string is what agreed with the regex.
+    Built with the real ``shlex.join``, since a hand-written string agreed with
+    the greedy regex that stopped at the space.
     """
     import shlex
 
@@ -4483,7 +3977,7 @@ def test_a_hook_whose_configuration_name_needed_quoting_still_passes(
 
 
 def test_the_hook_ok_names_the_configuration_it_actually_resolved(library, tmp_path):
-    """It interpolated the DEFAULT name whatever the hook said."""
+    """The OK names the configuration the hook names, not the default."""
     checkout = hooked_checkout(
         tmp_path / "checkout",
         "ARGS=(hook-impl --config=tools/hooks.yaml --hook-type=pre-commit)\n",
@@ -4502,16 +3996,12 @@ def test_the_hook_ok_names_the_configuration_it_actually_resolved(library, tmp_p
 
 
 def test_the_two_remote_tables_never_answer_for_the_same_type():
-    """Every other table in this module is total over a closed enum and asserted.
-
-    These two are partial by necessity, since rclone's provider list is not ours
-    to close, so what can be asserted instead is that they do not overlap: one
-    type answering in both is one type with two answers, and which one wins is
-    the order the branches happen to be written in.
+    """The two remote tables are partial, since rclone's providers are not ours to
+    close, so they must not overlap or a type would have two answers.
     """
-    overlap = set(doctor._REMOTE_TRASH_POLICY) & doctor._NON_TRASHING_REMOTE_TYPES
+    overlap = set(doctor_backup._REMOTE_TRASH_POLICY) & doctor_backup._NON_TRASHING_REMOTE_TYPES
     assert not overlap, overlap
-    for kind, policy in doctor._REMOTE_TRASH_POLICY.items():
+    for kind, policy in doctor_backup._REMOTE_TRASH_POLICY.items():
         assert policy.option is None or policy.disabled in ("true", "false"), kind
         # A gate on an option that does not exist is a gate on nothing.
         assert policy.applies_when is None or policy.option is not None, kind
@@ -4523,14 +4013,8 @@ def test_the_two_remote_tables_never_answer_for_the_same_type():
 def test_the_wizard_refuses_to_write_when_the_volume_is_not_mounted_at_all(
     configured, tmp_path
 ):
-    """NOT_MOUNTED, behaviourally. The table said never and nothing drove it.
-
-    Mutation testing found this: ``foreign_volume`` was covered by a real drive
-    and these two were covered only by the structural assertion, so a table row
-    flipped to yes would have been caught for one state and not for the others.
-    The state needs three things at once, an absent root, an identity that does
-    not match, and the recorded volume nowhere in the mount table, which is why
-    it is worth building rather than assuming.
+    """NOT_MOUNTED is refused when driven: an absent root, a mismatched identity,
+    and the recorded volume nowhere in the mount table.
     """
     from cratekit.core import preflight
 
@@ -4558,12 +4042,8 @@ def test_the_wizard_refuses_to_write_when_the_volume_is_not_mounted_at_all(
 def test_the_wizard_refuses_to_write_when_the_volume_is_mounted_somewhere_else(
     configured, tmp_path
 ):
-    """MOUNTED_ELSEWHERE, behaviourally, and this is the leftover mount point.
-
-    The drive IS attached, at another path, so the configured root is a directory
-    on some other filesystem. Writing there is what creates a directory at a
-    mount point, which on macOS sends the real volume to ``<name> 1`` on its next
-    attach, permanently.
+    """MOUNTED_ELSEWHERE is refused, since writing at the configured root makes a
+    leftover mount point and sends the real volume to ``<name> 1``.
     """
     from cratekit.core import preflight
 
@@ -4592,14 +4072,8 @@ def test_the_wizard_refuses_to_write_when_the_volume_is_mounted_somewhere_else(
 def test_the_zip_backed_shape_of_a_missing_packaged_directory_is_also_caught(
     monkeypatch, tmp_path
 ):
-    """"Never raises" has to be true of every backend, not of the common one.
-
-    ``importlib.resources`` does not promise one exception family. A filesystem
-    traversable raises FileNotFoundError or NotADirectoryError, both OSError; a
-    zip-backed one raises ``ValueError("Can't listdir a file")``, which is not.
-    Catching one family and documenting the other is the overclaim this unit
-    keeps shipping, so the guard is driven against a traversable that raises the
-    one that is not an OSError.
+    """"Never raises" holds for a zip-backed traversable too, whose
+    ``ValueError`` is not an OSError.
     """
     from cratekit.core import taxonomy as taxonomy_module
 
@@ -4622,45 +4096,28 @@ def test_the_zip_backed_shape_of_a_missing_packaged_directory_is_also_caught(
 
 
 def test_the_presence_index_has_no_locking_helper_left_to_deadlock_on():
-    """Dead code that is also a footgun.
+    """The presence index has no self-locking wrappers left.
 
-    ``set`` and ``delete`` hold the lock across their whole operation now, so the
-    two wrappers that took it themselves have no callers, and calling either from
-    inside a held cycle self-deadlocks: ``flock`` is per open file description,
-    and a second acquisition blocks against the first. The non-locking halves
-    stay, and their docstrings say who holds the lock for them.
+    ``set`` and ``delete`` hold the lock throughout, and ``flock`` is per open
+    file description, so calling a wrapper inside a held cycle would deadlock.
     """
     assert not hasattr(secrets, "_index_add")
     assert not hasattr(secrets, "_index_remove")
     assert hasattr(secrets, "_record_name") and hasattr(secrets, "_forget_name")
 
 
-# ── a check that cannot answer says so, and the report survives it ───────────
+# ── a check that cannot answer says so, and the report survives ──────────────
 
 
 def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(
     configured, tmp_path
 ):
-    """BLOCKING. ``run`` documented "never raise" and nothing made it true.
+    """A probe that raises becomes a failed check, not a lost report.
 
-    Three of these checks reach the outside world through calls that raise on an
-    ordinary broken machine rather than returning a value, and one raising took
-    the ENTIRE report down: every other answer, on the machine the module's own
-    opening argument says the report exists for.
-
-    THE REMEDY THIS ASSERTS CHANGED IN ROUND SIX, and the test's purpose did not.
-    What it exists for is that an unstructured break becomes a FAILED CHECK
-    rather than a lost report, and both legs below still assert exactly that. What
-    it used to assert beside it was that a permission the operating system refused
-    carries report-defect, which pinned the defect this unit was sent back for
-    three rounds running: doctor told the user their own filesystem permission was
-    a Cratekit bug, on the same page where the wizard told them it was not.
-
-    THE REFUSAL IS REAL IN ROUND SEVEN. It was a hand-built
-    ``PermissionError(13)`` with no filename on it, and the sentence the product
-    then rendered told the reader to grant access to "the path named below" with
-    nothing below it. A refusal with no path is now not claimed as one, which is
-    what made this leg fail until it drove a real directory with mode 0o000.
+    A real permission refusal (a directory at mode 0o000, so the refusal names
+    its path) carries grant-path-access rather than report-defect, since it is
+    the user's filesystem and not a Cratekit bug; a probe that simply fell over
+    keeps report-defect.
     """
     sealed = tmp_path / "sealed"
     sealed.mkdir()
@@ -4685,13 +4142,11 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(
     assert broken.remedy is Remedy.GRANT_PATH_ACCESS
     assert "rather than a defect in this program" in broken.detail
     assert str(inside) in broken.detail, "a permission with no path to grant is unactionable"
-    # And the answers either side of it are the real ones rather than casualties.
+    # The answers either side of it are the real ones.
     assert find(report, "interpreter.version").status is doctor.Status.OK
     assert find(report, "library.identity").status is doctor.Status.OK
 
-    # THE DEFECT LEG IS STILL A DEFECT. Classifying the permission out of the
-    # blanket must not classify everything out of it: a probe that simply fell
-    # over is an unanticipated failure and report-defect is the honest answer.
+    # A probe that simply fell over is still report-defect.
     def fell_over():
         raise RuntimeError("psutil returned a shape this reader has never seen")
 
@@ -4704,13 +4159,8 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(
 
 
 def test_the_rescue_reports_a_broken_check_as_FAIL_rather_than_as_a_note(configured):
-    """The half that carries the weight, and the easy thing to get wrong.
-
-    INFO means "worth knowing, nothing to do now", and a check that did not
-    complete has not established that there is nothing to do. A rescue that
-    filed one under INFO would leave ``report.ok`` true and doctor exiting 0 over
-    a question nobody answered, which is this unit's own defining defect wearing
-    a handler.
+    """A broken check is FAIL, never INFO, or ``report.ok`` would stay true over
+    a question nobody answered.
     """
 
     def explode(_inputs):
@@ -4724,12 +4174,8 @@ def test_the_rescue_reports_a_broken_check_as_FAIL_rather_than_as_a_note(configu
 def test_a_library_root_this_account_cannot_traverse_is_reported_not_raised(
     tmp_path, monkeypatch
 ):
-    """The realistic shape of the above, and it needs no injected seam at all.
-
-    ``Path.exists`` and ``Path.is_dir`` re-raise a permission error rather than
-    answering False, so a library root under a directory this account cannot
-    traverse arrives inside ``resolve_mount_state`` as an exception. Driven
-    against a real unreadable directory rather than a stub.
+    """A root under an untraversable directory is reported, not raised, since
+    ``Path.exists`` and ``Path.is_dir`` re-raise a permission error.
     """
     sealed = tmp_path / "sealed"
     root = sealed / "library"
@@ -4750,12 +4196,8 @@ def test_a_library_root_this_account_cannot_traverse_is_reported_not_raised(
     assert mounted.status is doctor.Status.FAIL
     assert "did not complete" in mounted.detail
 
-    # AND NOT ONE FAILING CHECK IN THE WHOLE REPORT CALLS IT A DEFECT. This is
-    # the measurement that matters, taken on a REAL directory with mode 0o000
-    # rather than on a fixture raising a synthetic error: four checks at once
-    # came out of this arrangement saying "this is a defect; report it" over one
-    # permission, and the wizard's own note in the same envelope said the
-    # opposite. One report may not answer one condition two ways.
+    # No failing check in the report calls the one permission a defect, so one
+    # report never answers one condition two ways.
     for finding in report.failures:
         assert finding.remedy is not Remedy.REPORT_DEFECT, finding.key
     assert find(report, "library.identity").remedy is Remedy.GRANT_PATH_ACCESS
@@ -4765,21 +4207,11 @@ def test_a_library_root_this_account_cannot_traverse_is_reported_not_raised(
 def test_a_session_log_this_account_cannot_traverse_is_not_an_empty_one(
     configured, tmp_path
 ):
-    """"There are no sessions" is a claim, and this could not look.
+    """An untraversable session log is not "no sessions", or the next destructive
+    run would refuse on records this said were not there.
 
-    The guard reached the untraversable directory through ``Path.exists``, which
-    raises rather than answering, so the whole report was lost. Answering False
-    instead would be worse: it reads as a library that has never opened a
-    session, and the next destructive run refuses on records this said were not
-    there.
-
-    THIS ASSERTS THE CHECK'S OWN ANSWER, not the rescue's, and the distinction is
-    why the test is written this way. ``doctor.answer`` turns any exception into
-    a failed check, so a version of this test that only asked for FAIL passed
-    with the handler removed: the blanket rescue was answering for it. Found by
-    mutation, on a guard added in this same round. What the user needs is the
-    sentence naming the directory and the remedy that goes with it, so that is
-    what is asserted.
+    The check's own sentence and remedy are asserted, since the blanket rescue
+    in ``doctor.answer`` would otherwise answer FAIL for a removed handler.
     """
     directory = session.log_dir(configured)
     directory.mkdir(parents=True, exist_ok=True)
@@ -4804,11 +4236,8 @@ def test_a_session_log_this_account_cannot_traverse_is_not_an_empty_one(
 def test_a_commit_hook_that_exists_and_cannot_be_read_is_not_a_missing_hook(
     configured, tmp_path
 ):
-    """One handler over both said "no pre-commit hook at X" for a file at X.
-
-    And it sent the user to ``pre-commit install``, which rewrites a file it may
-    not be able to open either. Git runs the hook regardless of whether this
-    check can read it, so whether the scan happens is genuinely unknown.
+    """A hook that exists and cannot be read is unknown, not missing, since git
+    still runs it and ``pre-commit install`` may not open it either.
     """
     root = tmp_path / "checkout"
     (root / ".git" / "hooks").mkdir(parents=True)
@@ -4834,12 +4263,11 @@ def test_a_commit_hook_that_exists_and_cannot_be_read_is_not_a_missing_hook(
     assert unreadable.detail != absent.detail, "one sentence for two conditions"
     assert "could not be read" in unreadable.detail
     assert "unknown rather than no" in unreadable.detail
-    # The hook was refused by the operating system, so the act is to grant access
-    # rather than to file a defect about somebody else's file permissions.
+    # Refused by the operating system, so the act is to grant access.
     assert unreadable.remedy is Remedy.GRANT_PATH_ACCESS
     assert "did not complete" not in unreadable.detail, "the blanket rescue answered"
-    # The same claim the taxonomy check had to drop: an untraversable hooks
-    # directory raises this too, and nothing beneath it was observed.
+    # An untraversable hooks directory raises this too, so nothing beneath it
+    # was observed.
     assert "exists at" not in unreadable.detail
     assert "no pre-commit hook" in absent.detail
 
@@ -4847,11 +4275,8 @@ def test_a_commit_hook_that_exists_and_cannot_be_read_is_not_a_missing_hook(
 def test_an_active_template_that_exists_and_cannot_be_read_is_not_a_missing_one(
     configured
 ):
-    """Same shape, and this one looped.
-
-    "No active taxonomy template at X" carried run-setup, and setup leaves an
-    existing copy alone, so the user re-runs it forever against a file that is
-    there and unreadable.
+    """An unreadable template is not a missing one, since run-setup leaves an
+    existing copy alone and would loop.
     """
     seed_taxonomy(configured)
     path = config.state_path("taxonomy_active", configured)
@@ -4867,16 +4292,11 @@ def test_an_active_template_that_exists_and_cannot_be_read_is_not_a_missing_one(
     assert unreadable.status is absent.status is doctor.Status.FAIL
     assert "could not be read" in unreadable.detail
     assert unreadable.remedy is not Remedy.RUN_SETUP
-    # AND THE ACT IS THE ONE THE USER CAN PERFORM. The sentence names a
-    # permission as one of the two shapes this handler catches, and the token
-    # beside it said "report a defect" for both. This file was refused by the
-    # operating system, so the answer is to grant access to it.
+    # Refused by the operating system, so the act is to grant access.
     assert unreadable.remedy is Remedy.GRANT_PATH_ACCESS
     assert "did not complete" not in unreadable.detail, "the blanket rescue answered"
-    # AND IT DOES NOT CLAIM THE FILE IS THERE. The same handler catches the
-    # permission error an untraversable PARENT raises, and nothing under such a
-    # parent was observed at all, so "exists and could not be read" was a second
-    # claim about something nobody looked at.
+    # It does not claim the file is there, since an untraversable parent raises
+    # the same error.
     assert "exists and could not be read" not in unreadable.detail
     assert "whether the file is even there is unknown" in unreadable.detail.lower()
     assert "no active taxonomy template" in absent.detail
@@ -4886,21 +4306,15 @@ def test_an_active_template_that_exists_and_cannot_be_read_is_not_a_missing_one(
 def test_an_unlistable_packaged_directory_is_not_a_shipped_set_of_none(
     configured, unreadable_install
 ):
-    """BLOCKING. The empty tuple was serving as two different answers.
-
-    The walk swallows an unreadable packaged directory so that building the
-    command tree cannot die on a partial install, which is right. Reading the
-    resulting emptiness as a fact about the SHIPPED SET is not: doctor told a
-    user with a damaged install that their configuration named a template nothing
-    ships, and sent them to re-run setup, which cannot repair packaged data.
+    """An unlistable packaged directory is a damaged install, not an empty
+    shipped set, since re-running setup cannot repair packaged data.
     """
     from cratekit.core import taxonomy as taxonomy_module
 
     names, problem = taxonomy_module.shipped_templates()
     assert names == ()
     assert problem is not None and "could not be listed" in problem
-    # The parser-facing half is unchanged, because a parser only ever wanted a
-    # list of choices and an exception there takes every verb down.
+    # The parser-facing half still answers a list, so no verb dies here.
     assert taxonomy_module.shipped_template_names() == ()
 
     finding = find(doctor.run(configured, probes=probes()), "taxonomy.active")
@@ -4911,7 +4325,7 @@ def test_an_unlistable_packaged_directory_is_not_a_shipped_set_of_none(
 
 
 def test_a_readable_packaged_directory_reports_no_problem_at_all(configured):
-    """The other direction, because a problem that is always set is not a signal."""
+    """A readable directory reports no problem, so the problem is a signal."""
     from cratekit.core import taxonomy as taxonomy_module
 
     names, problem = taxonomy_module.shipped_templates()
@@ -4923,19 +4337,17 @@ def test_a_readable_packaged_directory_reports_no_problem_at_all(configured):
     )
 
 
-# ── the write leg of the reachability rule, driven in BOTH directions ────────
+# ── the write leg of the reachability rule, both directions ──────────────────
 
 
 def test_a_first_run_into_an_empty_mount_slot_may_not_write_library_state(
     volumes_directory
 ):
-    """``IF_ROOT_CAN_BE_CREATED`` had no refusing case anywhere in the suite.
+    """A first run into an empty mount slot may not create the library root,
+    since on macOS that sends the real volume to ``<name> 1``.
 
-    Only its permitting case was driven, so the condition could have been the
-    constant True and the whole table would still have passed. The refusal is the
-    half that matters: a first run with the drive unplugged must not create the
-    library root, because on macOS a directory at an empty mount point sends the
-    real volume to ``<name> 1`` on its next attach, permanently.
+    The refusing case of ``IF_ROOT_CAN_BE_CREATED``, which a constant True would
+    otherwise pass.
     """
     from cratekit.core import preflight
 
@@ -4957,12 +4369,8 @@ def test_a_first_run_into_an_empty_mount_slot_may_not_write_library_state(
 
 
 def test_the_mount_location_table_is_resolved_so_a_symlink_cannot_disarm_it(monkeypatch):
-    """A guard that silently matches nothing is a guard that is not there.
-
-    Every path this is compared against is resolved, so one unresolved row makes
-    ``relative_to`` raise and the whole rule fall through to "nothing to refuse",
-    with no symptom. It is exactly what happened on a machine whose temporary
-    directory is reached through a symlink.
+    """The mount location table is resolved, or behind a symlinked temporary
+    directory ``relative_to`` raises and the rule refuses nothing.
     """
     from cratekit.core import preflight
 
@@ -4975,59 +4383,37 @@ def test_the_mount_location_table_is_resolved_so_a_symlink_cannot_disarm_it(monk
 
 
 def test_where_each_platform_mounts_a_volume_is_declared_row_by_row():
-    """The table itself, spelled out, because every other test replaces it.
-
-    Found by mutation: the shipped rows could be changed to an absurd directory
-    at an absurd depth with the whole suite still green, because the fixture that
-    drives this rule injects its own table on every test that touches it. That is
-    the shape of a tuning constant nothing covers, and the answer is the one the
-    reachability tables already use: write the declaration out in a test, so a
-    change has to be made in two places and the second is one a reviewer reads.
-
-    It is a claim about operating systems rather than about this code, so what it
-    pins is that somebody edited it deliberately.
+    """Each platform's mount table spelled out, since every other test injects
+    its own, so an edit must be made deliberately in two places.
     """
     from cratekit.core import preflight
 
     assert dict(preflight._VOLUME_MOUNT_LOCATIONS) == {
         # An external volume mounts one level under this directory.
         "darwin": (("/Volumes", 1),),
-        # The removable-media mounters, and NOT ``/mnt``. Every row is a claim
-        # that an empty directory there is evidence of an absent volume, which
-        # holds for a location a mounter creates and removes around a mount and
-        # is false for the spot the hierarchy standard reserves for mounting by
-        # hand. With ``/mnt`` present, an ordinary Linux library at
-        # ``/mnt/<name>/music`` could never have its active template written, on a
-        # platform that records no identity to protect in the first place.
+        # The removable-media mounters, not ``/mnt``, which is reserved for
+        # mounting by hand; with it, a library at ``/mnt/<name>/music`` could
+        # never get its template written.
         "linux": (("/media", 1), ("/media", 2), ("/run/media", 2)),
     }
     assert ("/mnt", 1) not in preflight._VOLUME_MOUNT_LOCATIONS["linux"]
-    # And no other platform has one, which is a REFUSAL TO GUESS rather than a
-    # claim that no volume mounts there. Windows resolves an identity provider
-    # and has no row, so the derive refuses nothing on it: recorded as a residual
-    # rather than fixed by inventing a shape nobody here can drive.
+    # No other platform has a row, a refusal to guess; Windows refusing nothing
+    # is recorded as a residual.
     assert "win32" not in preflight._VOLUME_MOUNT_LOCATIONS
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 9. Round five: the guard that answers about something it did not observe
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ 10. A guard that answers about something it did not observe ════════════
 #
-# One defect, five shapes, four rounds. A rule that decides identity from
-# something that is not identity, or a check that answers about something it
-# never looked at. Everything below drives BOTH directions, because the two
-# previous corrections in this file were each a refusal that also refused a
-# correct install.
+# A rule that decides identity from something that is not identity, or a check
+# that answers about something it never looked at. Everything below drives both
+# directions, since earlier corrections each also refused a correct install.
 
 
 def _case_insensitive(directory: Path) -> bool:
     """Whether ``directory`` lives on a filesystem that folds case.
 
-    Asked of the real directory rather than of ``sys.platform``, because the
-    answer is a property of the VOLUME: the default macOS boot volume folds case
-    and a macOS volume formatted case-sensitively does not, and both run this
-    suite. The tests below assert the right thing for whichever they got, so
-    neither leg is ever skipped into silence.
+    Asked of the volume, not ``sys.platform``, since macOS volumes go both ways;
+    the tests assert the right thing for either, so neither leg is skipped.
     """
     probe = directory / "CaseProbe"
     probe.mkdir()
@@ -5037,21 +4423,12 @@ def _case_insensitive(directory: Path) -> bool:
 def test_a_differently_cased_spelling_of_the_mount_directory_does_not_disarm_the_rule(
     tmp_path,
 ):
-    """BLOCKING. The whole guard turned off by a shell that lower-cased a path.
+    """A lower-cased spelling of the mount directory does not disarm the rule.
 
-    ``Path.relative_to`` compares path PARTS, which is case sensitive, and the
-    default macOS boot volume is case INSENSITIVE. So ``/volumes/NAME/Music`` and
-    ``/Volumes/NAME/Music`` name one directory to every filesystem call and two
-    different things to the rule: the canonical spelling refused with the drive
-    detached and the lower-cased one recorded the BOOT DISK'S UUID as the
-    library's identity, for the life of that library, and every destructive
-    verb's precondition then passed against the disk holding the operating
-    system.
-
-    Both directions are asserted, on whichever filesystem this ran on, because
-    making the comparison blindly case insensitive would be the mirror defect: on
-    a case-sensitive volume the two spellings really are two directories, and
-    conflating them would refuse a path that has nothing to do with any mount.
+    ``Path.relative_to`` is case sensitive while the default macOS volume folds
+    case, so ``/volumes/NAME`` would record the boot disk's identity. Both
+    directions are asserted, since blind folding would conflate two real
+    directories on a case-sensitive volume.
     """
     from cratekit.core import preflight
 
@@ -5071,20 +4448,15 @@ def test_a_differently_cased_spelling_of_the_mount_directory_does_not_disarm_the
         (tmp_path / "volumes").mkdir()
         assert preflight._is_a_volume_mount_location(lowered / "EP", rows) is False
 
-    # And a genuinely different directory is never conflated with the row, on
-    # either kind of filesystem.
+    # A genuinely different directory is never conflated with the row.
     other = tmp_path / "VolumesElsewhere"
     other.mkdir()
     assert preflight._is_a_volume_mount_location(other / "EP", rows) is False
 
 
 def test_two_spellings_of_one_directory_are_one_directory_however_they_differ(tmp_path):
-    """The property underneath the case test, driven on every filesystem.
-
-    Case folding is one way two strings name one directory and a symlink is
-    another, and both were invisible to a comparison over path parts. The
-    filesystem answers with ``(st_dev, st_ino)``, so this pins the comparison
-    itself rather than one platform's spelling of it.
+    """Two spellings of one directory, by case or symlink, compare equal through
+    ``(st_dev, st_ino)``, not path parts.
     """
     from cratekit.core import preflight
 
@@ -5100,14 +4472,11 @@ def test_two_spellings_of_one_directory_are_one_directory_however_they_differ(tm
     apart = tmp_path / "other"
     apart.mkdir()
     assert preflight.names_one_path(apart, real) is False
-    # Neither side exists, so nothing can be compared. False is the ACCEPTING
-    # direction here and it is what the parts comparison answered too.
+    # Neither side exists, so False, the accepting direction.
     assert preflight.names_one_path(tmp_path / "a", tmp_path / "b") is False
 
-    # AND IT IS THE FILESYSTEM'S ANSWER RATHER THAN A NAME COMPARISON, which is
-    # what makes it right on a case-SENSITIVE volume as well as on a folding one.
-    # Two directories the filesystem calls different stay different here whatever
-    # their names spell, which no amount of lower-casing could promise.
+    # The filesystem's answer, not a name comparison, so two directories it calls
+    # different stay different on any volume.
     for left, right in ((real, real), (link, real), (apart, real), (real, apart)):
         assert preflight.names_one_path(left, right) is os.path.samefile(left, right)
 
@@ -5115,14 +4484,8 @@ def test_two_spellings_of_one_directory_are_one_directory_however_they_differ(tm
 def test_a_symlinked_mount_point_pointing_out_of_the_mount_directory_still_refuses(
     volumes_directory, tmp_path
 ):
-    """The case-folding consequence, reached by a second route.
-
-    ``mount_location_ancestors`` resolved the path before asking about slots, so
-    a symlink standing in the mount directory and aimed at an ordinary directory
-    elsewhere produced no slot at all, the walk fell through to the boot disk,
-    and its identity was handed back to be recorded as the library's. The symlink
-    is not harmless scenery either: it occupies the mount point permanently, so a
-    volume of that name attaches at ``<name> 1`` instead, forever.
+    """A symlink in the mount directory aimed elsewhere still refuses, rather
+    than resolving past the slot to the boot disk.
     """
     from cratekit.core import preflight
 
@@ -5146,14 +4509,8 @@ def test_a_symlinked_mount_point_pointing_out_of_the_mount_directory_still_refus
 def test_a_symlinked_mount_point_that_names_a_real_mount_is_still_a_mounted_volume(
     volumes_directory, tmp_path
 ):
-    """The other half, and it is the ordinary macOS install.
-
-    Every current macOS puts the BOOT volume's own entry in the mount directory
-    as a symlink to ``/``, and a library under it really is on the mounted boot
-    volume. ``os.path.ismount``
-    answers False for a symlink by contract, so refusing on that alone would
-    paint a correct setup red, which is the shape of guard people work around
-    rather than fix (P7).
+    """A symlinked entry naming a real mount, the macOS boot volume's link to
+    ``/``, is a mounted volume, though ``os.path.ismount`` says False (P7).
     """
     from cratekit.core import preflight
 
@@ -5170,20 +4527,11 @@ def test_a_symlinked_mount_point_that_names_a_real_mount_is_still_a_mounted_volu
 def test_a_declared_mount_directory_absent_from_this_machine_still_names_itself(
     tmp_path, monkeypatch
 ):
-    """ZERO DEATH. The equality shortcut in ``names_one_path`` killed nothing.
+    """A declared mount directory absent from this machine still names itself.
 
-    ``samefile`` compares two inodes, so it has to stat both sides, and a
-    declared mount directory that is not on this machine has no inode. Without
-    the shortcut in front of it the function answered "that is not the mount
-    directory" about the mount directory's own spelling. ``/run/media`` is the
-    udisks2 location and plenty of Linux installs do not have it, so a first run
-    naming ``--library-root /run/media/<user>/<label>/Music`` with the drive
-    detached found no slot to ask about at all, fell through to the boot disk and
-    recorded its identity as the library's, permanently.
-
-    Two DIFFERENT spellings of an absent directory answering False is the
-    accepting direction and is deliberate. One directory answering False about
-    itself is not.
+    ``samefile`` must stat both sides, so without the equality shortcut a
+    missing ``/run/media`` would find no slot and record the boot disk. Two
+    different spellings of an absent directory answering False is deliberate.
     """
     from cratekit.core import preflight
 
@@ -5199,20 +4547,13 @@ def test_a_declared_mount_directory_absent_from_this_machine_still_names_itself(
 
 
 def test_the_walk_up_to_an_ancestor_never_clamps_at_the_filesystem_root(tmp_path):
-    """ZERO DEATH. The break that stops the walk running off the top killed nothing.
-
-    ``Path('/').parent`` is ``Path('/')``, so without the break the walk stops
-    moving and keeps counting, and the ancestor it ends on is the same path for
-    every depth that overruns. One directory then answers to two different
-    declared depths, which is the identity-that-is-not-unique defect in
-    miniature: a match is supposed to mean "the declared directory is exactly
-    this many levels up", and a clamped walk makes it mean "or fewer".
+    """The ancestor walk never clamps at ``/``, or one directory would match two
+    declared depths.
     """
     from cratekit.core import preflight
 
     anchor = Path(tmp_path.anchor)
-    # Zero levels up from the mount directory IS the mount directory. One level
-    # up from it is off the top of the filesystem, and that is not a match.
+    # Zero levels up is the mount directory; one level up is off the top.
     assert preflight._is_a_volume_mount_location(anchor, ((anchor, 0),)) is True
     assert preflight._is_a_volume_mount_location(anchor, ((anchor, 1),)) is False
     assert preflight._is_a_volume_mount_location(anchor / "Volumes", ((anchor, 1),)) is True
@@ -5221,15 +4562,8 @@ def test_the_walk_up_to_an_ancestor_never_clamps_at_the_filesystem_root(tmp_path
 def test_a_library_reached_through_a_symlinked_parent_still_finds_its_slot(
     volumes_directory, tmp_path
 ):
-    """ZERO DEATH. Walking the RESOLVED chain killed nothing on its own.
-
-    The sibling above covers the spelling GIVEN, where a symlink standing in the
-    mount directory points out of it. This is the other direction and it is the
-    ordinary convenience layout: a shortcut in the home directory aimed at the
-    external volume, with the library named through the shortcut. Nothing on the
-    given chain crosses a declared row, so the resolved chain is the only thing
-    that finds the slot, and without it the drive being detached is invisible and
-    the boot disk's identity is what gets recorded.
+    """A library named through a symlinked parent, such as a home shortcut to the
+    volume, still finds its slot on the resolved chain.
     """
     from cratekit.core import preflight
 
@@ -5251,16 +4585,10 @@ def test_a_library_reached_through_a_symlinked_parent_still_finds_its_slot(
 def test_identity_source_asks_whether_the_slot_holds_a_volume_not_whether_it_is_one(
     tmp_path, monkeypatch
 ):
-    """ZERO DEATH, and the reason is the guard-covered-by-a-guard shape again.
+    """``identity_source`` asks ``slot_holds_a_volume``, not ``is_mount_point``.
 
-    ``identity_source`` asks :func:`slot_holds_a_volume` rather than
-    :func:`is_mount_point`, and swapping it back killed nothing because the
-    synthetic fixture answers ``is_mount_point`` by RESOLVING first, so the
-    fixture was already doing the work the real seam does not. Only the real
-    ``os.path.ismount`` shows the difference: it answers False for a symlink by
-    contract, and every current macOS puts the boot volume's own entry in the
-    mount directory as a symlink to ``/``. Asking the narrower question refuses
-    that install, which is a guard firing on a correct setup (P7).
+    The fixture resolves first, so only the real ``os.path.ismount``, False for
+    the macOS boot volume's symlink to ``/``, shows the difference (P7).
     """
     from cratekit.core import preflight
 
@@ -5277,36 +4605,24 @@ def test_identity_source_asks_whether_the_slot_holds_a_volume_not_whether_it_is_
 def test_is_mount_point_is_the_one_fact_the_rule_turns_on_and_it_is_pinned(
     tmp_path, monkeypatch
 ):
-    """BLOCKING. The seam the whole round-four rule stands on covered nothing.
+    """``is_mount_point`` delegates to ``os.path.ismount`` and is driven both ways.
 
-    The full suite passed with the body replaced by ``return True`` AND with it
-    replaced by ``return False``, because every test that drives the rule injects
-    its own answer through the fixture and the no-slot cases short circuit before
-    it is reached. ``return True`` accepts an ejected volume's leftover mount
-    point, which is verbatim the defect round four exists to close.
-
-    So the same remedy the mount-location TABLE already gets is applied to the
-    SEAM beside it: what it delegates to is asserted, and the real function is
-    driven against a directory that IS a mount point on this machine and one that
-    is not. The filesystem root is a mount point on every platform this runs on,
-    including Windows, where a drive root answers True.
+    Every rule test injects this seam, so ``return True`` would accept an
+    ejected volume's leftover mount point unseen. The filesystem root is a mount
+    point on every platform.
     """
     from cratekit.core import preflight
 
     ordinary = tmp_path / "not-a-mount"
     ordinary.mkdir()
 
-    # The real function, both directions. ``return True`` dies on the second
-    # line and ``return False`` dies on the first.
+    # The real function, both directions.
     assert preflight.is_mount_point(Path(tmp_path.anchor)) is True
     assert preflight.is_mount_point(ordinary) is False
-    # And absent or unstattable is False, which is the safe direction: the
-    # caller's refusal is what stops an identity being read off the wrong disk.
+    # Absent or unstattable is False, the safe direction.
     assert preflight.is_mount_point(tmp_path / "never-existed") is False
 
-    # It is ``os.path.ismount`` and not a reimplementation of it, so a platform
-    # that grows a new mount shape is answered by the standard library rather
-    # than by a copy here.
+    # It is ``os.path.ismount``, not a copy of it.
     monkeypatch.setattr(os.path, "ismount", lambda path: str(path) == "sentinel")
     assert preflight.is_mount_point(Path("sentinel")) is True
     assert preflight.is_mount_point(Path(tmp_path.anchor)) is False
@@ -5315,20 +4631,12 @@ def test_is_mount_point_is_the_one_fact_the_rule_turns_on_and_it_is_pinned(
 def test_a_linux_library_on_an_ordinary_directory_is_not_refused_forever(
     tmp_path, monkeypatch
 ):
-    """OVER RESTRICTION. ``/mnt/<name>`` as a row produced a run-setup loop.
+    """A Linux library at ``/mnt/<name>/music`` on an ordinary filesystem is not
+    refused forever.
 
-    Linux has no identity adapter, so every mount outcome there is
-    ``IDENTITY_UNAVAILABLE`` and the write leg always goes through
-    ``root_can_be_created``. With ``/mnt`` declared as a place a volume mounts, a
-    library at ``/mnt/<name>/music`` on an ordinary root filesystem could never
-    have its active template written: the wizard refused, doctor read for the
-    template, found nothing, and answered ``taxonomy.active`` FAIL with
-    run-setup. The user re-runs setup forever, which is the exact loop round four
-    closed one function away in ``doctor.py``.
-
-    ``--volume-id`` does not rescue it, because ``_seed_taxonomy`` asks the WRITE
-    table rather than the identity, so the arrangement is driven with an identity
-    already recorded.
+    With no identity adapter the write always goes through
+    ``root_can_be_created``, and ``_seed_taxonomy`` asks the write table, so it
+    is driven with an identity recorded.
     """
     from cratekit.core import preflight
 
@@ -5337,8 +4645,7 @@ def test_a_linux_library_on_an_ordinary_directory_is_not_refused_forever(
     root.mkdir(parents=True)
     media = (tmp_path / "media").resolve()
     (media / "phil" / "EP_LIBRARY").mkdir(parents=True)
-    # The SHIPPED linux rows, rebased under the temporary directory, so this is
-    # the table that ships rather than one invented for the test.
+    # The shipped Linux rows, rebased under the temporary directory.
     rebased = tuple(
         ((tmp_path / directory.lstrip("/")).resolve(), depth)
         for directory, depth in preflight._VOLUME_MOUNT_LOCATIONS["linux"]
@@ -5355,9 +4662,8 @@ def test_a_linux_library_on_an_ordinary_directory_is_not_refused_forever(
     assert preflight.library_state_may_be_written(status) is True
     assert preflight.library_state_is_readable(status) is True
 
-    # AND THE REFUSAL THAT MATTERS SURVIVES. A drive the automounter would put at
-    # ``<media>/<user>/<label>`` is still refused while nothing is mounted there,
-    # which is the arrangement the rule exists for.
+    # A drive the automounter would put at ``<media>/<user>/<label>`` is still
+    # refused while nothing is mounted there.
     detached = media / "phil" / "EP_LIBRARY" / "Music"
     assert preflight.mount_location_ancestors(detached) != ()
     assert preflight.identity_source(detached) is None
@@ -5367,11 +4673,8 @@ def test_a_linux_library_on_an_ordinary_directory_is_not_refused_forever(
 def test_the_wizard_writes_the_active_template_on_a_linux_style_ordinary_directory(
     tmp_path, monkeypatch
 ):
-    """The loop, closed end to end rather than at the table.
-
-    A refusal nobody can act on is worse than one nobody sees, and this one had
-    no exit at all: the template is what makes a library self-describing, and
-    doctor fails without it.
+    """End to end, the template is written on a Linux style ordinary directory,
+    or doctor fails with no exit.
     """
     from cratekit.core import preflight
 
@@ -5384,8 +4687,7 @@ def test_the_wizard_writes_the_active_template_on_a_linux_style_ordinary_directo
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     monkeypatch.setattr(preflight, "volume_mount_locations", lambda: rebased)
     monkeypatch.setattr(preflight, "is_mount_point", lambda path: False)
-    # A platform with no identity adapter, which is every platform that is not
-    # macOS or Windows.
+    # A platform with no identity adapter.
     monkeypatch.setattr(
         doctor, "Probes", lambda: probes(identity_provider=preflight.null_volume_identity)
     )
@@ -5409,11 +4711,8 @@ def test_the_wizard_writes_the_active_template_on_a_linux_style_ordinary_directo
 
 
 def test_a_library_on_the_boot_disk_itself_is_not_refused(tmp_path):
-    """The plainest legitimate arrangement, and every round has had to keep it.
-
-    A library in a home directory crosses no declared mount location, so there is
-    no slot to ask about, and the identity of whatever holds it is the identity
-    it will keep. Accepted whether or not the directory exists yet, at any depth.
+    """A library on the boot disk crosses no declared mount location, so it is
+    accepted at any depth, existing or not.
     """
     from cratekit.core import preflight
 
@@ -5421,18 +4720,13 @@ def test_a_library_on_the_boot_disk_itself_is_not_refused(tmp_path):
     here.mkdir()
     assert preflight.identity_source(here) is not None
     assert preflight.root_can_be_created(here) is True
-    # A FIRST RUN: the root is not there yet and will be created on the volume
-    # its parent is already on. "The root must exist" was correction one, and it
-    # refused every first run.
+    # A first run: the root will be created on its parent's volume.
     assert preflight.root_can_be_created(tmp_path / "not" / "yet" / "here") is True
 
 
 def test_a_platform_with_no_declared_row_refuses_nothing(tmp_path, monkeypatch):
-    """An empty table is "nothing to refuse", not "refuse everything".
-
-    Inventing a location for a platform nobody has described would refuse
-    ordinary paths on it. The gap for Windows specifically is item 1 of the residual
-    finding "Five places where "I could not look" is still not said out loud".
+    """An empty table refuses nothing, rather than inventing a location; the
+    Windows gap is a recorded residual.
     """
     from cratekit.core import preflight
 
@@ -5448,13 +4742,8 @@ def test_a_platform_with_no_declared_row_refuses_nothing(tmp_path, monkeypatch):
 def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
     configured, tmp_path
 ):
-    """BLOCKING, and doctor exited 0 over it.
-
-    ``_git_dir`` returned None for an unreadable marker and for a marker that
-    parsed and named no directory alike, and the caller rendered both as the
-    second: INFO, no remedy, ``report.ok`` still True. Round four made exactly
-    this split for the hook FILE two screens down and left the MARKER that leads
-    to it, in the same check, in the same round.
+    """An unreadable ``.git`` marker is not one that names nothing, which is INFO
+    with ``report.ok`` true.
     """
     root = tmp_path / "checkout"
     root.mkdir()
@@ -5463,7 +4752,7 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
 
     marker.chmod(0o000)
     try:
-        pointed, unreadable, remedy = doctor._git_dir(root)
+        pointed, unreadable, remedy = doctor_model._git_dir(root)
         report = doctor.run(configured, probes=probes(checkout_root=lambda: root))
     finally:
         marker.chmod(0o644)
@@ -5472,37 +4761,28 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
     assert unreadable is not None and str(marker) in unreadable
     finding = find(report, "repo.commit_hook")
     assert finding.status is doctor.Status.FAIL, finding.detail
-    # AND THE ACT IS THE ONE THE USER CAN PERFORM. The marker was refused by the
-    # operating system, which is a permission to grant and not a defect in this
-    # program; report-defect over it is the same misclassification this whole
-    # round is about, wearing a different check's name.
+    # Refused by the operating system, so a permission to grant, not a defect.
     assert remedy is Remedy.GRANT_PATH_ACCESS
     assert finding.remedy is Remedy.GRANT_PATH_ACCESS
     assert "unknown rather than no" in finding.detail
     assert "names no git directory" not in finding.detail
     assert report.ok is False, "doctor exited 0 over an unanswered commit scan"
 
-    # AND THE QUIET ANSWER SURVIVES. A marker that WAS read and named nothing is
-    # still INFO with no remedy: nothing is broken, there is simply no git
-    # directory to look in.
+    # A marker that was read and named nothing is still INFO with no remedy.
     marker.write_text("this is not a gitdir pointer\n")
     named_nothing = find(
         doctor.run(configured, probes=probes(checkout_root=lambda: root)),
         "repo.commit_hook",
     )
-    assert doctor._git_dir(root) == (None, None, None)
+    assert doctor_model._git_dir(root) == (None, None, None)
 
-    # AND A MARKER THAT IS PRESENT AND IS NOT TEXT. ``UnicodeDecodeError`` is a
-    # ``ValueError`` rather than an ``OSError``, so it escaped the handler beside
-    # it and left the whole check as one that did not complete. Its own leg
-    # killed no test until this line, which is the same shape as the split above.
+    # A marker that is not text: ``UnicodeDecodeError`` is a ``ValueError``,
+    # not an ``OSError``.
     marker.write_bytes(b"gitdir: \xff\xfe/somewhere\n")
-    pointed, not_text, not_text_remedy = doctor._git_dir(root)
+    pointed, not_text, not_text_remedy = doctor_model._git_dir(root)
     assert pointed is None
     assert not_text is not None and "not readable text" in not_text
-    # The bytes were READ and then would not decode, so nothing was refused and
-    # this leg keeps report-defect. The two legs of one handler answer two
-    # different questions and must not borrow each other's act.
+    # The bytes were read and would not decode, so this leg keeps report-defect.
     assert not_text_remedy is Remedy.REPORT_DEFECT
     assert named_nothing.status is doctor.Status.INFO
     assert "names no git directory" in named_nothing.detail
@@ -5511,11 +4791,8 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
 def test_a_commondir_that_cannot_be_read_is_reported_rather_than_swallowed(
     configured, tmp_path
 ):
-    """The second None in the same function, and it had a pragma over it.
-
-    A worktree's per-tree directory names the COMMON one through ``commondir``,
-    and a ``commondir`` this account cannot open left the caller reporting a
-    worktree as having no git directory at all.
+    """An unreadable ``commondir`` is reported, not read as a worktree with no git
+    directory.
     """
     common = tmp_path / "main" / ".git"
     (common / "hooks").mkdir(parents=True)
@@ -5529,7 +4806,7 @@ def test_a_commondir_that_cannot_be_read_is_reported_rather_than_swallowed(
 
     commondir.chmod(0o000)
     try:
-        pointed, unreadable, remedy = doctor._git_dir(worktree)
+        pointed, unreadable, remedy = doctor_model._git_dir(worktree)
         finding = find(
             doctor.run(configured, probes=probes(checkout_root=lambda: worktree)),
             "repo.commit_hook",
@@ -5547,14 +4824,8 @@ def test_a_commondir_that_cannot_be_read_is_reported_rather_than_swallowed(
 def test_a_commondir_that_is_present_and_is_not_text_is_reported_too(
     configured, tmp_path
 ):
-    """THE OTHER MEMBER OF THE SAME TUPLE, and it was pinned by nothing.
-
-    ``except (OSError, UnicodeDecodeError)`` has two members precisely because a
-    ``UnicodeDecodeError`` is a ``ValueError`` and would otherwise escape the
-    check entirely. Only the permission leg was ever driven, so dropping the
-    second member killed no test and the claim that both were covered was false
-    for this one. A ``commondir`` written by a damaged checkout, or by a tool
-    that wrote a different encoding, is present and does not decode.
+    """A ``commondir`` that does not decode is reported too, the
+    ``UnicodeDecodeError`` member of the handler.
     """
     common = tmp_path / "main" / ".git"
     (common / "hooks").mkdir(parents=True)
@@ -5565,7 +4836,7 @@ def test_a_commondir_that_is_present_and_is_not_text_is_reported_too(
     worktree.mkdir()
     (worktree / ".git").write_text(f"gitdir: {per_tree}\n")
 
-    pointed, unreadable, remedy = doctor._git_dir(worktree)
+    pointed, unreadable, remedy = doctor_model._git_dir(worktree)
     finding = find(
         doctor.run(configured, probes=probes(checkout_root=lambda: worktree)),
         "repo.commit_hook",
@@ -5574,8 +4845,7 @@ def test_a_commondir_that_is_present_and_is_not_text_is_reported_too(
     assert pointed is None
     assert unreadable is not None and "commondir" in unreadable
     assert finding.status is doctor.Status.FAIL
-    # Nothing was refused, so this half is a damaged checkout and keeps
-    # report-defect. It is the leg the permission test above cannot reach.
+    # Nothing was refused, so a damaged checkout keeps report-defect.
     assert remedy is Remedy.REPORT_DEFECT
     assert finding.remedy is Remedy.REPORT_DEFECT
     assert "did not complete" not in finding.detail, "the blanket rescue answered"
@@ -5587,17 +4857,8 @@ def test_a_commondir_that_is_present_and_is_not_text_is_reported_too(
 def test_the_wizard_tells_an_unlistable_template_directory_from_an_absent_name(
     configured, unreadable_install
 ):
-    """BLOCKING. The fourth handler of the collapse round four fixed three of.
-
-    ``except (FileNotFoundError, OSError)`` is ONE clause over BOTH conditions,
-    and the redundancy is the fingerprint: ``FileNotFoundError`` IS an
-    ``OSError``. With the packaged directory unreadable, one ``crate setup``
-    envelope carried "no shipped template is named 'default'; shipped: " from the
-    wizard and "the packaged template directory could not be listed ... a damaged
-    or partial install rather than a configuration error" from doctor, in the
-    same report. The first contradicted the second, sent the user to change a
-    configuration value that was correct, and printed an empty shipped set as a
-    fact.
+    """An unlistable template directory is a damaged install, not an absent
+    name, and agrees with doctor in the same envelope.
     """
     cfg = configured
     wizard = setup_verb._Wizard({}, silent())
@@ -5611,18 +4872,13 @@ def test_the_wizard_tells_an_unlistable_template_directory_from_an_absent_name(
     assert "no shipped template is named" not in note.detail
     assert "shipped: " not in note.detail, "an empty set was printed as a fact"
 
-    # And it AGREES with what doctor says about the same install, which is the
-    # property the two answers failed on.
+    # It agrees with what doctor says about the same install.
     doctor_finding = find(doctor.run(cfg, probes=probes()), "taxonomy.active")
     assert doctor_finding.remedy is note.remedy
 
 
 def test_the_wizard_still_names_a_template_that_simply_does_not_ship(configured):
-    """The other half. A listable set that does not hold the name is a config error.
-
-    Splitting a handler is only right if both branches keep their own answer, and
-    this is the one the user really can fix by choosing another value.
-    """
+    """A listable set without the name is a config error the user can fix."""
     document = configured.to_toml_dict()
     document.setdefault("taxonomy", {})["template"] = "no-such-template"
     wizard = setup_verb._Wizard({}, silent())
@@ -5638,11 +4894,8 @@ def test_the_wizard_still_names_a_template_that_simply_does_not_ship(configured)
 def test_a_template_that_ships_and_will_not_open_is_a_damaged_install_too(
     configured, monkeypatch
 ):
-    """The third condition the one handler was hiding.
-
-    The name IS in the listed set and the packaged bytes will not open, so this
-    is neither a wrong value nor an absent template. Re-running setup cannot
-    repair a wheel, and that is the sentence the user gets.
+    """A listed template whose bytes will not open is a damaged install, which
+    setup cannot repair.
     """
     def refuse(_name):
         raise PermissionError(13, "Permission denied")
@@ -5657,11 +4910,8 @@ def test_a_template_that_ships_and_will_not_open_is_a_damaged_install_too(
     assert "damaged or partial install" in note.detail
     assert note.remedy is Remedy.REPORT_DEFECT
 
-    # AND PACKAGED BYTES THAT ARE NOT TEXT, which is the same damaged install
-    # arriving as a ``ValueError`` rather than an ``OSError``. Dropping
-    # ``UnicodeDecodeError`` from the handler killed no test until this line, and
-    # what it costs is the whole verb: the wizard would exit through the
-    # dispatcher's blanket as an internal defect.
+    # Packaged bytes that are not text arrive as a ``ValueError``, the same
+    # damaged install.
     def mojibake(_name):
         raise UnicodeDecodeError("utf-8", b"\xff\xfe", 0, 1, "invalid start byte")
 
@@ -5676,17 +4926,11 @@ def test_a_template_that_ships_and_will_not_open_is_a_damaged_install_too(
 
 
 def test_the_status_verb_survives_a_state_directory_that_cannot_be_walked(monkeypatch):
-    """ZERO DEATH, and item 1 of the residual finding "Two rescues that are kept
-    without being covered" argued it could not be anything else.
+    """A state walk that refuses costs ``crate status`` its run records, not the
+    verb.
 
-    The argument was about the TRIGGER and it stands: measured on this
-    interpreter, ``Path.glob`` swallows a ``PermissionError`` inside its own
-    scandir walk and answers empty for a run directory somebody replaced with a
-    plain file, so no arrangement of a real filesystem reaches the handler. What
-    the argument does not excuse is leaving the CONTRACT unstated. The contract
-    is that a walk which refuses costs the report its run records and not the
-    whole ``crate status`` verb, and that is assertable at the seam whether or
-    not CPython ever raises there.
+    No real filesystem reaches the handler, since ``Path.glob`` swallows the
+    error, so the contract is asserted at the seam.
     """
 
     class Refuses:
@@ -5720,14 +4964,8 @@ def _refusing_check(key: str = "library.mounted") -> doctor.Check:
 
 
 def test_a_structured_refusal_keeps_its_reason_remedy_steps_and_reserved_code():
-    """The blanket rescue flattened a refusal into "report this defect".
-
-    Measured: status FAIL, remedy report-defect, detail "this check did not
-    complete", and the process left under PRECONDITION rather than under the
-    reserved 22. The reason slug, the remediation steps and the code were all
-    gone, and the user was told to file a defect about their own unmounted drive.
-    The rescue is deliberately not per check, which is exactly why it mattered:
-    every check written here inherits it.
+    """A structured refusal keeps its reason, remedy, steps and reserved code
+    through the rescue, rather than becoming report-defect under PRECONDITION.
     """
     inputs = doctor._Inputs(None, None, probes())
     finding = doctor.answer(_refusing_check(), inputs)
@@ -5747,11 +4985,7 @@ def test_a_structured_refusal_keeps_its_reason_remedy_steps_and_reserved_code():
 
 
 def test_an_unstructured_break_is_still_rescued_as_a_check_that_did_not_complete():
-    """The other half, and it is the one the rescue was written for.
-
-    Splitting the handler must not stop the report surviving a check that simply
-    broke, which is the property the whole module's opening argument turns on.
-    """
+    """An unstructured break is still rescued, so the report survives."""
     def explode(_inputs):
         raise RuntimeError("psutil said no")
 
@@ -5766,11 +5000,7 @@ def test_an_unstructured_break_is_still_rescued_as_a_check_that_did_not_complete
 
 
 def test_a_report_with_no_structured_refusal_still_exits_precondition(configured):
-    """The ordinary failing report keeps the code it has always had.
-
-    Reading the exit code off the cause rather than writing PRECONDITION into the
-    envelope must not change what an ordinary broken machine reports.
-    """
+    """An ordinary failing report still exits PRECONDITION."""
     report = doctor.run(configured, probes=probes(find_binary=lambda _n: None))
     assert report.ok is False
     cause = doctor.failure_cause(report)
@@ -5779,7 +5009,7 @@ def test_a_report_with_no_structured_refusal_still_exits_precondition(configured
 
 
 def test_doctor_leaves_under_the_code_a_refusing_check_reserved(monkeypatch, configured):
-    """End to end through the real dispatcher, because the code is the contract."""
+    """Through the real dispatcher, since the code is the contract."""
     monkeypatch.setattr(doctor, "CHECKS", (_refusing_check(),))
     code, out, _err = drive(["--output", "json", "doctor"])
     assert code == int(ExitCode.LIBRARY_UNAVAILABLE)
@@ -5787,10 +5017,8 @@ def test_doctor_leaves_under_the_code_a_refusing_check_reserved(monkeypatch, con
 
 
 def test_the_rescue_still_lets_the_three_control_exceptions_through():
-    """KeyboardInterrupt, SystemExit and GeneratorExit are not check failures.
-
-    They are how a process is being stopped, and swallowing one turns a Ctrl-C
-    into a green check.
+    """KeyboardInterrupt, SystemExit and GeneratorExit pass through, or a Ctrl-C
+    becomes a green check.
     """
     inputs = doctor._Inputs(None, None, probes())
     for kind in (KeyboardInterrupt, SystemExit, GeneratorExit):
@@ -5799,25 +5027,22 @@ def test_the_rescue_still_lets_the_three_control_exceptions_through():
 
         with pytest.raises(kind):
             doctor.answer(doctor.Check("library.mounted", raiser), inputs)
-    # And a MemoryError IS caught, because the report is worth more than the
-    # check that ran out of room.
+    # A MemoryError is caught, since the report is worth more than the check.
     def hungry(_inputs):
         raise MemoryError()
 
     assert doctor.answer(doctor.Check("k", hungry), inputs).status is doctor.Status.FAIL
 
 
-# ── an ancestor this account cannot traverse ────────────────────────────────
+# ── an ancestor this account cannot traverse ─────────────────────────────────
 
 
 @pytest.fixture
 def sealed_ancestor(tmp_path):
     """A library root under a directory this account cannot traverse.
 
-    The routine first-run state on the platform this ships for first: on macOS
-    an interpreter without Full Disk Access is refused exactly this way for
-    anything under Documents, Desktop, Downloads or an external volume, and
-    ``Path.exists`` re-raises the permission error rather than answering False.
+    The routine macOS first run without Full Disk Access, where ``Path.exists``
+    re-raises the permission error rather than answering False.
     """
     sealed = tmp_path / "sealed"
     sealed.mkdir()
@@ -5830,16 +5055,8 @@ def sealed_ancestor(tmp_path):
 def test_the_wizard_refuses_an_unreachable_ancestor_rather_than_filing_a_defect(
     sealed_ancestor,
 ):
-    """Item 3 of the residual finding "Five places where "I could not look" is
-    still not said out loud", and what it recorded was not what happens.
-
-    It said the wizard "exits with a traceback" and deferred it because a
-    traceback is loud rather than wrong. Driven end to end there is no traceback:
-    the dispatcher's blanket catches it and renders "setup: failed (INTERNAL) /
-    internal-error: PermissionError / fix: this is a defect; report it". So the
-    product classified the user's own filesystem permission as a Cratekit defect
-    and sent them to file a bug report, in the one verb whose entire job is
-    getting a fresh clone to a first write.
+    """An unreachable ancestor is refused with the path, not filed as an internal
+    defect by the dispatcher's blanket.
     """
     wizard = setup_verb._Wizard({}, silent())
     with pytest.raises(CratekitError) as excinfo:
@@ -5859,7 +5076,7 @@ def test_the_wizard_refuses_an_unreachable_ancestor_rather_than_filing_a_defect(
 def test_setup_end_to_end_names_the_path_instead_of_asking_for_a_bug_report(
     sealed_ancestor, tmp_path, monkeypatch
 ):
-    """Through the real dispatcher, which is where the defect was visible."""
+    """Through the real dispatcher, where the defect was visible."""
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(sealed_ancestor))
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
 
@@ -5878,19 +5095,15 @@ def test_setup_end_to_end_names_the_path_instead_of_asking_for_a_bug_report(
     assert envelope["cause"]["reason"] == "library-root-unreachable"
     assert envelope["cause"]["reason"] != "internal-error"
     assert "report it" not in envelope["cause"]["remediation"].get("remedy", "")
-    # THE SLUG ITSELF, because it is what persists. Nothing pinned the token's
-    # spelling, so a typo in the enum travelled into every stored cause and every
-    # machine consumer branching on it while the whole suite stayed green.
+    # The slug itself, since it persists into every stored cause.
     assert envelope["cause"]["remediation"]["remedy"] == "grant-path-access"
 
 
 def test_the_taxonomy_seed_reports_an_unreachable_root_rather_than_raising(
     sealed_ancestor, monkeypatch
 ):
-    """The second place the wizard reaches preflight, and it is reached only when
-    ``--volume-id`` supplied the identity the derive would otherwise have refused
-    over. It NOTES rather than raises, because the configuration is already saved
-    by the time it runs and the report is what the user reads.
+    """With ``--volume-id`` supplied, the taxonomy seed notes an unreachable root
+    rather than raising, since the config is already saved.
     """
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(sealed_ancestor))
     cfg = config.from_dict(document_for(sealed_ancestor))
@@ -5906,16 +5119,8 @@ def test_the_taxonomy_seed_reports_an_unreachable_root_rather_than_raising(
 
 
 def test_the_seed_reports_a_state_directory_it_could_not_look_into(library):
-    """THE HOLE THE FIRST FIX MOVED. The mount question was handled at the top of
-    ``_seed_taxonomy`` and the same exception shape was left unhandled at the
-    bottom of it, ten lines on.
-
-    ``Path.exists`` re-raises a permission error rather than answering False, so
-    a ``.cratekit`` directory this account cannot traverse escaped the whole verb
-    and the dispatcher rendered the user's own filesystem permission as
-    "internal-error ... this is a defect; report it". The library root here is
-    perfectly reachable, which is what makes it a second condition rather than
-    the same one: everything above this line succeeds.
+    """An untraversable ``.cratekit`` directory under a reachable root is noted,
+    not escaped as an internal defect.
     """
     cfg = config.from_dict(document_for(library))
     state = config.state_path("taxonomy_active", cfg).parent
@@ -5935,19 +5140,11 @@ def test_the_seed_reports_a_state_directory_it_could_not_look_into(library):
 
 
 def test_the_seed_reports_a_write_it_was_refused_rather_than_filing_a_defect(library):
-    """The other half of the same tail, and a DIFFERENT act from the one above.
+    """A refused write is noted with its own act, not as a directory that could
+    not be opened.
 
-    A library volume mounted read only, or a state directory owned by another
-    account, is reached and stat-ed perfectly well and refuses the write. That
-    escaped as an internal defect too. It must not borrow the sentence above,
-    which asserts a directory could not be opened: this one was opened.
-
-    THE SENTENCE NOW NAMES THE KIND THAT HAPPENED RATHER THAN BOTH. It used to
-    hedge, "a directory this account may not write in or a volume mounted read
-    only", and then close with the act for the first of those two whichever one
-    had actually occurred. This arrangement is the first: a directory mode, on a
-    writable volume. So the read only act must NOT appear, and the sibling test
-    below drives a real read only volume and asserts the reverse.
+    This arrangement is a directory mode on a writable volume, so the read only
+    act must not appear; the sibling test drives the reverse.
     """
     cfg = config.from_dict(document_for(library))
     state = config.state_path("taxonomy_active", cfg).parent
@@ -5965,20 +5162,17 @@ def test_the_seed_reports_a_write_it_was_refused_rather_than_filing_a_defect(lib
     assert note.remedy is Remedy.GRANT_PATH_ACCESS
     assert "could not be written" in note.detail
     assert "Full Disk Access" in note.detail
-    # The act for the OTHER kind is absent, because the other kind did not occur.
+    # The act for the other kind is absent, since it did not occur.
     assert "mounted read only" not in note.detail
     assert "chflags nouchg" not in note.detail
-    # And it does not claim the path could not be looked at, because it was.
+    # It does not claim the path could not be looked at.
     assert "could not be examined" not in note.detail
     assert not config.state_path("taxonomy_active", cfg).exists()
 
 
 def test_the_grant_path_access_advice_claims_neither_act_over_the_other(library):
-    """One token, two conditions, so the one-line advice may assert neither.
-
-    It read "this account cannot open a directory on the way to the path named
-    below", which is false for the read-only-volume half: that directory opens
-    fine. The specific act is named in each finding's own detail.
+    """One token covers two conditions, so its one-line advice asserts neither;
+    each finding's detail names the act.
     """
     advice = render.remedy_text(Remedy.GRANT_PATH_ACCESS)
     assert advice
@@ -5989,10 +5183,8 @@ def test_the_grant_path_access_advice_claims_neither_act_over_the_other(library)
 def test_doctor_still_answers_every_check_over_an_unreachable_root(
     sealed_ancestor, monkeypatch
 ):
-    """The behaviour that was already right, pinned so the wizard's fix matches it.
-
-    Doctor survives this and answers all of its checks, with the mount question
-    reported as a check that did not complete rather than as a green one.
+    """Doctor answers every check over an unreachable root, the mount question as
+    a check that did not complete.
     """
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(sealed_ancestor))
     report = doctor.run(config.from_dict(document_for(sealed_ancestor)), probes=probes())
@@ -6005,37 +5197,22 @@ def test_doctor_still_answers_every_check_over_an_unreachable_root(
 
 # ── one classification, made once, for a permission the user can grant ───────
 #
-# Round six. The same defect was fixed three times, at six sites, and found again
-# three times, so it is no longer fixed per site: ``cause.permission_denied``
-# answers it, ``cause.access_remedy`` chooses the act, and the two blankets that
-# exist for what nobody guarded, the dispatcher and doctor's check runner, both
-# ask. The tests below drive REAL directories with mode 0o000 rather than
-# fixtures raising a synthetic error, because a fixture raising ``PermissionError``
-# is what pinned the wrong answer for three rounds.
+# ``cause.permission_denied`` answers it, ``cause.access_remedy`` chooses the
+# act, and both blankets (the dispatcher and doctor's check runner) ask. The
+# tests drive real 0o000 directories, since a synthetic ``PermissionError``
+# pinned the wrong answer.
 
 
 @pytest.mark.parametrize("arrangement", ["configuration-directory", "library-root"])
 def test_both_verbs_answer_a_real_permission_with_an_act_the_user_can_perform(
     tmp_path, monkeypatch, arrangement
 ):
-    """THE WHOLE VERB, through the real dispatcher, against a real 0o000 directory.
+    """Through the real dispatcher, both verbs answer a real 0o000 directory with
+    an act the user can perform and the path to act on.
 
-    TWO ARRANGEMENTS, AND ONLY ONE OF THEM USED TO RUN. The docstring named both
-    and the body sealed only the configuration directory: the library root was
-    created fresh under ``tmp_path`` and nothing ever refused it, so the row
-    called "the whole verb" covered exactly one sealed location and asserted one
-    slug that the other arrangement does not produce. Both are driven now, and
-    what is asserted per arrangement is what that arrangement is entitled to.
-
-    A library root behind a sealed ancestor is answered by the verbs THEMSELVES,
-    under their own slug, because a refusal that knows which path it was about
-    keeps the better name for it. A configuration directory behind one is
-    answered by NOBODY, because ``config.load`` stats the file before it reads it
-    and a stat is not a ``ConfigError``.
-
-    What is asserted in both is the thing a user reads. Not a slug, not an
-    exception type: whether the product told them to file a bug about their own
-    filesystem, and whether it named the path they have to act on.
+    Two arrangements: a sealed library root is answered by the verbs under their
+    own slug, and a sealed config directory by the classification, since
+    ``config.load``'s stat is not a ``ConfigError``.
     """
     sealed = tmp_path / "sealed"
     (sealed / "cfg").mkdir(parents=True)
@@ -6057,9 +5234,8 @@ def test_both_verbs_answer_a_real_permission_with_an_act_the_user_can_perform(
         "--taxonomy", "default",
     ]
     if arrangement == "configuration-directory":
-        # The identity is supplied, so the run reaches the configuration file.
-        # Withholding it in the other arrangement is what makes the wizard DERIVE
-        # an identity, which is the act that meets the sealed ancestor.
+        # The identity is supplied, so the run reaches the configuration file;
+        # withheld, the wizard derives and meets the sealed ancestor.
         argv += ["--volume-id", VOLUME]
 
     sealed.chmod(0o000)
@@ -6072,27 +5248,22 @@ def test_both_verbs_answer_a_real_permission_with_an_act_the_user_can_perform(
 
     surfaces = [(setup_code, setup_out, setup_err)]
     if arrangement == "configuration-directory":
-        # Doctor reports on the CONFIGURATION it could not load. With the config
-        # readable and only the library sealed, it reports a library finding and
-        # exits on the FAIL band rather than refusing, which the check-table
-        # tests already cover; this row is about a refusal.
+        # Doctor reports on the config it could not load; a sealed library alone
+        # is a FAIL band finding the check-table tests cover.
         surfaces.append((doctor_code, doctor_out, doctor_err))
 
     for code, out, err in surfaces:
         envelope = json.loads(out)
         cause = envelope["cause"]
-        # The ACT is the same in both, and it is what the user performs.
+        # The act is the same in both.
         assert cause["remediation"]["remedy"] == "grant-path-access", err
         assert "report it" not in err
         assert "report-defect" not in out
-        # The path is the entire actionable content: "permission denied" with
-        # nothing to grant access TO is a sentence nobody can act on.
+        # The path is the actionable content.
         assert str(sealed) in cause["message"]
         assert cause["detail"]["path"] is not None
-        # THE SLUG AND THE CODE DIFFER BY ARRANGEMENT, and both are right. A
-        # refusal that knows the path was the LIBRARY says so on the library's
-        # band; one raised where nobody knew which path it was says so on the
-        # installation's, and only that one is written by the classification.
+        # The slug and code differ by arrangement: the library's band when the
+        # path is known, the installation's when the classification wrote it.
         if arrangement == "library-root":
             assert cause["reason"] == "library-root-unreachable"
             assert code == int(ExitCode.LIBRARY_UNAVAILABLE)
@@ -6105,15 +5276,10 @@ def test_both_verbs_answer_a_real_permission_with_an_act_the_user_can_perform(
 def test_the_help_screen_survives_a_configuration_directory_it_cannot_open(
     tmp_path, monkeypatch, capsys
 ):
-    """A CLAIM THE CODE DID NOT KEEP, in the first thing every invocation runs.
+    """``crate --help`` survives a sealed config directory.
 
-    ``_membership`` says a "missing or unreadable config resolves to the full
-    preset rather than raising", and it caught ``ConfigError`` only. A stat under
-    a directory the operating system will not open raises ``PermissionError``,
-    which is neither, and the call sits OUTSIDE the dispatcher's try, in the
-    parser construction. So ``crate --help`` exited with a traceback on a machine
-    whose configuration directory is sealed, which is the one moment a new user
-    has nothing to diagnose with.
+    ``_membership`` caught only ``ConfigError``, and it runs during parser
+    construction, outside the dispatcher's try.
     """
     sealed = tmp_path / "sealed"
     (sealed / "cfg").mkdir(parents=True)
@@ -6127,26 +5293,18 @@ def test_the_help_screen_survives_a_configuration_directory_it_cannot_open(
         sealed.chmod(0o755)
         config.reset_cache()
 
-    # The parser prints its own help to the real stream and exits, which the
-    # dispatcher converts to a status; what is asserted is that it got there at
-    # all rather than dying on the way in.
+    # The parser prints its help and exits; what is asserted is that it got
+    # there.
     assert code == int(ExitCode.OK)
     assert "usage: crate" in capsys.readouterr().out
 
 
 def test_a_mount_slot_this_account_cannot_stat_is_not_an_empty_mount_slot(tmp_path):
-    """BLOCKING, and instance seven of absence read as evidence of absence.
+    """A mount slot this account cannot stat is not an empty slot.
 
-    ``os.path.ismount`` swallows every ``OSError`` and answers False, so with the
-    volume ATTACHED under a directory this account cannot traverse the caller was
-    told "no volume is mounted there right now" and sent to plug in a drive that
-    was already plugged in. Nothing established that. A refusal may not assert a
-    physical fact it could not observe.
-
-    Both shapes are driven, because the two stats ``ismount`` makes fail in
-    different arrangements: a slot behind a sealed parent cannot be stat-ed at
-    all, and a slot that is itself unreadable cannot have its own parent resolved
-    through it.
+    ``os.path.ismount`` swallows ``OSError`` and answers False, which would send
+    a person to plug in an attached drive. Both shapes are driven: a slot behind
+    a sealed parent, and a slot that is itself unreadable.
     """
     from cratekit.core import preflight
 
@@ -6166,9 +5324,7 @@ def test_a_mount_slot_this_account_cannot_stat_is_not_an_empty_mount_slot(tmp_pa
         behind_a_seal.chmod(0o755)
         itself.chmod(0o755)
 
-    # AND THE REAL ANSWERS ARE UNCHANGED. Absent is still False, because nothing
-    # is there and nothing is mounted there, and the answer still comes from the
-    # standard library rather than from a reimplementation of its rules.
+    # The real answers are unchanged: absent is False, from the standard library.
     assert preflight.is_mount_point(tmp_path / "never-existed") is False
     assert preflight.is_mount_point(itself) is False
     assert preflight.is_mount_point(Path(tmp_path.anchor)) is True
@@ -6177,14 +5333,8 @@ def test_a_mount_slot_this_account_cannot_stat_is_not_an_empty_mount_slot(tmp_pa
 def test_the_wizard_does_not_claim_an_unmounted_volume_it_could_not_observe(
     tmp_path, monkeypatch
 ):
-    """The refusal that named a cause it had not established, end to end.
-
-    Measured before the fix, with the volume attached and mounted: ``ismount``
-    under EPERM answered False, ``identity_source`` answered None, and the wizard
-    printed "no volume is mounted there right now. Attach the library volume and
-    run setup again". It now refuses under the reason that IS established, which
-    is that a directory on the way could not be opened, and the two sentences are
-    different sentences on purpose.
+    """End to end, an unobservable slot refuses because a directory could not be
+    opened, not because no volume is mounted.
     """
     from cratekit.core import preflight
 
@@ -6217,14 +5367,8 @@ def test_the_wizard_does_not_claim_an_unmounted_volume_it_could_not_observe(
 def test_one_pair_of_paths_does_not_get_two_answers_decided_by_permission(
     tmp_path, monkeypatch
 ):
-    """The comparison underneath the mount rule, and permission was deciding it.
-
-    ``samefile`` stats both sides, and one handler over every ``OSError`` turned
-    "this account may not look" into "compared, and different". So two case
-    spellings of ONE directory on a case insensitive volume answered True when
-    stat-able and False when not: the same pair, two answers, decided by a
-    permission rather than by identity, and the False is the accepting direction
-    that lets an identity be read off the wrong disk.
+    """``samefile`` does not answer "different" when it could not stat, or two
+    spellings of one directory would get two answers by permission.
     """
     from cratekit.core import preflight
 
@@ -6235,43 +5379,34 @@ def test_one_pair_of_paths_does_not_get_two_answers_decided_by_permission(
     ordinary.mkdir()
     monkeypatch.setattr(preflight, "volume_mount_locations", lambda: ((declared, 1),))
 
-    # Stat-able: a real comparison, and a real answer.
+    # Stat-able: a real comparison.
     assert preflight.names_one_path(declared, declared) is True
     assert preflight.names_one_path(ordinary, declared) is False
 
     sealed.chmod(0o000)
     try:
-        # The identical pair, and the answer may not silently become "different".
+        # The identical pair may not silently become "different".
         with pytest.raises(PermissionError):
             preflight.names_one_path(ordinary, declared)
-        # And the rule built on it refuses rather than finding no slot at all,
-        # which is what fell through to the boot disk.
+        # The rule refuses rather than finding no slot and falling to the boot
+        # disk.
         with pytest.raises(PermissionError):
             preflight.mount_location_ancestors(ordinary / "EP" / "Music")
     finally:
         sealed.chmod(0o755)
 
-    # Absent on both sides is still a real answer and still False: nothing was
-    # refused, the two spellings simply are not one path.
+    # Absent on both sides is still False: nothing was refused.
     assert preflight.names_one_path(tmp_path / "a", tmp_path / "b") is False
 
 
 def test_the_database_probe_survives_a_recorded_path_it_cannot_stat(
     tmp_path, monkeypatch
 ):
-    """BLOCKING, and it killed the whole verb before it asked anything.
+    """A database path from rekordbox's settings that cannot be stat-ed does not
+    kill setup, since ``Path.exists`` re-raises under EPERM.
 
-    ``try/except`` covered the settings READER and stopped there, so the stat
-    below it ran unguarded, and ``Path.exists`` re raises under EPERM rather than
-    answering False. On an ordinary first run where rekordbox's OWN settings name
-    a database on an external drive or under Documents, ``crate setup`` exited
-    INTERNAL with "this is a defect; report it" before the first question. The
-    path is not one the user supplied, so there was nothing to route around.
-
-    AND IT IS STILL PROPOSED. Dropping the proposal would apply "could not look
-    means it is not there" to the one machine where the proposal is most likely
-    to be right: rekordbox is using that database and only this interpreter is
-    refused. It is a default to a question, never a value written unasked.
+    It is still proposed as a default, since rekordbox uses it and only this
+    interpreter is refused.
     """
     root = tmp_path / "library"
     locked = root / "db"
@@ -6309,18 +5444,13 @@ def test_the_database_probe_survives_a_recorded_path_it_cannot_stat(
     assert code != int(ExitCode.INTERNAL), err
     assert envelope.get("cause", {}).get("reason") != "internal-error"
     assert "report-defect" not in out
-    # THE VERB COMPLETED: a configuration was written and the proposal was taken
-    # as the default, which is the whole thing that could not happen before.
+    # The verb completed with the proposal taken as the default.
     assert config.load().library.db_path == locked / "master.db"
 
 
 def test_an_unreadable_backup_fact_file_is_a_permission_not_a_corruption(configured):
-    """It told the user to repair or reset the record of their last backup.
-
-    Over a file that may be perfectly intact. "Exists but could not be read" also
-    claims the file is there, and an untraversable parent raises exactly this
-    without anything under it having been observed. Two conditions, two acts:
-    a corruption is repaired, a permission is granted.
+    """An unreadable backup fact file is a permission to grant, not a corruption
+    to repair, and does not claim the file is there.
     """
     path = backup_facts.path_for(configured)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -6339,8 +5469,7 @@ def test_an_unreadable_backup_fact_file_is_a_permission_not_a_corruption(configu
         assert "repair or reset" not in (render.remedy_text(finding.remedy) or "")
         assert "exists but could not be read" not in finding.detail
 
-    # AND A REAL CORRUPTION STILL ASKS FOR A REPAIR. Classifying the permission
-    # out of this handler must not classify everything out of it.
+    # A real corruption still asks for a repair.
     path.write_text("this is not JSON at all")
     damaged = find(doctor.run(configured, probes=probes()), "backup.age.files")
     assert damaged.status is doctor.Status.FAIL
@@ -6348,12 +5477,8 @@ def test_an_unreadable_backup_fact_file_is_a_permission_not_a_corruption(configu
 
 
 def test_an_active_template_that_is_present_and_is_not_text_is_reported(configured):
-    """The second undriven ``UnicodeDecodeError`` leg, at ``taxonomy.active``.
-
-    A ``UnicodeDecodeError`` is a ``ValueError`` rather than an ``OSError``, so
-    the member exists precisely to stop a template that is present and does not
-    decode escaping the check. Dropping it killed no test: only the permission
-    half of the clause was ever driven.
+    """A template that does not decode is reported at ``taxonomy.active``, since
+    ``UnicodeDecodeError`` is not an ``OSError``.
     """
     path = config.state_path("taxonomy_active", configured)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -6364,17 +5489,12 @@ def test_an_active_template_that_is_present_and_is_not_text_is_reported(configur
     assert finding.status is doctor.Status.FAIL
     assert "could not be read" in finding.detail
     assert "did not complete" not in finding.detail, "the blanket rescue answered"
-    # Nothing was refused by the operating system, so this one IS a repair.
+    # Nothing was refused by the operating system, so this one is a repair.
     assert finding.remedy is Remedy.REPORT_DEFECT
 
 
 def test_a_commit_hook_that_is_present_and_is_not_text_is_reported(configured, tmp_path):
-    """The third undriven leg, at ``repo.commit_hook``, and the same shape.
-
-    The equivalent member in the wizard's own template read kills a test, so the
-    setup half was covered and the doctor half was not, in a pair of handlers
-    written to be the same handler.
-    """
+    """The same decode leg at ``repo.commit_hook``."""
     root = tmp_path / "checkout"
     (root / ".git" / "hooks").mkdir(parents=True)
     (root / ".pre-commit-config.yaml").write_text("repos: []\n")
@@ -6392,13 +5512,11 @@ def test_a_commit_hook_that_is_present_and_is_not_text_is_reported(configured, t
 
 
 def test_the_classification_reads_the_declared_cause_and_not_the_context(tmp_path):
-    """One decision, and the boundary of it is the point.
+    """The classification reads ``__cause__``, not the implicit context.
 
-    A wrapper that says ``raise X from exc`` is stating that its failure IS that
-    failure, so a permission underneath may not be hidden by it. An IMPLICIT
-    context is merely "this happened while handling that", which is exactly what
-    a handler that catches a permission and then raises a real defect produces,
-    and reading it would classify that defect as a permission the user can grant.
+    ``raise X from exc`` says the failure is that failure; a context only says it
+    happened while handling one, and reading it would call a real defect a
+    permission.
     """
     from cratekit.core import cause as cause_module
 
@@ -6406,11 +5524,8 @@ def test_the_classification_reads_the_declared_cause_and_not_the_context(tmp_pat
     assert cause_module.permission_denied(denied) is denied
     assert cause_module.permission_denied(RuntimeError("fell over")) is None
     assert cause_module.permission_denied(None) is None
-    # AND THE ERRNO IS READ AS WELL AS THE CLASS. CPython picks the subclass from
-    # the errno only when the constructor is given one, so a base ``OSError``
-    # built with a message and stamped with its number afterwards, which is how a
-    # third-party reader re-raises one, is EACCES and is not a
-    # ``PermissionError``. Reading the class alone would call it a defect.
+    # The errno is read as well as the class: a base ``OSError`` stamped with
+    # EACCES afterwards is not a ``PermissionError``.
     import errno as errno_module
 
     rebuilt = OSError("the operating system refused this account")
@@ -6435,9 +5550,8 @@ def test_the_classification_reads_the_declared_cause_and_not_the_context(tmp_pat
         assert exc.__context__ is denied
         assert cause_module.permission_denied(exc) is None
 
-    # ``access_remedy`` chooses an ACT, so it asks the question that requires a
-    # path. ``permission_denied`` above answers a narrower one for the callers
-    # deciding whether to re-raise, and they tell nobody anything.
+    # ``access_remedy`` chooses an act, so it requires a path;
+    # ``permission_denied`` only decides whether to re-raise.
     named = PermissionError(13, "refused", str(tmp_path / "sealed" / "inside"))
     assert (
         cause_module.access_remedy(named, otherwise=Remedy.REPORT_DEFECT)
@@ -6453,19 +5567,12 @@ def test_the_classification_reads_the_declared_cause_and_not_the_context(tmp_pat
     ), "a refusal naming no path has no path to grant access to"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Round seven: the classification lives where a refusal is CONSTRUCTED
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ The classification lives where a refusal is constructed ════════════════
 #
-# Round six put the decision in two blankets, the dispatcher and doctor's check
-# runner, and argued it from a property that measurement contradicts: an AST walk
-# over the package finds nineteen ``except OSError`` sites that raise a
-# structured refusal, and eighteen of them never reach either blanket, because a
-# blanket only ever sees what nobody caught. Three of the eighteen hard coded the
-# wrong answer. So the decision moved to ``cause.classified``, which every
-# structured refusal in the package passes through, and the tests below drive it
-# from the OUTSIDE: real permissions, a real read only volume, a real locked
-# file, and the driver level error this program's own state store raises.
+# Blankets only see what nobody caught, so the decision lives in
+# ``cause.classified``, which every structured refusal passes through. The tests
+# drive it from outside: real permissions, a real read only volume, a real
+# locked file, and the state store's own driver error.
 
 
 def _sealed(path: Path):
@@ -6485,18 +5592,11 @@ def _sealed(path: Path):
 
 
 def test_a_sealed_state_database_answers_with_its_path_and_an_act(tmp_path, monkeypatch):
-    """F1. THE CLASSIFICATION WAS BLIND TO EVERYTHING ARRIVING THROUGH A C EXTENSION.
+    """A sealed ``queue.db`` answers with its path and an act.
 
-    ``sqlite3.OperationalError`` is not an ``OSError``. It carries no errno, no
-    filename and no ``__cause__``, so an errno-shaped rule answers None for it,
-    and this program keeps its own job queue in SQLite. Driven end to end, a
-    ``chmod 000`` on ``queue.db`` with every directory left traversable produced
-    exit 1, ``internal-error``, ``report-defect`` and "this is a defect; report
-    it" over a file the user had every ability to fix.
-
-    The connection site is the only place that knows WHICH file the driver meant,
-    so it records it; the classification then measures the path rather than
-    assuming, and answers with a remedy and the path to apply it to.
+    ``sqlite3.OperationalError`` has no errno, filename or cause, so the
+    connection site records which file it meant and the classification measures
+    that path.
     """
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir()
@@ -6509,7 +5609,7 @@ def test_a_sealed_state_database_answers_with_its_path_and_an_act(tmp_path, monk
     config.save(config.from_dict(document_for(root)))
     config.reset_cache()
 
-    # One clean run, which is what creates the queue.
+    # One clean run creates the queue.
     code, _out, _err = drive(["--output", "json", "job", "list"])
     assert code == 0, "the arrangement itself must be green before it is broken"
     queue = jobs.queue_path()
@@ -6530,19 +5630,8 @@ def test_a_sealed_state_database_answers_with_its_path_and_an_act(tmp_path, monk
 
 
 def test_a_refusal_that_names_no_path_does_not_claim_one(tmp_path, monkeypatch):
-    """F2. OVER CLASSIFICATION, AND THE SENTENCE IT PRODUCED HAD NOTHING IN IT.
-
-    The kernel refuses several things that are not paths at all: a bind to a
-    privileged port and a signal to another account's process both raise
-    ``PermissionError`` with ``filename`` set to None. The old rule said "yes, a
-    permission" for those, and the line the user then read was "this account
-    cannot reach or write the path named below; grant this interpreter access to
-    it, on macOS through Full Disk Access" with no path below it, over an act
-    Full Disk Access has nothing to do with.
-
-    A guard that misfires on ordinary code is not a lesser failure than one that
-    misses. The classification now requires a path before it asserts one, and
-    what has no path stays the honest "this program did not anticipate it".
+    """A refusal with no path, such as signalling another account's process, is
+    not classified as one, so no sentence points at a missing path.
     """
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir()
@@ -6556,12 +5645,9 @@ def test_a_refusal_that_names_no_path_does_not_claim_one(tmp_path, monkeypatch):
     config.reset_cache()
 
     def refused(_ctx):
-        # A REAL kernel refusal with no path in it: signalling another account's
-        # process. Nothing is sent; signal 0 asks permission and nothing else.
-        # NOT GUARDED WITH A SKIP, because a skip is a guard switched off with no
-        # record of when it comes back. An account that CAN signal pid 1 is root,
-        # on which the whole 0o000 suite is meaningless anyway, and this fails
-        # loudly there instead of passing quietly.
+        # A real pathless kernel refusal: signal 0 to pid 1 sends nothing. Not
+        # skipped, since an account that can signal pid 1 is root, where the
+        # 0o000 suite is meaningless and this should fail loudly.
         os.kill(1, 0)
         raise AssertionError("this account signalled pid 1, so the arrangement is void")
 
@@ -6575,22 +5661,15 @@ def test_a_refusal_that_names_no_path_does_not_claim_one(tmp_path, monkeypatch):
     assert "path named below" not in err
     assert "the arrangement is void" not in cause["message"]
     assert code == int(ExitCode.INTERNAL)
-    # And the sentence is not produced at all, rather than produced empty.
+    # The sentence is not produced at all, rather than produced empty.
     assert render.access_note(PermissionError(1, "Operation not permitted")) is None
 
 
 def test_a_read_only_volume_is_not_sent_to_full_disk_access(tmp_path):
-    """F8. EROFS WAS NOT CLASSIFIED, SO THE ADVICE WAS EITHER A DEFECT OR WRONG.
+    """A read only volume gets the remount act, not Full Disk Access, which
+    cannot help.
 
-    A read only volume refuses every writer on the machine. No permission grant
-    changes that, so "grant this interpreter access, on macOS through Full Disk
-    Access" is an instruction that cannot succeed, and ``internal-error`` with
-    "report it" beside it is worse. A DJ's library on a read only disk image or a
-    write protected card is ordinary.
-
-    The refusal here is REAL. Every current macOS mounts its system volume read
-    only, so a write to it is the kernel's own EROFS rather than a constructed
-    one, and the test says so rather than asserting it.
+    The refusal is the kernel's own EROFS on macOS's read only system volume.
     """
     from cratekit.core import cause as cause_module
 
@@ -6621,9 +5700,8 @@ def test_a_read_only_volume_is_not_sent_to_full_disk_access(tmp_path):
     assert "/cratekit-u27-read-only-probe" in note
     assert "Full Disk Access" not in note
 
-    # And it travels: a refusal built anywhere in the package under an EROFS is
-    # answered with the act for a read only volume rather than with the act for a
-    # permission, even where the site itself named the permission.
+    # It travels: an EROFS anywhere is answered with the read only act, even
+    # where the site named the permission.
     try:
         try:
             os.mkdir("/cratekit-u27-read-only-probe")
@@ -6639,18 +5717,11 @@ def test_a_read_only_volume_is_not_sent_to_full_disk_access(tmp_path):
 
 
 def test_a_locked_file_is_routed_to_the_lock_and_names_the_destination(tmp_path, monkeypatch):
-    """F5. THE COMMONEST NON PERMISSION EPERM ON macOS, ANSWERED TWO WAYS WRONG.
+    """A Finder locked file (``uchg``) is routed to ``chflags nouchg``, and the
+    destination is named.
 
-    Finder's "Locked" checkbox writes the ``uchg`` flag, and a write to a file
-    carrying it fails EPERM for the file's own owner. Full Disk Access will never
-    make that write succeed; ``chflags nouchg`` will.
-
-    AND THE PATH IT NAMED DID NOT EXIST. Every state file is written by renaming
-    a temporary one over the destination, and ``os.replace`` reports the SOURCE
-    in ``filename``. So the product named ``cfg/tmpXXXX.tmp`` at the user, a file
-    that is gone by the time they read about it, while the file they actually
-    have to unlock went unmentioned. The destination is in ``filename2`` and is
-    what is read first now.
+    ``os.replace`` reports the temporary source in ``filename``, so
+    ``filename2``, the destination, is read first.
     """
     import subprocess
 
@@ -6692,11 +5763,9 @@ def test_a_locked_file_is_routed_to_the_lock_and_names_the_destination(tmp_path,
     assert "Full Disk Access" not in err
     assert code == int(ExitCode.PRECONDITION)
 
-    # AND THE DESTINATION RULE IS NOT ONLY THE LOCK'S. A rename into a directory
-    # this account cannot write refuses the same way with no lock anywhere in it,
-    # and ``filename`` is still the temporary file. Driven separately because the
-    # locked leg above finds its path through the flag rather than through the
-    # ordering, so the ordering was covered by nothing.
+    # The destination rule is not only the lock's: a rename into an unwritable
+    # directory is driven separately, since the locked leg finds its path
+    # through the flag.
     source = tmp_path / "source"
     source.mkdir()
     staged = source / "tmpABCD.tmp"
@@ -6718,13 +5787,8 @@ def test_a_locked_file_is_routed_to_the_lock_and_names_the_destination(tmp_path,
 
 
 def test_the_session_reader_does_not_read_absence_out_of_a_refusal(tmp_path, monkeypatch):
-    """F3, site one, and recurring defect one: ABSENCE READ AS EVIDENCE OF ABSENCE.
-
-    One handler over every ``OSError`` answered "no session is recorded with the
-    identifier 'x'" for a record this account was not allowed to open, under
-    ``internal-error`` with ``report-defect`` beside it. Two wrong claims in one
-    raise: a read that never happened reported as a fact about what is there, and
-    a permission reported as a defect in this program.
+    """A session record this account cannot open is not "no session recorded",
+    and not a defect.
     """
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "cfg"))
     monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
@@ -6749,8 +5813,7 @@ def test_the_session_reader_does_not_read_absence_out_of_a_refusal(tmp_path, mon
     assert "no session is recorded" not in cause.message
     assert "was not established" in cause.message
 
-    # AND ABSENCE IS STILL ABSENCE. Splitting the handler must not cost the
-    # answer that was right: a record that genuinely is not there still says so.
+    # A record that is genuinely not there still says so.
     path.unlink()
     with pytest.raises(CratekitError) as absent:
         session.read_record("session-abc", cfg)
@@ -6758,12 +5821,8 @@ def test_the_session_reader_does_not_read_absence_out_of_a_refusal(tmp_path, mon
 
 
 def test_the_acknowledgment_reader_does_not_claim_the_file_exists(tmp_path, monkeypatch):
-    """F3, site two. "Exists and could not be read" was not established either.
-
-    Absent is caught above by its own class, so everything reaching that handler
-    is a read that did not happen, and an untraversable PARENT fails exactly that
-    way while establishing nothing about what is under it. ``backup_facts`` says
-    this in so many words one module over; this site said the opposite.
+    """The acknowledgment reader does not claim an unreadable file exists, since
+    an untraversable parent fails the same way.
     """
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "cfg"))
     monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
@@ -6789,12 +5848,8 @@ def test_the_acknowledgment_reader_does_not_claim_the_file_exists(tmp_path, monk
 
 
 def test_an_unreadable_capture_manifest_is_not_a_defect_report(tmp_path):
-    """F3, site three. The same hard coded ``report-defect``, one module over.
-
-    Nothing about the SENTENCE here was wrong. What was wrong is that the act
-    beside it was "report a defect" whatever the operating system said, and the
-    ``raise ... from exc`` at the site is what lets the refusal constructor
-    overrule it.
+    """An unreadable capture manifest takes its act from the refusal constructor
+    through ``raise ... from exc``, not a hard coded report-defect.
     """
     from cratekit.core import snapshot
 
@@ -6811,21 +5866,12 @@ def test_an_unreadable_capture_manifest_is_not_a_defect_report(tmp_path):
     assert cause.reason == "path-permission-denied"
     assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS
     assert cause.detail["path"] == str(manifest)
-    # The site's own reading is kept, because it is still worth reading.
+    # The site's own reading is kept.
     assert cause.detail["declared_reason"] == "internal-error"
 
 
 def test_the_wizard_does_not_call_an_intact_configuration_corrupt(tmp_path, monkeypatch):
-    """F4. "REPAIR OR RECREATE IT" OVER A FILE THAT IS BYTE FOR BYTE INTACT.
-
-    A configuration this account cannot read is not a configuration to repair,
-    and telling its owner to recreate it sends them to rewrite work they still
-    have. The third edge of the residual finding "Three edges of the permission
-    classification, stated rather than closed", the one that says the
-    classification stops at the configuration reader, scopes the
-    ``core/config.py`` half to another unit; this half is this unit's own file
-    and was left standing beside it.
-    """
+    """The wizard does not call an unreadable but intact configuration corrupt."""
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir()
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
@@ -6862,20 +5908,11 @@ def test_the_wizard_does_not_call_an_intact_configuration_corrupt(tmp_path, monk
 def test_the_wizards_second_read_does_not_call_an_intact_configuration_corrupt(
     tmp_path, monkeypatch
 ):
-    """F4 at the site, not at the boundary. ``cli/setup.py`` reads the file TWICE.
+    """The wizard's second, raw read of an incomplete config does not call a
+    sealed file corrupt.
 
-    An incomplete configuration is loaded, found invalid, and then re-opened raw
-    so the answers it does hold are kept. Its own comment says the second open is
-    what happens when "a file removed, a permission taken away, or a truncation"
-    lands between the two, and its handler answered ``repair-config-file`` for
-    every one of them. The permission leg tells a user to repair or recreate a
-    document that is byte for byte intact.
-
-    THE REFUSAL IS THE KERNEL'S. Only the TIMING is arranged: the real
-    ``config.load`` runs against a real file and the file is sealed after it
-    returns, which is exactly the window the handler exists for. What
-    ``existing_document`` then meets is a real 0o000 file through a real
-    ``Path.open``.
+    Only the timing is arranged: the file is sealed after the real
+    ``config.load`` returns, so ``existing_document`` meets a real 0o000 file.
     """
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir()
@@ -6912,13 +5949,8 @@ def test_the_wizards_second_read_does_not_call_an_intact_configuration_corrupt(
 
 
 def test_doctors_configuration_check_does_not_call_an_intact_file_corrupt(tmp_path, monkeypatch):
-    """F4 in the REPORT. ``config.present`` read the remedy off the error class.
-
-    ``ConfigError.remedy`` is a declared class attribute, which is right for
-    every way a configuration can genuinely be unusable and wrong for the one way
-    that is not the file's fault at all. A document with mode 0o000 is byte for
-    byte intact and the report told its owner to repair or recreate it, on the
-    same page the wizard tells them it is a permission.
+    """``config.present`` does not take the remedy off the error class for a
+    sealed but intact file.
     """
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir()
@@ -6940,12 +5972,8 @@ def test_doctors_configuration_check_does_not_call_an_intact_file_corrupt(tmp_pa
 
 
 def test_a_verb_that_lets_a_config_error_escape_is_classified_too(tmp_path, monkeypatch):
-    """F4 at the LAST hop. Six verbs call ``config.load()`` and catch nothing.
-
-    The dispatcher converts a ``ConfigError`` that reaches it, reading the
-    remedy off the error class exactly as the report did. ``ConfigError`` is not
-    a ``CratekitError``, so the refusal constructor never sees it and this is the
-    one place the classification can be applied to that family.
+    """A ``ConfigError`` escaping a verb is classified at the dispatcher, the one
+    place for that family, since it is not a ``CratekitError``.
     """
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir()
@@ -6969,12 +5997,8 @@ def test_a_verb_that_lets_a_config_error_escape_is_classified_too(tmp_path, monk
 
 
 def test_the_access_sentence_names_the_path_it_is_about(tmp_path):
-    """F6, guard one: the path clause killed nothing and is the actionable half.
-
-    ``access_note``'s own docstring calls the path "the entire actionable
-    content", and deleting the clause that carries it killed no test, because the
-    only assertion near it was satisfied by the raw ``{exc}`` text that happens to
-    repeat the path. This asserts the clause itself.
+    """The access sentence's own path clause is asserted, not the raw exception
+    text that repeats it.
     """
     sealed = tmp_path / "sealed"
     sealed.mkdir()
@@ -6992,13 +6016,9 @@ def test_the_access_sentence_names_the_path_it_is_about(tmp_path):
 
 
 def test_the_cause_walk_terminates_on_a_chain_that_names_itself(tmp_path):
-    """F6, guard two: the cycle guard killed nothing, and without it nothing dies.
+    """The cause walk terminates on a chain that names itself.
 
-    ``__cause__`` is assignable, so two exceptions can name each other, and the
-    walk over the chain is then infinite. A defect that HANGS is the worst shape
-    one can take: the process does not fail, it stops responding, and no failing
-    assertion is ever reached. It is driven in a subprocess with a deadline for
-    exactly that reason, because a test that hangs cannot report anything either.
+    Run in a subprocess with a deadline, since the defect is a hang.
     """
     import subprocess
 
@@ -7020,12 +6040,8 @@ def test_the_cause_walk_terminates_on_a_chain_that_names_itself(tmp_path):
 
 
 def test_is_mount_point_answers_an_unrepresentable_path(tmp_path):
-    """F7. The sibling ninety lines below catches this and this one did not.
-
-    ``os.path.ismount`` answers False for a path with an embedded null;
-    ``os.lstat`` raises ``ValueError`` for one. So the confirming stat added in
-    round six turned an answer into an exception for an input the standard
-    library already handles, in the one function three mount rules go through.
+    """``is_mount_point`` answers False for a path with an embedded null, where
+    ``os.lstat`` raises ``ValueError``.
     """
     from cratekit.core import preflight
 
@@ -7036,25 +6052,18 @@ def test_is_mount_point_answers_an_unrepresentable_path(tmp_path):
 
 # ── the handler sweep: every rescue answers something, or says why it cannot ──
 #
-# A verifier's mutation sweep found twenty-one handlers in ``cli/doctor.py`` and
-# ``cli/setup.py`` that killed no test when deleted, one of them absorbed by the
-# blanket rescue and the other twenty driven by nothing at all. A handler nothing
-# exercises is a claim nobody has checked, which is the class this whole round is
-# about. Each one below is driven; the two that cannot be are argued in the
-# source beside them rather than here.
+# Each handler in ``cli/doctor.py`` and ``cli/setup.py`` is driven here; the two
+# that cannot be are argued in the source beside them.
 
 
 def test_the_declared_interpreter_bound_is_none_when_it_cannot_be_read(monkeypatch):
-    """Two ways to have no bound, and both are "nothing was asserted".
-
-    Reported as its own answer rather than as a pass, because a check that cannot
-    fail is not a check. It happens for real when the package is imported
-    straight from a checkout with no distribution installed.
+    """No readable bound is "nothing was asserted", not a pass; it happens when
+    imported from a checkout with no distribution installed.
     """
     monkeypatch.setattr(doctor.registry, "DISTRIBUTION", "cratekit-no-such-distribution")
     assert doctor._declared_python_bound() is None
 
-    monkeypatch.setattr(doctor.metadata, "metadata", lambda _name: {})
+    monkeypatch.setattr(importlib_metadata, "metadata", lambda _name: {})
     assert doctor._declared_python_bound() is None
 
     finding = find(
@@ -7065,12 +6074,8 @@ def test_the_declared_interpreter_bound_is_none_when_it_cannot_be_read(monkeypat
 
 
 def test_the_binding_pin_problem_is_whatever_the_writers_own_assertion_says(monkeypatch):
-    """Asked through the guarded writer rather than by comparing versions here.
-
-    Two ways it answers, and they are different sentences: the writer refusing
-    under its own structured cause, and the binding not being importable at all.
-    A single handler would have reported the second as the first, which sends a
-    user to revalidate a pin against a module that is not installed.
+    """The pin problem is the guarded writer's own assertion, and a binding that
+    will not import is a different sentence.
     """
     def refuse(_cfg):
         raise CratekitError(
@@ -7083,75 +6088,70 @@ def test_the_binding_pin_problem_is_whatever_the_writers_own_assertion_says(monk
             )
         )
 
-    monkeypatch.setattr(doctor.rb_writer, "assert_binding_version", refuse)
-    assert doctor._binding_pin_problem(None) == "pyrekordbox 0.4.0 is not the pinned 0.3.0"
+    monkeypatch.setattr(rb_writer, "assert_binding_version", refuse)
+    assert doctor_model._binding_pin_problem(None) == "pyrekordbox 0.4.0 is not the pinned 0.3.0"
 
     def uninstalled(_cfg):
         raise ImportError("No module named 'pyrekordbox'")
 
-    monkeypatch.setattr(doctor.rb_writer, "assert_binding_version", uninstalled)
-    answer = doctor._binding_pin_problem(None)
+    monkeypatch.setattr(rb_writer, "assert_binding_version", uninstalled)
+    answer = doctor_model._binding_pin_problem(None)
     assert answer is not None and "could not be imported" in answer
 
-    monkeypatch.setattr(doctor.rb_writer, "assert_binding_version", lambda _cfg: None)
-    assert doctor._binding_pin_problem(None) is None
+    monkeypatch.setattr(rb_writer, "assert_binding_version", lambda _cfg: None)
+    assert doctor_model._binding_pin_problem(None) is None
 
 
 def test_the_rclone_dump_answers_none_for_every_way_it_can_fail(monkeypatch, tmp_path):
-    """Five failure shapes, one answer, and it is not an empty set of remotes.
-
-    "rclone told us there are no remotes" and "rclone could not be asked" have
-    opposite consequences for the backup check, which reports the second as a
-    note and the first as a failure naming the remote.
+    """Every rclone failure answers None, not an empty set of remotes, since
+    "none" fails the backup check and "could not ask" is a note.
     """
     from types import SimpleNamespace
 
     # The binary is not there at all.
-    assert doctor._rclone_remotes(str(tmp_path / "no-such-rclone")) is None
+    assert doctor_model._rclone_remotes(str(tmp_path / "no-such-rclone")) is None
 
     def timed_out(*_a, **_k):
-        raise doctor.subprocess.TimeoutExpired(cmd="rclone", timeout=10)
+        raise subprocess.TimeoutExpired(cmd="rclone", timeout=10)
 
-    monkeypatch.setattr(doctor.subprocess, "run", timed_out)
-    assert doctor._rclone_remotes("rclone") is None
+    monkeypatch.setattr(subprocess, "run", timed_out)
+    assert doctor_model._rclone_remotes("rclone") is None
 
     monkeypatch.setattr(
-        doctor.subprocess, "run", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="")
+        subprocess, "run", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="")
     )
-    assert doctor._rclone_remotes("rclone") is None
+    assert doctor_model._rclone_remotes("rclone") is None
 
     monkeypatch.setattr(
-        doctor.subprocess,
+        subprocess,
         "run",
         lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="not json at all"),
     )
-    assert doctor._rclone_remotes("rclone") is None
+    assert doctor_model._rclone_remotes("rclone") is None
 
     monkeypatch.setattr(
-        doctor.subprocess,
+        subprocess,
         "run",
         lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="[1, 2]"),
     )
-    assert doctor._rclone_remotes("rclone") is None
+    assert doctor_model._rclone_remotes("rclone") is None
 
-    # And the answer when it works, so none of the above is passing by accident.
+    # The working answer, so none of the above passes by accident.
     monkeypatch.setattr(
-        doctor.subprocess,
+        subprocess,
         "run",
         lambda *_a, **_k: SimpleNamespace(
             returncode=0, stdout='{"gdrive": {"type": "drive", "use_trash": "false"}}'
         ),
     )
-    assert doctor._rclone_remotes("rclone") == {
+    assert doctor_model._rclone_remotes("rclone") == {
         "gdrive": {"type": "drive", "use_trash": "false"}
     }
 
 
 def test_an_active_template_that_does_not_validate_is_its_own_answer(configured):
-    """Present, readable, and not a usable declaration of a tree.
-
-    A different answer from absent and from unreadable, and the only one of the
-    three that running setup can actually repair.
+    """A template that does not validate is its own answer, the one setup can
+    repair.
     """
     path = config.state_path("taxonomy_active", configured)
     config.atomic_write_bytes(b"schema_version = 99\n", path)
@@ -7163,16 +6163,13 @@ def test_an_active_template_that_does_not_validate_is_its_own_answer(configured)
 
 
 def test_a_registered_adapter_whose_tool_is_not_installed_says_so(configured, monkeypatch):
-    """R9's whole point is that acquisition survives one tool breaking.
-
-    A registered name whose module will not import is a different failure from an
-    unknown name, and the remedies are opposite: install the tool, or choose
-    another adapter.
+    """A registered adapter whose module will not import says install the tool,
+    not choose another adapter (R9).
     """
     def uninstalled(_name):
         raise ImportError("No module named 'yt_dlp'")
 
-    monkeypatch.setattr(doctor.acquire, "load", uninstalled)
+    monkeypatch.setattr(acquire, "load", uninstalled)
     finding = find(doctor.run(configured, probes=probes()), "adapter.contract")
 
     assert finding.status is doctor.Status.FAIL
@@ -7181,11 +6178,8 @@ def test_a_registered_adapter_whose_tool_is_not_installed_says_so(configured, mo
 
 
 def test_unreadable_backup_facts_are_reported_per_portion(configured, monkeypatch):
-    """Never collapsed into "no backup recorded".
-
-    A library with a perfectly good backup and one damaged fact file would
-    otherwise report as never backed up, and repairing a small file has nothing
-    to do with running a backup.
+    """Unreadable fact files are reported per portion, never as "no backup
+    recorded", since repairing a small file is not running a backup.
     """
     def refuse(_cfg, *, now):
         raise backup_facts.BackupFactsUnreadable(
@@ -7204,29 +6198,23 @@ def test_unreadable_backup_facts_are_reported_per_portion(configured, monkeypatc
 
 
 def test_a_hook_line_with_an_unbalanced_quote_falls_back_to_the_default_config():
-    """``shlex.split`` raises on a line it cannot tokenise, and that is not a defect.
-
-    A line this cannot read is a line it must not draw a conclusion from, so it
-    keeps looking and ends at pre-commit's own default, which is what an absent
-    ``--config`` means anyway.
+    """An unbalanced quote that ``shlex.split`` rejects draws no conclusion and
+    falls back to pre-commit's default config.
     """
     assert (
-        doctor._hook_config_name('exec pre-commit hook-impl --config="unbalanced')
-        == doctor._HOOK_CONFIG_DEFAULT
+        doctor_state._hook_config_name('exec pre-commit hook-impl --config="unbalanced')
+        == doctor_state._HOOK_CONFIG_DEFAULT
     )
-    # And a quoted path WITH a space is read, which is why shlex is used at all.
+    # A quoted path with a space is read, which is why shlex is used.
     assert (
-        doctor._hook_config_name("exec pre-commit hook-impl --config='my config.yaml'")
+        doctor_state._hook_config_name("exec pre-commit hook-impl --config='my config.yaml'")
         == "my config.yaml"
     )
 
 
 def test_a_run_record_that_will_not_load_is_reported_rather_than_skipped(configured):
-    """``crate status`` reads the records the dispatcher persists.
-
-    A record that will not parse is a run whose open gate nobody can see, and
-    skipping it silently is how a waiting run disappears from the one surface
-    that exists to list them.
+    """A run record that will not load is reported, or its open gate vanishes
+    from ``crate status``.
     """
     from cratekit.cli import gates
 
@@ -7241,10 +6229,8 @@ def test_a_run_record_that_will_not_load_is_reported_rather_than_skipped(configu
 
 
 def test_a_tree_registry_that_will_not_load_is_never_read_as_no_record(configured):
-    """No record means "every tree is still on the bridge", which sends a byte
-    write at a tree the database already owns. So an unreadable registry is its
-    own answer, carrying the remedy the registry module chose rather than one
-    invented here.
+    """An unreadable tree registry is its own answer with the registry's remedy,
+    since "no record" would send a byte write at a tree the database owns.
     """
     from cratekit.core import tree_registry
 
@@ -7261,13 +6247,8 @@ def test_a_tree_registry_that_will_not_load_is_never_read_as_no_record(configure
 def test_setup_refuses_a_config_that_stopped_being_readable_between_the_two_reads(
     monkeypatch, tmp_path
 ):
-    """``existing_document`` reads the file TWICE, so the two reads can disagree.
-
-    The first is ``config.load``, which classified it as merely incomplete; the
-    second is the raw read that keeps the answers it does hold. Anything that
-    changed in between, a file removed, a permission taken away, a truncation,
-    lands here, and the one thing it may not do is treat the document as empty
-    and write over it.
+    """If the config stops being readable between ``existing_document``'s two
+    reads, setup refuses rather than writing over it as empty.
     """
     missing = tmp_path / "vanished.toml"
 
@@ -7284,11 +6265,8 @@ def test_setup_refuses_a_config_that_stopped_being_readable_between_the_two_read
 
 
 def test_setup_refuses_when_the_migration_ladder_refuses(monkeypatch, tmp_path):
-    """The incomplete document is MIGRATED before it is completed.
-
-    Nothing exercises the ladder today because it is empty at version 1, which is
-    exactly why the refusal has to be written and driven now: the first migration
-    lands in a unit that has no reason to look here.
+    """A migration ladder refusal stops setup, driven now while the ladder is
+    empty so the first migration inherits it.
     """
     path = tmp_path / "config.toml"
     path.write_text("schema_version = 1\n")
@@ -7310,11 +6288,8 @@ def test_setup_refuses_when_the_migration_ladder_refuses(monkeypatch, tmp_path):
 
 
 def test_the_database_probe_is_a_proposal_and_never_a_failure(monkeypatch, tmp_path):
-    """It reads another application's private format through a third-party reader.
-
-    Its failure modes are not a closed set this module gets to enumerate, and a
-    wizard that died because a settings file was an unexpected shape would be
-    refusing over a value it was only ever going to OFFER as a default.
+    """The database probe reads another application's format, so any failure is
+    no proposal, never a refusal over a mere default.
     """
     def unexpected():
         raise RuntimeError("the settings file is in a shape this reader has never seen")
@@ -7322,8 +6297,7 @@ def test_the_database_probe_is_a_proposal_and_never_a_failure(monkeypatch, tmp_p
     monkeypatch.setattr(setup_verb.rb_writer, "read_rekordbox_settings", unexpected)
     assert setup_verb._probe_db_path() is None
 
-    # A recorded path that is not on this machine is not proposed either: a
-    # default nobody can use is worse than no default.
+    # A recorded path not on this machine is not proposed either.
     monkeypatch.setattr(
         setup_verb.rb_writer,
         "read_rekordbox_settings",
@@ -7342,12 +6316,8 @@ def test_the_database_probe_is_a_proposal_and_never_a_failure(monkeypatch, tmp_p
 def test_a_credential_that_cannot_be_read_and_one_that_cannot_be_stored_differ(
     configured, monkeypatch
 ):
-    """Two handlers, two remedies, and neither may borrow the other's.
-
-    Nothing could be READ carries "store the credential"; the store REFUSING
-    carries whatever the secrets module's own failure types say, because no
-    backend, no entry and a rejected entry need opposite acts, and the second
-    note here proves the remedy TRAVELS rather than being substituted.
+    """An unreadable credential carries "store the credential"; a refusing store
+    carries the secrets module's own remedy, which travels unchanged.
     """
     wizard = setup_verb._Wizard({}, silent())
     wizard.optional = lambda *_a, **_k: True  # the user said yes to every offer
@@ -7379,14 +6349,8 @@ def test_a_credential_that_cannot_be_read_and_one_that_cannot_be_stored_differ(
 
 
 def test_a_hook_config_path_that_cannot_be_resolved_is_a_refusal_not_a_crash(tmp_path):
-    """The handler was written for a shape a hook file cannot produce.
-
-    ``Path.resolve`` does not raise for an absent path, so ``except OSError``
-    caught nothing a real hook could cause. What a real hook CAN name is a path
-    through a symlink loop, and CPython reports that as ``RuntimeError``, which
-    went straight past the handler and out to the blanket rescue as "this check
-    did not complete". Same shape as the guard-covered-by-a-guard defect, one
-    exception family over.
+    """A hook config path through a symlink loop, which ``Path.resolve`` raises as
+    ``RuntimeError``, is a refusal, not a check that did not complete.
     """
     root = tmp_path / "checkout"
     (root / ".git" / "hooks").mkdir(parents=True)
@@ -7394,7 +6358,7 @@ def test_a_hook_config_path_that_cannot_be_resolved_is_a_refusal_not_a_crash(tmp
     (root / "loop-b").symlink_to(root / "loop")
     body = "exec pre-commit hook-impl --hook-type=pre-commit --config=loop/config.yaml\n"
 
-    problem = doctor._hook_dispatch_problem(body, root)
+    problem = doctor_state._hook_dispatch_problem(body, root)
     assert problem is not None
     assert "cannot be resolved" in problem
 
@@ -7408,17 +6372,10 @@ def test_a_hook_config_path_that_cannot_be_resolved_is_a_refusal_not_a_crash(tmp
 
 
 def test_a_slot_holds_a_volume_when_a_symlink_in_it_names_a_real_mount(tmp_path):
-    """The symlink leg, driven against the REAL mount seam rather than a fixture's.
+    """A slot holds a volume when a symlink in it names a real mount, driven
+    against the real seam, since the fixture already resolves.
 
-    FOUND BY MUTATION, and it is the guard-covered-by-a-guard shape again one
-    layer down: the synthetic-volumes fixture answers ``is_mount_point`` with
-    ``Path(path).resolve() in mounted``, so the fixture was already resolving and
-    dropping this leg killed nothing. What the leg exists for is only visible
-    against the real function, which answers False for a symlink by contract.
-
-    Both directions, because refusing here would refuse the ordinary macOS
-    install: the boot volume has its own entry in the mount directory, as a
-    symlink to ``/``.
+    Both directions, since the macOS boot volume's entry is a symlink to ``/``.
     """
     from cratekit.core import preflight
 
@@ -7434,7 +6391,7 @@ def test_a_slot_holds_a_volume_when_a_symlink_in_it_names_a_real_mount(tmp_path)
     assert preflight.is_mount_point(to_a_mount) is False
     assert preflight.is_mount_point(to_a_directory) is False
 
-    # The QUESTION the rule asks is whether a volume is behind the slot.
+    # The rule asks whether a volume is behind the slot.
     assert preflight.slot_holds_a_volume(mount) is True
     assert preflight.slot_holds_a_volume(to_a_mount) is True
     assert preflight.slot_holds_a_volume(to_a_directory) is False
@@ -7442,11 +6399,8 @@ def test_a_slot_holds_a_volume_when_a_symlink_in_it_names_a_real_mount(tmp_path)
 
 
 def test_setup_leaves_under_the_code_a_refusing_check_reserved(monkeypatch, tmp_path):
-    """The wizard ends on doctor's verdict, so it inherits doctor's exit code.
-
-    Writing PRECONDITION into this envelope would drop a reserved code exactly as
-    it did one module over, and the wizard is the verb a first run meets, so the
-    code it leaves under is the first thing a script wrapping it branches on.
+    """The wizard ends on doctor's verdict, so it inherits a refusing check's
+    reserved exit code rather than PRECONDITION.
     """
     root = tmp_path / "fresh"
     (root / "Music").mkdir(parents=True)
@@ -7469,32 +6423,19 @@ def test_setup_leaves_under_the_code_a_refusing_check_reserved(monkeypatch, tmp_
     assert json.loads(out)["cause"]["reason"] == "library-volume-unmounted"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Round eight: the channel a refusal travels when nothing is RAISED
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ The channel a refusal travels when nothing is raised ═══════════════════
 #
-# Round seven put the classification at the constructor every ``CratekitError``
-# passes through, which covers every site that raises. It does not cover the
-# sites that REPORT: a check, and every branch of the wizard, answers by building
-# a ``doctor.Finding`` and returning, so the exception is caught and never
-# re-raised and ``cause.classified`` never sees it. The gap was not evenly
-# spread. It sat on the one site in the wizard that WRITES to the library volume,
-# which is where EROFS actually arises, and that site hard coded "grant this
-# interpreter access" for a volume no grant can change.
+# A check or a wizard branch reports by building a ``doctor.Finding``, so the
+# exception never reaches ``cause.classified``. The wizard's one write to the
+# library volume, where EROFS arises, sat in that gap.
 
 
 def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_path):
-    """The channel, at the object that owns it, rather than at one call site.
+    """A ``Finding`` handed an exception classifies its act where it is built.
 
-    The previous four rounds each fixed this class of miss at the site that
-    happened to be found, and it recurred at the next site. A ``Finding`` is the
-    only way a check or the wizard reports, so this is the whole channel: hand it
-    the exception and the act follows the kind, whatever the site wrote.
-
-    THREE KINDS, ONE OF THEM ON A REAL READ ONLY VOLUME. Each is driven from a
-    real refusal by the operating system rather than from a constructed
-    exception, and each site is given the WRONG token on purpose, because a test
-    that passes the right token cannot tell a classification from an assignment.
+    Three kinds, each from a real operating system refusal, one on a real read
+    only volume, and each site given the wrong token so a classification is
+    told from an assignment.
     """
     sealed = tmp_path / "sealed.toml"
     sealed.write_text("x = 1\n", encoding="utf-8")
@@ -7512,7 +6453,7 @@ def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_pa
             title="active taxonomy template",
             status=doctor.Status.FAIL,
             detail="the template could not be read",
-            # The site's own reading, deliberately the token for a different act.
+            # The site's own reading, deliberately a different act's token.
             remedy=Remedy.REMOUNT_WRITABLE,
             error=refused,
         )
@@ -7526,7 +6467,7 @@ def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_pa
     assert finding.cause.detail["path"] == str(sealed)
     assert finding.cause.detail["check"] == "setup.taxonomy"
 
-    # A real read only volume, which is this machine's own system volume.
+    # A real read only volume, this machine's system volume.
     try:
         os.mkdir("/cratekit-u27-finding-probe")
     except OSError as exc:
@@ -7547,8 +6488,7 @@ def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_pa
     assert on_a_read_only_volume.remedy is Remedy.REMOUNT_WRITABLE
     assert on_a_read_only_volume.cause.reason == "path-read-only"
 
-    # And a finding about something the operating system did not refuse is left
-    # exactly as its site built it, because there is no kind to follow.
+    # A finding about something not refused by the system is left as built.
     ordinary = doctor.Finding(
         key="taxonomy.active",
         title="active taxonomy template",
@@ -7560,7 +6500,7 @@ def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_pa
     assert ordinary.remedy is Remedy.REPORT_DEFECT
     assert ordinary.cause is None
 
-    # A finding carrying no exception at all is the ordinary case and is inert.
+    # A finding carrying no exception is inert.
     assert (
         doctor.Finding(
             key="k", title="t", status=doctor.Status.FAIL, detail="d", remedy=Remedy.RUN_DOCTOR
@@ -7570,26 +6510,17 @@ def test_a_finding_that_carries_a_refusal_is_classified_where_it_is_built(tmp_pa
 
 
 def test_the_seed_on_a_read_only_library_volume_is_not_sent_to_full_disk_access(monkeypatch):
-    """F1. THE ONE SITE IN THE WIZARD THAT WRITES, WHICH IS WHERE EROFS ARISES.
+    """The taxonomy seed on a read only volume gets the remount act, not Full Disk
+    Access.
 
-    ``_seed_taxonomy`` is the only thing ``crate setup`` puts on the library
-    volume, so it is the only place in the verb a read only volume can be met,
-    and it hard coded ``grant-path-access`` and closed its sentence with "Give
-    this interpreter write access to that directory". Full Disk Access cannot
-    make a write to a read only volume succeed. The sentence even named the read
-    only case, as one of two possibilities, and then gave the advice for the
-    other one.
-
-    THE VOLUME IS REAL. Every current macOS mounts its system volume read only,
-    so a library root at ``/`` refuses the state directory with the kernel's own
-    EROFS, and the test asserts that rather than assuming it.
+    A library root at ``/``, macOS's read only system volume, refuses with the
+    kernel's own EROFS.
     """
-    # Over the suite-wide override, which RELOCATES ``library.root`` on every
-    # load: without this the configuration built below would name a writable
-    # temporary directory and the test would assert about the wrong disk (P2).
+    # Over the suite-wide override, which relocates ``library.root`` on every
+    # load (P2).
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, "/")
-    # The one test that aims a write outside the temporary root on purpose, at a
-    # volume the kernel refuses, so the R-926 guard is widened for it alone.
+    # This test aims a write outside the temporary root on purpose, so the
+    # R-926 guard is widened for it alone.
     monkeypatch.setattr(config, "_TEST_WRITE_ROOT", Path("/"))
     cfg = config.from_dict(document_for(Path("/")))
     state = config.state_path("taxonomy_active", cfg)
@@ -7616,12 +6547,10 @@ def test_the_seed_on_a_read_only_library_volume_is_not_sent_to_full_disk_access(
     assert "mounted read only" in note.detail
     assert "/.cratekit" in note.detail
 
-    # The one-line fix a person reads is the act for THIS kind.
+    # The one-line fix is the act for this kind.
     assert "Full Disk Access" not in render.remedy_text(note.remedy)
 
-    # And the envelope carries it: before this the wizard's report reached the
-    # boundary as "N checks are failing" with a null remedy, because a note built
-    # a Finding and ``failure_cause`` had no cause to read.
+    # The envelope carries it, rather than a null remedy.
     cause = doctor.failure_cause(doctor.Report(tuple(wizard.notes)), origin="cli.setup")
     assert cause.reason == "path-read-only"
     assert cause.remediation.remedy is Remedy.REMOUNT_WRITABLE
@@ -7630,40 +6559,29 @@ def test_the_seed_on_a_read_only_library_volume_is_not_sent_to_full_disk_access(
 
 
 def test_a_path_no_filesystem_can_represent_is_answered_rather_than_raised():
-    """F3. A GUARD ROUND SEVEN WROTE TWICE, IN THE MODULE IT DID NOT WRITE IT IN.
+    """A path with an embedded null is answered, not raised as ``ValueError``
+    inside the dispatcher's own handler.
 
-    ``os.lstat`` and ``os.open`` reject a path with an embedded null before any
-    syscall is made, and they reject it with ``ValueError`` rather than with an
-    ``OSError``. Both are reached from ``access_refusal``, which is read INSIDE
-    the dispatcher's own ``except CratekitError`` handler: an exception escaping
-    there replaces a refusal the user could act on with a traceback. Round seven
-    guarded exactly this input twice in ``core/preflight`` and left it in the
-    module it rewrote.
-
-    LATENT RATHER THAN LIVE, AND SAID SO. No real syscall produces an ``OSError``
-    carrying a null in ``filename``, and ``sqlite3.connect`` raises the
-    ``ValueError`` before any ``sqlite3.Error`` exists, so the last assertion
-    below is the only one built from a constructed exception and it is here
-    because the guard is cheap and the failure mode is the worst shape there is.
+    Latent: no syscall carries a null, so the last assertion uses a constructed
+    exception.
     """
     from cratekit.core import cause as cause_module
 
     unrepresentable = "/tmp/cratekit-u27\0probe"
 
-    # The two real functions really do raise, so the guards are not decorative.
+    # The two real functions really do raise.
     with pytest.raises(ValueError):
         os.lstat(unrepresentable)
     with pytest.raises(ValueError):
         os.open(unrepresentable, os.O_RDONLY)
 
-    # And the two seams answer instead, exactly as ``os.path.ismount`` does.
+    # The two seams answer instead, as ``os.path.ismount`` does.
     assert os.path.ismount(unrepresentable) is False
     assert cause_module._immutable(unrepresentable) is False
     assert cause_module._probe_readable(unrepresentable) is None
     assert cause_module._probe_writable(unrepresentable) is None
 
-    # Constructed, because no syscall can carry one: the classification answers
-    # rather than raising through the handler that is reading it.
+    # Constructed, since no syscall can carry one.
     assert cause_module.access_refusal(
         PermissionError(errno.EACCES, "Permission denied", unrepresentable)
     ) == cause_module.AccessRefusal(
@@ -7672,30 +6590,17 @@ def test_a_path_no_filesystem_can_represent_is_answered_rather_than_raised():
 
 
 def test_the_write_probe_classifies_every_way_a_write_is_refused(tmp_path):
-    """What the WRITE CAPABLE handle buys, pinned, because nothing pinned it.
+    """The write probe classifies each way a write is refused while a read
+    succeeds: file mode, the immutable flag, and an ACL, driven for real.
 
-    Measured 2026-08-14: forcing every probe to read only killed ZERO tests out
-    of 5044 collected. So the one behaviour that makes ``_probe_writable``
-    different from ``_probe_readable``, and the reason the reports allowlist
-    guard still names it, was not asserted anywhere. That is the worst state for
-    a decision to be taken in, because every candidate resolution changes this
-    behaviour and the suite would have stayed green through all of them.
-
-    These are the cases a write can be refused while a READ still succeeds, which
-    is exactly the set a read only probe cannot answer. The read only volume is
-    the one no file mode can imitate and it has its own test above; here it is
-    the file mode, the immutable flag and an ACL, driven rather than constructed.
-
-    THIS TEST PINS BEHAVIOUR AND TAKES NO SIDE ON R-80. If the write capable
-    handle is later replaced, this is the test that has to keep passing, and a
-    replacement that cannot hold all three rows is a replacement that changed
-    what the user is told.
+    It pins behaviour and takes no side on R-80; any replacement must keep all
+    three rows.
     """
     import subprocess
 
     from cratekit.core.cause import AccessKind, _probe_readable, _probe_writable
 
-    # 1. Readable and not writable by MODE. The commonest shape.
+    # 1. Readable and not writable by mode.
     mode = tmp_path / "mode.db"
     mode.write_bytes(b"x")
     mode.chmod(0o444)
@@ -7704,8 +6609,7 @@ def test_the_write_probe_classifies_every_way_a_write_is_refused(tmp_path):
     assert refused is not None and refused.kind is AccessKind.PERMISSION
     assert refused.path == str(mode)
 
-    # 2. The immutable flag, which is what Finder's Locked checkbox writes. It
-    #    answers EPERM rather than EACCES and routes to a different act.
+    # 2. The immutable flag (Finder's Locked), EPERM rather than EACCES.
     locked = tmp_path / "locked.db"
     locked.write_bytes(b"x")
     if subprocess.run(["chflags", "uchg", str(locked)]).returncode == 0:
@@ -7716,8 +6620,8 @@ def test_the_write_probe_classifies_every_way_a_write_is_refused(tmp_path):
         finally:
             subprocess.run(["chflags", "nouchg", str(locked)], check=False)
 
-    # 3. An ACL denying write while the mode still allows it, so the mode bits
-    #    and the answer disagree. Skipped where chmod cannot set one.
+    # 3. An ACL denying write while the mode allows it. Skipped where chmod
+    #    cannot set one.
     acl = tmp_path / "acl.db"
     acl.write_bytes(b"x")
     denied = subprocess.run(
@@ -7730,30 +6634,18 @@ def test_the_write_probe_classifies_every_way_a_write_is_refused(tmp_path):
         found = _probe_writable(str(acl))
         assert found is not None and found.kind is AccessKind.PERMISSION
 
-    # And the negative row, so the three above are not passing on a probe that
-    # refuses everything.
+    # The negative row, so the probe does not refuse everything.
     ordinary = tmp_path / "ordinary.db"
     ordinary.write_bytes(b"x")
     assert _probe_writable(str(ordinary)) is None
 
 
 def test_the_write_probe_names_the_medium_rather_than_the_account():
-    """The fourth way a write is refused, and the one no file mode can imitate.
+    """A read only medium is named as such, not as a permission.
 
-    R-80 was resolved by replacing the write capable handle with three metadata
-    readings, and a mutation table then measured the read only branch of those
-    three at ZERO deaths: dropping it left every test green while a read only
-    volume started reporting as a permission. That is the one answer of the three
-    a user cannot act on if it is wrong, because no amount of Full Disk Access
-    makes a read only volume writable.
-
-    The arrangement is REAL and is not built here. Every current macOS mounts its
-    system volume read only, so ``/usr/bin/true`` sits on a medium that refuses
-    every writer on the machine, and the test asserts that rather than assuming
-    it. The file is also mode 555 and owned by root, which is what makes the row
-    bite: with the read only branch removed the probe still refuses the write and
-    refuses it as a PERMISSION, sending the user to grant an access that would
-    change nothing.
+    ``/usr/bin/true`` sits on macOS's read only system volume and is mode 555
+    owned by root, so without the read only branch it would read as a
+    permission no grant could fix.
     """
     from cratekit.core.cause import AccessKind, _probe_readable, _probe_writable
 
@@ -7778,22 +6670,11 @@ def test_the_write_probe_names_the_medium_rather_than_the_account():
 
 
 def test_the_write_probe_answers_for_a_path_it_cannot_reach_at_all(tmp_path):
-    """The read probe delegation, which is the only thing that answers here.
+    """A path the probe cannot reach answers through the read probe's
+    classification, since an untraversable parent refuses every metadata read.
 
-    R-80's replacement asks the read probe first and returns its classification
-    when a read is itself refused. Every metadata reading below that line needs
-    to reach the path, and a parent directory denying traversal refuses all three
-    of them: ``os.statvfs``, ``os.lstat`` and ``os.access`` all answer EACCES, so
-    without the delegation the probe returns None and the refusal reaches the
-    user as an unanticipated failure.
-
-    LATENT RATHER THAN LIVE, AND SAID SO. The one caller reaches this function
-    only after ``sqlite3`` opened the database and then refused a write, so the
-    parent was traversable a moment earlier and something changed it in between.
-    That is a race rather than an ordinary arrangement. It is pinned because the
-    delegation costs one branch, because a mutation table measured its removal at
-    zero deaths, and because the failure it prevents is the worst shape there is:
-    a real refusal reported as a defect in this program.
+    Latent, a race after ``sqlite3`` opened the database, but a defect report
+    over a real refusal is the worst shape.
     """
     from cratekit.core.cause import AccessKind, _probe_writable
 
@@ -7820,20 +6701,11 @@ def test_the_write_probe_answers_for_a_path_it_cannot_reach_at_all(tmp_path):
 
 
 def test_a_two_path_refusal_names_the_side_the_operating_system_refused(tmp_path):
-    """F4. DESTINATION FIRST IS RIGHT FOR A RENAME AND WRONG FOR A LINK.
+    """A two path refusal names the side the system refused: the destination
+    for a rename, the source for a link.
 
-    ``os.replace`` sets ``filename`` to the source and ``filename2`` to the
-    destination, and the guarded writer writes every file by renaming a temporary
-    one over it, so reading ``filename`` alone named a ``.tmp`` that no longer
-    exists. ``os.link`` fills the same two fields in the same order and the
-    refusal is on the OTHER side: with a source this account cannot reach,
-    destination-first names the one path there is nothing to do about.
-
-    So which side was refused is MEASURED, the same way a driver level error is,
-    and the destination keeps precedence: it is asked first and the source is
-    named only when the destination is not itself refused and the source is.
-    Neither ``os.link`` nor ``os.symlink`` appears anywhere in ``src/cratekit``
-    today, which is what makes this latent rather than live.
+    The destination is asked first. No ``os.link`` or ``os.symlink`` exists in
+    ``src/cratekit`` yet, so this is latent.
     """
     from cratekit.core import cause as cause_module
 
@@ -7861,8 +6733,8 @@ def test_a_two_path_refusal_names_the_side_the_operating_system_refused(tmp_path
     finally:
         sealed_dir.chmod(0o700)
 
-    # THE RENAME CASE IS UNCHANGED, which is what the precedence is for: a
-    # destination this account cannot write in, named ahead of the temporary file.
+    # The rename case: an unwritable destination is named ahead of the
+    # temporary file.
     unwritable = tmp_path / "unwritable"
     unwritable.mkdir()
     target = unwritable / "config.toml"
@@ -7887,21 +6759,11 @@ def test_a_two_path_refusal_names_the_side_the_operating_system_refused(tmp_path
 
 
 def test_a_copy_that_gave_up_on_one_member_is_classified_by_its_paths(tmp_path):
-    """F5. THE ONE REFUSAL IN THE PACKAGE THAT ARRIVES AS RENDERED TEXT.
+    """A ``shutil.Error`` from ``copytree`` is classified by the paths in its
+    rendered triples.
 
-    ``shutil.copytree`` does not raise the refusal it met. It collects every
-    member it could not copy and raises one ``shutil.Error`` at the end whose
-    single argument is a list of ``(source, destination, why)`` triples, and
-    ``why`` has already been rendered to a string. Measured on this platform that
-    exception IS an ``OSError`` subclass, contrary to the shape one would guess
-    from its behaviour, and it carries ``errno``, ``filename`` and ``filename2``
-    all None and no ``__cause__``, so every errno rule in the module answered
-    None for it.
-
-    ``core/snapshot`` copies each declared capture source with exactly this call
-    and does not guard it, so a sealed member of a declared source reached the
-    dispatcher's blanket as "this is a defect; report it". The paths survive the
-    rendering even though the errno does not, so the paths are what is measured.
+    It is an ``OSError`` with no errno, filenames or cause, and ``core/snapshot``
+    does not guard its copy.
     """
     import shutil
 
@@ -7920,7 +6782,7 @@ def test_a_copy_that_gave_up_on_one_member_is_classified_by_its_paths(tmp_path):
         else:
             raise AssertionError("a 0o000 member copied, so the arrangement is void")
 
-        # The shape the classification has to work from, stated rather than assumed.
+        # The shape the classification works from, stated.
         assert isinstance(gave_up, OSError)
         assert gave_up.errno is None
         assert gave_up.filename is None
@@ -7932,8 +6794,7 @@ def test_a_copy_that_gave_up_on_one_member_is_classified_by_its_paths(tmp_path):
         assert refusal.kind is cause_module.AccessKind.PERMISSION
         assert refusal.remedy is Remedy.GRANT_PATH_ACCESS
 
-        # And it travels the whole way: the dispatcher's blanket is what an
-        # unguarded copy actually reaches.
+        # It travels to the dispatcher's blanket, which an unguarded copy reaches.
         from cratekit import cli as cli_module
 
         blanket = cli_module._unhandled_cause(gave_up)
@@ -7944,25 +6805,12 @@ def test_a_copy_that_gave_up_on_one_member_is_classified_by_its_paths(tmp_path):
         member.chmod(0o600)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Round eight, verified independently: the two answers a double cannot give
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ Two answers a double cannot give ═══════════════════════════════════════
 #
-# Everything above answers the mount question through ``Probes``, which is the
-# right seam for driving twenty three checks over seven mount states without a
-# second disk. It cannot answer two things, and both are load bearing here:
-#
-# * whether the DISTINCTION between an unmounted volume and a moved one survives
-#   contact with a real volume identity, the kernel's own mount table, and a real
-#   detach. A stubbed identity provider agrees with itself by construction.
-# * whether a volume that refuses writes at the MOUNT, with EROFS, reaches the
-#   user as "remount it" rather than as "grant this interpreter access". A chmod
-#   cannot stand in: it produces EACCES, which is the other kind, and it is the
-#   kind whose advice is correct. Only a read only mount refuses the file's owner
-#   and every other account on the machine alike.
-#
-# These FAIL rather than skip when hdiutil is missing, because a skipped hardware
-# proof is indistinguishable from a passing one in every summary anybody reads.
+# ``Probes`` cannot show that unmounted and moved stay distinct with a real
+# identity, mount table and detach, nor that an EROFS mount reaches the user as
+# remount (a chmod gives EACCES, the other kind). These fail rather than skip
+# without hdiutil, since a skipped proof reads as a pass.
 
 
 def _require_hdiutil() -> None:
@@ -7981,27 +6829,12 @@ def _library_on(volume: Path) -> None:
 
 
 def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(tmp_path):
-    """The brief's second scenario, driven with nothing about the disk stubbed.
+    """On one real volume, OK, LIBRARY_PATH_MISSING, MOUNTED_ELSEWHERE and
+    NOT_MOUNTED are told apart.
 
-    Four outcomes off ONE real volume, using the platform's own identity call and
-    the kernel's own mount table:
-
-    * the configured root is a directory on the mounted volume: OK;
-    * the volume is mounted and the configured root is not a directory on it:
-      LIBRARY_PATH_MISSING, the library moved WITHIN the volume;
-    * the configured root's mount point does not exist and the volume is attached
-      somewhere else: MOUNTED_ELSEWHERE, found at the place it actually is;
-    * the same configured root after the volume is DETACHED: NOT_MOUNTED.
-
-    The last two are the pair the brief singles out and the pair one "the volume
-    is wrong" sentence conflates. One is fixed by plugging a drive in and the
-    other by editing a path, so a report that cannot tell them apart sends a user
-    to unplug a drive that was never the problem.
-
-    The identity is REAL: ``macos_volume_identity`` reads it through
-    ``getattrlist(2)`` off the mounted image, and it outlives the detach in this
-    test's own variable, which is the entire property that makes it an identity
-    rather than a coincidence.
+    The last two are the brief's pair: one is fixed by plugging a drive in, the
+    other by editing a path. The identity is real, read through
+    ``getattrlist(2)``, and outlives the detach.
     """
     _require_hdiutil()
 
@@ -8011,9 +6844,8 @@ def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(
     gone_root = tmp_path / "no-such-mount-point" / "library"
 
     with read_only_volume(_library_on) as volume:
-        # The mount TABLE, never a behaviour probe: the macOS FAT driver allows
-        # symlinks, so probing behaviour to identify a filesystem is measured
-        # wrong on this platform and the habit is what this asks instead.
+        # The mount table, never a behaviour probe: the macOS FAT driver allows
+        # symlinks.
         assert filesystem_kind(volume) == "hfs", filesystem_kind(volume)
 
         recorded = identity_of(volume)
@@ -8036,8 +6868,7 @@ def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(
             mount_enumerator=preflight.local_mount_points,
         )
 
-    # Detached here, which is an unplugged drive arranged the only way that is
-    # not a simulation of one.
+    # Detached for real, an unplugged drive.
     unmounted = preflight.resolve_mount_state(
         gone_root,
         recorded,
@@ -8050,21 +6881,18 @@ def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(
     assert elsewhere.state is preflight.MountState.MOUNTED_ELSEWHERE, elsewhere
     assert unmounted.state is preflight.MountState.NOT_MOUNTED, unmounted
 
-    # The moved answer says WHERE, which is the whole difference in what the user
-    # does next. The unmounted answer has no such place to name.
+    # The moved answer says where; the unmounted one has no place to name.
     assert elsewhere.found_at is not None
     assert unmounted.found_at is None
 
-    # The two sentences a user reads over the same configured root are different
-    # sentences carrying different acts.
-    moved_detail = doctor._MOUNT_DETAIL[elsewhere.state]
-    absent_detail = doctor._MOUNT_DETAIL[unmounted.state]
+    # The two sentences carry different acts.
+    moved_detail = doctor_library._MOUNT_DETAIL[elsewhere.state]
+    absent_detail = doctor_library._MOUNT_DETAIL[unmounted.state]
     assert moved_detail != absent_detail
     assert "Nothing needs plugging in" in moved_detail
     assert "Attach it" in absent_detail
 
-    # And both refuse a library state read, so nothing downstream reports on a
-    # template it read off a disk nobody looked at.
+    # Both refuse a library state read.
     assert not preflight.library_state_is_readable(elsewhere)
     assert not preflight.library_state_is_readable(unmounted)
 
@@ -8072,19 +6900,11 @@ def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(
 def test_a_real_read_only_volume_reaches_the_user_as_remount_not_as_a_permission(
     monkeypatch,
 ):
-    """The wizard's write onto the library volume, refused at the MOUNT.
+    """The wizard's write refused at a real read only mount reaches the user as
+    remount, not a permission.
 
-    THIS IS THE SITE ROUND EIGHT WAS ABOUT. Every branch of the wizard used to
-    close with "Give this interpreter write access to that directory", hard
-    coded, and the branch that says it is the branch that writes to the library
-    volume, which is where EROFS actually arises. No permission grant changes a
-    read only mount, so that advice is not a lesser answer: it is an act the user
-    can carry out in full and be no better off for.
-
-    All three channels are asserted, because round eight is the round that
-    discovered they can disagree: the remedy TOKEN a machine consumer reads, the
-    structured cause the envelope carries, and the sentence a person reads. The
-    negative assertions are the load bearing ones.
+    The token, the structured cause and the sentence are all asserted, since
+    they can disagree; the negative assertions carry the weight.
     """
     _require_hdiutil()
 
@@ -8102,42 +6922,32 @@ def test_a_real_read_only_volume_reaches_the_user_as_remount_not_as_a_permission
         assert len(failures) == 1, [note.detail for note in wizard.notes]
         note = failures[0]
 
-        # 1. The token. GRANT_PATH_ACCESS is what the branch hard codes; the kind
-        #    the operating system made is what decides.
+        # 1. The token: the kind the system made decides, not the hard coded one.
         assert note.remedy is Remedy.REMOUNT_WRITABLE, note.remedy
 
-        # 2. The structured cause, so a failing check does not reach the envelope
-        #    as "N checks are failing" with a null remedy.
+        # 2. The structured cause, rather than a null remedy.
         assert note.cause is not None, note.detail
         assert note.cause.reason == "path-read-only"
         assert note.cause.remediation.remedy is Remedy.REMOUNT_WRITABLE
         assert note.cause.detail["access"] == str(AccessKind.READ_ONLY)
-        # The path named is ON the volume that refused, which is the actionable
-        # content. WHICH file on it is a separate and separately recorded question.
+        # The path named is on the volume that refused.
         assert str(volume) in note.cause.detail["path"]
 
-        # 3. The sentence. This is the assertion that would have caught the
-        #    defect, because the wording and the token are free to disagree.
+        # 3. The sentence, free to disagree with the token.
         assert "mounted read only" in note.detail
         assert "no permission grant can change that" in note.detail
         assert "Full Disk Access" not in note.detail
         assert "Grant this interpreter" not in note.detail
 
-        # And nothing was written, which is the other half of a refusal: the tool
-        # did not half create the library's own state on a volume it cannot write.
+        # Nothing was written on the volume it cannot write.
         assert not config.state_path("taxonomy_active", cfg).exists()
 
 
 def test_the_read_only_refusal_and_the_permission_refusal_do_not_share_an_act(
     tmp_path, monkeypatch
 ):
-    """The pair, because a single kind assertion cannot fail the way this failed.
-
-    The defect was ONE wording for every kind, so a test that only ever meets one
-    kind passes straight over it. EROFS comes from a real read only mount and
-    EACCES from a directory this account may not write, through the same wizard
-    branch, and the two answers have to differ in the token and in the closing
-    sentence both.
+    """EROFS and EACCES through the same wizard branch differ in token and
+    closing sentence.
     """
     _require_hdiutil()
 
@@ -8168,21 +6978,11 @@ def test_the_read_only_refusal_and_the_permission_refusal_do_not_share_an_act(
 
 
 def test_the_driver_path_to_the_write_probe_is_driven_on_a_real_read_only_volume():
-    """The whole producer chain for the write probe, on real hardware.
+    """The write probe's only route, driven on a real read only volume: a real
+    ``sqlite3`` write, ``SQLITE_READONLY``, then ``access_refusal``.
 
-    The three metadata readings that replaced R-80's write capable handle are
-    pinned individually above. This drives the chain that reaches them, which
-    nothing did: a real ``sqlite3`` database on a real read only mount, a real
-    write attempt, the driver's own ``SQLITE_READONLY``, and the classification
-    that comes back out of ``access_refusal``.
-
-    IT IS THE ONLY WAY THIS FUNCTION IS REACHED IN THE PRODUCT. ``_probe_writable``
-    has one caller and that caller is a driver level error, so a test that calls
-    the probe directly proves the answer and not the route. The route is what
-    round eight's whole vocabulary rests on: the driver carries no errno, no
-    filename and no cause, and if the path attribute does not survive the hop
-    then every one of these classifications answers None no matter how right the
-    probe is.
+    The driver carries no errno, filename or cause, so the path the connection
+    site attaches must survive the hop.
     """
     _require_hdiutil()
 
@@ -8215,8 +7015,7 @@ def test_the_driver_path_to_the_write_probe_is_driven_on_a_real_read_only_volume
             f"which routes to the READ probe and not to the one under test"
         )
 
-        # The hop the whole vocabulary rests on: the connection site is the only
-        # place that knows the path, so it attaches it and the classifier reads it.
+        # The connection site attaches the path and the classifier reads it.
         name_the_database(refused, database)
         refusal = access_refusal(refused)
 
@@ -8234,9 +7033,8 @@ def test_the_driver_path_to_the_write_probe_is_driven_on_a_real_read_only_volume
 
 # ── taxonomy.schema: the copy against the shipped schema (U132) ─────────────
 #
-# The live library's copy stated schema_version 2 with no genre Favorites class
-# after one shipped, and doctor said only that it parsed. These name the gap,
-# what the upgrade would add, and the hand edit for what it holds.
+# A copy behind the shipped schema is named with the gap, what the upgrade would
+# add, and the hand edit for what the copy holds.
 
 
 def _schema_finding(cfg: config.Config) -> doctor.Finding:
@@ -8322,9 +7120,8 @@ def test_a_shipped_template_that_does_not_load_is_a_defect_and_not_the_copy(
 
 
 def test_the_bandcamp_session_check_names_the_verbs_that_spend_it(configured):
-    """U176, review round two. No verb declares the Bandcamp session, so it is
-    never required, and the finding must not say no verb needs it: the two
-    Bandcamp verbs do, and refuse without it."""
+    """U176: the Bandcamp session is never required, yet the finding names the
+    two Bandcamp verbs that refuse without it."""
     inputs = doctor._Inputs(configured, None, probes(credential_recorded=lambda _name: False))
     finding = doctor._check_credential("credential.bandcamp", inputs)
     assert finding.status is doctor.Status.INFO
@@ -8335,9 +7132,8 @@ def test_the_bandcamp_session_check_names_the_verbs_that_spend_it(configured):
 
 
 def test_the_discogs_token_is_reported_never_failed_and_says_how_to_record_it(configured):
-    """U244. No verb needs the token: without one the tagging verbs record
-    Discogs as not asked, so the finding is INFO naming those verbs and the
-    login step, never a failure and never "no verb needs it"."""
+    """U244: the Discogs token is INFO naming the tagging verbs and the login
+    step, never a failure."""
     inputs = doctor._Inputs(configured, None, probes(credential_recorded=lambda _name: False))
     finding = doctor._check_credential("credential.discogs", inputs)
     assert finding.status is doctor.Status.INFO
@@ -8349,9 +7145,8 @@ def test_the_discogs_token_is_reported_never_failed_and_says_how_to_record_it(co
 
 
 def test_the_cyanite_key_is_reported_never_failed_and_names_the_trial(configured):
-    """U245. No verb spends the key, only the Cyanite trial script, so the
-    finding is INFO naming the script and the login step, never a failure, and
-    setup never offers it."""
+    """U245: only the Cyanite trial script spends the key, so the finding is INFO
+    naming it and the login step, and setup never offers it."""
     inputs = doctor._Inputs(configured, None, probes(credential_recorded=lambda _name: False))
     finding = doctor._check_credential("credential.cyanite", inputs)
     assert finding.status is doctor.Status.INFO
@@ -8363,9 +7158,8 @@ def test_the_cyanite_key_is_reported_never_failed_and_names_the_trial(configured
 
 
 def test_setup_offers_the_discogs_token_where_a_tagging_verb_is_switched_on():
-    """Offered, not required: ``offered`` is true for the token wherever one of
-    the verbs that spend it is on, and stays the registry's question for the
-    rest, so the Bandcamp session is still not offered to every installation."""
+    """The Discogs token is offered wherever a tagging verb is on, and the
+    Bandcamp session is still not offered everywhere."""
     full = profiles.resolve("full")
     assert doctor.offered("credential.discogs", full)
     assert not doctor.requires_check("credential.discogs", full)
@@ -8377,9 +7171,7 @@ def test_setup_offers_the_discogs_token_where_a_tagging_verb_is_switched_on():
     } == spenders == {"tag.folder", "tag.retag", "tag.suggest"}
 
 
-# ---------------------------------------------------------------------------
-# U159: install.release, whether a newer release than this copy is published
-# ---------------------------------------------------------------------------
+# ═══ U159: install.release, whether a newer release is published ════════════
 
 _REPO_URL = "https://github.com/philgutowski/cratekit"
 
@@ -8512,8 +7304,8 @@ def _distribution(tmp_path, direct_url, requires=()):
 )
 def test_the_install_origin_is_read_off_the_pep_610_record(tmp_path, monkeypatch, record, kind):
     dist = _distribution(tmp_path, record)
-    monkeypatch.setattr(doctor.metadata, "distribution", lambda name: dist)
-    origin = doctor._install_origin()
+    monkeypatch.setattr(importlib_metadata, "distribution", lambda name: dist)
+    origin = doctor_model._install_origin()
     assert origin.kind == kind
     if kind != "unknown":
         assert origin.version == "0.2.0"
@@ -8544,8 +7336,8 @@ def test_the_installed_extras_are_the_ones_whose_requirements_are_present(tmp_pa
             return dist
         raise metadata.PackageNotFoundError(name)
 
-    monkeypatch.setattr(doctor.metadata, "distribution", distribution)
-    assert doctor._install_origin().extras == ("analysis",), (
+    monkeypatch.setattr(importlib_metadata, "distribution", distribution)
+    assert doctor_model._install_origin().extras == ("analysis",), (
         "vocals is missing torch and all is an alias, so only analysis is kept"
     )
 
@@ -8558,24 +7350,24 @@ def test_the_release_read_parses_ls_remote_and_refuses_on_failure(monkeypatch):
         out = "abc\trefs/tags/v0.1.0\ndef\trefs/tags/v0.2.0\n"
         return subprocess.CompletedProcess(argv, 0, out, "")
 
-    monkeypatch.setattr(doctor.subprocess, "run", fake_run)
-    assert doctor._release_tags(_REPO_URL) == ("v0.1.0", "v0.2.0")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert doctor_model._release_tags(_REPO_URL) == ("v0.1.0", "v0.2.0")
     argv, kwargs = calls[0]
     assert argv[:3] == ["git", "ls-remote", "--tags"]
-    assert kwargs["timeout"] == doctor.RELEASE_READ_TIMEOUT
+    assert kwargs["timeout"] == doctor_model.RELEASE_READ_TIMEOUT
     assert kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
 
     def refused(argv, **kwargs):
         return subprocess.CompletedProcess(argv, 128, "", "fatal: could not read Username")
 
-    monkeypatch.setattr(doctor.subprocess, "run", refused)
-    assert doctor._release_tags(_REPO_URL) is None
+    monkeypatch.setattr(subprocess, "run", refused)
+    assert doctor_model._release_tags(_REPO_URL) is None
 
     def timed_out(argv, **kwargs):
         raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
 
-    monkeypatch.setattr(doctor.subprocess, "run", timed_out)
-    assert doctor._release_tags(_REPO_URL) is None
+    monkeypatch.setattr(subprocess, "run", timed_out)
+    assert doctor_model._release_tags(_REPO_URL) is None
 
 
 def test_an_unparseable_installed_version_is_unknown_never_a_downgrade():
@@ -8585,9 +7377,7 @@ def test_an_unparseable_installed_version_is_unknown_never_a_downgrade():
     assert "pipx install" not in finding.detail, "it told a newer copy to downgrade"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# U185. DEADCA7 beside the library
-# ═══════════════════════════════════════════════════════════════════════════
+# ═══ U185: DEADCA7 beside the library ═══════════════════════════════════════
 
 
 def _deadca7(tmp_path, *, pushed_at: datetime | None = None, home: bool = True):
@@ -8595,7 +7385,7 @@ def _deadca7(tmp_path, *, pushed_at: datetime | None = None, home: bool = True):
     support = tmp_path / "deadca7"
     if not home:
         return support
-    backups = support / doctor.DEADCA7_BACKUPS
+    backups = support / doctor_backup.DEADCA7_BACKUPS
     backups.mkdir(parents=True)
     (backups / ".DS_Store").write_bytes(b"")
     if pushed_at is not None:
@@ -8666,27 +7456,24 @@ def test_a_backup_folder_that_cannot_be_read_is_said_as_unread_and_does_not_fail
     configured, tmp_path
 ):
     support = _deadca7(tmp_path)
-    (support / doctor.DEADCA7_BACKUPS / "gone").symlink_to(tmp_path / "nowhere")
+    (support / doctor_backup.DEADCA7_BACKUPS / "gone").symlink_to(tmp_path / "nowhere")
     finding = _push_check(configured, support)
     assert "cannot be said: its backup folder could not be read" in finding.detail
 
 
-# ---------------------------------------------------------------------------
-# U224: DEADCA7 installed and never pushed is not DEADCA7 absent
-# ---------------------------------------------------------------------------
+# ═══ U224: DEADCA7 installed and never pushed is not DEADCA7 absent ═════════
 
 
 def _installed_places(tmp_path, *present: str) -> tuple[Path, ...]:
     """The three places the installed probe names, under ``tmp_path``, with ``present`` made.
 
-    Keyed ``system``, ``user`` and ``state``: the bundle in the system's
-    Applications folder, the bundle in the account's, and the state folder the
-    shipped app keeps under Application Support.
+    Keyed ``system``, ``user`` and ``state``: the system and account bundles and
+    the app's Application Support folder.
     """
     places = {
-        "system": tmp_path / "Applications" / doctor.DEADCA7_BUNDLE,
-        "user": tmp_path / "home" / "Applications" / doctor.DEADCA7_BUNDLE,
-        "state": tmp_path / "home" / "Library" / "Application Support" / doctor.DEADCA7_STATE,
+        "system": tmp_path / "Applications" / doctor_model.DEADCA7_BUNDLE,
+        "user": tmp_path / "home" / "Applications" / doctor_model.DEADCA7_BUNDLE,
+        "state": tmp_path / "home" / "Library" / "Application Support" / doctor_model.DEADCA7_STATE,
     }
     for name in present:
         places[name].mkdir(parents=True)
@@ -8706,7 +7493,7 @@ def _installed_check(configured, support, installed) -> doctor.Finding:
 def test_sitting_68s_mac_the_bundle_and_no_support_folder_reads_installed_with_no_push(
     configured, tmp_path
 ):
-    """The bug: DEADCA7.app in /Applications, no deadca7 folder, named not installed."""
+    """DEADCA7.app in /Applications with no support folder reads installed."""
     places = _installed_places(tmp_path, "system")
     finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
     assert "not installed" not in finding.detail, finding.detail
@@ -8715,7 +7502,7 @@ def test_sitting_68s_mac_the_bundle_and_no_support_folder_reads_installed_with_n
     )
     assert str(places[0]) in finding.detail, "it did not name what it found"
     assert "unconfirmed until a push is read" in finding.detail
-    assert str(tmp_path / "deadca7" / doctor.DEADCA7_BACKUPS) in finding.detail
+    assert str(tmp_path / "deadca7" / doctor_backup.DEADCA7_BACKUPS) in finding.detail
 
 
 def test_the_bundle_in_the_accounts_own_applications_folder_reads_installed(configured, tmp_path):
@@ -8815,7 +7602,7 @@ def test_a_backup_folder_whose_stat_is_refused_is_unread_never_no_push(
     configured, tmp_path, monkeypatch
 ):
     support = _deadca7(tmp_path)
-    _refuse_stat_under(monkeypatch, support / doctor.DEADCA7_BACKUPS)
+    _refuse_stat_under(monkeypatch, support / doctor_backup.DEADCA7_BACKUPS)
     finding = _installed_check(configured, support, ())
     assert "cannot be said: its backup folder could not be read" in finding.detail
     assert "recorded no push" not in finding.detail
@@ -8855,8 +7642,8 @@ def test_a_probe_that_raises_beside_a_present_bundle_still_reads_installed(confi
 
 
 def test_the_installed_probe_names_both_bundles_and_the_shipped_state_folder(monkeypatch, tmp_path):
-    monkeypatch.setattr(doctor.Path, "home", classmethod(lambda cls: tmp_path))
-    assert doctor._deadca7_installed() == (
+    monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: tmp_path))
+    assert doctor_model._deadca7_installed() == (
         Path("/Applications/DEADCA7.app"),
         tmp_path / "Applications" / "DEADCA7.app",
         tmp_path / "Library" / "Application Support" / "deadcatalog",
@@ -8865,8 +7652,8 @@ def test_the_installed_probe_names_both_bundles_and_the_shipped_state_folder(mon
     def homeless(cls):
         raise RuntimeError("no home")
 
-    monkeypatch.setattr(doctor.Path, "home", classmethod(homeless))
-    assert doctor._deadca7_installed() == (Path("/Applications/DEADCA7.app"),)
+    monkeypatch.setattr(pathlib.Path, "home", classmethod(homeless))
+    assert doctor_model._deadca7_installed() == (Path("/Applications/DEADCA7.app"),)
 
 
 def test_a_real_probes_value_asks_the_installed_probe(configured, tmp_path, monkeypatch):
@@ -8874,8 +7661,8 @@ def test_a_real_probes_value_asks_the_installed_probe(configured, tmp_path, monk
     import dataclasses
 
     home = tmp_path / "home"
-    (home / "Library" / "Application Support" / doctor.DEADCA7_STATE).mkdir(parents=True)
-    monkeypatch.setattr(doctor.Path, "home", classmethod(lambda cls: home))
+    (home / "Library" / "Application Support" / doctor_model.DEADCA7_STATE).mkdir(parents=True)
+    monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: home))
     machine = dataclasses.replace(
         doctor_machines.green(),
         deadca7_home=lambda: home / "nowhere",
@@ -8888,7 +7675,7 @@ def test_a_real_probes_value_asks_the_installed_probe(configured, tmp_path, monk
 def test_an_install_place_reached_through_a_file_is_absent_not_unread(configured, tmp_path):
     """``Applications`` a file: the stat raises NotADirectoryError, which is not there."""
     (tmp_path / "Applications").write_bytes(b"")
-    places = (tmp_path / "Applications" / doctor.DEADCA7_BUNDLE,)
+    places = (tmp_path / "Applications" / doctor_model.DEADCA7_BUNDLE,)
     finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
     assert finding.detail == (
         "DEADCA7 is not installed here, so nothing else writes the library beside rekordbox"
@@ -8932,7 +7719,7 @@ def _refuse_stat_under(monkeypatch, under: Path) -> None:
             raise PermissionError(13, "Permission denied", str(path))
         return real(path, *args, **kwargs)
 
-    monkeypatch.setattr(doctor.os, "stat", refused)
+    monkeypatch.setattr(os, "stat", refused)
 
 
 def test_a_push_beside_a_backup_recorded_ahead_of_now_is_not_called_held(configured, tmp_path):
@@ -8948,9 +7735,7 @@ def test_a_push_beside_a_backup_recorded_ahead_of_now_is_not_called_held(configu
     assert "which holds it" not in finding.detail
 
 
-# ---------------------------------------------------------------------------
-# U181: install.extras, whether the vocal model can score in this copy
-# ---------------------------------------------------------------------------
+# ═══ U181: install.extras, whether the vocal model can score in this copy ═══
 
 _NO_EXTRA = ("extra", "the 'vocals' extra is not installed here; reinstall it")
 
@@ -8966,7 +7751,7 @@ def _extras_finding(missing, origin=None, **overrides):
 
 
 def test_a_copy_without_the_vocals_extra_says_so_and_prints_the_reinstall_command():
-    """Sitting 51's copy: installed with analysis and not vocals, from the release."""
+    """A copy installed with analysis and not vocals says so with the command."""
     finding = _extras_finding(_NO_EXTRA)
     assert finding.key == "install.extras"
     assert finding.status is doctor.Status.INFO, "it runs inside setup and must not refuse"
@@ -8987,8 +7772,8 @@ def test_a_copy_whose_vocal_model_can_score_is_ok():
 def test_the_row_reads_the_vocals_modules_own_probe_with_the_loader_bound_or_not(
     monkeypatch,
 ):
-    """The scenario's two halves through the shipped seam: unbound on a machine
-    with no torch reports the row and the command, bound is ok."""
+    """Through the shipped seam: unbound with no torch reports the row and the
+    command, bound is ok."""
     from cratekit.analysis import vocals
 
     monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
@@ -9063,20 +7848,20 @@ def test_a_library_has_scored_when_a_vocal_calibration_is_recorded(configured):
     """The shipped probe: the calibration a fit writes only from scored files."""
     from cratekit.write import metadata_cli
 
-    assert doctor._vocals_scored(None) is False
-    assert doctor._vocals_scored(configured) is False
+    assert doctor_model._vocals_scored(None) is False
+    assert doctor_model._vocals_scored(configured) is False
     path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, configured)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('{"threshold": 12.0}', encoding="utf-8")
-    assert doctor._vocals_scored(configured) is True
+    assert doctor_model._vocals_scored(configured) is True
 
 
 def test_a_git_install_of_a_branch_head_names_no_tag_that_does_not_exist(monkeypatch):
-    """Review round one: ``@v0.3.1.dev3+g...`` is no tag, so the command is the
-    vocals module's own rather than a release reinstall pipx would refuse."""
+    """``@v0.3.1.dev3+g...`` is no tag, so the command is the vocals module's
+    own rather than a release reinstall pipx would refuse."""
     from cratekit.analysis import vocals
 
     monkeypatch.setattr(vocals, "install", lambda: "the vocals module's own command")
     origin = _vcs("0.3.1.dev3+gabc1234", ("analysis",))
-    assert doctor.vocals_install_command(origin) == "the vocals module's own command"
-    assert "@v0.3.0" in doctor.vocals_install_command(_vcs("0.3.0", ("analysis",)))
+    assert doctor_state.vocals_install_command(origin) == "the vocals module's own command"
+    assert "@v0.3.0" in doctor_state.vocals_install_command(_vcs("0.3.0", ("analysis",)))

@@ -210,6 +210,7 @@ def _row(
         grid=rc.Grid(state=grid if state == rc.ANALYSED else rc.NOT_READ),
         key=key,
         relation=relation,
+        headed=True,
         dyn=dyn,
     )
 
@@ -243,10 +244,15 @@ def test_suspect_outranks_waiting():
     assert _verdict(_row(state=rc.NOT_ANALYSED), _row(grid=rc.VARIABLE)) == rc.SUSPECT
 
 
-def test_keys_far_below_the_recorded_agreement_are_suspect_and_near_it_are_not():
+def test_keys_far_below_the_recorded_agreement_are_reported_and_never_suspect():
+    """U327: rekordbox's key is the one kept, so a title key that differs is a row for
+    ``analyze adopt``, never a visit done wrong. The floor is still measured."""
     far = [_row(relation=rc.KEY_FAR) for _ in range(60)]
+    low = rc.Check(scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name="x", content_ids=()),
+                   rows=(*far, *[_row() for _ in range(20)]))
     # 20 equal in 80 is 25 percent, far below the floor for 80 (about 36).
-    assert _verdict(*far, *[_row() for _ in range(20)]) == rc.SUSPECT
+    assert low.key_suspect is True and low.verdict == rc.DONE
+    assert low.summary()["differs"] == 60
     # 40 equal in 80 is 50 percent, inside the floor.
     assert _verdict(*far[:40], *[_row() for _ in range(40)]) == rc.DONE
     # One step and unkeyed rows count as compared and as not compared.
@@ -728,7 +734,8 @@ def _unanalysed_today(db):
 
 
 def _read_row_today(cfg, db, content_id, *, keys, dyn, template):
-    """``rekordbox_check.read_row`` before U259: three reads of the row by ID."""
+    """``rekordbox_check.read_row`` before U259: three reads of the row by ID, with
+    the two tempos U327 reads off the same row."""
     one = analyzed.member(db, content_id)
     if one.why in (analyzed.NO_ROW, analyzed.ROW_REMOVED):
         return rc.Row(content_id=content_id, title=one.title, state=rc.GONE, why=one.why)
@@ -742,6 +749,9 @@ def _read_row_today(cfg, db, content_id, *, keys, dyn, template):
         "key": key,
         "head_key": None if head is None else pad_camelot(head),
         "relation": rc.key_relation(head, key),
+        "tempo": rc.reference_tempo(getattr(content, "BPM", None)),
+        "head_tempo": rc.head_tempo(content, template=template),
+        "headed": rc._carries_head(content, template=template),
         "dyn": content_id in dyn,
     }
     if one.action != analyzed.CLEAR:

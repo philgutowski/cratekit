@@ -1,31 +1,10 @@
 """``crate converge``: what each governed tree's standing is, without writing (U36).
 
-WHY THIS IS A SEPARATE MODULE FROM THE REBUILD'S SURFACE. The two verbs are not
-alike in the one way that decides where a verb can land. ``rebuild`` writes
-``db_tree``, is destructive, and cannot exit OK on a machine with no rekordbox
-database, so it sits behind the conformance wall with the other destructive
-database verbs. ``converge`` declares no gates, writes nothing, and is exactly
-what a person is told to run when a tree is already refusing every write. Both
-were declared against ONE module, and because the countdown in
-``tests/_pending.py`` keys on the module rather than on the verb, the read-only
-one was parked behind the destructive one. Parking it parks the remedy: both
-refusals in this unit name it as step one.
-
-TWO PROPERTIES, AND THE SECOND ONE IS THE UNIT'S OWN LESSON APPLIED HERE.
-
-**It is read only and stays that way.** It opens no session, takes no lock,
-writes no state and asks for no acknowledgment. A diagnostic that needed the
-gates the unconverged flag is holding shut would be a diagnostic nobody can
-reach, and the person reaching for it is by definition somebody whose library is
-refusing writes.
-
-**It never reports a tree converged that it could not compare.** Every check
-below is one of three answers: compared and matching, compared and differing, or
-NOT COMPARED and why. There is no fourth answer that looks like the first. That
-is the same sentence the rebuild's derivation refuses on, said at the surface: a
-library whose volume is not mounted, or whose database this build cannot open,
-produces no comparison at all, and reporting an empty comparison as a clean one
-is how a run tells somebody their damaged tree is fine.
+It is read only, opening no session, lock or acknowledgment, since it is what
+a person runs when a tree already refuses every write; it is a module apart
+from ``rebuild`` so the destructive verb never parks it. It never reports a
+tree converged that it could not compare: each check is matching, differing,
+or not compared and why.
 """
 
 from __future__ import annotations
@@ -44,8 +23,7 @@ from cratekit.write import metadata_cli, rebuild, routing_pass
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
 
-#: The three answers a per-tree check can carry, named once so the renderer and
-#: the tests cannot disagree about the spelling.
+#: The three answers a per-tree check can carry, named once.
 MATCHING = "matching"
 DIFFERING = "differing"
 NOT_COMPARED = "not-compared"
@@ -64,23 +42,12 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
 
 
 def _library_rows(db: Any) -> Iterator[Any]:
-    """Every collection row, through the ONE producer that reads the marker.
-
-    Not a second walk written here. ``routing_pass.content_rows`` refuses a row
-    that cannot report its soft-delete marker rather than defaulting it, and a
-    copy of that walk in a diagnostic would be a second answer to which rows are
-    live, reached by the one command somebody runs to find out what is true.
-    """
+    """Every collection row, through the one producer that reads the soft-delete marker."""
     return routing_pass.content_rows(db)
 
 
 def _standing(record: convergence.TreeConvergence | None) -> dict[str, Any]:
-    """What the RECORD says about a tree, which needs no database at all.
-
-    This half always answers, and that is the point: the record is what survives
-    the process that discovered the damage, so a person on a machine where the
-    volume is not mounted can still be told which trees are refusing and why.
-    """
+    """What the record says about a tree, which needs no database, so it always answers."""
     if record is None:
         return {"unconverged": False, "reason": None, "since": None, "disposed_by": None}
     return {
@@ -101,10 +68,8 @@ def _compare(
 ) -> tuple[str, str]:
     """Run the live comparison for one native tree, or say why it did not run.
 
-    Returns a status and a detail line. A refusal from the engine is turned into
-    ``NOT_COMPARED`` with its own message rather than being allowed to end the
-    whole report: a library with three governed trees and one unreadable
-    taxonomy should still be told the truth about the other two.
+    Returns a status and a detail line. An engine refusal becomes this tree's
+    ``NOT_COMPARED`` rather than ending the report for the others.
     """
     rows = list(_library_rows(db))
     known = {str(row.ID) for row in db.get_playlist()}
@@ -117,13 +82,9 @@ def _compare(
             declared=declared,
             rows=rows,
             root_exists=lambda root_id: root_id in known,
-            # THE CALIBRATED CUT, through the one loader the routing passes and
-            # the workers use (U89), so this report compares the vocal sub the
-            # same way they fill it. The threshold is a value the caller
-            # supplies (D7). None on a library never calibrated, and the engine
-            # then names the dimension it did not compare. A corrupt calibration
-            # refuses inside this try, so it is this tree's NOT_COMPARED with
-            # the loader's own message rather than the end of the report.
+            # The calibrated cut, through the workers' loader (U89, D7). None
+            # when never calibrated; a corrupt one refuses inside this try, so
+            # it is this tree's NOT_COMPARED.
             vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
         )
     except CratekitError as exc:
@@ -140,13 +101,8 @@ def converge(ctx: "Context") -> Envelope:
     """Report, per governed tree, whether the declaration and the database agree."""
     cfg = config.load()
     entries = tree_registry.read(cfg)
-    # AN UNREADABLE RECORD IS A FINDING HERE, NOT THE END OF THE RUN. Every other
-    # reader of that document refuses on it, correctly, because acting on a
-    # record nobody can parse is acting on nothing. This is the one caller that
-    # must survive it: it writes nothing, and it is what a person is told to run
-    # when something is wrong, so a diagnostic that died with the document would
-    # leave them with no way to see what the document says. The standing half of
-    # each check then reads "not compared", never "matching".
+    # An unreadable record is a finding here, not the end of the run, since this
+    # diagnostic writes nothing; every check then reads not compared.
     unreadable: str | None = None
     try:
         recorded = convergence.read(cfg)
@@ -159,9 +115,8 @@ def converge(ctx: "Context") -> Envelope:
         else tuple(t for t in entries.tree_ids() if t == ctx.args.tree)
     )
     if ctx.args.tree is not None and not wanted:
-        # Named a tree the registry does not govern. Reported rather than
-        # answered, because "no such tree" and "that tree is fine" are the two
-        # sentences this whole unit exists to keep apart.
+        # A tree the registry does not govern is refused, so "no such tree"
+        # never reads as "that tree is fine".
         return ctx.envelope(
             data={
                 "checks": [
@@ -184,16 +139,10 @@ def converge(ctx: "Context") -> Envelope:
     live: dict[str, tuple[str, str]] = {}
 
     if native:
-        # THE DATABASE IS OPENED ONLY WHEN A TREE HAS ACTUALLY CUT OVER, so this
-        # verb runs on every library that has never flipped one, which is every
-        # library until the first cutover, without a rekordbox database existing
-        # at all. A failure to open is a NOT COMPARED answer for each native
-        # tree, never an absent one.
-        #
-        # THE DECLARATION IS READ FIRST, and a refusal to read it is the same
-        # NOT COMPARED answer (R-685). Read after the open, a refusal escaped
-        # between the open and the close, so it held the database and gave a
-        # refusal in place of the one answer this verb exists to give.
+        # The database is opened only once a tree has cut over. A failure to
+        # open, or to read the declaration first, is NOT COMPARED for each
+        # native tree; read after the open, a refusal escaped holding the
+        # database (R-685).
         handle = declared = None
         try:
             declared = active_taxonomy.load(cfg)
@@ -236,10 +185,7 @@ def converge(ctx: "Context") -> Envelope:
             ),
         )
         if unreadable is not None:
-            # The live comparison reads the same record to resolve destinations,
-            # so it cannot have run either. Forced to NOT COMPARED rather than
-            # left at whatever the comparison happened to answer, because the one
-            # thing this verb may never do is report a tree it could not compare.
+            # The comparison reads the same record, so it cannot have run either.
             status, detail = NOT_COMPARED, f"{detail} (the convergence record is unreadable)"
         if standing["unconverged"]:
             detail = (

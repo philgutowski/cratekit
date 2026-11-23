@@ -1,0 +1,234 @@
+{
+  "name": "u325-after-deferred-01",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "db120fdb",
+  "when": "2026-11-23 04:28 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22933,
+  "baseline_exit": 1,
+  "pytest_runs": 8,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 251,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "read",
+  "baseline_note": "read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py compare` at 2026-11-23 04:28 UTC for commit `db120fdb9f05`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file",
+  "subset_baselines": 2,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/session/restore_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/session/restore_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "75425845a3c9423d",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22933,
+    "baseline_collected": 22933,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "r592-b.B5_step_names_no_file",
+      "description": "rerun_step: say the database rather than its file name, so the step does not say which file to remove",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ed2455aa7e8f73c6",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        f\"before running the recovery again, remove {database_target.name} and any \"",
+      "new": "        f\"before running the recovery again, remove the database and any \"",
+      "source": {
+        "table": "r592-b.json",
+        "id": "B5_step_names_no_file"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.P3_convergence_is_reported_for_a_run_that_spent_no_capture",
+      "description": "Answer the capture restore's own question when no capture restore happened",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dd83a232cfeba290",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_run_rolls_no_session_back_even_by_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if outcome is not None:\n        totals[\"converged\"] = outcome.converged\n        totals[\"outstanding\"] = len(outcome.outstanding)",
+      "new": "    totals[\"converged\"] = outcome.converged if outcome is not None else True\n    if outcome is not None:\n        totals[\"outstanding\"] = len(outcome.outstanding)",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "P3_convergence_is_reported_for_a_run_that_spent_no_capture"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.S6_the_named_decision_is_withdrawn",
+      "description": "Tell the off-machine restore no decision exists, which R33 makes it refuse on",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5517713540e13111",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled",
+        "tests/test_restore_cli.py::test_a_rehearsal_is_still_refused_while_rekordbox_is_running",
+        "tests/test_restore_cli.py::test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal",
+        "tests/test_restore_cli.py::test_a_target_restores_the_database_into_the_directory_it_names",
+        "tests/test_restore_cli.py::test_a_target_run_rolls_no_session_back_even_by_default",
+        "tests/test_restore_cli.py::test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled",
+        "tests/test_restore_cli.py::test_the_from_backup_flag_reaches_the_off_machine_half_through_the_dispatcher",
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest",
+        "tests/test_restore_cli.py::test_the_report_names_the_snapshot_that_arrived",
+        "tests/test_restore_cli.py::test_what_is_offered_is_what_is_pulled"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    confirmed=True,",
+      "new": "                    confirmed=False,",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "S6_the_named_decision_is_withdrawn"
+      }
+    },
+    {
+      "id": "u96-a.A13_completed_halves_recorded",
+      "description": "Never record a completed half, so a database failure does not say the mirror arrived",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "93b304df030550ac",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            completed.append(half)",
+      "new": "            pass",
+      "source": {
+        "table": "u96-a.json",
+        "id": "A13_completed_halves_recorded"
+      }
+    },
+    {
+      "id": "u27-restore-cli-author.S1_plan_takes_its_own_lock",
+      "description": "Let the off-machine PLAN acquire the library lock itself instead of taking the open guard",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c5021ef01119ff36",
+      "subset": [
+        "tests/test_restore_cli.py",
+        "tests/test_restore.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 257,
+      "baseline_collected": 257,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled",
+        "tests/test_restore_cli.py::test_a_rehearsal_is_still_refused_while_rekordbox_is_running",
+        "tests/test_restore_cli.py::test_a_target_directory_that_does_not_exist_is_still_the_absent_refusal",
+        "tests/test_restore_cli.py::test_a_target_restores_the_database_into_the_directory_it_names",
+        "tests/test_restore_cli.py::test_a_target_run_rolls_no_session_back_even_by_default",
+        "tests/test_restore_cli.py::test_an_unmarked_newest_snapshot_is_refused_and_a_named_one_is_pulled",
+        "tests/test_restore_cli.py::test_the_from_backup_flag_reaches_the_off_machine_half_through_the_dispatcher",
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest",
+        "tests/test_restore_cli.py::test_the_report_names_the_snapshot_that_arrived",
+        "tests/test_restore_cli.py::test_what_is_offered_is_what_is_pulled"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    include_mirror=include_mirror,\n                    gates=held.guard,",
+      "new": "                    include_mirror=include_mirror,",
+      "source": {
+        "table": "u27-restore-cli-author.json",
+        "id": "S1_plan_takes_its_own_lock"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}

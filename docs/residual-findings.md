@@ -2730,3 +2730,289 @@ change to that wording would pass the behaviour comparison.
 
 **Closes when:** `tests/behaviour/master.py` and `setbuilder.py` drive the
 three cases, or the unit suites pin their text. Ledger only.
+
+---
+
+## R-1917. A broken test root guard lets tests/test_config_test_root.py leave a directory at the filesystem root, and eight of its tests then fail on that machine in every later run
+
+**Found:** while measuring the kill set replay of #930, U325, 2026-11-23.
+
+**The mechanism.** `tests/test_config_test_root.py` aims its writes at
+`OUTSIDE`, a directory named `cratekit-r926-outside-every-test-root` directly
+under the filesystem root, and asserts each is refused and that `OUTSIDE`
+does not exist. When `core/config.py`'s refusal is broken, which is what a
+mutation row on that guard does (the r926 rows, `u254.C3_append_test_root`),
+the write lands: the directory is made at the root with a config file, a
+ledger and two lock files in it, and nothing removes it. From then on the
+eight tests that assert `OUTSIDE` is absent fail on that machine in every
+run, whatever the tree. The mutation driver's state guard (R-343) watches
+only the configuration and state roots, so it does not see the leak.
+
+**Measured cost.** On the replay container it reddened the null control of
+the next batch (eight deaths), and every row measured after it whose subset
+held that file, or that was promoted to the full suite, read killed by those
+eight tests alone. #855's base tables carry twelve such rows, U325's after
+tables four, all measured again on containers that never had the directory.
+The session could not remove it: a recursive removal at the filesystem root
+is refused by the harness and needs a person, so the container stayed
+unusable for those eight tests. On a Mac the same leak would land in `/`,
+where an unprivileged run cannot write, so it shows on Linux containers run
+as root.
+
+**Closes when:** the tests aim at a directory a fixture creates under the
+system temporary directory and outside the test root (still outside every
+allowance the guard knows), or remove `OUTSIDE` in a fixture's teardown
+whatever the test's outcome, and the mutation driver's state guard watches
+for a new entry at the filesystem root. Earns an issue: it silently corrupts
+every later mutation measurement on the machine, which is the kind of
+apparatus defect the null control exists to catch.
+
+---
+
+## R-1918. The verb registry stays over 1,500 lines because two scripts read its table from that one file
+
+**Found:** at the build of #860, U303, 2026-11-22.
+
+**The mechanism.** `src/cratekit/cli/registry.py` is 2,459 lines after U303,
+over the 1,500 line limit of #847's point 2. Its `ENTRIES` table alone is
+about 1,700 code lines, so prose cannot bring it under. #860's brief asked for
+the one table split by module group into several files, and that split cannot
+land from the shell's card: `scripts/refactor_measure.py` `verbs_from` raises
+unless `registry.py` holds `ENTRIES` as one literal tuple of `Entry(...)`
+keyword calls, and `scripts/board.py` `planned_units` reads the `planned_in`
+markers from that same file by syntax tree. Both are #870's files, and
+`tests/test_import_rules.py` holds the first reading equal to the live
+registry.
+
+**Measured cost.** None to a person: the table is value for value what it
+was, compared by syntax tree and by a dump in the behaviour scenario
+`cli/the_registry_value_for_value`. The cost is the audit's: one file over
+the limit.
+
+**Closes when:** both readers follow a table assembled from several modules
+(for example, reading every `ENTRIES` tuple of the modules `registry.py`
+names), and the table is then split by module group. Ledger only; #870 or a
+later card under #847 takes it.
+
+---
+
+## R-1919. Resolving the type hints of doctor's probes needs the deletion package imported
+
+**Found:** at the review of #860, U303, 2026-11-22.
+
+**The mechanism.** U303 moved the deletion import in
+`src/cratekit/cli/doctor_model.py` behind `TYPE_CHECKING`, so the shell no
+longer imports a toggleable package at load. The `Probes.trash_probe` field is
+annotated with `TrashStatus`, which is now only a string, so
+`typing.get_type_hints(doctor.Probes)` raises `NameError` where on `main` it
+resolved.
+
+**Measured cost.** None driven. The one caller of `get_type_hints` in the
+repository, `tests/test_reserved_causes.py`, walks exception classes only:
+one candidate was driven and none produces the error.
+
+**Closes when:** a caller needs the hints, and then it passes a namespace
+holding `TrashStatus`, or the field's annotation names a protocol in the
+shell. Ledger only.
+
+---
+
+## R-1920. The toggle scenario's last loop runs five verbs with every toggle on
+
+**Found:** at the review of #860, U303, 2026-11-22.
+
+**The mechanism.** `tests/behaviour/cli.py`
+`test_every_toggle_off_and_a_missing_extra` reads every toggle off through the
+real parser and keeps the verbs each preset lists, which is what the
+comparison holds. Its last loop then runs help and one verb of five modules
+named by hand, with no toggle turned off, so the five imports U303 moved
+inside functions are driven through a real verb only with their toggles on.
+
+**Measured cost.** None: turning a toggle off removes verbs from the parser
+and uninstalls nothing, and the review found no reachable difference.
+
+**Closes when:** the loop writes a configuration with each toggle off and
+runs the remaining verbs, or is dropped as covered by the parser reading.
+Ledger only.
+
+---
+
+## R-1921. The command shell misses its code, line and test targets under the refactor epic
+
+**Found:** at the build of #860, U303, 2026-11-22.
+
+**The mechanism.** #860's brief set targets on the 28 files the survey of
+#847 counted: at most 19,914 lines and 13,243 code lines, and the 23 test
+files at most 18,547 lines with their summed test time 30 percent lower.
+Three files landed in the area since (`schedule.py`, `sync_night.py`,
+`verbs/tag_campaign.py`), so the area U303 started from was 31 files,
+28,051 lines and 17,787 code lines. U303 split doctor, emptied the shell's
+import and copy allowances and shortened its prose; it did not rewrite code
+for size, since behaviour is frozen and every line changed is a kill set row
+to carry.
+
+**Measured cost.** Measured by `scripts/refactor_measure.py lines` on the
+merged head, given in `docs/restart/u303.md`: the lines target missed, the
+code lines target missed by a wide margin (the 15 percent code cut #847's
+prose answer asks of every card is not met), the test lines target missed,
+and the test time not cut, since no test was removed or rewritten. No cost
+to a person.
+
+**Closes when:** #872, the final audit, reads the shortfall against the
+193,000 line bar and files a further card for the shell's code and tests if
+the total needs it. Ledger only.
+
+---
+
+## R-1922. Two recorded kills of sync land's staged download read zero since R1499
+
+**Found:** at the kill set replay of #860, U303, 2026-11-23.
+
+**The mechanism.** U212's table recorded two kills in
+`src/cratekit/cli/sync_land.py`: `S2_download_refused_all`, which drops the
+`if not listed.staged` return so a download that lands nothing always stops
+the pass, and `S3_no_list_download`, which drops the info check and return
+when every missing track is staged already. Each was killed by one test in
+`tests/test_sync_land_staged.py`. R1499 (`f02eff82`) changed what a pass does
+beside an unlanded pass's staged files, from landing them to refusing, and
+renamed both tests to the refusing behaviour
+(`test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_refuses`,
+`test_a_second_pass_beside_an_unlanded_first_refuses_before_any_download_is_refused`).
+Neither renamed test, nor any other, fails on either mutation now: U303's
+replay before, on `main`'s code at `fd8173d3`, read both as zero on the
+subset and again on the full suite (`docs/mutation/u303-replay-before-c.md`).
+So the two lines are either no longer reached on the paths the tests drive, or
+reached with nothing checking what they do.
+
+**Measured cost.** None to a person shown: the refusal R1499 added comes
+first on the paths the renamed tests drive. The cost is to the kill set: two
+guards the ledger counts as killed are not, and `killset.py check` passes
+U303 on them only because they read zero before as well as after. U303 does
+not change either line, so the zeros are not this card's.
+
+**Closes when:** the next unit that edits sync land's staged download either
+shows the two branches unreachable and removes them, or writes the test that
+kills each. Ledger only.
+
+---
+
+## R-1923. Three doctor tests probe the real filesystem root with a directory, and one widens the test root guard to it, so a mutant there can leave an entry at the root
+
+**Found:** at the review of #966, R-1917, 2026-11-23.
+
+**The mechanism.** `tests/test_doctor.py` proves its read only volume answers
+by making a directory directly under the real filesystem root
+(`cratekit-u27-read-only-probe`, `cratekit-u27-finding-probe`,
+`cratekit-u27-seed-probe`) and expecting EROFS, which macOS's system volume
+gives. On a Linux container run as root the directory is made, removed at
+once, and the test fails as machine bound. The seed test also sets
+`config._TEST_WRITE_ROOT` to the filesystem root, so a mutation row that
+drops its probe's early failure would let `_seed_taxonomy` write
+`/.cratekit` on such a machine, R-1917's shape one file over.
+
+**Measured cost.** None to a user, and no leak driven: on the base each
+probe is removed before its test fails. R-1917 made the mutation driver stop
+a batch at the child that adds an entry under the root, so a leak there is
+caught where it happens rather than read by every later row; the entry would
+still need a person to remove. The driver's own tests list a stand in root,
+since a parallel worker's probe could otherwise read as a leak.
+
+**Closes when:** the three tests probe a read only volume a fixture can
+make, or read the volume they stand on before probing it, so no
+test writes at the real filesystem root. Ledger only.
+
+---
+
+## R-1924. A restore of an analyze adopt session puts the rows' titles back and not the files' title and key tags
+
+**Found:** at the review of #944, U327, 2026-11-23.
+
+**The mechanism.** `crate analyze adopt` keeps each file's old title tag and
+`initialkey` in its session record under `head_adopt_before`, persisted with
+the capture before the first file is written, as the brief asks ("before
+values kept in the run's record so a restore can put both sides back").
+`crate restore run SESSION` restores the database capture and its coupled
+state, and nothing under `src` reads `head_adopt_before`, so the files keep
+rekordbox's key and tempo while the rows go back to Cratekit's.
+
+**Measured cost.** Driven at review round one: adopt, then `restore run` on
+its session, exit 0 `ok` with no warning; Golf read back with the database
+Title `01A - 124 - Golf`, the title tag `09A - 98 - Golf` and `initialkey`
+`09A`. Nothing is lost, since the record keeps every old value, and the
+adopt's own answer now says a restore puts the rows back and not the files,
+but an undo needs a hand edit per file and the two surfaces disagree until it
+is made. A plan run again after such a restore reads the title tag's body as
+the row's and plans each row again, so the next adopt re-corrects the rows.
+
+**Closes when:** a restore of a session whose record holds
+`head_adopt_before` writes each file's title tag and key tag back, read back,
+or names the files it could not, and says so in its answer. An issue, since
+an undo a DJ needs cannot finish with the shipped verbs (board bar (c)).
+
+---
+
+## R-1925. An analyze adopt whose commit fails after the files were written says only the database's error, not that the files already carry the new head
+
+**Found:** at the review of #944, U327, 2026-11-23.
+
+**The mechanism.** The adopt writes the title tags and key tags inside the
+session, then the rows, then commits. A commit that raises (a locked
+database, a guard refusal) ends the verb with the engine's own cause, for a
+lock `internal-error` "OperationalError: database is locked", and nothing in
+the message says the files had already taken rekordbox's key and tempo.
+
+**Measured cost.** Driven at review round one with the commit raising a lock
+error. No data is lost: the record keeps every old value, and the plan run
+again sees the files corrected and writes only the rows (`test_a_file_already
+_corrected_is_continued_by_planning_again`). A person reading the refusal is
+not told the two surfaces now disagree until the rerun.
+
+**Closes when:** a failure after the first file names the files written and
+the rerun that finishes the rows. Ledger only: nothing is lost and the next
+run converges.
+
+---
+
+## R-1926. name apply now reads the title tag's head before the file name's for every file, not only a file the collection references
+
+**Found:** at the review of #944, U327, 2026-11-23.
+
+**The mechanism.** The brief asked that a reader which would give the old
+head for a corrected track read the title tag's head first "for a row that is
+in the collection". `write/naming_cli._spec_for` cannot know that when it
+builds a spec (the collection is read after the walk, and only when a
+candidate exists), and for a referenced file the rename is held back either
+way, so the order matters only once a corrected track has left the
+collection, when no flag can say it was ever in it. The session made the title
+tag lead for every file; `acquire/match_library._read_fresh` the same.
+
+**Measured cost.** None driven: 0 producers were driven of a file outside the
+collection whose title tag and file name carry different heads. Every file
+`analyze run` stamps and every file the live system wrote carries the same
+head on both surfaces, so the order changes nothing for them. A file renamed
+by hand to another head while its tag kept the old one would now be renamed
+back to the tag's head where it used to have its tag rewritten.
+
+**Closes when:** Phillip confirms the title tag leads for every file, or a
+card scopes it to files the collection references. Ledger only.
+
+---
+
+## R-1927. A rehearsal of analyze adopt taken past its gate on a database copy writes the real files' title and key tags
+
+**Found:** at the review of #944, U327, 2026-11-23.
+
+**The mechanism.** The plan resolves each row's recorded path to the real
+file, so a copy of the database redirected for a rehearsal still names the
+library's files, and an apply on the copy writes their tags. The
+`rekordbox-visit` skill says the rehearsal stops at the gate and never goes
+past it; nothing in the code refuses it.
+
+**Measured cost.** Not driven. A rehearsal taken past the gate writes the same
+values the live run would, so nothing is lost, and the live plan then reads
+the files corrected and differs from the rehearsed digest in what it writes,
+which stops the sitting by CLAUDE.md's rehearsal rule.
+
+**Closes when:** a rehearsal environment the verb can recognise refuses the
+file half, or the rehearsal tooling redirects the library root for this verb.
+Ledger only: the skill holds the rule and a mistake stops rather than harms.

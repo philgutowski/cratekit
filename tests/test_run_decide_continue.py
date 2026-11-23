@@ -1,15 +1,10 @@
-"""U168: answering a gate is one command that records the answer and continues the run.
+"""``crate run decide RUN GATE OPTION --continue`` answers and continues in one command (U168).
 
-``crate run decide RUN GATE OPTION --continue`` records the answer, then
-continues the verb that owns the run with the arguments its first invocation
-recorded and ``--run RUN``, and answers with that verb's result. With no
-``--actor`` the answer is recorded as ``session`` when the invocation has no
-controlling terminal and as ``cli`` when it has one. An explicit gate still
-takes no inline answer on the verb itself.
-
-Driven through the real dispatcher. The acknowledgment is the gate sitting 47
-spent four commands on; its ages are recorded through the fact file's own
-writer, on a temporary library. D1 applies.
+It records the answer, then continues the owning verb with the arguments its
+first invocation recorded plus ``--run RUN``. With no ``--actor`` the actor is
+``session`` without a controlling terminal and ``cli`` with one. An explicit
+gate still takes no inline answer on the verb. Driven through the real
+dispatcher on a temporary library. D1 applies.
 """
 
 from __future__ import annotations
@@ -33,8 +28,8 @@ from tests.test_session_cli import (  # noqa: F401
     installed,
 )
 
-#: The configured, saved library fixture, by assignment for the reason
-#: ``tests/test_session_cli.py`` gives for its own.
+#: The configured, saved library fixture, assigned for the reason
+#: ``tests/test_session_cli.py`` gives.
 cfg = session_suite.cfg
 
 
@@ -57,7 +52,7 @@ def _asked() -> str:
 
 
 def test_a_session_answers_and_mints_in_one_command_with_no_actor_given(nobody_at_a_terminal):
-    """Sitting 47's four commands are two: the question, and the answer that continues."""
+    """The question, then one answer that also continues the run."""
     cfg = nobody_at_a_terminal
     _backed_up(cfg, files=timedelta(days=2), database=timedelta(days=4))
     run_id = _asked()

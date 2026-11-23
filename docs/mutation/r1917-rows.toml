@@ -1,0 +1,128 @@
+name = "r1917"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_root_listing_blind"
+description = "top_level_entries lists nothing, so every entry added under the filesystem root goes unseen"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    return tuple(sorted(found))'''
+new = '''    return ()'''
+
+[[rows]]
+id = "D2_root_check_skipped"
+description = "check_state_guard never compares the root listing, so a child that leaves a folder at the root is not stopped"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    if now_top == guard.top_entries:
+        return'''
+new = '''    if True:
+        return'''
+
+[[rows]]
+id = "D3_kind_not_read"
+description = "Every root entry reads as a folder, so a folder replaced by a file of the same name is not a change"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''                found.append(f"{entry.name}\t{kind}")'''
+new = '''                found.append(f"{entry.name}\tdir")'''
+
+[[rows]]
+id = "D4_stand_in_ignored"
+description = "take_state_guard lists the real root whatever top it is given, so a stand in is never watched"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    top = FILESYSTEM_ROOT if top is None else top'''
+new = '''    top = FILESYSTEM_ROOT'''
+
+[[rows]]
+id = "D5_unreadable_root_accepted"
+description = "A root that cannot be listed is accepted, so two unreadable listings read as unchanged after every child"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    if entries and entries[0].startswith(UNREADABLE):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "D6_removed_unnamed"
+description = "A removed root entry is left out of the stop's message, so the halt does not say what went"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        + [f"removed {name}" for name in sorted(before.keys() - after.keys())]'''
+new = ''''''
+
+[[rows]]
+id = "T1_outside_not_removed"
+description = "The outside fixture no longer removes its scratch, so what a broken guard lets land outlives the test"
+file = "tests/test_config_test_root.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config_test_root_leaves_nothing.py"]
+old = '''        yield folder
+    finally:
+        shutil.rmtree(scratch)'''
+new = '''        yield folder
+    finally:
+        pass'''
+
+[[rows]]
+id = "T2_allowance_not_narrowed"
+description = "The outside fixture leaves the guard's system temporary allowance whole, so the state writers' refusals aim inside it"
+file = "tests/test_config_test_root.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config_test_root_leaves_nothing.py"]
+old = '''    monkeypatch.setattr(tempfile, "tempdir", str(narrowed))'''
+new = ''''''
+
+[[rows]]
+id = "T3_configuration_scratch_kept"
+description = "The configuration test removes its scratch only when empty, so a broken guard leaves a folder in the temporary directory"
+file = "tests/test_config_test_root.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config_test_root_leaves_nothing.py"]
+old = '''        assert list(scratch.iterdir()) == []
+    finally:
+        shutil.rmtree(scratch)'''
+new = '''        assert list(scratch.iterdir()) == []
+    finally:
+        scratch.rmdir()'''
+
+[[rows]]
+id = "T4_vacuity_check_dropped"
+description = "The outside fixture no longer asserts its folder sits outside the test root and the narrowed allowance"
+file = "tests/test_config_test_root.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config_test_root_leaves_nothing.py"]
+old = '''        for allowed in (tmp_path_factory.getbasetemp(), narrowed):'''
+new = '''        for allowed in ():'''
+
+[[rows]]
+id = "V_r926_G1_first"
+description = "The brief's verification, r926.G1_never_checks replayed (first of two in a row on one container): the guard returns at once, so every write the file aims outside lands, and the file must remove it"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    if "pytest" not in sys.modules:
+        return
+    root = _TEST_WRITE_ROOT'''
+new = '''    if True:
+        return
+    root = _TEST_WRITE_ROOT'''
+
+[[rows]]
+id = "V_r926_G1_again"
+description = "The brief's verification, r926.G1_never_checks replayed (again of two in a row on one container): the guard returns at once, so every write the file aims outside lands, and the file must remove it"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''    if "pytest" not in sys.modules:
+        return
+    root = _TEST_WRITE_ROOT'''
+new = '''    if True:
+        return
+    root = _TEST_WRITE_ROOT'''

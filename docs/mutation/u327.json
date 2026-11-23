@@ -1,0 +1,842 @@
+{
+  "name": "u327",
+  "pass_kind": "light",
+  "branch": "cloud/944-title-adopts-rekordbox-key-tempo",
+  "head": "48ddc4dc",
+  "when": "2026-11-23 09:54 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22574,
+  "baseline_exit": 1,
+  "pytest_runs": 32,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 249,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "read",
+  "baseline_note": "read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py compare` at 2026-11-23 09:54 UTC for commit `48ddc4dcf447`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file",
+  "subset_baselines": 6,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/analysis/head_adopt.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/analysis/head_adopt.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "06d973327abba827",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22574,
+    "baseline_collected": 22574,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "A1_key_equal_by_wheel",
+      "description": "adopted: compare the written key to rekordbox's as text, so an unpadded spelling of the same key is rewritten",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "db9d184d00ca9e70",
+      "subset": [
+        "tests/test_analyze_adopt.py",
+        "tests/test_no_beatgrid_ever.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 124,
+      "baseline_collected": 124,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_the_head_takes_rekordbox_s_key_and_tempo_and_no_other_byte[unpadded-equal-stands]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if key is not None and parse_camelot(written_key) != parse_camelot(key):",
+      "new": "    if key is not None and written_key != key:"
+    },
+    {
+      "id": "A2_tempo_tolerance",
+      "description": "rekordbox_check: a tempo tolerance of zero beats, so a head one beat off is rewritten and the check counts it",
+      "file": "src/cratekit/analysis/rekordbox_check.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5e5c3711f1b25298",
+      "subset": [
+        "tests/test_analyze_adopt.py",
+        "tests/test_analyze_check.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 147,
+      "baseline_collected": 147,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_file_that_cannot_be_written_keeps_its_row_s_title_and_is_named",
+        "tests/test_analyze_adopt.py::test_a_full_library_name_apply_after_the_adopt_brings_nothing_back",
+        "tests/test_analyze_adopt.py::test_the_apply_writes_title_title_tag_and_key_tag_and_nothing_else",
+        "tests/test_analyze_adopt.py::test_the_check_after_the_adopt_reads_every_title_equal",
+        "tests/test_analyze_adopt.py::test_the_head_takes_rekordbox_s_key_and_tempo_and_no_other_byte[one-beat-off-left]",
+        "tests/test_analyze_adopt.py::test_the_head_takes_rekordbox_s_key_and_tempo_and_no_other_byte[one-beat-under-left]",
+        "tests/test_analyze_adopt.py::test_the_old_values_are_on_disk_before_the_first_file_is_written",
+        "tests/test_analyze_adopt.py::test_the_plan_shows_each_row_before_and_after_with_its_key_relation_and_tempo",
+        "tests/test_analyze_adopt.py::test_the_record_keeps_every_surface_s_old_value_for_a_restore"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "TEMPO_TOLERANCE = 1\n",
+      "new": "TEMPO_TOLERANCE = 0\n"
+    },
+    {
+      "id": "A4_tempo_rounds_half_up",
+      "description": "reference_tempo: truncate the column's hundredths, so a dyn average of 124.84 reads 124",
+      "file": "src/cratekit/analysis/rekordbox_check.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c41edd7fe62454df",
+      "subset": [
+        "tests/test_analyze_adopt.py",
+        "tests/test_analyze_check.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 147,
+      "baseline_collected": 147,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_the_plan_shows_each_row_before_and_after_with_its_key_relation_and_tempo",
+        "tests/test_analyze_adopt.py::test_the_tempo_is_the_column_rounded_half_up_or_zero[12450-expected1]",
+        "tests/test_analyze_adopt.py::test_the_tempo_is_the_column_rounded_half_up_or_zero[12484-expected0]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return agreement.round_half_up(value / 100.0) if value > 0 else None",
+      "new": "    return int(value / 100) if value > 0 else None"
+    },
+    {
+      "id": "A5_tempo_zero_is_no_answer",
+      "description": "reference_tempo: a BPM of zero reads as a tempo of zero, written into the head",
+      "file": "src/cratekit/analysis/rekordbox_check.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "973441d420569c56",
+      "subset": [
+        "tests/test_analyze_adopt.py",
+        "tests/test_analyze_check.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 147,
+      "baseline_collected": 147,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_missing_key_never_stops_the_tempo_nor_a_missing_tempo_the_key",
+        "tests/test_analyze_adopt.py::test_the_tempo_is_the_column_rounded_half_up_or_zero[0-expected4]",
+        "tests/test_analyze_adopt.py::test_the_tempo_is_the_column_rounded_half_up_or_zero[None-expected5]",
+        "tests/test_analyze_check.py::test_every_row_analysed_right_is_done_and_exits_zero"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return agreement.round_half_up(value / 100.0) if value > 0 else None",
+      "new": "    return agreement.round_half_up(value / 100.0) if value >= 0 else None"
+    },
+    {
+      "id": "A6_key_id_empty",
+      "description": "reference_key: drop the empty KeyID check, so a KeyID of zero beside a named key row is read as a key",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a0ce68e79d9f640d",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_the_key_column_reads_in_either_notation_or_says_why_it_does_not[0-8A-expected10]",
+        "tests/test_analyze_adopt.py::test_the_key_column_reads_in_either_notation_or_says_why_it_does_not[0-8A-expected9]",
+        "tests/test_analyze_adopt.py::test_the_key_column_reads_in_either_notation_or_says_why_it_does_not[None-8A-expected8]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if key_id in rb_writer.FIELD_EMPTIES[\"KeyID\"] or not str(scale_name or \"\").strip():",
+      "new": "    if not str(scale_name or \"\").strip():"
+    },
+    {
+      "id": "A7_not_analysed_left",
+      "description": "plan_row: drop the not analysed guard, so a row rekordbox has not analysed is planned off its unread columns",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f7f1476de3fa7178",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_rows_not_analysed_with_no_head_or_a_differing_tag_are_left_and_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if judged.action != analyzed.CLEAR:",
+      "new": "    if False:"
+    },
+    {
+      "id": "A8_no_reference_left",
+      "description": "plan_row: drop the no answer guard, so a row with neither key nor tempo reads as agreeing",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b651130cd3465e3a",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_missing_key_never_stops_the_tempo_nor_a_missing_tempo_the_key"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if key is None and tempo is None:",
+      "new": "    if False:"
+    },
+    {
+      "id": "A9_tag_body_compared",
+      "description": "plan_row: drop the title tag body comparison, so a file whose tag names another title is rewritten",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2b60b0a25222324f",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_rows_not_analysed_with_no_head_or_a_differing_tag_are_left_and_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if new_tag is None or split_head(tag_title, template=template)[1] != split_head(\n        title, template=template\n    )[1]:",
+      "new": "    if new_tag is None:"
+    },
+    {
+      "id": "A10_file_missing_named",
+      "description": "_resolved: answer a missing file as present, so it is named unreadable rather than missing",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c874b2d5c6fb24b6",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_file_gone_before_the_plan_is_left_and_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (path, \"\") if present else (path, FILE_MISSING)",
+      "new": "    return (path, \"\")"
+    },
+    {
+      "id": "A11_leave_holds",
+      "description": "plan_adopt: ignore --leave, so a row held out is written",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "19940796bcd947b5",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_leave_holds_a_row_out_in_the_plan_and_on_the_apply"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if item.action == ADOPT and content_id in held:",
+      "new": "        if False:"
+    },
+    {
+      "id": "A12_agreeing_title_left_whole",
+      "description": "plan_row: drop the agreeing title return, so a blank key tag beside an agreeing head is filled",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4a8f892f76cb7b41",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_missing_key_never_stops_the_tempo_nor_a_missing_tempo_the_key",
+        "tests/test_analyze_adopt.py::test_a_second_run_plans_nothing_still_asks_and_ends_no_op",
+        "tests/test_analyze_adopt.py::test_the_old_values_are_on_disk_before_the_first_file_is_written",
+        "tests/test_analyze_adopt.py::test_the_plan_shows_each_row_before_and_after_with_its_key_relation_and_tempo",
+        "tests/test_analyze_adopt.py::test_the_record_keeps_every_surface_s_old_value_for_a_restore"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if new_title == title and new_tag == tag_title:",
+      "new": "    if False:"
+    },
+    {
+      "id": "A14_plan_taken_again",
+      "description": "assert_plan_unchanged: never refuse, so a plan that moved after the gate is written",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "04e95585f8b27668",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_plan_that_moves_on_the_write_handle_refuses_before_any_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if again.digest == approved.digest:\n        return",
+      "new": "    if True:\n        return"
+    },
+    {
+      "id": "A15_digest_covers_items",
+      "description": "AdoptPlan.digest: digest the counts and not the items, so a changed answer with the same counts is approved",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6744045b9a43d4ab",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_title_changed_between_plan_and_apply_refuses_and_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"items\": [item.digested() for item in self.items],\n                \"counts\": dict(self.counts),",
+      "new": "                \"counts\": dict(self.counts),"
+    },
+    {
+      "id": "A16_before_values_recorded",
+      "description": "apply_adopt: keep no surface's old value in the session record",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ca18a1592c288262",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_the_old_values_are_on_disk_before_the_first_file_is_written",
+        "tests/test_analyze_adopt.py::test_the_record_keeps_every_surface_s_old_value_for_a_restore"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        gates.record.detail[RECORD_KEY] = [item.before() for item in writes]\n",
+      "new": ""
+    },
+    {
+      "id": "A17_policy_before_files",
+      "description": "apply_adopt: drop the policy check before the first file, so a plan naming another column writes the files and the title",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dbfa0e812f1b9094",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_plan_that_would_write_the_tempo_column_is_refused_by_policy"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    metadata.assert_within_policy(row_changes(writes))\n",
+      "new": ""
+    },
+    {
+      "id": "A18_file_read_back",
+      "description": "write_files: trust the write, so a file that does not read back as planned has its row written",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "579fb70988e97998",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_file_that_does_not_read_back_keeps_its_row_s_title_and_is_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if unreadable or title != item.new_tag_title or initialkey != item.new_initialkey:",
+      "new": "        if unreadable:"
+    },
+    {
+      "id": "A19_row_follows_file",
+      "description": "apply_adopt: write a row whose file did not take, so the title and the tag disagree",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cd9e55d41d1f1cd7",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_file_that_cannot_be_written_keeps_its_row_s_title_and_is_named",
+        "tests/test_analyze_adopt.py::test_a_file_that_does_not_read_back_keeps_its_row_s_title_and_is_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        rowed = [item for item in writes if item.content_id in landed and item.writes_title]",
+      "new": "        rowed = [item for item in writes if item.writes_title]"
+    },
+    {
+      "id": "A20_judge_title",
+      "description": "judge: never read the title back, so a row that does not carry its new title passes",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "225af22cd9818776",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_the_read_back_names_a_title_not_carried_and_a_column_moved"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if str(now.get(\"Title\") or \"\") != item.new_title:",
+      "new": "        if False:"
+    },
+    {
+      "id": "A22_read_back_refuses_wrong",
+      "description": "assert_read_back: refuse only a moved column, so a title that does not read back ends ok",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "591690375fc99200",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_read_back_wrong_or_moved_refuses_naming_the_session_that_undoes_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif written.wrong:",
+      "new": "    elif False:"
+    },
+    {
+      "id": "A23_check_not_suspect_on_keys",
+      "description": "Check.verdict: read suspect on key agreement again, so a visit whose titles differ is held",
+      "file": "src/cratekit/analysis/rekordbox_check.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1cdcfc081bd6c6d5",
+      "subset": [
+        "tests/test_analyze_check.py",
+        "tests/test_analyze_adopt.py",
+        "tests/test_rekordbox_visit_skill.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 179,
+      "baseline_collected": 179,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_check.py::test_keys_far_below_the_recorded_agreement_are_reported_and_never_suspect"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if any(row.suspect_grid for row in self.rows):\n            return SUSPECT",
+      "new": "        if any(row.suspect_grid for row in self.rows) or self.key_suspect:\n            return SUSPECT"
+    },
+    {
+      "id": "A24_spec_reads_title_head_first",
+      "description": "_spec_for: read the file name's head first again, so name apply writes the old tempo back over a corrected title",
+      "file": "src/cratekit/write/naming_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9645afe4e4c96411",
+      "subset": [
+        "tests/test_naming_apply_cli.py",
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 175,
+      "baseline_collected": 175,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_full_library_name_apply_after_the_adopt_brings_nothing_back",
+        "tests/test_naming_apply_cli.py::test_one_file_is_planned_its_one_rename[the-title-head-wins-over-the-filename-head]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        naming.parse_head(title, template=template)\n        or naming.parse_head(path.name, template=template)\n        or {}",
+      "new": "        naming.parse_head(path.name, template=template)\n        or naming.parse_head(title, template=template)\n        or {}"
+    },
+    {
+      "id": "A25_index_reads_title_key_first",
+      "description": "_read_fresh: read the file name's key first again, so the library index offers the old key for a corrected track",
+      "file": "src/cratekit/acquire/match_library.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a25bb10866093c9c",
+      "subset": [
+        "tests/test_match_states.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 612,
+      "baseline_collected": 612,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_match_states.py::test_the_tag_head_outranks_the_stem_head_and_both_outrank_the_initialkey_tag"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    written_key = tag_head.get(\"key\") or head.get(\"key\")",
+      "new": "    written_key = head.get(\"key\") or tag_head.get(\"key\")"
+    },
+    {
+      "id": "B1_unread_intake_refuses",
+      "description": "head_adopt.resolve_scope: drop the read of the intake root, so an INBOX / Analyze nobody could read plans as empty",
+      "file": "src/cratekit/analysis/head_adopt.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b42fa190d2c60438",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_an_intake_tree_that_cannot_be_read_refuses_before_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    refill.anchored_root(db, declared.intake.id, registry)\n    members, why = rc._analyze_members(db, declared, registry)",
+      "new": "    members, why = rc._analyze_members(db, declared, registry)"
+    },
+    {
+      "id": "B2_differs_needs_a_title_head",
+      "description": "Row.differs: count a row whose title has no head, so the check names adopt for a row it leaves",
+      "file": "src/cratekit/analysis/rekordbox_check.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7437f2688d7154d5",
+      "subset": [
+        "tests/test_analyze_adopt.py",
+        "tests/test_analyze_check.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 147,
+      "baseline_collected": 147,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_bare_title_s_tempo_is_not_counted_as_differing",
+        "tests/test_analyze_adopt.py::test_the_check_counts_only_a_title_whose_own_head_differs"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return self.headed and (",
+      "new": "        return ("
+    },
+    {
+      "id": "B3_partial_apply_refuses",
+      "description": "analyze_adopt: end a run whose files did not all take as ok",
+      "file": "src/cratekit/analysis/head_adopt_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9c98be2a4b40005b",
+      "subset": [
+        "tests/test_analyze_adopt.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analyze_adopt.py::test_a_file_that_cannot_be_written_keeps_its_row_s_title_and_is_named",
+        "tests/test_analyze_adopt.py::test_a_file_that_does_not_read_back_keeps_its_row_s_title_and_is_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if written is None or not (written.files.failed or written.files.wrong):",
+      "new": "    if True:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_operation_fill_if_empty",
+      "description": "metadata: register the adopt operation fill if empty, so a present title is never written",
+      "reason": "ranked below the cap: every apply test reads the titles written, the same kill set as A19 and A20"
+    },
+    {
+      "id": "D2_check_names_the_verb",
+      "description": "check_cli: read ok rather than info when titles differ",
+      "reason": "ranked below the cap: a wording surface of a read only check, held by test_the_check_after_the_adopt_reads_every_title_equal"
+    },
+    {
+      "id": "D3_tempo_span_after_key",
+      "description": "adopted: find the tempo from the start of the head rather than after the key",
+      "reason": "no realistic head separates the two: a tempo of one to three digits inside a padded Camelot key would need a key such as 12A with a tempo of 12"
+    },
+    {
+      "id": "D4_default_scope_falls_back",
+      "description": "head_adopt.resolve_scope: fall back to every unanalysed row as the check does",
+      "reason": "ranked below the cap: a scope change the back catalogue test reads, beside A7 which leaves unanalysed rows"
+    },
+    {
+      "id": "A3_tempo_strictly_more",
+      "description": "tempo_differs: more than or equal to the tolerance, so a head one beat off is rewritten",
+      "reason": "ranked below the cap after review round two: the same guard as A2, the tolerance, reached through its comparison"
+    },
+    {
+      "id": "A13_key_tag_by_wheel",
+      "description": "plan_row: compare the key tag as text, so an unpadded key tag equal to rekordbox's is rewritten",
+      "reason": "ranked below the cap after review round two: the same wheel comparison as A1, on the key tag"
+    },
+    {
+      "id": "A21_judge_moved",
+      "description": "judge: excuse the BPM column as planned, so a tempo column moved beside the title passes",
+      "reason": "ranked below the cap after review round two: a column moved beside the title is refused first by the commit guard, which A17 and the gridless suites hold"
+    }
+  ]
+}

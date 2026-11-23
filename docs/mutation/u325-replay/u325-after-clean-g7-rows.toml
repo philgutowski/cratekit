@@ -1,0 +1,12 @@
+name = "u325-after-clean-g7"
+pass_kind = "replay"
+
+[[rows]]
+id = "r926.G7_no_root_allows_all"
+source = { table = "r926.json", id = "G7_no_root_allows_all" }
+description = "With no root registered the allowed set is the filesystem root, so the R-926 probe writes the live config again"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '    allowed = [] if root is None else [root.resolve()]'
+new = '    allowed = [Path(os.sep)] if root is None else [root.resolve()]'

@@ -1,15 +1,11 @@
-"""U186: a gated database verb says when another run of it holds or just answered its gate.
+"""A gated database verb says when another run of it holds or just answered its gate (U186).
 
-At sitting 51 two sessions drove ``crate inbox analyzed`` at once and nothing
-said the other existed. The write was safe, since the apply plans again on the
-write handle and refuses ``decision-stale``, and the second session still lost
-twenty minutes finding out why its numbers moved. These tests drive the clear
-through the real dispatcher against the disposable database the native landing
-suite builds, and read the run records the dispatcher itself persisted.
-
-Nothing here is refused: the warning informs, and the tests say so by
-asserting the second run still exits at its gate with the exit code it always
-had. D1 applies.
+The write is already safe, since the apply plans again and refuses
+``decision-stale``; the warning saves a second session from guessing why its
+numbers moved. The clear is driven through the real dispatcher against the
+disposable native database, and the run records it persisted are read. The
+warning refuses nothing, so the second run still exits at its gate with its
+usual code. D1 applies.
 """
 
 from __future__ import annotations
@@ -86,7 +82,7 @@ def test_an_answer_ten_minutes_ago_is_named_with_its_actor_option_and_time(nativ
 
     refused = _planned()
 
-    # STILL AT ITS GATE, with the code it always had: the warning refuses nothing.
+    # Still at its gate, with its usual code: the warning refuses nothing.
     assert refused["exit_code"] == int(ExitCode.DECISION_REQUIRED)
     assert refused["resumable"] is True
     (message,) = _siblings(refused)
@@ -110,7 +106,7 @@ def test_an_answer_just_inside_twelve_hours_is_still_named(native_library):
 
 
 def test_a_sibling_whose_gate_is_open_is_named_as_open(native_library):
-    """Sitting 51's pair: the first plan unanswered when the second one reads."""
+    """The first plan is unanswered when the second one reads."""
     first = _planned()["run_id"]
 
     (message,) = _siblings(_planned())
@@ -204,7 +200,7 @@ def test_decide_repeats_the_warning_over_a_sibling_answered_apply_on_the_same_pl
     assert code == int(ExitCode.OK), decided
     (message,) = _siblings(decided)
     assert first in message and f"answered {GATE} apply as a-person" in message
-    # RECORDED ALL THE SAME: the warning informs and refuses nothing.
+    # Recorded all the same: the warning informs and refuses nothing.
     assert gates.load(second).decisions[GATE].option == "apply"
 
 
@@ -348,12 +344,12 @@ def test_the_run_record_carries_the_sibling_warning_nowhere(native_library):
 
 
 # ---------------------------------------------------------------------------
-# What the first review round drove (U186)
+# Edge cases of the warning's scope
 # ---------------------------------------------------------------------------
 
 
 def _old_open(run_id: str, age: timedelta) -> None:
-    """An inbox clear left at its gate ``age`` ago, as sitting 51 left one."""
+    """An inbox clear left at its gate ``age`` ago."""
     _blocked(run_id, "inbox.analyzed", GATE, age, datetime.now(timezone.utc))
 
 
@@ -435,7 +431,7 @@ def test_decide_repeats_over_a_sibling_that_answered_then_stopped_at_another_gat
     assert code == int(ExitCode.OK), decided
     (message,) = _siblings(decided)
     assert first in message
-    # NAMED BY THE ANSWER THAT IS WHY IT IS NAMED, and by the gate it waits at.
+    # Named by the answer that put it there, and by the gate it waits at.
     assert f"answered {GATE} apply as a-person" in message
     assert "holds the gate write.cloudsync.unreadable open since" in message
     assert "unanswered" not in message

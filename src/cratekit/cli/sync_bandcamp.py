@@ -1,66 +1,15 @@
 """``crate sync bandcamp``: new Bandcamp purchases taken to their landing gate in one verb (U179).
 
-Sitting 46 took 45 releases and 96 tracks from one seller to filed in
-rekordbox in about two hours and 25 messages, every step typed by hand
-(``docs/plans/2026-10-27-bandcamp-lane.md``). Since U176, U177 and U178 each
-step is a verb: ``acquire bandcamp`` plans the purchases, ``acquire
-bandcamp-fetch`` stages the new ones tagged with their label, ``tag folder``
-gives a label's files its genre, and the tail and the landing are the chain
-``sync land`` runs. This verb runs them in order, as one command.
-
-THE BANDCAMP SOURCE OF THE SAME DRIVER, NOT A SECOND DRIVER. A sibling of
-``crate sync land`` rather than a flag on it, so that verb's arguments and
-envelope stay its own, and like ``label sync --go`` (U190) it runs the one
-chain :mod:`cratekit.cli.tail` holds: the tail in its order over the absolute
-batch folder, the stale tail job replaced, ``name apply``'s confirm answered
-inline and the landing stopped at its gate. The preflight is ``sync land``'s
-own. Only the source differs: the plan and the fetch in place of the pass, its
-intake jobs, the missing list and the download.
-
-EACH STEP IS THE EXISTING VERB THROUGH THE REAL DISPATCHER, under its own run
-with its own refusals:
-
-1. ``preflight``: refused while rekordbox runs, or a backup's driver is live;
-2. ``plan``: ``acquire bandcamp`` with the sellers. A missing, expired or
-   refused session ends the verb here with its login step, before anything is
-   downloaded, and the plan's rows are what the closing report names as held
-   as owned and which sellers no label names;
-3. ``fetch``: ``acquire bandcamp-fetch`` into the batch folder, which drives
-   its own job in the foreground. A fetch into the same batch still open from
-   an earlier run is driven on through its ``--job`` command rather than
-   queued a second time; one open into another batch is that batch's, and the
-   verb ends PENDING naming the command that continues it. A release refused
-   for good is recorded and skipped, the way ``sync land`` skips a lossy
-   download; a parked or transient fetch ends the verb on its own refusal;
-4. the tail, ``tag folder``, ``analyze run``, ``analyze restamp`` and ``name
-   apply``, any step that does not succeed ending the verb there, so no landing
-   is planned over files the tail has not run on;
-5. ``rehearse``: ``intake land --rehearse`` on a copy (U162), with the same
-   arguments the landing then takes, so the live gate names it;
-6. ``land``: ``intake land`` with the batch's name and, when any staged file
-   carries a label tag, ``--label-from-tags`` (U177), stopping at its
-   explicit gate on its own run.
-
-THE NAME IS READ FROM THE FILES, ``<date> Bandcamp <Label>`` when every staged
-file's label tag names one label and ``<date> Bandcamp`` otherwise
-(:func:`cratekit.intake.batch_name.bandcamp`), because the label tags are what
-the landing files each file under, and a batch folder continued from an
-earlier run holds that run's files too.
-
-A BATCH FOLDER IS HOW THE VERB CONTINUES. Every purchase a fetch staged is
-recorded fetched, so the plan never offers it again; a run that stopped in the
-tail is continued by running the verb again with the same ``--batch``, which
-finds nothing new or only what is new, and takes whatever the folder holds
-through the tail again. NOTHING NEW AND NOTHING STAGED ends with no download
-and no landing, and says so.
-
-IT STOPS WHERE A PERSON MUST ACT. The landing reads the backup acknowledgment,
-which this verb never mints, and asks its explicit gate on its own run, so the
-envelope is then PENDING naming that run, the commands that answer and apply
-it as the session, and the rekordbox visit after. It never starts a backup,
-never opens rekordbox, never answers a gate but ``name apply``'s inline
-confirm, and never writes a beat grid. A database native intake tree only,
-since the rehearsal and ``--label-from-tags`` are.
+The Bandcamp source of the ``sync land`` driver, a sibling verb so each keeps
+its own arguments and envelope. Each step is the existing verb through the real
+dispatcher: preflight, ``acquire bandcamp`` (a bad session ends it before any
+download), ``acquire bandcamp-fetch``, the shared tail of :mod:`cratekit.cli.tail`,
+then the rehearsal (U162) and the landing stopped at its gate, with
+``--label-from-tags`` when a staged file carries a label (U177). The batch name
+is read from the files' label tags. Running again with the same ``--batch``
+continues a stopped run. It never mints the backup acknowledgment, starts a
+backup, opens rekordbox, answers a gate but ``name apply``'s inline confirm, or
+writes a beat grid.
 """
 
 from __future__ import annotations
@@ -98,8 +47,7 @@ _ORIGIN = ("cli.sync_bandcamp",)
 #: The key every check carries, before its step.
 NAMESPACE = "sync.bandcamp"
 
-#: The steps, in the one order the verb runs them. Each is a check key on the
-#: envelope, ``sync.bandcamp.<step>``.
+#: The steps, in run order. Each is a check key, ``sync.bandcamp.<step>``.
 PREFLIGHT = sync_land.PREFLIGHT
 PLAN = "plan"
 FETCH = "fetch"
@@ -114,8 +62,8 @@ TAGS = "tags"
 PLAN_VERB = "acquire.bandcamp"
 FETCH_VERB = "acquire.bandcamp-fetch"
 
-#: The plan's dispositions this verb reads (``acquire.bandcamp_cli.Disposition``),
-#: spelled here since this module imports no feature module at its top.
+#: The plan's dispositions this verb reads, spelled here since this module
+#: imports no feature module at its top.
 OWNED = "owned"
 HELD = "held"
 
@@ -206,10 +154,8 @@ def _release(row: Mapping[str, Any]) -> str:
 def _plan(report: tail.Chain, sellers: Sequence[str] | None) -> bool:
     """Plan the purchases; True when the plan has something to fetch.
 
-    The plan's own refusal ends the verb, a session that is missing, expired or
-    refused above all, so nothing is downloaded over an account nobody could
-    read. What it holds back as owned is kept for the closing report, with the
-    library files each owned track resolved to.
+    The plan's own refusal ends the verb, so nothing is downloaded over an
+    account nobody could read. Owned rows are kept for the closing report.
     """
     envelope = tail.required(report, PLAN, ["acquire", "bandcamp", *_sellers(sellers)])
     summary = tail.summary_of(envelope)
@@ -289,12 +235,9 @@ def _batch_of(job: jobs.Job) -> str:
 def _open_fetch(cfg: config.Config, batch: str) -> list[jobs.Job]:
     """Every open fetch into ``batch``, oldest first; one into another batch is raised.
 
-    A FETCH LEFT OPEN HOLDS ITS PURCHASES UNRECORDED, so the plan offers them
-    again and a second fetch would download them a second time. Each one into
-    this batch is driven on, every one and not only the newest, so none is
-    left open and unnamed behind a run that reached its gate; one into
-    another batch is named, since which batch a person continues is theirs
-    to say.
+    An open fetch holds its purchases unrecorded, so a second would download
+    them twice. Every one into this batch is driven on; one into another batch
+    is named, since which batch to continue is the person's to say.
     """
     held = [job for job in _fetch_jobs(cfg) if job.is_open()]
     for job in held:
@@ -306,10 +249,8 @@ def _open_fetch(cfg: config.Config, batch: str) -> list[jobs.Job]:
 def _fetched(report: tail.Chain, job: jobs.Job) -> None:
     """Read a settled fetch: what it staged, and what it refused for good and skipped.
 
-    A RELEASE REFUSED FOR GOOD IS RECORDED AND SKIPPED, a lossy only offer
-    above all, and the rest go on to the tail. A fetch still open, parked or
-    failed with anything a retry could mend ends the verb on its own refusal,
-    since what it holds is still coming.
+    A release refused for good is recorded and skipped. Anything a retry could
+    mend ends the verb on its own refusal, since what it holds is still coming.
     """
     from cratekit.acquire import bandcamp_cli  # noqa: PLC0415 - one module's payload key
 
@@ -328,11 +269,8 @@ def _fetched(report: tail.Chain, job: jobs.Job) -> None:
     report.summary["fetch_jobs"].append(job.job_id)
     if job.state is not jobs.JobState.SUCCEEDED and not settled_with_refusals:
         raise tail.Stop(FETCH, tail.job_error(report, job))
-    # ONE RELEASE IS COUNTED ONCE ACROSS THE RUN'S FETCHES. Two fetches left
-    # open into one batch can hold the same purchase, and the second finds it
-    # in the record and ends its item done without staging anything, so a
-    # release an earlier fetch of this run already staged is not staged again
-    # here, and one refused before and staged now is no longer refused.
+    # One release is counted once across the run's fetches, since two open
+    # fetches into one batch can hold the same purchase.
     seen = set(report.summary["fetched_items"])
     staged = [item for item in done if item.item_id not in seen]
     report.summary["fetched_items"].extend(item.item_id for item in staged)
@@ -346,8 +284,7 @@ def _fetched(report: tail.Chain, job: jobs.Job) -> None:
             "reason": item.cause.reason if item.cause else None,
             "message": item.cause.message if item.cause else None,
         }
-        # THE FETCH NEVER SKIPS AN ITEM, unlike ``acquire download`` since U169:
-        # a release it refuses fails for good, so the failed items are all.
+        # The fetch never skips an item, so the failed items are all (U169).
         for item in permanent
         if item.item_id not in taken and item.item_id not in already
     ]
@@ -381,8 +318,7 @@ def _warn_refused(report: tail.Chain) -> None:
 def _drive_open(report: tail.Chain, cfg: config.Config, batch: str) -> None:
     """Drive on a fetch into the batch an earlier run left open, before anything is planned.
 
-    Before the plan, because what it fetches is recorded as it goes, and a
-    plan asked first would offer those purchases again.
+    Before the plan, since the plan would otherwise offer those purchases again.
     """
     for held in _open_fetch(cfg, batch):
         report.check(FETCH, "info", f"driving on the fetch {held.job_id} left open into {batch}")
@@ -419,9 +355,8 @@ class _Read:
 def _read_tags(report: tail.Chain, files: Sequence[Path]) -> _Read:
     """Each staged file's genre and label, read after the tail.
 
-    UNREAD IS NOT NONE. A file whose tags could not be read is named apart,
-    never counted as a file with no genre, and its label is taken as none, so
-    the batch is not named for a label nobody could read.
+    Unread is not none: an unreadable file is named apart and its label taken as
+    none, so the batch is not named for a label nobody could read.
     """
     labels: list[str | None] = []
     for path in files:
@@ -492,8 +427,8 @@ def _staged(folder: Path) -> tuple[Path, ...]:
 def _attended(ctx: Context, report: tail.Chain, stop: tail.Attend, again: str) -> Envelope:
     """The PENDING envelope the verb ends on when a step waits for a person."""
     if stop.step == REHEARSE and stop.cause.reason != ACK_STOP:
-        # A REHEARSAL STOPPED ON ANY OTHER GATE CODE, a stale one above all, is
-        # run again by the step's own words; the landing it is for follows.
+        # A rehearsal stopped on any other gate code is run again by the step's
+        # own words; the landing follows.
         after = (
             "then plan the landing: crate "
             + shlex.join(word for word in stop.argv if word != tail.REHEARSE_FLAG),

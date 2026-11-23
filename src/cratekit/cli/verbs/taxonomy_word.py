@@ -1,34 +1,16 @@
 """``crate taxonomy alias`` and ``crate taxonomy folder``: a genre word answered in one command (U194).
 
-WHAT THEY ANSWER. ``tag folder`` and ``tag guess`` name each word a catalogue
-gave a file that the library's taxonomy has no place of its own for, offering
-two answers: save it as an alias of one of your genres and retag its files, or
-make it a genre folder of its own. Each is one of these verbs.
+``taxonomy alias WORD GENRE`` adds the word to a genre folder's tagging aliases
+and retags every audio file whose one genre is the word, in any case; a word
+that is the folder's own name in another case only retags (R-1184).
+``taxonomy folder WORD`` adds a top level genre folder named the word, so its
+files route there with nothing rewritten.
 
-- ``taxonomy alias WORD GENRE`` adds the word to the tagging aliases of the
-  genre folder GENRE names, so a catalogue giving it again is tagged as that
-  genre, and rewrites the genre of every audio file under the library root
-  (or ``--folder``) whose one genre is the word, in any case, to that genre.
-  The rows follow by ``tag rows``, which a run that wrote names. A word that
-  is a genre folder's own name in another case is answered by an alias to
-  that folder alone, which saves nothing and only retags (R-1184).
-- ``taxonomy folder WORD`` adds a top level genre folder named the word, with
-  energy bands, so the files already wearing it route there with nothing
-  rewritten. ``route resort`` files them, which the run names.
-
-THE ORDER IS THE UPGRADE'S (U132): plan, the explicit gate over the digested
-plan, the plan taken again and refused as stale when its digest moved, the
-copy as it was kept under a dated name, the new copy written atomically and
-read back through the loader, and put back when it does not read back. The
-alias's files are written after the copy, each read again before its write
-and read back after, so a run that stops part way has saved the alias and
-the next run, which plans no change to the copy, finishes the files.
-
-THE DIGEST COVERS THE TWO TEXTS AND THE ITEMS, and each file by its path
-under the folder walked, never the folder itself, so a rehearsal on a
-disposable copy matches the live plan.
-
-Layer: cli.
+The order is the upgrade's (U132): plan, gate over the digest, plan again and
+refuse as stale, keep the old copy, write atomically and read back. Files are
+written after the copy, each read before and after, so a run stopped part way
+is finished by the next. The digest names each file by its path under the
+folder walked, so a rehearsal on a disposable copy matches the live plan.
 """
 
 from __future__ import annotations
@@ -144,9 +126,8 @@ def _refused(exc: word_edit.Refused, word: str) -> Exception:
             "leave the word as it is, or answer another word the warning named",
         )
     if exc.step:
-        # THE REFUSAL'S OWN NEXT MOVE, for a bare folder and for a folder's own
-        # name in another case (R-1184), where leaving the word is not the
-        # answer its message gives.
+        # The refusal's own next move, where leaving the word is not the answer
+        # (R-1184).
         steps = (exc.step,)
     return refuse(
         reason,
@@ -216,11 +197,10 @@ class Files:
 def carrying(root: Path, word: str, display: str) -> Files:
     """The files under ``root`` whose genre is ``word``, in any case.
 
-    ONE GENRE AND ONLY THE WORD is a file to write. A file carrying the word
-    beside another genre is left and listed, since which of the two a person
-    meant is not this verb's to say. A file whose genre could not be read is
-    listed as not read, because absence of the word is not what was learned.
-    A file already carrying ``display`` is not listed: it is answered.
+    One genre and only the word is a file to write. A file carrying another
+    genre too is left and listed, since which was meant is not this verb's to
+    say, and an unreadable file is listed as not read. A file already carrying
+    ``display`` is answered and not listed.
     """
     folded = word.casefold()
     items: list[FileItem] = []
@@ -335,10 +315,8 @@ class _Written:
 def _retag(items: tuple[FileItem, ...], display: str) -> _Written:
     """Write ``display`` onto each file, read again before and read back after.
 
-    A file that no longer carries what the plan read is left and named, a file
-    the writer could not write is untouched and named, and one written that
-    does not read back is named apart from both. Nothing here raises for one
-    file, so one that cannot be written does not stop the rest.
+    A moved file is left, an unwritable one untouched, and one that does not
+    read back named apart; nothing raises for one file, so the rest go on.
     """
     done = _Written()
     for item in items:
@@ -385,8 +363,7 @@ class AliasPlan:
 def plan_alias(cfg: config.Config, word: str, genre: str, folder: str | None = None) -> AliasPlan:
     """The alias of ``word`` to ``genre`` and the files it retags, writing nothing.
 
-    THE ONE PLAN, the verb's and ``tag campaign``'s (U294), so an answer the
-    campaign applies is planned exactly as this verb plans it.
+    The one plan, shared with ``tag campaign`` (U294).
     """
     root = library_root(cfg, folder)
     path, edit = _edit(cfg, lambda text: edit_alias(text, word, genre))
@@ -398,11 +375,9 @@ def apply_alias(
 ) -> list[dict[str, str]]:
     """Save the alias, then retag its files, each read back; the sentences it says.
 
-    THE ONE APPLY PATH, the verb's and ``tag campaign``'s (U294). The copy is
-    written by :func:`cratekit.cli.verbs.taxonomy.write_copy`, which refuses
-    stale under ``spec`` when the copy's bytes moved since ``planned`` read
-    them. A file that did not take the genre refuses once the rest are
-    written, naming every file by what happened to it.
+    The one apply path, shared with ``tag campaign`` (U294). ``write_copy``
+    refuses stale when the copy moved since ``planned`` read it. A file that
+    did not take the genre refuses once the rest are written, naming each.
     """
     path, root, fresh = planned.path, planned.root, planned.edit
     sentences: list[dict[str, str]] = []
@@ -509,9 +484,7 @@ def taxonomy_alias_verb(ctx: "Context") -> Envelope:
     if ctx.gate.require(spec, plan=data, context=context) != "approve":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=notes)
 
-    # TAKEN AGAIN AFTER THE ANSWER, the copy and the files both, so an answer
-    # given to the first plan is refused as stale rather than written over an
-    # edit or a file retagged since.
+    # Planned again after the answer, so an answer to a stale plan is refused.
     fresh = plan_alias(cfg, args.word, args.genre, folder)
     if fresh.data["digest"] != data["digest"]:
         raise gates.DecisionStale(spec, ctx.run.run_id, data["digest"], fresh.data["digest"])
@@ -583,7 +556,7 @@ def apply_folder(
 ) -> list[dict[str, str]]:
     """Write the copy declaring the folder and read it back; the sentence it says.
 
-    THE ONE APPLY PATH, the verb's and ``tag campaign``'s (U294).
+    The one apply path, shared with ``tag campaign`` (U294).
     """
     path, fresh = planned.path, planned.edit
     kept, _ending, _raw = upgrade_cli.write_copy(

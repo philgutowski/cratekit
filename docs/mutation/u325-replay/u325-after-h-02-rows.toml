@@ -1,0 +1,789 @@
+name = "u325-after-h-02"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1411.S3_order_does_not_pass_agreed"
+source = { table = "r1411.json", id = "S3_order_does_not_pass_agreed" }
+description = "order_tracks takes agreed and never hands it to the judged reading"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '            agreed=tuple(str(one) for one in agreed) if agreed is not None else None,'
+new = '            agreed=None,'
+
+[[rows]]
+id = "u231.M4_resend_with_the_stale_tag"
+source = { table = "u231.json", id = "M4_resend_with_the_stale_tag" }
+description = "adapter order: a 412's move is sent again without opening the playlist for its current tag"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '''
+                    playlist = self._playlist(identifier)
+                    continue'''
+new = '                    continue'
+
+[[rows]]
+id = "u231.M5_positions_not_advanced"
+source = { table = "u231.json", id = "M5_positions_not_advanced" }
+description = "adapter order: each move's position is read off the reading as it was, not with the moves before it applied"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '''
+            now = _fronted(now, one)
+            note["moved"] += 1'''
+new = '            note["moved"] += 1'
+
+[[rows]]
+id = "u231.M6_settle_lag_taken"
+source = { table = "u231.json", id = "M6_settle_lag_taken" }
+description = "adapter settle: a reading whose window lags is answered as the order"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_adapter_listing.py", "tests/test_catalogue_app.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_tie.py", "tests/test_organize_root.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_window_lag.py", "tests/test_provider_gate.py", "tests/test_provider_not_found_bodies.py", "tests/test_prune.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py"]
+old = '''
+        if window == listing.WINDOW_LAGS:
+            note["window_lagged"] += 1
+            note["outcome"] = "lags"
+            return None'''
+new = '''
+        if False:
+            return None'''
+
+[[rows]]
+id = "r118-a.A10_forget_uses_the_record_sentence"
+source = { table = "r118-a.json", id = "A10_forget_uses_the_record_sentence" }
+description = "A refusal from the remove half says the value is in the keychain because of this call, which is a claim about a write that never happened"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '    names = _index_read(REMOVE_NOTHING_TOUCHED)'
+new = '    names = _index_read(RECORD_ALREADY_IN_THE_KEYCHAIN)'
+
+[[rows]]
+id = "r118-a.A11_record_sentence_reworded"
+source = { table = "r118-a.json", id = "A11_record_sentence_reworded" }
+description = "The record sentence no longer says the value reached the keychain, only that the index could not be updated"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '    "THE VALUE IS IN THE KEYCHAIN. It was stored and read back before this index "'
+new = '    "The index could not be updated. It was opened after the keychain write "'
+
+[[rows]]
+id = "r118-a.A12_env_override_no_longer_short_circuits"
+source = { table = "r118-a.json", id = "A12_env_override_no_longer_short_circuits" }
+description = "exists consults the index even when the opted-in environment fallback is supplying the value, so a machine that has no index by design is refused"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+    if _env_override(str(name)):
+        return True
+    return str(name) in _index_read()'''
+new = '    return str(name) in _index_read()'
+
+[[rows]]
+id = "r118-a.A1_blanket_returns_empty"
+source = { table = "r118-a.json", id = "A1_blanket_returns_empty" }
+description = "The whole three-state reader reverts to the old blanket, so OSError and ValueError alike answer nothing recorded"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+    path = _index_path()
+    try:
+        raw = path.read_text()
+    except FileNotFoundError:
+        return frozenset()
+    except OSError as exc:
+        raise refuse(
+            "credential-index-unreadable",
+            f"the credential presence index at {path} is present and could not "
+            f"be read ({type(exc).__name__}), so this installation cannot say "
+            f"which credentials it has recorded. {left}",
+            remedy=ProductRemedy.REPAIR_CREDENTIAL_STORE,
+            origin=("core", "secrets"),
+            detail={"path": str(path), "index": "unreadable"},
+        ) from exc
+    try:
+        payload = json.loads(raw)
+    except ValueError as exc:
+        raise _damaged(
+            path, f"is not readable as JSON ({type(exc).__name__})", left
+        ) from exc
+    names = payload.get("recorded") if isinstance(payload, dict) else None
+    if not isinstance(names, Iterable) or isinstance(names, str):
+        raise _damaged(path, "does not carry a list of recorded credential names", left)
+    return frozenset(str(n) for n in names)'''
+new = '''
+    del left
+    path = _index_path()
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return frozenset()
+    names = payload.get("recorded") if isinstance(payload, dict) else None
+    if not isinstance(names, Iterable) or isinstance(names, str):
+        return frozenset()
+    return frozenset(str(n) for n in names)'''
+
+[[rows]]
+id = "r118-a.A2_enoent_refuses_too"
+source = { table = "r118-a.json", id = "A2_enoent_refuses_too" }
+description = "A fresh installation with no index refuses instead of answering nothing recorded, so the product cannot be set up"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+    except FileNotFoundError:
+        return frozenset()
+    except OSError as exc:'''
+new = '    except OSError as exc:'
+
+[[rows]]
+id = "r118-a.A3_unparseable_returns_empty"
+source = { table = "r118-a.json", id = "A3_unparseable_returns_empty" }
+description = "Bytes that are not JSON answer nothing recorded again, the ValueError half of the old blanket"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+    except ValueError as exc:
+        raise _damaged(
+            path, f"is not readable as JSON ({type(exc).__name__})", left
+        ) from exc'''
+new = '''
+    except ValueError:
+        return frozenset()'''
+
+[[rows]]
+id = "r118-a.A4_wrong_shape_returns_empty"
+source = { table = "r118-a.json", id = "A4_wrong_shape_returns_empty" }
+description = "A payload whose recorded key is not a list of names answers nothing recorded"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+    if not isinstance(names, Iterable) or isinstance(names, str):
+        raise _damaged(path, "does not carry a list of recorded credential names", left)'''
+new = '''
+    if not isinstance(names, Iterable) or isinstance(names, str):
+        return frozenset()'''
+
+[[rows]]
+id = "r118-a.A5_refusal_drops_the_path"
+source = { table = "r118-a.json", id = "A5_refusal_drops_the_path" }
+description = "The unreadable refusal names the exception type and not the file it could not read"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+            f"the credential presence index at {path} is present and could not "
+            f"be read ({type(exc).__name__}), so this installation cannot say "'''
+new = '''
+            f"the credential presence index is present and could not "
+            f"be read ({type(exc).__name__}), so this installation cannot say "'''
+
+[[rows]]
+id = "r118-a.A6_refusal_not_raised_from"
+source = { table = "r118-a.json", id = "A6_refusal_not_raised_from" }
+description = "The unreadable refusal is raised without from, so cause.classified cannot see the kernel's own refusal and a permission stays repair-credential-store"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+            detail={"path": str(path), "index": "unreadable"},
+        ) from exc'''
+new = '''
+            detail={"path": str(path), "index": "unreadable"},
+        )'''
+
+[[rows]]
+id = "r118-a.A8_damaged_reports_as_unreadable"
+source = { table = "r118-a.json", id = "A8_damaged_reports_as_unreadable" }
+description = "Both states report index unreadable in detail, so a machine consumer cannot tell a file it could not open from one it read and could not use"
+file = "src/cratekit/core/secrets.py"
+surface = "maintainer"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '        detail={"path": str(path), "index": "damaged"},'
+new = '        detail={"path": str(path), "index": "unreadable"},'
+
+[[rows]]
+id = "r118-a.A9_record_uses_the_read_sentence"
+source = { table = "r118-a.json", id = "A9_record_uses_the_read_sentence" }
+description = "A refusal from the record half says nothing was stored, over a value the keychain already holds"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '    names = _index_read(RECORD_ALREADY_IN_THE_KEYCHAIN)'
+new = '    names = _index_read()'
+
+[[rows]]
+id = "r118-b.D1_index_written_before_the_read_back"
+source = { table = "r118-b.json", id = "D1_index_written_before_the_read_back" }
+description = "set notes the name in the index before the keychain write is read back, so a null backend records a credential it discarded"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+        if stored != value:
+            raise _unavailable('''
+new = '''
+        _record_name(str(name))
+        if stored != value:
+            raise _unavailable('''
+
+[[rows]]
+id = "r118-b.D2_keychain_removed_before_the_index"
+source = { table = "r118-b.json", id = "D2_keychain_removed_before_the_index" }
+description = "delete removes the keychain entry before the index entry, the order that made exists answer True for a credential that was gone"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+        _forget_name(str(name))
+        try:
+            keyring.delete_password(SERVICE, str(name))'''
+new = '''
+        try:
+            keyring.delete_password(SERVICE, str(name))'''
+
+[[rows]]
+id = "r118-c.A7_unreadable_remedy_is_set_credential"
+source = { table = "r118-c.json", id = "A7_unreadable_remedy_is_set_credential" }
+description = "The unreadable refusal carries set-credential, which is the advice the finding exists to stop"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+            remedy=ProductRemedy.REPAIR_CREDENTIAL_STORE,
+            origin=("core", "secrets"),
+            detail={"path": str(path), "index": "unreadable"},'''
+new = '''
+            remedy=ProductRemedy.SET_CREDENTIAL,
+            origin=("core", "secrets"),
+            detail={"path": str(path), "index": "unreadable"},'''
+
+[[rows]]
+id = "u41-author-full.D1_dedupe_disabled"
+source = { table = "u41-author-full.json", id = "D1_dedupe_disabled" }
+description = "dedupe_stem stops dropping a trailing segment that repeats the lead; an existing guard this unit switched on for real input"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    deduped = dedupe_stem(spec.stem, spec.title, spec.album, sep=template.segment_sep)
+'''
+new = '''
+    deduped = spec.stem
+'''
+
+[[rows]]
+id = "u41-author-full.D2_dedupe_structural_rule_widened"
+source = { table = "u41-author-full.json", id = "D2_dedupe_structural_rule_widened" }
+description = "The structural dedupe rule drops its exact trailing match, so an unrelated trailing segment is mutilated"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if lead and stem.endswith(sep + lead):
+'''
+new = '''
+        if lead:
+'''
+
+[[rows]]
+id = "u41-naming-independent.D3_endswith_widened_to_containment"
+source = { table = "u41-naming-independent.json", id = "D3_endswith_widened_to_containment" }
+description = "The repeat test becomes containment rather than a trailing match, so a lead appearing mid name triggers a cut"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if lead and stem.endswith(sep + lead):
+'''
+new = '''
+        if lead and (sep + lead) in stem:
+'''
+
+[[rows]]
+id = "u41-naming-independent.D6_repeat_widened_to_prefix"
+source = { table = "u41-naming-independent.json", id = "D6_repeat_widened_to_prefix" }
+description = "AMBIGUITY MEANS IDENTITY is inverted: a trailing segment that merely BEGINS with the lead counts as a repeat"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if lead and stem.endswith(sep + lead):
+'''
+new = '''
+        if lead and parts[-1].startswith(lead):
+'''
+
+[[rows]]
+id = "u41-naming-independent.E1_budget_bypassed"
+source = { table = "u41-naming-independent.json", id = "E1_budget_bypassed" }
+description = "The fitted stem is discarded and the deduped one is returned, so nothing is ever shortened to the path ceiling"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    return replace(spec, stem=fitted)
+'''
+new = '''
+    return replace(spec, stem=deduped)
+'''
+
+[[rows]]
+id = "u41-naming-independent.E3_budget_min_becomes_max"
+source = { table = "u41-naming-independent.json", id = "E3_budget_min_becomes_max" }
+description = "The two ceilings are combined with max rather than min, so the looser one wins"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    max_stem = min(
+'''
+new = '''
+    max_stem = max(
+'''
+
+[[rows]]
+id = "u41-naming-independent.E4_path_separator_byte_dropped"
+source = { table = "u41-naming-independent.json", id = "E4_path_separator_byte_dropped" }
+description = "The path separator's byte is no longer counted against the path budget"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        + 1  # the path separator
+'''
+new = '''
+        + 0  # the path separator
+'''
+
+[[rows]]
+id = "u41-naming-independent.E5_truncation_tail_not_reserved"
+source = { table = "u41-naming-independent.json", id = "E5_truncation_tail_not_reserved" }
+description = "The disambiguating tail's bytes are not reserved, so the assembled name overshoots the ceiling by its length"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    avail = max_stem - len(tail)
+'''
+new = '''
+    avail = max_stem
+'''
+
+[[rows]]
+id = "u41-naming-independent.F3_body_tag_preference_flipped"
+source = { table = "u41-naming-independent.json", id = "F3_body_tag_preference_flipped" }
+description = "The tag body prefers the filename's stem over the title, which is A2 reproduced inside the engine"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    body_tag = spec.title if spec.title else spec.stem
+'''
+new = '''
+    body_tag = spec.stem if spec.stem else spec.title
+'''
+
+[[rows]]
+id = "u41-naming-independent.F4_body_tag_fallback_dropped"
+source = { table = "u41-naming-independent.json", id = "F4_body_tag_fallback_dropped" }
+description = "The tag body has no fallback at all, so a spec with no title renders None into the tag"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    body_tag = spec.title if spec.title else spec.stem
+'''
+new = '''
+    body_tag = spec.title
+'''
+
+[[rows]]
+id = "u41-naming-independent.F6_filename_prefers_the_title_body"
+source = { table = "u41-naming-independent.json", id = "F6_filename_prefers_the_title_body" }
+description = "R-168 reproduced one file over: the FILENAME is rendered from the title body when there is one, inside the engine rather than in the shell"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        filename=head + spec.stem + spec.suffix,
+'''
+new = '''
+        filename=head + (spec.title or spec.stem) + spec.suffix,
+'''
+
+[[rows]]
+id = "u41-naming-independent.F7_library_name_split_from_the_tag"
+source = { table = "u41-naming-independent.json", id = "F7_library_name_split_from_the_tag" }
+description = "The library name is derived from the stem rather than from the rendered title tag, so the marker can go missing from one surface only"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        library_name=title_tag,
+'''
+new = '''
+        library_name=head + spec.stem,
+'''
+
+[[rows]]
+id = "u39-author-full.D1_default_pad_reverted"
+source = { table = "u39-author-full.json", id = "D1_default_pad_reverted" }
+description = "Revert the key_pad default to none, the pre U39 written form"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+    key_pad: str = "camelot2"
+'''
+new = '''
+    key_pad: str = "none"
+'''
+
+[[rows]]
+id = "u39-author-full.D2_pad_unguarded"
+source = { table = "u39-author-full.json", id = "D2_pad_unguarded" }
+description = "Pad unconditionally, so an off wheel key raises from pad_camelot instead of the one refusal path"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if key_pad == "camelot2":
+'''
+
+[[rows]]
+id = "u39-author-full.D3_pad_never_runs"
+source = { table = "u39-author-full.json", id = "D3_pad_never_runs" }
+description = "Padding stage disabled entirely, even for explicit camelot2 templates"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "u39-author-full.E1_budget_ordering_dropped"
+source = { table = "u39-author-full.json", id = "E1_budget_ordering_dropped" }
+description = "Existing guard sample: the budget narrower than written refusal is disabled"
+file = "src/cratekit/core/naming.py"
+surface = "maintainer"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if KEY_PADS.index(self.budget_key_pad) < KEY_PADS.index(self.key_pad):
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "u39-author-full.E2_wheel_bound_widened"
+source = { table = "u39-author-full.json", id = "E2_wheel_bound_widened" }
+description = "Existing guard sample: the Camelot number bound admits 13 through 19"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+_CAMELOT_NUMBER = r"(?:[1-9]|1[0-2])"
+'''
+new = '''
+_CAMELOT_NUMBER = r"(?:[1-9]|1[0-9])"
+'''
+
+[[rows]]
+id = "u39-author-full.M1_refusal_reworded"
+source = { table = "u39-author-full.json", id = "M1_refusal_reworded" }
+description = "Reword the unwritable key refusal, do not append to it"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+            f"{name}={value!r} renders as {rendered!r}, which this engine cannot "
+'''
+new = '''
+            f"{name}={value!r} renders as {rendered!r}, which this engine declines to "
+'''
+
+[[rows]]
+id = "u39-naming-independent.D2_pad_condition_inverted"
+source = { table = "u39-naming-independent.json", id = "D2_pad_condition_inverted" }
+description = "Invert the padding condition: pad exactly the off-wheel values and leave real Camelot codes alone"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is None:
+'''
+
+[[rows]]
+id = "u39-naming-independent.D3_pad_condition_unreachable"
+source = { table = "u39-naming-independent.json", id = "D3_pad_condition_unreachable" }
+description = "The padding stage never fires for any key_pad value, including camelot2"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if key_pad == "impossible-sentinel":
+'''
+
+[[rows]]
+id = "u39-naming-independent.D4_fake_pad_no_zero_fill"
+source = { table = "u39-naming-independent.json", id = "D4_fake_pad_no_zero_fill" }
+description = "Padding uppercases but does not zero-fill, a plausible-looking near miss"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+            rendered = pad_camelot(rendered)
+'''
+new = '''
+            rendered = rendered.upper()
+'''
+
+[[rows]]
+id = "u39-naming-independent.E1_budget_ordering_inverted"
+source = { table = "u39-naming-independent.json", id = "E1_budget_ordering_inverted" }
+description = "Existing guard sample: the budget-narrower-than-written refusal is inverted rather than disabled outright"
+file = "src/cratekit/core/naming.py"
+surface = "maintainer"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if KEY_PADS.index(self.budget_key_pad) < KEY_PADS.index(self.key_pad):
+'''
+new = '''
+        if KEY_PADS.index(self.budget_key_pad) > KEY_PADS.index(self.key_pad):
+'''
+
+[[rows]]
+id = "u39-naming-independent.E2_wheel_letter_widened"
+source = { table = "u39-naming-independent.json", id = "E2_wheel_letter_widened" }
+description = "Existing guard sample: the Camelot letter class admits C, not just A/B"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+_CAMELOT_LETTER = r"[AB]"
+'''
+new = '''
+_CAMELOT_LETTER = r"[ABC]"
+'''
+
+[[rows]]
+id = "u39-naming-independent.M1_refusal_reworded"
+source = { table = "u39-naming-independent.json", id = "M1_refusal_reworded" }
+description = "Reword the unwritable-key refusal instead of appending to it, so an `in` assertion cannot see the change"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+            f"{name}={value!r} renders as {rendered!r}, which this engine cannot "
+'''
+new = '''
+            f"{name}={value!r} is not something this template can round trip: "
+'''
+
+[[rows]]
+id = "r290-author.J1_blocked_branch_removed"
+source = { table = "r290-author.json", id = "J1_blocked_branch_removed" }
+description = "Skip the blocked branch of raise_for_state, so a parked job falls through to the closed predicate that cannot see it, which is R-290 itself"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_job_outcome.py", "tests/test_job_resume.py", "tests/test_job_seam.py", "tests/test_jobs.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_landing.py", "tests/test_master_cli.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py"]
+old = '''
+    if job.state is JobState.BLOCKED:
+        # ``transition`` refuses'''
+new = '''
+    if False and job.state is JobState.BLOCKED:
+        # ``transition`` refuses'''
+
+[[rows]]
+id = "r290-author.J2_blocked_raises_the_plain_type"
+source = { table = "r290-author.json", id = "J2_blocked_raises_the_plain_type" }
+description = "Raise a plain CratekitError for a parked job, so the verb exits non zero and the outcome word says failed"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_job_outcome.py", "tests/test_job_resume.py", "tests/test_job_seam.py", "tests/test_jobs.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_landing.py", "tests/test_master_cli.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py"]
+old = '        raise JobBlocked(job.cause)'
+new = '        raise CratekitError(job.cause)'
+
+[[rows]]
+id = "r290-author.J3_closed_branch_removed"
+source = { table = "r290-author.json", id = "J3_closed_branch_removed" }
+description = "Drop the closed and carrying a cause branch, so a half failed or cancelled job is reported, which is R-225 in every verb at once"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_job_outcome.py", "tests/test_job_resume.py", "tests/test_job_seam.py", "tests/test_jobs.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_landing.py", "tests/test_master_cli.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py"]
+old = '''
+    if not job.is_open() and job.cause is not None:
+        if job.state is JobState.CANCELLED:'''
+new = '''
+    if False and not job.is_open() and job.cause is not None:
+        if job.state is JobState.CANCELLED:'''
+
+[[rows]]
+id = "r290-author.J4_predicate_narrowed_to_failed"
+source = { table = "r290-author.json", id = "J4_predicate_narrowed_to_failed" }
+description = "Narrow the closed predicate to FAILED alone, so a run stopped by a signal is reported through a normal envelope"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_job_outcome.py", "tests/test_job_resume.py", "tests/test_job_seam.py", "tests/test_jobs.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_landing.py", "tests/test_master_cli.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py"]
+old = '''
+    if not job.is_open() and job.cause is not None:
+        if job.state is JobState.CANCELLED:'''
+new = '''
+    if job.state is JobState.FAILED and job.cause is not None:
+        if job.state is JobState.CANCELLED:'''
+
+[[rows]]
+id = "r290-author.J5_causeless_block_returns"
+source = { table = "r290-author.json", id = "J5_causeless_block_returns" }
+description = "Return for a blocked job that records no reason, reading a missing reason as a missing problem"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_job_outcome.py", "tests/test_job_resume.py", "tests/test_job_seam.py", "tests/test_jobs.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_landing.py", "tests/test_master_cli.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py"]
+old = '''
+        if job.cause is None:
+            raise JobBlocked(
+                refuse('''
+new = '''
+        if job.cause is None:
+            return
+            raise JobBlocked(
+                refuse('''
+
+[[rows]]
+id = "r290-author.J6_causeless_block_raises_the_plain_type"
+source = { table = "r290-author.json", id = "J6_causeless_block_raises_the_plain_type" }
+description = "Refuse a blocked job that records no reason as a plain error, so the envelope says failed over a row the job listing calls blocked"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_job_outcome.py", "tests/test_job_resume.py", "tests/test_job_seam.py", "tests/test_jobs.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_landing.py", "tests/test_master_cli.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py"]
+old = '''
+        if job.cause is None:
+            raise JobBlocked(
+                refuse('''
+new = '''
+        if job.cause is None:
+            raise CratekitError(
+                refuse('''
+
+[[rows]]
+id = "r290-author.J7_cancelled_raises_the_plain_type"
+source = { table = "r290-author.json", id = "J7_cancelled_raises_the_plain_type" }
+description = "Raise a plain CratekitError for a cancelled job, so a person who stopped a run is told it failed"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_job_outcome.py", "tests/test_job_resume.py", "tests/test_job_seam.py", "tests/test_jobs.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_landing.py", "tests/test_master_cli.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py"]
+old = '            raise JobCancelled(job.cause)'
+new = '            raise CratekitError(job.cause)'
+
+[[rows]]
+id = "r431-b.B1_a_wanted_built_by_hand_asks"
+source = { table = "r431-b.json", id = "B1_a_wanted_built_by_hand_asks" }
+description = "uncredited_spellings no longer requires a spelled title, so a Wanted built from a held file asks for a companion"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
+old = '        if not self.spelled or self.several_artists or _credits_in(self.spelled):'
+new = '        if self.several_artists or _credits_in(self.listed):'
+
+[[rows]]
+id = "r431-b.B2_a_row_billing_a_guest_asks"
+source = { table = "r431-b.json", id = "B2_a_row_billing_a_guest_asks" }
+description = "uncredited_spellings ignores several_artists, so a row crediting a guest in its artists list asks"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
+old = '        if not self.spelled or self.several_artists or _credits_in(self.spelled):'
+new = '        if not self.spelled or _credits_in(self.spelled):'
+
+[[rows]]
+id = "r431-b.B3_a_listing_that_spelled_a_credit_asks"
+source = { table = "r431-b.json", id = "B3_a_listing_that_spelled_a_credit_asks" }
+description = "uncredited_spellings ignores a bracketed credit, so a listing crediting Zed reaches Mira's companion"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
+old = '        if not self.spelled or self.several_artists or _credits_in(self.spelled):'
+new = '        if not self.spelled or self.several_artists:'
+
+[[rows]]
+id = "r431-b.B4_the_engine_never_asks"
+source = { table = "r431-b.json", id = "B4_the_engine_never_asks" }
+description = "standing_tombstone asks under the companion kind for nothing, which is the defect the unit closes"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
+old = '''
+    for identity in wanted.uncredited_spellings:
+        if suppresses(UNCREDITED_KIND, identity):'''
+new = '''
+    for identity in ():
+        if suppresses(UNCREDITED_KIND, identity):'''
+
+[[rows]]
+id = "r431-b.B5_the_engine_ignores_companions_false"
+source = { table = "r431-b.json", id = "B5_the_engine_ignores_companions_false" }
+description = "standing_tombstone asks for a companion even when the caller said not to"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
+old = '''
+    if not companions:
+        return None
+    for identity in wanted.uncredited_spellings:'''
+new = '    for identity in wanted.uncredited_spellings:'
+
+[[rows]]
+id = "r431-b.B7_the_engine_asks_under_the_tombstones_kind"
+source = { table = "r431-b.json", id = "B7_the_engine_asks_under_the_tombstones_kind" }
+description = "The engine's copy of the companion kind drifts onto the tombstone's own"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
+old = 'UNCREDITED_KIND = "version-uncredited"'
+new = 'UNCREDITED_KIND = "version"'
+
+[[rows]]
+id = "r431-b.B8_the_reader_never_counts_the_artists"
+source = { table = "r431-b.json", id = "B8_the_reader_never_counts_the_artists" }
+description = "_from_row stops setting several_artists, so every provider row reads as billing one"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
+old = '        several_artists=_bills_several(row),'
+new = '        several_artists=False,'
+
+[[rows]]
+id = "r664.E1_stem_head_kept"
+source = { table = "r664.json", id = "E1_stem_head_kept" }
+description = "Stop stripping the head from the stem, the filename half of the same rule"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
+old = '''
+    body = naming.strip_heads(stem, template=template)
+'''
+new = '''
+    body = stem
+'''

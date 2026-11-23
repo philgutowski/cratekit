@@ -1,61 +1,15 @@
 """``crate label sync``, its go taken on through the tail to the landing's gate (U190).
 
-The attended Defected label sync of 2026-10-31 answered the gate, said go, and
-the go downloaded ten tracks and printed five commands to type in order: ``tag
-folder``, ``analyze run``, ``analyze restamp``, ``name apply`` and ``intake
-land`` with the manifest and the pass, three of which queue a job a second
-command has to drive. A sync pass already ran that chain in one verb, ``crate
-sync land`` (U152). Now the go does too.
-
-WHY THIS MODULE AND NOT THE GO. The go, :mod:`cratekit.label.go`, is ranked a
-feature module, and the chain runs each step through the real dispatcher, which
-is the CLI layer's: ``tests/test_layering.py`` refuses a feature module that
-reaches up for it, at module scope or inside a function. So the ``label.sync``
-registry entry names this module. Its builder is the verb's own,
-:func:`cratekit.label.sync_cli.build_sync`, its handler runs the verb's own
-handler unchanged, and only then, when the go's report names a tail
-(:data:`cratekit.label.go.LAND_KEY`), runs it here through
-:mod:`cratekit.cli.tail`, the one chain ``sync land`` runs, so the two verbs
-answer every question of the tail the same way by construction.
-
-WHAT IT ENDS ON. The landing is planned by ``intake land`` itself with the go's
-manifest and pass, and stops at its explicit gate on its own run, so the verb
-ends PENDING naming that run, the two commands that answer and apply it as the
-session, and the rekordbox visit after. A tail step that does not succeed ends
-the verb there with the step's own refusal, the go's report in its detail and
-the rest of the tail named as the way on, so nothing is landed over files the
-tail did not finish. The download is kept either way, and the answers it took
-are settled, so a fresh go would not take them again: the tail is run on by
-hand from the step that stopped, or whole again by ``--go`` under the same run,
-which takes the run's own download on since U239.
-
-THE LANDING IT REACHED IS RECORDED ON THE GO'S RUN (U239). When the tail
-stops at the landing's gate, the landing's run is kept under the download's
-job (:func:`cratekit.label.go.landing_role`) on the run whose go queued that
-job, which is another run when a fresh go resumed it, so a later ``--go``
-under that run, which takes the run's own download on, names that landing
-rather than run the tail a second time. Whichever way the tail ends, what the
-folder then holds is kept under the job (:func:`cratekit.label.go.keep_tail`,
-R-1467), so a later ``--go`` under the go's run reads the tracks the tail's
-``name apply`` renamed as its own, and nothing put there since. A go that
-refuses with a landing in its detail, because the folder holds what is not its
-own (another download's tracks, or files no download names, R-1467), has the
-tail named as commands to type.
-
-NOTHING THAT ARRIVED WHILE THE TAIL RAN IS LANDED WITH IT (R-1499). The
-tail is run in two halves, through ``name apply`` and then the landing, and
-between them the folder is compared with what it held as the tail started
-(:func:`cratekit.intake.beside.arrived`): a download another process finished
-meanwhile, or a file a person put there, would have been renamed with the
-go's own, so the landing is not planned and the tail's record is not kept.
-
-A GO HOLDS THE STAGING LOCK (U293) for its whole length, as ``crate sync
-land`` and the night pass do, so a go and a sync pass never download into the
-one folder together; a second refuses ``staging-held`` naming the holder.
-
-A GO THAT NAMES NO TAIL IS RETURNED AS IT WAS. An abort, a go that listed
-nothing, one that downloaded nothing, and every walk or question that never
-reached the go are the verb's own envelopes, untouched.
+The go, :mod:`cratekit.label.go`, is a feature module and may not reach the CLI
+dispatcher, so the ``label.sync`` entry names this module: it runs the verb's
+own handler unchanged, then, when the go's report names a tail, runs it through
+:mod:`cratekit.cli.tail`, the chain ``sync land`` runs, so both answer the same.
+It ends PENDING at the landing's gate, or on a step's own refusal with the rest
+of the tail named, the download kept either way. The landing reached is recorded
+on the go's run and what the folder holds is kept under the job (U239, R-1467),
+so a later ``--go`` under that run reads its own tracks. Nothing that arrived
+while the tail ran is landed with it (R-1499). A go holds the staging lock
+(U293). A go that names no tail is returned untouched.
 """
 
 from __future__ import annotations
@@ -72,7 +26,6 @@ from cratekit.core import jobs, staging_lock
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import beside as staged
-from cratekit.label import go, sync_cli
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
@@ -89,6 +42,8 @@ NAMESPACE = "label.sync.go"
 
 def build_sync(parser, entry) -> None:
     """The verb's own arguments, with this module's handler in front of its own."""
+    from cratekit.label import sync_cli
+
     sync_cli.build_sync(parser, entry)
     parser.set_defaults(_handler=label_sync)
 
@@ -102,6 +57,8 @@ def _land_of(envelope: Envelope) -> Mapping[str, Any] | None:
 
 def _land_in(report: Any) -> Mapping[str, Any] | None:
     """The landing a go's report or refusal names under its key, or None."""
+    from cratekit.label import go
+
     land = report.get(go.LAND_KEY) if isinstance(report, Mapping) else None
     if not isinstance(land, Mapping):
         return None
@@ -114,7 +71,7 @@ def _with_commands(error: CratekitError) -> CratekitError:
     """A go's refusal that names a landing, with the tail as a person types it (U239).
 
     Only the go's own refusal, by its origin, since only it puts a landing in
-    its detail; the tail as :func:`_commands` builds it, from its first step.
+    its detail.
     """
     cause = error.cause
     land = _land_in(cause.detail) if _GO_ORIGIN in cause.origin else None
@@ -155,12 +112,10 @@ def _landing_args(land: Mapping[str, Any]) -> list[str]:
 def _commands(folder: Path, landing: Sequence[str], step: str) -> list[str]:
     """The tail as a person types it, from ``step`` to the landing.
 
-    ``name apply`` without its confirm answered, as the go has always named it:
-    a person running it by hand reads its plan first.
+    ``name apply`` without its confirm answered, so a person reads its plan.
     """
     words = {one: ["crate", *argv, str(folder)] for one, _verb, argv in tail.TAIL}
-    # NO PASS (U172, review round 2): a label go's pass names its landing, and
-    # no account playlist asked for its tracks, so none votes in the guess.
+        # No pass (U172): no account playlist asked for a label go's tracks.
     words[tail.GUESS] = ["crate", *tail.guess_argv(folder)]
     words[tail.NAME] = ["crate", "name", "apply", "--root", str(folder)]
     words[tail.LAND] = ["crate", "intake", "land", str(folder), *landing]
@@ -179,13 +134,14 @@ def label_sync(ctx: Context) -> Envelope:
     """Run the verb, then the tail its go names. See the module docstring."""
     if not getattr(ctx.args, "go", False):
         return _label_sync(ctx)
-    # A GO STAGES, SO IT HOLDS THE STAGING LOCK (U293) for its whole length,
-    # as ``sync land`` and the night pass do: one pass downloads at a time.
+    # A go stages, so it holds the staging lock for its whole length (U293).
     with staging_lock.held("crate label sync --go", run_id=ctx.run.run_id):
         return _label_sync(ctx)
 
 
 def _label_sync(ctx: Context) -> Envelope:
+    from cratekit.label import sync_cli
+
     try:
         envelope = sync_cli.label_sync(ctx)
     except CratekitError as exc:
@@ -206,18 +162,16 @@ def _label_sync(ctx: Context) -> Envelope:
         if isinstance(before, CratekitError):
             raise tail.Stop(tail.TAG, before)
         tail.through_name(chain, folder, cfg)
-        # NOTHING ARRIVED WHILE THE TAIL RAN (R-1499, review round one): a
-        # download another process finished meanwhile was renamed with the
-        # go's own, and the landing would take it under the go's pass.
+        # Nothing may have arrived while the tail ran, or the landing would
+        # take it under the go's pass (R-1499).
         changed = _arrived(land, folder, landing, before)
         if changed is not None:
             raise tail.Stop(tail.LAND, changed, continues=False)
         try:
             tail.land(chain, folder, landing)
         except tail.Attend as stop:
-            # READ ONCE MORE AFTER THE PLAN (review round two, finding 1): an
-            # arrival between the check above and the landing's own listing
-            # is in the plan, so the plan is refused, not recorded as reached.
+            # Read once more after the plan: an arrival before the landing's
+            # own listing is in the plan, so the plan is refused.
             changed = _arrived(land, folder, landing, before)
             if changed is None:
                 raise
@@ -229,7 +183,7 @@ def _label_sync(ctx: Context) -> Envelope:
         warnings.extend(_remember(ctx, stop, land))
         return _attended(ctx, envelope, chain, stop, folder, landing, warnings)
     except tail.Stop as stop:
-        # THE RECORD'S WARNING RIDES THE REFUSAL (review round two, finding 3).
+        # The record's warning rides the refusal.
         chain.warnings.extend(_kept(cfg, land, folder, before))
         raise _ended(envelope, chain, stop, folder, landing) from None
     warnings.extend(_kept(cfg, land, folder, before))
@@ -245,14 +199,13 @@ def _remember(
 ) -> list[dict[str, str]]:
     """Keep the landing's run on the go's run once the tail stopped at its gate (U239).
 
-    Only a stop at the landing's own gate, which names the run that planned
-    it; a stop for the backup acknowledgment planned no landing, so a later go
-    under the run runs the tail again. Recorded UNDER THE JOB, on the run whose
-    go queued it: that is the run a later ``--go`` takes the job on under, and
-    a fresh go that resumed the job is not. This run's record is saved as the
-    verb returns; another run's is saved here, and one that cannot be read or
-    saved is a warning naming the run, the job and why, never a refusal.
+    Only a stop at the landing's own gate, since a stop for the backup
+    acknowledgment planned no landing. Recorded under the job, on the run whose
+    go queued it, the run a later ``--go`` takes the job on under; a record
+    that cannot be saved is a warning, never a refusal.
     """
+    from cratekit.label import go
+
     landed = (stop.cause.detail or {}).get("run_id")
     if not (stop.step == tail.LAND and stop.cause.reason == tail.GATE_STOP and landed):
         return []
@@ -274,8 +227,8 @@ def _own(land: Mapping[str, Any]) -> set[str]:
 def _settled(land: Mapping[str, Any], folder: Path) -> staged.Settled | CratekitError:
     """What the folder holds of other downloads as the go's tail starts (R-1499).
 
-    A folder or a queue that cannot be read is the refusal, returned for the
-    caller to end the tail with before it runs.
+    A folder or queue that cannot be read is the refusal, returned for the
+    caller to end the tail with.
     """
     try:
         with jobs.open_store() as store:
@@ -303,8 +256,8 @@ def _arrived(
 ) -> CratekitError | None:
     """The refusal for what arrived while the go's tail ran, or None (R-1499).
 
-    :func:`cratekit.intake.beside.arrived`, read against what the folder held
-    as the tail started; a queue that cannot be read refuses too.
+    Read against what the folder held as the tail started; an unreadable queue
+    refuses too.
     """
     try:
         with jobs.open_store() as store:
@@ -333,7 +286,7 @@ def _unkept(folder: Path, job: str, why: str) -> dict[str, str]:
 
 
 def _planned_over(changed: CratekitError, stop: tail.Attend) -> CratekitError:
-    """The arrival refusal for a landing already planned over what arrived (round two)."""
+    """The arrival refusal for a landing already planned over what arrived."""
     run = (stop.cause.detail or {}).get("run_id")
     cause = changed.cause
     steps = (
@@ -355,17 +308,13 @@ def _kept(
 ) -> list[dict[str, str]]:
     """Keep what the folder holds as the tail stops, under the go's job (R-1467).
 
-    The tail's ``name apply`` renames every track before the landing's gate,
-    so a later ``--go`` under the go's run finds its tracks under names no
-    download recorded; :func:`cratekit.label.go.keep_tail` keeps them by name,
-    size and modification time, which is what lets that go read them as its
-    own and nothing else as its own. One that cannot be kept is a warning, and
-    the later go then refuses its tail beside them, naming the tail by hand.
-
-    NOT WHEN ANYTHING ARRIVED WHILE THE TAIL RAN (R-1499, review round one):
-    what arrived may have been renamed with the go's own, so a record kept
-    then would read it as the go's own; the warning says it was not kept.
+    ``name apply`` renamed every track, so ``keep_tail`` records them by name,
+    size and time for a later ``--go`` to read as its own. One that cannot be
+    kept is a warning. Not kept when anything arrived while the tail ran, since
+    it may have been renamed with the go's own (R-1499).
     """
+    from cratekit.label import go
+
     job = land.get("job")
     if not (isinstance(job, str) and job):
         return []
@@ -405,9 +354,7 @@ def _record(
 ) -> list[dict[str, str]]:
     """Record ``value`` under the job's role on the run whose go queued the job (U239).
 
-    This run's record is saved as the verb returns; another run's is saved
-    here, and one that cannot be read or saved is a warning naming the run,
-    the job and why, never a refusal.
+    A record that cannot be read or saved is a warning, never a refusal.
     """
     job, owner = land.get("job"), land.get("run")
     if not (isinstance(job, str) and job and isinstance(owner, str) and owner):
@@ -421,8 +368,8 @@ def _record(
         state.related_runs[role] = value
         gates.save(state)
     except Exception as exc:  # noqa: BLE001 - see below
-        # ANY FAILURE OF A RUN'S RECORD IS A WARNING, as ``gates.siblings`` reads
-        # one: a refusal raised here would replace the envelope the go ends on.
+        # Any failure is a warning, since a refusal here would replace the
+        # envelope the go ends on.
         return [
             {
                 "code": UNRECORDED_WARNING,
@@ -487,11 +434,9 @@ def _ended(
 ) -> CratekitError:
     """The refusal a stopped tail ends the go with: the step's own, the way on added.
 
-    THE WAY ON IS THE TAIL BY HAND, FROM THE STEP THAT STOPPED. The download is
-    kept and its answers are settled, so a fresh ``label sync --go`` would take
-    nothing, and the go's report, in the detail, says what it downloaded. A
-    ``--go`` under the same run runs the whole tail again (U239), since a stop
-    before the landing's gate records no landing on the run.
+    The way on is the tail by hand from the step that stopped, since the
+    download is kept and a fresh go would take nothing; a ``--go`` under the
+    same run reruns the whole tail (U239).
     """
     cause = stop.error.cause
     chain.summary["stopped_at"] = stop.step

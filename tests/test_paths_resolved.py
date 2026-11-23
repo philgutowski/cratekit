@@ -1,18 +1,11 @@
-"""R-372: a collection most of whose rows record an unmapped drive is refused, not read as ok.
+"""A collection most of whose rows record an unmapped drive is refused, not read as ok (R-372).
 
-The sitting that found it: the first real ``crate metadata mytags-vocals`` plan
-reported ``count 0, active 9937, unresolved 9937``, outcome ok, and ``crate
-doctor`` was green beside it, because rekordbox keeps nearly every row under
-the drive name it was imported with and setup had written no
-``library.location_prefix_map`` rule. Three surfaces answer that here: the plan
-and its apply refuse under one slug with the totals still in the payload,
-doctor's ``library.paths_resolved`` reads the same ratio off a disposable copy
-of the database, and setup reads rekordbox's own two drive names off a copy and
-offers the rule.
-
-EVERY OPEN IN THIS MODULE IS SPIED ON. The live database path is configured
-and present, and the assertion that it was never handed to the binding is what
-the standing constraint on the live database means in a test.
+rekordbox keeps rows under the drive name they were imported with, so without
+a ``library.location_prefix_map`` rule nearly every row is unresolved. The plan
+and its apply refuse under one slug with the totals in the payload, doctor's
+``library.paths_resolved`` reads the same ratio off a disposable copy, and
+setup reads rekordbox's two drive names off a copy and offers the rule. Every
+open is spied on, so the live database is shown never handed to the binding.
 """
 
 from __future__ import annotations
@@ -25,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.cli import doctor, prompt, registry
+from cratekit.cli import doctor, doctor_model, prompt, registry
 from cratekit.cli import setup as setup_verb
 from cratekit.core import config, locations, processes, rb_writer, session, tags
 from cratekit.core.cause import CratekitError
@@ -38,10 +31,9 @@ from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
 
-#: The drive rekordbox recorded the rows under, and no longer mounts. Built
-#: under the temporary directory rather than spelled as a volume literal, which
-#: the repository scan refuses; what matters is that it is absolute, outside
-#: the library root, and under no rule.
+#: The drive the rows were recorded under, no longer mounted. Built under the
+#: temporary directory because the repository scan refuses a volume literal;
+#: it is absolute, outside the library root, and under no rule.
 def _old_drive(tmp_path: Path) -> Path:
     return tmp_path / "Volumes" / "RENAMED"
 
@@ -68,9 +60,9 @@ class Bench:
     def add_rows(self, *, old: int = 0, local: int = 0, silence: Path | None = None) -> None:
         """``old`` rows recorded under the renamed drive, ``local`` rows under the root.
 
-        The old rows' files sit under the library root at the path a rule from
-        the old drive to the root would rewrite them to, so the same fixture
-        answers both halves: unmapped without the rule, resolved with it.
+        The old rows' files sit where a rule from the old drive to the root
+        would rewrite them, so one fixture is unmapped without the rule and
+        resolved with it.
         """
         from pyrekordbox.db6 import tables
         from sqlalchemy import create_engine
@@ -121,7 +113,7 @@ class Bench:
         conn.close()
 
     def record_rule(self) -> config.Config:
-        """Write the rule setup should have offered, the way the sitting typed it."""
+        """Write the rule setup should have offered."""
         document = dict(self.cfg.to_toml_dict())
         document["library"]["location_prefix_map"] = [
             {"from": str(self.old_drive), "to": str(self.root)}
@@ -290,7 +282,7 @@ def test_an_apply_over_a_majority_refuses_the_same_way_and_writes_nothing(bench,
 
 
 def test_a_minority_of_unmapped_rows_stays_ok_with_the_counts_visible(bench, silence):
-    """The sitting after the hand edit: a minority is reported, never refused."""
+    """A minority of unmapped rows is reported, never refused."""
     bench.add_rows(old=3, local=10, silence=silence)
 
     code, envelope = drive(["metadata", "mytags-vocals"])
@@ -322,7 +314,7 @@ def test_the_rule_setup_should_have_offered_turns_the_majority_into_a_plan(bench
 
 def _real_survey() -> doctor.Probes:
     """The green machine with the one seam under test left real."""
-    return doctor_machines.green(path_survey=doctor._survey_paths)
+    return doctor_machines.green(path_survey=doctor_model._survey_paths)
 
 
 def test_doctor_fails_paths_resolved_over_a_majority_off_a_copy(bench, silence, opened):
@@ -555,16 +547,15 @@ def test_setup_end_to_end_writes_the_rule_and_ends_on_a_doctor_that_reads_it(
     """Through the real dispatcher: the offer is taken, saved once, and the closing
     doctor resolves every row through the rule it just wrote."""
     bench.add_rows(old=10, silence=silence)
-    # Two answers: the backup destinations are offered first, since R-345, on
-    # a full profile with none recorded, and declined here; the second answer
-    # is the prefix map offer this test is about.
+    # Two answers: the backup destinations offer comes first on a full profile
+    # with none recorded (R-345), declined here; the second is the prefix map offer.
     monkeypatch.setattr(prompt, "Prompter", lambda: _scripted(["no", "yes"]))
     monkeypatch.setattr(
         doctor,
         "Probes",
         lambda: doctor_machines.green(
             installed_app_version=lambda _cfg: RECORDED_APP_VERSION,
-            path_survey=doctor._survey_paths,
+            path_survey=doctor_model._survey_paths,
         ),
     )
 
@@ -589,7 +580,7 @@ def test_doctor_takes_no_copy_while_rekordbox_is_running(bench, silence, opened)
         for f in doctor.run(
             bench.cfg,
             probes=doctor_machines.green(
-                process_lister=lambda: ("rekordboxAgent",), path_survey=doctor._survey_paths
+                process_lister=lambda: ("rekordboxAgent",), path_survey=doctor_model._survey_paths
             ),
         ).findings
         if f.key == "library.paths_resolved"
@@ -608,7 +599,7 @@ def test_doctor_defers_to_the_volume_checks_before_reading_anything(bench, silen
         for f in doctor.run(
             bench.cfg,
             probes=doctor_machines.green(
-                identity_provider=lambda _path: "0000-0000", path_survey=doctor._survey_paths
+                identity_provider=lambda _path: "0000-0000", path_survey=doctor_model._survey_paths
             ),
         ).findings
         if f.key == "library.paths_resolved"
@@ -656,13 +647,13 @@ def test_setup_skips_the_offer_while_rekordbox_is_running(bench, opened, monkeyp
 
     assert opened == []
     assert document["library"].get("location_prefix_map", []) == []
-    # The wizard's OWN sentence, not the copy's refusal repeated through the
-    # "could not be read" note: the wizard asked before it copied.
+    # The wizard's own sentence, not the copy's refusal repeated, since the
+    # wizard asked before it copied.
     assert "none was taken and no drive rule was offered" in _note(wizard).detail
 
 
 def test_setup_notes_a_file_it_could_not_copy_rather_than_aborting(bench, opened, monkeypatch):
-    """The copy itself, not the open: an OSError here used to escape the verb."""
+    """A failed copy is a note, never an OSError escaping the verb."""
     import shutil as _shutil
 
     def denied(src, dst, *args, **kwargs):
@@ -784,7 +775,7 @@ def test_the_read_only_copy_refuses_under_a_running_application_on_its_own(bench
 
 
 def _empty(path: Path) -> Path:
-    """The file sitting 5 was given: zero bytes, beside where a library would be."""
+    """A zero byte file beside where a library would be."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"")
     return path
@@ -890,7 +881,7 @@ def test_a_file_that_is_not_sqlite_at_all_keeps_the_canarys_refusal(bench):
 def test_setup_refuses_a_database_path_that_is_not_a_library_and_records_nothing(
     bench, opened, monkeypatch, make
 ):
-    """Sitting 5 through the real dispatcher: the wrong file one directory over."""
+    """The wrong file one directory over, through the real dispatcher."""
     wrong = make(bench.root / "PIONEER" / "rekordbox" / "master.db")
     live_bytes = bench.db_path.read_bytes()
     asked: list[str] = []

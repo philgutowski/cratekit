@@ -2273,3 +2273,20 @@ def _package_sources() -> list[tuple[str, str]]:
         for path in sorted(root.rglob("*.py"))
         if "_vendor" not in path.parts
     ]
+
+
+# ── U327: the head adopt operation, Title and nothing beside it ─────────────
+
+
+def test_the_adopt_operation_widens_the_content_gate_by_the_title_alone():
+    """``analyze adopt`` writes rekordbox's key and tempo into a title. Enabled, it
+    adds Title to what a commit may modify, and every analysis column, the key
+    column among them, stays refused in the same commit."""
+    from cratekit.write import metadata
+
+    baseline = W.content_writable_columns()
+    assert metadata.enable([metadata.ADOPT_REKORDBOX_HEAD]) - baseline == {"Title"}
+    assert W.guard_violations([], [(W.CONTENT_TABLE, {"Title"})], []) == []
+    for column in ("BPM", "KeyID", "Analysed", "AnalysisDataPath", "AnalysisUpdated"):
+        violations = W.guard_violations([], [(W.CONTENT_TABLE, {"Title", column})], [])
+        assert violations and column in violations[0], (column, violations)

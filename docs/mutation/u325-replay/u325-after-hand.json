@@ -1,0 +1,2538 @@
+{
+  "name": "u325-after-hand",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "db120fdb",
+  "when": "2026-11-23 03:24 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 22933,
+  "baseline_exit": 1,
+  "pytest_runs": 102,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 251,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "read",
+  "baseline_note": "read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py compare` at 2026-11-22 16:29 UTC for commit `db120fdb9f05`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file",
+  "subset_baselines": 40,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/acquire/match.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/acquire/match.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "b97daea84a3a7ff2",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22933,
+    "baseline_collected": 22933,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "r1709.M25_fallback_identity_fold",
+      "description": "the upload question keys the folded title",
+      "file": "src/cratekit/acquire/match.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "82898ce85a317163",
+      "subset": [
+        "tests/test_match_states.py",
+        "tests/intake/test_pipeline.py",
+        "tests/intake/test_recognition.py",
+        "tests/intake/test_workers.py",
+        "tests/test_acquire_fallback.py",
+        "tests/test_acquire_fallback_fetch.py",
+        "tests/test_catalogue_app.py",
+        "tests/test_cli_contract.py",
+        "tests/test_export_set.py",
+        "tests/test_export_set_rename.py",
+        "tests/test_intake_land_account_playlists.py",
+        "tests/test_intake_land_account_playlists_native.py",
+        "tests/test_intake_land_hearts_native.py",
+        "tests/test_intake_missing.py",
+        "tests/test_intake_missing_search.py",
+        "tests/test_intake_missing_staged.py",
+        "tests/test_isrc_cache.py",
+        "tests/test_isrc_screen.py",
+        "tests/test_label_tidal_catalogue.py",
+        "tests/test_library_reads_remembered.py",
+        "tests/test_listdoc.py",
+        "tests/test_set_inspiration_playlist.py",
+        "tests/test_u129_set_account_playlist.py",
+        "tests/test_setbuilder_cli.py",
+        "tests/test_title_matcher.py",
+        "tests/test_review_queue.py",
+        "tests/test_render_payloads.py",
+        "tests/modules/test_outbound.py",
+        "tests/test_sync_pair_account.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 3983,
+      "baseline_collected": 3983,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_fallback.py::test_an_upload_question_about_one_emoji_title_is_not_another_ones",
+        "tests/test_intake_missing_search.py::test_a_search_question_about_one_emoji_title_is_not_another_ones"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"title\": title_identity(self.title),\n",
+      "new": "            \"title\": fold(self.title),\n",
+      "source": {
+        "table": "r1709.json",
+        "id": "M25_fallback_identity_fold"
+      },
+      "moved": "U298 replaced the identical identity dict in acquire/fallback.py and intake/candidates.py with match.Wanted.folded_row, which both identity functions now return; the title is keyed by title_identity there, the same line, so folding it breaks both questions as before"
+    },
+    {
+      "id": "u223.M1_composite",
+      "description": "What M1 holds with the staged report fallback gone too: the shipped bug, through the verb and the printed resume",
+      "file": "src/cratekit/analysis/artifacts.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a5eb17ad49a3198b",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_job_the_shipped_code_left_with_no_intent_resumes_from_its_staged_report",
+        "tests/test_analysis_workers.py::test_a_new_attempt_clears_a_stale_report_and_keeps_only_the_intent",
+        "tests/test_analysis_workers.py::test_a_resume_interrupted_in_the_same_window_is_resumed_again",
+        "tests/test_analysis_workers.py::test_a_staged_report_is_a_twin_only_for_this_item_renamed_in_its_own_folder",
+        "tests/test_analysis_workers.py::test_an_attempt_whose_source_is_still_there_drops_a_stale_intent",
+        "tests/test_analysis_workers.py::test_an_interrupt_after_a_renamed_items_report_is_staged_resumes_by_the_printed_command"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                entry.name == RENAME_INTENT_FILENAME\n                and entry.is_file()\n                and not entry.is_symlink()\n            ):\n                continue\n            if entry.is_dir() and not entry.is_symlink():\n                shutil.rmtree(entry)\n            else:\n                entry.unlink()\n    elif directory.is_symlink() or directory.exists():\n        # WHAT THE FIRST VERSION DID WITH ANYTHING ELSE AT THIS PATH, kept:\n        # ``rmtree`` refuses a link and a plain file, loudly, rather than this\n        # call deciding to remove or follow one.\n        shutil.rmtree(directory)\n    config.mkdir_private(directory)\n    return directory / _report_name(ordinal)\n\n\ndef intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:\n    \"\"\"Where one item's rename intent lives: in its staging directory.\n\n    THE INTENT IS WRITTEN BEFORE THE RENAME AND OUTLIVES A KILL. The item is\n    the pre rename name and the rename lands inside the handler, before the\n    engine flips the row to done, so a kill in that window leaves a finished\n    file under its head and a pending row under its old name. The intent is\n    what lets the resume find the file the item BECAME rather than guessing\n    from the folder, because a guess matched any headed file whose stripped\n    stem equalled the item, which is an unrelated file when the source was\n    deleted, and matched nothing when the template deduped or truncated the\n    stem.\n\n    IT OUTLIVES THE ATTEMPT THAT WROTE IT (U223). ``staged_path`` keeps it\n    when it clears the directory for a report, so the attempt that renamed\n    the file, and a resume interrupted in the same window, both leave it for\n    the next. It is removed only where it is known false: a rename that did\n    not land, and an attempt whose source is still a file.\n    \"\"\"\n    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME\n\n\ndef record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:\n    path = intent_path(cfg, job.job_id, item.ordinal)\n    config.mkdir_private(path.parent)\n    return write(path, {\"item\": item.item_id, \"target\": str(target)})\n\n\ndef rename_intent(cfg: config.Config, job, item) -> Path | None:\n    \"\"\"The target this item's last attempt meant to rename it to, if recorded.\n\n    A link is no record: this module writes the intent as a plain file, and\n    a link would name whatever its far end says as this item's twin.\n    \"\"\"\n    path = intent_path(cfg, job.job_id, item.ordinal)\n    if path.is_symlink() or not path.is_file():\n        return None\n    try:\n        loaded = json.loads(path.read_text(encoding=\"utf-8\"))\n    except (OSError, ValueError):\n        return None\n    if not isinstance(loaded, dict) or loaded.get(\"item\") != item.item_id:\n        return None\n    target = loaded.get(\"target\")\n    return Path(str(target)) if target else None\n\n\ndef discard_rename_evidence(cfg: config.Config, job, item) -> None:\n    \"\"\"Drop this item's intent AND its staged report, once neither can be true.\n\n    Called where the rename they would prove is known not to stand: a rename\n    that did not land, and an attempt whose source is still a file. Left\n    behind, either names whatever later sits at that target, an unrelated\n    file a person put there, as this item's twin once the source is gone. The\n    report goes with the intent because :func:`staged_report` is read as the\n    same proof when the intent is missing, and the next ``staged_path`` that\n    would clear it comes only after the work, which a kill can forestall.\n    \"\"\"\n    directory = _staging_dir(cfg, job.job_id, item.ordinal)\n    if directory.is_symlink() or not directory.is_dir():\n        # NOT THROUGH A LINK, the rule ``staged_path`` keeps: whatever sits at\n        # the link's far end is not this item's staging, and ``staged_path``\n        # refuses the link loudly when the attempt reaches it.\n        return\n    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):\n        entry = directory / name\n        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path``, which\n        # removes its tree; an ``unlink`` would fail the item for good on a\n        # shape the clear before U223 healed.\n        if entry.is_symlink() or not entry.is_dir():\n            entry.unlink(missing_ok=True)\n\n\ndef staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:\n    \"\"\"This item's report, staged by an attempt whose row never moved, if any.\n\n    Read in place and never cleared here. A report that says it renamed is\n    staged only after the rename, so it is the item's own record of the\n    rename when the intent is gone, which is the state the shipped\n    ``staged_path`` left every job interrupted in that window (U223); which\n    reports say so is the caller's check. A report for another item, one\n    that does not parse to a mapping, or a link, is no report.\n    \"\"\"\n    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)\n    if path.is_symlink() or not path.is_file():\n        return None",
+      "new": "                entry.name == \"never-kept.json\"\n                and entry.is_file()\n                and not entry.is_symlink()\n            ):\n                continue\n            if entry.is_dir() and not entry.is_symlink():\n                shutil.rmtree(entry)\n            else:\n                entry.unlink()\n    elif directory.is_symlink() or directory.exists():\n        # WHAT THE FIRST VERSION DID WITH ANYTHING ELSE AT THIS PATH, kept:\n        # ``rmtree`` refuses a link and a plain file, loudly, rather than this\n        # call deciding to remove or follow one.\n        shutil.rmtree(directory)\n    config.mkdir_private(directory)\n    return directory / _report_name(ordinal)\n\n\ndef intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:\n    \"\"\"Where one item's rename intent lives: in its staging directory.\n\n    THE INTENT IS WRITTEN BEFORE THE RENAME AND OUTLIVES A KILL. The item is\n    the pre rename name and the rename lands inside the handler, before the\n    engine flips the row to done, so a kill in that window leaves a finished\n    file under its head and a pending row under its old name. The intent is\n    what lets the resume find the file the item BECAME rather than guessing\n    from the folder, because a guess matched any headed file whose stripped\n    stem equalled the item, which is an unrelated file when the source was\n    deleted, and matched nothing when the template deduped or truncated the\n    stem.\n\n    IT OUTLIVES THE ATTEMPT THAT WROTE IT (U223). ``staged_path`` keeps it\n    when it clears the directory for a report, so the attempt that renamed\n    the file, and a resume interrupted in the same window, both leave it for\n    the next. It is removed only where it is known false: a rename that did\n    not land, and an attempt whose source is still a file.\n    \"\"\"\n    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME\n\n\ndef record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:\n    path = intent_path(cfg, job.job_id, item.ordinal)\n    config.mkdir_private(path.parent)\n    return write(path, {\"item\": item.item_id, \"target\": str(target)})\n\n\ndef rename_intent(cfg: config.Config, job, item) -> Path | None:\n    \"\"\"The target this item's last attempt meant to rename it to, if recorded.\n\n    A link is no record: this module writes the intent as a plain file, and\n    a link would name whatever its far end says as this item's twin.\n    \"\"\"\n    path = intent_path(cfg, job.job_id, item.ordinal)\n    if path.is_symlink() or not path.is_file():\n        return None\n    try:\n        loaded = json.loads(path.read_text(encoding=\"utf-8\"))\n    except (OSError, ValueError):\n        return None\n    if not isinstance(loaded, dict) or loaded.get(\"item\") != item.item_id:\n        return None\n    target = loaded.get(\"target\")\n    return Path(str(target)) if target else None\n\n\ndef discard_rename_evidence(cfg: config.Config, job, item) -> None:\n    \"\"\"Drop this item's intent AND its staged report, once neither can be true.\n\n    Called where the rename they would prove is known not to stand: a rename\n    that did not land, and an attempt whose source is still a file. Left\n    behind, either names whatever later sits at that target, an unrelated\n    file a person put there, as this item's twin once the source is gone. The\n    report goes with the intent because :func:`staged_report` is read as the\n    same proof when the intent is missing, and the next ``staged_path`` that\n    would clear it comes only after the work, which a kill can forestall.\n    \"\"\"\n    directory = _staging_dir(cfg, job.job_id, item.ordinal)\n    if directory.is_symlink() or not directory.is_dir():\n        # NOT THROUGH A LINK, the rule ``staged_path`` keeps: whatever sits at\n        # the link's far end is not this item's staging, and ``staged_path``\n        # refuses the link loudly when the attempt reaches it.\n        return\n    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):\n        entry = directory / name\n        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path``, which\n        # removes its tree; an ``unlink`` would fail the item for good on a\n        # shape the clear before U223 healed.\n        if entry.is_symlink() or not entry.is_dir():\n            entry.unlink(missing_ok=True)\n\n\ndef staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:\n    \"\"\"This item's report, staged by an attempt whose row never moved, if any.\n\n    Read in place and never cleared here. A report that says it renamed is\n    staged only after the rename, so it is the item's own record of the\n    rename when the intent is gone, which is the state the shipped\n    ``staged_path`` left every job interrupted in that window (U223); which\n    reports say so is the caller's check. A report for another item, one\n    that does not parse to a mapping, or a link, is no report.\n    \"\"\"\n    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)\n    if True:\n        return None",
+      "source": {
+        "table": "u223.json",
+        "id": "M1_composite"
+      },
+      "moved": "Same file and the same two edits, the intent no longer kept by staged_path and staged_report reading nothing. U298 moved write onto core.jobs.Artifacts and renamed config._mkdir_private, both inside the span the old text covered, so the span is re-read at db120fdb"
+    },
+    {
+      "id": "u45-round-1.H2_queueing_plans_first",
+      "description": "Plan inside the handler, so queueing refuses on a machine with no rclone where the work would have run fine",
+      "file": "src/cratekit/backup/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ba740e10d91e052d",
+      "subset": [
+        "tests/test_backup_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 99,
+      "baseline_collected": 99,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_cli.py::test_queueing_needs_no_rclone_no_remote_and_no_volume"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    cfg = load_config((\"backup.cli\",))\n    with jobs.open_store() as store:\n        if ctx.args.job:",
+      "new": "    cfg = load_config((\"backup.cli\",))\n    backup.plan_backup(cfg)\n    with jobs.open_store() as store:\n        if ctx.args.job:",
+      "source": {
+        "table": "u45-round-1.json",
+        "id": "H2_queueing_plans_first"
+      },
+      "moved": "Same handler, backup_library; U298 replaced its private _load with cli.output.load_config, so the line the plan is inserted after is reworded and the insertion point is the same"
+    },
+    {
+      "id": "r1499.L02_go_kept_after_arrival",
+      "description": "_kept: the go keeps its record although something arrived",
+      "file": "src/cratekit/cli/label_sync.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e4065b2f1ef43d49",
+      "subset": [
+        "tests/test_sync_land_beside.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_staged.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_label_sync.py",
+        "tests/test_sync_land_mirror_downloads.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 324,
+      "baseline_collected": 324,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_beside.py::test_a_download_finished_as_a_gos_landing_is_planned_refuses_it",
+        "tests/test_sync_land_beside.py::test_a_download_finished_while_a_gos_tail_runs_refuses_its_landing",
+        "tests/test_sync_land_beside.py::test_a_gos_tail_that_fails_while_a_download_arrives_says_its_record_was_not_kept"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if changed is not None:\n        return [_unkept(folder, job, tail.changed_said(changed))]",
+      "new": "    if False:\n        return [_unkept(folder, job, tail.changed_said(changed))]",
+      "source": {
+        "table": "r1499.json",
+        "id": "L02_go_kept_after_arrival"
+      },
+      "moved": "Same _kept guard; U298 replaced this copy of _changed_said with tail.changed_said, which only rewords the line under the condition the row mutates"
+    },
+    {
+      "id": "r338-c.C6_only_the_first_root_is_watched",
+      "description": "is_watched: ask the library root alone, so a share aimed at the live share's own parent is pulled under the watch that refuses it",
+      "file": "src/cratekit/core/analysis_store.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "032db4221ba264fc",
+      "subset": [
+        "tests/test_analysis_store.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_store.py::test_a_share_that_would_land_under_the_analysis_watch_is_withheld_and_not_asked_about"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return any(config.is_inside(Path(path), root) for root in watch_roots(cfg))",
+      "new": "    return config.is_inside(Path(path), watch_roots(cfg)[0])",
+      "source": {
+        "table": "r338-c.json",
+        "id": "C6_only_the_first_root_is_watched"
+      },
+      "moved": "Same is_watched line; U298 replaced the module's own _is_within with config.is_inside, the same textual containment test, so asking only the first root is the same mutation"
+    },
+    {
+      "id": "u79-b.B7_identity_without_version",
+      "description": "The question is keyed without the version, so two versions are one item",
+      "file": "src/cratekit/acquire/match.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f06c0c33b2f27ec8",
+      "subset": [
+        "tests/test_intake_missing_search.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_a_search_question_about_one_emoji_title_is_not_another_ones",
+        "tests/test_intake_missing_search.py::test_the_identity_is_the_folded_row_and_not_its_spelling"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"version\": self.version_key,\n",
+      "new": "            \"version\": \"\",\n",
+      "source": {
+        "table": "u79-b.json",
+        "id": "B7_identity_without_version"
+      },
+      "moved": "U298 moved intake/candidates.identity's dict into match.Wanted.folded_row, which candidates.identity now returns; the version key is the same field, so blanking it makes two versions one question as before"
+    },
+    {
+      "id": "u221.R24_abort_releases",
+      "description": "sync_release: read an abort as an approval, so the hold is emptied without the choice",
+      "file": "src/cratekit/sync/release_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "45bbca984e41092e",
+      "subset": [
+        "tests/test_sync_twins_hold.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1029,
+      "baseline_collected": 1029,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_twins_hold.py::test_an_abort_lets_nothing_go"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.gate.require(declared_gate(ctx.entry, APPROVE_GATE), plan=data, context=facts(planned)) != \"approve\":",
+      "new": "    if ctx.gate.require(declared_gate(ctx.entry, APPROVE_GATE), plan=data, context=facts(planned)) == \"never\":",
+      "source": {
+        "table": "u221.json",
+        "id": "R24_abort_releases"
+      },
+      "moved": "Same gate check in sync_release; U298 replaced the local _gate lookup with cli.output.declared_gate, so only the argument is reworded"
+    },
+    {
+      "id": "u287.M10_gone_on_one_read",
+      "description": "read_one: read a playlist the account's list omits as gone without opening it by its id",
+      "file": "src/cratekit/sync/removed.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "16465201b8a287e9",
+      "subset": [
+        "tests/test_sync_removed.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 74,
+      "baseline_collected": 74,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_removed.py::test_a_damaged_job_of_another_playlist_never_refuses_the_verb[False]",
+        "tests/test_sync_removed.py::test_a_gone_downloaded_playlist_holds_what_its_pass_recorded",
+        "tests/test_sync_removed.py::test_a_gone_playlist_a_pass_swept_and_never_landed_holds_what_it_recorded",
+        "tests/test_sync_removed.py::test_a_playlist_the_account_list_omits_and_its_id_opens_is_read_and_keeps_its_tracks",
+        "tests/test_sync_removed.py::test_a_synced_playlist_nothing_records_that_neither_read_finds_offers_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    name = (\n        shown.name\n        if shown is not None\n        else (names or {}).get(account) or (prior.name if prior is not None else \"\")\n    )\n",
+      "new": "    name = (\n        shown.name\n        if shown is not None\n        else (names or {}).get(account) or (prior.name if prior is not None else \"\")\n    )\n    if shown is None:\n        return Listing(account=account, name=name, state=GONE, why=\"\")\n",
+      "source": {
+        "table": "u287.json",
+        "id": "M10_gone_on_one_read"
+      },
+      "moved": "Same read_one; the merged U320 work made the name a multi line expression that also reads a remembered name, and the row still inserts the early GONE return right after it, before the playlist is opened by its id"
+    },
+    {
+      "id": "u287.M16_gone_holds_what_was_recorded",
+      "description": "Listing.holds: a gone playlist holds nothing, so a track its pass recorded on it can be offered",
+      "file": "src/cratekit/sync/removed.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2f0e68eeca2c9b71",
+      "subset": [
+        "tests/test_sync_removed.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 74,
+      "baseline_collected": 74,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_removed.py::test_a_gone_downloaded_playlist_holds_what_its_pass_recorded",
+        "tests/test_sync_removed.py::test_a_gone_playlist_a_pass_swept_and_never_landed_holds_what_it_recorded",
+        "tests/test_sync_removed.py::test_a_listing_holds_a_track_by_any_of_three_tests_and_only_a_read_or_gone_one_holds"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if self.state not in HOLDING:",
+      "new": "        if self.state not in HOLDING - {GONE}:",
+      "source": {
+        "table": "u287.json",
+        "id": "M16_gone_holds_what_was_recorded"
+      },
+      "moved": "Same Listing.holds guard; the merged U320 work named the holding states HOLDING and added WITHHELD to it, so the mutation takes GONE out of that set and leaves the rest, which is what removing GONE from (READ, GONE) did"
+    },
+    {
+      "id": "r816-b.B5_commit_recorded",
+      "description": "apply_rows: leave the landed commit off the session record",
+      "file": "src/cratekit/tagging/rows.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "995bd5f07b65a4da",
+      "subset": [
+        "tests/test_tag_rows.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_rows.py::test_the_apply_is_a_recorded_session_a_restore_can_undo"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        # RECORDED THE INSTANT THE COMMIT RETURNS.\n        row_defaults.record_commit(record, CHANGE_KEY, written, cfg)\n",
+      "new": "        # RECORDED THE INSTANT THE COMMIT RETURNS.\n",
+      "source": {
+        "table": "r816-b.json",
+        "id": "B5_commit_recorded"
+      },
+      "moved": "Same call site in apply_rows; U298 replaced the module's _record_commit with write.row_defaults.record_commit, so the deleted line is reworded and still the record of the landed commit"
+    },
+    {
+      "id": "u119.G2_source_folder_counts",
+      "description": "source_playlist: a source playlist holding no live track is mirrored, emptying every Favorites",
+      "file": "src/cratekit/write/genre_favorites.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "00232efad1367a69",
+      "subset": [
+        "tests/test_genre_favorites.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 45,
+      "baseline_collected": 45,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_genre_favorites.py::test_a_smart_playlist_or_an_emptied_playlist_of_the_source_name_is_not_the_source"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not live_members(db, str(live[0].ID)):",
+      "new": "        if False:",
+      "source": {
+        "table": "u119.json",
+        "id": "G2_source_folder_counts"
+      },
+      "moved": "Same source_playlist guard; U298 renamed _live_members to the public live_members"
+    },
+    {
+      "id": "u119.G3_two_sources_first_wins",
+      "description": "source_playlist: two live sources, the first is taken",
+      "file": "src/cratekit/write/genre_favorites.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5b93292e28c999bb",
+      "subset": [
+        "tests/test_genre_favorites.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 45,
+      "baseline_collected": 45,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_genre_favorites.py::test_two_source_playlists_are_refused_rather_than_one_chosen"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(live) == 1:\n        if not live_members(db, str(live[0].ID)):",
+      "new": "    if len(live) >= 1:\n        if not live_members(db, str(live[0].ID)):",
+      "source": {
+        "table": "u119.json",
+        "id": "G3_two_sources_first_wins"
+      },
+      "moved": "Same source_playlist guard; U298 renamed _live_members to the public live_members"
+    },
+    {
+      "id": "u206.M25_lock_skipped",
+      "description": "Cache._locked: yield as held without taking the lock",
+      "file": "src/cratekit/core/config.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "c098963ce8a8929a",
+      "subset": [
+        "tests/test_isrc_cache.py",
+        "tests/test_sync_pair.py",
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_outbound_tidal_account.py",
+        "tests/test_label_tidal_catalogue.py",
+        "tests/test_organize_mirror_tie.py",
+        "tests/test_intake_land_rehearse.py",
+        "tests/test_doctor.py",
+        "tests/test_config.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1135,
+      "baseline_collected": 1135,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_isrc_cache.py::test_two_writer_processes_leave_one_readable_file_holding_both"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            try:\n                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n                had = True",
+      "new": "            try:\n                had = True",
+      "source": {
+        "table": "u206.json",
+        "id": "M25_lock_skipped"
+      },
+      "moved": "U298 replaced isrc_cache.Cache._locked's body with config.lock_within, which _locked now returns; the same non blocking flock in the same poll loop, so dropping it yields held without the lock"
+    },
+    {
+      "id": "u293.S2_second_holder_refused",
+      "description": "held: a second holder goes on beside the first rather than refusing",
+      "file": "src/cratekit/core/staging_lock.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "744372c0d496d063",
+      "subset": [
+        "tests/test_staging_lock.py",
+        "tests/test_sync_night.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 237,
+      "baseline_collected": 237,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_staging_lock.py::test_a_holder_that_cannot_be_read_still_refuses",
+        "tests/test_staging_lock.py::test_a_second_holder_refuses_naming_the_first",
+        "tests/test_sync_night.py::test_a_label_go_refuses_while_another_pass_holds_the_lock",
+        "tests/test_sync_night.py::test_a_pass_by_hand_refuses_while_the_night_holds_the_lock",
+        "tests/test_sync_night.py::test_another_pass_holding_the_staging_lock_refuses_the_night_naming_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            raise _held_error(what or verb, _read_holder(handle.read()), path) from None",
+      "new": "            pass",
+      "source": {
+        "table": "u293.json",
+        "id": "S2_second_holder_refused"
+      },
+      "moved": "Same refusal in held; U298 moved the non blocking flock into config.lock_now, which returns whether the lock was had, and the raise now sits under if not had, one level shallower, still the refusal of a second holder"
+    },
+    {
+      "id": "r235-a.M11_session_lock_dropped",
+      "description": "a revert holds the registry lock and not the session lock",
+      "file": "src/cratekit/core/tree_registry.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "87e628570e0e6b12",
+      "subset": [
+        "tests/test_cutover_precheck.py",
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 66,
+      "baseline_collected": 66,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_precheck.py::test_the_revert_holds_the_session_lock_while_it_asks_and_writes"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    with session.session_lock(cfg), config.exclusive_lock(lock_path(cfg)):",
+      "new": "    with config.exclusive_lock(lock_path(cfg)):",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M11_session_lock_dropped"
+      },
+      "moved": "Same with statement in revert_cutover; U298 renamed config._exclusive_lock to exclusive_lock"
+    },
+    {
+      "id": "u79-c.C2_owned_row_searched",
+      "description": "A row the library holds is counted missing and searched for",
+      "file": "src/cratekit/intake/missing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "28e2a4f15e361a78",
+      "subset": [
+        "tests/test_intake_missing_search.py",
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 144,
+      "baseline_collected": 144,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing_search.py::test_a_list_the_library_holds_entirely_is_a_no_op_that_spends_no_login",
+        "tests/test_intake_missing_search.py::test_an_owned_row_is_never_searched_for"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        word = match_cli.SETTLED_WORDS.get(settled.state)\n        if word is not None:\n            counts[word] += 1",
+      "new": "        word = match_cli.SETTLED_WORDS.get(settled.state)\n        if word is not None and word != \"owned\":\n            counts[word] += 1",
+      "source": {
+        "table": "u79-c.json",
+        "id": "C2_owned_row_searched"
+      },
+      "moved": "Same loop in _missing_for_list; U298 replaced its three state branches with a lookup in match_cli.SETTLED_WORDS, whose MATCHED entry is owned, so excluding owned sends a matched row to the missing branch, which is what disabling the MATCHED branch did"
+    },
+    {
+      "id": "u107-a.S01_record_not_json",
+      "description": "sync_cli.load_record: read a record that is not JSON as an empty one, so every question is asked again and every answer is lost",
+      "file": "src/cratekit/core/config.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "92312af0dd132814",
+      "subset": [
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 94,
+      "baseline_collected": 94,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync.py::test_a_record_that_cannot_be_read_refuses_rather_than_asking_everything_again",
+        "tests/test_label_sync.py::test_the_labels_sweep_refuses_an_unreadable_record_before_any_login"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except ValueError as exc:\n        raise unusable(\"it is not JSON\") from exc\n\n\ndef read_json_map(",
+      "new": "    except ValueError as exc:\n        return False, None\n\n\ndef read_json_map(",
+      "source": {
+        "table": "u107-a.json",
+        "id": "S01_record_not_json"
+      },
+      "moved": "U298 replaced label/sync_cli.load_record's own JSON read with config.read_json_map over config.read_json; the not JSON refusal is read_json's, and answering absent there makes load_record return its empty record, the same outcome the original return of _empty gave"
+    },
+    {
+      "id": "r356-b.B2_template_declares_no_lossy_marker",
+      "description": "The template never declares the marker, so a marked lossy copy keeps it in its release title",
+      "file": "src/cratekit/modules/outbound/source.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3a4ca35fcd75be25",
+      "subset": [
+        "tests/test_outbound_tidal_account.py",
+        "tests/test_outbound_workers.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 371,
+      "baseline_collected": 371,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_outbound_tidal_account.py::test_the_release_title_is_the_display_title_with_the_naming_head_off"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return naming.NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)",
+      "new": "    return naming.NameTemplate()",
+      "source": {
+        "table": "r356-b.json",
+        "id": "B2_template_declares_no_lossy_marker"
+      },
+      "moved": "U298 folded this function's strip, empty check and marker rule into naming.NameTemplate.lossy_if_marked, which it now returns; returning the plain template here is what forcing the empty branch did, local to this caller"
+    },
+    {
+      "id": "r356-b.B3_empty_marker_no_longer_guarded",
+      "description": "A configuration with no marker text builds a marker rule with an empty literal, which is refused at construction, so every item fails over a naming policy",
+      "file": "src/cratekit/modules/outbound/source.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f1518c4dbd84361c",
+      "subset": [
+        "tests/test_outbound_tidal_account.py",
+        "tests/test_outbound_workers.py",
+        "tests/test_queued_resume_contract.py",
+        "tests/test_sync_all.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 371,
+      "baseline_collected": 371,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_outbound_tidal_account.py::test_a_configuration_with_no_marker_text_still_strips_the_head"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return naming.NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)",
+      "new": "    return naming.NameTemplate.lossy((cfg.naming.lossy_marker or \"\").strip())",
+      "source": {
+        "table": "r356-b.json",
+        "id": "B3_empty_marker_no_longer_guarded"
+      },
+      "moved": "U298 folded this function's strip, empty check and marker rule into naming.NameTemplate.lossy_if_marked; calling NameTemplate.lossy on the stripped text here skips only the empty check, so an empty marker reaches the rule's construction as it did, local to this caller"
+    },
+    {
+      "id": "u220.A3_keep_head",
+      "description": "_to_the_front: match the asked order's head rather than its tail, the old to the end rule",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f858dc397bd9f118",
+      "subset": [
+        "tests/test_outbound_order.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_prune.py",
+        "tests/test_outbound_tidal_account.py",
+        "tests/test_sync_pair_order.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 26,
+      "collected": 287,
+      "baseline_collected": 287,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_outbound_order.py::test_a_412_on_the_third_move_resends_that_move_once_and_no_other",
+        "tests/test_outbound_order.py::test_a_move_that_failed_another_way_is_left_as_maybe_landed",
+        "tests/test_outbound_order.py::test_a_move_that_lands_anywhere_else_is_not_read_back_and_the_settle_reading_shows_it",
+        "tests/test_outbound_order.py::test_a_provider_whose_move_to_the_length_lands_one_short_still_takes_the_order",
+        "tests/test_outbound_order.py::test_a_read_that_lags_every_move_does_not_stop_the_order",
+        "tests/test_outbound_order.py::test_a_recorder_that_cannot_record_has_no_further_move_sent",
+        "tests/test_outbound_order.py::test_an_added_track_the_provider_placed_elsewhere_is_not_refused",
+        "tests/test_outbound_order.py::test_every_move_is_planned_from_one_reading_and_sent_with_no_read_between",
+        "tests/test_outbound_order.py::test_every_move_is_to_the_front_where_both_ways_of_counting_agree",
+        "tests/test_outbound_order.py::test_nothing_to_move_tells_the_caller_nothing",
+        "tests/test_outbound_order.py::test_the_caller_is_told_before_each_move_how_many_may_have_landed",
+        "tests/test_outbound_order.py::test_the_fake_account_orders_by_the_adapters_rule[before1-order1]",
+        "tests/test_outbound_order.py::test_the_fake_account_orders_by_the_adapters_rule[before2-order2]",
+        "tests/test_outbound_order.py::test_the_fake_account_orders_by_the_adapters_rule[before3-order3]",
+        "tests/test_outbound_order.py::test_the_pauses_after_a_412_start_again_for_each_move",
+        "tests/test_outbound_order.py::test_the_tracks_before_the_kept_tail_are_moved_last_first",
+        "tests/test_sync_pair_account.py::test_a_move_that_landed_elsewhere_is_left_to_the_settle_reading_with_every_track_kept",
+        "tests/test_sync_pair_account.py::test_a_playlist_made_by_the_product_still_takes_the_order",
+        "tests/test_sync_pair_account.py::test_a_track_held_twice_is_not_moved",
+        "tests/test_sync_pair_account.py::test_an_order_already_standing_sends_nothing",
+        "tests/test_sync_pair_account.py::test_the_order_moves_each_track_to_the_front_and_reads_back",
+        "tests/test_sync_pair_calls.py::test_a_300_track_order_with_adds_and_removals_stays_inside_its_forecast",
+        "tests/test_sync_pair_calls.py::test_an_order_costs_its_reading_its_moves_and_one_settle_reading[before0-order0]",
+        "tests/test_sync_pair_calls.py::test_an_order_costs_its_reading_its_moves_and_one_settle_reading[before1-order1]",
+        "tests/test_sync_pair_calls.py::test_an_order_costs_its_reading_its_moves_and_one_settle_reading[before2-order2]",
+        "tests/test_sync_pair_calls.py::test_an_order_costs_its_reading_its_moves_and_one_settle_reading[before3-order3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "one == wanted[len(wanted) - 1 - keep]",
+      "new": "one == wanted[keep]",
+      "source": {
+        "table": "u220.json",
+        "id": "A3_keep_head"
+      },
+      "moved": "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; the same tail match"
+    },
+    {
+      "id": "u220.A4_first_first",
+      "description": "_to_the_front: move the tracks first first rather than last first, so the moved ones land reversed",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f1535b6192f0de36",
+      "subset": [
+        "tests/test_outbound_order.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_prune.py",
+        "tests/test_outbound_tidal_account.py",
+        "tests/test_sync_pair_order.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 287,
+      "baseline_collected": 287,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_outbound_order.py::test_a_412_on_the_third_move_resends_that_move_once_and_no_other",
+        "tests/test_outbound_order.py::test_a_provider_whose_move_to_the_length_lands_one_short_still_takes_the_order",
+        "tests/test_outbound_order.py::test_a_read_that_lags_every_move_does_not_stop_the_order",
+        "tests/test_outbound_order.py::test_a_reading_holding_what_the_adds_left_in_another_order_is_not_stale",
+        "tests/test_outbound_order.py::test_an_added_track_the_provider_placed_elsewhere_is_not_refused",
+        "tests/test_outbound_order.py::test_every_move_is_planned_from_one_reading_and_sent_with_no_read_between",
+        "tests/test_outbound_order.py::test_the_caller_is_told_before_each_move_how_many_may_have_landed",
+        "tests/test_outbound_order.py::test_the_fake_account_orders_by_the_adapters_rule[before2-order2]",
+        "tests/test_outbound_order.py::test_the_pauses_after_a_412_start_again_for_each_move",
+        "tests/test_outbound_order.py::test_the_reading_after_a_412_is_held_to_what_the_adds_left[False]",
+        "tests/test_outbound_order.py::test_the_reading_after_a_412_is_held_to_what_the_adds_left[True]",
+        "tests/test_outbound_order.py::test_the_tracks_before_the_kept_tail_are_moved_last_first",
+        "tests/test_sync_pair_account.py::test_a_move_that_landed_elsewhere_is_left_to_the_settle_reading_with_every_track_kept",
+        "tests/test_sync_pair_account.py::test_the_order_moves_each_track_to_the_front_and_reads_back"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return list(reversed(wanted[: len(wanted) - keep]))",
+      "new": "    return wanted[: len(wanted) - keep]",
+      "source": {
+        "table": "u220.json",
+        "id": "A4_first_first"
+      },
+      "moved": "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; the same reversal of the moves"
+    },
+    {
+      "id": "r1394.S3_bool_count_read",
+      "description": "stopped write: a count written as true or false is read as a number",
+      "file": "src/cratekit/cli/output.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "28dcd6fe0a849e6b",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if isinstance(value, bool) or not isinstance(value, int) or value < 0:",
+      "new": "    if not isinstance(value, int) or value < 0:",
+      "source": {
+        "table": "r1394.json",
+        "id": "S3_bool_count_read"
+      },
+      "moved": "U298 replaced pair_stopped's _count with cli.output.count_of, the same three part check, which _moving now calls for both counts"
+    },
+    {
+      "id": "r1394.S4_negative_count_read",
+      "description": "stopped write: a negative count is read as one",
+      "file": "src/cratekit/cli/output.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6e8a92c1720cd922",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts4]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if isinstance(value, bool) or not isinstance(value, int) or value < 0:",
+      "new": "    if isinstance(value, bool) or not isinstance(value, int):",
+      "source": {
+        "table": "r1394.json",
+        "id": "S4_negative_count_read"
+      },
+      "moved": "U298 replaced pair_stopped's _count with cli.output.count_of, the same three part check, which _moving now calls for both counts"
+    },
+    {
+      "id": "r1394.S5_sent_read_as_landed",
+      "description": "stopped write: the sent count is read from the landed field, so a move in flight reads as known not sent",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3a6d49e1b8c2b9c1",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 177,
+      "baseline_collected": 177,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after",
+        "tests/test_sync_pair_stopped.py::test_a_moving_step_reads_back_its_counts",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts1]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts2]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts3]",
+        "tests/test_sync_pair_stopped.py::test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known[counts5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return at, start, end, count_of(value.get(SENT)), count_of(value.get(LANDED))",
+      "new": "    return at, start, end, count_of(value.get(LANDED)), count_of(value.get(LANDED))",
+      "source": {
+        "table": "r1394.json",
+        "id": "S5_sent_read_as_landed"
+      },
+      "moved": "Same return in _moving; U298 replaced the module's _count with cli.output.count_of"
+    },
+    {
+      "id": "u322.M22_backlog_partly_clause_gone",
+      "description": "backlog_cli.advisories: the partly read clause is dropped, so the campaign's gate says nothing of Beatport",
+      "file": "src/cratekit/tagging/backlog_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "87e942577552984d",
+      "subset": [
+        "tests/test_catalogue_walk_refusal.py",
+        "tests/test_tag_suggest.py",
+        "tests/test_tag_backlog.py",
+        "tests/test_tag_campaign.py",
+        "tests/test_published_genre.py",
+        "tests/test_beatport_refusal.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 392,
+      "baseline_collected": 392,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_backlog.py::test_a_refusing_beatport_beside_an_answering_discogs_asks_every_row_and_counts_them"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unread.partly:\n        parts.append(\n            f\"{unread.partly_by} could not be read for {len(unread.partly)} row(s) \"\n            f\"another catalogue answered, {named(list(unread.partly))}, so those were \"",
+      "new": "    if False:\n        parts.append(\n            f\"{unread.partly_by} could not be read for {len(unread.partly)} row(s) \"\n            f\"another catalogue answered, {named(list(unread.partly))}, so those were \"",
+      "source": {
+        "table": "u322.json",
+        "id": "M22_backlog_partly_clause_gone"
+      },
+      "moved": "Same clause in advisories; U298 renamed _named to the public named"
+    },
+    {
+      "id": "r668-a.M5_missing_list_guard_after_load",
+      "description": "the missing list refusal runs after the configuration is read, so a command naming nothing has side effects first",
+      "file": "src/cratekit/acquire/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "90abe41819610b3d",
+      "subset": [
+        "tests/test_acquire_workers.py",
+        "tests/test_acquire_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 93,
+      "baseline_collected": 93,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_workers.py::test_a_command_naming_nothing_is_refused_before_the_configuration_is_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.args.list is None and ctx.args.job is None:\n        raise _unusable(\n            \"no list was named and no job was given, so there is nothing to acquire\",\n            \"name the list of tracks to acquire\",\n            \"or continue an acquisition already queued with --job JOB_ID\",\n        )\n    cfg = load_config((\"acquire.cli\",))\n",
+      "new": "    cfg = load_config((\"acquire.cli\",))\n    if ctx.args.list is None and ctx.args.job is None:\n        raise _unusable(\n            \"no list was named and no job was given, so there is nothing to acquire\",\n            \"name the list of tracks to acquire\",\n            \"or continue an acquisition already queued with --job JOB_ID\",\n        )\n",
+      "source": {
+        "table": "r668-a.json",
+        "id": "M5_missing_list_guard_after_load"
+      },
+      "moved": "Same order in acquire_download; U298 replaced the private _load with cli.output.load_config, so the configuration read the guard is moved after is reworded"
+    },
+    {
+      "id": "r668-a.M7_list_compared_as_strings",
+      "description": "the named and frozen lists are compared as strings, so a symlinked or /private spelling of the frozen list is refused",
+      "file": "src/cratekit/acquire/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34ec84e1f15519ae",
+      "subset": [
+        "tests/test_acquire_workers.py",
+        "tests/test_acquire_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 93,
+      "baseline_collected": 93,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_acquire_workers.py::test_the_frozen_list_spelled_through_a_symlink_still_drives"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if preflight.names_one_path(given, Path(frozen)):",
+      "new": "    if str(given) == frozen:",
+      "source": {
+        "table": "r668-a.json",
+        "id": "M7_list_compared_as_strings"
+      },
+      "moved": "Same comparison in _same_list_or_refuse; U298 renamed preflight._names_one_path to names_one_path"
+    },
+    {
+      "id": "r926.G11_mkdir_before_check",
+      "description": "save creates the configuration directory before the lock is built, so a refused write leaves a directory behind",
+      "file": "src/cratekit/core/config.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "72c0e4c18578d9aa",
+      "subset": [
+        "tests/test_config_test_root.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_config_migration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 299,
+      "baseline_collected": 299,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_config_test_root.py::test_a_link_inside_the_root_aimed_outside_it_is_refused",
+        "tests/test_config_test_root.py::test_a_lock_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_path_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_a_path_resolution_that_leaves_the_root_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_an_append_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_an_append_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_with_the_isolation_removed_a_save_is_refused_and_names_the_path"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    with _write_lock(target):\n        mkdir_private(target.parent)\n        atomic_write_bytes(config.to_toml_bytes(), target)",
+      "new": "    mkdir_private(target.parent)\n    with _write_lock(target):\n        atomic_write_bytes(config.to_toml_bytes(), target)",
+      "source": {
+        "table": "r926.json",
+        "id": "G11_mkdir_before_check"
+      },
+      "moved": "Same lines in save; U298 renamed _mkdir_private to the public mkdir_private"
+    },
+    {
+      "id": "r926.G3_document_check_dropped",
+      "description": "_write_lock no longer checks, so the configuration document is held only by the primitives' temporary allowance",
+      "file": "src/cratekit/core/config.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "20e9f69a6e014df8",
+      "subset": [
+        "tests/test_config_test_root.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_config_migration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 299,
+      "baseline_collected": 299,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_config_test_root.py::test_a_link_inside_the_root_aimed_outside_it_is_refused",
+        "tests/test_config_test_root.py::test_a_lock_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_path_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_a_path_resolution_that_leaves_the_root_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_an_append_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_an_append_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_the_configuration_is_not_allowed_the_system_temporary_folder",
+        "tests/test_config_test_root.py::test_with_the_isolation_removed_a_migration_write_back_is_refused",
+        "tests/test_config_test_root.py::test_with_the_isolation_removed_a_save_is_refused_and_names_the_path",
+        "tests/test_config_test_root.py::test_with_the_isolation_removed_an_update_is_refused_and_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _refuse_write_outside_test_root(path)\n    return exclusive_lock(path.with_name(path.name + \".migrate.lock\"))",
+      "new": "    return exclusive_lock(path.with_name(path.name + \".migrate.lock\"))",
+      "source": {
+        "table": "r926.json",
+        "id": "G3_document_check_dropped"
+      },
+      "moved": "Same lines in _write_lock; U298 renamed _exclusive_lock to the public exclusive_lock"
+    },
+    {
+      "id": "r926.G4_document_gets_temporary",
+      "description": "The configuration document is given the system temporary allowance the primitives have",
+      "file": "src/cratekit/core/config.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "efe5924e552523f8",
+      "subset": [
+        "tests/test_config_test_root.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_config_migration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 299,
+      "baseline_collected": 299,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_config_test_root.py::test_a_link_inside_the_root_aimed_outside_it_is_refused",
+        "tests/test_config_test_root.py::test_a_lock_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_path_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_a_path_resolution_that_leaves_the_root_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_an_append_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_an_append_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_the_configuration_is_not_allowed_the_system_temporary_folder",
+        "tests/test_config_test_root.py::test_with_the_isolation_removed_a_migration_write_back_is_refused",
+        "tests/test_config_test_root.py::test_with_the_isolation_removed_a_save_is_refused_and_names_the_path",
+        "tests/test_config_test_root.py::test_with_the_isolation_removed_an_update_is_refused_and_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _refuse_write_outside_test_root(path)\n    return exclusive_lock(path.with_name(path.name + \".migrate.lock\"))",
+      "new": "    _refuse_write_outside_test_root(path, system_temporary=True)\n    return exclusive_lock(path.with_name(path.name + \".migrate.lock\"))",
+      "source": {
+        "table": "r926.json",
+        "id": "G4_document_gets_temporary"
+      },
+      "moved": "Same lines in _write_lock; U298 renamed _exclusive_lock to the public exclusive_lock"
+    },
+    {
+      "id": "r926.G5_atomic_write_unchecked",
+      "description": "atomic_write_bytes no longer checks, so a ledger or token write from an unisolated test lands anywhere",
+      "file": "src/cratekit/core/config.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "833b29427fdb0ba6",
+      "subset": [
+        "tests/test_config_test_root.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_config_migration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 299,
+      "baseline_collected": 299,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_config_test_root.py::test_a_link_inside_the_root_aimed_outside_it_is_refused",
+        "tests/test_config_test_root.py::test_a_lock_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_path_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_a_path_resolution_that_leaves_the_root_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_an_append_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_an_append_outside_the_root_is_refused_with_the_isolation_in_place"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _refuse_write_outside_test_root(path, system_temporary=True)\n    mkdir_private(path.parent)\n    fd, tmp = tempfile.mkstemp(",
+      "new": "    mkdir_private(path.parent)\n    fd, tmp = tempfile.mkstemp(",
+      "source": {
+        "table": "r926.json",
+        "id": "G5_atomic_write_unchecked"
+      },
+      "moved": "Same lines in atomic_write_bytes; U298 renamed _mkdir_private to the public mkdir_private"
+    },
+    {
+      "id": "r926.G6_lock_unchecked",
+      "description": "_exclusive_lock no longer checks, so a session lock from an unisolated test is created anywhere",
+      "file": "src/cratekit/core/config.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "8a30e995d380407a",
+      "subset": [
+        "tests/test_config_test_root.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_config_migration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 299,
+      "baseline_collected": 299,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_config_test_root.py::test_a_link_inside_the_root_aimed_outside_it_is_refused",
+        "tests/test_config_test_root.py::test_a_lock_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_path_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_a_path_resolution_that_leaves_the_root_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_an_append_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_an_append_outside_the_root_is_refused_with_the_isolation_in_place"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        _refuse_write_outside_test_root(self.path, system_temporary=True)\n        mkdir_private(self.path.parent)",
+      "new": "        mkdir_private(self.path.parent)",
+      "source": {
+        "table": "r926.json",
+        "id": "G6_lock_unchecked"
+      },
+      "moved": "Same lines in the lock's __enter__; U298 renamed the class to exclusive_lock and _mkdir_private to mkdir_private"
+    },
+    {
+      "id": "r926.G8_target_unresolved",
+      "description": "The target is compared as spelled, so a link inside the root aimed outside it passes",
+      "file": "src/cratekit/core/config.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "dcb5c5885ebd90ce",
+      "subset": [
+        "tests/test_config_test_root.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_config_migration.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 299,
+      "baseline_collected": 299,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_config_test_root.py::test_a_link_inside_the_root_aimed_outside_it_is_refused",
+        "tests/test_config_test_root.py::test_a_lock_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_path_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_a_path_resolution_that_leaves_the_root_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place",
+        "tests/test_config_test_root.py::test_an_append_outside_every_temporary_folder_is_refused",
+        "tests/test_config_test_root.py::test_an_append_outside_the_root_is_refused_with_the_isolation_in_place"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    target = path.resolve()\n    if any(is_inside(target, each) for each in allowed):",
+      "new": "    target = path\n    if any(is_inside(target, each) for each in allowed):",
+      "source": {
+        "table": "r926.json",
+        "id": "G8_target_unresolved"
+      },
+      "moved": "Same lines in _refuse_write_outside_test_root; U298 renamed _is_inside to the public is_inside"
+    },
+    {
+      "id": "u217.K10_naive_instant",
+      "description": "_instant: accept an instant with no zone",
+      "file": "src/cratekit/label/kept_reads.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "fa58c87ea4efa6b9",
+      "subset": [
+        "tests/test_label_kept_listing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 38,
+      "baseline_collected": 38,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_kept_listing.py::test_a_kept_listing_that_cannot_be_read_refuses_before_any_call[written5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return moment if moment.tzinfo is not None else None",
+      "new": "    return moment",
+      "source": {
+        "table": "u217.json",
+        "id": "K10_naive_instant"
+      },
+      "moved": "U298 deleted kept_listing's copy of _instant and has KeptListing read through kept_reads._instant, the identical function; the zone check is the same line there"
+    },
+    {
+      "id": "r375-b.M1_capture_never_attached",
+      "description": "mytags_vocals: take the capture and never attach it, which is R-375 itself with a record beside it",
+      "file": "src/cratekit/write/trees.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7cfaafee401d2f65",
+      "subset": [
+        "tests/test_metadata_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_metadata_cli.py::test_an_apply_is_listed_by_restore_list_as_a_restorable_session",
+        "tests/test_metadata_cli.py::test_an_apply_that_refuses_mid_write_is_abandoned_and_claims_no_commit",
+        "tests/test_metadata_cli.py::test_the_capture_is_protected_while_the_apply_is_in_flight"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    capture = snapshot.capture(cfg, db=db)\n    session.attach_capture(record, capture.root, cfg)\n    snapshot.assert_verified(capture)\n    return record, capture",
+      "new": "    capture = snapshot.capture(cfg, db=db)\n    snapshot.assert_verified(capture)\n    return record, capture",
+      "source": {
+        "table": "r375-b.json",
+        "id": "M1_capture_never_attached"
+      },
+      "moved": "U298 replaced mytags_vocals' own capture, attach and verify lines with trees.attached_capture, which it now calls; the attach is the same line there, so dropping it takes the capture and never attaches it"
+    },
+    {
+      "id": "u219.G1_resort_abort",
+      "description": "route resort: an abort at the gate queues the resort anyway",
+      "file": "src/cratekit/write/routing_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5530ee473492d172",
+      "subset": [
+        "tests/test_intake_imported.py",
+        "tests/test_organize_mirror_edits.py",
+        "tests/test_resort_scope.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 309,
+      "baseline_collected": 309,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_resort_scope.py::test_an_abort_queues_nothing_and_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if option != \"apply\":\n        return ctx.envelope(data=no_job(\"declined\"), outcome=Outcome.NO_OP, warnings=warnings)",
+      "new": "    if option == \"never\":\n        return ctx.envelope(data=no_job(\"declined\"), outcome=Outcome.NO_OP, warnings=warnings)",
+      "source": {
+        "table": "u219.json",
+        "id": "G1_resort_abort"
+      },
+      "moved": "Same gate answer in route_resort; U298 replaced the local _no_op with cli.output.no_job"
+    },
+    {
+      "id": "r375-b.T5_witnessed_commit_not_recorded",
+      "description": "write_tree_membership: ignore the witness, so a commit that landed and then raised closes as though nothing landed",
+      "file": "src/cratekit/write/trees.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2aa27dc63057454a",
+      "subset": [
+        "tests/test_tree_writer.py",
+        "tests/test_rebuild.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 196,
+      "baseline_collected": 196,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tree_writer.py::test_a_commit_that_lands_and_then_raises_is_still_recorded_as_committed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if witness.landed:\n        _record_membership_commit(record, tree_id, added, cfg)",
+      "new": "    if False:\n        _record_membership_commit(record, tree_id, added, cfg)",
+      "source": {
+        "table": "r375-b.json",
+        "id": "T5_witnessed_commit_not_recorded"
+      },
+      "moved": "U298 moved write_tree_membership's failure path, the quiet rollback and the witnessed commit record, into trees._undo_unless_landed, which its except branch now calls; the same witness check"
+    },
+    {
+      "id": "r375-c.T6_every_raise_read_as_a_commit_again",
+      "description": "write_tree_membership: record a commit on every raise. Batch B read this as ZERO; measured again after test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit",
+      "file": "src/cratekit/write/trees.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ed39a4dd52c71dcb",
+      "subset": [
+        "tests/test_tree_writer.py",
+        "tests/test_rebuild.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 196,
+      "baseline_collected": 196,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tree_writer.py::test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if witness.landed:\n        _record_membership_commit(record, tree_id, added, cfg)",
+      "new": "    if True:\n        _record_membership_commit(record, tree_id, added, cfg)",
+      "source": {
+        "table": "r375-c.json",
+        "id": "T6_every_raise_read_as_a_commit_again"
+      },
+      "moved": "U298 moved write_tree_membership's failure path, the quiet rollback and the witnessed commit record, into trees._undo_unless_landed, which its except branch now calls; the same witness check"
+    },
+    {
+      "id": "u254.M20_mark_unlocked",
+      "description": "mark_applied: take no lock around the read, the choice and the write",
+      "file": "src/cratekit/adopt/apply.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8c83b019397aa4cc",
+      "subset": [
+        "tests/test_adopt_apply_journal_u254.py",
+        "tests/test_adoption.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_intake_land_filing.py",
+        "tests/test_organize_mirror_edits_u227.py",
+        "tests/test_mirror_downloads_filed_u227.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 770,
+      "baseline_collected": 770,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_journal_u254.py::test_every_ledger_write_happens_under_the_exclusive_lock"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    with config.exclusive_lock(lock_path(cfg)):\n        known = _LEFT.pop(key, None)",
+      "new": "    if True:\n        known = _LEFT.pop(key, None)",
+      "source": {
+        "table": "u254.json",
+        "id": "M20_mark_unlocked"
+      },
+      "moved": "Same with statement in mark_applied; U298 renamed config._exclusive_lock to exclusive_lock"
+    },
+    {
+      "id": "u192.A1_run_queue_only_ignored",
+      "description": "analyze_run: ignore --queue-only and drive the job",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a6d04c4cc27ab959",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 11,
+      "collected": 206,
+      "baseline_collected": 206,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_corrupt_calibration_reaches_the_person_as_a_remedy_not_a_defect",
+        "tests/test_analysis_workers.py::test_a_deleted_source_beside_an_unrelated_twin_is_refused_not_reported_analysed",
+        "tests/test_analysis_workers.py::test_a_file_removed_between_queueing_and_drive_is_refused_by_name",
+        "tests/test_analysis_workers.py::test_a_kill_after_an_attempt_starts_leaves_no_stale_report_to_read_as_a_twin",
+        "tests/test_analysis_workers.py::test_a_prefixed_source_drops_a_stale_intent_too",
+        "tests/test_analysis_workers.py::test_a_refused_rename_leaves_no_intent_behind",
+        "tests/test_analysis_workers.py::test_an_analyze_job_runs_pending_to_done_and_the_files_carry_the_result",
+        "tests/test_analysis_workers.py::test_an_attempt_whose_source_is_still_there_drops_a_stale_intent",
+        "tests/test_analysis_workers.py::test_an_item_renamed_before_its_row_moved_resumes_as_finished",
+        "tests/test_analysis_workers.py::test_queue_only_returns_the_job_queued_with_nothing_driven[run]",
+        "tests/test_analysis_workers.py::test_the_shared_tail_step_queues_only_and_drives_its_job_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if foreground.queue_only(ctx.args):\n            return ctx.envelope(data=jobs.reported(store, job))",
+      "new": "        if False:\n            return ctx.envelope(data=jobs.reported(store, job))",
+      "source": {
+        "table": "u192.json",
+        "id": "A1_run_queue_only_ignored"
+      },
+      "moved": "Same branch in analyze_run; U298 replaced the local _reported with core.jobs.reported"
+    },
+    {
+      "id": "u192.A2_restamp_queue_only_ignored",
+      "description": "analyze_restamp: ignore --queue-only and drive the job",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8f17b76d1ffc6366",
+      "subset": [
+        "tests/test_analysis_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_workers.py::test_a_nested_file_deleted_after_the_queue_refuses_that_item_only",
+        "tests/test_analysis_workers.py::test_a_recursive_restamp_resumes_after_a_kill_and_finishes_the_rest",
+        "tests/test_analysis_workers.py::test_queue_only_returns_the_job_queued_with_nothing_driven[restamp]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if foreground.queue_only(ctx.args):\n            return ctx.envelope(\n                data=jobs.reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)",
+      "new": "        if False:\n            return ctx.envelope(\n                data=jobs.reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)",
+      "source": {
+        "table": "u192.json",
+        "id": "A2_restamp_queue_only_ignored"
+      },
+      "moved": "Same branch in analyze_restamp; U298 replaced the local _reported with core.jobs.reported"
+    },
+    {
+      "id": "u27-reports-round-1.S6_lossy_marker",
+      "description": "Build the naming template without the configured lossy marker",
+      "file": "src/cratekit/cli/reports.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ae289748312a1f62",
+      "subset": [
+        "tests/test_reports_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 24,
+      "baseline_collected": 24,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_reports_cli.py::test_a_rejected_pair_comes_back_suppressed_rather_than_as_a_question",
+        "tests/test_reports_cli.py::test_a_second_run_re_offers_the_same_item_rather_than_a_second_one",
+        "tests/test_reports_cli.py::test_duplicates_offers_the_pair_into_the_queue_under_its_own_handler_key"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)",
+      "new": "    return NameTemplate()",
+      "source": {
+        "table": "u27-reports-round-1.json",
+        "id": "S6_lossy_marker"
+      },
+      "moved": "U298 folded this template's strip, empty check and marker rule into naming.NameTemplate.lossy_if_marked, which it now returns; the plain template here drops the configured marker as before, local to this verb"
+    },
+    {
+      "id": "u194.W20_retag_reread",
+      "description": "_retag: drop the read before the write, so a file changed since the second plan is written over",
+      "file": "src/cratekit/cli/verbs/taxonomy_word.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "00a7cea68be04f8b",
+      "subset": [
+        "tests/test_taxonomy_word.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_word.py::test_a_file_changed_after_the_second_plan_is_left_and_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if file_genres(item.path) != (item.current,):\n            done.moved.append(item)",
+      "new": "        if False:\n            done.moved.append(item)",
+      "source": {
+        "table": "u194.json",
+        "id": "W20_retag_reread"
+      },
+      "moved": "Same read before the write in _retag; U298 replaced the local _genres with tagging.tag.file_genres, the identical exact reader"
+    },
+    {
+      "id": "u194.W21_retag_read_back",
+      "description": "_retag: drop the read back, so a write that did not take is counted as retagged",
+      "file": "src/cratekit/cli/verbs/taxonomy_word.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7d1dae5cffb82e5c",
+      "subset": [
+        "tests/test_taxonomy_word.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_word.py::test_a_write_that_does_not_read_back_is_named_apart_from_one_never_made"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if file_genres(item.path) != (display,):\n            done.wrong.append(item)",
+      "new": "        if False:\n            done.wrong.append(item)",
+      "source": {
+        "table": "u194.json",
+        "id": "W21_retag_read_back"
+      },
+      "moved": "Same read back in _retag; U298 replaced the local _genres with tagging.tag.file_genres, the identical exact reader"
+    },
+    {
+      "id": "u57-recognition-and-items.C12_stray_file_sorted",
+      "description": "The report reader sorts every json file by its stem as a number again",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1b31c72ae75006fc",
+      "subset": [
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 108,
+      "baseline_collected": 108,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/intake/test_workers.py::test_a_stray_file_beside_the_reports_does_not_take_the_summary_down"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return sorted((path for path in paths if path.stem.isdigit()), key=lambda item: int(item.stem))",
+      "new": "    return sorted(paths, key=lambda item: int(item.stem))",
+      "source": {
+        "table": "u57-recognition-and-items.json",
+        "id": "C12_stray_file_sorted"
+      },
+      "moved": "U298 deleted core/artifacts.py and folded its committed reader into core.jobs.Artifacts.committed, whose default order is by_ordinal; the filter to ordinal named files before the numeric sort is that function's, and dropping it lets a stray json file reach int() as before"
+    },
+    {
+      "id": "r504-b.B5_noop_silent",
+      "description": "Every heart withheld is the quiet no-op again, with no warning",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dcc06faeb0b3518f",
+      "subset": [
+        "tests/intake/test_workers.py",
+        "tests/test_acquire_fallback.py",
+        "tests/test_acquire_fallback_fetch.py",
+        "tests/test_intake_missing.py",
+        "tests/test_intake_missing_isrc.py",
+        "tests/test_intake_missing_search.py",
+        "tests/test_label_tidal_catalogue.py",
+        "tests/test_sync_all.py",
+        "tests/test_sync_mark.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 682,
+      "baseline_collected": 682,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op",
+        "tests/test_intake_missing.py::test_hearts_all_withheld_are_not_read_as_an_account_with_none"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                data=no_job(\"no-tracks\", source=reference, **extra),\n                outcome=Outcome.NO_OP,\n                warnings=warnings,\n            )",
+      "new": "                data=no_job(\"no-tracks\", source=reference, **extra),\n                outcome=Outcome.NO_OP,\n            )",
+      "source": {
+        "table": "r504-b.json",
+        "id": "B5_noop_silent"
+      },
+      "moved": "Same no-tracks return in intake_playlist; U298 replaced the local _no_op with cli.output.no_job"
+    },
+    {
+      "id": "r515-operator.S10_intake_all_withheld_quiet",
+      "description": "An intake playlist with every track withheld is a quiet no op",
+      "file": "src/cratekit/intake/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8e91df4cfbe7db1e",
+      "subset": [
+        "tests/test_intake_missing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 72,
+      "baseline_collected": 72,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_intake_missing.py::test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op",
+        "tests/test_intake_missing.py::test_hearts_all_withheld_are_not_read_as_an_account_with_none"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not tracks:\n            return ctx.envelope(\n                data=no_job(\"no-tracks\", source=reference, **extra),\n                outcome=Outcome.NO_OP,\n                warnings=warnings,",
+      "new": "        if not tracks:\n            return ctx.envelope(\n                data=no_job(\"no-tracks\", source=reference, **extra),\n                outcome=Outcome.NO_OP,",
+      "source": {
+        "table": "r515-operator.json",
+        "id": "S10_intake_all_withheld_quiet"
+      },
+      "moved": "Same no-tracks return in intake_playlist; U298 replaced the local _no_op with cli.output.no_job"
+    },
+    {
+      "id": "u62.C1_bound_constant_true",
+      "description": "Answer bound() True without asking whether the adapter imports",
+      "file": "src/cratekit/label/catalogue.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3791bf1555168313",
+      "subset": [
+        "tests/test_label_tidal_catalogue.py",
+        "tests/modules/test_labels.py",
+        "tests/test_label_workers.py",
+        "tests/intake/test_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 544,
+      "baseline_collected": 544,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/modules/test_labels.py::test_the_catalogue_seam_answers_bound_without_reading_a_credential"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return provider_session.importable(ADAPTER_MODULE)",
+      "new": "    return True",
+      "source": {
+        "table": "u62.json",
+        "id": "C1_bound_constant_true"
+      },
+      "moved": "Same bound(); U298 replaced its try import with provider_session.importable, the same question, so answering True here skips it as before, local to this function"
+    },
+    {
+      "id": "r815-c.J8_a_refusal_parks_and_fails_no_item",
+      "description": "handle: let a refusal fail the item",
+      "file": "src/cratekit/label/judge_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d68ef4aae22eea56",
+      "subset": [
+        "tests/test_label_judge.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_judge.py::test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left",
+        "tests/test_label_judge.py::test_a_refusal_from_the_provider_parks_the_run_on_that_refusal",
+        "tests/test_label_judge.py::test_a_taxonomy_that_stops_being_readable_parks_the_run_and_fails_no_release",
+        "tests/test_label_judge.py::test_three_provider_reads_failing_in_a_row_stop_the_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except CratekitError as exc:\n        raise _parked(job, exc) from exc\n    return ARTIFACTS.produced(cfg, job, item, report)",
+      "new": "    except CratekitError:\n        raise\n    return ARTIFACTS.produced(cfg, job, item, report)",
+      "source": {
+        "table": "r815-c.json",
+        "id": "J8_a_refusal_parks_and_fails_no_item"
+      },
+      "moved": "Same except clause in handle; U298 replaced artifacts.produced(ARTIFACTS, ...) with the bound ARTIFACTS.produced on core.jobs.Artifacts, only the line after the guard"
+    },
+    {
+      "id": "u46-round-2.M2_resume_does_not_drive",
+      "description": "Report the queued job on resume without running any of it, which is the state R-198 describes",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df15391ffc13075f",
+      "subset": [
+        "tests/test_job_seam.py",
+        "tests/test_master_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 15,
+      "collected": 75,
+      "baseline_collected": 75,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_master_cli.py::test_a_configuration_that_moved_reaches_the_person_as_a_warning_on_the_resume",
+        "tests/test_master_cli.py::test_a_handler_that_raises_an_undeclared_error_fails_the_item_not_the_driver",
+        "tests/test_master_cli.py::test_a_job_that_failed_on_a_missing_source_is_not_reopened_and_a_fresh_job_masters_it",
+        "tests/test_master_cli.py::test_a_missing_encoder_reports_that_refusal_rather_than_an_internal_defect",
+        "tests/test_master_cli.py::test_a_missing_recording_reports_the_engines_own_cause_on_the_item",
+        "tests/test_master_cli.py::test_a_partial_file_left_in_staging_does_not_refuse_the_next_attempt",
+        "tests/test_master_cli.py::test_a_queued_recording_runs_from_pending_to_done_through_the_resume_branch",
+        "tests/test_master_cli.py::test_a_queued_split_recording_lands_as_one_master_through_the_resume",
+        "tests/test_master_cli.py::test_a_relative_recording_masters_the_same_file_when_the_resume_runs_elsewhere",
+        "tests/test_master_cli.py::test_an_encode_that_produces_nothing_reaches_the_item_as_the_engines_own_cause",
+        "tests/test_master_cli.py::test_an_existing_joined_master_is_refused_on_the_real_destination",
+        "tests/test_master_cli.py::test_an_existing_master_is_refused_before_the_engine_runs",
+        "tests/test_master_cli.py::test_nothing_is_created_beside_a_destination_for_a_recording_that_is_not_there",
+        "tests/test_master_cli.py::test_overwrite_reaches_the_handler_and_replaces_the_previous_master",
+        "tests/test_master_cli.py::test_the_encode_lands_in_staging_and_is_committed_rather_than_written_in_place"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        _result, warnings = ctx.run_job(store, job)\n        job = get(store, job.job_id)",
+      "new": "        pass",
+      "source": {
+        "table": "u46-round-2.json",
+        "id": "M2_resume_does_not_drive"
+      },
+      "moved": "U298 replaced master's resume with core.jobs.resumed, which master_recording now calls after its reconcile; the drive inside its is_open branch is the same two lines, so removing it reports the queued job without running any of it"
+    },
+    {
+      "id": "u43-author-round-2.H4_template_loses_the_marker",
+      "description": "ROUND ONE: zero. The name template stops declaring the lossy marker, so a marked file's clean title keeps the marker and its match key gains a token",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a2a48845d5de7297",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 86,
+      "baseline_collected": 86,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_lossy_marked_companion_comes_back_with_a_clean_title"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return NameTemplate.lossy(cfg.naming.lossy_marker)",
+      "new": "    return NameTemplate()",
+      "source": {
+        "table": "u43-author-round-2.json",
+        "id": "H4_template_loses_the_marker"
+      },
+      "moved": "Same template function; U298 spelled its marker rule as naming.NameTemplate.lossy, which builds the same lossy MarkerRule, so the plain template drops it as before"
+    },
+    {
+      "id": "u43-author-round-2.V2_marker_position_moved",
+      "description": "The marker rule is declared with a separator that puts it somewhere the head parser does not strip. If the lossy guard passes this, its fixture is in a position where the declaration cannot matter, which is the mistake the first attempt at it made",
+      "file": "src/cratekit/setbuilder/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9dc993c94864f3d3",
+      "subset": [
+        "tests/test_setbuilder_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 86,
+      "baseline_collected": 86,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_setbuilder_cli.py::test_a_lossy_marked_companion_comes_back_with_a_clean_title"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return NameTemplate.lossy(cfg.naming.lossy_marker)",
+      "new": "    return NameTemplate.lossy(\"[NOTAMARKER]\")",
+      "source": {
+        "table": "u43-author-round-2.json",
+        "id": "V2_marker_position_moved"
+      },
+      "moved": "Same template function; U298 spelled its marker rule as naming.NameTemplate.lossy, so the wrong literal is passed to it in place of the configured marker, as before"
+    },
+    {
+      "id": "u56-catalogue-searcher-and-tag-workers.R37_artifact_named_by_item_id",
+      "description": "A filename built from a tagging item identifier is a path traversal wearing a report, because the identifier is a path relative to a folder",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4f6bc2b20dd1b070",
+      "subset": [
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 102,
+      "baseline_collected": 102,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_workers.py::test_an_item_identifier_holding_a_separator_cannot_escape_the_directory"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        directory = self.final_dir(cfg, job_id)\n        config.mkdir_private(directory)\n        return directory / f\"{ordinal:04d}.json\"",
+      "new": "        directory = self.final_dir(cfg, job_id)\n        config.mkdir_private(directory)\n        return directory / f\"{ordinal}.json\"",
+      "source": {
+        "table": "u56-catalogue-searcher-and-tag-workers.json",
+        "id": "R37_artifact_named_by_item_id"
+      },
+      "moved": "U298 folded tagging/artifacts.final_path into core.jobs.Artifacts.final_path, which tagging binds as final_path; the same name built from the ordinal"
+    },
+    {
+      "id": "u56-catalogue-searcher-and-tag-workers.R38_staging_not_cleared",
+      "description": "A half written report from an attempt that did not finish is committed by the next attempt as though it described that attempt",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bd9ef72213358aa4",
+      "subset": [
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 102,
+      "baseline_collected": 102,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_workers.py::test_staging_is_cleared_before_an_attempt_writes_into_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if directory.exists():\n            shutil.rmtree(directory)",
+      "new": "        if False:\n            shutil.rmtree(directory)",
+      "source": {
+        "table": "u56-catalogue-searcher-and-tag-workers.json",
+        "id": "R38_staging_not_cleared"
+      },
+      "moved": "U298 folded tagging/artifacts.staged_path into core.jobs.Artifacts.staged_path, which tagging binds as staged_path and produced calls; the same clearing of a stale attempt"
+    },
+    {
+      "id": "r799-b.W1_a_file_is_read_again_before_it_is_written",
+      "description": "apply: write over whatever the file carries by now",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cadd24397a7a75fc",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 93,
+      "baseline_collected": 93,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_file_that_moved_since_the_plan_is_named_and_not_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if file_genres(target) != (item.current,):\n            moved.append(item.path)\n            continue",
+      "new": "",
+      "source": {
+        "table": "r799-b.json",
+        "id": "W1_a_file_is_read_again_before_it_is_written"
+      },
+      "moved": "Same read before the write in apply; U298 replaced the local _file_genres with tagging.tag.file_genres, the identical exact reader"
+    },
+    {
+      "id": "r799-b.W3_a_write_is_read_back",
+      "description": "apply: take the writer's word that the genre is on the file",
+      "file": "src/cratekit/tagging/remap.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "79c9ebf9e9d30379",
+      "subset": [
+        "tests/test_tag_remap.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 93,
+      "baseline_collected": 93,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_remap.py::test_a_file_written_that_does_not_read_back_is_named_as_wrong"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if file_genres(target) != (item.wanted,):\n            wrong.append(item.path)\n            continue",
+      "new": "",
+      "source": {
+        "table": "r799-b.json",
+        "id": "W3_a_write_is_read_back"
+      },
+      "moved": "Same read back in apply; U298 replaced the local _file_genres with tagging.tag.file_genres, the identical exact reader"
+    },
+    {
+      "id": "r290-author.S11_tagging_shell_call_removed",
+      "description": "Remove the one jobs.raise_for_state call from tagging/shell.py, so this shell reports a parked or half failed job and exits 0",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "59d8a762f739fdb8",
+      "subset": [
+        "tests/test_job_outcome.py",
+        "tests/test_tag_workers.py",
+        "tests/test_adopt_workers.py",
+        "tests/test_master_cli.py",
+        "tests/test_acquire_fallback_fetch.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 49,
+      "collected": 390,
+      "baseline_collected": 390,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_workers.py::test_a_parked_adoption_leaves_blocked_and_non_zero",
+        "tests/test_adopt_workers.py::test_a_row_removed_between_queueing_and_driving_fails_only_its_own_item",
+        "tests/test_adopt_workers.py::test_a_row_tombstoned_between_queueing_and_driving_fails_its_own_item",
+        "tests/test_adopt_workers.py::test_an_interrupted_job_exits_with_its_own_cause_and_not_ok[adopt.apply]",
+        "tests/test_adopt_workers.py::test_an_interrupted_job_exits_with_its_own_cause_and_not_ok[adopt.scan]",
+        "tests/test_job_outcome.py::test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero[acquire.fallback-fetch]",
+        "tests/test_job_outcome.py::test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero[adopt.scan]",
+        "tests/test_job_outcome.py::test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero[label.judge]",
+        "tests/test_job_outcome.py::test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero[master]",
+        "tests/test_job_outcome.py::test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero[tag.folder]",
+        "tests/test_job_outcome.py::test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero[tag.retag]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked[acquire.fallback-fetch]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked[adopt.scan]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked[label.judge]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked[master]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked[tag.folder]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked[tag.retag]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero[acquire.fallback-fetch]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero[adopt.scan]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero[label.judge]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero[master]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero[tag.folder]",
+        "tests/test_job_outcome.py::test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero[tag.retag]",
+        "tests/test_job_outcome.py::test_a_park_on_a_gate_coded_cause_is_still_not_resumable_through_the_run",
+        "tests/test_job_outcome.py::test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked[acquire.fallback-fetch]",
+        "tests/test_job_outcome.py::test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked[adopt.scan]",
+        "tests/test_job_outcome.py::test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked[label.judge]",
+        "tests/test_job_outcome.py::test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked[master]",
+        "tests/test_job_outcome.py::test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked[tag.folder]",
+        "tests/test_job_outcome.py::test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked[tag.retag]",
+        "tests/test_job_outcome.py::test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero[acquire.fallback-fetch]",
+        "tests/test_job_outcome.py::test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero[adopt.scan]",
+        "tests/test_job_outcome.py::test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero[label.judge]",
+        "tests/test_job_outcome.py::test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero[master]",
+        "tests/test_job_outcome.py::test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero[tag.folder]",
+        "tests/test_job_outcome.py::test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero[tag.retag]",
+        "tests/test_job_outcome.py::test_every_function_that_drives_a_job_maps_its_ending_afterwards",
+        "tests/test_job_outcome.py::test_the_dispatcher_reads_the_blocked_type_as_the_blocked_outcome",
+        "tests/test_master_cli.py::test_a_job_that_failed_on_a_missing_source_is_not_reopened_and_a_fresh_job_masters_it",
+        "tests/test_tag_workers.py::test_a_cancelled_job_raises_rather_than_reporting_through_a_normal_envelope",
+        "tests/test_tag_workers.py::test_a_file_gone_at_drive_time_is_refused_rather_than_reported_done",
+        "tests/test_tag_workers.py::test_a_file_removed_between_the_queueing_and_the_drive_is_refused_by_name",
+        "tests/test_tag_workers.py::test_a_half_corrected_retag_carries_the_reload_on_its_refusal",
+        "tests/test_tag_workers.py::test_a_parked_retag_keeps_both_the_block_and_the_reload",
+        "tests/test_tag_workers.py::test_a_retag_file_that_will_not_take_its_genre_fails_its_item_and_the_rest_are_corrected",
+        "tests/test_tag_workers.py::test_a_retag_file_that_will_not_take_its_genre_is_named_in_the_human_answer",
+        "tests/test_tag_workers.py::test_a_searcher_that_raises_part_way_fails_only_its_own_item",
+        "tests/test_tag_workers.py::test_a_searcher_that_raises_part_way_through_a_retag_fails_only_its_own_item",
+        "tests/test_tag_workers.py::test_an_interrupted_sweep_names_its_job_command_and_that_command_finishes_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    raise_for_state(job)\n    return job, warnings",
+      "new": "    get  # the mapping call, removed\n    return job, warnings",
+      "source": {
+        "table": "r290-author.json",
+        "id": "S11_tagging_shell_call_removed"
+      },
+      "moved": "U298 replaced the resume tails of tagging.shell.advance, adopt.shell.advance, acquire fallback-fetch and master with core.jobs.resumed, which advance calls; its one raise_for_state call is the mapping each of those four shells made, and tests/test_job_outcome.py names that function as the shared tail. The tests are this row's own plus those of the three rows mapped to it"
+    },
+    {
+      "id": "u56-catalogue-searcher-and-tag-workers.R33_no_op_job_id_is_null",
+      "description": "R-234 reintroduced: cli.output types job_id as a required string, so a null fails the verb's own schema on every zero path",
+      "file": "src/cratekit/cli/output.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8bc419fa77c97923",
+      "subset": [
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 102,
+      "baseline_collected": 102,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_workers.py::test_a_folder_holding_no_audio_queues_nothing_and_says_which_zero_it_is",
+        "tests/test_tag_workers.py::test_a_folder_that_is_not_there_is_a_different_zero_from_an_empty_one",
+        "tests/test_tag_workers.py::test_a_folder_that_is_not_there_is_a_different_zero_from_one_with_nothing_coarse",
+        "tests/test_tag_workers.py::test_an_empty_folder_argument_never_sweeps_the_working_directory",
+        "tests/test_tag_workers.py::test_an_empty_plan_is_still_asked_about_and_still_queues_nothing",
+        "tests/test_tag_workers.py::test_answering_the_confirmation_with_abort_queues_nothing_and_writes_nothing",
+        "tests/test_tag_workers.py::test_tagging_the_download_root_queues_nothing_from_the_acquisition_staging_tree",
+        "tests/test_tag_workers.py::test_the_honest_zero_names_an_empty_job_id_rather_than_a_null",
+        "tests/test_tag_workers.py::test_the_honest_zero_validates_against_the_job_state_surface"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return {\"job_id\": \"\", \"state\": state, \"cause\": None, \"progress\": dict(progress)}",
+      "new": "    return {\"job_id\": None, \"state\": state, \"cause\": None, \"progress\": dict(progress)}",
+      "source": {
+        "table": "u56-catalogue-searcher-and-tag-workers.json",
+        "id": "R33_no_op_job_id_is_null"
+      },
+      "moved": "U298 replaced tagging.shell.no_op with cli.output.no_job, which the tagging shell imports as no_op; the same empty string job_id"
+    },
+    {
+      "id": "u56-catalogue-searcher-and-tag-workers.R34_empty_job_is_driven",
+      "description": "A job frozen with no items drives straight to SUCCEEDED, which is a clean report over work it never did",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "426e92c7de767455",
+      "subset": [
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 102,
+      "baseline_collected": 102,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_workers.py::test_a_job_with_no_items_is_refused_rather_than_driven"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if job.is_open() and not items(store, job.job_id):",
+      "new": "    if job.is_open() and False:",
+      "source": {
+        "table": "u56-catalogue-searcher-and-tag-workers.json",
+        "id": "R34_empty_job_is_driven"
+      },
+      "moved": "U298 replaced tagging.shell.advance with core.jobs.advance, which the tagging shell imports under the same name; the refusal of an open job with no items is the same check, now one condition, and the mutation drops only its items half"
+    },
+    {
+      "id": "u56-catalogue-searcher-and-tag-workers.R35_extra_rides_beside_progress",
+      "description": "A per verb detail at the top level is an undeclared field on job_state/1, so a consumer generated from the committed schema rejects every envelope",
+      "file": "src/cratekit/core/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "863ba738cb165191",
+      "subset": [
+        "tests/test_tag_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 47,
+      "collected": 102,
+      "baseline_collected": 102,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_workers.py::test_a_block_on_a_file_a_record_shop_declined_is_still_said",
+        "tests/test_tag_workers.py::test_a_corrected_retag_ends_by_naming_the_reload_the_stale_row_needs",
+        "tests/test_tag_workers.py::test_a_discogs_refusal_remembered_for_the_run_is_not_counted_as_a_search_sent",
+        "tests/test_tag_workers.py::test_a_fallback_blocked_on_every_file_it_was_asked_about_is_named_by_the_warning",
+        "tests/test_tag_workers.py::test_a_file_in_a_subfolder_keeps_its_relative_identifier_and_is_still_tagged",
+        "tests/test_tag_workers.py::test_a_folder_of_three_tags_the_two_with_no_genre_and_leaves_the_third",
+        "tests/test_tag_workers.py::test_a_general_catalogue_unread_on_every_file_is_named_in_the_summary",
+        "tests/test_tag_workers.py::test_a_general_catalogue_unread_on_some_files_says_how_many_of_how_many",
+        "tests/test_tag_workers.py::test_a_genre_made_blank_between_the_confirm_and_the_drive_is_left_to_its_owner",
+        "tests/test_tag_workers.py::test_a_genre_made_specific_between_the_confirm_and_the_drive_is_not_rewritten",
+        "tests/test_tag_workers.py::test_a_parse_break_at_the_general_catalogue_says_a_rerun_will_not_move_it",
+        "tests/test_tag_workers.py::test_a_published_genre_reaches_the_file_the_artifact_and_the_summary",
+        "tests/test_tag_workers.py::test_a_published_word_with_no_folder_is_listed_as_unresolved",
+        "tests/test_tag_workers.py::test_a_recorded_acceptance_is_used_and_the_searcher_is_never_asked",
+        "tests/test_tag_workers.py::test_a_resume_after_a_partial_run_meets_its_gate_rather_than_going_stale",
+        "tests/test_tag_workers.py::test_a_retag_parses_the_active_taxonomy_once_however_many_files_it_corrects",
+        "tests/test_tag_workers.py::test_a_retag_that_corrected_nothing_does_not_send_a_person_to_rekordbox",
+        "tests/test_tag_workers.py::test_a_retried_job_drives_only_the_item_that_failed",
+        "tests/test_tag_workers.py::test_a_retried_retag_drives_only_the_item_that_failed",
+        "tests/test_tag_workers.py::test_a_sweep_beatport_matched_whole_names_no_fallback_as_blocked",
+        "tests/test_tag_workers.py::test_a_sweep_discogs_decides_asks_beatport_only_for_missing_covers_and_counts_discogs_first",
+        "tests/test_tag_workers.py::test_a_sweep_parses_the_active_taxonomy_once_however_many_files_it_tags",
+        "tests/test_tag_workers.py::test_a_sweep_stops_asking_a_refusing_beatport_after_three_and_says_it_refused",
+        "tests/test_tag_workers.py::test_a_sweep_with_no_discogs_token_says_so_and_reads_no_file_as_no_hit",
+        "tests/test_tag_workers.py::test_a_sweep_with_nothing_off_taxonomy_carries_no_such_warning",
+        "tests/test_tag_workers.py::test_a_token_discogs_refuses_is_warned_about_even_when_beatport_settles_every_file",
+        "tests/test_tag_workers.py::test_an_albums_cover_is_asked_for_and_encoded_once_across_the_queued_sweep",
+        "tests/test_tag_workers.py::test_an_answer_that_is_itself_too_coarse_reaches_the_review_queue",
+        "tests/test_tag_workers.py::test_an_extra_mapping_rides_under_progress_and_never_beside_it",
+        "tests/test_tag_workers.py::test_an_interrupted_sweep_names_its_job_command_and_that_command_finishes_it",
+        "tests/test_tag_workers.py::test_an_outage_keeps_its_own_word_in_the_sweeps_warning",
+        "tests/test_tag_workers.py::test_blocked_fallbacks_reach_every_artifact_and_the_summary_and_never_read_as_no_hit",
+        "tests/test_tag_workers.py::test_files_with_no_isrc_are_counted_and_warned_about_whatever_their_skip_reason",
+        "tests/test_tag_workers.py::test_four_real_misses_are_no_hit_and_carry_no_unread_warning",
+        "tests/test_tag_workers.py::test_new_art_reaches_the_file_the_artifact_and_the_summary",
+        "tests/test_tag_workers.py::test_one_unread_file_beside_a_parse_break_is_counted_and_the_defect_is_said",
+        "tests/test_tag_workers.py::test_tag_folder_by_hand_queues_and_drives_its_sweep_to_succeeded_in_one_call",
+        "tests/test_tag_workers.py::test_the_art_repair_reaches_the_artifact_and_the_summary_counts_every_status",
+        "tests/test_tag_workers.py::test_the_counts_are_read_off_the_artifacts_rather_than_accumulated_in_memory",
+        "tests/test_tag_workers.py::test_the_next_sweep_asks_a_refusing_beatport_again_from_its_first_file",
+        "tests/test_tag_workers.py::test_the_report_is_derived_from_what_ran_rather_than_from_what_was_planned",
+        "tests/test_tag_workers.py::test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns",
+        "tests/test_tag_workers.py::test_the_report_names_each_unresolved_source_genre_with_its_count",
+        "tests/test_tag_workers.py::test_the_skip_reason_reaches_the_report_and_not_only_the_artifact",
+        "tests/test_tag_workers.py::test_the_sweep_names_a_folders_own_name_with_its_one_answer_and_falls_back_when_the_copy_breaks",
+        "tests/test_tag_workers.py::test_the_sweeps_unread_warning_names_discogs_first",
+        "tests/test_tag_workers.py::test_three_confirmed_files_go_from_pending_to_done_and_carry_a_specific_genre"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    counted = dict(progress(store, job.job_id))\n    if extra:\n        counted.update(extra)\n    return {\n        \"job_id\": job.job_id,",
+      "new": "    counted = dict(progress(store, job.job_id))\n    return {\n        **dict(extra or {}),\n        \"job_id\": job.job_id,",
+      "source": {
+        "table": "u56-catalogue-searcher-and-tag-workers.json",
+        "id": "R35_extra_rides_beside_progress"
+      },
+      "moved": "U298 replaced tagging.shell.reported with core.jobs.reported, which the tagging shell imports under the same name; the same placement of extra under progress, with the local renamed counted"
+    },
+    {
+      "id": "u225.M6_front_keeps_nothing",
+      "description": "front_moves: no tail is kept, every asked track is moved",
+      "file": "src/cratekit/sync/pair_stopped.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "81d93de340b67f4a",
+      "subset": [
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 89,
+      "baseline_collected": 89,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped.py::test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            keep += 1\n    return list(reversed(wanted[: len(wanted) - keep]))",
+      "new": "            keep += 0\n    return list(reversed(wanted[: len(wanted) - keep]))",
+      "source": {
+        "table": "u225.json",
+        "id": "M6_front_keeps_nothing"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": [
+    {
+      "source": {
+        "table": "r1709.json",
+        "id": "M24_intake_identity_fold"
+      },
+      "to": "r1709.M25_fallback_identity_fold",
+      "reason": "U298 folded intake/candidates.identity and acquire/fallback.identity, two copies of one dict, into match.Wanted.folded_row; the title line both rows mutated is now that one line, anchored under M25 with the same substitution and the same test list"
+    },
+    {
+      "source": {
+        "table": "r290-author.json",
+        "id": "S03_acquire_fallback_call_removed"
+      },
+      "to": "r290-author.S11_tagging_shell_call_removed",
+      "reason": "U298 removed the raise_for_state call from acquire/fallback_cli.py's fetch resume, which now leaves through core.jobs.resumed; that function's single call is the same mapping, anchored under S11 with this row's test files added to its list"
+    },
+    {
+      "source": {
+        "table": "r290-author.json",
+        "id": "S12_adopt_shell_call_removed"
+      },
+      "to": "r290-author.S11_tagging_shell_call_removed",
+      "reason": "U298 removed the raise_for_state call from adopt/shell.py's advance, which now leaves through core.jobs.resumed; that function's single call is the same mapping, anchored under S11 with this row's test files added to its list"
+    },
+    {
+      "source": {
+        "table": "r290-author.json",
+        "id": "S01_master_call_removed"
+      },
+      "to": "r290-author.S11_tagging_shell_call_removed",
+      "reason": "U298 removed the raise_for_state call from master/cli.py's resume, which now leaves through core.jobs.resumed; that function's single call is the same mapping, anchored under S11 with this row's test files added to its list"
+    },
+    {
+      "source": {
+        "table": "u220.json",
+        "id": "A2_keep_nothing"
+      },
+      "to": "u225.M6_front_keeps_nothing",
+      "reason": "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; u225.M6 already makes the same keep += 0 substitution on that one line"
+    }
+  ]
+}

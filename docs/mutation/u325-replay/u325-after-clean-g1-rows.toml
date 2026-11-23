@@ -1,0 +1,18 @@
+name = "u325-after-clean-g1"
+pass_kind = "replay"
+
+[[rows]]
+id = "r926.G1_never_checks"
+source = { table = "r926.json", id = "G1_never_checks" }
+description = "The guard returns at once whether or not pytest is loaded, so nothing is ever refused"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    if "pytest" not in sys.modules:
+        return
+    root = _TEST_WRITE_ROOT'''
+new = '''
+    if True:
+        return
+    root = _TEST_WRITE_ROOT'''

@@ -1,32 +1,10 @@
-"""``crate login``: record one service credential in the OS keychain.
+"""``crate login``: record one service credential in the OS keychain (R4).
 
-WHAT IT REPLACES. The source system keeps its credentials in two plaintext files
-under a state directory. Neither is chmodded by any code, so the 0600 on the live
-files is the author's umask rather than a decision, and on a machine with a laxer
-umask both land world readable. R4 moves all of it to the OS keychain and
-``core/secrets`` owns the store; this verb is the way a value gets into it
-without running the wizard again.
-
-WHY IT TAKES NO VALUE ARGUMENT. A credential passed on a command line is in the
-process listing for every local account for as long as the process runs, and in
-the shell history afterwards. So the value comes from a file the user already
-holds, or from the environment variable ``core/secrets`` already defines for a
-headless machine, and from nowhere else. Both are named in the refusal when
-neither is supplied, because a verb that refuses without saying how to satisfy it
-is a dead end.
-
-WHY IT IS NOT INTERACTIVE, when the wizard beside it is. Exactly one verb in the
-product is allowed to read standard input, the registry says which, and a test
-asserts the list has one element. Adding a second prompt here would either break
-that assertion or, worse, quietly satisfy it while prompting anyway through the
-allowlisted module: a verb that declares itself non-interactive and then blocks
-on a terminal is the shape that makes a detached job hang instead of refuse.
-
-WHAT IT IS NOT. It does not perform an authorization flow. Obtaining a provider
-session is an attended act at a browser, and the vendored downloader owns that
-conversation; what this verb owns is the moment the resulting value becomes
-keychain state that the rest of the product can rely on. Claiming otherwise would
-put a second, half-working authorization path beside the real one.
+It takes no value argument, since a command line is visible in the process
+listing and the shell history; the value comes from a file or the opted-in
+environment variable. It never prompts, so a detached job refuses rather than
+hangs. It performs no authorization flow, which the vendored downloader owns;
+it only turns the resulting value into keychain state.
 """
 
 from __future__ import annotations
@@ -44,9 +22,8 @@ from cratekit.core.exit_codes import Remedy
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
 
-#: Every credential name this verb accepts, derived from the store's own
-#: declaration rather than listed. A credential added to ``secrets.Credential``
-#: is recordable here on the day it is added (P3).
+#: Every credential name this verb accepts, derived from ``secrets.Credential``
+#: so a new one is recordable at once (P3).
 CREDENTIAL_NAMES: tuple[str, ...] = tuple(str(name) for name in secrets.Credential)
 
 
@@ -88,10 +65,8 @@ def _value_from_file(path: Path, name: str) -> str:
         ) from exc
     value = text.strip()
     if not value:
-        # Refused rather than stored. ``secrets.set`` refuses an empty value too,
-        # and for the reason worth repeating here: an empty credential reads back
-        # as absent on some backends and as present on others, so storing one
-        # makes the presence question unanswerable and doctor starts lying.
+        # Refused, since an empty credential reads back as absent on some
+        # backends and present on others, which would make doctor lie.
         raise _refuse(
             f"{path} holds nothing but whitespace, so there is no credential in it",
             remedy=Remedy.SET_CREDENTIAL,
@@ -108,10 +83,8 @@ def login(ctx: "Context") -> Envelope:
         source = str(Path(ctx.args.from_file))
         value = _value_from_file(Path(ctx.args.from_file), name)
     else:
-        # Read through the store's OWN opt-in accessor rather than by reaching
-        # into the environment here. That accessor refuses unless the fallback was
-        # opted into by name, and a second reader in this file would be a second
-        # answer to "may this machine take a credential from its environment".
+        # Through the store's own opt-in accessor, so there is one answer to
+        # whether this machine may take a credential from its environment.
         from_env = secrets.environment_value(name)
         if from_env is None:
             raise _refuse(
@@ -129,9 +102,8 @@ def login(ctx: "Context") -> Envelope:
     try:
         secrets.set(name, value)
     except secrets.CredentialError as exc:
-        # The remedy travels on the exception: no backend, no entry, and a
-        # rejected entry need opposite acts, and substituting one of them here is
-        # the collapse ``core/secrets`` declares three types to avoid.
+        # The remedy travels on the exception, since each failure needs a
+        # different act.
         raise CratekitError(
             Cause(
                 reason="credential-missing",

@@ -1,0 +1,450 @@
+name = "u325-before-h-02"
+pass_kind = "replay"
+
+[[rows]]
+id = "r431-a.A6_a_standing_companion_is_rewritten"
+source = { table = "r431-a.json", id = "A6_a_standing_companion_is_rewritten" }
+description = "beside overwrites a companion that already stands, so a second guest's deletion restamps the shared one"
+file = "src/cratekit/core/review.py"
+surface = "maintainer"
+tests = ["tests/intake/test_repair.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/modules/test_reports.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_adoption.py", "tests/test_deletion.py", "tests/test_genre_retag.py", "tests/test_intake_missing_search.py", "tests/test_label_approved.py", "tests/test_label_registry_adopt.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_match_states.py", "tests/test_reports_cli.py", "tests/test_review_queue.py", "tests/test_tag_workers.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '''
+                if standing is not None and standing.suppressing:
+                    continue'''
+new = '''
+                if standing is None and standing is not None:
+                    continue'''
+
+[[rows]]
+id = "r431-a.A7_beside_written_when_the_record_stood"
+source = { table = "r431-a.json", id = "A7_beside_written_when_the_record_stood" }
+description = "A record that already stood still writes its beside records, so a companion lifted alone comes back"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/intake/test_repair.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/modules/test_reports.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_adoption.py", "tests/test_deletion.py", "tests/test_genre_retag.py", "tests/test_intake_missing_search.py", "tests/test_label_approved.py", "tests/test_label_registry_adopt.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_match_states.py", "tests/test_reports_cli.py", "tests/test_review_queue.py", "tests/test_tag_workers.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '''
+            if existing is not None and existing.suppressing:
+                return existing
+            suppression = Suppression('''
+new = '''
+            if existing is not None and existing.suppressing and not beside:
+                return existing
+            suppression = Suppression('''
+
+[[rows]]
+id = "r431-a.A8_also_is_never_asked"
+source = { table = "r431-a.json", id = "A8_also_is_never_asked" }
+description = "revoke ignores also, so lifting a credited tombstone leaves its companion suppressing"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/intake/test_repair.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/modules/test_reports.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_adoption.py", "tests/test_deletion.py", "tests/test_genre_retag.py", "tests/test_intake_missing_search.py", "tests/test_label_approved.py", "tests/test_label_registry_adopt.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_match_states.py", "tests/test_reports_cli.py", "tests/test_review_queue.py", "tests/test_tag_workers.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '            with_it = tuple(also(existing, dict(recorded))) if also is not None else ()'
+new = '            with_it = ()'
+
+[[rows]]
+id = "r431-a.A9_an_already_lifted_record_is_lifted_again"
+source = { table = "r431-a.json", id = "A9_an_already_lifted_record_is_lifted_again" }
+description = "also restamps a record that was already lifted, and fails on an identifier that names nothing"
+file = "src/cratekit/core/review.py"
+surface = "maintainer"
+tests = ["tests/intake/test_repair.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/modules/test_reports.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_adoption.py", "tests/test_deletion.py", "tests/test_genre_retag.py", "tests/test_intake_missing_search.py", "tests/test_label_approved.py", "tests/test_label_registry_adopt.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py", "tests/test_match_states.py", "tests/test_reports_cli.py", "tests/test_review_queue.py", "tests/test_tag_workers.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '''
+                if other is not None and other.suppressing:
+                    recorded[other_id] = lifted(other)'''
+new = '''
+                if other is not None:
+                    recorded[other_id] = lifted(other)'''
+
+[[rows]]
+id = "r83-round-2.I1_fold_case"
+source = { table = "r83-round-2.json", id = "I1_fold_case" }
+description = "R-344, after fix round 1: normalize_identity strips but no longer folds the case"
+file = "src/cratekit/core/preflight.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_metadata_cli.py", "tests/test_preflight.py", "tests/test_rebuild.py", "tests/test_reserved_causes.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '    return identity.strip().lower()'
+new = '    return identity.strip()'
+
+[[rows]]
+id = "r83-round-2.I3_configured_compare_exact"
+source = { table = "r83-round-2.json", id = "I3_configured_compare_exact" }
+description = "R-344, after fix round 1: the configured mount's compare goes back to exact equality"
+file = "src/cratekit/core/preflight.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_metadata_cli.py", "tests/test_preflight.py", "tests/test_rebuild.py", "tests/test_reserved_causes.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '    if same_identity(recorded_identity, observed):'
+new = '    if observed == recorded_identity:'
+
+[[rows]]
+id = "r83-round-2.I4_elsewhere_compare_exact"
+source = { table = "r83-round-2.json", id = "I4_elsewhere_compare_exact" }
+description = "R-344, after fix round 1: the mounted elsewhere sweep's compare goes back to exact equality, the round 1 zero"
+file = "src/cratekit/core/preflight.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_metadata_cli.py", "tests/test_preflight.py", "tests/test_rebuild.py", "tests/test_reserved_causes.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '        if found is not None and same_identity(recorded_identity, found):'
+new = '        if found == recorded_identity:'
+
+[[rows]]
+id = "r1709.M23_intake_exact_by_token"
+source = { table = "r1709.json", id = "M23_intake_exact_by_token" }
+description = "intake's exact flag compares the token, so a search for a drop answered by a fire is listed and downloaded"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
+old = '''
+    return frozenset((one.distinct, one.version_key) for one in wanted.readings)
+'''
+new = '''
+    return frozenset((one.recording, one.version_key) for one in wanted.readings)
+'''
+
+[[rows]]
+id = "r1709.M24_intake_identity_fold"
+source = { table = "r1709.json", id = "M24_intake_identity_fold" }
+description = "intake's search question keys the folded title, so an answer about a drop is listed for a later wave"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
+old = '''
+        "title": match.title_identity(wanted.title),
+'''
+new = '''
+        "title": match.fold(wanted.title),
+'''
+
+[[rows]]
+id = "u282.T1_question_asked_with_a_picture"
+source = { table = "u282.json", id = "T1_question_asked_with_a_picture" }
+description = "tag_one: the picture's question is asked whatever the file holds, so a file with a picture spends a Beatport request"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '    if settled is None and hit is not None and hit.ask_picture is not None:'
+new = '    if hit is not None and hit.ask_picture is not None:'
+
+[[rows]]
+id = "u282.T2_question_never_asked"
+source = { table = "u282.json", id = "T2_question_never_asked" }
+description = "tag_one: the picture's question is never asked (merge blocker 5)"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '    if settled is None and hit is not None and hit.ask_picture is not None:'
+new = '    if False:'
+
+[[rows]]
+id = "u282.T3_failed_question_raises"
+source = { table = "u282.json", id = "T3_failed_question_raises" }
+description = "_picture_asked: a question that fails raises and fails a file whose genre was written"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '''
+    except Exception as exc:  # noqa: BLE001
+        said = f"{exc.cause.reason}'''
+new = '''
+    except ZeroDivisionError as exc:  # noqa: BLE001
+        said = f"{exc.cause.reason}'''
+
+[[rows]]
+id = "u282.T4_failed_question_result_dropped"
+source = { table = "u282.json", id = "T4_failed_question_result_dropped" }
+description = "tag_one: a failed question's art result is dropped, so the picture is fetched off a hit that named none"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
+old = '''
+    elif unasked is not None:
+        pictured = unasked'''
+new = '''
+    elif False:
+        pictured = unasked'''
+
+[[rows]]
+id = "u289.C1_record_drops_asked"
+source = { table = "u289.json", id = "C1_record_drops_asked" }
+description = "the sweep's record leaves the question's read out"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '                "read": result.asked_read,'
+new = '                "read": "",'
+
+[[rows]]
+id = "u289.T1_title_tag_split"
+source = { table = "u289.json", id = "T1_title_tag_split" }
+description = "tag_one: a file with a title tag and no artist tag is split by its name"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '    named = titles.by_name(path.stem) if not artist and not title_tag else None'
+new = '    named = titles.by_name(path.stem) if not artist else None'
+
+[[rows]]
+id = "u289.T2_split_artist_dropped"
+source = { table = "u289.json", id = "T2_split_artist_dropped" }
+description = "tag_one: the name's artist is read and never handed to the searcher"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''
+    if named is not None:
+        artist = named.artist'''
+new = '''
+    if False:
+        artist = named.artist'''
+
+[[rows]]
+id = "u289.T3_record_read_from_title"
+source = { table = "u289.json", id = "T3_record_read_from_title" }
+description = "tag_one: the record says how the title was read for a file asked by its name"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '        if named is not None and named.read in (titles.Read.BY_NAME, titles.Read.NAME_AMBIGUOUS):'
+new = '        if False:'
+
+[[rows]]
+id = "u127.W2_writable_reason_drift"
+source = { table = "u127.json", id = "W2_writable_reason_drift" }
+description = "The writer's question reads another reason than the writer raises"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_split_place.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_favorites_colour_read.py", "tests/test_favorites_placement.py", "tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py", "tests/test_genre_retag.py", "tests/test_head_agreement.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_metadata_policy.py", "tests/test_naming_apply_cli.py", "tests/test_organize.py", "tests/test_outbound_workers.py", "tests/test_paths_resolved.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_snapshot.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_whitelist_membership.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = '        if exc.cause.reason != "mytag-category-template-missing":'
+new = '        if exc.cause.reason != "mytag-category-missing":'
+
+[[rows]]
+id = "u221.R21_unknown_name_not_refused"
+source = { table = "u221.json", id = "R21_unknown_name_not_refused" }
+description = "release plan: drop the refusal of a name that is no twin's, so it reaches the lookup"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '''
+        if missing:
+            raise _not_a_twin(missing)'''
+new = '''
+        if False:
+            raise _not_a_twin(missing)'''
+
+[[rows]]
+id = "u221.R22_all_beside_names"
+source = { table = "u221.json", id = "R22_all_beside_names" }
+description = "sync_release: drop the refusal of names beside --all"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '    if every and named:'
+new = '    if False:'
+
+[[rows]]
+id = "u221.R23_nothing_named"
+source = { table = "u221.json", id = "R23_nothing_named" }
+description = "sync_release: drop the refusal of a run naming nothing, so it plans nothing silently"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '    if not every and not named:'
+new = '    if False:'
+
+[[rows]]
+id = "u221.R24_abort_releases"
+source = { table = "u221.json", id = "R24_abort_releases" }
+description = "sync_release: read an abort as an approval, so the hold is emptied without the choice"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '    if ctx.gate.require(_gate(ctx.entry), plan=data, context=facts(planned)) != "approve":'
+new = '    if ctx.gate.require(_gate(ctx.entry), plan=data, context=facts(planned)) == "never":'
+
+[[rows]]
+id = "u221.R25_released_twin_asks_again"
+source = { table = "u221.json", id = "R25_released_twin_asks_again" }
+description = "Planned.action: a twin holding nothing reads as one to release, so a second run asks again over nothing"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '        return NOTHING_HELD if self.held is not None and not self.held else RELEASE'
+new = '        return RELEASE'
+
+[[rows]]
+id = "u27-round-8-independent.W2_composite_wrong_file"
+source = { table = "u27-round-8-independent.json", id = "W2_composite_wrong_file" }
+description = "COMPOSITE for W2: the canary names a file that is not the one it opened"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = '        named = path if path is not None else handle_path(db)'
+new = '        named = (str(path) + "-not-this-file") if path is not None else handle_path(db)'
+
+[[rows]]
+id = "u27-round-8-independent.W3_canary_no_name_the_database"
+source = { table = "u27-round-8-independent.json", id = "W3_canary_no_name_the_database" }
+description = "Drop the name_the_database hand-off in the canary, so a chmod 000 database is unclassifiable"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = '''
+        if named is not None:
+            name_the_database(exc, named)'''
+new = ''
+
+[[rows]]
+id = "u27-round-8-independent.W5_canary_message_no_path"
+source = { table = "u27-round-8-independent.json", id = "W5_canary_message_no_path" }
+description = "Reword the canary refusal so its sentence no longer names the database file"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = '''
+            f"the rekordbox database{where} opened but could not be read as "
+            f"expected: {exc}",'''
+new = '''
+            f"the rekordbox database could not be read as expected after it "
+            f"opened: {exc}",'''
+
+[[rows]]
+id = "u234.O18_snapshot_keeps_the_reading"
+source = { table = "u234.json", id = "O18_snapshot_keeps_the_reading" }
+description = "a snapshot that moved keeps the reading after the stop, so it outlives the stop it was read after"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "maintainer"
+tests = ["tests/test_cli_contract.py", "tests/test_intake_land_twins.py", "tests/test_outbound_order.py", "tests/test_process_scan.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_twins.py", "tests/test_sync_twins_hold.py"]
+old = '                stop_seen=None if moved else held.stop_seen,'
+new = '                stop_seen=held.stop_seen,'
+
+[[rows]]
+id = "u234.O19_reading_not_written"
+source = { table = "u234.json", id = "O19_reading_not_written" }
+description = "the pair's document never writes the reading after the stop, so a later sync never finds it"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_intake_land_twins.py", "tests/test_outbound_order.py", "tests/test_process_scan.py", "tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_twins.py", "tests/test_sync_twins_hold.py"]
+old = '''
+        if self.stop_seen is not None:
+            record["stop_seen"] = self.stop_seen.to_json()'''
+new = '''
+        if False:
+            record["stop_seen"] = self.stop_seen.to_json()'''
+
+[[rows]]
+id = "u206.M18_catalogue_keeps_any_gone"
+source = { table = "u206.json", id = "M18_catalogue_keeps_any_gone" }
+description = "TidalCatalogue.tracks_for_isrc: keep every failure _gone reads as a not found, a FileNotFoundError among them"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+                    if isrc_cache.said_not_found(exc):
+                        answered.append(())'''
+new = '''
+                    if True:
+                        answered.append(())'''
+
+[[rows]]
+id = "u206.M14_account_keeps_invalid_isrc"
+source = { table = "u206.json", id = "M14_account_keeps_invalid_isrc" }
+description = "TidalAccount._isrc_tracks: keep any no match as a not found, InvalidISRC included"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+            if last["said_not_found"]:
+                self._cache.remember(wanted, country, ())'''
+new = '''
+            if True:
+                self._cache.remember(wanted, country, ())'''
+
+[[rows]]
+id = "u206.M17_account_hit_ignored"
+source = { table = "u206.json", id = "M17_account_hit_ignored" }
+description = "TidalAccount._isrc_tracks: never use a remembered answer"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+        if held is not None:
+            return held if held else _ABSENT
+        # What the LAST attempt said'''
+new = '''
+        if False:
+            return held if held else _ABSENT
+        # What the LAST attempt said'''
+
+[[rows]]
+id = "r1724.N11_tag_one_raw_stem"
+source = { table = "r1724.json", id = "N11_tag_one_raw_stem" }
+description = "tag_one: hand the searcher the raw stem, so the match reads mix)_pn and the Obiman release is missed"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '    title = title_tag or titles.name_title(path.stem)'
+new = '    title = title_tag or path.stem'
+
+[[rows]]
+id = "r1724.N12_tag_one_tag_read"
+source = { table = "r1724.json", id = "N12_tag_one_tag_read" }
+description = "tag_one: read the tail off a title tag too, so a tag ending _PN is not asked as written"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '    title = title_tag or titles.name_title(path.stem)'
+new = '    title = titles.name_title(title_tag or path.stem)'
+
+[[rows]]
+id = "u59.M9_column_repointed"
+source = { table = "u59.json", id = "M9_column_repointed" }
+description = "Point SOFT_DELETE_COLUMN at a neighbouring bookkeeping column"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_genre_retag.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = 'SOFT_DELETE_COLUMN = "rb_local_deleted"'
+new = 'SOFT_DELETE_COLUMN = "rb_local_synced"'
+
+[[rows]]
+id = "r787.S1_set_drops_intake"
+source = { table = "r787.json", id = "S1_set_drops_intake" }
+description = "cutover_trees returns the routing tree alone, the list doctor held before R-787"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_intake_imported.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_landing_labels.py", "tests/test_rebuild.py", "tests/test_restore.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_tree_registry.py", "tests/test_tree_writer.py", "tests/test_xml_import_coexistence.py", "tests/test_xml_splice_golden.py"]
+old = '    return frozenset({declared.tree.id, declared.intake.id})'
+new = '    return frozenset({declared.tree.id})'
+
+[[rows]]
+id = "u48-author.S1_remedy_fixed_at_repair"
+source = { table = "u48-author.json", id = "S1_remedy_fixed_at_repair" }
+description = "The session names the repair token again, which is the defect this unit closed"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_backup_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_rebuild.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '            remedy=Remedy(str(exc.remedy)),'
+new = '            remedy=Remedy.REPAIR_BACKUP_FACTS,'
+
+[[rows]]
+id = "u48-author.S2_remedy_fixed_at_grant"
+source = { table = "u48-author.json", id = "S2_remedy_fixed_at_grant" }
+description = "The same defect mirrored: hard code the permission token over every condition"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_backup_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_rebuild.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '            remedy=Remedy(str(exc.remedy)),'
+new = '            remedy=Remedy.GRANT_PATH_ACCESS,'
+
+[[rows]]
+id = "u49-author.L4_a_malformed_holder_raises_again"
+source = { table = "u49-author.json", id = "L4_a_malformed_holder_raises_again" }
+description = "Remove the coercion guard from read_lock_holder, so a lock record with a non numeric pid escapes as a traceback rather than a typed refusal"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_rebuild.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_session_cli.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''
+    try:
+        return Holder.from_json(data["holder"])
+    except (TypeError, ValueError, AttributeError):'''
+new = '''
+    if True:
+        return Holder.from_json(data["holder"])
+    if False:'''

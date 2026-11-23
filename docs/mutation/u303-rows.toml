@@ -1,0 +1,127 @@
+name = "u303"
+pass_kind = "light"
+
+# The card's own table over the code U303 added or rewrote: the shared token
+# filter, the reports module's lazy engines, the two seams doctor now imports
+# inside a function, the hub's offered and run, and label_sync's lazy imports.
+# The guards the split moved verbatim are held by the kill set replay,
+# u303-replay-after-*.
+
+[[rows]]
+id = "S1_without_keeps_the_second_flag"
+description = "_without: only the first flag named is taken out, so --calls-per-hour stays in a continue command"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_sync_land.py", "tests/test_sync_land_beside.py", "tests/test_cli_contract.py"]
+old = "        if token in flags:"
+new = "        if token == flags[0]:"
+
+[[rows]]
+id = "S2_without_keeps_the_joined_form"
+description = "_without: a flag given with = is kept"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_sync_land.py", "tests/test_sync_land_beside.py", "tests/test_cli_contract.py"]
+old = '        if token.startswith(tuple(f"{flag}=" for flag in flags)):'
+new = '        if token.startswith(tuple(f"{flag}=" for flag in flags[:0])):'
+
+[[rows]]
+id = "S3_without_keeps_the_value"
+description = "_without: the flag goes and its value stays on the command line"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_sync_land.py", "tests/test_sync_land_beside.py", "tests/test_cli_contract.py"]
+old = '''        if token in flags:
+            skip = True'''
+new = '''        if token in flags:
+            skip = False'''
+
+[[rows]]
+id = "S4_without_run_names_nothing"
+description = "_without_run: a fresh continue keeps the --run it was given"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_sync_land.py", "tests/test_sync_land_beside.py", "tests/test_cli_contract.py"]
+old = '    return _without(tokens, ("--run",))'
+new = '    return _without(tokens, ("--rerun",))'
+
+[[rows]]
+id = "S5_without_calls_keeps_the_hour"
+description = "_without_calls: --calls-per-hour is no longer taken out before the raised one is added"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_sync_land.py", "tests/test_sync_land_beside.py", "tests/test_cli_contract.py"]
+old = '    return _without(tokens, ("--calls", "--calls-per-hour"))'
+new = '    return _without(tokens, ("--calls",))'
+
+[[rows]]
+id = "R1_engine_name_wrong"
+description = "reports: library_report resolves to the aging engine"
+file = "src/cratekit/cli/reports.py"
+surface = "user"
+tests = ["tests/test_reports_cli.py", "tests/modules/test_reports.py"]
+old = '    "library_report": "library",'
+new = '    "library_report": "aging",'
+
+[[rows]]
+id = "R2_engine_attribute_silent"
+description = "reports: an attribute that is no engine reads as None instead of raising"
+file = "src/cratekit/cli/reports.py"
+surface = "maintainer"
+tests = ["tests/test_reports_cli.py", "tests/modules/test_reports.py", "tests/test_cli_lazy.py"]
+old = '''    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")'''
+new = '''    return None'''
+
+[[rows]]
+id = "D1_trash_probe_creates"
+description = "doctor: the Trash probe creates the per volume Trash it is asking about"
+file = "src/cratekit/cli/doctor_model.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = "    return trash.probe(path, create=False)"
+new = "    return trash.probe(path, create=True)"
+
+[[rows]]
+id = "D2_vocals_kind_inverted"
+description = "doctor: install.extras reads a missing extra as a model that cannot load"
+file = "src/cratekit/cli/doctor_state.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = "    if kind != vocal_scoring.MISSING_EXTRA:"
+new = "    if kind == vocal_scoring.MISSING_EXTRA:"
+
+[[rows]]
+id = "D3_offered_ignores_required"
+description = "doctor.offered: a credential a switched on verb declares is not offered by setup"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_setup_discogs.py"]
+old = "    if requires_check(key, membership):"
+new = "    if False:"
+
+[[rows]]
+id = "D4_run_ignores_probes"
+description = "doctor.run: a caller's probes are dropped for the real machine's"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_cli_contract.py"]
+old = "    inputs = _Inputs(cfg, error, probes or Probes())"
+new = "    inputs = _Inputs(cfg, error, Probes())"
+
+[[rows]]
+id = "L1_land_key_wrong"
+description = "label_sync: the go's landing is read under the wrong key, so no tail is found"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_sync_land_beside.py"]
+old = "    land = report.get(go.LAND_KEY) if isinstance(report, Mapping) else None"
+new = '    land = report.get("landing") if isinstance(report, Mapping) else None'
+
+[[rows]]
+id = "L2_tail_not_kept"
+description = "label_sync: the downloads the go's tail leaves are no longer kept under the job"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_sync_land_beside.py"]
+old = "            go.keep_tail(cfg, store, job, folder)"
+new = "            pass"

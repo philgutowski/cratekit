@@ -1,0 +1,1113 @@
+name = "u325-after-hand"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1709.M25_fallback_identity_fold"
+source = { table = "r1709.json", id = "M25_fallback_identity_fold" }
+description = "the upload question keys the folded title"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
+old = '''
+            "title": title_identity(self.title),
+'''
+new = '''
+            "title": fold(self.title),
+'''
+moved = "U298 replaced the identical identity dict in acquire/fallback.py and intake/candidates.py with match.Wanted.folded_row, which both identity functions now return; the title is keyed by title_identity there, the same line, so folding it breaks both questions as before"
+
+[[rows]]
+id = "u223.M1_composite"
+source = { table = "u223.json", id = "M1_composite" }
+description = "What M1 holds with the staged report fallback gone too: the shipped bug, through the verb and the printed resume"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+                entry.name == RENAME_INTENT_FILENAME
+                and entry.is_file()
+                and not entry.is_symlink()
+            ):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+    elif directory.is_symlink() or directory.exists():
+        # WHAT THE FIRST VERSION DID WITH ANYTHING ELSE AT THIS PATH, kept:
+        # ``rmtree`` refuses a link and a plain file, loudly, rather than this
+        # call deciding to remove or follow one.
+        shutil.rmtree(directory)
+    config.mkdir_private(directory)
+    return directory / _report_name(ordinal)
+
+
+def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
+    """Where one item's rename intent lives: in its staging directory.
+
+    THE INTENT IS WRITTEN BEFORE THE RENAME AND OUTLIVES A KILL. The item is
+    the pre rename name and the rename lands inside the handler, before the
+    engine flips the row to done, so a kill in that window leaves a finished
+    file under its head and a pending row under its old name. The intent is
+    what lets the resume find the file the item BECAME rather than guessing
+    from the folder, because a guess matched any headed file whose stripped
+    stem equalled the item, which is an unrelated file when the source was
+    deleted, and matched nothing when the template deduped or truncated the
+    stem.
+
+    IT OUTLIVES THE ATTEMPT THAT WROTE IT (U223). ``staged_path`` keeps it
+    when it clears the directory for a report, so the attempt that renamed
+    the file, and a resume interrupted in the same window, both leave it for
+    the next. It is removed only where it is known false: a rename that did
+    not land, and an attempt whose source is still a file.
+    """
+    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME
+
+
+def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    config.mkdir_private(path.parent)
+    return write(path, {"item": item.item_id, "target": str(target)})
+
+
+def rename_intent(cfg: config.Config, job, item) -> Path | None:
+    """The target this item's last attempt meant to rename it to, if recorded.
+
+    A link is no record: this module writes the intent as a plain file, and
+    a link would name whatever its far end says as this item's twin.
+    """
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    target = loaded.get("target")
+    return Path(str(target)) if target else None
+
+
+def discard_rename_evidence(cfg: config.Config, job, item) -> None:
+    """Drop this item's intent AND its staged report, once neither can be true.
+
+    Called where the rename they would prove is known not to stand: a rename
+    that did not land, and an attempt whose source is still a file. Left
+    behind, either names whatever later sits at that target, an unrelated
+    file a person put there, as this item's twin once the source is gone. The
+    report goes with the intent because :func:`staged_report` is read as the
+    same proof when the intent is missing, and the next ``staged_path`` that
+    would clear it comes only after the work, which a kill can forestall.
+    """
+    directory = _staging_dir(cfg, job.job_id, item.ordinal)
+    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK, the rule ``staged_path`` keeps: whatever sits at
+        # the link's far end is not this item's staging, and ``staged_path``
+        # refuses the link loudly when the attempt reaches it.
+        return
+    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):
+        entry = directory / name
+        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path``, which
+        # removes its tree; an ``unlink`` would fail the item for good on a
+        # shape the clear before U223 healed.
+        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)
+
+
+def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
+    """This item's report, staged by an attempt whose row never moved, if any.
+
+    Read in place and never cleared here. A report that says it renamed is
+    staged only after the rename, so it is the item's own record of the
+    rename when the intent is gone, which is the state the shipped
+    ``staged_path`` left every job interrupted in that window (U223); which
+    reports say so is the caller's check. A report for another item, one
+    that does not parse to a mapping, or a link, is no report.
+    """
+    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None'''
+new = '''
+                entry.name == "never-kept.json"
+                and entry.is_file()
+                and not entry.is_symlink()
+            ):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+    elif directory.is_symlink() or directory.exists():
+        # WHAT THE FIRST VERSION DID WITH ANYTHING ELSE AT THIS PATH, kept:
+        # ``rmtree`` refuses a link and a plain file, loudly, rather than this
+        # call deciding to remove or follow one.
+        shutil.rmtree(directory)
+    config.mkdir_private(directory)
+    return directory / _report_name(ordinal)
+
+
+def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
+    """Where one item's rename intent lives: in its staging directory.
+
+    THE INTENT IS WRITTEN BEFORE THE RENAME AND OUTLIVES A KILL. The item is
+    the pre rename name and the rename lands inside the handler, before the
+    engine flips the row to done, so a kill in that window leaves a finished
+    file under its head and a pending row under its old name. The intent is
+    what lets the resume find the file the item BECAME rather than guessing
+    from the folder, because a guess matched any headed file whose stripped
+    stem equalled the item, which is an unrelated file when the source was
+    deleted, and matched nothing when the template deduped or truncated the
+    stem.
+
+    IT OUTLIVES THE ATTEMPT THAT WROTE IT (U223). ``staged_path`` keeps it
+    when it clears the directory for a report, so the attempt that renamed
+    the file, and a resume interrupted in the same window, both leave it for
+    the next. It is removed only where it is known false: a rename that did
+    not land, and an attempt whose source is still a file.
+    """
+    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME
+
+
+def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    config.mkdir_private(path.parent)
+    return write(path, {"item": item.item_id, "target": str(target)})
+
+
+def rename_intent(cfg: config.Config, job, item) -> Path | None:
+    """The target this item's last attempt meant to rename it to, if recorded.
+
+    A link is no record: this module writes the intent as a plain file, and
+    a link would name whatever its far end says as this item's twin.
+    """
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    target = loaded.get("target")
+    return Path(str(target)) if target else None
+
+
+def discard_rename_evidence(cfg: config.Config, job, item) -> None:
+    """Drop this item's intent AND its staged report, once neither can be true.
+
+    Called where the rename they would prove is known not to stand: a rename
+    that did not land, and an attempt whose source is still a file. Left
+    behind, either names whatever later sits at that target, an unrelated
+    file a person put there, as this item's twin once the source is gone. The
+    report goes with the intent because :func:`staged_report` is read as the
+    same proof when the intent is missing, and the next ``staged_path`` that
+    would clear it comes only after the work, which a kill can forestall.
+    """
+    directory = _staging_dir(cfg, job.job_id, item.ordinal)
+    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK, the rule ``staged_path`` keeps: whatever sits at
+        # the link's far end is not this item's staging, and ``staged_path``
+        # refuses the link loudly when the attempt reaches it.
+        return
+    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):
+        entry = directory / name
+        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path``, which
+        # removes its tree; an ``unlink`` would fail the item for good on a
+        # shape the clear before U223 healed.
+        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)
+
+
+def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
+    """This item's report, staged by an attempt whose row never moved, if any.
+
+    Read in place and never cleared here. A report that says it renamed is
+    staged only after the rename, so it is the item's own record of the
+    rename when the intent is gone, which is the state the shipped
+    ``staged_path`` left every job interrupted in that window (U223); which
+    reports say so is the caller's check. A report for another item, one
+    that does not parse to a mapping, or a link, is no report.
+    """
+    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if True:
+        return None'''
+moved = "Same file and the same two edits, the intent no longer kept by staged_path and staged_report reading nothing. U298 moved write onto core.jobs.Artifacts and renamed config._mkdir_private, both inside the span the old text covered, so the span is re-read at db120fdb"
+
+[[rows]]
+id = "u45-round-1.H2_queueing_plans_first"
+source = { table = "u45-round-1.json", id = "H2_queueing_plans_first" }
+description = "Plan inside the handler, so queueing refuses on a machine with no rclone where the work would have run fine"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    cfg = load_config(("backup.cli",))
+    with jobs.open_store() as store:
+        if ctx.args.job:'''
+new = '''
+    cfg = load_config(("backup.cli",))
+    backup.plan_backup(cfg)
+    with jobs.open_store() as store:
+        if ctx.args.job:'''
+moved = "Same handler, backup_library; U298 replaced its private _load with cli.output.load_config, so the line the plan is inserted after is reworded and the insertion point is the same"
+
+[[rows]]
+id = "r1499.L02_go_kept_after_arrival"
+source = { table = "r1499.json", id = "L02_go_kept_after_arrival" }
+description = "_kept: the go keeps its record although something arrived"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''
+    if changed is not None:
+        return [_unkept(folder, job, tail.changed_said(changed))]'''
+new = '''
+    if False:
+        return [_unkept(folder, job, tail.changed_said(changed))]'''
+moved = "Same _kept guard; U298 replaced this copy of _changed_said with tail.changed_said, which only rewords the line under the condition the row mutates"
+
+[[rows]]
+id = "r338-c.C6_only_the_first_root_is_watched"
+source = { table = "r338-c.json", id = "C6_only_the_first_root_is_watched" }
+description = "is_watched: ask the library root alone, so a share aimed at the live share's own parent is pulled under the watch that refuses it"
+file = "src/cratekit/core/analysis_store.py"
+surface = "user"
+tests = ["tests/test_analysis_store.py"]
+old = '    return any(config.is_inside(Path(path), root) for root in watch_roots(cfg))'
+new = '    return config.is_inside(Path(path), watch_roots(cfg)[0])'
+moved = "Same is_watched line; U298 replaced the module's own _is_within with config.is_inside, the same textual containment test, so asking only the first root is the same mutation"
+
+[[rows]]
+id = "u79-b.B7_identity_without_version"
+source = { table = "u79-b.json", id = "B7_identity_without_version" }
+description = "The question is keyed without the version, so two versions are one item"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''
+            "version": self.version_key,
+'''
+new = '''
+            "version": "",
+'''
+moved = "U298 moved intake/candidates.identity's dict into match.Wanted.folded_row, which candidates.identity now returns; the version key is the same field, so blanking it makes two versions one question as before"
+
+[[rows]]
+id = "u221.R24_abort_releases"
+source = { table = "u221.json", id = "R24_abort_releases" }
+description = "sync_release: read an abort as an approval, so the hold is emptied without the choice"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '    if ctx.gate.require(declared_gate(ctx.entry, APPROVE_GATE), plan=data, context=facts(planned)) != "approve":'
+new = '    if ctx.gate.require(declared_gate(ctx.entry, APPROVE_GATE), plan=data, context=facts(planned)) == "never":'
+moved = "Same gate check in sync_release; U298 replaced the local _gate lookup with cli.output.declared_gate, so only the argument is reworded"
+
+[[rows]]
+id = "u287.M10_gone_on_one_read"
+source = { table = "u287.json", id = "M10_gone_on_one_read" }
+description = "read_one: read a playlist the account's list omits as gone without opening it by its id"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''
+    name = (
+        shown.name
+        if shown is not None
+        else (names or {}).get(account) or (prior.name if prior is not None else "")
+    )
+'''
+new = '''
+    name = (
+        shown.name
+        if shown is not None
+        else (names or {}).get(account) or (prior.name if prior is not None else "")
+    )
+    if shown is None:
+        return Listing(account=account, name=name, state=GONE, why="")
+'''
+moved = "Same read_one; the merged U320 work made the name a multi line expression that also reads a remembered name, and the row still inserts the early GONE return right after it, before the playlist is opened by its id"
+
+[[rows]]
+id = "u287.M16_gone_holds_what_was_recorded"
+source = { table = "u287.json", id = "M16_gone_holds_what_was_recorded" }
+description = "Listing.holds: a gone playlist holds nothing, so a track its pass recorded on it can be offered"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '        if self.state not in HOLDING:'
+new = '        if self.state not in HOLDING - {GONE}:'
+moved = "Same Listing.holds guard; the merged U320 work named the holding states HOLDING and added WITHHELD to it, so the mutation takes GONE out of that set and leaves the rest, which is what removing GONE from (READ, GONE) did"
+
+[[rows]]
+id = "r816-b.B5_commit_recorded"
+source = { table = "r816-b.json", id = "B5_commit_recorded" }
+description = "apply_rows: leave the landed commit off the session record"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_rows.py"]
+old = '''
+        # RECORDED THE INSTANT THE COMMIT RETURNS.
+        row_defaults.record_commit(record, CHANGE_KEY, written, cfg)
+'''
+new = '''
+        # RECORDED THE INSTANT THE COMMIT RETURNS.
+'''
+moved = "Same call site in apply_rows; U298 replaced the module's _record_commit with write.row_defaults.record_commit, so the deleted line is reworded and still the record of the landed commit"
+
+[[rows]]
+id = "u119.G2_source_folder_counts"
+source = { table = "u119.json", id = "G2_source_folder_counts" }
+description = "source_playlist: a source playlist holding no live track is mirrored, emptying every Favorites"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '        if not live_members(db, str(live[0].ID)):'
+new = '        if False:'
+moved = "Same source_playlist guard; U298 renamed _live_members to the public live_members"
+
+[[rows]]
+id = "u119.G3_two_sources_first_wins"
+source = { table = "u119.json", id = "G3_two_sources_first_wins" }
+description = "source_playlist: two live sources, the first is taken"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py"]
+old = '''
+    if len(live) == 1:
+        if not live_members(db, str(live[0].ID)):'''
+new = '''
+    if len(live) >= 1:
+        if not live_members(db, str(live[0].ID)):'''
+moved = "Same source_playlist guard; U298 renamed _live_members to the public live_members"
+
+[[rows]]
+id = "u206.M25_lock_skipped"
+source = { table = "u206.json", id = "M25_lock_skipped" }
+description = "Cache._locked: yield as held without taking the lock"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                had = True'''
+new = '''
+            try:
+                had = True'''
+moved = "U298 replaced isrc_cache.Cache._locked's body with config.lock_within, which _locked now returns; the same non blocking flock in the same poll loop, so dropping it yields held without the lock"
+
+[[rows]]
+id = "u293.S2_second_holder_refused"
+source = { table = "u293.json", id = "S2_second_holder_refused" }
+description = "held: a second holder goes on beside the first rather than refusing"
+file = "src/cratekit/core/staging_lock.py"
+surface = "user"
+tests = ["tests/test_staging_lock.py", "tests/test_sync_night.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '            raise _held_error(what or verb, _read_holder(handle.read()), path) from None'
+new = '            pass'
+moved = "Same refusal in held; U298 moved the non blocking flock into config.lock_now, which returns whether the lock was had, and the raise now sits under if not had, one level shallower, still the refusal of a second holder"
+
+[[rows]]
+id = "r235-a.M11_session_lock_dropped"
+source = { table = "r235-a.json", id = "M11_session_lock_dropped" }
+description = "a revert holds the registry lock and not the session lock"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '    with session.session_lock(cfg), config.exclusive_lock(lock_path(cfg)):'
+new = '    with config.exclusive_lock(lock_path(cfg)):'
+moved = "Same with statement in revert_cutover; U298 renamed config._exclusive_lock to exclusive_lock"
+
+[[rows]]
+id = "u79-c.C2_owned_row_searched"
+source = { table = "u79-c.json", id = "C2_owned_row_searched" }
+description = "A row the library holds is counted missing and searched for"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
+old = '''
+        word = match_cli.SETTLED_WORDS.get(settled.state)
+        if word is not None:
+            counts[word] += 1'''
+new = '''
+        word = match_cli.SETTLED_WORDS.get(settled.state)
+        if word is not None and word != "owned":
+            counts[word] += 1'''
+moved = "Same loop in _missing_for_list; U298 replaced its three state branches with a lookup in match_cli.SETTLED_WORDS, whose MATCHED entry is owned, so excluding owned sends a matched row to the missing branch, which is what disabling the MATCHED branch did"
+
+[[rows]]
+id = "u107-a.S01_record_not_json"
+source = { table = "u107-a.json", id = "S01_record_not_json" }
+description = "sync_cli.load_record: read a record that is not JSON as an empty one, so every question is asked again and every answer is lost"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_label_sync.py"]
+old = '''
+    except ValueError as exc:
+        raise unusable("it is not JSON") from exc
+
+
+def read_json_map('''
+new = '''
+    except ValueError as exc:
+        return False, None
+
+
+def read_json_map('''
+moved = "U298 replaced label/sync_cli.load_record's own JSON read with config.read_json_map over config.read_json; the not JSON refusal is read_json's, and answering absent there makes load_record return its empty record, the same outcome the original return of _empty gave"
+
+[[rows]]
+id = "r356-b.B2_template_declares_no_lossy_marker"
+source = { table = "r356-b.json", id = "B2_template_declares_no_lossy_marker" }
+description = "The template never declares the marker, so a marked lossy copy keeps it in its release title"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_sync_all.py"]
+old = '    return naming.NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)'
+new = '    return naming.NameTemplate()'
+moved = "U298 folded this function's strip, empty check and marker rule into naming.NameTemplate.lossy_if_marked, which it now returns; returning the plain template here is what forcing the empty branch did, local to this caller"
+
+[[rows]]
+id = "r356-b.B3_empty_marker_no_longer_guarded"
+source = { table = "r356-b.json", id = "B3_empty_marker_no_longer_guarded" }
+description = "A configuration with no marker text builds a marker rule with an empty literal, which is refused at construction, so every item fails over a naming policy"
+file = "src/cratekit/modules/outbound/source.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py", "tests/test_queued_resume_contract.py", "tests/test_sync_all.py"]
+old = '    return naming.NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)'
+new = '    return naming.NameTemplate.lossy((cfg.naming.lossy_marker or "").strip())'
+moved = "U298 folded this function's strip, empty check and marker rule into naming.NameTemplate.lossy_if_marked; calling NameTemplate.lossy on the stripped text here skips only the empty check, so an empty marker reaches the rule's construction as it did, local to this caller"
+
+[[rows]]
+id = "u220.A3_keep_head"
+source = { table = "u220.json", id = "A3_keep_head" }
+description = "_to_the_front: match the asked order's head rather than its tail, the old to the end rule"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = 'one == wanted[len(wanted) - 1 - keep]'
+new = 'one == wanted[keep]'
+moved = "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; the same tail match"
+
+[[rows]]
+id = "u220.A4_first_first"
+source = { table = "u220.json", id = "A4_first_first" }
+description = "_to_the_front: move the tracks first first rather than last first, so the moved ones land reversed"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '    return list(reversed(wanted[: len(wanted) - keep]))'
+new = '    return wanted[: len(wanted) - keep]'
+moved = "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; the same reversal of the moves"
+
+[[rows]]
+id = "r1394.S3_bool_count_read"
+source = { table = "r1394.json", id = "S3_bool_count_read" }
+description = "stopped write: a count written as true or false is read as a number"
+file = "src/cratekit/cli/output.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '    if isinstance(value, bool) or not isinstance(value, int) or value < 0:'
+new = '    if not isinstance(value, int) or value < 0:'
+moved = "U298 replaced pair_stopped's _count with cli.output.count_of, the same three part check, which _moving now calls for both counts"
+
+[[rows]]
+id = "r1394.S4_negative_count_read"
+source = { table = "r1394.json", id = "S4_negative_count_read" }
+description = "stopped write: a negative count is read as one"
+file = "src/cratekit/cli/output.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '    if isinstance(value, bool) or not isinstance(value, int) or value < 0:'
+new = '    if isinstance(value, bool) or not isinstance(value, int):'
+moved = "U298 replaced pair_stopped's _count with cli.output.count_of, the same three part check, which _moving now calls for both counts"
+
+[[rows]]
+id = "r1394.S5_sent_read_as_landed"
+source = { table = "r1394.json", id = "S5_sent_read_as_landed" }
+description = "stopped write: the sent count is read from the landed field, so a move in flight reads as known not sent"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '    return at, start, end, count_of(value.get(SENT)), count_of(value.get(LANDED))'
+new = '    return at, start, end, count_of(value.get(LANDED)), count_of(value.get(LANDED))'
+moved = "Same return in _moving; U298 replaced the module's _count with cli.output.count_of"
+
+[[rows]]
+id = "u322.M22_backlog_partly_clause_gone"
+source = { table = "u322.json", id = "M22_backlog_partly_clause_gone" }
+description = "backlog_cli.advisories: the partly read clause is dropped, so the campaign's gate says nothing of Beatport"
+file = "src/cratekit/tagging/backlog_cli.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''
+    if unread.partly:
+        parts.append(
+            f"{unread.partly_by} could not be read for {len(unread.partly)} row(s) "
+            f"another catalogue answered, {named(list(unread.partly))}, so those were "'''
+new = '''
+    if False:
+        parts.append(
+            f"{unread.partly_by} could not be read for {len(unread.partly)} row(s) "
+            f"another catalogue answered, {named(list(unread.partly))}, so those were "'''
+moved = "Same clause in advisories; U298 renamed _named to the public named"
+
+[[rows]]
+id = "r668-a.M5_missing_list_guard_after_load"
+source = { table = "r668-a.json", id = "M5_missing_list_guard_after_load" }
+description = "the missing list refusal runs after the configuration is read, so a command naming nothing has side effects first"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '''
+    if ctx.args.list is None and ctx.args.job is None:
+        raise _unusable(
+            "no list was named and no job was given, so there is nothing to acquire",
+            "name the list of tracks to acquire",
+            "or continue an acquisition already queued with --job JOB_ID",
+        )
+    cfg = load_config(("acquire.cli",))
+'''
+new = '''
+    cfg = load_config(("acquire.cli",))
+    if ctx.args.list is None and ctx.args.job is None:
+        raise _unusable(
+            "no list was named and no job was given, so there is nothing to acquire",
+            "name the list of tracks to acquire",
+            "or continue an acquisition already queued with --job JOB_ID",
+        )
+'''
+moved = "Same order in acquire_download; U298 replaced the private _load with cli.output.load_config, so the configuration read the guard is moved after is reworded"
+
+[[rows]]
+id = "r668-a.M7_list_compared_as_strings"
+source = { table = "r668-a.json", id = "M7_list_compared_as_strings" }
+description = "the named and frozen lists are compared as strings, so a symlinked or /private spelling of the frozen list is refused"
+file = "src/cratekit/acquire/cli.py"
+surface = "user"
+tests = ["tests/test_acquire_workers.py", "tests/test_acquire_cli.py"]
+old = '    if preflight.names_one_path(given, Path(frozen)):'
+new = '    if str(given) == frozen:'
+moved = "Same comparison in _same_list_or_refuse; U298 renamed preflight._names_one_path to names_one_path"
+
+[[rows]]
+id = "r926.G11_mkdir_before_check"
+source = { table = "r926.json", id = "G11_mkdir_before_check" }
+description = "save creates the configuration directory before the lock is built, so a refused write leaves a directory behind"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    with _write_lock(target):
+        mkdir_private(target.parent)
+        atomic_write_bytes(config.to_toml_bytes(), target)'''
+new = '''
+    mkdir_private(target.parent)
+    with _write_lock(target):
+        atomic_write_bytes(config.to_toml_bytes(), target)'''
+moved = "Same lines in save; U298 renamed _mkdir_private to the public mkdir_private"
+
+[[rows]]
+id = "r926.G3_document_check_dropped"
+source = { table = "r926.json", id = "G3_document_check_dropped" }
+description = "_write_lock no longer checks, so the configuration document is held only by the primitives' temporary allowance"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    _refuse_write_outside_test_root(path)
+    return exclusive_lock(path.with_name(path.name + ".migrate.lock"))'''
+new = '    return exclusive_lock(path.with_name(path.name + ".migrate.lock"))'
+moved = "Same lines in _write_lock; U298 renamed _exclusive_lock to the public exclusive_lock"
+
+[[rows]]
+id = "r926.G4_document_gets_temporary"
+source = { table = "r926.json", id = "G4_document_gets_temporary" }
+description = "The configuration document is given the system temporary allowance the primitives have"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    _refuse_write_outside_test_root(path)
+    return exclusive_lock(path.with_name(path.name + ".migrate.lock"))'''
+new = '''
+    _refuse_write_outside_test_root(path, system_temporary=True)
+    return exclusive_lock(path.with_name(path.name + ".migrate.lock"))'''
+moved = "Same lines in _write_lock; U298 renamed _exclusive_lock to the public exclusive_lock"
+
+[[rows]]
+id = "r926.G5_atomic_write_unchecked"
+source = { table = "r926.json", id = "G5_atomic_write_unchecked" }
+description = "atomic_write_bytes no longer checks, so a ledger or token write from an unisolated test lands anywhere"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    _refuse_write_outside_test_root(path, system_temporary=True)
+    mkdir_private(path.parent)
+    fd, tmp = tempfile.mkstemp('''
+new = '''
+    mkdir_private(path.parent)
+    fd, tmp = tempfile.mkstemp('''
+moved = "Same lines in atomic_write_bytes; U298 renamed _mkdir_private to the public mkdir_private"
+
+[[rows]]
+id = "r926.G6_lock_unchecked"
+source = { table = "r926.json", id = "G6_lock_unchecked" }
+description = "_exclusive_lock no longer checks, so a session lock from an unisolated test is created anywhere"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+        _refuse_write_outside_test_root(self.path, system_temporary=True)
+        mkdir_private(self.path.parent)'''
+new = '        mkdir_private(self.path.parent)'
+moved = "Same lines in the lock's __enter__; U298 renamed the class to exclusive_lock and _mkdir_private to mkdir_private"
+
+[[rows]]
+id = "r926.G8_target_unresolved"
+source = { table = "r926.json", id = "G8_target_unresolved" }
+description = "The target is compared as spelled, so a link inside the root aimed outside it passes"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    target = path.resolve()
+    if any(is_inside(target, each) for each in allowed):'''
+new = '''
+    target = path
+    if any(is_inside(target, each) for each in allowed):'''
+moved = "Same lines in _refuse_write_outside_test_root; U298 renamed _is_inside to the public is_inside"
+
+[[rows]]
+id = "u217.K10_naive_instant"
+source = { table = "u217.json", id = "K10_naive_instant" }
+description = "_instant: accept an instant with no zone"
+file = "src/cratekit/label/kept_reads.py"
+surface = "maintainer"
+tests = ["tests/test_label_kept_listing.py"]
+old = '    return moment if moment.tzinfo is not None else None'
+new = '    return moment'
+moved = "U298 deleted kept_listing's copy of _instant and has KeptListing read through kept_reads._instant, the identical function; the zone check is the same line there"
+
+[[rows]]
+id = "r375-b.M1_capture_never_attached"
+source = { table = "r375-b.json", id = "M1_capture_never_attached" }
+description = "mytags_vocals: take the capture and never attach it, which is R-375 itself with a record beside it"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_metadata_cli.py"]
+old = '''
+    capture = snapshot.capture(cfg, db=db)
+    session.attach_capture(record, capture.root, cfg)
+    snapshot.assert_verified(capture)
+    return record, capture'''
+new = '''
+    capture = snapshot.capture(cfg, db=db)
+    snapshot.assert_verified(capture)
+    return record, capture'''
+moved = "U298 replaced mytags_vocals' own capture, attach and verify lines with trees.attached_capture, which it now calls; the attach is the same line there, so dropping it takes the capture and never attaches it"
+
+[[rows]]
+id = "u219.G1_resort_abort"
+source = { table = "u219.json", id = "G1_resort_abort" }
+description = "route resort: an abort at the gate queues the resort anyway"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_organize_mirror_edits.py", "tests/test_resort_scope.py", "tests/test_routing_workers.py"]
+old = '''
+    if option != "apply":
+        return ctx.envelope(data=no_job("declined"), outcome=Outcome.NO_OP, warnings=warnings)'''
+new = '''
+    if option == "never":
+        return ctx.envelope(data=no_job("declined"), outcome=Outcome.NO_OP, warnings=warnings)'''
+moved = "Same gate answer in route_resort; U298 replaced the local _no_op with cli.output.no_job"
+
+[[rows]]
+id = "r375-b.T5_witnessed_commit_not_recorded"
+source = { table = "r375-b.json", id = "T5_witnessed_commit_not_recorded" }
+description = "write_tree_membership: ignore the witness, so a commit that landed and then raised closes as though nothing landed"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+    if witness.landed:
+        _record_membership_commit(record, tree_id, added, cfg)'''
+new = '''
+    if False:
+        _record_membership_commit(record, tree_id, added, cfg)'''
+moved = "U298 moved write_tree_membership's failure path, the quiet rollback and the witnessed commit record, into trees._undo_unless_landed, which its except branch now calls; the same witness check"
+
+[[rows]]
+id = "r375-c.T6_every_raise_read_as_a_commit_again"
+source = { table = "r375-c.json", id = "T6_every_raise_read_as_a_commit_again" }
+description = "write_tree_membership: record a commit on every raise. Batch B read this as ZERO; measured again after test_a_write_that_fails_after_counting_a_membership_still_claims_no_commit"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_rebuild.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+    if witness.landed:
+        _record_membership_commit(record, tree_id, added, cfg)'''
+new = '''
+    if True:
+        _record_membership_commit(record, tree_id, added, cfg)'''
+moved = "U298 moved write_tree_membership's failure path, the quiet rollback and the witnessed commit record, into trees._undo_unless_landed, which its except branch now calls; the same witness check"
+
+[[rows]]
+id = "u254.M20_mark_unlocked"
+source = { table = "u254.json", id = "M20_mark_unlocked" }
+description = "mark_applied: take no lock around the read, the choice and the write"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''
+    with config.exclusive_lock(lock_path(cfg)):
+        known = _LEFT.pop(key, None)'''
+new = '''
+    if True:
+        known = _LEFT.pop(key, None)'''
+moved = "Same with statement in mark_applied; U298 renamed config._exclusive_lock to exclusive_lock"
+
+[[rows]]
+id = "u192.A1_run_queue_only_ignored"
+source = { table = "u192.json", id = "A1_run_queue_only_ignored" }
+description = "analyze_run: ignore --queue-only and drive the job"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
+old = '''
+        if foreground.queue_only(ctx.args):
+            return ctx.envelope(data=jobs.reported(store, job))'''
+new = '''
+        if False:
+            return ctx.envelope(data=jobs.reported(store, job))'''
+moved = "Same branch in analyze_run; U298 replaced the local _reported with core.jobs.reported"
+
+[[rows]]
+id = "u192.A2_restamp_queue_only_ignored"
+source = { table = "u192.json", id = "A2_restamp_queue_only_ignored" }
+description = "analyze_restamp: ignore --queue-only and drive the job"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''
+        if foreground.queue_only(ctx.args):
+            return ctx.envelope(
+                data=jobs.reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)'''
+new = '''
+        if False:
+            return ctx.envelope(
+                data=jobs.reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)'''
+moved = "Same branch in analyze_restamp; U298 replaced the local _reported with core.jobs.reported"
+
+[[rows]]
+id = "u27-reports-round-1.S6_lossy_marker"
+source = { table = "u27-reports-round-1.json", id = "S6_lossy_marker" }
+description = "Build the naming template without the configured lossy marker"
+file = "src/cratekit/cli/reports.py"
+surface = "user"
+tests = ["tests/test_reports_cli.py"]
+old = '    return NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)'
+new = '    return NameTemplate()'
+moved = "U298 folded this template's strip, empty check and marker rule into naming.NameTemplate.lossy_if_marked, which it now returns; the plain template here drops the configured marker as before, local to this verb"
+
+[[rows]]
+id = "u194.W20_retag_reread"
+source = { table = "u194.json", id = "W20_retag_reread" }
+description = "_retag: drop the read before the write, so a file changed since the second plan is written over"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''
+        if file_genres(item.path) != (item.current,):
+            done.moved.append(item)'''
+new = '''
+        if False:
+            done.moved.append(item)'''
+moved = "Same read before the write in _retag; U298 replaced the local _genres with tagging.tag.file_genres, the identical exact reader"
+
+[[rows]]
+id = "u194.W21_retag_read_back"
+source = { table = "u194.json", id = "W21_retag_read_back" }
+description = "_retag: drop the read back, so a write that did not take is counted as retagged"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''
+        if file_genres(item.path) != (display,):
+            done.wrong.append(item)'''
+new = '''
+        if False:
+            done.wrong.append(item)'''
+moved = "Same read back in _retag; U298 replaced the local _genres with tagging.tag.file_genres, the identical exact reader"
+
+[[rows]]
+id = "u57-recognition-and-items.C12_stray_file_sorted"
+source = { table = "u57-recognition-and-items.json", id = "C12_stray_file_sorted" }
+description = "The report reader sorts every json file by its stem as a number again"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py"]
+old = '    return sorted((path for path in paths if path.stem.isdigit()), key=lambda item: int(item.stem))'
+new = '    return sorted(paths, key=lambda item: int(item.stem))'
+moved = "U298 deleted core/artifacts.py and folded its committed reader into core.jobs.Artifacts.committed, whose default order is by_ordinal; the filter to ordinal named files before the numeric sort is that function's, and dropping it lets a stray json file reach int() as before"
+
+[[rows]]
+id = "r504-b.B5_noop_silent"
+source = { table = "r504-b.json", id = "B5_noop_silent" }
+description = "Every heart withheld is the quiet no-op again, with no warning"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_all.py", "tests/test_sync_mark.py"]
+old = '''
+                data=no_job("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,
+                warnings=warnings,
+            )'''
+new = '''
+                data=no_job("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,
+            )'''
+moved = "Same no-tracks return in intake_playlist; U298 replaced the local _no_op with cli.output.no_job"
+
+[[rows]]
+id = "r515-operator.S10_intake_all_withheld_quiet"
+source = { table = "r515-operator.json", id = "S10_intake_all_withheld_quiet" }
+description = "An intake playlist with every track withheld is a quiet no op"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py"]
+old = '''
+        if not tracks:
+            return ctx.envelope(
+                data=no_job("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,
+                warnings=warnings,'''
+new = '''
+        if not tracks:
+            return ctx.envelope(
+                data=no_job("no-tracks", source=reference, **extra),
+                outcome=Outcome.NO_OP,'''
+moved = "Same no-tracks return in intake_playlist; U298 replaced the local _no_op with cli.output.no_job"
+
+[[rows]]
+id = "u62.C1_bound_constant_true"
+source = { table = "u62.json", id = "C1_bound_constant_true" }
+description = "Answer bound() True without asking whether the adapter imports"
+file = "src/cratekit/label/catalogue.py"
+surface = "user"
+tests = ["tests/test_label_tidal_catalogue.py", "tests/modules/test_labels.py", "tests/test_label_workers.py", "tests/intake/test_workers.py"]
+old = '    return provider_session.importable(ADAPTER_MODULE)'
+new = '    return True'
+moved = "Same bound(); U298 replaced its try import with provider_session.importable, the same question, so answering True here skips it as before, local to this function"
+
+[[rows]]
+id = "r815-c.J8_a_refusal_parks_and_fails_no_item"
+source = { table = "r815-c.json", id = "J8_a_refusal_parks_and_fails_no_item" }
+description = "handle: let a refusal fail the item"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''
+    except CratekitError as exc:
+        raise _parked(job, exc) from exc
+    return ARTIFACTS.produced(cfg, job, item, report)'''
+new = '''
+    except CratekitError:
+        raise
+    return ARTIFACTS.produced(cfg, job, item, report)'''
+moved = "Same except clause in handle; U298 replaced artifacts.produced(ARTIFACTS, ...) with the bound ARTIFACTS.produced on core.jobs.Artifacts, only the line after the guard"
+
+[[rows]]
+id = "u46-round-2.M2_resume_does_not_drive"
+source = { table = "u46-round-2.json", id = "M2_resume_does_not_drive" }
+description = "Report the queued job on resume without running any of it, which is the state R-198 describes"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_job_seam.py", "tests/test_master_cli.py"]
+old = '''
+        _result, warnings = ctx.run_job(store, job)
+        job = get(store, job.job_id)'''
+new = '        pass'
+moved = "U298 replaced master's resume with core.jobs.resumed, which master_recording now calls after its reconcile; the drive inside its is_open branch is the same two lines, so removing it reports the queued job without running any of it"
+
+[[rows]]
+id = "u43-author-round-2.H4_template_loses_the_marker"
+source = { table = "u43-author-round-2.json", id = "H4_template_loses_the_marker" }
+description = "ROUND ONE: zero. The name template stops declaring the lossy marker, so a marked file's clean title keeps the marker and its match key gains a token"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_cli.py"]
+old = '    return NameTemplate.lossy(cfg.naming.lossy_marker)'
+new = '    return NameTemplate()'
+moved = "Same template function; U298 spelled its marker rule as naming.NameTemplate.lossy, which builds the same lossy MarkerRule, so the plain template drops it as before"
+
+[[rows]]
+id = "u43-author-round-2.V2_marker_position_moved"
+source = { table = "u43-author-round-2.json", id = "V2_marker_position_moved" }
+description = "The marker rule is declared with a separator that puts it somewhere the head parser does not strip. If the lossy guard passes this, its fixture is in a position where the declaration cannot matter, which is the mistake the first attempt at it made"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_cli.py"]
+old = '    return NameTemplate.lossy(cfg.naming.lossy_marker)'
+new = '    return NameTemplate.lossy("[NOTAMARKER]")'
+moved = "Same template function; U298 spelled its marker rule as naming.NameTemplate.lossy, so the wrong literal is passed to it in place of the configured marker, as before"
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R37_artifact_named_by_item_id"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R37_artifact_named_by_item_id" }
+description = "A filename built from a tagging item identifier is a path traversal wearing a report, because the identifier is a path relative to a folder"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+        directory = self.final_dir(cfg, job_id)
+        config.mkdir_private(directory)
+        return directory / f"{ordinal:04d}.json"'''
+new = '''
+        directory = self.final_dir(cfg, job_id)
+        config.mkdir_private(directory)
+        return directory / f"{ordinal}.json"'''
+moved = "U298 folded tagging/artifacts.final_path into core.jobs.Artifacts.final_path, which tagging binds as final_path; the same name built from the ordinal"
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R38_staging_not_cleared"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R38_staging_not_cleared" }
+description = "A half written report from an attempt that did not finish is committed by the next attempt as though it described that attempt"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+        if directory.exists():
+            shutil.rmtree(directory)'''
+new = '''
+        if False:
+            shutil.rmtree(directory)'''
+moved = "U298 folded tagging/artifacts.staged_path into core.jobs.Artifacts.staged_path, which tagging binds as staged_path and produced calls; the same clearing of a stale attempt"
+
+[[rows]]
+id = "r799-b.W1_a_file_is_read_again_before_it_is_written"
+source = { table = "r799-b.json", id = "W1_a_file_is_read_again_before_it_is_written" }
+description = "apply: write over whatever the file carries by now"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''
+        if file_genres(target) != (item.current,):
+            moved.append(item.path)
+            continue'''
+new = ''
+moved = "Same read before the write in apply; U298 replaced the local _file_genres with tagging.tag.file_genres, the identical exact reader"
+
+[[rows]]
+id = "r799-b.W3_a_write_is_read_back"
+source = { table = "r799-b.json", id = "W3_a_write_is_read_back" }
+description = "apply: take the writer's word that the genre is on the file"
+file = "src/cratekit/tagging/remap.py"
+surface = "user"
+tests = ["tests/test_tag_remap.py"]
+old = '''
+        if file_genres(target) != (item.wanted,):
+            wrong.append(item.path)
+            continue'''
+new = ''
+moved = "Same read back in apply; U298 replaced the local _file_genres with tagging.tag.file_genres, the identical exact reader"
+
+[[rows]]
+id = "r290-author.S11_tagging_shell_call_removed"
+source = { table = "r290-author.json", id = "S11_tagging_shell_call_removed" }
+description = "Remove the one jobs.raise_for_state call from tagging/shell.py, so this shell reports a parked or half failed job and exits 0"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_job_outcome.py", "tests/test_tag_workers.py", "tests/test_adopt_workers.py", "tests/test_master_cli.py", "tests/test_acquire_fallback_fetch.py"]
+old = '''
+    raise_for_state(job)
+    return job, warnings'''
+new = '''
+    get  # the mapping call, removed
+    return job, warnings'''
+moved = "U298 replaced the resume tails of tagging.shell.advance, adopt.shell.advance, acquire fallback-fetch and master with core.jobs.resumed, which advance calls; its one raise_for_state call is the mapping each of those four shells made, and tests/test_job_outcome.py names that function as the shared tail. The tests are this row's own plus those of the three rows mapped to it"
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R33_no_op_job_id_is_null"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R33_no_op_job_id_is_null" }
+description = "R-234 reintroduced: cli.output types job_id as a required string, so a null fails the verb's own schema on every zero path"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '    return {"job_id": "", "state": state, "cause": None, "progress": dict(progress)}'
+new = '    return {"job_id": None, "state": state, "cause": None, "progress": dict(progress)}'
+moved = "U298 replaced tagging.shell.no_op with cli.output.no_job, which the tagging shell imports as no_op; the same empty string job_id"
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R34_empty_job_is_driven"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R34_empty_job_is_driven" }
+description = "A job frozen with no items drives straight to SUCCEEDED, which is a clean report over work it never did"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '    if job.is_open() and not items(store, job.job_id):'
+new = '    if job.is_open() and False:'
+moved = "U298 replaced tagging.shell.advance with core.jobs.advance, which the tagging shell imports under the same name; the refusal of an open job with no items is the same check, now one condition, and the mutation drops only its items half"
+
+[[rows]]
+id = "u56-catalogue-searcher-and-tag-workers.R35_extra_rides_beside_progress"
+source = { table = "u56-catalogue-searcher-and-tag-workers.json", id = "R35_extra_rides_beside_progress" }
+description = "A per verb detail at the top level is an undeclared field on job_state/1, so a consumer generated from the committed schema rejects every envelope"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''
+    counted = dict(progress(store, job.job_id))
+    if extra:
+        counted.update(extra)
+    return {
+        "job_id": job.job_id,'''
+new = '''
+    counted = dict(progress(store, job.job_id))
+    return {
+        **dict(extra or {}),
+        "job_id": job.job_id,'''
+moved = "U298 replaced tagging.shell.reported with core.jobs.reported, which the tagging shell imports under the same name; the same placement of extra under progress, with the local renamed counted"
+
+[[rows]]
+id = "u225.M6_front_keeps_nothing"
+source = { table = "u225.json", id = "M6_front_keeps_nothing" }
+description = "front_moves: no tail is kept, every asked track is moved"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_stopped.py"]
+old = '''
+            keep += 1
+    return list(reversed(wanted[: len(wanted) - keep]))'''
+new = '''
+            keep += 0
+    return list(reversed(wanted[: len(wanted) - keep]))'''
+
+[[mapped]]
+source = { table = "r1709.json", id = "M24_intake_identity_fold" }
+to = "r1709.M25_fallback_identity_fold"
+reason = "U298 folded intake/candidates.identity and acquire/fallback.identity, two copies of one dict, into match.Wanted.folded_row; the title line both rows mutated is now that one line, anchored under M25 with the same substitution and the same test list"
+
+[[mapped]]
+source = { table = "r290-author.json", id = "S03_acquire_fallback_call_removed" }
+to = "r290-author.S11_tagging_shell_call_removed"
+reason = "U298 removed the raise_for_state call from acquire/fallback_cli.py's fetch resume, which now leaves through core.jobs.resumed; that function's single call is the same mapping, anchored under S11 with this row's test files added to its list"
+
+[[mapped]]
+source = { table = "r290-author.json", id = "S12_adopt_shell_call_removed" }
+to = "r290-author.S11_tagging_shell_call_removed"
+reason = "U298 removed the raise_for_state call from adopt/shell.py's advance, which now leaves through core.jobs.resumed; that function's single call is the same mapping, anchored under S11 with this row's test files added to its list"
+
+[[mapped]]
+source = { table = "r290-author.json", id = "S01_master_call_removed" }
+to = "r290-author.S11_tagging_shell_call_removed"
+reason = "U298 removed the raise_for_state call from master/cli.py's resume, which now leaves through core.jobs.resumed; that function's single call is the same mapping, anchored under S11 with this row's test files added to its list"
+
+[[mapped]]
+source = { table = "u220.json", id = "A2_keep_nothing" }
+to = "u225.M6_front_keeps_nothing"
+reason = "U298 replaced tidal_account._to_the_front's body with sync.pair_stopped.front_moves, its copy until then, which the adapter now returns; u225.M6 already makes the same keep += 0 substitution on that one line"

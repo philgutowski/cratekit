@@ -2,7 +2,7 @@
 title: A plan's unresolved total folds three shapes, and a majority rule written over it must name which one it reads
 date: 2026-09-22
 category: integration-issues
-module: "src/cratekit/write/metadata_cli.py, src/cratekit/cli/doctor.py, src/cratekit/cli/setup.py, src/cratekit/core/rb_writer.py, src/cratekit/core/rb_copies.py"
+module: "src/cratekit/write/metadata_cli.py, src/cratekit/cli/doctor_library.py, src/cratekit/cli/doctor.py, src/cratekit/cli/setup.py, src/cratekit/core/rb_writer.py, src/cratekit/core/rb_copies.py"
 problem_type: integration_issue
 component: recorded_path_resolution
 root_cause: wrong_assumption

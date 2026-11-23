@@ -106,16 +106,18 @@ def _spec_for(
     """One spec for one file, shared by the plan and the apply so the two agree.
 
     Returns the spec and, for an identifier stem with no composable body, the
-    reason. The head comes from the filename first and the title tag second, as
-    text, never from analysis (U39); the key prefers the tag. Each surface keeps
-    its own body (U41, R-168), except a provider identifier stem, composed from
-    the tags (R-669).
+    reason. The head comes from the title tag first and the filename second, as
+    text, never from analysis (U39); the key prefers the tag. THE TITLE TAG LEADS
+    because ``analyze adopt`` corrects it to rekordbox's key and tempo and never
+    renames the file (U327), so the filename's head is the older answer and
+    would be written back over the correction. Each surface keeps its own body
+    (U41, R-168), except a provider identifier stem, composed from the tags (R-669).
     """
     tagged_title = tags.read_tag(path, "title")
     title = tagged_title or path.stem
     head = (
-        naming.parse_head(path.name, template=template)
-        or naming.parse_head(title, template=template)
+        naming.parse_head(title, template=template)
+        or naming.parse_head(path.name, template=template)
         or {}
     )
     tag_key = tags.read_tag(path, "initialkey")

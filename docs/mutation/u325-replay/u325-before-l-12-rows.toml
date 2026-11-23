@@ -1,0 +1,1434 @@
+name = "u325-before-l-12"
+pass_kind = "replay"
+
+[[rows]]
+id = "u219.M3_due_again_said"
+source = { table = "u219.json", id = "M3_due_again_said" }
+description = "_due_again_warnings: count nothing due, so a resort that left a favourite for later reports a clean success (round two's third hold)"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_organize_mirror_edits.py", "tests/test_resort_scope.py", "tests/test_routing_workers.py"]
+old = '        count = int(report.get("due_again") or 0)'
+new = '        count = 0'
+
+[[rows]]
+id = "u219.R1_routed_trees"
+source = { table = "u219.json", id = "R1_routed_trees" }
+description = "_routed_trees: every native tree, so the resort queues the intake tree again"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_organize_mirror_edits.py", "tests/test_resort_scope.py", "tests/test_routing_workers.py"]
+old = '    return tuple(t for t in _native_trees(entries) if rebuild.derivable(declared, t))'
+new = '    return _native_trees(entries)'
+
+[[rows]]
+id = "u219.R2_inbox_routed_only"
+source = { table = "u219.json", id = "R2_inbox_routed_only" }
+description = "plan_inbox: file the intake folder into every native tree, INBOX included"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_organize_mirror_edits.py", "tests/test_resort_scope.py", "tests/test_routing_workers.py"]
+old = '    native = _routed_trees(entries, declared)'
+new = '    native = _native_trees(entries)'
+
+[[rows]]
+id = "u219.R3_left_alone_named"
+source = { table = "u219.json", id = "R3_left_alone_named" }
+description = "_passed_over: name no tree the resort left alone"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_intake_imported.py", "tests/test_organize_mirror_edits.py", "tests/test_resort_scope.py", "tests/test_routing_workers.py"]
+old = '''
+    skipped = [t for t in _native_trees(entries) if t in others]
+    if not skipped:
+        return []
+    named = ", ".join(f"{others[t]} ({t})" for t in skipped)
+    return [
+        {
+            "code": TREE_NOT_DERIVED,'''
+new = '''
+    skipped = [t for t in _native_trees(entries) if t in others]
+    if skipped:
+        return []
+    named = ", ".join(f"{others[t]} ({t})" for t in skipped)
+    return [
+        {
+            "code": TREE_NOT_DERIVED,'''
+
+[[rows]]
+id = "r239-b.S11_readback_key_on"
+source = { table = "r239-b.json", id = "S11_readback_key_on" }
+description = "the session read-back pins the old True default, which a plain database cannot open under"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '    open_fresh = reopen or (lambda: rb_writer.open_db(cfg=cfg))'
+new = '    open_fresh = reopen or (lambda: rb_writer.open_db(cfg=cfg, unlock=True))'
+
+[[rows]]
+id = "r239-b.S6_delete_key_off"
+source = { table = "r239-b.json", id = "S6_delete_key_off" }
+description = "delete review's open passes unlock=False"
+file = "src/cratekit/deletion/cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '    return rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)'
+new = '    return rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg, unlock=False)'
+
+[[rows]]
+id = "r239-b.S7_metadata_key_off"
+source = { table = "r239-b.json", id = "S7_metadata_key_off" }
+description = "mytags' open passes unlock=False"
+file = "src/cratekit/write/metadata_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+        require_closed=writing,
+        cfg=cfg,
+'''
+new = '''
+        require_closed=writing,
+        unlock=False,
+        cfg=cfg,
+'''
+
+[[rows]]
+id = "r239-b.S2_unplaced_key_off"
+source = { table = "r239-b.json", id = "S2_unplaced_key_off" }
+description = "route unplaced's open, unplaced_items, passes unlock=False again"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+        return [], {"compared": False, "reason": "no-native-tree", "collection": 0}
+    handle = rb_writer.open_db(cfg=cfg)
+'''
+new = '''
+        return [], {"compared": False, "reason": "no-native-tree", "collection": 0}
+    handle = rb_writer.open_db(cfg=cfg, unlock=False)
+'''
+
+[[rows]]
+id = "r239-b.S8_naming_key_off"
+source = { table = "r239-b.json", id = "S8_naming_key_off" }
+description = "the naming verb's collection read passes unlock=False"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+            require_closed=False,
+            cfg=cfg,
+'''
+new = '''
+            require_closed=False,
+            unlock=False,
+            cfg=cfg,
+'''
+
+[[rows]]
+id = "u178.G6_fallback_refusal"
+source = { table = "u178.json", id = "G6_fallback_refusal" }
+description = "_declared_genre: never refuse a fallback genre, so Polka is stored unconfirmed"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '    if resolution.match is routing.Match.FALLBACK and not accept_fallback:'
+new = '    if False:'
+
+[[rows]]
+id = "u178.G7_fallback_confirm_ignored"
+source = { table = "u178.json", id = "G7_fallback_confirm_ignored" }
+description = "_declared_genre: refuse a fallback genre even with --accept-fallback"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '    if resolution.match is routing.Match.FALLBACK and not accept_fallback:'
+new = '    if resolution.match is routing.Match.FALLBACK:'
+
+[[rows]]
+id = "u178.G8_clear_word_case"
+source = { table = "u178.json", id = "G8_clear_word_case" }
+description = "_declared_genre: match the clearing word in its exact case, so --genre Default is stored as a genre"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '    if wanted.casefold() == CLEAR_GENRE:'
+new = '    if wanted == CLEAR_GENRE:'
+
+[[rows]]
+id = "u178.G9_accept_without_genre"
+source = { table = "u178.json", id = "G9_accept_without_genre" }
+description = "registry_cmd: accept --accept-fallback with no --genre, so it confirms nothing silently"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '    if accept_fallback and genre is None:'
+new = '    if False:'
+
+[[rows]]
+id = "u178.G1_genre_length_bound"
+source = { table = "u178.json", id = "G1_genre_length_bound" }
+description = "check_genre: the bound read one past GENRE_MAX, so a 65 character genre is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''
+        or len(text) > GENRE_MAX
+'''
+new = '''
+        or len(text) > GENRE_MAX + 1
+'''
+
+[[rows]]
+id = "u178.G2_genre_needs_a_letter"
+source = { table = "u178.json", id = "G2_genre_needs_a_letter" }
+description = "check_genre: drop the letter or digit rule, so a punctuation only genre is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''
+        or not any(char.isalnum() for char in text)
+'''
+new = ''
+
+[[rows]]
+id = "u178.G3_genre_one_line"
+source = { table = "u178.json", id = "G3_genre_one_line" }
+description = "check_genre: drop the control character rule, so a genre with a newline is stored"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''
+        or any(unicodedata.category(char).startswith("C") for char in text)
+'''
+new = ''
+
+[[rows]]
+id = "u178.G4_edit_clear_genre"
+source = { table = "u178.json", id = "G4_edit_clear_genre" }
+description = "edit: ignore clear_genre, so --genre default on set keeps the genre"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '                genre=None if clear_genre else (genre if genre is not None else existing.genre),'
+new = '                genre=genre if genre is not None else existing.genre,'
+
+[[rows]]
+id = "u178.G5_edit_none_keeps_genre"
+source = { table = "u178.json", id = "G5_edit_none_keeps_genre" }
+description = "edit: a genre of None drops the held genre, so an unrelated edit clears it"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_genre.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '                genre=None if clear_genre else (genre if genre is not None else existing.genre),'
+new = '                genre=None if clear_genre else genre,'
+
+[[rows]]
+id = "u52-item-derivation.H2_listing_passthrough_gone"
+source = { table = "u52-item-derivation.json", id = "H2_listing_passthrough_gone" }
+description = "REMOVE THE LAYER ALONE: an adapter's own CratekitError refusal is rewritten as an unreadable playlist"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''
+    except CratekitError:
+        raise
+    except Exception as exc:
+        raise refuse(
+            "label-playlist-unreadable",
+            f"the playlist {reference!r} could not be listed by the provider "'''
+new = '''
+    except Exception as exc:
+        raise refuse(
+            "label-playlist-unreadable",
+            f"the playlist {reference!r} could not be listed by the provider "'''
+
+[[rows]]
+id = "u52-item-derivation.H4_verification_boundary_gone"
+source = { table = "u52-item-derivation.json", id = "H4_verification_boundary_gone" }
+description = "THE THIRD PROVIDER CALL: hand from_tracks the bare seam method, so a provider that went away mid playlist becomes internal-error with report-defect"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '            verify=_label_verifier(found, reference),'
+new = '            verify=found.check_label,'
+
+[[rows]]
+id = "u52-item-derivation.H6_empty_playlist_reports_ok"
+source = { table = "u52-item-derivation.json", id = "H6_empty_playlist_reports_ok" }
+description = "An empty playlist reports OK rather than NO_OP, so nothing found is indistinguishable from something found"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '        outcome=Outcome.OK if report.offered else Outcome.NO_OP,'
+new = '        outcome=Outcome.OK,'
+
+[[rows]]
+id = "u52-item-derivation.H7_unresolved_drops_nameless"
+source = { table = "u52-item-derivation.json", id = "H7_unresolved_drops_nameless" }
+description = "Count only the names a catalogue refused, so a playlist whose tracks carry no copyright string at all reports a clean zero unresolved"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '    unresolved = len(report.dropped) + nameless'
+new = '    unresolved = len(report.dropped)'
+
+[[rows]]
+id = "u52-item-derivation.I5_import_queues_no_item"
+source = { table = "u52-item-derivation.json", id = "I5_import_queues_no_item" }
+description = "THE ZERO ITEM RULE at the import end: queue the single label job with no items at all"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '        item_ids=(entry.label_id,),'
+new = '        item_ids=(),'
+
+[[rows]]
+id = "u52-item-derivation.I6_import_item_keyed_on_name"
+source = { table = "u52-item-derivation.json", id = "I6_import_item_keyed_on_name" }
+description = "The import's single item names the label by display name, which the worker then cannot resolve by id"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '        item_ids=(entry.label_id,),'
+new = '        item_ids=(entry.name,),'
+
+[[rows]]
+id = "u52-item-derivation.R1_itemless_job_drives"
+source = { table = "u52-item-derivation.json", id = "R1_itemless_job_drives" }
+description = "Drive a label job with no items, which jobs.drive transitions straight to SUCCEEDED over a registry nothing was read from"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '            _refuse_an_itemless_job(store, job)'
+new = '            pass'
+
+[[rows]]
+id = "u52-item-derivation.S1_errors_branch_gone"
+source = { table = "u52-item-derivation.json", id = "S1_errors_branch_gone" }
+description = "A sweep that could not offer some of the releases it listed exits 0 and reports the job done"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''
+    if result.errors:
+        raise refuse(
+            "label-sweep-incomplete",'''
+new = '''
+    if False:
+        raise refuse(
+            "label-sweep-incomplete",'''
+
+[[rows]]
+id = "u52-zero-rows.H5_verifier_passthrough_gone"
+source = { table = "u52-zero-rows.json", id = "H5_verifier_passthrough_gone" }
+description = "REMOVE THE LAYER ALONE: the verification boundary swallows an adapter's own refusal into label-playlist-unreadable"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_workers.py"]
+old = '''
+        except CratekitError:
+            raise
+        except Exception as exc:'''
+new = '        except Exception as exc:'
+
+[[rows]]
+id = "r838-c.R1_library_bound"
+source = { table = "r838-c.json", id = "R1_library_bound" }
+description = "mark_record._recognize: accept a record written for another library"
+file = "src/cratekit/sync/mark_record.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '        if library_id != self.cfg.library.volume_id:'
+new = '        if False:'
+
+[[rows]]
+id = "r838-c.R2_remark_clears"
+source = { table = "r838-c.json", id = "R2_remark_clears" }
+description = "mark_record.record_marked: append a second entry for a re-mark by the same pass rather than replacing the first"
+file = "src/cratekit/sync/mark_record.py"
+surface = "maintainer"
+tests = ["tests/test_sync_unmark.py"]
+old = '''
+                    if (entry.pass_name, entry.playlist_id) == (pass_name, playlist_id):
+                        entries[index] = fresh
+                        break'''
+new = '''
+                    if False:
+                        entries[index] = fresh
+                        break'''
+
+[[rows]]
+id = "r838-d.R3b_stamp_target"
+source = { table = "r838-d.json", id = "R3b_stamp_target" }
+description = "mark_record.record_unmarked: stamp the playlist's mark under any pass, so another pass's mark reads as put back"
+file = "src/cratekit/sync/mark_record.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''
+                if (entry.pass_name, entry.playlist_id) == (pass_name, playlist_id):
+                    entries[index] = replace(entry, unmarked=when)'''
+new = '''
+                if entry.playlist_id == playlist_id:
+                    entries[index] = replace(entry, unmarked=when)'''
+
+[[rows]]
+id = "r838-a.U1_refuse_stranger"
+source = { table = "r838-a.json", id = "U1_refuse_stranger" }
+description = "unmark._narrowed: drop the refusal, so a playlist the pass never marked is silently passed over rather than refused"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''
+    if strangers:
+        raise _blocked('''
+new = '''
+    if False:
+        raise _blocked('''
+
+[[rows]]
+id = "r838-a.U3_pass_filter"
+source = { table = "r838-a.json", id = "U3_pass_filter" }
+description = "unmark: take every pass's marks as the named pass's, so a playlist the pass never marked is planned"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '        tuple(entry for entry in every if entry.pass_name == name),'
+new = '        tuple(entry for entry in every),'
+
+[[rows]]
+id = "r838-a.U4_already_unmarked_stamp"
+source = { table = "r838-a.json", id = "U4_already_unmarked_stamp" }
+description = "unmark._item: ignore the unmarked stamp, so a second run is decided by the title alone"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''
+    if entry.unmarked:
+        return {'''
+new = '''
+    if False:
+        return {'''
+
+[[rows]]
+id = "r838-a.U5_marked_again"
+source = { table = "r838-a.json", id = "U5_marked_again" }
+description = "unmark._item: ignore a later mark by another pass, so this pass's unmark takes off that pass's prefix"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''
+    later = _later(entry, every)
+    if later:'''
+new = '''
+    later = _later(entry, every)
+    if False:'''
+
+[[rows]]
+id = "r838-a.U6_later_order"
+source = { table = "r838-a.json", id = "U6_later_order" }
+description = "unmark._later: an EARLIER mark by another pass also supersedes, so the latest pass's own unmark is refused"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '        and other.marked > entry.marked'
+new = '        and other.marked != entry.marked'
+
+[[rows]]
+id = "r838-a.U8_title_already_back"
+source = { table = "r838-a.json", id = "U8_title_already_back" }
+description = "unmark._item: no already-put-back branch, so a title already restored is reported as retitled by hand"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '    if current == entry.name:'
+new = '    if False:'
+
+[[rows]]
+id = "r838-b.U10_digest_names"
+source = { table = "r838-b.json", id = "U10_digest_names" }
+description = "unmark._payload: the digest omits the planned renames, so an answer to one plan carries out another"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''
+            (item["id"], item["marked_as"], item["to"])
+            for item in items
+            if item["action"] == UNMARK'''
+new = '''
+            (item["id"], item["marked_as"], item["to"])
+            for item in items
+            if False'''
+
+[[rows]]
+id = "r838-b.U13_recheck"
+source = { table = "r838-b.json", id = "U13_recheck" }
+description = "unmark: no recheck against the second listing, so a title changed after the answer is renamed anyway"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '            if now.get(identity) != entry.to:'
+new = '            if False:'
+
+[[rows]]
+id = "r838-b.U15_rename_target"
+source = { table = "r838-b.json", id = "U15_rename_target" }
+description = "unmark: rename to the title the mark wrote rather than the one before it"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '            remote.rename_playlist(identity, entry.name)'
+new = '            remote.rename_playlist(identity, entry.to)'
+
+[[rows]]
+id = "r838-b.U16_part_way_names"
+source = { table = "r838-b.json", id = "U16_part_way_names" }
+description = "unmark._failed_part_way: report nothing put back, so a partial failure loses what landed"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '        "unmarked": list(landed),'
+new = '        "unmarked": [],'
+
+[[rows]]
+id = "r838-b.U9_renamed_since"
+source = { table = "r838-b.json", id = "U9_renamed_since" }
+description = "unmark._item: plan any title carrying the prefix, so a playlist retitled by hand with the prefix kept is renamed"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''
+    if current != entry.to:
+        how ='''
+new = '''
+    if not playlists.is_swept_name(current):
+        how ='''
+
+[[rows]]
+id = "r838-c.U7b_not_listed_rerun"
+source = { table = "r838-c.json", id = "U7b_not_listed_rerun" }
+description = "U7 measured again after the not-listed test was added: no NOT_LISTED branch, so a playlist the account dropped falls through to the title comparison"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py"]
+old = '''
+    if current is None:
+        return {
+            **base,
+            "action": SKIP,
+            "reason": NOT_LISTED,'''
+new = '''
+    if current is None and False:
+        return {
+            **base,
+            "action": SKIP,
+            "reason": NOT_LISTED,'''
+
+[[rows]]
+id = "r1394.S10_later_unsent_write_hides_the_pending"
+source = { table = "r1394.json", id = "S10_later_unsent_write_hides_the_pending" }
+description = "stopped writes: the latest record is read whether or not it sent a move, so a refused finish hides the pending write it was finishing, round two's BLOCKING row"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '            if held is None or (write.pending, write.at) > (held[1].pending, held[1].at):'
+new = '            if held is None or write.at > held[1].at:'
+
+[[rows]]
+id = "r1394.S1_counts_beyond_the_moves_trusted"
+source = { table = "r1394.json", id = "S1_counts_beyond_the_moves_trusted" }
+description = "stopped write: counts larger than the write's moves are trusted rather than read as nothing known"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '    if sent is None or landed is None or not landed <= sent <= total:'
+new = '    if sent is None or landed is None or not landed <= sent:'
+
+[[rows]]
+id = "r1394.S2_missing_counts_read_as_none_sent"
+source = { table = "r1394.json", id = "S2_missing_counts_read_as_none_sent" }
+description = "stopped write: a moving step with no counts reads as no move sent, so any agreed path reading finishes it, as before R-1394"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '''
+        return 0, total
+    return landed, sent'''
+new = '''
+        return 0, 0
+    return landed, sent'''
+
+[[rows]]
+id = "r1394.S3_bool_count_read"
+source = { table = "r1394.json", id = "S3_bool_count_read" }
+description = "stopped write: a count written as true or false is read as a number"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '    if isinstance(value, bool) or not isinstance(value, int) or value < 0:'
+new = '    if not isinstance(value, int) or value < 0:'
+
+[[rows]]
+id = "r1394.S4_negative_count_read"
+source = { table = "r1394.json", id = "S4_negative_count_read" }
+description = "stopped write: a negative count is read as one"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '    if isinstance(value, bool) or not isinstance(value, int) or value < 0:'
+new = '    if isinstance(value, bool) or not isinstance(value, int):'
+
+[[rows]]
+id = "r1394.S5_sent_read_as_landed"
+source = { table = "r1394.json", id = "S5_sent_read_as_landed" }
+description = "stopped write: the sent count is read from the landed field, so a move in flight reads as known not sent"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '    return at, start, end, _count(value.get(SENT)), _count(value.get(LANDED))'
+new = '    return at, start, end, _count(value.get(LANDED)), _count(value.get(LANDED))'
+
+[[rows]]
+id = "r1394.S6_counts_not_wired"
+source = { table = "r1394.json", id = "S6_counts_not_wired" }
+description = "stopped write: the counts read back never reach the stopped write, which keeps none landed and none sent"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '''
+        landed=landed,
+        sent=reached_by,'''
+new = '''
+        landed=0,
+        sent=0,'''
+
+[[rows]]
+id = "r1394.S8_positions_first_only"
+source = { table = "r1394.json", id = "S8_positions_first_only" }
+description = "positions: only the first count on the path that leaves the order is answered, so a track taken off since hides a later one"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '''
+    return tuple(
+        index
+        for index, state in enumerate(passed(start, target))
+        if [one for one in dict.fromkeys(state) if one in common] == shown
+    )'''
+new = '''
+    return tuple(
+        index
+        for index, state in enumerate(passed(start, target))
+        if [one for one in dict.fromkeys(state) if one in common] == shown
+    )[:1]'''
+
+[[rows]]
+id = "r1394.S9_moving_step_counts_dropped"
+source = { table = "r1394.json", id = "S9_moving_step_counts_dropped" }
+description = "moving step: the record written carries a sent count of 0 whatever it is told"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '        SENT: int(sent),'
+new = '        SENT: 0,'
+
+[[rows]]
+id = "u234.O15_reordered_counts_additions"
+source = { table = "u234.json", id = "O15_reordered_counts_additions" }
+description = "reordered compares the readings whole, so a track added between them is read as a reorder"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped.py"]
+old = '''
+    return [one for one in current if one in common] != [
+        one for one in dict.fromkeys(kept) if one in common
+    ]
+
+
+__all__'''
+new = '''
+    return current != list(dict.fromkeys(kept))
+
+
+__all__'''
+
+[[rows]]
+id = "r235-a.M11_session_lock_dropped"
+source = { table = "r235-a.json", id = "M11_session_lock_dropped" }
+description = "a revert holds the registry lock and not the session lock"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '    with session.session_lock(cfg), config._exclusive_lock(lock_path(cfg)):'
+new = '    with config._exclusive_lock(lock_path(cfg)):'
+
+[[rows]]
+id = "r235-a.M12_second_record_replaces"
+source = { table = "r235-a.json", id = "M12_second_record_replaces" }
+description = "record_cutover replaces a tree already recorded native instead of refusing"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''
+        if standing is not None and standing.mode == Mode.DATABASE:
+            # ASKED UNDER THE LOCK, which is the only place the answer holds.'''
+new = '''
+        if False:
+            # ASKED UNDER THE LOCK, which is the only place the answer holds.'''
+
+[[rows]]
+id = "r235-a.M13_snapshot_check_dropped"
+source = { table = "r235-a.json", id = "M13_snapshot_check_dropped" }
+description = "the verified snapshot check is no longer in the precheck table"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''
+    ("fresh-export", _export_refusal),
+    ("verified-snapshot", _snapshot_refusal),
+)'''
+new = '''
+    ("fresh-export", _export_refusal),
+)'''
+
+[[rows]]
+id = "r235-a.M1_unreadable_log_skipped"
+source = { table = "r235-a.json", id = "M1_unreadable_log_skipped" }
+description = "the registry gates no longer refuse on a session record they cannot read, so a torn record reads as no open run and no native write"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''
+    parsed, unreadable = session.scan_log(cfg)
+    if unreadable:'''
+new = '''
+    parsed, unreadable = session.scan_log(cfg)
+    if False:'''
+
+[[rows]]
+id = "r235-a.M2_margin_zero"
+source = { table = "r235-a.json", id = "M2_margin_zero" }
+description = "the native write margin is no days, so a write whose universal time date is the day before the cutover day is left out"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = 'NATIVE_WRITE_MARGIN = timedelta(days=1)'
+new = 'NATIVE_WRITE_MARGIN = timedelta(days=0)'
+
+[[rows]]
+id = "r235-a.M3_margin_two_days"
+source = { table = "r235-a.json", id = "M3_margin_two_days" }
+description = "the native write margin is two days, so a write two days before the cutover day still counts"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = 'NATIVE_WRITE_MARGIN = timedelta(days=1)'
+new = 'NATIVE_WRITE_MARGIN = timedelta(days=2)'
+
+[[rows]]
+id = "r235-a.M4_unparseable_start_predates"
+source = { table = "r235-a.json", id = "M4_unparseable_start_predates" }
+description = "a session start nothing can parse is read as before the cutover, so its write does not count"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''
+    except ValueError:
+        return False
+    return began < cutover_on - NATIVE_WRITE_MARGIN'''
+new = '''
+    except ValueError:
+        return True
+    return began < cutover_on - NATIVE_WRITE_MARGIN'''
+
+[[rows]]
+id = "r235-a.M5_updates_not_counted"
+source = { table = "r235-a.json", id = "M5_updates_not_counted" }
+description = "only a creation counts as a native write, an update does not"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '            change.tree == tree_id and (change.created > 0 or change.updated > 0)'
+new = '            change.tree == tree_id and change.created > 0'
+
+[[rows]]
+id = "r235-a.M6_any_tree_counts"
+source = { table = "r235-a.json", id = "M6_any_tree_counts" }
+description = "a write to any tree counts as a write to this one"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '            change.tree == tree_id and (change.created > 0 or change.updated > 0)'
+new = '            (change.created > 0 or change.updated > 0)'
+
+[[rows]]
+id = "r235-a.M7_zero_count_counts"
+source = { table = "r235-a.json", id = "M7_zero_count_counts" }
+description = "a record naming the tree with nothing added counts as a native write"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '            change.tree == tree_id and (change.created > 0 or change.updated > 0)'
+new = '            change.tree == tree_id'
+
+[[rows]]
+id = "r235-a.M8_open_run_reverts"
+source = { table = "r235-a.json", id = "M8_open_run_reverts" }
+description = "a revert no longer refuses over an open run"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''
+    if open_runs:
+        raise refuse(
+            "cutover-open-run",
+            f"session {open_runs[0].session_id} has not reached a terminal "'''
+new = '''
+    if False:
+        raise refuse(
+            "cutover-open-run",
+            f"session {open_runs[0].session_id} has not reached a terminal "'''
+
+[[rows]]
+id = "r235-a.M9_library_guard_removed"
+source = { table = "r235-a.json", id = "M9_library_guard_removed" }
+description = "revert_cutover no longer asserts the tree is revertible, leaving only the verb's own check"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '''
+        assert_revertible(cfg, tree_id)
+        updated = read(cfg).without_record(tree_id)'''
+new = '        updated = read(cfg).without_record(tree_id)'
+
+[[rows]]
+id = "r235-b.M14_empty_export_accepted"
+source = { table = "r235-b.json", id = "M14_empty_export_accepted" }
+description = "an export of no bytes passes the fresh export check"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_cutover_precheck.py", "tests/test_cutover_cli.py"]
+old = '    if export_path.is_file() and export_path.stat().st_size != 0:'
+new = '    if export_path.is_file():'
+
+[[rows]]
+id = "u79-a.A1_ambiguous_listed"
+source = { table = "u79-a.json", id = "A1_ambiguous_listed" }
+description = "A title that reads two ways is listed on one candidate without a person"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''
+    if answer.ambiguous or answer.full:
+        return None'''
+new = '''
+    if answer.full:
+        return None'''
+
+[[rows]]
+id = "u79-a.A2_full_page_listed"
+source = { table = "u79-a.json", id = "A2_full_page_listed" }
+description = "A full page is read as the whole answer, so its one exact hit is listed"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''
+    if answer.ambiguous or answer.full:
+        return None'''
+new = '''
+    if answer.ambiguous:
+        return None'''
+
+[[rows]]
+id = "u79-a.A3_unreadable_ignored"
+source = { table = "u79-a.json", id = "A3_unreadable_ignored" }
+description = "A row of the answer that could not be read no longer stops a listing"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '    if answer.unreadable or not exact:'
+new = '    if not exact:'
+
+[[rows]]
+id = "u79-a.A4_no_identifier_listed"
+source = { table = "u79-a.json", id = "A4_no_identifier_listed" }
+description = "Exact candidates carrying no identifier are one distinct value and are listed"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''
+    if any(not one.track.ref for one in exact):
+        return None'''
+new = '''
+    if False:
+        return None'''
+
+[[rows]]
+id = "u79-a.A5_two_exact_picked"
+source = { table = "u79-a.json", id = "A5_two_exact_picked" }
+description = "Two exact candidates list the first, the pick the brief forbids"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '    if len({one.track.ref for one in exact}) != 1:'
+new = '    if len({one.track.ref for one in exact}) < 1:'
+
+[[rows]]
+id = "u79-b.B1_floor_halved"
+source = { table = "u79-b.json", id = "B1_floor_halved" }
+description = "The floor's value is halved, so a weaker hit is shown"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = 'CANDIDATE_FLOOR = 60.0'
+new = 'CANDIDATE_FLOOR = 30.0'
+
+[[rows]]
+id = "u79-b.B2_score_before_exact"
+source = { table = "u79-b.json", id = "B2_score_before_exact" }
+description = "A near miss scoring 100 leads an exact candidate"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '            (not one.exact, -one.score, position, one)'
+new = '            (False, -one.score, position, one)'
+
+[[rows]]
+id = "u79-b.B3_no_identifier_offered"
+source = { table = "u79-b.json", id = "B3_no_identifier_offered" }
+description = "A candidate with no identifier is offered as an option"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''
+            if one.track.ref and (one.exact or one.score >= CANDIDATE_FLOOR)
+        ),
+        key='''
+new = '''
+            if (one.exact or one.score >= CANDIDATE_FLOOR)
+        ),
+        key='''
+
+[[rows]]
+id = "u79-b.B4_rejected_read_as_accepted"
+source = { table = "u79-b.json", id = "B4_rejected_read_as_accepted" }
+description = "A rejected row falls through to the accepted path and its one candidate is listed"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '    if held.verdict is review.Verdict.REJECTED:'
+new = '    if False:'
+
+[[rows]]
+id = "u79-b.B5_unspecific_yes_takes_first"
+source = { table = "u79-b.json", id = "B5_unspecific_yes_takes_first" }
+description = "An acceptance naming none of several candidates lists the first"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '    if chosen is None and len(held.options) == 1:'
+new = '    if chosen is None and len(held.options) >= 1:'
+
+[[rows]]
+id = "u79-b.B6_option_track_mismatch"
+source = { table = "u79-b.json", id = "B6_option_track_mismatch" }
+description = "An accepted option whose detail names another track is listed as that track"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '    if track is None or not track.ref or track.ref != option.option_id:'
+new = '    if track is None or not track.ref:'
+
+[[rows]]
+id = "u79-b.B7_identity_without_version"
+source = { table = "u79-b.json", id = "B7_identity_without_version" }
+description = "The question is keyed without the version, so two versions are one item"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''
+        "version": wanted.version_key,
+    }'''
+new = '''
+        "version": "",
+    }'''
+
+[[rows]]
+id = "u79-b.B8_open_item_searched_again"
+source = { table = "u79-b.json", id = "B8_open_item_searched_again" }
+description = "A row already in front of a person is searched for again"
+file = "src/cratekit/intake/candidates.py"
+surface = "user"
+tests = ["tests/test_intake_missing_search.py"]
+old = '''
+    if held.verdict is None:
+        return Proposal('''
+new = '''
+    if held.verdict is None:
+        return None
+    if held.verdict is None:
+        return Proposal('''
+
+[[rows]]
+id = "r757-c1.S4_rehearsal_says_it_sent"
+source = { table = "r757-c1.json", id = "S4_rehearsal_says_it_sent" }
+description = "comparison_warning: say sent over a rehearsal, the review's fix"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '        if recorded.get("dry_run")'
+new = '        if False'
+
+[[rows]]
+id = "r757-c2.S5_unread_number_printed_as_zero"
+source = { table = "r757-c2.json", id = "S5_unread_number_printed_as_zero" }
+description = "comparison_warning: print a total that was not read as 0"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '            return f"an unread number of {unit}"'
+new = '            return f"0 {unit}"'
+
+[[rows]]
+id = "r757-c2.S6_twin_in_the_other_mode_says_nothing"
+source = { table = "r757-c2.json", id = "S6_twin_in_the_other_mode_says_nothing" }
+description = "_already_queued: drop the sentence saying the open job runs the other comparison, the review's fix"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '    if asked_full is not None and asked_full != _is_full(job):'
+new = '    if False:'
+
+[[rows]]
+id = "r757-c2.S7_verb_says_nothing_of_the_comparison"
+source = { table = "r757-c2.json", id = "S7_verb_says_nothing_of_the_comparison" }
+description = "backup_library: leave the comparison sentence off the resumed envelope"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '                *comparison_warning(reported["progress"].get(OUTCOMES)),'
+new = '                *(),'
+
+[[rows]]
+id = "u149.T2_two_folders_not_refused"
+source = { table = "u149.json", id = "T2_two_folders_not_refused" }
+description = "find_folder: drop the refusal of two live top level folders of one year, so the first is written to"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '    if len(found) > 1:'
+new = '    if len(found) > 2:'
+
+[[rows]]
+id = "u149.T3_folder_names_unread"
+source = { table = "u149.json", id = "T3_folder_names_unread" }
+description = "find_folder: read no names inside a live folder, so a held name is not seen"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = 'held=_live_children(db, found[0]))'
+new = 'held=frozenset())'
+
+[[rows]]
+id = "u149.T4_removed_folder_live"
+source = { table = "u149.json", id = "T4_removed_folder_live" }
+description = "_live_top_folders: drop the soft delete filter, so a removed folder is reused"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '        f"AND COALESCE({rb_writer.SOFT_DELETE_COLUMN}, 0) = 0 ORDER BY ID"'
+new = '        f"ORDER BY ID"'
+
+[[rows]]
+id = "u149.T5_held_name_counted_free"
+source = { table = "u149.json", id = "T5_held_name_counted_free" }
+description = "place: drop the refusal of a name the folder holds, so a second twin of one name is made"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '    if name in folder.held:'
+new = '    if False:'
+
+[[rows]]
+id = "u149.T6_taken_name_free"
+source = { table = "u149.json", id = "T6_taken_name_free" }
+description = "place: drop the refusal of a name this run already gave, so two twins share one name"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '    if name in taken:'
+new = '    if False:'
+
+[[rows]]
+id = "u213.M14_backfill_reason_check"
+source = { table = "u213.json", id = "M14_backfill_reason_check" }
+description = "plan_backfill: leave a playlist for any refusal, so an expired session leaves every playlist instead of naming its act"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''
+            if exc.cause.reason not in PER_PLAYLIST_REASONS:
+                raise
+            twins.append('''
+new = '''
+            if False:
+                raise
+            twins.append('''
+
+[[rows]]
+id = "u213.M15_backfill_left_action"
+source = { table = "u213.json", id = "M15_backfill_left_action" }
+description = "plan_backfill: plan a playlist whose listing was refused as a twin to make, with no rows"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''
+                    action=LEFT,
+                    why=f"the account playlist could not be read: {exc.cause.message}",'''
+new = '''
+                    action=CREATE,
+                    why=f"the account playlist could not be read: {exc.cause.message}",'''
+
+[[rows]]
+id = "u213.M16_backfill_digest_reason"
+source = { table = "u213.json", id = "M16_backfill_digest_reason" }
+description = "Twin.identity: put the provider's words in the digest again, so a varying message makes the approved run stale"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '            "why": self.refused or self.why,'
+new = '            "why": self.why,'
+
+[[rows]]
+id = "u213.M17_backfill_unread_tracks"
+source = { table = "u213.json", id = "M17_backfill_unread_tracks" }
+description = "plan_backfill: plan from the read tracks alone, so an unread track is in neither the twin's misses nor its snapshot"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''
+            ref: listing.tracks[ref] if ref in listing.tracks else listing.unread[ref].said()
+            for ref in listing.order'''
+new = '''
+            ref: listing.tracks[ref]
+            for ref in listing.order
+            if ref in listing.tracks'''
+
+[[rows]]
+id = "u213.M18_backfill_unread_reasons"
+source = { table = "u213.json", id = "M18_backfill_unread_reasons" }
+description = "plan_backfill: hand matched no unread reasons, so an unread track the library lacks reads as merely not owned"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '            {ref: one.why for ref, one in listing.unread.items()},'
+new = '            {},'
+
+[[rows]]
+id = "u213.M19_matched_ambiguous_first"
+source = { table = "u213.json", id = "M19_matched_ambiguous_first" }
+description = "matched: say an unread track two rows carry is unreadable rather than ambiguous"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''
+                    AMBIGUOUS
+                    if found
+                    else f"{unread[remote_id]}, {UNREAD_NOT_FOUND}"
+                    if remote_id in unread
+                    else NOT_OWNED'''
+new = '''
+                    f"{unread[remote_id]}, {UNREAD_NOT_FOUND}"
+                    if remote_id in unread
+                    else AMBIGUOUS
+                    if found
+                    else NOT_OWNED'''
+
+[[rows]]
+id = "u213.M20_backfill_whole"
+source = { table = "u213.json", id = "M20_backfill_whole" }
+description = "plan_backfill: read every listing as whole, so a short one is paired with a snapshot it does not have"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '                whole=listing.short is None,'
+new = '                whole=True,'
+
+[[rows]]
+id = "u213.M2_backfill_refused_reason"
+source = { table = "u213.json", id = "M2_backfill_refused_reason" }
+description = "plan_backfill: record no refusal reason on a left playlist, so its digest carries the provider's words"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '                    refused=exc.cause.reason,'
+new = '                    refused="",'
+
+[[rows]]
+id = "r815-b.J1_one_refusal_ends_the_asking"
+source = { table = "r815-b.json", id = "J1_one_refusal_ends_the_asking" }
+description = "_asked: remember no refusal"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''
+    if judged.answer == searchers.Answer.BLOCKED.value:
+        tools.refused = judged.reason'''
+new = '''
+    if False:
+        tools.refused = judged.reason'''
+
+[[rows]]
+id = "r815-b.J2_an_unread_catalogue_ends_the_run"
+source = { table = "r815-b.json", id = "J2_an_unread_catalogue_ends_the_run" }
+description = "_asked: never stop on the gate's bound of unread releases"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''
+    if tools.asking.given_up:
+        raise refuse('''
+new = '''
+    if False:
+        raise refuse('''
+
+[[rows]]
+id = "r815-b.J3_a_failing_provider_ends_the_run"
+source = { table = "r815-b.json", id = "J3_a_failing_provider_ends_the_run" }
+description = "_asked: never stop on the reader's bound of failed reads"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''
+    if tools.reader.given_up:
+        raise refuse('''
+new = '''
+    if False:
+        raise refuse('''
+
+[[rows]]
+id = "r815-b.J4_a_record_never_holds_on_its_own"
+source = { table = "r815-b.json", id = "J4_a_record_never_holds_on_its_own" }
+description = "_judged: take a hold from recorded words without asking"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''
+    if recorded is not None and not recorded.held:
+        return recorded, False'''
+new = '''
+    if recorded is not None:
+        return recorded, False'''
+
+[[rows]]
+id = "r815-c.J11_the_scope_reads_the_registry"
+source = { table = "r815-c.json", id = "J11_the_scope_reads_the_registry" }
+description = "_Scope.holds: compare the identifier as text"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '        return entry is not None and entry.label_id in self.label_ids'
+new = '        return label_id in self.label_ids'
+
+[[rows]]
+id = "r815-c.J12_a_release_held_and_gone_is_counted_held"
+source = { table = "r815-c.json", id = "J12_a_release_held_and_gone_is_counted_held" }
+description = "_left_review: report gone whatever holds the release"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''
+    if standing is not None and standing.state == review.HOLD_HELD:
+        return _report(item_id, HELD, _held_already(standing), reason=standing.reason)'''
+new = '''
+    if False:
+        return _report(item_id, HELD, _held_already(standing), reason=standing.reason)'''
+
+[[rows]]
+id = "r815-c.J13_the_refusal_carries_the_counts"
+source = { table = "r815-c.json", id = "J13_the_refusal_carries_the_counts" }
+description = "_resume: let the refusal leave without the summary"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '            raise _with_summary(failed, cfg, store, queued.job_id) from failed'
+new = '            raise'
+
+[[rows]]
+id = "r815-c.J5_a_recorded_no_word_answer_is_not_asked_again"
+source = { table = "r815-c.json", id = "J5_a_recorded_no_word_answer_is_not_asked_again" }
+description = "_judged: ask about a release the catalogue already had no word for"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '    if recorded is None and isinstance(said, str) and said in genre_gate.NO_WORD_ANSWERS:'
+new = '    if False:'
+
+[[rows]]
+id = "r815-c.J6_a_decided_item_is_not_judged"
+source = { table = "r815-c.json", id = "J6_a_decided_item_is_not_judged" }
+description = "_judge_one: judge an item a person has decided"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''
+        if found.stored_verdict is not None:
+            return _report('''
+new = '''
+        if False:
+            return _report('''
+
+[[rows]]
+id = "r815-c.J7_a_returned_release_is_not_judged"
+source = { table = "r815-c.json", id = "J7_a_returned_release_is_not_judged" }
+description = "_judge_one: judge a release a person returned"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''
+        if genre_gate.returned_by(standing, found.payload):
+            return _report('''
+new = '''
+        if False:
+            return _report('''
+
+[[rows]]
+id = "r815-c.J8_a_refusal_parks_and_fails_no_item"
+source = { table = "r815-c.json", id = "J8_a_refusal_parks_and_fails_no_item" }
+description = "handle: let a refusal fail the item"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''
+    except CratekitError as exc:
+        raise _parked(job, exc) from exc
+    return artifacts.produced(ARTIFACTS, cfg, job, item, report)'''
+new = '''
+    except CratekitError:
+        raise
+    return artifacts.produced(ARTIFACTS, cfg, job, item, report)'''
+
+[[rows]]
+id = "r815-c.J9_a_park_drops_the_jobs_tools"
+source = { table = "r815-c.json", id = "J9_a_park_drops_the_jobs_tools" }
+description = "_parked: keep the job's tools across a park"
+file = "src/cratekit/label/judge_cli.py"
+surface = "user"
+tests = ["tests/test_label_judge.py"]
+old = '''
+    _JOB_TOOLS.pop(str(job.job_id), None)
+    if isinstance(error, jobs.Parked):'''
+new = '    if isinstance(error, jobs.Parked):'
+
+[[rows]]
+id = "u103-a.A10_write_is_a_merge"
+source = { table = "u103-a.json", id = "A10_write_is_a_merge" }
+description = "Replace the cache document with this pass's answers instead of laying them over what is kept"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_intake_missing_isrc.py"]
+old = '            merged = {**self.read(plan), **answers}'
+new = '            merged = dict(answers)'
+
+[[rows]]
+id = "u103-a.A1_read_serves_only_answers"
+source = { table = "u103-a.json", id = "A1_read_serves_only_answers" }
+description = "Drop the reader's rule that only a match or a miss is served from a cache document"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_intake_missing_isrc.py"]
+old = '''
+            if classify(payload)[0] not in _KEPT_OUTCOMES:
+                continue
+            answers[offset] = payload'''
+new = '            answers[offset] = payload'
+
+[[rows]]
+id = "u103-a.A2_write_keeps_only_answers"
+source = { table = "u103-a.json", id = "A2_write_keeps_only_answers" }
+description = "Drop the writer's rule that only a match or a miss is kept, removed alone so the reader's copy of the rule is not what is measured"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_intake_missing_isrc.py"]
+old = '''
+                    for offset in sorted(merged)
+                    if classify(merged[offset])[0] in _KEPT_OUTCOMES'''
+new = '                    for offset in sorted(merged)'
+
+[[rows]]
+id = "u103-a.A3_document_must_carry_its_plan"
+source = { table = "u103-a.json", id = "A3_document_must_carry_its_plan" }
+description = "Stop checking that a cache document carries the plan it was asked for"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_intake_missing_isrc.py"]
+old = '        if document.get("version") != CACHE_VERSION or document.get("plan") != plan.material():'
+new = '        if document.get("version") != CACHE_VERSION:'
+
+[[rows]]
+id = "u103-a.A5_offset_must_be_planned"
+source = { table = "u103-a.json", id = "A5_offset_must_be_planned" }
+description = "Serve a kept answer at an offset the plan never asked for"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_intake_missing_isrc.py"]
+old = '            if offset not in planned or not isinstance(payload, dict):'
+new = '            if not isinstance(payload, dict):'
+
+[[rows]]
+id = "u103-a.A6_digest_in_the_key"
+source = { table = "u103-a.json", id = "A6_digest_in_the_key" }
+description = "Take the recording's content digest out of the key material, so a changed file keeps its old key"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_intake_missing_isrc.py"]
+old = '''
+            "digest": self.digest,
+            "offsets": list(self.offsets),'''
+new = '''
+            "digest": "",
+            "offsets": list(self.offsets),'''
+
+[[rows]]
+id = "u103-a.A7_offsets_in_the_key"
+source = { table = "u103-a.json", id = "A7_offsets_in_the_key" }
+description = "Take the offsets out of the key material, so a changed chunk plan keeps its old key"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_intake_missing_isrc.py"]
+old = '''
+            "offsets": list(self.offsets),
+            "chunk_s": self.chunk_s,'''
+new = '''
+            "offsets": [],
+            "chunk_s": self.chunk_s,'''
+
+[[rows]]
+id = "u103-a.A9_refresh_reads_nothing_kept"
+source = { table = "u103-a.json", id = "A9_refresh_reads_nothing_kept" }
+description = "Let a refreshing pass read the kept answers anyway"
+file = "src/cratekit/intake/acrcloud.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_intake_missing_isrc.py"]
+old = '    kept = kept_in.read(plan) if plan is not None and not refresh else {}'
+new = '    kept = kept_in.read(plan) if plan is not None else {}'
+
+[[rows]]
+id = "u146-a.B12_landing_takes_keyless_rows"
+source = { table = "u146-a.json", id = "B12_landing_takes_keyless_rows" }
+description = "owned_in_library: a row whose job froze no date key is placed by the landing, into Undated for good"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '    known = [row for row in rows if row.known and row.paths]'
+new = '    known = [row for row in rows if row.paths]'
+
+[[rows]]
+id = "u146-b.B13_first_of_two_rows"
+source = { table = "u146-b.json", id = "B13_first_of_two_rows" }
+description = "owned_in_library: a file two active rows claim answers with the first, so a duplicate import joins All Favorites by a guess"
+file = "src/cratekit/favorites/backfill.py"
+surface = "user"
+tests = ["tests/test_intake_land_owned_hearts_native.py"]
+old = '    by_path = native.single_rows_for(db, cfg, paths)'
+new = '    by_path = native.content_ids_for(db, cfg, paths)'
