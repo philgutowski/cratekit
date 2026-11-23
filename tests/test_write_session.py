@@ -8,6 +8,7 @@ liveness and the database handle are injected.
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import inspect
 import json
@@ -22,8 +23,8 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import config, locations, preflight, rb_writer, session, snapshot
-from cratekit.core.cause import CratekitError, refuse
+from cratekit.core import backup_facts, config, locations, preflight, rb_writer, session, snapshot
+from cratekit.core.cause import REASONS, CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
 from tests import _mounts
@@ -208,8 +209,6 @@ def test_the_volume_is_judged_before_any_library_path_is_resolved(cfg):
 @pytest.mark.parametrize("state", sorted(preflight.MountState, key=str))
 def test_every_mount_verdict_has_a_declared_refusal_slug(state):
     """P3: a new mount verdict with no slug fails here, not under a default code."""
-    from cratekit.core.cause import REASONS
-
     if state is preflight.MountState.OK:
         assert state not in session._MOUNT_REASONS
         return
@@ -226,8 +225,6 @@ _ARCHIVE = "AAAA-1111-the-archive"
 @pytest.mark.parametrize("state", sorted(preflight.MountState, key=str))
 def test_every_mount_verdict_about_a_rule_target_was_decided_exactly_once(state):
     """A verdict is in exactly one of the pass and refusal tables."""
-    from cratekit.core.cause import REASONS
-
     proved = state in session._MAPPED_PROVED
     refused = state in session._MAPPED_REASONS
     assert proved != refused
@@ -813,8 +810,6 @@ def test_an_agent_shaped_invocation_cannot_mint_the_acknowledgment(cfg):
 
 def test_the_terminal_check_is_a_terminal_check_and_not_a_standard_input_read():
     """R33: the terminal check reads no input, asserted structurally."""
-    import ast
-
     from tests._split_modules import source_of
 
     # The session and its parts (U300): the terminal check lives in ``session_ack``.
@@ -835,8 +830,6 @@ def test_the_recorded_actor_is_derived_from_the_invocation_and_never_supplied():
 
 def test_the_acknowledgment_records_the_backup_age_that_was_shown(cfg):
     """KTD18: the backup age shown is recorded for every declared portion."""
-    from cratekit.core import backup_facts
-
     now = datetime(2026, 8, 1, 12, 0, tzinfo=UTC)
     backup_facts.record(
         cfg,
@@ -1090,10 +1083,9 @@ def test_a_disagreement_reports_a_live_rekordbox_separately(cfg, monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
 
     record = session.open_session(cfg, workflow="a-destructive-workflow")
-    with pytest.raises(CratekitError) as excinfo:
-        session.verify_commit(record, cfg, expect=lambda _db: False, reopen=object)
-
-    cause = excinfo.value.cause
+    cause = _refusal(
+        session.verify_commit, record, cfg, expect=lambda _db: False, reopen=object
+    )
     assert cause.reason == "session-committed-unverified"
     assert cause.inner is not None
     assert cause.inner.reason == "rekordbox-running"
@@ -1186,18 +1178,33 @@ def _analysis_tree(root: Path) -> list[Path]:
     return written
 
 
+def _rewrite(path: Path, content: bytes, *, mtime_ns: int | None = None) -> None:
+    """Rewrite ``path``, then set its mtime to ``mtime_ns``, or a second past the write's."""
+    path.write_bytes(content)
+    written = path.stat()
+    moved = written.st_mtime_ns + 10**9 if mtime_ns is None else mtime_ns
+    os.utime(path, ns=(written.st_atime_ns, moved))
+
+
+def _smoke_test_fails():
+    raise refuse("refused-by-policy", "the smoke test failed")
+
+
+def _drift_refusal(tmp_path: Path, body):
+    """The cause the analysis watch over the library refuses with once ``body`` ran."""
+    with pytest.raises(CratekitError) as excinfo:
+        with session.analysis_files_unmoved([tmp_path / "library"]):
+            body()
+    return excinfo.value.cause
+
+
 def test_a_moved_analysis_file_refuses_the_session(cfg, tmp_path):
     """A real rewritten file refuses, the half the source scan cannot see."""
     written = _analysis_tree(tmp_path / "library")
     victim = written[1]
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            victim.write_bytes(b"a rewritten grid")
-            stat_result = victim.stat()
-            os.utime(victim, ns=(stat_result.st_atime_ns, stat_result.st_mtime_ns + 10**9))
+    cause = _drift_refusal(tmp_path, lambda: _rewrite(victim, b"a rewritten grid"))
 
-    cause = excinfo.value.cause
     assert cause.reason == "anlz-modified"
     assert cause.code is ExitCode.REFUSED_BY_POLICY
     assert any(str(victim) in line for line in cause.detail["changed"])
@@ -1206,10 +1213,7 @@ def test_a_moved_analysis_file_refuses_the_session(cfg, tmp_path):
 def test_a_removed_analysis_file_refuses_too(cfg, tmp_path):
     """A destroyed grid is not a smaller problem than a rewritten one."""
     written = _analysis_tree(tmp_path / "library")
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            written[0].unlink()
-    assert "was removed" in excinfo.value.cause.detail["changed"][0]
+    assert "was removed" in _drift_refusal(tmp_path, written[0].unlink).detail["changed"][0]
 
 
 def test_a_session_that_touches_nothing_passes(cfg, tmp_path):
@@ -1235,9 +1239,7 @@ def test_the_gates_can_arm_the_analysis_watch_for_the_body_of_a_session(cfg, tmp
             analysis_roots=[tmp_path / "library"],
             **open_gates(cfg),
         ):
-            written[2].write_bytes(b"a rewritten grid, mid session")
-            moved = written[2].stat()
-            os.utime(written[2], ns=(moved.st_atime_ns, moved.st_mtime_ns + 10**9))
+            _rewrite(written[2], b"a rewritten grid, mid session")
     assert excinfo.value.cause.reason == "anlz-modified"
 
 
@@ -1248,22 +1250,17 @@ def test_the_tree_writers_reach_for_the_session_spine(cfg):
     Checked on the syntax tree, since a substring search passes on the module's
     own docstring explaining the calls.
     """
-    import ast
     import importlib
+
+    from tests.test_tree_registry import _called_names
 
     trees = importlib.import_module("cratekit.write.trees")
     module = ast.parse(Path(trees.__file__).read_text(encoding="utf-8"))
 
-    called: set[str] = set()
-    keywords: set[str] = set()
-    for node in ast.walk(module):
-        if not isinstance(node, ast.Call):
-            continue
-        if isinstance(node.func, ast.Attribute):
-            called.add(node.func.attr)
-        elif isinstance(node.func, ast.Name):
-            called.add(node.func.id)
-        keywords.update(kw.arg for kw in node.keywords if kw.arg)
+    called = _called_names(module)
+    keywords = {
+        kw.arg for node in ast.walk(module) if isinstance(node, ast.Call) for kw in node.keywords
+    }
 
     for obligation in ("assert_gates", "assert_verified"):
         assert obligation in called, (
@@ -1308,16 +1305,16 @@ def test_the_backup_restore_passes_the_destructive_session_gates(volume_matches,
     target = tmp_path / "scratch"
     target.mkdir()
 
-    with pytest.raises(CratekitError) as excinfo:
-        backup.plan_restore(
-            cfg,
-            target=target,
-            confirmed=True,
-            snapshot="2026-08-01T000000Z",
-            runner=lambda command: backup.CommandResult(returncode=0),
-            process_lister=lambda: (),
-        )
-    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+    cause = _refusal(
+        backup.plan_restore,
+        cfg,
+        target=target,
+        confirmed=True,
+        snapshot="2026-08-01T000000Z",
+        runner=lambda command: backup.CommandResult(returncode=0),
+        process_lister=lambda: (),
+    )
+    assert cause.code is ExitCode.ACK_REQUIRED
 
 
 def test_the_restores_own_refusals_survive_the_gates_being_added(cfg, tmp_path):
@@ -1348,11 +1345,11 @@ def test_a_rehearsed_restore_is_not_exempt_from_the_gates(volume_matches, cfg, t
         clears=(),
         commands=(backup.Command(label=backup.RESTORE_DATABASE, argv=("rclone", "copy")),),
     )
-    with pytest.raises(CratekitError) as excinfo:
-        backup.run_restore(
-            plan, cfg, runner=lambda command: backup.CommandResult(returncode=0), dry_run=True
-        )
-    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+    cause = _refusal(
+        backup.run_restore,
+        plan, cfg, runner=lambda command: backup.CommandResult(returncode=0), dry_run=True
+    )
+    assert cause.code is ExitCode.ACK_REQUIRED
 
 
 def test_the_destructive_half_of_a_restore_has_no_ungated_call_shape():
@@ -1369,7 +1366,6 @@ def test_every_backup_refusal_carries_one_code_in_both_cause_tables():
     since disagreeing tables describe different failures.
     """
     from cratekit.cli import exit_codes as reservations  # noqa: PLC0415
-    from cratekit.core.cause import REASONS  # noqa: PLC0415
 
     assert backup.REFUSALS, "the refusal enum is empty, so nothing below is measured"
     disagreements = {
@@ -1423,8 +1419,7 @@ def test_a_recovery_session_is_exempt_from_the_latch_and_from_nothing_else(cfg):
     assert _gates_refusal(cfg, **recovery).code is ExitCode.ACK_REQUIRED
 
     acknowledge(cfg)
-    wrong_disk = _refusal_entering(
-        session.assert_gates,
+    wrong_disk = _gates_refusal(
         cfg, **recovery, identity_provider=foreign_identity, mount_enumerator=lambda: ()
     )
     assert wrong_disk.code is ExitCode.LIBRARY_UNAVAILABLE
@@ -1432,12 +1427,10 @@ def test_a_recovery_session_is_exempt_from_the_latch_and_from_nothing_else(cfg):
     contender = open(session.lock_path(cfg), "a+")
     try:
         rb_writer._acquire_exclusive(contender)
-        with pytest.raises(CratekitError) as busy:
-            with session.assert_gates(cfg, **recovery, **open_gates(cfg)):
-                pass
+        busy = _gates_refusal(cfg, **recovery)
     finally:
         contender.close()
-    assert busy.value.cause.code is ExitCode.LIBRARY_BUSY
+    assert busy.code is ExitCode.LIBRARY_BUSY
 
 
 def test_the_restore_is_the_recovery_and_reaches_its_own_refusals(volume_matches, cfg, tmp_path):
@@ -1489,12 +1482,7 @@ def test_the_latch_refuses_a_record_this_build_cannot_read(cfg):
         path.write_text(json.dumps(written))
 
         assert session.records(cfg) == (), "the tolerant reader should still skip it"
-        with pytest.raises(CratekitError) as excinfo:
-            with session.assert_gates(
-                cfg, workflow="a-destructive-workflow", **open_gates(cfg)
-            ):
-                raise AssertionError("the gates admitted a session against an unreadable log")
-        assert excinfo.value.cause.detail["unreadable"] == [str(path)], damage
+        assert _gates_refusal(cfg).detail["unreadable"] == [str(path)], damage
 
 
 def test_the_session_log_filename_is_legal_on_a_library_volume(cfg):
@@ -1555,10 +1543,9 @@ def test_a_read_back_that_could_not_run_says_so_rather_than_saying_it_disagreed(
     def cannot_open():
         raise refuse("library-directory-missing", "the volume went away")
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.verify_commit(record, cfg, expect=lambda _db: True, reopen=cannot_open)
-
-    cause = excinfo.value.cause
+    cause = _refusal(
+        session.verify_commit, record, cfg, expect=lambda _db: True, reopen=cannot_open
+    )
     assert cause.reason == "session-committed-unverified"
     assert cause.inner is not None
     assert cause.inner.reason == "library-directory-missing", (
@@ -1578,11 +1565,10 @@ def test_both_the_read_back_failure_and_a_live_rekordbox_travel_together(cfg, mo
     def cannot_open():
         raise refuse("database-open-failed", "held by something")
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.verify_commit(record, cfg, expect=lambda _db: True, reopen=cannot_open)
-
+    cause = _refusal(
+        session.verify_commit, record, cfg, expect=lambda _db: True, reopen=cannot_open
+    )
     chain = []
-    cause = excinfo.value.cause
     while cause is not None:
         chain.append(cause.reason)
         cause = cause.inner
@@ -1595,8 +1581,6 @@ def test_both_the_read_back_failure_and_a_live_rekordbox_travel_together(cfg, mo
 
 def test_an_unreadable_backup_fact_file_refuses_the_mint(cfg):
     """"Could not read" is never recorded as "nothing to show" (KTD18)."""
-    from cratekit.core import backup_facts
-
     damaged = backup_facts.path_for(cfg)
     damaged.parent.mkdir(parents=True, exist_ok=True)
     damaged.write_text("{ this is not json")
@@ -1614,8 +1598,6 @@ def test_an_unreadable_backup_fact_file_refuses_the_mint(cfg):
 def test_a_fact_file_this_account_may_not_open_asks_for_access_not_for_repair(cfg):
     """A permission failure asks for access, not repair, driven through
     ``read_facts`` with the precondition asserted, not assumed."""
-    from cratekit.core import backup_facts
-
     locked = backup_facts.path_for(cfg)
     locked.parent.mkdir(parents=True, exist_ok=True)
     locked.write_text("{}")
@@ -1639,8 +1621,6 @@ def test_a_fact_file_this_account_may_not_open_asks_for_access_not_for_repair(cf
 
 def test_a_fact_file_from_a_newer_build_asks_for_an_upgrade(cfg):
     """The third remedy ``read_facts`` raises travels the same way."""
-    from cratekit.core import backup_facts
-
     newer = backup_facts.path_for(cfg)
     newer.parent.mkdir(parents=True, exist_ok=True)
     newer.write_text(
@@ -1658,14 +1638,11 @@ def test_the_analysis_watch_runs_even_when_the_session_body_refuses(cfg, tmp_pat
     written = _analysis_tree(tmp_path / "library")
     victim = written[0]
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            victim.write_bytes(b"a rewritten grid")
-            moved = victim.stat()
-            os.utime(victim, ns=(moved.st_atime_ns, moved.st_mtime_ns + 10**9))
-            raise refuse("refused-by-policy", "the smoke test failed")
+    def rewrite_then_refuse():
+        _rewrite(victim, b"a rewritten grid")
+        _smoke_test_fails()
 
-    cause = excinfo.value.cause
+    cause = _drift_refusal(tmp_path, rewrite_then_refuse)
     assert cause.reason == "anlz-modified", (
         "the body's refusal hid a moved beat grid, which is the one rule the "
         "project calls inviolable"
@@ -1678,20 +1655,15 @@ def test_the_analysis_watch_runs_even_when_the_session_body_refuses(cfg, tmp_pat
 def test_a_body_that_refuses_with_no_drift_keeps_its_own_refusal(cfg, tmp_path):
     """P7. The watch must not rewrite a refusal it has nothing to say about."""
     _analysis_tree(tmp_path / "library")
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            raise refuse("refused-by-policy", "the smoke test failed")
-    assert excinfo.value.cause.reason == "refused-by-policy"
+    assert _drift_refusal(tmp_path, _smoke_test_fails).reason == "refused-by-policy"
 
 
 def test_an_appearing_analysis_file_refuses_too(cfg, tmp_path):
     """An appearing analysis file is the third kind of drift."""
     _analysis_tree(tmp_path / "library")
     fresh = tmp_path / "library" / "PIONEER" / "USBANLZ" / "one" / "ANLZ0002.DAT"
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            fresh.write_bytes(b"analysed mid session")
-    assert excinfo.value.cause.detail["changed"] == [f"{fresh} appeared"]
+    cause = _drift_refusal(tmp_path, lambda: fresh.write_bytes(b"analysed mid session"))
+    assert cause.detail["changed"] == [f"{fresh} appeared"]
 
 
 def test_a_rewrite_inside_one_tick_of_the_clock_is_caught_by_the_size(cfg, tmp_path):
@@ -1700,11 +1672,13 @@ def test_a_rewrite_inside_one_tick_of_the_clock_is_caught_by_the_size(cfg, tmp_p
     victim = written[3]
     original = victim.stat()
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            victim.write_bytes(b"a rewritten grid, longer than what was there")
-            os.utime(victim, ns=(original.st_atime_ns, original.st_mtime_ns))
-    assert excinfo.value.cause.reason == "anlz-modified"
+    cause = _drift_refusal(
+        tmp_path,
+        lambda: _rewrite(
+            victim, b"a rewritten grid, longer than what was there", mtime_ns=original.st_mtime_ns
+        ),
+    )
+    assert cause.reason == "anlz-modified"
     assert victim.stat().st_mtime_ns == original.st_mtime_ns, "the mtime moved after all"
 
 
@@ -1715,16 +1689,13 @@ def test_a_live_holder_this_platform_will_not_describe_is_assumed_alive(cfg, mon
     monkeypatch.setattr(session, "process_started", lambda _pid: session.UNKNOWN_IDENTITY)
     assert session.holder_alive(here) is True
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.release_stale_lock(cfg, path=_lock_recording(cfg, here))
-    assert excinfo.value.cause.remediation.remedy is Remedy.WAIT_FOR_HOLDER
+    cause = _refusal(session.release_stale_lock, cfg, path=_lock_recording(cfg, here))
+    assert cause.remediation.remedy is Remedy.WAIT_FOR_HOLDER
 
 
 def test_a_holder_whose_process_is_gone_is_still_judged_dead(cfg):
     """A genuinely finished process is still judged dead, since only "no such
     process", not "will not say", clears a claim. Real probes, no stub."""
-    import subprocess
-
     finished = subprocess.Popen([sys.executable, "-c", "pass"])
     finished.wait()
     assert session.process_exists(finished.pid) is False
@@ -1782,23 +1753,22 @@ def test_the_real_terminal_probe_answers_no_when_there_is_no_terminal(monkeypatc
 def test_the_volume_is_judged_before_a_restore_resolves_its_target(cfg, tmp_path):
     """``plan_restore`` judges the volume first, since resolving a path against the
     wrong volume is already the damage."""
-    with pytest.raises(CratekitError) as excinfo:
-        backup.plan_restore(
+    cause = _refusal(
+        backup.plan_restore,
+        cfg,
+        target=tmp_path / "a-target-that-does-not-exist",
+        confirmed=True,
+        snapshot="2026-08-01T000000Z",
+        runner=lambda command: (_ for _ in ()).throw(AssertionError("the remote was read")),
+        process_lister=lambda: (),
+        gates=lambda: session.assert_gates(
             cfg,
-            target=tmp_path / "a-target-that-does-not-exist",
-            confirmed=True,
-            snapshot="2026-08-01T000000Z",
-            runner=lambda command: (_ for _ in ()).throw(AssertionError("the remote was read")),
-            process_lister=lambda: (),
-            gates=lambda: session.assert_gates(
-                cfg,
-                workflow=backup.RESTORE_WORKFLOW,
-                intent=session.Intent.RECOVERY,
-                identity_provider=foreign_identity,
-                mount_enumerator=lambda: (),
-            ),
-        )
-    cause = excinfo.value.cause
+            workflow=backup.RESTORE_WORKFLOW,
+            intent=session.Intent.RECOVERY,
+            identity_provider=foreign_identity,
+            mount_enumerator=lambda: (),
+        ),
+    )
     assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
     assert cause.reason == "library-volume-mismatch", (
         "a restore reached its own target check before the volume gate"
@@ -2080,8 +2050,6 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
     Unattributable spellings are returned, not passed. The shared function's own
     body is not a taker.
     """
-    import ast
-
     takers: dict[str, set[str]] = {}
     unreadable: list[str] = []
     for path in sorted(src.rglob("*.py")):
@@ -2277,7 +2245,6 @@ def test_the_capture_guard_reads_a_writer_that_takes_its_capture_through_the_sha
 
 def test_the_shared_capture_attaches_before_it_judges(cfg, monkeypatch):
     """The shared capture attaches before it judges and is ``src``'s only capture."""
-    import ast
     from types import SimpleNamespace
 
     from cratekit.write import trees
@@ -2331,8 +2298,6 @@ def test_the_shared_capture_attaches_before_it_judges(cfg, monkeypatch):
 
 def test_each_commit_helper_records_the_commit():
     """The helpers the guard accepts by name really do make the call."""
-    import ast
-
     src = Path(session.__file__).resolve().parents[1]
     for relative, helper in (
         ("write/trees.py", "_record_membership_commit"),

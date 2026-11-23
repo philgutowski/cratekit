@@ -21,6 +21,7 @@ import pytest
 
 from cratekit.core import config, taxonomy, tree_registry
 from cratekit.write import rbxml
+from tests.test_restore import _raised
 from tests.xml_fixtures import _EMPTY_COLLECTION, _ml_track, _no_bare_lf, _xml_doc
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -281,10 +282,9 @@ def test_an_unreadable_registry_is_its_own_answer_and_not_an_empty_one(cfg):
     """Unreadable is never "no record", which would send a byte write at a database tree."""
     path = tree_registry.path_for(cfg)
     config.atomic_write_bytes(b"{ not json", path)
-    with pytest.raises(tree_registry.TreeRegistryUnreadable) as excinfo:
-        tree_registry.read(cfg)
-    assert excinfo.value.path == path
-    assert excinfo.value.remedy is not None
+    error = _raised(tree_registry.TreeRegistryUnreadable, tree_registry.read, cfg)
+    assert error.path == path
+    assert error.remedy is not None
 
 
 def test_a_registry_from_a_newer_build_is_refused_rather_than_guessed_at(cfg):
@@ -739,13 +739,11 @@ def test_a_taxonomy_nesting_deeper_than_the_bridge_encodes_is_refused_by_name():
     """The plan's third scenario, refused rather than written at an unfindable indent."""
     declared = taxonomy.default_taxonomy()
     deeper = replace(declared, tree_depth=rbxml.TREE_DEPTH + 1)
-    with pytest.raises(rbxml.TreeTooDeep) as excinfo:
-        rbxml.assert_bridge_can_serve(deeper)
-    message = str(excinfo.value)
+    error = _raised(rbxml.TreeTooDeep, rbxml.assert_bridge_can_serve, deeper)
+    message = str(error)
     assert declared.tree.id in message
     assert str(rbxml.TREE_DEPTH) in message and str(rbxml.TREE_DEPTH + 1) in message
-    with pytest.raises(rbxml.TreeTooDeep):
-        rbxml.routing_tree(deeper, tree_registry.EMPTY)
+    _raised(rbxml.TreeTooDeep, rbxml.routing_tree, deeper, tree_registry.EMPTY)
 
 
 def test_the_depth_the_bridge_encodes_and_the_depth_a_template_may_declare_are_one():
@@ -776,11 +774,9 @@ def test_the_two_tree_constructors_cannot_produce_an_ungoverned_tree_by_default(
     """No default registry, which would make an ungoverned tree pass in silence."""
     declared = taxonomy.default_taxonomy()
     for factory in (rbxml.routing_tree, rbxml.intake_tree):
-        with pytest.raises(TypeError):
-            factory(declared)
+        _raised(TypeError, factory, declared)
         assert factory(declared, tree_registry.EMPTY).governed
-    with pytest.raises(TypeError):
-        rbxml.tree_for(declared.tree)
+    _raised(TypeError, rbxml.tree_for, declared.tree)
     assert rbxml.tree_for(declared.tree, tree_registry.EMPTY).governed
 
 
@@ -824,8 +820,7 @@ def test_the_indent_derivation_reproduces_the_pinned_widths():
     assert [rbxml.indent_at(depth) for depth in range(5)] == [4, 6, 8, 10, 12]
     assert rbxml.SUB_CLOSE_INDENT == 10
     assert rbxml.TRACK_INDENT == 12
-    with pytest.raises(ValueError):
-        rbxml.indent_at(-1)
+    _raised(ValueError, rbxml.indent_at, -1)
 
 
 # The consolidated locates: every shape the old call sites used

@@ -145,6 +145,13 @@ def _sweep_refusal(cfg):
     )
 
 
+def _raised(kind: type[BaseException], call, /, *arguments, **keywords):
+    """The ``kind`` exception ``call`` raises, failing if it raises none."""
+    with pytest.raises(kind) as excinfo:
+        call(*arguments, **keywords)
+    return excinfo.value
+
+
 def _refused(call, /, *arguments, **keywords) -> CratekitError:
     """The ``CratekitError`` that ``call`` raises, failing if none is."""
     with pytest.raises(CratekitError) as excinfo:
