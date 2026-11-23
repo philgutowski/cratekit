@@ -559,3 +559,39 @@ def test_a_resumed_tail_restamps_every_file_since_its_run_scored_none(
     assert "leaving out no staged file" in detail
     assert again.summary["restamp_left_out"] == 0
     assert sorted(measuring.asked) == ["a.flac", "b.flac"]
+
+
+def test_the_tail_over_the_real_verbs_leaves_every_title_headless_for_the_landing(
+    cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
+):
+    """U343, the tail end to end on fixtures: run, rescore, restamp and name apply leave
+    each file under its own name with its measures and its mark, no head, no title
+    head and no key, and the landing plans each title as its title tag gives it."""
+    from cratekit.intake import ingest
+    from cratekit.write import naming_cli
+
+    first = place(folder, silence, "Ada - Alpha", artist="Ada", title="Alpha")
+    second = place(folder, silence, "Ada - Bravo", artist="Ada", title="Bravo")
+    bind_scoring(monkeypatch, detect_=detector(level=6))
+    monkeypatch.setattr(naming_cli, "_recorded", lambda cfg_: ())
+    held = chain()
+
+    for step, verb, words in tail_chain.TAIL:
+        if step == tail_chain.TAG:
+            continue
+        tail_chain.tail_step(held, step, verb, words, folder, cfg)
+        if step == tail_chain.ANALYZE:
+            tail_chain.rescore(held, folder, cfg, unable=None)
+    tail_chain.name(held, folder, cfg)
+
+    assert [step for step in held.summary["steps"]] == [
+        tail_chain.ANALYZE, tail_chain.RESTAMP, tail_chain.NAME
+    ], held.summary
+    assert sorted(path.name for path in folder.iterdir()) == [first.name, second.name]
+    for path, title in ((first, "Alpha"), (second, "Bravo")):
+        read = tags.read_tags(path, ("title", "initialkey", "analyzed", "energylevel"))
+        assert read == {
+            "title": title, "initialkey": None, "analyzed": "1", "energylevel": "6",
+        }, path.name
+        meta = ingest.file_meta(path, cfg=cfg)
+        assert (meta["name"], meta["tonality"]) == (title, ""), path.name
