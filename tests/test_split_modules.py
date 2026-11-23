@@ -1,11 +1,14 @@
 """``tests/_split_modules.py`` reads every part of each split module (R-1890).
 
 The scans that read a split module through the helper trust its glob, so the
-glob is held here against two independent lists of the parts: the module
-table in ``docs/DEVELOPING.md``, which is what a person is told, and the call
-time accessor each part holds back to its module, which is what the code does.
-A part named off the convention, or a module whose table row drifts, fails
-here rather than falling silently out of every scan at once.
+glob is held here against three independent lists of the parts: the module
+table in ``docs/DEVELOPING.md``, which is what a person is told; the import
+graph, since ``DEVELOPING.md`` says a part is re-exported by its module and
+imported from nowhere else; and the call time accessor most parts hold back
+to their module. A part named off the convention fails here when it is
+imported only by its module and its parts, or holds an accessor, or is in the
+table. One that is also imported from outside, holds no accessor and is not
+in the table escapes all three, and the helper's docstring says so.
 """
 
 from __future__ import annotations
@@ -17,6 +20,53 @@ from pathlib import Path
 from tests._split_modules import CORE, PACKAGE, SPLIT_MODULES, files_of, names_of, source_of
 
 DEVELOPING = Path(__file__).resolve().parent.parent / "docs" / "DEVELOPING.md"
+SRC = CORE.parent
+
+
+def _glob_matched() -> dict[str, set[str]]:
+    return {module: {path.stem for path in files_of(module)} for module in SPLIT_MODULES}
+
+
+def _imports_by_module() -> dict[str, set[str]]:
+    """Every authored module's dotted name, and the cratekit modules it imports anywhere in it."""
+    found: dict[str, set[str]] = {}
+    for path in sorted(SRC.rglob("*.py")):
+        if "_vendor" in path.parts:
+            continue
+        name = ".".join(path.relative_to(SRC.parent).with_suffix("").parts)
+        imported: set[str] = set()
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                imported.add(node.module)
+                imported.update(f"{node.module}.{alias.name}" for alias in node.names)
+            elif isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+        found[name] = imported
+    return found
+
+
+def _exclusive_parts() -> dict[str, set[str]]:
+    """Each split module's core imports that nothing outside it and those imports imports.
+
+    Grown to a fixed point from the module itself, so a part imported only by
+    its module and by its sibling parts (``rb_tables``) joins once they have.
+    """
+    imports = _imports_by_module()
+    found: dict[str, set[str]] = {}
+    for module in SPLIT_MODULES:
+        held = {module}
+        grew = True
+        while grew:
+            grew = False
+            for candidate in sorted(imports):
+                if candidate in held or not candidate.startswith(f"{PACKAGE}."):
+                    continue
+                importers = {name for name, wanted in imports.items() if candidate in wanted}
+                if importers and importers <= held:
+                    held.add(candidate)
+                    grew = True
+        found[module] = {name.rsplit(".", 1)[-1] for name in held - {module}}
+    return found
 
 
 def _documented_parts() -> dict[str, set[str]]:
@@ -67,12 +117,25 @@ def test_the_glob_reads_every_part_the_developing_table_names():
         assert parts <= read, f"{module}'s scan misses {sorted(parts - read)}"
 
 
-def test_the_glob_reads_every_part_that_reaches_back_to_its_module():
+def test_the_glob_reads_every_part_only_its_module_imports():
+    exclusive = _exclusive_parts()
+    assert all(exclusive.values()), f"the import graph found no part for some module: {exclusive}"
+    for module, parts in exclusive.items():
+        read = _glob_matched()[module]
+        assert parts <= read, f"{module}'s scan misses {sorted(parts - read)}"
+
+
+def test_every_module_reaching_back_to_a_split_module_is_read_as_some_split_modules_part():
+    """Matched against every split module's glob, not only the one it reaches.
+
+    A session part may break an import cycle with the writer's accessor, which
+    makes it no part of the writer; what it must not be is outside every glob.
+    """
     accessors = _accessor_parts()
     assert all(accessors.values()), f"no accessor found for some module: {accessors}"
-    for module, parts in accessors.items():
-        read = {path.stem for path in files_of(module)}
-        assert parts <= read, f"{module}'s scan misses {sorted(parts - read)}"
+    read = set().union(*_glob_matched().values())
+    holders = set().union(*accessors.values())
+    assert holders <= read, f"modules holding an accessor that no scan reads: {sorted(holders - read)}"
 
 
 def test_the_module_comes_first_and_every_name_is_its_file():

@@ -943,8 +943,9 @@ def test_only_the_companion_the_inventory_declares_restored_is_written_back(cfg,
 
 def _restore_sources() -> str:
     """``restore.py`` and its parts (U300), so a scan of the module reads all of it."""
-    core = Path(restore.__file__).parent
-    return "\n".join(path.read_text() for path in sorted(core.glob("restore*.py")))
+    from tests._split_modules import source_of  # noqa: PLC0415
+
+    return source_of("cratekit.core.restore")
 
 
 def test_the_restore_module_spells_no_companion_suffix_of_its_own(cfg):
@@ -2523,7 +2524,9 @@ def test_the_convergence_fallback_expires_the_moment_both_modules_share_a_build(
     """
     import importlib.util  # noqa: PLC0415
 
-    source = Path(inspect.getfile(restore)).read_text(encoding="utf-8")
+    # The restore and its parts: ``_hand_tree_shortness_over`` moved to
+    # ``restore_perform`` under U300, so a fallback put back there is the same one.
+    source = _restore_sources()
     try:
         landed = importlib.util.find_spec("cratekit.core.convergence") is not None
     except ModuleNotFoundError:

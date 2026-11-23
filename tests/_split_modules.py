@@ -9,11 +9,14 @@ written in a part passed it (R-1890). Every such guard reads its module
 through here instead.
 
 The parts are found by the glob of the module's file name, the convention
-U300 named them by and ``tests/test_restore.py`` already reads them with, so a
-part added later is read without an edit here. A glob is only as good as the
-convention, so ``tests/test_split_modules.py`` derives the parts two other
-ways, from the module table in ``docs/DEVELOPING.md`` and from the call time
-accessor each part holds back to its module, and fails on one the glob misses.
+U300 named them by, so a part added later is read without an edit here. A
+glob is only as good as the convention, so ``tests/test_split_modules.py``
+derives the parts three other ways and fails on one the glob misses: from the
+module table in ``docs/DEVELOPING.md``; from the import graph, since a part is
+imported by its module and by no module outside it and its parts; and from
+the call time accessor most parts hold back to their module. A module off the
+convention that another module also imports, and that holds no accessor,
+escapes all three; that is recorded, not covered.
 The glob also matches ``rb_dates.py``, which predates U300 and is the writer's
 too (it installs the date bound the writer opens with), so it is read here as
 well: a scan that reads one file more is stricter, never weaker.
@@ -49,8 +52,3 @@ def source_of(module: str) -> str:
 def names_of(module: str) -> tuple[str, ...]:
     """The dotted names of the module and each of its parts."""
     return tuple(f"{PACKAGE}.{path.stem}" for path in files_of(module))
-
-
-def relative_paths_of(module: str) -> tuple[str, ...]:
-    """The module's and its parts' paths under the package root, ``core/x.py``."""
-    return tuple(f"core/{path.name}" for path in files_of(module))

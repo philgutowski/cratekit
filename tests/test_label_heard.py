@@ -95,7 +95,7 @@ def test_nothing_on_the_heard_path_reaches_rekordbox_a_grid_a_tempo_or_a_rating(
             name
             for node in ast.walk(tree)
             if isinstance(node, ast.ImportFrom)
-            for name in (node.module or "", *(f"{node.module}.{a.name}" for a in node.names))
+            for name in (node.module or "", *(f"{node.module or ''}.{a.name}" for a in node.names))
         } | {alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names}
         assert not {one for one in imported if one.startswith(banned)}, (module.__name__, imported)
         names = {

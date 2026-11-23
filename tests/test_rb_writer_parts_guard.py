@@ -21,7 +21,15 @@ A part raises the writer's refusals through its call time accessor,
 ``_writer()._unavailable(...)`` and ``_writer()._running(...)``, which the beat
 grid suite's scan, keyed on a bare ``_unavailable`` name, does not see. Both
 spellings are read here, and any attribute spelling ending in the name
-(``rb_writer._unavailable``, ``W._unavailable``) with them.
+(``rb_writer._unavailable``, ``W._unavailable``) with them. Like the suite's
+scan, this reads refusals raised THROUGH THOSE TWO FACTORIES and no other
+route: a part's own ``refuse`` or ``_node_refusal`` call is held by the
+population pins in ``tests/test_reserved_causes.py`` instead, and a factory
+bound to a local name first is not read.
+
+The suite's other direction, that every reserved writer slug is raised, is
+not repeated: every one is raised in ``rb_writer.py`` itself, so a copy here
+could only fail together with the suite's own test, never alone.
 
 The third item R-1890 names in that file, the soft-delete guard's resolution of
 ``_writer().SOFT_DELETE_COLUMN``, is not a scan in the suite but a rule in
@@ -34,7 +42,7 @@ from __future__ import annotations
 import ast
 
 from tests import _source_guards as guard
-from tests._split_modules import files_of, source_of
+from tests._split_modules import files_of
 
 WRITER = "cratekit.core.rb_writer"
 
@@ -113,7 +121,7 @@ def test_no_part_of_the_writer_raises_a_bare_runtime_error_or_system_exit():
 # ── every refusal is in the reserved vocabulary ──────────────────────────────
 
 
-def test_every_refusal_the_writer_or_a_part_raises_has_a_reserved_code_and_a_remedy():
+def test_every_refusal_the_writer_or_a_part_raises_through_a_factory_is_reserved():
     from cratekit.core.cause import REASONS
     from cratekit.core.exit_codes import ExitCode, meaning_of
 
@@ -139,14 +147,6 @@ def test_every_refusal_names_its_reason_as_a_literal_the_scan_can_read():
         and not (node.args and isinstance(node.args[0], ast.Constant))
     ]
     assert not unread, f"a refusal whose reason the scan cannot read: {unread}"
-
-
-def test_the_reserved_writer_vocabulary_is_raised_by_the_writer_or_a_part():
-    from tests.test_cli_contract import WRITER_REFUSALS
-
-    raised = raised_reasons(source_of(WRITER))
-    unused = {slug for slug in WRITER_REFUSALS.values() if slug not in raised}
-    assert not unused, f"reserved for the guarded writer but never raised: {sorted(unused)}"
 
 
 def test_the_reason_scan_reads_both_spellings_and_skips_what_is_not_a_refusal():
@@ -183,6 +183,7 @@ def test_the_soft_delete_guard_fires_on_a_permissive_read_through_the_accessor()
     evasions = (
         "def read(row):\n    return getattr(row, _writer().SOFT_DELETE_COLUMN, 0)\n",
         "def read(row):\n    return row.get(_writer().SOFT_DELETE_COLUMN, False)\n",
+        "def read(row, w=None):\n    return getattr(row, _writer(w).SOFT_DELETE_COLUMN, 0)\n",
         "COLUMN = _writer().SOFT_DELETE_COLUMN\n"
         "def read(row):\n    return getattr(row, COLUMN, None)\n",
         "def read(row):\n    w = _writer()\n    return getattr(row, w.SOFT_DELETE_COLUMN, 0)\n",
@@ -193,13 +194,17 @@ def test_the_soft_delete_guard_fires_on_a_permissive_read_through_the_accessor()
         assert guard.reads_soft_delete_marker(source), evasion
 
 
-def test_the_accessor_is_recognized_by_every_import_shape_and_by_nothing_else():
+def test_the_accessor_is_recognized_by_the_import_shapes_the_guard_knows_and_nothing_else():
+    """The shapes ``_writer_imports`` names; its known limits list what it does not."""
     reads = "def read(row):\n    return getattr(row, _writer().SOFT_DELETE_COLUMN, 0)\n"
     for accessor in (
         _ACCESSOR,
         "def _writer():\n    import cratekit.core.rb_writer as w\n    return w\n",
+        "def _writer():\n    import cratekit.core.rb_writer\n    return cratekit.core.rb_writer\n",
         "def _writer():\n    from cratekit.core import rb_writer as w\n    return w\n",
         "def _writer():\n    from . import rb_writer\n    return rb_writer\n",
+        "if True:\n    def _writer():\n        from cratekit.core import rb_writer\n"
+        "        return rb_writer\n",
     ):
         assert guard.permissive_soft_delete_reads(accessor + reads), accessor
     for not_one in (

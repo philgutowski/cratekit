@@ -2120,22 +2120,23 @@ def _writer_imports(nodes) -> tuple[set[str], set[str]]:
 
 
 def _writer_accessors(tree: ast.AST) -> set[str]:
-    """Module level functions that import the writer and return the name they bound.
+    """Functions that import the writer and return the name they bound it to.
 
-    Narrow on purpose, because this is the one function call the soft-delete
-    guard resolves: the function's own imports must bind the writer, and one of
-    its returns must hand back exactly that name. A function returning anything
-    else, or importing anything else, is not an accessor.
+    The one function call the soft-delete guard resolves, so it is keyed on
+    what makes a function the writer, not on where it sits: its own imports
+    bind the writer, and one of its returns hands back exactly that name,
+    plain (``return rb_writer``) or dotted (``return cratekit.core.rb_writer``).
+    A function at any depth counts, since a nested accessor is the writer too.
     """
     found: set[str] = set()
-    for node in getattr(tree, "body", []):
+    for node in _walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         bound, _ = _writer_imports(_walk(node))
         if any(
             isinstance(inner, ast.Return)
-            and isinstance(inner.value, ast.Name)
-            and inner.value.id in bound
+            and inner.value is not None
+            and _dotted(inner.value) in bound
             for inner in _walk(node)
         ):
             found.add(node.name)
@@ -2171,10 +2172,10 @@ class SoftDeleteNames:
         #: Local names that ARE the rb_writer module, and names bound directly
         #: to the constant, from every import in the file.
         self.module_names, self.constant_names = _writer_imports(_walk(tree))
-        #: Module level functions that import the writer and return it, the
+        #: Functions that import the writer and return it, the
         #: call time accessor ``def _writer(): from cratekit.core import
-        #: rb_writer; return rb_writer`` every part U300 split off the writer
-        #: holds. ``_writer().SOFT_DELETE_COLUMN`` names the column
+        #: rb_writer; return rb_writer`` the parts U300 split off the writer
+        #: hold. ``_writer().SOFT_DELETE_COLUMN`` names the column
         #: exactly as ``rb_writer.SOFT_DELETE_COLUMN`` does, and before this a
         #: part reading the marker through it with a falsey default passed.
         self.accessor_names: set[str] = _writer_accessors(tree)
@@ -2262,8 +2263,6 @@ class SoftDeleteNames:
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id in self.accessor_names
-            and not node.args
-            and not node.keywords
         )
 
     def _is_column(self, node: ast.AST) -> bool:
@@ -2710,8 +2709,12 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
     is unstated gets trusted past it. Not caught: a row subclass carrying a
     falsey class-level default under a plain attribute read, the column arriving
     from a function call (other than the writer's own call time accessor,
-    ``_writer().SOFT_DELETE_COLUMN``, resolved since U300 split the writer) or
-    a dictionary lookup, and an attribute name computed at runtime. Each needs type or value inference this does not have. They are
+    ``_writer().SOFT_DELETE_COLUMN``, resolved since U300 split the writer, and
+    only when the accessor is a function of the same file that imports the
+    writer and returns that name: not through ``importlib`` or ``sys.modules``,
+    a lambda, a method, an accessor imported from another file, or a chain
+    such as ``_restore().rb_writer``) or a dictionary lookup, and an attribute
+    name computed at runtime. Each needs type or value inference this does not have. They are
     recorded in the residual
     "What the soft-delete guard cannot see, and two gaps in the gate contract"
     rather than left for a reader to discover by being wrong.
