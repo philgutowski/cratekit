@@ -44,7 +44,8 @@ FILES_FOLLOW = (
     "track's cleared R&B is the one exception, which `crate adopt move` "
     "takes it out of, as for any Soul track in an R&B band), and until "
     "then `crate converge` says differing, listing it as unexpected in "
-    "that folder"
+    "that folder (under a folder renamed in rekordbox, once a rebuild or "
+    "resort has recorded it)"
 )
 
 
