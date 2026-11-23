@@ -15,7 +15,7 @@ naming a holder from a record whose holder is an empty object (M25); and
 `_held_age` reading the full comparison's held key for the full check (M21).
 Each field was spelled at every call site on `main` and was unasserted there
 too: the cut moved the literal into one place and lost no kill (the kill set
-replay keeps all 364, and M21's composite on the base kills nothing either,
+replay keeps all 366 recorded, and M21's composite on the base kills nothing either,
 `docs/mutation/u953-m21-composite.md`). Three more zeros, M15, M18 and M24,
 are equivalent mutants, since `internal-error`'s default remedy is already
 report a defect.
