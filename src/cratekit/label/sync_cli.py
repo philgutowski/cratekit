@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import math
+import shlex
 from collections.abc import Callable, Container, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -73,6 +74,8 @@ QUEUE = str(Queue.LABEL_RELEASE)
 
 #: The key of the line a walk over every label says its estimate in (U278).
 _ESTIMATE_KEY = "label.sync.estimate"
+#: The key of the line naming the one genre group a run asks (U341).
+_GENRE_KEY = "label.sync.genre"
 
 #: The calls a label with no kept listing is estimated at when no followed
 #: label has one to average (U278), about a small label's roster.
@@ -97,6 +100,14 @@ def build_sync(parser, entry) -> None:
         help=(
             "with --answer, the favourite label the answer is for; with --next, "
             "the one label to ask about"
+        ),
+    )
+    parser.add_argument(
+        "--genre", default=None, metavar="GENRE",
+        help=(
+            "ask only the labels whose registry genre is GENRE, in registry order, "
+            "at the terminal or with --next; the genres are those crate label "
+            "registry lists"
         ),
     )
     parser.add_argument(
@@ -948,6 +959,36 @@ def _entry_or_refuse(followed: labels.Registry, name: str) -> labels.LabelEntry:
     )
 
 
+def _genre_flag(genre: str) -> str:
+    """``--genre GENRE`` quoted as a shell reads it, for a command a hint prints (U341)."""
+    return shlex.join(["--genre", genre])
+
+
+def _which(genre: str | None) -> str:
+    """The labels a walk covers, in words: every followed label, or one genre's (U341)."""
+    return "the followed labels" if genre is None else f"the labels of genre {genre!r}"
+
+
+def _asked(
+    followed: labels.Registry, genre: str | None
+) -> tuple[list[labels.LabelEntry], str | None, list[dict[str, Any]]]:
+    """The labels a run asks, in registry order, the genre as the registry spells
+    it, and the line naming the group.
+
+    ``--genre`` keeps only the labels of that one group (U341): a filter over the
+    registry the walk already reads, so the run records what it always does and
+    a label outside the group is neither listed nor asked.
+    """
+    if genre is None:
+        return list(followed.labels.values()), None, []
+    named, group = label_cli.genre_group_or_refuse(followed, genre)
+    said = (
+        f"asking only the {len(group)} of {len(followed.labels)} followed label(s) of "
+        f"genre {named!r}: {', '.join(entry.name for entry in group)}"
+    )
+    return list(group), named, [_check("genre", "info", said)]
+
+
 # ---------------------------------------------------------------------------
 # The three paths
 # ---------------------------------------------------------------------------
@@ -970,7 +1011,8 @@ def _estimate(
 
 
 def _sweep_check(
-    cfg: config.Config, entries: Sequence[labels.LabelEntry], document: Mapping[str, Any]
+    cfg: config.Config, entries: Sequence[labels.LabelEntry], document: Mapping[str, Any],
+    genre: str | None = None,
 ) -> dict[str, Any]:
     """Say what a walk over every followed label may cost, or refuse it before
     its first call when the account's hour cannot hold it outside the reserve (U278).
@@ -998,7 +1040,7 @@ def _sweep_check(
         )
         raise _refusal(
             provider_gate.BUDGET,
-            f"walking the followed labels may ask the streaming provider about {calls} "
+            f"walking {_which(genre)} may ask the streaming provider about {calls} "
             f"calls over {listed} {labels_said}, an estimate from each label's kept "
             f"listing, and the account has {left} of its {line} read calls left this "
             f"hour{unread}, the rest kept for writes and downloads; nothing was asked",
@@ -1017,22 +1059,29 @@ def _sweep_check(
     )
 
 
-def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
+def _next(
+    ctx, cfg: config.Config, name: str | None = None, genre: str | None = None
+) -> Envelope:
     """Print the next question in registry order, saving it, and ask nothing.
 
     A saved question is printed again with no provider call. ONE LABEL NAMED IS
     THE ONLY LABEL TOUCHED (U189). A LABEL THAT COULD NOT BE READ IS NOT A LABEL
-    WITH NOTHING NEW (R-1114): a run whose every label was skipped refuses.
+    WITH NOTHING NEW (R-1114): a run whose every label was skipped refuses. A
+    GENRE NAMED KEEPS THE RUN INSIDE ITS GROUP (U341), a question saved for a
+    label outside it left waiting.
     """
     followed = _followed_or_refuse()
     only = _entry_or_refuse(followed, name) if name is not None else None
-    entries = [only] if only is not None else list(followed.labels.values())
+    entries, named, checks = _asked(followed, genre)
+    if only is not None:
+        entries = [only]
     tools = _Tools(cfg=cfg, run_id=ctx.run.run_id, followed=followed)
     document = load_record(cfg)
     seen: list[dict[str, Any]] = []
     # A WALK OVER EVERY LABEL SAYS ITS COST FIRST (U278); one label named is
     # one listing, held by the gate call by call like any other.
-    checks = [_sweep_check(cfg, entries, document)] if only is None else []
+    if only is None:
+        checks.append(_sweep_check(cfg, entries, document, named))
     withheld = 0
     nothing: list[str] = []
     with review.open_store(cfg) as store:
@@ -1070,10 +1119,11 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
         )
     if only is None:
         # THE CLOSING LINE SPEAKS ONLY FOR THE LABELS THAT WERE LISTED (R-1114).
+        of = "" if named is None else f" of genre {named!r}"
         said = (
-            "no label has anything new to ask about"
+            f"no label{of} has anything new to ask about"
             if len(nothing) == len(entries)
-            else f"no label listed has anything new to ask about: {', '.join(nothing)}"
+            else f"no label{of} listed has anything new to ask about: {', '.join(nothing)}"
         )
         checks.append(_check("question", "ok", said))
     return ctx.envelope(
@@ -1120,9 +1170,16 @@ def _answer(ctx, cfg: config.Config) -> Envelope:
             cfg, store, entry, str(ctx.args.answer), list(ctx.args.releases or ()),
             run_id=ctx.run.run_id,
         )
+    # A LABEL IN A GENRE GROUP IS POINTED BACK INTO ITS GROUP (U341), since the
+    # answer may follow a ``--next --genre`` and a bare ``--next`` leaves it, but
+    # ONLY WHILE THE GROUP STANDS: a ``stop`` on its last label dissolved it.
+    standing = entry.genre is not None and labels.RegistryStore().load().of_genre(entry.genre)
+    group = "" if not standing else (
+        f", or within this label's genre: crate label sync --next {_genre_flag(str(entry.genre))}"
+    )
     return review_common.ended(ctx, [
         _answer_check(answered),
-        _check("next", "info", "the next question: crate label sync --next"),
+        _check("next", "info", f"the next question: crate label sync --next{group}"),
     ], _summary(answered=[answered]))
 
 
@@ -1179,34 +1236,41 @@ def _pick(prompter: prompt.Prompter, question: Question) -> list[str] | None:
     return None
 
 
-def _unanswerable(entry: labels.LabelEntry, answered: Sequence[Answered], exc) -> CratekitError:
+def _unanswerable(
+    entry: labels.LabelEntry, answered: Sequence[Answered], exc, genre: str | None = None
+) -> CratekitError:
+    again = "label sync" if genre is None else f"label sync {_genre_flag(genre)}"
     return _refusal(
         "label-sync-unanswerable",
         f"the question about {entry.name!r} could not be answered at this "
         f"terminal ({exc}); the {len(answered)} answer(s) given before it are "
         f"saved and the question is waiting",
-        f"run label sync from a terminal, or drive it with: crate label "
+        f"run {again} from a terminal, or drive it with: crate label "
         f"sync --next --label {entry.label_id}, then crate label sync "
         f"--answer ANSWER --label {entry.label_id}",
         detail={"label": entry.label_id, "answered": [one.label_id for one in answered]},
     )
 
 
-def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
+def _walk(
+    ctx, cfg: config.Config, prompter: prompt.Prompter, genre: str | None = None
+) -> Envelope:
     """Ask every label with something new, in registry order, answer by answer.
 
     EVERY LABEL IS LISTED AFRESH, a saved question included, since the walk can
     wait for a person and should ask what the catalogue holds now (through the
     roster's kept listing, U217). A run that stops, by ``quit`` or a prompt
-    nobody can answer, has saved every answer given before it.
+    nobody can answer, has saved every answer given before it. A GENRE NAMED
+    WALKS ITS GROUP ALONE (U341), and the run after a ``quit`` is told to name it
+    again, so it resumes inside the group.
     """
     followed = _followed_or_refuse()
-    entries = list(followed.labels.values())
+    entries, named, checks = _asked(followed, genre)
     tools = _Tools(cfg=cfg, run_id=ctx.run.run_id, followed=followed)
     answered: list[Answered] = []
     seen: list[dict[str, Any]] = []
     # Every label is listed afresh, so the estimate is asked over an empty record (U278).
-    checks = [_sweep_check(cfg, entries, {"labels": {}})]
+    checks.append(_sweep_check(cfg, entries, {"labels": {}}, named))
     stopped_at: str | None = None
     withheld = 0
     with review.open_store(cfg) as store:
@@ -1221,7 +1285,7 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
             try:
                 answer, picks = _ask(prompter, listed.question)
             except prompt.PromptUnavailable as exc:
-                raise _unanswerable(entry, answered, exc) from exc
+                raise _unanswerable(entry, answered, exc, named) from exc
             if answer == QUIT:
                 stopped_at = entry.label_id
                 seen.append({"label_id": entry.label_id, "state": "unanswered"})
@@ -1232,8 +1296,10 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
             answered.append(result)
             seen.append({"label_id": entry.label_id, "state": "answered"})
             checks.append(_answer_check(result))
-    went = f"; stopped at {stopped_at}, run label sync again to go on" if stopped_at else (
-        "; every label is answered"
+    again = "label sync" if named is None else f"label sync {_genre_flag(named)}"
+    went = f"; stopped at {stopped_at}, run {again} again to go on" if stopped_at else (
+        "; every label is answered" if named is None
+        else f"; every label of genre {named!r} is answered"
     )
     checks.append(_check("run", "info", f"{len(answered)} label(s) answered{went}"))
     data = {
@@ -1243,8 +1309,9 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
     if stopped_at is None:
         # EVERY LABEL WITH SOMETHING NEW IS ANSWERED, so the walk ends at the
         # one gate over the summary of every saved answer (U108). THE ESTIMATE
-        # IS NOT AN ANSWER (U278), so it is left out of what the gate shows.
-        walk = [one["detail"] for one in checks if one["key"] != _ESTIMATE_KEY]
+        # IS NOT AN ANSWER (U278), so it is left out of what the gate shows,
+        # and the line naming the genre group with it (U341).
+        walk = [one["detail"] for one in checks if one["key"] not in (_ESTIMATE_KEY, _GENRE_KEY)]
         return _go(ctx, cfg, walk=walk, data=data, wrote=bool(answered or withheld))
     return ctx.envelope(
         data=data,
@@ -1267,6 +1334,14 @@ def _go(ctx, cfg: config.Config, **kwargs: Any) -> Envelope:
 def label_sync(ctx) -> Envelope:
     """Ask label by label at the terminal, print one question, record one answer, or go."""
     args = ctx.args
+    if args.genre is not None and (args.go or args.answer is not None or args.label is not None):
+        raise _selection_invalid(
+            "--genre chooses the labels a walk or --next asks; --go asks the one gate "
+            "over every answer saved, --answer records one label's answer, and "
+            "--label names one label, so none of them takes a genre",
+            "ask one genre's labels with: crate label sync --genre GENRE, or with "
+            "--next --genre GENRE",
+        )
     if args.go and (args.answer is not None or args.next_question):
         raise _selection_invalid(
             "--go asks the one gate over the answers already saved, and --next and "
@@ -1322,8 +1397,8 @@ def label_sync(ctx) -> Envelope:
     if args.answer is not None:
         return _answer(ctx, cfg)
     if args.next_question:
-        return _next(ctx, cfg, args.label)
-    return _walk(ctx, cfg, PROMPTER())
+        return _next(ctx, cfg, args.label, args.genre)
+    return _walk(ctx, cfg, PROMPTER(), args.genre)
 
 
 __all__ = [
