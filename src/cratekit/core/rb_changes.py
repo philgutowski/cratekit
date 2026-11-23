@@ -58,80 +58,59 @@ def guard_violations(
     delete takes is judged from SQL by :func:`assert_collection_removal_confined`.
     PURE, so every branch is tested with literals. Returns EVERY violation.
     """
-    rb_writer = _writer()
     writable = (
         frozenset(content_columns)
         if content_columns is not None
         else content_writable_columns()
     )
     violations: list[str] = []
-    admitted = frozenset(removals)
-    for table in sorted(admitted - REMOVABLE_TABLES):
-        violations.append(
-            f"asks to remove rows in {table!r}, and a removal is admitted in "
-            f"{sorted(REMOVABLE_TABLES)} and nowhere else"
-        )
-    admitted &= REMOVABLE_TABLES
-    creatable = frozenset(creations)
-    for table in sorted(creatable - ADMITTABLE_ROW_TABLES):
-        violations.append(
-            f"asks to create rows in {table!r}, and a creation beyond the "
-            f"whitelist is admitted in {sorted(ADMITTABLE_ROW_TABLES)} and nowhere else"
-        )
-    creatable &= ADMITTABLE_ROW_TABLES
-    deletable = frozenset(deletions)
-    for table in sorted(deletable - DELETABLE_TABLES):
-        violations.append(
-            f"asks to delete rows in {table!r}, and a delete is admitted in "
-            f"{sorted(DELETABLE_TABLES)} and nowhere else"
-        )
-    deletable &= DELETABLE_TABLES
+    admissions = []
+    for asked, allowed, verb, admission in (
+        (removals, REMOVABLE_TABLES, "remove", "a removal is"),
+        (creations, ADMITTABLE_ROW_TABLES, "create", "a creation beyond the whitelist is"),
+        (deletions, DELETABLE_TABLES, "delete", "a delete is"),
+    ):
+        asked = frozenset(asked)
+        for table in sorted(asked - allowed):
+            violations.append(
+                f"asks to {verb} rows in {table!r}, and {admission} admitted in "
+                f"{sorted(allowed)} and nowhere else"
+            )
+        admissions.append(asked & allowed)
+    admitted, creatable, deletable = admissions
 
     for table, columns in new:
         if table == CONTENT_TABLE and table in creatable:
             # THE ONE ADMISSION (R-746), judged again from SQL in
             # ``assert_created_rows_are_gridless``.
-            declared = {column for column in columns if column in CONTENT_ROW_EMPTY_COLUMNS}
-            if declared:
-                violations.append(
-                    f"creates a {CONTENT_TABLE} row declaring analysis column(s): "
-                    f"{sorted(declared)}; a row this product creates carries what "
-                    f"the file says and rekordbox derives the rest from the audio"
-                )
-            continue
-        if table in LOOKUP_TABLES and table in creatable:
-            # U163: a minted lookup row is judged as any other creation.
-            declared = {column for column in columns if column in GRIDLESS_ON_CREATE_COLUMNS}
-            if declared:
-                violations.append(
-                    f"creates a row in {table!r} declaring analysis column(s): "
-                    f"{sorted(declared)}; a row this product creates is gridless and "
-                    f"rekordbox derives the grid from the audio"
-                )
-            continue
-        if table == CONTENT_TABLE:
+            empties, made = CONTENT_ROW_EMPTY_COLUMNS, f"a {CONTENT_TABLE} row"
+            because = "carries what the file says and rekordbox derives the rest from the audio"
+        elif table == CONTENT_TABLE:
             violations.append(
                 f"creates a {CONTENT_TABLE} row; only a landing whose commit admits "
                 f"one by name may, and an import in the XML bridge is what every "
                 f"other intake performs"
             )
             continue
-        if table not in PERMITTED_ROW_TABLES:
+        elif table in PERMITTED_ROW_TABLES or (table in LOOKUP_TABLES and table in creatable):
+            # U163: a minted lookup row is judged as any other creation, and W3: a
+            # creation's columns are judged, not only its table.
+            empties, made = GRIDLESS_ON_CREATE_COLUMNS, f"a row in {table!r}"
+            because = "is gridless and rekordbox derives the grid from the audio"
+        else:
             violations.append(f"creates a row in the non-whitelisted table {table!r}")
             continue
-        # W3: a creation's columns are judged, not only its table.
-        declared = {column for column in columns if column in GRIDLESS_ON_CREATE_COLUMNS}
+        declared = {column for column in columns if column in empties}
         if declared:
             violations.append(
-                f"creates a row in {table!r} declaring analysis column(s): "
-                f"{sorted(declared)}; a row this product creates is gridless and "
-                f"rekordbox derives the grid from the audio"
+                f"creates {made} declaring analysis column(s): "
+                f"{sorted(declared)}; a row this product creates {because}"
             )
 
     for table, columns in dirty:
         columns = set(columns)
         # THE MARKER IS JUDGED BEFORE THE BOOKKEEPING FILTER DROPS IT (R-758).
-        if rb_writer.SOFT_DELETE_COLUMN in columns and table not in admitted:
+        if _writer().SOFT_DELETE_COLUMN in columns and table not in admitted:
             violations.append(
                 f"changes the soft delete marker of a row in {table!r}, which "
                 f"removes it; writers are additive-only and this commit admits "
@@ -355,13 +334,12 @@ def pending_objects(session: Any, db: Any = None) -> list[tuple[Any, str, frozen
 
 def _registry_created_instances(db: Any) -> dict[int, Any]:
     """The INSTANCES the binding's buffer records a creation for, keyed by identity, for the SQL read back."""
-    found: dict[int, Any] = {}
-    for _entry, op, _key, instances in _buffer_entries(db):
-        if op != "create":
-            continue
-        for obj in instances:
-            found[id(obj)] = obj
-    return found
+    return {
+        id(obj): obj
+        for _entry, op, _key, instances in _buffer_entries(db)
+        if op == "create"
+        for obj in instances
+    }
 
 
 class Decision(StrEnum):
