@@ -1,11 +1,7 @@
 """Stand directories in as mount points, so a test can hold two volumes on one disk.
 
-Every temporary directory a test makes sits on one filesystem, so the real
-``preflight.containing_mount`` climbs from any of them to the same mount point
-and an identity provider keyed by mount cannot tell two "volumes" apart. The
-volume assertion is only interesting when it can. This replaces the climb, and
-nothing else: the identity comparison, the state machine and the refusals that
-read it are all the real ones.
+Only ``preflight.containing_mount``'s climb is replaced; the identity
+comparison, state machine and refusals are the real ones.
 """
 
 from __future__ import annotations
@@ -28,22 +24,15 @@ def stand_in(
 ) -> None:
     """Treat each key of ``mounted`` as a mount point holding the volume it names.
 
-    ``otherwise`` is the identity of every path under none of them, which is the
-    disk the library root sits on in these tests. An identity may be a callable,
-    asked on every read, which is how a test swaps the disk under a mount path
-    between one assertion and the next. ``enumerated`` is what the mount table
-    lists, and defaults to the stand-ins themselves.
-
-    ``slots_under`` declares a directory as the place this pretend platform
-    mounts volumes, one level down, which is what ``/Volumes`` is on macOS. With
-    it set, a directory standing there that is NOT one of the stand-ins is an
-    empty mount slot, the thing an unclean eject leaves behind, and
-    ``preflight.identity_source`` refuses to read an identity through it exactly
-    as it does on a real machine. Without it no path crosses a slot.
+    ``otherwise`` is the identity of every other path, the library root's disk.
+    An identity may be a callable, asked on every read, to swap the disk between
+    assertions. ``enumerated`` is what the mount table lists, by default the
+    stand-ins. ``slots_under`` declares this pretend platform's ``/Volumes``: a
+    directory there that is no stand-in is an empty mount slot, which
+    ``preflight.identity_source`` refuses to read through, as on a real machine.
     """
-    # The REAL climb, even on a second call. A test that ejects a volume calls
-    # this again without it, and reading the module attribute then would capture
-    # the first stand-in, which still believes the volume is mounted.
+    # The REAL climb, captured once: a test that ejects a volume calls this again,
+    # and the module attribute would then be the first stand-in.
     real_climb = getattr(preflight.containing_mount, "real_climb", preflight.containing_mount)
     held = {Path(mount).resolve(): identity for mount, identity in mounted.items()}
 

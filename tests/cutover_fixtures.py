@@ -1,14 +1,8 @@
 """Making a temporary library one the cutover precheck passes.
 
-TWO SUITES WANT THE SAME READY LIBRARY, the verbs' own and the conformance
-drive, and what "ready" means is the precheck's contract: a verified snapshot, a
-Fresh Export somebody named, and exactly one root folder for the tree. Two
-copies of that is two chances for one of them to build a library the verb would
-never meet.
-
-THE LIBRARY ROOT IS THE CALLER'S TEMPORARY ONE, always. The registry a cutover
-writes is library state, beside the library root, so nothing here may be pointed
-at a configuration whose root is a real volume.
+Shared by the verbs' suite and the conformance drive: a verified snapshot, a
+named Fresh Export and exactly one root folder. The library root is always
+the caller's temporary one, since a cutover writes registry state beside it.
 
 Not a test module: pytest does not collect it.
 """
@@ -61,11 +55,7 @@ def fresh_export(cfg: config.Config) -> Path:
 
 
 def one_root(cfg: config.Config, display: str) -> str:
-    """The identifier of the one root folder named ``display``, created when absent.
-
-    FOUND THROUGH THE VERB'S OWN READER, so a supplied database that already
-    holds the tree is used as it is and is not given a twin.
-    """
+    """The one root folder named ``display``, found through the verb's own reader or created."""
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
         found = cutover.find_roots(handle, display)

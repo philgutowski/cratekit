@@ -1,22 +1,11 @@
-"""One stand-in for a streaming account, shared by every suite that needs one.
+"""One stand-in for a streaming account, shared by every suite that needs one (U51).
 
-**WHY IT MOVED HERE IN U51.** ``tests/modules/test_outbound.py`` owned this class
-while the engines had no caller in ``src``, so there was one consumer and no
-reason to share it. Binding the two outbound handlers created three more, and
-three private copies of a provider stand-in is three descriptions of one
-protocol, drifting apart at whatever rate each suite happens to need. One copy
-means a method the real ``RemoteAccount`` protocol grows is missing in one place
-rather than absent in three.
-
-**IT REFUSES ANYTHING OUTSIDE THE PROTOCOL, AND THAT IS A GUARD RATHER THAN
-TIDINESS.** ``modules/outbound/service.RemoteAccount`` declares no un-heart and
-no folder delete but an empty legacy year folder's, and the removals it does
-declare are narrow: ``remove_tracks`` (R-836) and ``remove_playlist`` (U123),
-each of a playlist the product made, and the account root's debris and empties
-(U143), each of a kind a gate named.
-:class:`StrictAccount` raises on any other attribute, so a worker that reached
-for one fails the suite instead of failing silently against a fake permissive
-enough to answer.
+One copy, so a method the real ``RemoteAccount`` protocol grows is missing in
+one place rather than drifting in several. :class:`StrictAccount` raises on
+anything outside ``modules/outbound/service.RemoteAccount``, whose only
+removals are ``remove_tracks`` (R-836), ``remove_playlist`` (U123) and the
+account root's gated debris and empties (U143), so a worker reaching for any
+other fails the suite rather than a permissive fake answering.
 
 Not a test module: pytest does not collect it.
 """
@@ -78,11 +67,9 @@ PROTOCOL_METHODS = frozenset(
 class FakeAccount:
     """A streaming account that records every mutation and never talks to a network.
 
-    ``fail_after`` makes the Nth write raise, which is how a partially completed
-    outbound run is driven. ``fail_on`` is the finer instrument: it names the
-    remote identifiers whose write must fail, so a multi-item job can be made to
-    fail on exactly one item and the resume can be asked whether it redid that
-    one and only that one.
+    ``fail_after`` makes the Nth write raise; ``fail_on`` names the remote
+    identifiers whose write must fail, so a resume can be asked whether it redid
+    exactly that item.
     """
 
     def __init__(
@@ -112,26 +99,21 @@ class FakeAccount:
         self.titles: dict[str, str] = {}
         self.fail_after = fail_after
         self.fail_on = frozenset(fail_on or ())
-        #: How a failed write fails. ``False`` raises ``RuntimeError``, which
-        #: the item boundary records as ``internal-error`` and NOT retryable, the
-        #: shape a defect takes. ``True`` raises the provider's own transient
-        #: refusal, retryable, the shape a dropped connection takes. A test that
-        #: re-arms the job afterwards needs the second, because ``jobs.retry``
-        #: refuses a job whose recorded failures are permanent (R-390).
+        #: How a failed write fails: ``False`` raises ``RuntimeError``, recorded as a
+        #: permanent ``internal-error``; ``True`` raises the provider's transient
+        #: refusal, which a test re-arming the job needs, since ``jobs.retry`` refuses
+        #: permanent failures (R-390).
         self.transient = transient
-        #: When set, a failed write raises a ``CratekitError`` the way the real
-        #: account's ``provider_failure`` does, so a mid pass refusal can be
-        #: asserted through the path that rebuilds the cause and merges totals.
+        #: When set, a failed write raises a ``CratekitError`` as the real account's
+        #: ``provider_failure`` does.
         self.provider_error = provider_error
         self._writes = 0
         #: U220. Every order asked, as ``(playlist, expect)``.
         self.expected: list[tuple[str, tuple[str, ...] | None]] = []
         #: R-1411. Every order asked with an agreed reading, as ``(playlist, agreed)``.
         self.agreed: list[tuple[str, tuple[str, ...]]] = []
-        #: U231. What the provider serves of a playlist, by playlist, when it
-        #: lags what the playlist holds: every reading a sync takes of it, the
-        #: catalogue's and the settle's, reads this instead. Absent reads it as
-        #: it is.
+        #: U231. What the provider serves of a playlist when it lags what it holds,
+        #: read by every reading a sync takes. Absent reads it as it is.
         self.served: dict[str, list[str]] = {}
         #: U231. The wait each settle reading was asked to pause, in order.
         self.settle_waits: list[float] = []
@@ -157,9 +139,8 @@ class FakeAccount:
         self.hidden: dict[str, tuple[str, ...]] = {}
         #: Playlists whose listing declares no count.
         self.undeclared: set[str] = set()
-        #: R-835. Folders, identifier to name, which folder each playlist
-        #: sits in, and which folder (if any) each folder sits in. A
-        #: playlist or folder with no parent sits at the root.
+        #: R-835. Folders, identifier to name, and the parent of each playlist and
+        #: folder; none means the root.
         self.folder_names: dict[str, str] = {}
         self.folder_parent: dict[str, str] = {}
         self.placed: dict[str, str] = {}
@@ -248,23 +229,13 @@ class FakeAccount:
         return tuple(self.playlists.get(playlist_id, ()))
 
     def rename_playlist(self, playlist_id: str, name: str) -> None:
-        """Retitle, keyed by identifier. Counts as a write, so ``fail_on`` bites.
-
-        The subject handed to :meth:`_bump` is the PLAYLIST identifier and not
-        the new title, because a caller asking to fail one rename knows which
-        playlist it means and not what the run decided to call it.
-        """
+        """Retitle, keyed by identifier, one write; ``fail_on`` names the playlist."""
         self._bump(playlist_id)
         self.titles[playlist_id] = name
         self.renamed.append((playlist_id, name))
 
     def add_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
-        """Chunked add. One write per call, so ``fail_on`` names the playlist.
-
-        ``fail_on`` naming an asked TRACK fails the whole call too (U270): one
-        request carries every track of a chunk, and a provider that refuses it
-        has added none of them.
-        """
+        """Chunked add, one write per call; ``fail_on`` naming a track fails its chunk (U270)."""
         self._bump(playlist_id)
         failing = [one for one in remote_ids if one in self.fail_on]
         if failing:
@@ -335,9 +306,8 @@ class FakeAccount:
     def playlist_listing(self, playlist_id: str):
         """``track_names`` with ``added_at``'s times and a declared count (U201).
 
-        ``hidden`` names tracks the provider counts and does not list, by
-        playlist, so a short read is drivable; ``undeclared`` names playlists
-        that declare no count.
+        ``hidden`` names tracks counted but not listed, by playlist; ``undeclared``
+        names playlists that declare no count.
         """
         from cratekit.modules.outbound.service import PlaylistListing
 
@@ -378,15 +348,12 @@ class FakeAccount:
     ) -> tuple[str, ...]:
         """Put the asked tracks it holds once in the asked order, by the adapter's rule. One write.
 
-        The adapter's rule (U220): the longest run at the tail of the asked
-        order already standing stays, and each asked track before it is moved
-        to the front, the last first, so a track not asked stays where it
-        stood among the kept tail. ``expect`` is recorded in :attr:`expected`.
-        ``begun`` is called, as the adapter calls it (U231), with the order
-        moved from and the order the moves leave, before the first move and
-        only when something moves, and the recorder it answers before each
-        move (R-1394). ``agreed`` is recorded in :attr:`agreed` when given
-        (R-1411). Returns the order the moves leave.
+        The adapter's rule (U220): the longest standing run at the tail of the asked
+        order stays, and each asked track before it moves to the front, last first.
+        ``expect`` is recorded in :attr:`expected`. ``begun`` is called (U231) with
+        the order moved from and the order the moves leave, before the first move and
+        only when something moves, and its recorder before each move (R-1394).
+        ``agreed`` is recorded in :attr:`agreed` (R-1411). Returns the order left.
         """
         self.expected.append((playlist_id, None if expect is None else tuple(expect)))
         if agreed is not None:
@@ -423,11 +390,7 @@ class FakeAccount:
         return tuple(served if served is not None else self.playlists.get(playlist_id, ()))
 
     def remove_playlist(self, playlist_id: str) -> None:
-        """Remove the playlist and its place. One write, so ``fail_on`` names it.
-
-        A playlist this account does not hold is already removed, as the
-        adapter answers it, and is recorded with nothing in it.
-        """
+        """Remove the playlist and its place, one write; one not held counts as already removed."""
         self._bump(playlist_id)
         held = tuple(self.playlists.pop(playlist_id, ()))
         self.titles.pop(playlist_id, None)
@@ -486,16 +449,9 @@ class FakeAccount:
 class StrictAccount(FakeAccount):
     """A :class:`FakeAccount` that raises on any attribute outside the protocol.
 
-    The add-only property cannot be asserted by watching for a remove that never
-    happens: an absence proves nothing about the mechanism, only about this
-    input. This raises instead, so the assertion is that no code path in the
-    shell or the engine can even NAME a remove.
-
-    ``rename_playlist`` is admitted and that is deliberate (R-358). It is
-    inherited from :class:`FakeAccount` as a real method, so ``__getattr__``
-    never fires for it, and the protocol declares it. Widening the guard is one
-    line in :data:`PROTOCOL_METHODS`, and the line is what makes the widening
-    visible in the diff rather than silent in a fake permissive enough to answer.
+    So the assertion is that no path can even NAME a remove, not that none
+    happened. ``rename_playlist`` is in the protocol (R-358); widening the guard
+    is one visible line in :data:`PROTOCOL_METHODS`.
     """
 
     def __getattr__(self, name: str):
@@ -521,12 +477,7 @@ class FakeColors:
 
 
 def account_factory(account: FakeAccount) -> Callable[[object], FakeAccount]:
-    """A stand-in for ``modules.outbound.account.resolve`` that hands back ``account``.
-
-    Takes the configuration and ignores it, matching the real signature, so a
-    monkeypatch of the module attribute is a drop-in rather than a shape a caller
-    has to be written around.
-    """
+    """A stand-in for ``modules.outbound.account.resolve``, handing back ``account``."""
 
     def resolve(cfg: object) -> FakeAccount:
         del cfg
@@ -553,26 +504,13 @@ def export_document(
     locations: Mapping[int, str] | None = None,
     crate_name: str | None = CRATE,
 ) -> bytes:
-    """A collection export carrying a crate and a favourites playlist.
+    """A collection export carrying a crate and a favourites playlist, one document for both verbs.
 
-    ONE DOCUMENT FOR BOTH VERBS, because both read the same kind of file and a
-    fixture per verb is two descriptions of one format. The track identifiers are
-    integers here and strings everywhere downstream, which is the export format's
-    own shape rather than a convenience: ``TrackID`` is an attribute and every
-    reader in this product treats it as text.
-
-    ``extra_children`` takes already-rendered nodes so a test can add the second
-    playlist that makes a bare name ambiguous, or a folder that makes a name
-    resolve to nothing.
-
-    ``locations`` replaces a row's ``Location`` by index, so a test can point a
-    row at a real audio file whose tag the outbound source reads (R-355). A row
-    left out keeps a location naming no file, which reads as no ISRC.
-
-    ``crate_name`` renames the top level crate, and none leaves it out, which
-    with a nested one in ``extra_children`` is the crate dragged into a folder
-    (R-229). Both are what rekordbox shows after a reorganisation: the same
-    tracks under a path nothing was recorded against.
+    Track identifiers are integers here and text downstream, as ``TrackID`` is.
+    ``extra_children`` adds rendered nodes (a second playlist, a folder);
+    ``locations`` points rows at real audio by index (R-355), others naming no
+    file and so no ISRC; ``crate_name`` renames the top crate, and none leaves it
+    out, which with a nested one is the crate dragged into a folder (R-229).
     """
     rows = [
         (

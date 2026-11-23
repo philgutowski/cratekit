@@ -1,10 +1,6 @@
-"""``scripts/refactor_measure.py``, loaded once for the suites that read through it.
+"""``scripts/refactor_measure.py``, loaded once by path for the suites that read through it (U296).
 
-The duplication check, the import rules and the per package pins all measure
-with the script's own functions, so the suite and the refactor's audit cannot
-read two different things (U296). It is a script, not a package module, so it
-is loaded by path, as the other scripts' suites load theirs.
-
+So the suite and the refactor's audit measure with the same functions.
 Not a test module: pytest does not collect it, and it defines no tests.
 """
 

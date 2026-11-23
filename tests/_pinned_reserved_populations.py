@@ -1,17 +1,10 @@
 """Pinned populations for the at-risk suite, per module or per slug.
 
-A whole-repository total is a shared edit point: every card that adds a cause
-or a kebab literal rewrites the same assert line. These pins are keyed by module
-(or listed one slug per line for the declared-cause set), so two cards that touch
-different modules edit different lines and merge cleanly. The totals below are
-derived from the pins, never hand-edited.
-
-THE PER MODULE PINS ARE HELD ONE FILE PER PACKAGE (U296), in
-``tests/ratchets/reserved_causes/<package>.py``, and read here into the six
-tables the suite imports. A card that splits a module, or adds one, edits its
-own package's file and no line another package's card edits. A package is the
-one ``scripts/refactor_measure.py`` defines, and a key filed under the wrong
-package fails at import rather than being read.
+Keyed by module, or one slug per line, so cards touching different modules
+edit different lines; totals are derived, never hand-edited. The per module
+pins are one file per package (U296) in
+``tests/ratchets/reserved_causes/<package>.py``, read here into six tables; a
+key filed under the wrong package fails at import.
 
 When a pin fails, re-measure on the merged tree, update only the modules that
 moved, and put a dated comment on those entries. Do not reintroduce a total tuple.
@@ -275,21 +268,12 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
 # 2026-11-21, #893: library-root-foreign and library-root-unproven joined them.
 PINNED_RESERVED_CAUSE_COUNT = 31
 
-#: What a package's file may define, and the table each one feeds.
-#:
-#: ``KEBAB_LITERALS``: kebab-shaped string literals per module. A card that adds
-#: literals edits only its own module's entry. The package-wide distinct counts
-#: are derived in the suite.
-#: ``NAMED_WITHOUT_OWN``: modules holding a name that resolves to a cause
-#: declared elsewhere (own enum declarations excluded from the key set).
-#: ``NAMED_WITH_OWN``: modules holding a name that resolves to a cause, counting
-#: each file's own enum declarations.
-#: ``NAMED_WITH_INTEGER``: the named-with-own modules that also hold an in-range
-#: integer.
-#: ``LITERAL_HOLDERS``: modules holding a cause as a string literal under the old
-#: constant-only key rule.
-#: ``LITERAL_HOLDERS_WITH_INTEGER``: the literal-holder modules that also hold an
-#: in-range integer.
+#: What a package's file may define, and the table each one feeds:
+#: ``KEBAB_LITERALS`` (kebab-shaped literals per module), ``NAMED_WITHOUT_OWN``
+#: and ``NAMED_WITH_OWN`` (modules holding a name resolving to a cause, without
+#: and with each file's own enum declarations), ``NAMED_WITH_INTEGER`` (those
+#: also holding an in-range integer), ``LITERAL_HOLDERS`` and
+#: ``LITERAL_HOLDERS_WITH_INTEGER`` (the same under the old literal-only rule).
 PER_MODULE_TABLES = (
     "KEBAB_LITERALS",
     "NAMED_WITHOUT_OWN",
@@ -303,11 +287,8 @@ PER_MODULE_TABLES = (
 def read_package_pins(directory: Path) -> dict[str, dict[str, object]]:
     """Merge every package's file into one mapping per table.
 
-    A file is named for its package and holds only that package's modules, so
-    it may define nothing but the six tables above, and every key in it must
-    be a module path of that package. Each of those is refused here, at
-    import, because a pin read from the wrong place is a pin nobody will find
-    when it fails.
+    A file may define only the six tables, keyed only by its own package's
+    modules; anything else is refused at import.
     """
     merged: dict[str, dict[str, object]] = {name: {} for name in PER_MODULE_TABLES}
     for path in sorted(directory.glob("*.py")):

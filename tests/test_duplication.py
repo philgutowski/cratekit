@@ -1,35 +1,20 @@
 """No newly copied block of six logical lines: the duplication check (U296).
 
-Point 3 of U290 asks that duplication, once removed, cannot grow back. This
-is the guard: the suite fails when a package holds a copied block that is not
-on its allowance, and the allowance, one file per package under
-``tests/ratchets/duplication/``, only ever shrinks.
+U290 point 3: removed duplication cannot grow back. A package's copied
+blocks must be on its allowance under ``tests/ratchets/duplication/``, which
+only shrinks.
 
-THE RULE IS EXACT COPIES, because an exact copy cannot be argued with. A
-logical line is one statement's tokens up to its NEWLINE token, joined by
-single spaces, with comments, blank lines, statements that are one string and
-import statements dropped, so a copy that was re-indented, re-commented or
-re-wrapped is still a copy. A block is six or more consecutive logical lines
-that stand in two or more places. The reading with identifiers, numbers and
-strings normalised also matches tables (its largest hit is the exit code
-table), so it stays a reading in ``scripts/refactor_measure.py`` and is never
-a rule here.
+Exact copies only. A logical line is one statement's tokens joined by single
+spaces, with comments, blank lines, lone strings and imports dropped, so a
+re-indented or re-wrapped copy is still a copy; a block is six or more
+consecutive logical lines standing in two or more places. The normalised
+reading also matches tables, so it stays a reading in
+``scripts/refactor_measure.py``.
 
-THE ALLOWANCE IS HELD IN WINDOWS OF EXACTLY SIX LINES, and that is what makes
-it safe to share between cards. A whole block's edges move when somebody else
-removes a partner copy: ten copied lines of which eight are also copied a
-third time become an eight line block the day the ten line partner goes, and
-a digest of the whole block would then be a new digest in a package nobody
-touched. A window of six lines either still stands twice or it does not, so
-removing a place of a copy can only shrink what is found, and a line whose
-copy is gone fails nothing. What can still form a window that was never
-there is an edit that brings two stretches of lines together, a deletion
-between them or a split that sets two functions side by side, and that is a
-new copy: it fails on the branch that made it, naming every place.
-
-The checker is a pure function over source text, measured by the same code
-the refactor's audit reads through. Fixture tests prove each half of the rule
-bites on synthetic sources before the one test that reads the tree.
+The allowance is held in windows of exactly six lines, so removing a partner
+copy can only shrink what is found, where a whole block's digest would
+change in a package nobody touched. An edit bringing two stretches together
+is a new copy and fails on its own branch.
 """
 
 from __future__ import annotations
@@ -56,9 +41,7 @@ def _sources(**packages: str) -> dict[str, str]:
     return {f"src/cratekit/{name}/module.py": text for name, text in packages.items()}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# What a logical line is
-# ═══════════════════════════════════════════════════════════════════════════
+# ── What a logical line is ───────────────────────────────────────────────────
 
 
 def test_a_logical_line_is_a_statements_tokens_joined_by_single_spaces():
@@ -95,9 +78,7 @@ def test_a_string_inside_a_statement_is_kept_and_only_a_lone_string_is_dropped()
     assert [line.text for line in lines] == ['name = "kept"']
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The rule bites: six lines, in two places
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The rule bites: six lines, in two places ─────────────────────────────────
 
 
 def test_a_copy_of_six_lines_is_found_in_both_packages():
@@ -152,9 +133,7 @@ def test_the_block_size_is_six_logical_lines():
     assert measure.BLOCK_LINES == 6
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The allowance: a multiset of lines that only shrinks
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The allowance: a multiset of lines that only shrinks ─────────────────────
 
 
 def test_a_block_on_the_allowance_passes_and_a_new_one_beside_it_fails():
@@ -196,14 +175,11 @@ def test_a_third_copy_of_an_allowed_block_in_the_same_package_fails():
 
 
 def test_removing_a_partner_copy_does_not_fail_the_package_that_kept_its_lines():
-    """The scenario windows exist for, with whole blocks shown failing it.
+    """Removing a partner copy cannot fail the package that kept its lines, held in windows.
 
-    ``adopt`` holds eight lines. ``tagging`` copies all eight and ``intake``
-    copies the last seven. When ``tagging`` removes its copy, ``adopt`` still
-    shares seven lines with ``intake`` and its own code has not changed. Held
-    in windows, ``adopt`` finds a subset of what it was allowed. Held as whole
-    blocks, its eight line block would have become a seven line block with a
-    digest nobody allowed.
+    ``adopt`` holds eight lines, ``tagging`` copies all eight and ``intake`` the
+    last seven; when ``tagging`` removes its copy, ``adopt`` finds a subset of its
+    allowance, where a whole block would have become a new digest.
     """
     eight = _block(8)
     seven = "".join(eight.splitlines(keepends=True)[1:])
@@ -222,13 +198,7 @@ def test_removing_a_partner_copy_does_not_fail_the_package_that_kept_its_lines()
 
 
 def test_a_deletion_that_brings_two_stretches_together_is_a_new_copy():
-    """The limit of "cleanup only shrinks", stated as a test (the review's row 4).
-
-    ``sync`` holds two stretches back to back. ``label`` holds the same two
-    with other lines between them, so nothing is copied yet. When ``label``
-    deletes the lines between, it has made a copy of ``sync``'s lines, and
-    both places are reported on ``label``'s branch, as for any new copy.
-    """
+    """A deletion bringing two stretches together is a new copy, reported on its branch (row 4)."""
     first, second = _block(3, prefix="first"), _block(3, prefix="second")
     before = _sources(sync=first + second, label=first + _block(2, prefix="between") + second)
     assert _held(before) == {}
@@ -265,9 +235,7 @@ def test_a_window_is_described_by_where_it_stands():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The real package
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The real package ─────────────────────────────────────────────────────────
 
 
 def test_no_package_holds_a_copied_block_beyond_its_allowance():

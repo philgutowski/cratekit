@@ -1,37 +1,19 @@
 """U13: the vendored downloader is importable, licensed, and carries no secrets.
 
 KTD4 vendors the downloader as a source tree because its upstream was deleted
-from GitHub and PyPI in December 2025 together with its author's account. Nothing
-can install it from an index any more, so a committed tree is the only shape in
-which a friend's clone can acquire music at all.
-
-Vendoring trades one failure for a set of quieter ones, and each test here pins
-one of them:
-
-* **A dependency specifier creeps back in.** Then an install starts asking an
-  index for a package the index deleted, and the failure lands on somebody else's
-  machine as a resolution error. Asserted over every specifier in the file.
-* **The licence goes missing.** KTD19 keeps authored code MIT and each vendored
-  component under its own licence. A stripped or empty AGPL text is a licensing
-  defect that no runtime test would ever notice.
-* **A credential rides along.** The upstream artifact really does carry
-  credential material, in three separate forms, and it really does sit on disk
-  next to a live session token. Asserted as an absence, per shape.
-* **A tempo tag survives.** R17 has no configuration flag, and the vendored
-  downloader wrote the provider's BPM into all three container formats.
-* **A re-vendor drops the patches.** Every assertion below is written so that
-  re-extracting upstream without re-applying the patch set goes red immediately,
-  rather than in six months when somebody notices their grids moved.
-
-What these do NOT prove is that a download works. That needs an account, an
-authorised session, and the network, so it is the attended smoke test recorded in
-``vendor/README.md``, not a unit test.
+from GitHub and PyPI in December 2025, so a committed tree is the only way a
+clone can acquire music. Each test pins one quieter failure vendoring brings:
+a dependency specifier creeping back in, the AGPL licence going missing
+(KTD19), a credential riding along, a tempo tag surviving (R17), and a
+re-vendor dropping the patches. A working download needs an account and the
+network, so it is the attended smoke test in ``vendor/README.md``.
 """
 
 from __future__ import annotations
 
 import ast
 import importlib
+import os
 import re
 import tomllib
 from pathlib import Path
@@ -43,9 +25,8 @@ VENDOR_ROOT = REPO_ROOT / "src" / "cratekit" / "_vendor"
 VENDORED_PACKAGE = VENDOR_ROOT / "downloader"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
-# The upstream distribution name in every spelling a specifier could use. PEP 503
-# normalises "-" and "_" to the same project, so checking one spelling would let
-# the other through.
+# The upstream distribution name in every spelling a specifier could use; PEP
+# 503 normalises "-" and "_" to one project.
 VENDORED_PROJECT_SPELLINGS = ("tidal-dl-ng", "tidal_dl_ng", "tidaldlng")
 
 
@@ -59,22 +40,14 @@ def _vendored_sources() -> list[Path]:
     return sorted(VENDORED_PACKAGE.rglob("*.py"))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# It imports, from inside cratekit._vendor, with no network
-# ═══════════════════════════════════════════════════════════════════════════
+# ── It imports, from inside cratekit._vendor, with no network ────────────────
 
 
 def test_the_vendored_package_imports_from_inside_cratekit_vendor():
-    """The whole point of KTD4, asserted as the one thing a user needs.
+    """The package imports from ``cratekit._vendor``, which a file check could not prove (KTD4).
 
-    Importing rather than merely checking the files exist is deliberate. The
-    package imports itself absolutely throughout, so moving it under
-    ``cratekit._vendor`` breaks every one of those imports unless they were
-    re-rooted. A file-presence check would pass on a tree that cannot import.
-
-    No network is touched: the module bodies build constants and class
-    definitions, and the only outbound call in the package sits behind a function
-    nothing here invokes.
+    Every absolute self import had to be re-rooted. No network is touched: the
+    one outbound call sits behind a function nothing here invokes.
     """
     module = importlib.import_module("cratekit._vendor.downloader")
     assert module.__version__, "the vendored package reports no version"
@@ -94,37 +67,18 @@ def test_the_vendored_package_imports_from_inside_cratekit_vendor():
     ],
 )
 def test_every_module_on_the_download_path_imports(name):
-    """One case per module U14's adapter will actually reach through.
-
-    Parametrized so a failure names the module rather than the first one in a
-    loop. These are the modules between "give me a track" and "the file is on
-    disk"; a break in any of them is a break in acquisition.
-    """
+    """One case per module on the path from "give me a track" to the file on disk."""
     assert importlib.import_module(name) is not None
 
 
 def test_every_vendored_module_byte_compiles():
-    """Stands in for the linter, which is excluded from the vendored tree.
-
-    ``pyproject.toml`` excludes ``src/cratekit/_vendor`` from ruff, because
-    restyling third-party code turns every lint rule into another patch to
-    re-apply on the next version bump. That exclusion gives up ruff's E9 syntax
-    check, so it is replaced here with something stricter for the question that
-    matters: is every file in the extract valid Python for the interpreters
-    KTD19 supports. This also covers the modules no import test reaches.
-    """
+    """Every vendored file byte compiles, standing in for ruff's E9, which excludes the tree."""
     for source in _vendored_sources():
         compile(source.read_text(encoding="utf-8"), str(source), "exec")
 
 
 def test_no_module_still_imports_itself_by_its_upstream_name():
-    """A missed re-root is invisible until the branch that needs it runs.
-
-    The package imports itself absolutely (``from tidal_dl_ng.config import
-    Settings``). Every one of those has to be re-rooted under
-    ``cratekit._vendor``, and a lazy import inside a rarely taken branch is
-    exactly the one a manual pass misses. A source scan finds all of them.
-    """
+    """No module still imports itself by its upstream name, lazy imports included."""
     stragglers = [
         f"{source.relative_to(REPO_ROOT)}:{number}"
         for source in _vendored_sources()
@@ -137,19 +91,11 @@ def test_no_module_still_imports_itself_by_its_upstream_name():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# No dependency specifier names the vendored project
-# ═══════════════════════════════════════════════════════════════════════════
+# ── No dependency specifier names the vendored project ───────────────────────
 
 
 def test_no_dependency_specifier_names_the_vendored_project(pyproject):
-    """KTD4's load-bearing half.
-
-    The moment the name appears in a specifier, an install asks an index for a
-    package that index deleted, and a fresh clone stops being installable. Every
-    dependency list is checked, not just the core one, because an extra is just
-    as fatal to the friend who enables that module.
-    """
+    """No dependency list, extras included, names the deleted project."""
     project = pyproject["project"]
     groups = {"dependencies": project.get("dependencies", [])}
     groups.update(project.get("optional-dependencies", {}))
@@ -168,36 +114,38 @@ def test_no_dependency_specifier_names_the_vendored_project(pyproject):
     )
 
 
-def test_nothing_in_the_repository_declares_it_as_a_requirement():
-    """A specifier can hide outside pyproject.toml, and one there still installs.
+def _files_outside_dot_directories(root: Path):
+    """Every file under ``root`` with no dot-named part, never entering a dot-directory.
 
-    A requirements file, a CI step, or an install line in a document all reach
-    the same index. The check is deliberately wider than the packaging metadata
-    because the failure is about what gets FETCHED, not about which file asked.
+    Pruned while walking, so .venv, .git and the .claude worktrees, whole extra
+    checkouts, are never read and never reported. Links are not followed.
     """
+    for directory, subdirectories, files in os.walk(root):
+        subdirectories[:] = [name for name in subdirectories if not name.startswith(".")]
+        for name in files:
+            path = Path(directory, name)
+            if not name.startswith(".") and path.is_file():
+                yield path
+
+
+def test_nothing_in_the_repository_declares_it_as_a_requirement():
+    """No requirements file, CI step or install line anywhere names it either."""
     patterns = re.compile(
         r"(?:pip\s+install|uv\s+(?:pip\s+install|add)|poetry\s+add)[^\n]*"
         r"(?:tidal[-_]dl[-_]ng)",
         re.IGNORECASE,
     )
+    # Every match holds the name, and finding the name alone is the cheap search.
+    named = re.compile(r"tidal[-_]dl[-_]ng", re.IGNORECASE)
     offenders: list[str] = []
-    for path in REPO_ROOT.rglob("*"):
-        if not path.is_file():
-            continue
-        # Every dot-directory is skipped, not just .git. That covers .venv,
-        # .pytest_cache, and .worktrees — and the last one matters: a checkout
-        # with agent worktrees under it holds whole extra copies of this
-        # repository, so walking them would be slow AND would report another
-        # checkout's files as findings in this one.
-        if any(part.startswith(".") for part in path.relative_to(REPO_ROOT).parts):
-            continue
+    for path in _files_outside_dot_directories(REPO_ROOT):
         if VENDOR_ROOT in path.parents or path.suffix in {".pyc", ".gz"}:
             continue
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        if patterns.search(text):
+        if named.search(text) and patterns.search(text):
             offenders.append(str(path.relative_to(REPO_ROOT)))
     assert not offenders, (
         "these files tell an installer to fetch the vendored project from an "
@@ -205,18 +153,11 @@ def test_nothing_in_the_repository_declares_it_as_a_requirement():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The licence ships, intact, in both places
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The licence ships, intact, in both places ────────────────────────────────
 
 
 def test_the_vendored_licence_is_present_and_non_empty():
-    """KTD19: authored code is MIT, the vendored component keeps its own AGPL.
-
-    Non-empty is asserted rather than merely present because a truncated or
-    placeholder licence file is the shape this fails in: something copies the
-    path and forgets the contents, and nothing at runtime ever notices.
-    """
+    """KTD19: the vendored component keeps its own AGPL text, present and non-empty."""
     from cratekit._vendor import DOWNLOADER, license_text
 
     text = license_text(DOWNLOADER)
@@ -225,11 +166,7 @@ def test_the_vendored_licence_is_present_and_non_empty():
 
 
 def test_the_declared_licence_matches_the_text_that_ships():
-    """A declared SPDX id that disagrees with the file is a licensing defect.
-
-    It is also the exact thing a downstream audit checks first, so getting it
-    wrong is worse than not declaring one.
-    """
+    """The declared SPDX id matches the licence text that ships."""
     from cratekit._vendor import DOWNLOADER, license_text
 
     assert DOWNLOADER.license_id == "AGPL-3.0-only"
@@ -237,12 +174,7 @@ def test_the_declared_licence_matches_the_text_that_ships():
 
 
 def test_the_two_licence_copies_cannot_drift():
-    """The text ships twice, so something has to hold them equal.
-
-    Inside the package it travels with the code it covers; at the repository root
-    it is where a licence audit looks. Two copies with nothing checking them is
-    how one gets updated and the other does not.
-    """
+    """The licence copy in the package and at the root cannot drift."""
     inside = (VENDORED_PACKAGE / "LICENSE").read_bytes()
     at_root = (REPO_ROOT / "vendor" / "LICENSE.downloader").read_bytes()
     assert inside == at_root, (
@@ -252,54 +184,34 @@ def test_the_two_licence_copies_cannot_drift():
 
 
 def test_the_licence_ships_as_package_data(pyproject):
-    """Present in the checkout is not the same as present in the wheel.
-
-    Without this entry the file exists for every contributor and for nobody who
-    installs, which is precisely the population the licence is for.
-    """
+    """The licence is package data, so it reaches the wheel and not only the checkout."""
     package_data = pyproject["tool"]["setuptools"]["package-data"]
     assert "LICENSE" in package_data["cratekit._vendor.downloader"]
 
 
 def test_the_recorded_version_matches_the_code_on_disk():
-    """Provenance that disagrees with the tree is worse than no provenance.
-
-    With upstream gone there is nothing to check a version against later, so the
-    recorded one is the only answer to "which copy do you have". It has to be
-    the truth at the moment it is read, not at the moment somebody typed it.
-    """
+    """The recorded version matches the code on disk, the only provenance left."""
     from cratekit._vendor import DOWNLOADER
 
     module = importlib.import_module("cratekit._vendor.downloader")
     assert module.__version__ == DOWNLOADER.version
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# No credential material, in any of the three shapes it took upstream
-# ═══════════════════════════════════════════════════════════════════════════
+# ── No credential material, in any of the three shapes it took upstream ──────
 
 
 def test_the_atmos_client_credentials_are_empty():
-    """The patch that removed them must survive every future re-vendor.
-
-    Upstream base64-encodes a third-party streaming client id and secret and
-    splits each across concatenated string literals, which is a deliberate shape
-    for getting past a scanner. Asserting the DECODED values are empty is what
-    makes re-encoding them under a new name fail this test too.
-    """
+    """The Atmos client credentials, base64 split across literals upstream, decode to empty."""
     constants = importlib.import_module("cratekit._vendor.downloader.constants")
     assert constants.ATMOS_CLIENT_ID == ""
     assert constants.ATMOS_CLIENT_SECRET == ""
 
 
 def test_no_module_in_the_vendored_tree_carries_a_credential_literal():
-    """The general form, so a NEW credential in a future version is caught too.
+    """Any assignment or mapping entry named like a client credential is empty.
 
-    The repository scan already runs over this tree and is the primary guard.
-    This is narrower and stricter: any assignment or mapping entry whose name
-    reads as a client credential must have an empty value. It catches the two
-    shapes the repository scanner does not, because its pattern expects
-    snake_case and upstream also uses camelCase JSON keys.
+    Stricter than the repository scan, whose pattern expects snake_case while
+    upstream also uses camelCase JSON keys.
     """
     offenders: list[str] = []
     credential_name = re.compile(
@@ -332,13 +244,7 @@ def test_no_module_in_the_vendored_tree_carries_a_credential_literal():
 
 
 def test_no_credential_carrying_module_was_vendored():
-    """``api.py`` must stay out, and stay out for the reasons it went out.
-
-    It carries five plaintext third-party client id and secret pairs, it raises
-    JSONDecodeError at import because its embedded JSON uses ``//`` comments, and
-    nothing in the package imports it. A re-vendor that copies the tree wholesale
-    brings all three back.
-    """
+    """``api.py`` stays out: plaintext client pairs, a JSONDecodeError at import, no importer."""
     assert not (VENDORED_PACKAGE / "api.py").exists(), (
         "api.py was vendored. It carries plaintext third-party OAuth client "
         "secrets and is upstream-broken at import; scripts/revendor_downloader.py "
@@ -347,13 +253,7 @@ def test_no_credential_carrying_module_was_vendored():
 
 
 def test_no_session_or_token_file_rode_along():
-    """The adjacency this whole unit was warned about.
-
-    The known-good copies of the downloader sit in a directory that also holds a
-    live OAuth session cache. Extracting a directory rather than an archive's
-    package subtree is how that file gets committed, and a compressed payload is
-    invisible to a content scan.
-    """
+    """No session or token file, nor any compressed payload, rode along from the extract."""
     strays = [
         str(path.relative_to(REPO_ROOT))
         for path in VENDOR_ROOT.rglob("*")
@@ -363,25 +263,16 @@ def test_no_session_or_token_file_rode_along():
     assert not strays, f"credential-shaped files under the vendored tree: {strays}"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# R17: the vendored downloader writes no tempo tag
-# ═══════════════════════════════════════════════════════════════════════════
+# ── R17: the vendored downloader writes no tempo tag ─────────────────────────
 
 
 def test_the_vendored_downloader_writes_no_tempo_tag():
-    """R17 has no configuration flag, and this tree violated it three times.
+    """R17: no tempo tag in any of the three shapes upstream wrote.
 
-    Upstream writes the streaming provider's BPM into every file it saves: a
-    Vorbis ``BPM`` comment for FLAC, an ID3 ``TBPM`` frame for MP3 and AIFF, and
-    an MP4 ``tmpo`` atom. rekordbox reads file tags on import, so each one seeds
-    a grid Cratekit never authored. A wrong grid is worse than none, because
-    detection octave-folds and a half-time or double-time grid moves every cue
-    and every loop the user ever set against that track.
-
-    This asserts all three shapes. The repository's own R17 guard finds only the
-    first: it matches subscript ASSIGNMENTS with a key in its forbidden set, so
-    the ID3 write slips through as a CALL and the MP4 write slips through on a
-    key name that is not in the set. Both would have shipped.
+    A Vorbis ``BPM`` comment, an ID3 ``TBPM`` frame, an MP4 ``tmpo`` atom: each
+    seeds a grid in rekordbox, and a wrong grid moves every cue and loop. The
+    repository's own R17 guard sees only subscript assignments, missing the ID3
+    call and the MP4 key.
     """
     offenders: list[str] = []
 
@@ -416,12 +307,7 @@ def test_the_vendored_downloader_writes_no_tempo_tag():
 
 
 def test_the_provider_tempo_never_reaches_the_metadata_writer():
-    """Defence in depth at the single point where the value enters.
-
-    Removing the three writes fixes today's tree. Zeroing the value at the call
-    site means a container writer added by a future upstream release has nothing
-    to write, so the next version is safe before anyone reviews it.
-    """
+    """The provider tempo is zeroed at the call site, so a future writer has nothing to write."""
     download = (VENDORED_PACKAGE / "download.py").read_text(encoding="utf-8")
     assert "bpm=0," in download, (
         "the metadata writer is being handed the provider's tempo again; "
@@ -430,13 +316,7 @@ def test_the_provider_tempo_never_reaches_the_metadata_writer():
 
 
 def test_the_patch_record_names_as_many_patches_as_the_script_applies():
-    """The inventory and the procedure cannot drift apart silently.
-
-    ``vendor/README.md`` is where a re-vendor reads what has to survive the bump,
-    and nothing counted its rows against the patches the script actually applies.
-    A patch added to one and not the other stays green, which is the same shape as
-    a patch that silently becomes a no-op.
-    """
+    """Every vendored file the script patches is named in ``vendor/README.md``'s patch record."""
     readme = (REPO_ROOT / "vendor" / "README.md").read_text(encoding="utf-8")
     rows = re.findall(r"^\| (\d+) \| ", readme, flags=re.MULTILINE)
     assert rows, "the vendor patch table changed shape; this guard reads its numbered rows"
@@ -444,15 +324,8 @@ def test_the_patch_record_names_as_many_patches_as_the_script_applies():
         "the patch table's row numbers are not a gapless sequence"
     )
 
-    # Row COUNTS are deliberately not compared. One row legitimately covers
-    # several patch objects (the Atmos credential pair is two), so an equality
-    # here would be a number somebody maintains by hand, which is the drift this
-    # guard exists to catch rather than to create.
-    #
-    # What is compared is the set of vendored FILES the script patches. Every one
-    # of them has to be named in the table, so a patch aimed at a file the record
-    # has never mentioned cannot land undocumented. It does NOT catch a second
-    # patch to a file already listed; that is stated rather than implied.
+    # Row counts are not compared, since one row can cover several patches. A
+    # second patch to a listed file is not caught.
     script = (REPO_ROOT / "scripts" / "revendor_downloader.py").read_text(encoding="utf-8")
     patched_files = set(re.findall(r'relative_path="([^"]+)"', script))
     assert patched_files, "the revendor script's patch declarations changed shape"
@@ -469,11 +342,7 @@ def test_the_patch_record_names_as_many_patches_as_the_script_applies():
 def _calls_in(function_name: str, module: str) -> set[str]:
     """Every method name a named function actually EVALUATES, from the syntax tree.
 
-    Over the tree rather than the text, for the reason
-    ``test_version_detection_does_not_read_a_nearby_pyproject`` gives: the patch
-    that removed the device flow explains itself in a comment that names
-    ``login_oauth_simple``, so a substring check on the source would fail on the
-    fix rather than on the defect. Only a name the CODE evaluates counts.
+    Not the text: the patch's own comment names ``login_oauth_simple``.
     """
     tree = ast.parse((VENDORED_PACKAGE / module).read_text(encoding="utf-8"))
     for node in ast.walk(tree):
@@ -487,14 +356,7 @@ def _calls_in(function_name: str, module: str) -> set[str]:
 
 
 def test_the_interactive_login_is_pkce_and_the_device_flow_is_gone():
-    """R-196: the device-linking client is served lossy audio, so it is not offered.
-
-    The provider gates lossless behind the PKCE client. Upstream called
-    ``login_oauth_simple`` and carried the PKCE call beside it as a comment, so
-    the commented line was the working one and the live one silently produced
-    lossy downloads. There is no flag preserving the device flow: a flag that
-    preserved it would preserve the defect.
-    """
+    """R-196: login is PKCE; the device flow, served lossy audio, is gone with no flag."""
     calls = _calls_in("login", "config.py")
     assert "login_pkce" in calls, (
         "the vendored login no longer mints a PKCE session; re-run "
@@ -507,11 +369,7 @@ def test_the_interactive_login_is_pkce_and_the_device_flow_is_gone():
 
 
 def test_the_persisted_token_records_which_client_minted_it():
-    """A field the write never stores is a field the read cannot see.
-
-    Upstream persists four keys and drops ``is_pkce``, so a PKCE token reloads as
-    a device-flow one and refreshes against the client the provider serves lossy.
-    """
+    """The persisted token keeps ``is_pkce``, so it does not refresh as a lossy device token."""
     from cratekit._vendor.downloader.model.cfg import Token
 
     assert "is_pkce" in Token.__dataclass_fields__, (
@@ -528,9 +386,7 @@ def test_the_persisted_token_records_which_client_minted_it():
     assert "is_pkce" in assigned, "token_persist writes the four keys again and drops is_pkce"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The reductions hold
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The reductions hold ──────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -538,14 +394,7 @@ def test_the_persisted_token_records_which_client_minted_it():
     ["gui.py", "logger.py", "dialog.py", "worker.py", "helper/gui.py", "ui"],
 )
 def test_the_gui_half_is_not_vendored(relative):
-    """Every one of these imports PySide6 at module scope.
-
-    PySide6 is an optional upstream extra that Cratekit does not install, so in a
-    Cratekit environment none of them can import at all. Shipping a module that
-    provably cannot import is not caution, it is a trap for the next reader. It
-    also drags 356 KB of icon binaries and two dependencies that nothing on the
-    download path uses.
-    """
+    """The GUI half, which imports PySide6 that Cratekit never installs, is not vendored."""
     assert not (VENDORED_PACKAGE / relative).exists()
 
 
@@ -559,17 +408,10 @@ def test_the_download_path_needs_no_gui_toolkit(pyproject):
 
 
 def test_the_state_directory_name_is_pinned():
-    """``__name_display__`` names a directory on disk, not a label.
-
-    It is derived from ``__package__`` upstream, and it decides where the
-    settings file, the log, and the persisted token live. Vendored, that
-    derivation yields the internal import path plus a "-dev" suffix, so the tool
-    would write its state to a directory named after ``cratekit._vendor``.
-    """
+    """``__name_display__`` names the on-disk state directory, so it is pinned, not derived."""
     module = importlib.import_module("cratekit._vendor.downloader")
-    # A neutral name since U197, and still not the import path: the derivation
-    # this pin replaces would have produced a dotted name under ``_vendor`` with
-    # a "-dev" suffix, so those are what is refused.
+    # A neutral name since U197, and never the derived dotted ``_vendor`` path
+    # with a "-dev" suffix.
     assert module.__name_display__ == "cratekit-downloader"
     assert "_vendor" not in module.__name_display__
     assert "." not in module.__name_display__
@@ -577,14 +419,12 @@ def test_the_state_directory_name_is_pinned():
 
 
 def test_nothing_outside_the_tree_reaches_the_package_by_its_old_path():
-    """U197 renamed the package. A straggler that still names the old import path
-    or the old licence copy imports nothing, or ships nothing, and is invisible
-    until the line that holds it runs. The tree's own self imports are swept by
-    ``test_no_module_still_imports_itself_by_its_upstream_name``; this sweeps the
-    code, the tests, the scripts, the packaging and CI around it, in each shape
-    the old path was written in before the rename: dotted, slashed, joined with
-    ``/`` on a ``Path``, and relative to ``_vendor``. This file is left out
-    because it spells the old names to look for them."""
+    """U197 renamed the package: nothing outside the tree reaches it or its licence by the old path.
+
+    Swept over code, tests, scripts, packaging and CI, dotted, slashed, joined
+    on a ``Path`` and relative to ``_vendor``. This file spells the old names, so
+    it is left out.
+    """
     old_names = re.compile(
         r"_vendor[./]tidal_dl_ng"
         r"""|["']_vendor["']\s*/\s*["']tidal_dl_ng["']"""
@@ -627,11 +467,7 @@ def _revendor_script():
 
 
 def test_the_tree_carries_the_adoption_patch_the_script_declares():
-    """The adoption is a patch, so a re-vendor that dropped it would strand tokens.
-
-    The tree and the script are compared by the patch's own text, which is the
-    only shape in which a hand edit to one of them cannot pass for the other.
-    """
+    """The tree carries the adoption patch the script declares, compared by the patch's own text."""
     script = _revendor_script()
     path_module = (VENDORED_PACKAGE / "helper" / "path.py").read_text(encoding="utf-8")
     assert script.PATCH_STATE_DIRECTORY_ADOPTION.new in path_module
@@ -694,8 +530,7 @@ def test_no_old_state_directory_resolves_the_new_one_and_makes_nothing(tmp_path,
 def test_a_file_under_the_old_name_is_not_moved_into_the_state_directory_slot(
     tmp_path, monkeypatch
 ):
-    """Only a directory is adopted. A file moved into the slot would make every
-    later settings or token write fail on a path that is not a directory."""
+    """Only a directory is adopted; a file in the slot would break every later state write."""
     from cratekit._vendor.downloader.helper import path as tool_path
 
     new, old = _state_directories(tmp_path, monkeypatch)
@@ -739,25 +574,15 @@ def test_a_move_lost_to_another_process_resolves_the_new_directory(tmp_path, mon
 
 
 def test_version_detection_does_not_read_a_nearby_pyproject():
-    """The sharpest hazard vendoring introduced, pinned so it cannot return.
+    """Version detection never reads a nearby ``pyproject.toml``.
 
-    Upstream walks up to three parent directories from its own ``__file__``
-    looking for a ``pyproject.toml`` and reads another project's version out of
-    whichever it finds. Under ``src/cratekit/_vendor/downloader/`` those parents
-    are ``downloader``, ``_vendor``, and ``cratekit``; Cratekit's own file sits
-    one level beyond, so today the walk misses it by a single directory. Were it
-    ever reached, the repository-URL lookup would raise KeyError outside
-    upstream's try block and ``import`` itself would fail.
-
-    Asserting the version against Cratekit's own is the point: if the walk ever
-    found the host's file, these two would be equal.
+    Upstream walks three parents from its ``__file__`` for one, which misses
+    Cratekit's own by one directory; reaching it would raise KeyError at import.
+    Asserting the version against Cratekit's own catches that.
     """
     tree = ast.parse((VENDORED_PACKAGE / "__init__.py").read_text(encoding="utf-8"))
 
-    # Asserted over the syntax tree, not over the file text. The patch that
-    # removed this behaviour explains it in a comment that names the filename, so
-    # a substring check on the source would fail on the fix rather than on the
-    # defect. Only a string the CODE evaluates counts.
+    # Asserted over the syntax tree, since the patch's comment names the filename.
     literals = [
         node.value
         for node in ast.walk(tree)
