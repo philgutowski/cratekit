@@ -486,7 +486,7 @@ def read(cfg: config.Config) -> ConvergenceState:
     """
     path = path_for(cfg)
 
-    def unusable(
+    def state_unreadable(
         message: str, *, remedy: Remedy = Remedy.RUN_DOCTOR
     ) -> ConvergenceStateUnreadable:
         return ConvergenceStateUnreadable(message, path=path, remedy=remedy)
@@ -494,25 +494,25 @@ def read(cfg: config.Config) -> ConvergenceState:
     try:
         raw = config.read_bytes_if_present(path)
     except OSError as exc:
-        raise unusable(f"{path} exists and could not be read: {exc}") from exc
+        raise state_unreadable(f"{path} exists and could not be read: {exc}") from exc
     if raw is None:
         return EMPTY
 
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise unusable(f"{path} is not readable as JSON: {exc}") from exc
+        raise state_unreadable(f"{path} is not readable as JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise unusable(f"{path} does not hold an object at its top level")
+        raise state_unreadable(f"{path} does not hold an object at its top level")
 
     version = data.get("schema_version")
     if not isinstance(version, int):
-        raise unusable(
+        raise state_unreadable(
             f"{path} carries no integer schema_version, so nothing can be said "
             f"about the shape of what follows it",
         )
     if version > SCHEMA_VERSION:
-        raise unusable(
+        raise state_unreadable(
             f"{path} was written at schema version {version}; this build "
             f"understands {SCHEMA_VERSION}",
             remedy=Remedy.UPGRADE_CRATEKIT,
@@ -520,23 +520,23 @@ def read(cfg: config.Config) -> ConvergenceState:
 
     raw_fingerprint = data.get("fingerprint")
     if raw_fingerprint is not None and not isinstance(raw_fingerprint, dict):
-        raise unusable(f"{path} holds a fingerprint that is not an object")
+        raise state_unreadable(f"{path} holds a fingerprint that is not an object")
     entries = data.get("trees")
     if not isinstance(entries, list):
-        raise unusable(f"{path} has no trees array")
+        raise state_unreadable(f"{path} has no trees array")
 
     records: list[TreeConvergence] = []
     seen: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
-            raise unusable(f"{path} holds a tree record that is not an object")
+            raise state_unreadable(f"{path} holds a tree record that is not an object")
         try:
             record = TreeConvergence.from_json(entry)
         except (KeyError, TypeError, ValueError) as exc:
             # Refused, not dropped, since a dropped record reads as fine.
-            raise unusable(f"{path} holds an unusable tree record: {exc}") from exc
+            raise state_unreadable(f"{path} holds an unusable tree record: {exc}") from exc
         if record.tree_id in seen:
-            raise unusable(
+            raise state_unreadable(
                 f"{path} holds two records for the tree {record.tree_id!r}; a "
                 f"record that gives two answers for one tree cannot say whether "
                 f"it is converged, and resolving that by line order decides "
@@ -548,7 +548,7 @@ def read(cfg: config.Config) -> ConvergenceState:
     try:
         taken = None if raw_fingerprint is None else Fingerprint.from_json(raw_fingerprint)
     except (KeyError, TypeError, ValueError) as exc:
-        raise unusable(f"{path} holds an unusable fingerprint: {exc}") from exc
+        raise state_unreadable(f"{path} holds an unusable fingerprint: {exc}") from exc
 
     return ConvergenceState(
         fingerprint=taken, trees=tuple(sorted(records, key=lambda e: e.tree_id))

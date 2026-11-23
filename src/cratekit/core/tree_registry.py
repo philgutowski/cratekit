@@ -322,7 +322,9 @@ def read_path(path: Path) -> Registry:
     from :func:`read` so a path is never passed by accident.
     """
 
-    def unusable(message: str, *, remedy: Remedy = Remedy.RUN_DOCTOR) -> TreeRegistryUnreadable:
+    def registry_unreadable(
+        message: str, *, remedy: Remedy = Remedy.RUN_DOCTOR
+    ) -> TreeRegistryUnreadable:
         return TreeRegistryUnreadable(message, path=path, remedy=remedy)
 
     try:
@@ -330,23 +332,23 @@ def read_path(path: Path) -> Registry:
     except FileNotFoundError:
         return EMPTY
     except OSError as exc:
-        raise unusable(f"{path} exists but could not be read: {exc}") from exc
+        raise registry_unreadable(f"{path} exists but could not be read: {exc}") from exc
 
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise unusable(f"{path} is not readable as JSON: {exc}") from exc
+        raise registry_unreadable(f"{path} is not readable as JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise unusable(f"{path} does not hold an object at its top level")
+        raise registry_unreadable(f"{path} does not hold an object at its top level")
 
     version = data.get("schema_version")
     if not isinstance(version, int):
-        raise unusable(
+        raise registry_unreadable(
             f"{path} carries no integer schema_version, so nothing can be said "
             f"about the shape of what follows it",
         )
     if version > SCHEMA_VERSION:
-        raise unusable(
+        raise registry_unreadable(
             f"{path} was written at schema version {version}; this build "
             f"understands {SCHEMA_VERSION}",
             remedy=Remedy.UPGRADE_CRATEKIT,
@@ -354,22 +356,22 @@ def read_path(path: Path) -> Registry:
 
     entries = data.get("trees")
     if not isinstance(entries, list):
-        raise unusable(f"{path} has no trees array")
+        raise registry_unreadable(f"{path} has no trees array")
 
     records: list[TreeRecord] = []
     seen: set[str] = set()
     for entry in entries:
         if not isinstance(entry, dict):
-            raise unusable(f"{path} holds a tree entry that is not an object")
+            raise registry_unreadable(f"{path} holds a tree entry that is not an object")
         tree_id = entry.get("tree")
         if not isinstance(tree_id, str) or not tree_id.strip():
-            raise unusable(
+            raise registry_unreadable(
                 f"{path} holds a tree entry with no identifier; a record that "
                 f"cannot say which tree it describes is worse than no record",
             )
         if tree_id in seen:
             # Two answers for one tree are refused, never resolved by line order.
-            raise unusable(
+            raise registry_unreadable(
                 f"{path} holds two records for the tree {tree_id!r}; a registry "
                 f"that gives two answers for one tree cannot say which medium "
                 f"owns it, and guessing decides which writer runs against a "
@@ -382,7 +384,7 @@ def read_path(path: Path) -> Registry:
             try:
                 cutover = date.fromisoformat(str(stamp))
             except (TypeError, ValueError) as exc:
-                raise unusable(
+                raise registry_unreadable(
                     f"{path} records {tree_id!r} as cutting over on {stamp!r}, "
                     f"which is not an ISO date",
                 ) from exc
@@ -392,7 +394,7 @@ def read_path(path: Path) -> Registry:
         if raw_mode is None:
             # NO DEFAULT: XML would read a cut over tree as on the bridge and
             # empty the restore detector's input.
-            raise unusable(
+            raise registry_unreadable(
                 f"{path} holds a record for {tree_id!r} with no mode; the medium "
                 f"that owns a tree is the one thing this file exists to say, and "
                 f"the value it would default to sends the bridge writer at a tree "
@@ -411,7 +413,7 @@ def read_path(path: Path) -> Registry:
             )
         except ValueError as exc:
             # Refused, not dropped, since a dropped record reads as on the bridge.
-            raise unusable(f"{path} holds an unusable record: {exc}") from exc
+            raise registry_unreadable(f"{path} holds an unusable record: {exc}") from exc
 
     return Registry(tuple(sorted(records, key=lambda e: e.tree_id)))
 
