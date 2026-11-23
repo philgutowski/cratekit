@@ -1,0 +1,247 @@
+name = "u342"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_stamp_refuses_a_head"
+description = "stamp_head: drop the refusal of a name that already carries a head, leaving only the read back to refuse it"
+file = "src/cratekit/core/naming.py"
+surface = "maintainer"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        parse_head(name, template=template) is not None
+        or not strip_head'''
+new = '''        False
+        or not strip_head'''
+
+[[rows]]
+id = "S2_stamp_refuses_a_marker_alone"
+description = "stamp_head: drop the refusal of a name with nothing but a marker after the head"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        or not strip_head(name, template=template).strip()
+'''
+new = '''        or False
+'''
+
+[[rows]]
+id = "S3_stamp_refuses_a_trailing_head"
+description = "stamp_head: drop the refusal of a title carrying a head at its end, so it gets a second"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        or strip_trailing_head(name, template=template) != name
+'''
+new = '''        or False
+'''
+
+[[rows]]
+id = "S4_stamp_reads_back_complete"
+description = "stamp_head: drop the read back that the result carries a complete head"
+file = "src/cratekit/core/naming.py"
+surface = "maintainer"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        not has_head(stamped, template=template)
+        or parse_head'''
+new = '''        False
+        or parse_head'''
+
+[[rows]]
+id = "S5_stamp_reads_back_the_values"
+description = "stamp_head: drop the read back that the head carries exactly the values rendered"
+file = "src/cratekit/core/naming.py"
+surface = "maintainer"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        or parse_head(stamped, template=template) != rendered
+'''
+new = '''        or False
+'''
+
+[[rows]]
+id = "S6_stamp_reads_back_the_body"
+description = "stamp_head: drop the read back that the body after the head is the name's own"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        or strip_head(stamped, template=template) != strip_head(name, template=template)
+'''
+new = '''        or False
+'''
+
+[[rows]]
+id = "S7_stamp_pads_the_key"
+description = "stamp_head: render the head's key unpadded, so 6A is written where the library writes 06A"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        head = _render_head(spec, template, template.key_pad)
+        rendered'''
+new = '''        head = _render_head(spec, template, "none")
+        rendered'''
+
+[[rows]]
+id = "P1_never_stamped_half"
+description = "plan_row: stamp a headless row whose key or tempo is missing, as long as one half is there"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        if key is None or tempo is None:
+            return Item(content_id, LEAVE_ACTION, reason=NO_HEAD_UNANSWERED, **common)'''
+new = '''        if key is None and tempo is None:
+            return Item(content_id, LEAVE_ACTION, reason=NO_HEAD_UNANSWERED, **common)'''
+
+[[rows]]
+id = "P2_unanswered_named"
+description = "plan_row: name a headless row rekordbox did not fully answer as no-head, losing why"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''            return Item(content_id, LEAVE_ACTION, reason=NO_HEAD_UNANSWERED, **common)'''
+new = '''            return Item(content_id, LEAVE_ACTION, reason=NO_HEAD, **common)'''
+
+[[rows]]
+id = "P3_headless_is_stamped"
+description = "plan_row: never take the stamp path, so a headless title is left no-head as before U342"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''    if parsed is None:
+        # NO HEAD'''
+new = '''    if False:
+        # NO HEAD'''
+
+[[rows]]
+id = "P4_stamped_apart"
+description = "plan_row: plan a stamped row as adopt, so the plan does not show it apart"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        action = STAMPED
+'''
+new = '''        action = ADOPT
+'''
+
+[[rows]]
+id = "P5_stamped_writes"
+description = "WRITING: drop stamped, so a stamped row is planned and never written"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''WRITING: tuple[str, ...] = (ADOPT, STAMPED)'''
+new = '''WRITING: tuple[str, ...] = (ADOPT,)'''
+
+[[rows]]
+id = "P6_stamped_not_left"
+description = "LEFT: count stamped among the rows left alone"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''    outcome for outcome in OUTCOMES if outcome not in (*WRITING, AGREE)'''
+new = '''    outcome for outcome in OUTCOMES if outcome not in (ADOPT, AGREE)'''
+
+[[rows]]
+id = "P7_tag_must_be_the_title"
+description = "_tag_after: stamp a headless row's file whatever its title tag says"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        return new_title if tag_title in (title, new_title) else None'''
+new = '''        return new_title'''
+
+[[rows]]
+id = "P8_a_stopped_stamp_continues"
+description = "_tag_after: refuse a tag already carrying the stamped title, so a run stopped after the files is never continued"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        return new_title if tag_title in (title, new_title) else None'''
+new = '''        return new_title if tag_title in (title,) else None'''
+
+[[rows]]
+id = "P9_stamped_key_tag"
+description = "plan_row: give only a corrected row rekordbox's key tag, never a stamped one"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''    if key is not None and parse_camelot(initialkey) != parse_camelot(key):'''
+new = '''    if action == ADOPT and key is not None and parse_camelot(initialkey) != parse_camelot(key):'''
+
+[[rows]]
+id = "P10_leave_holds_a_stamp"
+description = "plan_adopt: let --leave hold out only a corrected row, so a stamped row named by it is written"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        if item.action in WRITING and content_id in held:'''
+new = '''        if item.action == ADOPT and content_id in held:'''
+
+[[rows]]
+id = "P11_restore_keeps_a_stamp"
+description = "apply_adopt: keep only the corrected rows' surfaces in the record, so a restore leaves a stamped file's title tag"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''        gates.record.detail[RECORD_KEY] = [item.before() for item in writes]'''
+new = '''        gates.record.detail[RECORD_KEY] = [item.before() for item in writes if item.action == ADOPT]'''
+
+[[rows]]
+id = "C1_unanswered_names_the_half"
+description = "_why_left: drop the missing half from a headless row's reason"
+file = "src/cratekit/analysis/head_adopt_cli.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''    if item.reason == ha.NO_HEAD_UNANSWERED and item.notes:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C2_written_counts_what_took"
+description = "_written: count every stamped row planned as written, whether its file took it or not"
+file = "src/cratekit/analysis/head_adopt_cli.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''item.action == ha.STAMPED and item.content_id in landed)'''
+new = '''item.action == ha.STAMPED)'''
+
+[[rows]]
+id = "C3_written_counts_stamps"
+description = "_written: count every row that took its title as stamped"
+file = "src/cratekit/analysis/head_adopt_cli.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''item.action == ha.STAMPED and item.content_id in landed)'''
+new = '''item.content_id in landed)'''
+
+[[rows]]
+id = "C4_written_says_no_rename"
+description = "_written: say the file names keep their old head again"
+file = "src/cratekit/analysis/head_adopt_cli.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''f"other column; no file is renamed; a restore of session "'''
+new = '''f"other column; the file names keep their old head; a restore of session "'''
+
+[[rows]]
+id = "E1_key_equal_by_wheel"
+description = "adopted (existing, sample): compare the written key to rekordbox's as text"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''    if key is not None and parse_camelot(written_key) != parse_camelot(key):'''
+new = '''    if key is not None and written_key != key:'''
+
+[[rows]]
+id = "E2_policy_before_files"
+description = "apply_adopt (existing, sample): skip asking the policy of the whole plan before the first file"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''    metadata.assert_within_policy(row_changes(writes))'''
+new = '''    pass'''
+
+[[rows]]
+id = "E3_stale_plan_refuses"
+description = "assert_plan_unchanged (existing, sample): take any plan on the write handle as the approved one"
+file = "src/cratekit/analysis/head_adopt.py"
+surface = "user"
+tests = ["tests/test_analyze_adopt.py", "tests/test_restore_tags.py", "tests/test_naming.py", "tests/test_no_beatgrid_ever.py"]
+old = '''    if again.digest == approved.digest:'''
+new = '''    if True:'''
