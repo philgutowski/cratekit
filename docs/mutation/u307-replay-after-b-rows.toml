@@ -189,7 +189,7 @@ source = { table = "r770-b.json", id = "B3_an_abort_writes" }
 description = "ask_then_write: write whatever the answer was"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_an_abort_moves_nothing_and_writes_nothing, test_an_abort_writes_nothing, were folded by the trim into test_the_gate_screen_names_every_row_its_columns_the_playlist_and_the_database, test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database, the abort test's steps and checks, verbatim at the end of each file's gate screen test"
 tests = ["tests/test_intake_writers_native.py", "tests/test_intake_land_native.py"]
 old = '        if option != "apply":'
 new = '        if option == "never":'
@@ -375,7 +375,7 @@ source = { table = "u127.json", id = "L1_screen_line_blind" }
 description = "The native screen counts no tagged row"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_the_screen_counts_the_tagged_rows_against_the_cut, were folded by the trim into test_the_screen_counts_the_tagged_rows_and_the_digest_moves_with_a_tag_and_the_cut, its check of the vox line counting the tagged rows against the cut, with the rescore across the cut added"
 tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_label_sync_go.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_unmark.py"]
 old = '        f"{len(rows.vox_tagged())} of {len(adding)} added row(s), each whose voxlevel "'
 new = '        f"{len(adding)} of {len(adding)} added row(s), each whose voxlevel "'
@@ -419,7 +419,7 @@ source = { table = "u127.json", id = "L5_unscored_unsaid" }
 description = "Say nothing about a file with no score"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_a_file_with_no_score_gets_no_tag_and_is_named, were folded by the trim into test_the_tag_is_written_under_the_vocals_category_and_a_file_with_no_score_is_named, its check that the screen names the file with no score and tags the scored one"
 tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_label_sync_go.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_unmark.py"]
 old = '    if not collection.vox_unscored:'
 new = '    if True:'
@@ -547,7 +547,7 @@ source = { table = "u129-author.json", id = "A5_archive_return_discarded" }
 description = "Discard apply_archive warnings so a not-renamed return is silent on the landed envelope"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_a_landing_archive_not_renamed_is_a_warning_on_the_envelope, test_landing_archive_surfaces_changed_since_plan_as_a_warning, were folded by the trim into test_a_landing_archive_failure_is_a_warning_on_the_envelope, test_landing_archive_failure_after_write_is_a_warning, the archive warning checks, now the not renamed case beside the changed since plan one"
 tests = ["tests/test_u129_set_account_playlist.py", "tests/test_set_inspiration_playlist.py"]
 old = '''
     try:
@@ -609,7 +609,7 @@ source = { table = "u146-c.json", id = "L3_gate_asked_for_nothing" }
 description = "_place_owned: a pass whose owned hearts are all placed opens the database to write and asks the gate over nothing"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_a_pass_whose_owned_hearts_are_all_placed_asks_nothing_and_ends_no_op, test_an_owned_heart_all_favorites_holds_without_a_month_is_no_write_for_an_empty_landing, test_an_owned_heart_whose_file_two_rows_claim_is_not_placed_by_a_guess, test_an_owned_heart_whose_job_froze_no_date_key_is_left_to_the_backfill, were folded by the trim into test_an_owned_track_hearted_today_joins_all_favorites_and_its_month_with_nothing_downloaded, test_owned_hearts_an_empty_landing_cannot_place_alone_are_no_write, the four owned heart cases that ask nothing and end no_op, now read through the files' shared _no_op helper"
 tests = ["tests/test_intake_land_owned_hearts_native.py"]
 old = '''
     if not first.writes:
@@ -640,7 +640,7 @@ source = { table = "u153.json", id = "L1_facts_colour_count" }
 description = "land_cli favorites_facts: count only the items, so the owned hearts are left out of the Pink total shown"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_an_owned_heart_beside_a_landed_file_takes_pink_in_the_same_commit, were folded by the trim into test_an_owned_heart_joins_in_the_same_commit_as_a_downloaded_one, its check that both hearts take Pink in the one commit, with the count on the screen"
 tests = ["tests/test_intake_land_owned_hearts_native.py", "tests/test_intake_land_hearts_native.py"]
 old = '        facts["rows to colour Pink"] = len(plan.items) + len(plan.colour)'
 new = '        facts["rows to colour Pink"] = len(plan.items)'
@@ -651,7 +651,7 @@ source = { table = "u153.json", id = "L3_notes_colour_skipped" }
 description = "land_cli favorites_notes: never emit the missing-Pink note, so a landing that coloured nothing says nothing"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_with_no_pink_row_the_landing_places_the_heart_and_warns, were folded by the trim into test_two_hearts_of_two_months_and_an_existing_month_is_added_to_not_made, the no Pink row case, which still places the hearts, leaves them uncoloured and warns with the same code"
 tests = ["tests/test_intake_land_hearts_native.py"]
 old = '''
     if placed.colour_skipped:
@@ -706,7 +706,7 @@ source = { table = "u157.json", id = "L1_selection_counts" }
 description = "awaiting_analysis: count no row as carrying dyn"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_the_warning_names_both_selections_and_counts_each, were folded by the trim into test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_each_selection, the warning naming both selections and counting each, now over two rows"
 tests = ["tests/test_intake_land_dyn_native.py", "tests/test_drift.py", "tests/test_analyze_check.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py"]
 old = '''
     dyned = sum(1 for row in collection.added if row.dyn)
@@ -735,7 +735,7 @@ source = { table = "u161.json", id = "L1_landing_pins_nothing" }
 description = "ask_then_write: pin nothing, so every native write's answer is free of the file again"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_an_answer_given_over_one_file_is_stale_when_the_continuation_opens_another, were folded by the trim into test_the_same_files_against_a_copy_at_another_path_digest_equal_and_each_screen_names_its_path, the continuation over another file refused stale, each screen naming the file it reads and writes"
 tests = ["tests/test_intake_land_native.py"]
 old = '            spec, plan=data, context=shown(rows), pinned={DATABASE_PIN: str(opened)}'
 new = '            spec, plan=data, context=shown(rows), pinned={}'
@@ -978,7 +978,7 @@ source = { table = "u181.json", id = "L1_half_is_a_warning" }
 description = "land_cli vox_plan_warnings: warn at exactly half the added rows unscored"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_half_a_batch_unscored_is_said_on_the_line_and_is_no_warning, were folded by the trim into test_a_batch_mostly_unscored_carries_a_warning_with_its_code_on_the_gate_screen, the bound of more than half unscored, where one in two is the line's alone, beside the warning case"
 tests = ["tests/test_intake_land_vox_native.py"]
 old = '    if not adding or 2 * len(unscored) <= len(adding):'
 new = '    if not adding or 2 * len(unscored) < len(adding):'
@@ -1130,7 +1130,7 @@ source = { table = "u319.json", id = "M9_warning_drops_the_short_path" }
 description = "land_cli: the awaiting analysis warning names one path again"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
+moved = "the text moved whole from intake/land_cli.py to intake/land_native.py with its function (U307); the tests that killed it, test_the_warning_names_both_selections_and_counts_each, were folded by the trim into test_the_tag_is_written_under_one_value_and_the_warning_names_and_counts_each_selection, the warning naming both selections and counting each, now over two rows"
 tests = ["tests/test_intake_land_dyn_native.py", "tests/test_intake_land_native.py", "tests/test_inbox_analyzed.py"]
 old = '                f"for analysis, and {selections}; {AUTO_ANALYSIS_STEP}; then "'
 new = '                f"for analysis, and {selections}; then "'
@@ -1560,7 +1560,7 @@ source = { table = "u103-b.json", id = "C14_offered_under_its_own_key" }
 description = "Offer identify's version questions under the match verb's key instead of its own"
 file = "src/cratekit/intake/cli_identify.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/cli_identify.py, was in src/cratekit/intake/cli.py"
+moved = "the text moved whole from intake/cli.py to intake/cli_identify.py with its function (U307); the tests that killed it, test_identify_reports_an_owned_track_owned_an_offered_one_offered_and_the_rest_missing, were folded by the trim into test_identify_and_a_set_job_report_owned_offered_and_missing, every one of its eight checks, carried whole beside the set job's"
 tests = ["tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_all.py", "tests/test_sync_mark.py"]
 old = '        cfg, result.rows, handler_key=ctx.entry.handler_key, run_id=ctx.run.run_id'
 new = '        cfg, result.rows, handler_key="match.run", run_id=ctx.run.run_id'
@@ -1633,7 +1633,7 @@ source = { table = "u103-b.json", id = "C9_refusal_counts_the_gap" }
 description = "Let the unwritable tracklist refusal promise a free rerun over chunks that got no answer"
 file = "src/cratekit/intake/cli_identify.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/cli_identify.py, was in src/cratekit/intake/cli.py"
+moved = "the text moved whole from intake/cli.py to intake/cli_identify.py with its function (U307); the tests that killed it, test_the_unwritable_tracklist_refusal_does_not_promise_a_free_rerun_over_a_gap, were folded by the trim into test_a_tracklist_that_cannot_be_written_refuses_and_says_the_answers_were_kept, both of its checks, carried whole"
 tests = ["tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_all.py", "tests/test_sync_mark.py"]
 old = '        elif result.unreached:'
 new = '        elif False:'
@@ -1692,7 +1692,7 @@ source = { table = "u104-e.json", id = "E2_timeout_is_retryable" }
 description = "Stop calling a timed out download retryable, the one fetch failure known to be worth running again"
 file = "src/cratekit/intake/cli_identify.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/cli_identify.py, was in src/cratekit/intake/cli.py"
+moved = "the text moved whole from intake/cli.py to intake/cli_identify.py with its function (U307); the tests that killed it, test_a_download_that_timed_out_is_the_one_fetch_failure_called_retryable, were folded by the trim into test_a_fetch_failure_refuses_and_leaves_no_scratch_file, the timeout case of the parametrized fetch failure test, which asserts retryable only for the timeout"
 tests = ["tests/intake/test_set_fetch.py", "tests/intake/test_workers.py"]
 old = '''
             remedy=Remedy.RETRY_LATER,
