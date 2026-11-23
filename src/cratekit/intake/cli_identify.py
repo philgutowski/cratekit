@@ -17,7 +17,7 @@ from typing import Any
 
 from cratekit.acquire import match, match_cli
 from cratekit.cli.output import Envelope, digest_of, load_config
-from cratekit.core import binaries, binary_refusal, config
+from cratekit.core import binaries, config
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import fetch, normalize, pipeline, recognize
@@ -137,7 +137,7 @@ def _recording(
     try:
         found = fetch.fetcher()
     except binaries.BinaryNotFound as exc:
-        raise binary_refusal.yt_dlp_missing(
+        raise binaries.yt_dlp_missing(
             exc,
             {"source": address},
             said="Fetching a mix runs it, so nothing was fetched and nothing was sent.",

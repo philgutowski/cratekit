@@ -6,13 +6,6 @@ KEBAB_LITERALS = {
     # 2026-11-11, U241: why a head measured ahead was measured again.
     'analysis/ahead.py': ['file-changed', 'raised-in-a-worker'],
     'analysis/artifacts.py': ['analysis-artifacts', 'analysis-staging', 'utf-8'],
-    # 2026-10-31, U167: analyze check, its engine and its verb.
-    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
-    'analysis/check_cli.py': [
-        'analysis-check-nothing',
-        'analysis-check-records-unread',
-        'analysis-suspect',
-    ],
     # 2026-11-22, U306: the calibrate verb's body moved to its own module with its literals.
     'analysis/calibrate.py': [
         'calibration-partial-sample',
@@ -72,7 +65,6 @@ KEBAB_LITERALS = {
         'utf-8',
     ],
     'analysis/light.py': ['skipped-no-key'],
-    'analysis/rekordbox_check.py': ['analysis-check-landing-unknown'],  # 2026-10-31, U167
     'analysis/run.py': ['skipped-prefixed'],
     'analysis/vocals.py': [
         'vocal-audio-too-large',
@@ -85,9 +77,6 @@ KEBAB_LITERALS = {
 }
 
 LITERAL_HOLDERS = {
-    # 2026-10-31, U167: analyze check, its engine and its verb.
-    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
-    'analysis/check_cli.py': ['analysis-suspect'],
     # 2026-11-22, U306: the calibrate verb's body moved to its own module with its literals.
     'analysis/calibrate.py': [
         'library-volume-unmounted',
@@ -108,13 +97,11 @@ LITERAL_HOLDERS = {
     'analysis/head_adopt.py': ['decision-stale', 'internal-error', 'whitelist-violation'],
     # 2026-11-23, U327: analyze adopt's verb, refusing a file that would not take.
     'analysis/head_adopt_cli.py': ['analyze-adopt-unwritten'],
-    'analysis/rekordbox_check.py': ['analysis-check-landing-unknown'],  # 2026-10-31, U167
 }
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'analysis/calibrate.py',  # 2026-11-22, U306: moved from cli with the calibrate verb.
     'analysis/energy.py',
-    'analysis/rekordbox_check.py',  # 2026-10-31, U167: the Camelot wheel's twelve.
 })
 
 NAMED_WITHOUT_OWN = {

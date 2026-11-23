@@ -21,7 +21,9 @@ THE VERDICT:
   is the one kept, and ``crate analyze adopt`` gives it to the title.
 * **done** otherwise. An empty scope says so rather than calling nothing done.
 
-Layer: modules.
+Layer: modules. In ``intake``, the landing the visit follows, because no toggle
+gates the verb (U331): the three helpers it borrows from the analysis module
+are imported where they are called, so the verb builds with that module off.
 """
 
 from __future__ import annotations
@@ -32,12 +34,12 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from cratekit.analysis import agreement, detect
 from cratekit.core import analysis_store, config, rb_writer, session, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.naming import NameTemplate, pad_camelot, parse_camelot, parse_head
 from cratekit.intake import analyzed, native, refill
 
+#: The origin an envelope has always printed; the module moved, its name there did not.
 _ORIGIN = ("analysis.rekordbox_check",)
 
 #: The three verdicts, and the answer for a scope that holds no row.
@@ -235,6 +237,8 @@ def reference_tempo(hundredths: Any) -> int | None:
         value = int(hundredths or 0)
     except (TypeError, ValueError):
         return None
+    from cratekit.analysis import agreement
+
     return agreement.round_half_up(value / 100.0) if value > 0 else None
 
 
@@ -254,6 +258,8 @@ def key_floor(compared: int) -> float | None:
     """
     if compared <= 0:
         return None
+    from cratekit.analysis import detect
+
     measured = detect.head_agreement()["key"]
     total = measured["equal"] + measured["differs"]
     rate = measured["equal"] / total
@@ -329,7 +335,7 @@ def _live_members(db: Any, playlist_ids: Iterable[str]) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def _analyze_members(
+def analyze_members(
     db: Any, declared: taxonomy.Taxonomy, registry: tree_registry.Registry
 ) -> tuple[tuple[str, ...], str]:
     """INBOX / Analyze's live members, or none with why it was passed over."""
@@ -369,7 +375,7 @@ def _unanalysed(db: Any) -> dict[str, Any]:
 _CHUNK = 500
 
 
-def _content_rows(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
+def content_rows(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
     """The collection rows named, by content ID, read a chunk of IDs to a statement (U259).
 
     A row the collection lacks is absent, which the caller reads as ``None``.
@@ -445,7 +451,7 @@ def resolve_scope(
             content_ids=members,
             unreadable_records=unreadable,
         )
-    members, why = _analyze_members(db, declared, registry)
+    members, why = analyze_members(db, declared, registry)
     if members:
         return Scope(kind=SCOPE_ANALYZE, name=f"INBOX / {native.ANALYZE}", content_ids=members)
     waiting = dict(_unanalysed(db))
@@ -544,6 +550,8 @@ def read_row(
     one = analyzed.judge(content_id, content)
     if one.why in (analyzed.NO_ROW, analyzed.ROW_REMOVED):
         return Row(content_id=content_id, title=one.title, state=GONE, why=one.why)
+    from cratekit.analysis import agreement
+
     key_id = getattr(content, "KeyID", None)
     key = agreement.camelot_from_scale_name(keys.get(str(key_id))) if key_id else None
     head = head_key(content, template=template)
@@ -666,7 +674,7 @@ def check_rows(
     held: dict[str, Any] | None = dict(scope.read)
     try:
         held.update(
-            _content_rows(
+            content_rows(
                 db, [content_id for content_id in scope.content_ids if content_id not in held]
             )
         )

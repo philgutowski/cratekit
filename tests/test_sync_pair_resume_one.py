@@ -10,10 +10,10 @@ from datetime import timedelta
 
 import pytest
 
-from cratekit.core import held_plan, jobs
+from cratekit.core import jobs
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_cli
+from cratekit.sync import held_plan, pair_cli
 from tests._sync_builders import exited, failed
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414

@@ -22,10 +22,11 @@ import pytest
 
 from cratekit import cli
 from cratekit.cli import doctor, registry
-from cratekit.core import config, jobs, provider_gate, rehearsal
+from cratekit.core import config, jobs, provider_gate
 from cratekit.core.cause import REASONS, CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.provider_gate import ACCOUNT, APP, BUDGET, Gate, GateSettings
+from cratekit.intake import rehearsal
 from cratekit.label import kept_listing, kept_reads, playlists_cli
 from cratekit.label import registry as labels
 from tests import test_label_sync as ls
@@ -129,7 +130,7 @@ def test_a_call_made_under_a_redirected_state_directory_is_counted_by_the_live_g
 
 @pytest.mark.parametrize("pointed", [True, False])
 def test_a_rehearsal_spends_from_the_live_gate(tmp_path, monkeypatch, pointed):
-    """Under ``core.rehearsal.redirected`` the gate stays live and the pointer is untouched."""
+    """Under ``intake.rehearsal.redirected`` the gate stays live and the pointer is untouched."""
     if not pointed:
         monkeypatch.delenv(config.ENV_PROVIDER_GATE_DIR, raising=False)
     live = config.state_path(provider_gate.STATE_KEY)

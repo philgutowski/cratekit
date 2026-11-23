@@ -20,8 +20,8 @@ KEBAB_LITERALS = {
         'keyfinder-cli',
         'unsupported-platform',
         'yt-dlp',
+        'yt-dlp-missing',  # 2026-11-23, U331: the refusal joined from core/binary_refusal.py.
     ],
-    'core/binary_refusal.py': ['yt-dlp-missing'],
     'core/cause.py': [
         'account-mirror-ambiguous',  # 2026-10-15, U147
         'adapter-broken',
@@ -413,7 +413,6 @@ KEBAB_LITERALS = {
         'utf-8',
     ],
     # 2026-10-31, U162: the rehearsal area helper joined.
-    'core/rehearsal.py': ['internal-error', 'output-exists'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/restore.py': [
         'bare-metal-recovery',
@@ -688,8 +687,8 @@ LITERAL_HOLDERS = {
         'install-binary',
         'install-binary-source-unknown',
         'unsupported-platform',
+        'yt-dlp-missing',  # 2026-11-23, U331: the refusal joined from core/binary_refusal.py.
     ],
-    'core/binary_refusal.py': ['yt-dlp-missing'],
     # 2026-11-23, U329: core/config.py left, config.Remedy is exit_codes.Remedy.
     'core/convergence.py': ['library-fingerprint-unreadable', 'tree-convergence-unusable', 'tree-unconverged'],
     'core/discovery.py': ['internal-error'],
@@ -747,7 +746,6 @@ LITERAL_HOLDERS = {
     ],
     'core/reconcile.py': ['restore-reconciliation-outstanding', 'restore-record-unusable'],
     # 2026-10-31, U162: the rehearsal area helper joined.
-    'core/rehearsal.py': ['internal-error', 'output-exists'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/restore.py': [
         'internal-error',
@@ -839,7 +837,6 @@ LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_removal.py',
     'core/reconcile.py',
-    'core/rehearsal.py',  # 2026-10-31, U162: the rehearsal area helper joined.
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/restore_recovery.py',
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.

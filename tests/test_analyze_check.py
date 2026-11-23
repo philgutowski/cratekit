@@ -19,13 +19,13 @@ from pathlib import Path
 import pytest
 from sqlalchemy import event
 
-from cratekit.analysis import agreement, check_cli
-from cratekit.analysis import rekordbox_check as rc
+from cratekit.analysis import agreement
 from cratekit.cli.output import digest_of
 from cratekit.core import analysis_store, config, rb_writer
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.naming import pad_camelot
-from cratekit.intake import analyzed, native
+from cratekit.intake import analyzed, check_cli, native
+from cratekit.intake import rekordbox_check as rc
 from tests.cli_drive import drive
 from tests.test_inbox_analyzed import _analyze_id, _content_id, _land
 from tests.test_inbox_refill import offline as offline  # noqa: PLC0414
@@ -1007,7 +1007,7 @@ def test_read_row_handed_no_row_reads_it_and_answers_as_handed_one(native_librar
         keys = {str(key.ID): key.ScaleName for key in db.get_key()}
         dyn = rc.dyn_marked(db)
         members = analyzed.live_members(db, analyze)
-        held = rc._content_rows(db, members)
+        held = rc.content_rows(db, members)
         handed = [
             rc.read_row(cfg, db, one, keys=keys, dyn=dyn, template=template, content=held.get(one))
             for one in members

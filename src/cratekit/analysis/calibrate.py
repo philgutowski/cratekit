@@ -21,7 +21,7 @@ from cratekit.analysis.cli import (
     _require_heavy,
 )
 from cratekit.cli.output import Envelope, load_config
-from cratekit.core import config, discovery, tags
+from cratekit.core import config, jobs, tags
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 
@@ -397,7 +397,7 @@ def _partial_before_walk(
     )
 
 
-def _partial_after_walk(scan: discovery.Scan) -> tuple[str, str] | None:
+def _partial_after_walk(scan: jobs.Scan) -> tuple[str, str] | None:
     """Why this walk was not the library, known only AFTER it, or None.
 
     A linked genre folder is declined and an unlistable one contributes
@@ -521,10 +521,10 @@ def analyze_calibrate(ctx) -> Envelope:
     if partial is not None and not accepted:
         return _calibrate_refusal(ctx, _partial_refused(partial), summary)
 
-    scan = discovery.scan_audio(folder, recursive=recursive)
+    scan = jobs.scan_audio(folder, recursive=recursive)
     # SAID ON EVERY ANSWER BELOW, the empty one included.
-    omitted = discovery.walk_warnings(scan.skipped_links, scan.unreadable, verb="read")
-    paths = [discovery.item_path(folder, item) for item in scan.items]
+    omitted = jobs.walk_warnings(scan.skipped_links, scan.unreadable, verb="read")
+    paths = [jobs.item_path(folder, item) for item in scan.items]
     summary.update({"tracks": len(paths), "recursive": recursive})
     if not paths:
         return _calibrate_refusal(

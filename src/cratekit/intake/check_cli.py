@@ -1,6 +1,6 @@
 """``crate analyze check``: is the rekordbox visit done, and done right (U167).
 
-The engine is :mod:`cratekit.analysis.rekordbox_check`. What a skill needs
+The engine is :mod:`cratekit.intake.rekordbox_check`. What a skill needs
 from this verb is the exit status: **0** when the visit is done, **12** (a
 pending action verified by this verb) while rows wait for analysis, **27**
 under ``analysis-suspect`` when a grid looks wrong. An empty scope ends
@@ -18,14 +18,15 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from cratekit.analysis import rekordbox_check as rc
 from cratekit.cli import output
 from cratekit.cli.output import Envelope, PendingHumanAction, load_config
 from cratekit.core import active_taxonomy, config
 from cratekit.core.cause import Cause, Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.core.naming import NameTemplate
+from cratekit.intake import rekordbox_check as rc
 
+#: The origin an envelope has always printed; the module moved, its name there did not.
 _ORIGIN = ("analysis.check_cli",)
 
 #: The warning a scope with no row in it ends on.

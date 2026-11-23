@@ -141,7 +141,13 @@ TOGGLE_HOMES = {
 #: The three private names it made public (config.exclusive_lock,
 #: config.mkdir_private, preflight.names_one_path) each replaced the private
 #: spelling of itself and moved nothing.
-CORE_NAMES_CEILING = 452
+#:
+#: U331 lowered it from 452 to 440, the count measured once every reach went
+#: through the list: a name re-exported by a listed module replaced the one it
+#: stood for, ``Config.membership()`` replaced ``profiles.resolve``, and the
+#: names of the two engines that moved to the feature that alone used them
+#: (``held_plan`` to sync, ``rehearsal`` to intake) are core names no longer.
+CORE_NAMES_CEILING = 440
 
 
 # ── Fixtures: a package of synthetic modules ─────────────────────────────────

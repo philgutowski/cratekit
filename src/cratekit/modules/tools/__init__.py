@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from cratekit.core import profiles
+from cratekit.core import config
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +42,7 @@ class VerbSpec:
     @property
     def extras(self) -> str | None:
         """The extras group carrying this module's heavy Python dependencies, derived."""
-        return profiles.install_command(self.feature)
+        return config.install_command(self.feature)
 
 
 VERBS: tuple[VerbSpec, ...] = (

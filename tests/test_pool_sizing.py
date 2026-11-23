@@ -30,6 +30,11 @@ POOL_PATH = PACKAGE_ROOT / "core" / "pool.py"
 
 #: The module every question below is asked about, named once.
 POOL_MODULE = "cratekit.core.pool"
+#: The two doors to it (U331). A feature package may import only the named
+#: interface, so the analysis package reaches the planner through ``core.jobs``,
+#: which re-exports the sizing names; a use through either door is a use of
+#: the planner, and a plan built by hand through either is a plan built by hand.
+POOL_DOORS = (POOL_MODULE, "cratekit.core.jobs")
 POOL_SOURCE = POOL_PATH.read_text()
 
 MIB = 1024**2
@@ -2114,14 +2119,23 @@ def pool_plan_constructions(source: str, *, package: str | None = None) -> list[
     if not _could_name(source, "PoolPlan"):
         return []
     tree = ast.parse(source)
-    imports = ImportsOf(tree, POOL_MODULE, package)
-    if not imports.reaches:
-        return []
+    doors = _doors(tree, package)
     return sorted(
         f"line {node.lineno}: {ast.unparse(node.func)}"
         for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and imports.resolves(node.func, "PoolPlan")
+        if isinstance(node, ast.Call) and _through(doors, node.func, "PoolPlan")
     )
+
+
+def _doors(tree: ast.AST, package: str | None) -> list[ImportsOf]:
+    """How this source reaches the planner, one reading per door it reaches it through."""
+    reached = [ImportsOf(tree, door, package) for door in POOL_DOORS]
+    return [imports for imports in reached if imports.reaches]
+
+
+def _through(doors: list[ImportsOf], node: ast.AST, name: str) -> bool:
+    """Whether ``node`` is the planner's ``name``, reached through any door."""
+    return any(imports.resolves(node, name) for imports in doors)
 
 
 PLAN_PROVENANCE_CORRECT = (
@@ -2301,19 +2315,19 @@ PLAN_RUNNERS = ("map_workers", "stream_workers", "WorkStream")
 def unplanned_map_workers(source: str, *, package: str | None = None) -> list[str]:
     """Every runner call, :data:`PLAN_RUNNERS`, on a plan this source built itself."""
     tree = ast.parse(source)
-    imports = ImportsOf(tree, POOL_MODULE, package)
-    if not imports.reaches:
+    doors = _doors(tree, package)
+    if not doors:
         return []
     fabricated = {
         name
         for name, value in _bindings(tree)
-        if isinstance(value, ast.Call) and imports.resolves(value.func, "PoolPlan")
+        if isinstance(value, ast.Call) and _through(doors, value.func, "PoolPlan")
     }
     found: list[str] = []
     for node in ast.walk(tree):
         if not (
             isinstance(node, ast.Call)
-            and any(imports.resolves(node.func, runner) for runner in PLAN_RUNNERS)
+            and any(_through(doors, node.func, runner) for runner in PLAN_RUNNERS)
         ):
             continue
         given = next(
@@ -2323,7 +2337,7 @@ def unplanned_map_workers(source: str, *, package: str | None = None) -> list[st
         if given is None:
             continue
         given = _unwrap(given)
-        if isinstance(given, ast.Call) and imports.resolves(given.func, "PoolPlan"):
+        if isinstance(given, ast.Call) and _through(doors, given.func, "PoolPlan"):
             found.append(f"line {node.lineno}: a plan built inline")
         elif _dotted(given) in fabricated:
             found.append(f"line {node.lineno}: a plan built at {_dotted(given)}")
@@ -2343,17 +2357,19 @@ def analysis_sizing_violations(
 
     problems: list[str] = []
     if not any(
-        calls_attribute(source, POOL_MODULE, "plan_pool", package=package)
+        calls_attribute(source, door, "plan_pool", package=package)
         for _name, source in modules
+        for door in POOL_DOORS
     ):
         problems.append(
             "no module in the analysis package calls cratekit.core.pool.plan_pool; a "
             "pool sized anywhere else is a second answer to R23"
         )
     if not any(
-        calls_attribute(source, POOL_MODULE, runner, package=package)
+        calls_attribute(source, door, runner, package=package)
         for _name, source in modules
         for runner in ("map_workers", "stream_workers")
+        for door in POOL_DOORS
     ):
         problems.append(
             "the analysis package plans a pool and never runs work through "
@@ -2446,6 +2462,14 @@ ANALYSIS_CORRECT = (
         "from .pool import PoolPlan\n"
         "def group(tracks):\n    return PoolPlan(tracks)\n",
     ),
+    # U331's shape, the tree's own: the planner and the core reader through ``core.jobs``.
+    [("light.py",
+      "from cratekit.core import jobs\n"
+      "def run(items, cost):\n"
+      "    plan = jobs.plan_pool(worker_bytes=cost, items=len(items),\n"
+      "                          ceiling=jobs.worker_ceiling(reserved=2))\n"
+      "    return jobs.map_workers(plan, analyse, items)\n"
+      "def analyse(item):\n    return item\n")],
 )
 
 ANALYSIS_EVASIONS = (
@@ -2511,16 +2535,33 @@ ANALYSIS_EVASIONS = (
       "def analyse(item):\n    return item\n")],
     # The package landed empty.
     [],
+    # A plan of nine built by hand through the listed module (U331): the door the
+    # tree uses must be read, or the countdown is silent on its own package.
+    _light_and(
+        "vocals.py",
+        "from cratekit.core import jobs\n"
+        "def run(items):\n"
+        "    plan = jobs.PoolPlan(workers=9, items=len(items), bound=jobs.Bound.CEILING,\n"
+        "                         worker_bytes=1024 ** 3, available_bytes=None,\n"
+        "                         max_tasks_per_child=100)\n"
+        "    return jobs.map_workers(plan, analyse, items)\n"
+        "def analyse(item):\n    return item\n",
+    ),
+    # Sized by nothing, the listed module imported for its queue alone.
+    [("light.py",
+      "from cratekit.core import jobs\n"
+      "def run(items):\n    return [jobs.item_path(item, item) for item in items]\n")],
 )
 
 CORRECT_IDS = [
     "two-passes", "split-planner", "ancestor-package", "relative-package-import",
     "relative-symbol-import", "the-stream-under-a-core-ceiling", "a-sibling-of-its-own-named-pool",
+    "through-the-listed-module",
 ]
 EVASION_IDS = [
     "hand-built-plan", "core-count-in-a-hand-built-plan", "private-pool",
     "hand-built-plan-through-an-ancestor", "hand-built-plan-through-the-stream", "no-sizing",
-    "empty",
+    "empty", "hand-built-plan-through-the-listed-module", "the-listed-module-and-no-sizing",
 ]
 
 

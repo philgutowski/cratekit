@@ -44,6 +44,17 @@ from enum import Enum
 from pathlib import Path
 from typing import Iterable, Sequence
 
+# A feature package reads the two drift tags' vocabulary (``core.drift``)
+# through this module, whose table holds them, each name carrying the part's
+# (U331); core and the shell import ``drift`` itself.
+from cratekit.core.drift import DYNAMIC_SETTINGS as DRIFT_DYNAMIC_SETTINGS  # noqa: F401
+from cratekit.core.drift import NORMAL_SETTINGS as DRIFT_NORMAL_SETTINGS  # noqa: F401
+from cratekit.core.drift import UNSCORED as DRIFT_UNSCORED  # noqa: F401
+from cratekit.core.drift import VARIABLE as DRIFT_VARIABLE  # noqa: F401
+from cratekit.core.drift import reading as drift_reading  # noqa: F401
+from cratekit.core.drift import shown as drift_shown  # noqa: F401
+from cratekit.core.drift import verdict as drift_verdict  # noqa: F401
+
 log = logging.getLogger(__name__)
 
 

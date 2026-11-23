@@ -529,6 +529,10 @@ class Config:
 
     # Derived views.
 
+    def membership(self) -> profiles.Membership:
+        """The resolved membership: the profile's preset, then the explicit toggles."""
+        return profiles.resolve(self.profile.name, self.modules.explicit)
+
     def enabled_modules(self) -> frozenset[str]:
         """Effective module membership: the profile's preset, then explicit overrides."""
         return profiles.resolve(self.profile.name, self.modules.explicit).modules

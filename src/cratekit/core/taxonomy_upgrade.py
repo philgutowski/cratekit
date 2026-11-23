@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-from cratekit.core import active_taxonomy, config, taxonomy
+from cratekit.core import config, taxonomy
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
 
@@ -606,6 +606,10 @@ def read(cfg: config.Config) -> tuple[Path, str, str]:
 
     Through the loader's read, but an absent copy refuses rather than falls back.
     """
+    # At call time (U331): ``active_taxonomy`` answers for ``taxonomy_word``,
+    # which imports this module, so a top level import here would be a cycle.
+    from cratekit.core import active_taxonomy
+
     path, active_text = active_taxonomy.read_text(cfg)
     if active_text is None:
         raise NoCopy(

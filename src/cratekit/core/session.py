@@ -51,6 +51,15 @@ from cratekit.core.cause import (
     widest_scope,
 )
 from cratekit.core.exit_codes import Remedy
+
+# A feature package asks whether rekordbox is gone (``core.processes``) and
+# for the room a check's copy needs (``core.snapshot``) through this module,
+# their one listed home (U331).
+from cratekit.core.processes import REKORDBOX_PROCESSES as REKORDBOX_PROCESSES
+from cratekit.core.processes import AbsenceUnconfirmed as AbsenceUnconfirmed
+from cratekit.core.processes import ProcessLister as ProcessLister
+from cratekit.core.processes import rekordbox_processes_running as rekordbox_processes_running
+from cratekit.core.processes import running_process_names as running_process_names
 from cratekit.core.session_ack import ACK_SCHEMA_VERSION as ACK_SCHEMA_VERSION
 from cratekit.core.session_ack import RULE_SESSION_AGES as RULE_SESSION_AGES
 from cratekit.core.session_ack import SESSION_ACTOR as SESSION_ACTOR
@@ -90,6 +99,8 @@ from cratekit.core.session_volumes import (
 )
 from cratekit.core.session_volumes import assert_volume_identity
 from cratekit.core.session_volumes import expected_rule_identity as expected_rule_identity
+from cratekit.core.snapshot import assert_room_for_check as assert_room_for_check
+from cratekit.core.snapshot import check_had_no_room as check_had_no_room
 
 logger = logging.getLogger(__name__)
 

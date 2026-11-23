@@ -6,7 +6,7 @@ import json
 import os
 import time
 
-from cratekit.core import held_plan
+from cratekit.sync import held_plan
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Iterator, MutableMapping
 
 from cratekit.analysis.energy import MEASURE_RATE
-from cratekit.core import drift as drift_words
+from cratekit.core import tags
 from cratekit.core.config import DEFAULT_DRIFT_CUT, DEFAULT_TEMPO_CEILING, DEFAULT_TEMPO_FLOOR
 
 #: The terminal status for a file the decoder could not read at all.
@@ -501,7 +501,7 @@ def analyse_file(
         "rate": rate,
         # None and unknown for a track with too little pulse to judge (U157).
         "drift": drift,
-        "drift_verdict": drift_words.verdict(drift, drift_cut),
+        "drift_verdict": tags.drift_verdict(drift, drift_cut),
         "energy": level,
         "energy_status": status,
     }

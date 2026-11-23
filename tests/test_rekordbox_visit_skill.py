@@ -12,12 +12,12 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.analysis import check_cli, head_adopt_cli
-from cratekit.analysis import rekordbox_check as rc
+from cratekit.analysis import head_adopt_cli
 from cratekit.cli import doctor, registry, sync_land
 from cratekit.core import analysis_store, cause, processes
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import analyzed_cli, native
+from cratekit.intake import analyzed_cli, check_cli, native
+from cratekit.intake import rekordbox_check as rc
 from tests.test_skills_lint import _real_scripts, lint_skills
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

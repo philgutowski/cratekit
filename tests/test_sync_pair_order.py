@@ -428,7 +428,8 @@ def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_list
     world, cfg, monkeypatch, damage
 ):
     """With the steps file lost, the carried record still says the order began."""
-    from cratekit.core import held_plan, jobs
+    from cratekit.core import jobs
+    from cratekit.sync import held_plan
 
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)

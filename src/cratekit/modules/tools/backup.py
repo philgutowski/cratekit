@@ -29,7 +29,7 @@ from pathlib import Path
 
 from cratekit.core import backup_facts, binaries, config, preflight, session
 from cratekit.core.cause import CratekitError
-from cratekit.core.processes import (
+from cratekit.core.session import (
     REKORDBOX_PROCESSES,
     AbsenceUnconfirmed,
     ProcessLister,

@@ -36,7 +36,7 @@ from typing import TYPE_CHECKING, Any
 # remediation is looked up in, not ``cratekit.core.exit_codes``.
 from cratekit.cli import exit_codes as reservations
 from cratekit.cli.output import Envelope, digest_of, from_cause, load_config
-from cratekit.core import analysis_store, config, processes, restore
+from cratekit.core import analysis_store, config, restore, session
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
 
@@ -862,9 +862,9 @@ def _halves(decided: backup.RestorePlan) -> tuple[tuple[str, backup.RestorePlan]
 
 
 def _absence_unconfirmed(
-    exc: processes.AbsenceUnconfirmed, completed: Sequence[str], decided: backup.RestorePlan,
+    exc: session.AbsenceUnconfirmed, completed: Sequence[str], decided: backup.RestorePlan,
     *, dry_run: bool,
-) -> processes.AbsenceUnconfirmed:
+) -> session.AbsenceUnconfirmed:
     """The scan's refusal at the database half, saying what the mirror half left (U211)."""
     declared = exc.declared_cause
     steps = tuple(declared.remediation.steps)
@@ -882,7 +882,7 @@ def _absence_unconfirmed(
             "completed_halves": list(completed), "target": str(decided.target),
         },
     )
-    return processes.AbsenceUnconfirmed(cause, exc.read)
+    return session.AbsenceUnconfirmed(cause, exc.read)
 
 
 def _half_failed(
@@ -1000,7 +1000,7 @@ def recover_under_bare_metal_session(
                 if half == DATABASE_HALF:
                     try:
                         running = backup.rekordbox_processes_running(lister=process_lister)
-                    except processes.AbsenceUnconfirmed as exc:
+                    except session.AbsenceUnconfirmed as exc:
                         raise _absence_unconfirmed(
                             exc, completed, decided, dry_run=dry_run
                         ) from exc

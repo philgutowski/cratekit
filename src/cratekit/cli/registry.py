@@ -1993,7 +1993,7 @@ ENTRIES: tuple[Entry, ...] = (
             "read rekordbox's analysis of the landed rows and say whether the visit "
             "is done, still waiting, or suspect; reads a copy, writes nothing"
         ),
-        module="cratekit.analysis.check_cli", builder="build", handler_key="analyze.check",
+        module="cratekit.intake.check_cli", builder="build", handler_key="analyze.check",
         # No feature row. Core, not analysis: it runs no detector, and the
         # landing it follows is core.
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",

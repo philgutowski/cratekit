@@ -656,7 +656,7 @@ def test_a_copy_run_redirecting_installation_state_shares_answers_through_the_ov
 
 
 def test_a_rehearsal_keeps_the_live_isrc_cache_and_restores_the_environment(tmp_path, monkeypatch):
-    from cratekit.core import rehearsal
+    from cratekit.intake import rehearsal
 
     live = config.state_path(isrc_cache.STATE_KEY)
     area = rehearsal.Area(

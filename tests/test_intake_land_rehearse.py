@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import config, rb_writer, rehearsal, snapshot
+from cratekit.core import config, rb_writer, session, snapshot
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import batch_name, land_cli, landing, native
+from cratekit.intake import batch_name, land_cli, landing, native, rehearsal
 from tests.cli_drive import drive
 from tests.test_intake_land_native import (
     BATCH,
@@ -585,6 +585,8 @@ def test_no_room_for_the_check_refuses_before_its_copy(cfg, monkeypatch):
         return real_measure(database, **kwargs)
 
     monkeypatch.setattr(snapshot, "assert_room_for_check", measuring)
+    # The landing reads the name through ``core.session``, its listed home (U331).
+    monkeypatch.setattr(session, "assert_room_for_check", measuring)
     code, refused = _rehearse()
     assert refused["cause"]["reason"] == "snapshot-check-temp-full", refused
     assert "0 bytes free" in refused["cause"]["message"]

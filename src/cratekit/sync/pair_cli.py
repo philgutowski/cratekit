@@ -385,9 +385,9 @@ def sync_pair(ctx) -> Envelope:
     U209. A later command of the run reads the held plan back rather than
     planning again; a plan made in this same command needs no check.
     """
-    from cratekit.core import held_plan
     from cratekit.modules.outbound import pairs
     from cratekit.modules.outbound.pairs import REKORDBOX_SIDE
+    from cratekit.sync import held_plan
 
     cfg = sync_cli._load()
     # BEFORE THE PLAN AND THE GATE (R-733), as every verb writing the database.

@@ -98,7 +98,7 @@ def _held_plan(
     made for the pairs this command asks for; otherwise the plan is made
     again and the gates refuse it stale if it moved.
     """
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     planned, digest, extra, why = held_plan.load(
         run_id, HELD_KIND, registry=_held_classes(), digest_of=lambda one: one.digest
@@ -131,7 +131,7 @@ def _asked_before(
     the plan read them: a made side's new pair left out, a touched pair with
     the plan's mark.
     """
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     steps, _why = held_plan.load_steps(run_id, digest)
     if not steps.started():
@@ -158,7 +158,7 @@ def _asked_before(
 
 def _hold(run_id: str, planned: Plan, calls: int, asked: Mapping[str, Any]) -> str:
     """Hold this command's plan under its run, and answer why not, or the empty string."""
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     return held_plan.hold(
         run_id,
@@ -172,7 +172,7 @@ def _hold(run_id: str, planned: Plan, calls: int, asked: Mapping[str, Any]) -> s
 
 
 def _release(run_id: str) -> None:
-    from cratekit.core import held_plan
+    from cratekit.sync import held_plan
 
     held_plan.release(run_id)
 

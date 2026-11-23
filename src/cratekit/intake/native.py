@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 
 from cratekit.adopt import placements as adopt_placements
-from cratekit.core import config, convergence, drift, rb_writer, session, tree_registry
+from cratekit.core import config, convergence, rb_writer, session, tags, tree_registry
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.intake import ingest, label_filing, set_playlist
 from cratekit.write import metadata_cli, row_link, trees
@@ -106,7 +106,7 @@ VOX_UNREADABLE = (
 )
 
 #: The My Tag every added row whose drift reads variable gets (U157), so Analyze
-#: Tracks selects them for Dynamic; ``analysis.rekordbox_check`` imports it.
+#: Tracks selects them for Dynamic; ``intake.rekordbox_check`` imports it.
 DYN_VALUE = "dyn"
 DYN_CATEGORY = "Analysis"
 #: What the dyn tags are filed under in a record's change summary (R19).
@@ -450,11 +450,11 @@ class NativePlan:
 
     def drift_variable(self) -> tuple[RowPlan, ...]:
         """The rows to be added whose drift reads as variable, tagged or not (U157)."""
-        return tuple(row for row in self.to_add() if row.drift_verdict == drift.VARIABLE)
+        return tuple(row for row in self.to_add() if row.drift_verdict == tags.DRIFT_VARIABLE)
 
     def drift_unscored(self) -> tuple[RowPlan, ...]:
         """The rows to be added whose file carries no drift reading, and so no tag (U157)."""
-        return tuple(row for row in self.to_add() if row.drift_verdict == drift.UNSCORED)
+        return tuple(row for row in self.to_add() if row.drift_verdict == tags.DRIFT_UNSCORED)
 
     def present(self) -> tuple[RowPlan, ...]:
         return tuple(row for row in self.rows if row.action == PRESENT)
@@ -961,8 +961,8 @@ def apply_rows(
         ),
         vox_unread=vox_unread,
         dyn_written=dyn_written,
-        dyn_variable=targets(lambda row, _id: row.drift_verdict == drift.VARIABLE),
-        dyn_unscored=targets(lambda row, _id: row.drift_verdict == drift.UNSCORED),
+        dyn_variable=targets(lambda row, _id: row.drift_verdict == tags.DRIFT_VARIABLE),
+        dyn_unscored=targets(lambda row, _id: row.drift_verdict == tags.DRIFT_UNSCORED),
         dyn_blocked=plan.dyn_blocked if added_ids else "",
         dyn_missing=targets(lambda row, content_id: row.dyn and content_id not in dyned),
         dyn_unread=dyn_unread,

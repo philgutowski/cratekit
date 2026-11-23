@@ -46,7 +46,26 @@ from cratekit.core.cause import (
     Scope,
     refuse,
 )
+from cratekit.core.cores import worker_ceiling
+from cratekit.core.discovery import (
+    Scan,
+    frozen_walk,
+    item_path,
+    scan_audio,
+    walk_warnings,
+    warnings_of,
+)
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.pool import (
+    DEFAULT_MEMORY_RESERVE_BYTES,
+    Bound,
+    PoolPlan,
+    StreamBroken,
+    WorkStream,
+    map_workers,
+    plan_pool,
+    stream_workers,
+)
 from cratekit.core.private_store import PrivateStore
 
 #: The queue's own schema version; a cross-version resume refuses rather than guessing.
@@ -1269,7 +1288,13 @@ for _moved in (Batching, Declined, DriveResult, Interrupt, Parked, decline_item,
     _moved.__module__ = __name__
 del _moved
 
+# A feature package reaches a job's item list (``core.discovery``) and its
+# workers (``core.pool``, ``core.cores``) through this module, their one
+# listed home (U331); core, write and the shell import the parts themselves.
 __all__ = [
+    "DEFAULT_MEMORY_RESERVE_BYTES", "Bound", "PoolPlan", "Scan", "StreamBroken", "WorkStream",
+    "frozen_walk", "item_path", "map_workers", "plan_pool", "scan_audio", "stream_workers",
+    "walk_warnings", "warnings_of", "worker_ceiling",
     "ENTRY_MODULE", "GATE_RUN_KEY", "QUEUE_FILENAME", "SCHEMA_VERSION", "TERMINAL_STATES",
     "Artifacts", "BatchHandler", "Batching", "DriveResult", "assert_free", "DriverHeld", "Handler",
     "Interrupt", "Item", "ItemState", "Job", "Declined", "Parked", "JobState", "JobStore",

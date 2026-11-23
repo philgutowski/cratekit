@@ -14,11 +14,11 @@ from datetime import timedelta
 
 import pytest
 
-from cratekit.core import config, held_plan
+from cratekit.core import config
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs, tidal_account
-from cratekit.sync import pair_cli
+from cratekit.sync import held_plan, pair_cli
 from tests._sync_builders import exited, failed
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414

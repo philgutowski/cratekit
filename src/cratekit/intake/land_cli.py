@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from cratekit.cli.output import Envelope, approving_actor
-from cratekit.core import config, rb_writer, rehearsal, session, snapshot
+from cratekit.core import config, rb_writer, session
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import (
@@ -32,6 +32,7 @@ from cratekit.intake import (
     land_native,
     landing,
     native,
+    rehearsal,
     set_playlist,
     shelve,
 )
@@ -979,11 +980,11 @@ def _rehearse_in(
         rb_writer.close_db(db)
     # The check copies to the temporary volume, so its room is measured first
     # and no room is never named a failed check (R-1677).
-    snapshot.assert_room_for_check(area.database)
+    session.assert_room_for_check(area.database)
     try:
         sound = rb_writer.integrity_ok(area.database, raise_copy_failure=True)
     except rb_writer.IntegrityCheckCopyFailed as failed:
-        no_room = snapshot.check_had_no_room(failed, origin=_ORIGIN)
+        no_room = session.check_had_no_room(failed, origin=_ORIGIN)
         if no_room is not None:
             raise no_room from failed
         sound = False

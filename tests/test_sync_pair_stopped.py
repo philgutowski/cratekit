@@ -14,9 +14,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from cratekit.core import held_plan
 from cratekit.modules.outbound import tidal_account
-from cratekit.sync import pair_cli, pair_stopped
+from cratekit.sync import held_plan, pair_cli, pair_stopped
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
 

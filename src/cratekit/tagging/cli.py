@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from cratekit.cli.output import Envelope, load_config
-from cratekit.core import active_taxonomy, config, jobs, taxonomy, taxonomy_word
+from cratekit.core import active_taxonomy, config, jobs, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, rebuilt, refuse
 from cratekit.modules import foreground
 from cratekit.tagging import artifacts, published, searchers, shell
@@ -397,9 +397,9 @@ def _off_taxonomy_warning(
                 f"its file exactly as the catalogue said it, so the tags on disk "
                 f"are no longer only the ones your template declares. Save any "
                 f"you want the taxonomy to own as an alias of one of your genres, "
-                f"with {taxonomy_word.ALIAS_VERB} WORD GENRE, or make it a genre "
-                f"folder of its own, with {taxonomy_word.FOLDER_VERB} WORD"
-                + taxonomy_word.own_names(declared, counted)
+                f"with {active_taxonomy.ALIAS_VERB} WORD GENRE, or make it a genre "
+                f"folder of its own, with {active_taxonomy.FOLDER_VERB} WORD"
+                + active_taxonomy.own_names(declared, counted)
             ),
         },
     )
