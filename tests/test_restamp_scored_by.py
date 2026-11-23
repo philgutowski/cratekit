@@ -107,6 +107,19 @@ def test_the_run_report_names_the_calibration_its_level_was_scored_under(
     assert report[analysis_cli.SCORED_UNDER] == energy.fingerprint(calibrated)
 
 
+def test_the_shipped_detector_records_the_calibration_its_settings_carry(
+    cfg, calibrated  # noqa: F811
+):
+    """The production branch: the settings the head was bound under, not the file now."""
+    from cratekit.analysis import ahead
+
+    bound = ahead.Settings.of(calibrated, cfg)
+    energy.save_calibration(cfg, calibration_over(count=21))
+    assert analysis_cli._scored_under(cfg, bound) == energy.fingerprint(calibrated)
+    unscored = ahead.Settings.of(None, cfg)
+    assert analysis_cli._scored_under(cfg, unscored) is None
+
+
 def test_a_calibration_fingerprint_is_one_per_calibration_and_moves_with_a_refit(
     cfg, calibrated  # noqa: F811
 ):
@@ -243,11 +256,12 @@ def test_a_job_that_is_not_this_folders_finished_run_leaves_nothing_out_and_says
     if which == "unknown":
         named = "no-such-job"
     elif which == "another-verb":
+        # A restamp that finished, so only the verb tells it from a run.
         queue_restamp(folder)
         (other,) = restamp_jobs()
+        code, _resumed = drive(resume_argv(other.job_id))
+        assert code == int(ExitCode.OK)
         named = other.job_id
-        with jobs.open_store() as store:
-            jobs.cancel(store, other.job_id)
     elif which == "another-folder":
         elsewhere = tmp_path / "elsewhere"
         elsewhere.mkdir()
@@ -270,7 +284,7 @@ def test_a_job_that_is_not_this_folders_finished_run_leaves_nothing_out_and_says
 
     envelope = queue_restamp(folder, "--scored-by", named)
 
-    open_jobs = [job for job in restamp_jobs() if job.state is jobs.JobState.QUEUED]
+    open_jobs = [job for job in restamp_jobs() if job.job_id != named and job.is_open()]
     (job,) = open_jobs
     assert list(item_states(job.job_id)) == ["08A - 124 - a.flac"]
     assert envelope["data"]["progress"]["left_out"] == 0
