@@ -5,10 +5,3 @@
 #   dangling TOGGLE MODULE an import that stops a verb building with TOGGLE off
 # Lines are only ever removed, by hand or with: scripts/refactor_measure.py prune favorites
 # A line whose crossing is gone fails nothing.
-dangling export cratekit.modules.outbound.hearts
-dangling export cratekit.modules.outbound.shell
-dangling export cratekit.modules.outbound.source
-dangling favorites cratekit.favorites.backfill_cli
-dangling favorites cratekit.favorites.order_cli
-dangling favorites cratekit.favorites.refresh_cli
-dangling favorites cratekit.favorites.split_cli

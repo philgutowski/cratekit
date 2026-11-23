@@ -59,7 +59,7 @@ import subprocess
 import sys
 import tokenize
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 
@@ -424,6 +424,8 @@ class Use:
     ``import`` for a name written in an import statement and ``attribute`` for
     one reached through a module the file imported. ``lazy`` is an import
     inside a function, ``typing_only`` one under ``if TYPE_CHECKING``.
+    ``then`` is the attribute read off the name, kept so a name that is a
+    module can be followed into it, and ``local`` what an import binds.
     """
 
     path: str
@@ -433,6 +435,8 @@ class Use:
     kind: str
     lazy: bool = False
     typing_only: bool = False
+    then: str | None = None
+    local: str | None = None
 
     @property
     def dotted(self) -> str:
@@ -458,6 +462,8 @@ class _FileReading:
     functions: dict[str, tuple[int, int]]
     aliases: dict[str, str]
     defined: frozenset[str] | None
+    #: ``(local name, attribute, line)`` read off a name imported from a module.
+    chains: tuple[tuple[str, str, int], ...] = ()
 
 
 def _defined_names(tree: ast.Module) -> frozenset[str] | None:
@@ -503,6 +509,11 @@ class Tree:
     followed anywhere in the file, and a local variable named as
     an imported module is would otherwise read as a use of it: ``source.name`` beside
     ``from cratekit.modules.outbound import source`` is the tree's own case.
+
+    A name that is itself a module of the package is followed into it (U331):
+    ``tags.art.read`` and ``from cratekit.core.tags import art`` are uses of
+    ``cratekit.core.art``, whichever module handed it over, so a module cannot
+    be reached under one counted name of another.
     """
 
     def __init__(self, sources: Mapping[str, str], *, root_package: str = "cratekit") -> None:
@@ -540,13 +551,38 @@ class Tree:
         return {
             path: [
                 use
-                for use in read.uses
+                for use in self._followed(read)
                 if use.kind == "import"
+                or use.name is None
                 or defined[use.target] is None
                 or use.name in defined[use.target]
             ]
             for path, read in self._read.items()
         }
+
+    def _handed(self, module: str, name: str | None) -> str | None:
+        """The module of the package that ``module`` binds ``name`` to, if it binds one."""
+        path = self.modules.get(module)
+        bound = self._read[path].aliases.get(name) if path is not None and name else None
+        return bound if bound in self.modules and bound != self.root_package else None
+
+    def _followed(self, read: _FileReading) -> list[Use]:
+        """One file's uses, each name that is a module read as a use of that module."""
+        out: list[Use] = []
+        for use in read.uses:
+            module = self._handed(use.target, use.name)
+            if module is None:
+                out.append(use)
+            elif use.kind == "import":
+                out.append(replace(use, target=module, name=None))
+                out.extend(
+                    Use(use.path, module, attribute, line, "attribute")
+                    for local, attribute, line in read.chains
+                    if local == use.local
+                )
+            else:
+                out.append(replace(use, target=module, name=use.then, then=None))
+        return out
 
     def aliases(self, path: str) -> dict[str, str]:
         """``{local name: module}`` for the modules one file imports under a name."""
@@ -589,6 +625,7 @@ class Tree:
 
         found: list[Use] = []
         aliases: dict[str, str] = {}
+        named: set[str] = set()
         for node in sorted(imports, key=lambda node: (node.lineno, node.col_offset)):
             lazy = inside(node.lineno, functions)
             typing_only = inside(node.lineno, typing_blocks)
@@ -616,29 +653,38 @@ class Tree:
                     found.append(Use(path, whole, None, node.lineno, "import", lazy, typing_only))
                     aliases[alias.asname or alias.name] = whole
                 else:
-                    found.append(
-                        Use(path, base, alias.name, node.lineno, "import", lazy, typing_only)
-                    )
+                    local = alias.asname or alias.name
+                    named.add(local)
+                    found.append(Use(
+                        path, base, alias.name, node.lineno, "import", lazy, typing_only,
+                        local=local,
+                    ))
 
+        chains: list[tuple[str, str, int]] = []
         for node in attributes:
             chain: list[str] = []
             current: ast.expr = node
             while isinstance(current, ast.Attribute):
                 chain.append(current.attr)
                 current = current.value
-            if not isinstance(current, ast.Name) or current.id not in aliases:
+            if not isinstance(current, ast.Name):
+                continue
+            if current.id in named and current.id not in aliases:
+                chains.append((current.id, chain[-1], node.lineno))
+            if current.id not in aliases:
                 continue
             chain.reverse()
             target, rest = self.resolve(".".join([aliases[current.id], *chain]))
             if rest and target in self.modules:
-                found.append(Use(path, target, rest[0], node.lineno, "attribute"))
+                then = rest[1] if len(rest) > 1 else None
+                found.append(Use(path, target, rest[0], node.lineno, "attribute", then=then))
 
         top_level = {
             node.name: (node.lineno, node.end_lineno or node.lineno)
             for node in tree.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
-        return _FileReading(found, top_level, aliases, _defined_names(tree))
+        return _FileReading(found, top_level, aliases, _defined_names(tree), tuple(chains))
 
     # The import graph at import time, for rule four.
 

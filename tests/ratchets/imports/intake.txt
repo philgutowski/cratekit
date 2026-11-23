@@ -5,6 +5,3 @@
 #   dangling TOGGLE MODULE an import that stops a verb building with TOGGLE off
 # Lines are only ever removed, by hand or with: scripts/refactor_measure.py prune intake
 # A line whose crossing is gone fails nothing.
-off-interface cratekit.core.binary_refusal
-off-interface cratekit.core.drift
-off-interface cratekit.core.rehearsal

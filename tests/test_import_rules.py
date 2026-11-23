@@ -8,6 +8,10 @@ that only shrinks:
 
 1. **No private name crosses a package.**
 2. **A feature package imports from core only the named interface** below.
+   A listed module answers for the names it defines and the names it
+   re-exports from its parts, each one a counted core name. It never hands
+   over a module: one reached as an attribute of another, or imported from
+   it, is read as a reach of that module itself (U331).
 3. **An always on package never imports a toggleable one at module top
    level**; under a function it may.
 4. **With each toggle off, every remaining verb still builds**, read
@@ -18,7 +22,8 @@ that only shrinks:
 
 And one ceiling: the count of distinct core names feature packages use may
 not grow. An allowance line is one crossing per package and name, so a split
-module adds no line. The script reads the lists below as literals.
+module adds no line, and since U331 every allowance is empty and a line put
+back fails. The script reads the lists below as literals.
 """
 
 from __future__ import annotations
@@ -38,11 +43,23 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: The core modules a feature package may import: the named interface. These
 #: are the 25 that three or more feature packages reached when U290's survey
-#: measured them. The list is capped below and is not a place to park a reach:
-#: a module joins only when it replaces one that leaves.
+#: measured them, but for two. The list is capped below and is not a place to
+#: park a reach: a module joins only when it replaces one that leaves.
+#:
+#: U331 MADE THE TWO SWAPS. ``restore`` joined as ``snapshot`` left, whose two
+#: names a landing's check reads now come through ``session``, which opens
+#: every capture. ``art`` joined as ``profiles`` left, ``config`` answering
+#: for the membership it resolves: art needs ``tags`` at import, so ``tags``
+#: cannot re-export it, and it borrows the two private container helpers the
+#: beat grid rule depends on, so it cannot leave core. Every other module the
+#: survey found off the list is a part of a listed one, which re-exports the
+#: names a feature package uses: ``discovery``, ``pool`` and ``cores`` of
+#: ``jobs``, ``processes`` of ``session``, ``drift`` of ``tags`` and
+#: ``taxonomy_word`` of ``active_taxonomy``.
 CORE_INTERFACE = (
     "active_taxonomy",
     "analysis_store",
+    "art",
     "backup_facts",
     "binaries",
     "cause",
@@ -54,14 +71,13 @@ CORE_INTERFACE = (
     "locations",
     "naming",
     "preflight",
-    "profiles",
     "provider_gate",
     "rb_writer",
+    "restore",
     "review",
     "routing",
     "secrets",
     "session",
-    "snapshot",
     "tags",
     "taxonomy",
     "tombstone",
@@ -73,10 +89,19 @@ CORE_INTERFACE_LIMIT = 25
 #: package holding any is toggleable, every other always on. ``web`` and
 #: ``desktop`` are deferred, and ``identify`` and ``repair`` gate verbs in
 #: always on packages, so those four own nothing.
+#:
+#: A HOME IS WHAT THE REGISTRY GATES WITH THE TOGGLE, never a whole package
+#: because of its name (U331). ``favorites`` gates one verb, ``sync.favorites``
+#: in ``favorites/cli.py``; the rest of that package builds four verbs no
+#: toggle gates and the landing, so the toggle owns the module, as
+#: ``duplicates`` owns one module of ``reports``. ``export`` gates the verbs of
+#: ``cratekit.export``; the outbound package under ``modules`` is what the
+#: favourites sweep is built on too, and what organize, sync, label and intake
+#: call, so no toggle owns it.
 TOGGLE_HOMES = {
     "analysis": ("cratekit.analysis",),
     "vocals": ("cratekit.vocals",),
-    "favorites": ("cratekit.favorites",),
+    "favorites": ("cratekit.favorites.cli",),
     "labels": ("cratekit.label",),
     "deletion": ("cratekit.deletion",),
     "web": (),
@@ -85,7 +110,7 @@ TOGGLE_HOMES = {
     "repair": (),
     "duplicates": ("cratekit.modules.reports.duplicates",),
     "reports": ("cratekit.modules.reports",),
-    "export": ("cratekit.export", "cratekit.modules.outbound"),
+    "export": ("cratekit.export",),
     "setbuilder": ("cratekit.setbuilder", "cratekit.modules.tools.setbuilder"),
     "mastering": ("cratekit.master", "cratekit.modules.tools.mastering"),
     "backup": ("cratekit.backup", "cratekit.modules.tools.backup"),
@@ -302,6 +327,61 @@ def test_a_reach_under_type_checking_is_still_a_reach():
 def test_a_module_on_the_list_passes_from_a_feature_package():
     tree = _tree(core__config="def load(): ...\n", intake__landing="from cratekit.core.config import load\n")
     assert measure.off_interface(tree, ["config"]) == {}
+
+
+def test_a_name_a_listed_module_re_exports_is_reached_through_the_list():
+    """How a part is reached: the listed module answers for the name, and it is counted."""
+    tree = _tree(
+        core__pool="def plan_pool(): ...\n",
+        core__jobs="from cratekit.core.pool import plan_pool as plan_pool\n",
+        analysis__light=(
+            "from cratekit.core import jobs\nfrom cratekit.core.jobs import plan_pool\n\n"
+            "jobs.plan_pool()\n"
+        ),
+    )
+    assert measure.off_interface(tree, ["jobs"]) == {}
+    assert measure.core_names(tree) == {"analysis": {"cratekit.core.jobs.plan_pool"}}
+
+
+def test_a_module_handed_over_by_a_listed_one_is_a_reach_of_that_module():
+    """Or eleven modules could hide behind eleven counted names of the list."""
+    handed = "from cratekit.core import art\n"
+    tree = _tree(
+        core__art="def read(): ...\n",
+        core__tags=handed,
+        tagging__tag="from cratekit.core import tags\n\ntags.art.read()\n",
+        tagging__summary="from cratekit.core.tags import art as pictures\n\npictures.read()\n",
+        sync__run="from cratekit.core import tags\n\nkept = tags.art\n",
+    )
+    assert _lines(measure.off_interface(tree, ["tags"])) == {
+        "sync": ["off-interface cratekit.core.art"],
+        "tagging": ["off-interface cratekit.core.art"],
+    }
+    assert measure.core_names(tree) == {"tagging": {"cratekit.core.art.read"}}
+    assert measure.off_interface(tree, ["art", "tags"]) == {}
+
+
+def test_a_private_name_of_a_module_handed_over_is_still_a_crossing():
+    tree = _tree(
+        core__art="def _open(): ...\n",
+        core__tags="from cratekit.core import art\n",
+        tagging__tag="from cratekit.core import tags\n\ntags.art._open()\n",
+    )
+    assert _lines(measure.private_crossings(tree)) == {
+        "tagging": ["private cratekit.core.art._open"]
+    }
+
+
+def test_a_toggleable_module_handed_over_at_top_level_is_a_top_level_import():
+    """Rule three reads the module a name is, not the always on module that passed it on."""
+    tree = _tree(
+        label__registry="class Registry: ...\n",
+        intake__landing="from cratekit.label import registry\n",
+        sync__run="from cratekit.intake.landing import registry\n",
+    )
+    assert _lines(measure.top_level_toggleable(tree, HOMES))["sync"] == [
+        "top-level cratekit.label.registry"
+    ]
 
 
 # ── Rule three: an always on package never imports a toggleable one at top level ───
@@ -679,6 +759,19 @@ def test_a_planned_entry_is_not_a_landed_verb():
 
 
 # ── The real package ─────────────────────────────────────────────────────────
+
+
+def test_every_import_allowance_is_empty():
+    """U331 emptied every allowance; a line put back is a crossing excused, so none may stand."""
+    directory = REPO_ROOT / measure.IMPORT_ALLOWANCES
+    files = sorted(directory.glob("*.txt"))
+    assert len(files) > 10, f"read {len(files)} allowance files, too few to be the packages"
+    held = {
+        path.name: sorted(lines)
+        for path in files
+        if (lines := measure.parse_allowance(path.read_text(encoding="utf-8")))
+    }
+    assert not held, f"an allowance holds a line again, close the crossing instead: {held}"
 
 
 def test_no_package_crosses_a_seam_beyond_its_allowance():
