@@ -282,9 +282,7 @@ def test_a_hand_made_inbox_playlist_of_the_set_name_is_named_found_not_recorded(
     assert kept["id"] == handmade_id and kept[native.INBOX_JOB_KEY] == job_id
 
 
-# ---------------------------------------------------------------------------
 # U139: the U135 guards no test reached (rows A6 and A11; A15 is above)
-# ---------------------------------------------------------------------------
 
 
 def test_a_recorded_inbox_playlist_removed_before_the_next_landing_is_not_joined(

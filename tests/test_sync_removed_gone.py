@@ -1,15 +1,9 @@
 """U320: ``crate sync removed`` offers a removal again past short hearts and a playlist gone for good.
 
-A179's live run at sitting 101 offered nothing, because the plan was partial
-on every run: thirteen synced playlists the account no longer lists, whose ids
-did not open and whose contents no readable job recorded, and the hearts, 349
-declared and 340 listed, the provider withholding nine. Both shapes are driven
-here on the native landing fixtures ``tests/test_sync_removed.py`` drives, the
-account a fake catalogue whose missing playlist answers as the real adapter
-does: ``PlaylistUnresolvable`` raised from the client's ``ObjectNotFound``,
-itself raised from the 404 the request answered, recorded rather than called.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+A179's run at sitting 101 was partial every time: synced playlists the account
+no longer lists whose ids did not open, and hearts the provider withheld. Both
+shapes run on ``tests/test_sync_removed.py``'s fixtures, the missing playlist
+answering as the real adapter does, recorded rather than called. D1 applies.
 """
 
 from __future__ import annotations
@@ -77,11 +71,10 @@ class Clock:
 
 
 def recorded_failure(reference: str, status: int) -> tidal_catalogue.PlaylistUnresolvable:
-    """The failure the real adapter raises for a playlist whose request answered ``status``.
+    """The adapter's failure for a playlist whose request answered ``status``, recorded.
 
-    The client raises ``ObjectNotFound`` from the 404's ``HTTPError``, and any
-    other status as that ``HTTPError``; the adapter wraps either as
-    ``PlaylistUnresolvable`` raised from it. Recorded, not called.
+    A 404 is ``ObjectNotFound`` from its ``HTTPError``, any other status the ``HTTPError``,
+    each wrapped as ``PlaylistUnresolvable``.
     """
     response = requests.Response()
     response.status_code = status
@@ -112,7 +105,7 @@ def answering(account: Account, status: int, *references: str) -> None:
 
 
 def withholding(account: Account, withheld: int, *, served: int = 340) -> None:
-    """``served`` hearts, those the test hearts first, the account declaring ``withheld`` more (R-504).
+    """``served`` hearts, the test's first, the account declaring ``withheld`` more (R-504).
 
     A179's counts by default: 349 declared, 340 listed, 9 withheld.
     """
@@ -158,9 +151,7 @@ def _a179(cfg, silence, monkeypatch) -> Account:
     return account
 
 
-# ---------------------------------------------------------------------------
 # A179's shape, the defect
-# ---------------------------------------------------------------------------
 
 
 def test_a179s_shape_offers_the_track_once_the_gone_playlist_answers_not_found_a_day_apart(
@@ -265,9 +256,7 @@ def test_two_runs_the_same_day_with_a_sighting_keep_one_digest(
     assert _run()["data"]["digest"] == first["data"]["digest"]
 
 
-# ---------------------------------------------------------------------------
 # The hearts
-# ---------------------------------------------------------------------------
 
 
 def test_hearts_short_only_by_what_the_provider_withholds_read_whole_and_still_keep_a_heart(
@@ -366,9 +355,7 @@ def test_hearts_a_dropped_window_short_of_a_hearted_track_offer_nothing(
     assert _playlists(out)[removed.HEARTS]["state"] == removed.SHORT
 
 
-# ---------------------------------------------------------------------------
 # A retired playlist, read again
-# ---------------------------------------------------------------------------
 
 
 def _retired_pair(cfg, silence, monkeypatch) -> tuple[Account, Clock]:
@@ -464,9 +451,7 @@ def test_a_retired_downloaded_playlist_offers_none_of_its_tracks_and_holds_none_
     assert _playlists(out)["pl-b"]["state"] == removed.RETIRED
 
 
-# ---------------------------------------------------------------------------
 # --retire, behind its explicit gate
-# ---------------------------------------------------------------------------
 
 RETIRE = [*VERB, "--retire"]
 
@@ -565,9 +550,7 @@ def test_the_verb_declares_the_retire_gate_explicit_on_the_plan():
     assert retire.explicit and retire.digest_source == "plan"
 
 
-# ---------------------------------------------------------------------------
 # The rules, held one at a time
-# ---------------------------------------------------------------------------
 
 
 def test_a_sighting_retires_only_a_day_after_the_first_and_a_retirement_stands():
@@ -695,9 +678,7 @@ def test_a_sighting_keeps_the_latest_instant_and_a_clock_set_back_moves_nothing(
     assert unavailable.sighted(once, "pl", "P", FIRST).last == once.last
 
 
-# ---------------------------------------------------------------------------
 # Round one
-# ---------------------------------------------------------------------------
 
 
 def failing_with(account: Account, error: BaseException, *references: str) -> None:
@@ -922,9 +903,7 @@ def test_a_record_that_cannot_be_opened_refuses(native_library):
     assert refused.value.cause.reason == "sync-unavailable-record-unusable"
 
 
-# ---------------------------------------------------------------------------
 # Round two
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(

@@ -1,10 +1,8 @@
 """U287: ``crate sync removed`` reads each downloaded playlist again and answers every removed track.
 
 A pass is swept and landed on the native landing suite's disposable database,
-then a fake catalogue lists each playlist as it stands after tracks were
-taken off, and the verb is driven over both.
-
-D1 applies. Nothing here names a real volume, person or track.
+a fake catalogue lists each playlist after tracks were taken off, and the verb
+is driven over both. D1 applies.
 """
 
 from __future__ import annotations
@@ -81,9 +79,7 @@ def offline(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", refused)
 
 
-# ---------------------------------------------------------------------------
 # The pass and the account
-# ---------------------------------------------------------------------------
 
 
 def isrc_of(title: str) -> str:
@@ -99,8 +95,7 @@ def swept(
 ) -> None:
     """One job per playlist, ``id -> (account name, titles)``, queued as a sweep does and run.
 
-    The native landing suite's helper, with an ISRC on each track when
-    ``codes`` asks, so the identity rule's second test is reachable.
+    ``codes`` puts an ISRC on each track, for the identity rule's second test.
     """
     queued = []
     with jobs.open_store() as store:
@@ -181,11 +176,7 @@ class Account:
 
 
 def _run() -> dict:
-    """The plan as the verb shows it, a plan offering a row answered abort at the gate.
-
-    ABORT WRITES NOTHING (U288), so its envelope carries the same plan, items,
-    totals and warnings as a plan offering nothing.
-    """
+    """The plan as the verb shows it, a gate answered abort, which writes nothing (U288)."""
     code, out = drive(VERB)
     if code == int(ExitCode.DECISION_REQUIRED):
         detail = out["cause"]["detail"]
@@ -250,9 +241,7 @@ def _five(cfg: config.Config, silence: Path, *, also: dict | None = None, codes:
     _landed(cfg)
 
 
-# ---------------------------------------------------------------------------
 # The scenarios the brief names
-# ---------------------------------------------------------------------------
 
 
 def test_a_new_track_taken_off_is_offered_and_an_owned_one_is_kept_as_held_before(
@@ -855,9 +844,7 @@ def test_the_verb_declares_the_collection_its_explicit_gate_and_the_cloud_decisi
     assert {"rekordbox.closed", "library.mounted"} <= set(entry.doctor_checks)
 
 
-# ---------------------------------------------------------------------------
 # The rules, held one at a time
-# ---------------------------------------------------------------------------
 
 
 def _listing(**kwargs) -> removed.Listing:
@@ -901,9 +888,7 @@ def test_a_routing_tree_on_the_bridge_names_no_playlist_of_the_pass(native_libra
         rb_writer.close_db(handle)
 
 
-# ---------------------------------------------------------------------------
 # U288: the gate, and the offered rows taken out of the collection
-# ---------------------------------------------------------------------------
 
 #: The tables a track's rows sit in beside the content row, one each here so
 #: the apply has every kind A185 measured to delete.
@@ -958,10 +943,7 @@ def _without(tables: dict[str, list[tuple]], cfg: config.Config, gone: set[str])
 def _closed_up(tables: dict[str, list[tuple]], cfg: config.Config, before: dict[str, list[tuple]], gone: set[str]) -> dict:
     """``tables`` with each playlist a removed membership left renumbered one through N (R-1830).
 
-    Written apart from the writer's rule: on a fixture numbered one through N
-    with no gap (asserted), rekordbox's renumbering (A197) leaves each such
-    playlist numbered one through N over its kept members in order, every
-    other column as it was.
+    Written apart from the writer's rule, as rekordbox renumbers (A197), on a fixture with no gap.
     """
     columns = _columns_of(cfg, "djmdSongPlaylist")
     pid, cid, number = (columns.index(name) for name in ("PlaylistID", "ContentID", "TrackNo"))
@@ -1272,12 +1254,7 @@ def _package_calls() -> tuple[tuple[str, str, tuple[str | None, ...]], ...]:
 
 
 def test_only_the_collection_removal_asks_a_commit_to_admit_a_delete():
-    """A source guard, as the creation's is: who may ask is the property.
-
-    READ AS SYNTAX, not text: any call outside the writer that passes
-    ``deletions``, or hands one of its three judges a ``**`` mapping that
-    could carry it.
-    """
+    """A source guard, read as syntax: who may pass ``deletions``, or a ``**`` mapping to a judge."""
     import re
 
     judges = {"commit_guarded", "assert_session_whitelisted", "guard_violations"}
@@ -1318,11 +1295,7 @@ def _handle(cfg: config.Config):
 def test_another_writer_deleting_a_content_row_through_the_binding_is_refused_at_its_commit(
     native_library, silence, monkeypatch, offline
 ):
-    """Every commit but the removal's still refuses a binding delete, the content table above all.
-
-    Through the binding's own delete, which reaches its update buffer; a raw
-    session delete reaches neither source the whitelist reads, a residual.
-    """
+    """Every commit but the removal's refuses a binding delete; a raw session delete is a residual."""
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
     offered = _row(cfg, "New1")
@@ -1427,9 +1400,7 @@ def test_a_recorded_removal_is_read_only_for_its_own_database_and_a_row_still_ab
     ]
 
 
-# ---------------------------------------------------------------------------
 # U288: the write's guards, a restored row and the deletion pass's position
-# ---------------------------------------------------------------------------
 
 
 def test_the_acknowledgment_is_read_before_the_gate_is_asked(
@@ -1676,9 +1647,7 @@ def test_a_position_the_pass_holds_is_kept_and_the_collection_not_walked(
     assert not walked
 
 
-# ---------------------------------------------------------------------------
 # The renumbering behind a removal (R-1830)
-# ---------------------------------------------------------------------------
 
 
 def _numbers(cfg: config.Config, playlist: str) -> list[tuple[str, int]]:
@@ -1917,11 +1886,9 @@ def test_a_renumbering_that_moved_between_the_gate_and_the_write_refuses_as_stal
 def test_a_track_only_marked_out_of_a_playlist_renumbers_none_of_its_live_members(
     native_library, silence, monkeypatch, offline
 ):
-    """A track only marked out of a playlist renumbers none of its live members.
+    """``sync pair`` marks a removed membership, so marked New1 and live Held2 share 2.
 
-    ``sync pair`` marks a removed membership and numbers live rows one through
-    N, so marked New1 and live Held2 share 2. Counting the marked row would
-    put two live rows on one number, an order then read by row id.
+    Counting the marked row would put two live rows on one number.
     """
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
