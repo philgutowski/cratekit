@@ -1,49 +1,15 @@
 """``crate acquire download`` and ``crate acquire audit``: the two acquisition shells.
 
-U15 landed the acquisition ENGINES and never landed a shell, so Feature
-Inventory rows 6 and 7 sat uncovered while the registry declared both verbs
-against a closed unit. U42 landed the shells, and U54 landed the WORKER behind
-the download verb, ``handle`` below, which is the first thing in the product to
-construct an adapter through the registry and to drive the paced pool (R-203,
-R-204). Nothing here re-decides what the registry already declares.
-
 Builders take an untyped ``entry`` so this file does not import the CLI registry
 (KTD23).
 
-**Why ``acquire.download`` declares no gate, decided here rather than inherited.**
-The house pattern for a destructive verb is a confirm gate against a plan digest,
-and ``export.playlist`` beside it has one. The distinction that separates them is
-the one ``run_backup`` and ``run_restore`` are separated on: this verb ADDS files
-into the configured download staging directory, replaces nothing, and publishes
-nothing outward. The one thing it removes is its own litter, and the argument
-survives that: :func:`sweep_staging` reclaims EMPTY directories under this
-product's own staging tree, never a file and never anything a person put there.
-An accidental run costs network time and disk, both of which a person can simply
-delete. ``export.playlist`` is gated
-because it writes to a remote service, which is an act the user cannot take back.
+``acquire.download`` declares no gate. It only adds files under the download staging
+directory and reclaims its own empty staging directories, and the shell reaches no
+network, so a gate would guard the one step that cannot cause the harm a gate is for.
 
-The provider-side cost is the real argument for a gate and it does not survive
-contact with what this shell does: an unpaced run can get a credentialed account
-blocked, but the pacing apparatus in :mod:`cratekit.acquire.download` is what
-manages that, and the shell reaches no network at all. It reads a list, freezes
-it, and queues; the worker is what reaches the provider, and it does so under
-the frozen pacing. So the gate would guard the one step in the verb that cannot
-cause the harm the gate is for.
-
-Declining it also keeps the verb out of ``tests/test_queued_resume_contract.py``'s
-derived population, which is a consequence rather than a reason: an explicit gate
-plus ``long_running`` plus an ``argv_builder`` obliges the resume argv to carry
-``--run`` with the frozen gate run, and that machinery would exist here purely to
-guard an add-only local write.
-
-**Why the audit reads NAMES and containers rather than opening files.** R21 makes
-a lossy copy carry a marker inside its name, config owns the marker text (S3),
-and :func:`cratekit.acquire.match_cli.library_template` already hands that text to
-the naming engine so the marked copy and its lossless twin fold to one recording.
-That marker is therefore the durable on-disk fact about a file's losslessness, and
-it is the one this verb audits. The alternative, opening every file to read its
-codec, needs the audio stack: this verb declares no doctor check and no module
-toggle, so it has to answer on a slim profile that has no such stack installed.
+The audit reads names and suffixes rather than opening files: the configured lossy
+marker in a name is the durable fact R21 relies on, and the verb must answer on a slim
+profile with no audio stack.
 """
 
 from __future__ import annotations
@@ -82,23 +48,12 @@ LOSSLESS_EXTS: frozenset[str] = frozenset({".flac", ".aiff", ".aif", ".wav", ".a
 #: Containers that hold audio only after a lossy encode.
 LOSSY_EXTS: frozenset[str] = frozenset({".mp3", ".aac", ".opus", ".ogg", ".webm"})
 
-#: Containers the SUFFIX cannot decide, DERIVED as the remainder of the renamer's
-#: own audio table rather than listed. Today that remainder is exactly ``.m4a``,
-#: because ALAC and AAC ship inside the same MP4 container, so the suffix names a
-#: file that may be either and only opening it answers which.
-#:
-#: The derivation is the point and a third literal would have defeated it. A
-#: format added to ``naming.AUDIO_EXTS`` and to neither set above lands here on
-#: its own and is REPORTED as unclassified, where a hand-kept list would have let
-#: it fall out of the sweep silently. Unclassified is the safe default because a
-#: sweep that quietly counted an unknown container as lossless would report a
-#: clean library over files it never classified, which is the merge bar's "shown a
-#: clean report over state the tool could not read" exactly (P4).
+#: Audio suffixes neither set decides (today ``.m4a``, which holds ALAC or AAC). Derived
+#: from ``naming.AUDIO_EXTS`` so a new format is reported unclassified rather than
+#: silently counted lossless (P4).
 UNDECIDED_EXTS: frozenset[str] = frozenset(naming.AUDIO_EXTS) - LOSSLESS_EXTS - LOSSY_EXTS
 
-#: The queue name this report scopes itself to. Named rather than a bare string
-#: for the reason :mod:`cratekit.cli.review` names its own: a consumer reading an
-#: unlabelled queue field has no way to tell which set it is looking at.
+#: The queue name this report scopes itself to, so a consumer knows which set it reads.
 AUDIT_QUEUE = "acquire.lossless"
 
 
@@ -110,10 +65,7 @@ AUDIT_QUEUE = "acquire.lossless"
 def build(parser, entry) -> None:
     """Declare the surface. ``entry`` is untyped so this layer does not name it."""
     del entry
-    # OPTIONAL, because a resume has no use for it (R-668). The job froze the
-    # list's absolute path and every track the list named, so the list on disk
-    # is read once, at the queue, and never again. Requiring it on ``--job``
-    # made a person continuing a job by hand type the path a second time.
+    # Optional, because a resume reads the frozen list off the job (R-668).
     parser.add_argument(
         "list",
         nargs="?",
@@ -121,9 +73,7 @@ def build(parser, entry) -> None:
         help="the list of tracks to acquire; omit it with --job, which froze it",
     )
     parser.add_argument(
-        "--job",
-        default=None,
-        metavar="JOB_ID",
+        "--job", default=None, metavar="JOB_ID",
         help="continue the acquisition already queued under this identifier",
     )
     parser.set_defaults(_handler=acquire_download)
@@ -132,51 +82,33 @@ def build(parser, entry) -> None:
 def download_argv(job) -> list[str]:
     """The command line that continues one queued acquisition.
 
-    No ``--run`` here, and its absence is a decision rather than an omission. The
-    flag exists to carry a frozen gate run back into the respawned child, and this
-    verb declares no gate, so there is nothing to carry. The module docstring says
-    why it declares none.
-
-    NO LIST EITHER, since R-668. The resume reads the job and nothing else, and
-    this argv is also the "drive it with" line a person is shown when the job is
-    queued, so a list here would teach them to type a path the verb ignores.
+    No ``--run``, since the verb declares no gate, and no list, since the resume reads
+    only the job (R-668).
     """
     return ["acquire", "download", "--job", job.job_id]
 
 
-#: Payload keys. ``LIST`` is the frozen list path, which the resume no longer
-#: needs since R-668: it is the record of what was queued, and what a list named
-#: beside ``--job`` is checked against.
-#: ``TRACKS`` is what the list SAID about each item, keyed by the item identifier,
-#: so the worker reads nothing off disk but the job (KTD9): a list edited between
-#: queueing and driving cannot change what a queued item means.
+#: Payload keys. ``LIST`` is the frozen list path, the record of what was queued.
+#: ``TRACKS`` is what the list said about each item, keyed by identifier, so the worker
+#: reads nothing but the job (KTD9).
 LIST = "list"
 TRACKS = "tracks"
 
-#: Where one item's download lands before the engine commits it. A dotfile
-#: under the configured staging root, for the reason ``master`` gives for its
-#: own: whatever is in it belongs to an attempt that did not finish, and the
-#: folder walks that queue tagging and analysis skip dotfiles.
+#: Where one item's download waits before the engine commits it. A dotfile, so the
+#: folder walks of tagging and analysis skip an unfinished attempt.
 ACQUIRE_STAGING_DIRNAME = ".cratekit-acquire-staging"
 
-#: The sleep the paced pool waits with, resolved at CALL time so a test can put a
-#: recorder in front of it and read the schedule the frozen configuration
-#: produced. ``download.acquire_concurrently`` binds ``time.sleep`` as a default
-#: at definition time, which cannot be reached any other way.
+#: The pool's sleep, resolved at call time so a test can record the paced schedule.
 _SLEEP = time.sleep
 
-#: What a per-track outcome becomes on the item's row. The slugs are the ones
-#: this package already reserves for the same facts: intake raises
-#: ``lossy-refused`` for the identical policy decision, and the two unavailable
-#: slugs are the outcome vocabulary's own names.
+#: What a per-track outcome becomes on the item's row, in slugs this package reserves.
 _ITEM_REASONS: dict[TrackOutcome, str] = {
     TrackOutcome.UNAVAILABLE_TRANSIENT: "unavailable-transient",
     TrackOutcome.UNAVAILABLE_PERMANENT: "unavailable-permanent",
     TrackOutcome.REFUSED_BY_POLICY: "lossy-refused",
 }
 
-#: What an invocation-level failure becomes. Both are the adapter saying it
-#: cannot run at all, and neither is a fact about the track.
+#: What an invocation-level failure becomes; neither is a fact about the track.
 _INVOCATION_REASONS: dict[InvocationOutcome, str] = {
     InvocationOutcome.AUTH_FAILED: "auth-failed",
     InvocationOutcome.ADAPTER_BROKEN: "adapter-broken",
@@ -185,11 +117,7 @@ _INVOCATION_REASONS: dict[InvocationOutcome, str] = {
 
 def _unusable(message: str, *steps: str, **detail: Any) -> CratekitError:
     return refuse(
-        "intake-list-unusable",
-        message,
-        steps=steps,
-        scope=Scope.RUN,
-        origin=("acquire.cli",),
+        "intake-list-unusable", message, steps=steps, scope=Scope.RUN, origin=("acquire.cli",),
         detail=detail,
     )
 
@@ -197,23 +125,11 @@ def _unusable(message: str, *steps: str, **detail: Any) -> CratekitError:
 def frozen_tracks(wanted: tuple[match.Wanted, ...]) -> dict[str, dict[str, str | None]]:
     """The items, as the list identifies them, in list order and folded once.
 
-    THE ITEM IS THE PROVIDER'S TRACK IDENTIFIER, which is the one thing the
-    adapter contract can be asked for: ``TrackSource.offer`` and ``fetch`` take a
-    key, and there is no search. Only a list the provider wrote carries one, in
-    ``Wanted.ref``. A pasted tracklist and a list from another service name a
-    recording and not a provider row, so they are refused HERE, at the queue,
-    rather than queued as items nothing can ever acquire, which is R-198's empty
-    queue wearing a full one's clothes. What acquires those is the match verb's
-    acquisition options, which this build has no adapter call for.
-
-    A row the provider wrote without an identifier is refused by position for
-    the same reason, and the whole list is refused rather than the row skipped:
-    a queue that quietly dropped a row would report every item done over a list
-    it did not finish.
-
-    THE SAME IDENTIFIER TWICE FOLDS TO ONE ITEM, first occurrence wins. The
-    queue keys items by identifier, so a repeat is an insert that cannot land,
-    and a playlist with one track in it twice asks for one file.
+    An item is the provider's track identifier, the only key the adapter contract can
+    fetch, so a list from anywhere but the provider is refused here rather than queued
+    as items nothing can acquire. A row with no identifier refuses the whole list, since
+    skipping it would report an unfinished list done. A repeated identifier folds to its
+    first occurrence.
     """
     if not wanted:
         return {}
@@ -243,8 +159,7 @@ def frozen_tracks(wanted: tuple[match.Wanted, ...]) -> dict[str, dict[str, str |
     frozen: dict[str, dict[str, str | None]] = {}
     for track in wanted:
         frozen.setdefault(
-            track.ref,
-            {"artist": track.artist, "title": track.title, "isrc": track.isrc},
+            track.ref, {"artist": track.artist, "title": track.title, "isrc": track.isrc},
         )
     return frozen
 
@@ -252,28 +167,11 @@ def frozen_tracks(wanted: tuple[match.Wanted, ...]) -> dict[str, dict[str, str |
 def _same_list_or_refuse(named: str | None, job, handler_key: str) -> None:
     """Refuse a resume that names a list other than the one the job froze.
 
-    A list named beside ``--job`` is read by nothing, since the job carries every
-    track it will acquire. Accepting the SAME list keeps the form every build
-    before R-668 required, and a command line somebody saved still drives. A
-    DIFFERENT one is refused rather than ignored, for the reason ``review
-    resolve`` refuses an item and a predicate together: the person asked for two
-    things that disagree, and driving the job would tell them their list was
-    acquired when a different one was.
-
-    SAME AS THE FILESYSTEM SEES IT, not as two strings. The named path goes
-    through the ``expanduser().absolute()`` the queue froze it with, and then
-    through :func:`cratekit.core.preflight.names_one_path`, because a string
-    comparison refuses the frozen list whenever it is spelled another way:
-    ``/tmp`` against ``/private/tmp`` on macOS, a case variant on a case
-    insensitive volume, a symlinked directory. A home directory that cannot be
-    expanded names nothing the queue could have frozen, so it is compared as
-    typed and disagrees.
-
-    ONLY THIS VERB'S OWN JOBS are read. Another verb's payload may use the same
-    key for something else, and a refusal telling somebody what a job of theirs
-    "acquires" would be false about a job that acquires nothing. A job whose
-    payload names no list has nothing to disagree with, and the resume path's
-    zero item rule already answers for the only download jobs shaped that way.
+    The same list is accepted so a saved command line still drives (R-668); a different
+    one is refused, because the person asked for two things that disagree. Paths are
+    compared as the filesystem sees them, through
+    :func:`cratekit.core.preflight.names_one_path`. Only this verb's own jobs are read,
+    since another verb's payload may use the key differently.
     """
     if named is None or job.handler_key != handler_key:
         return
@@ -290,42 +188,20 @@ def _same_list_or_refuse(named: str | None, job, handler_key: str) -> None:
         f"job {job.job_id} acquires the list it froze, {frozen}, and this command "
         f"names {given}, so driving the job would not acquire the list named here",
         f"drop the list and run it with --job {job.job_id} alone",
-        "or queue the other list as a job of its own by naming it without --job",
-        job_id=job.job_id,
-        frozen=frozen,
-        named=str(given),
+        "or queue the other list as a job of its own by naming it without --job", job_id=job.job_id,
+        frozen=frozen, named=str(given),
     )
 
 
 def acquire_download(ctx) -> Envelope:
     """Read the list, freeze it, and queue one item per track. Or drive the job.
 
-    THE LIST IS READ HERE, which reverses what this shell did until U54 and the
-    reason is the zero item rule: the queue holds a job with nothing to claim
-    unless the shell names the items, and the items are the list's tracks. The
-    read goes through :func:`cratekit.acquire.match_cli.read_list`, the one list
-    reader the product has, so a list this verb accepts is exactly a list the
-    match verb accepts and the refusals are the same sentences.
-
-    A list that reads to no tracks queues nothing and says so, following the
-    analysis verbs: an explicitly empty document has said something, and it is
-    not an error.
-
-    THE STAGING SWEEP RUNS AT THE HEAD OF THE VERB, before the queue and resume
-    paths part, because both of them reach the same tree and neither one is the
-    right place to reclaim it. A worker cannot clean up after itself: the engine
-    commits the staged landing AFTER ``handle`` returns, so at the only moment
-    the worker is still running the directory is not yet empty. Nor is the end
-    of a drive, because the job it just finished is one job and the tree holds
-    every job ever run. The head of the verb is the point where the queue can
-    say which jobs are terminal and nothing is being written.
+    The list is read through :func:`cratekit.acquire.match_cli.read_list`, so it accepts
+    and refuses exactly what the match verb does. A list with no tracks queues nothing
+    and says so. The staging sweep runs at the head of the verb, the one point where the
+    queue knows which jobs are terminal and nothing is being written.
     """
-    # A COMMAND THAT NAMES NOTHING IS REFUSED BEFORE ANYTHING RUNS, as argparse
-    # refused it while the list was required: no configuration read, no queue
-    # opened, no staging swept. PRECONDITION rather than USAGE, because USAGE is
-    # the parser's own code and no verb may produce it. ``--job ""`` is refused
-    # here too, since it names no job, and read by truthiness it used to fall
-    # through to the queueing path and queue the named list a second time.
+    # Refused before anything runs: PRECONDITION, since USAGE is the parser's own code.
     if ctx.args.job is not None and not ctx.args.job.strip():
         raise _unusable(
             "--job was given an empty identifier, so it names no job to continue",
@@ -341,8 +217,7 @@ def acquire_download(ctx) -> Envelope:
     cfg = load_config(("acquire.cli",))
     with jobs.open_store() as store:
         if ctx.args.job:
-            # CHECKED BEFORE THE SWEEP AND THE RECONCILE, so a refused command
-            # leaves the queue exactly as it found it.
+            # Before the sweep and the reconcile, so a refused command changes nothing.
             _same_list_or_refuse(
                 ctx.args.list, jobs.get(store, ctx.args.job), ctx.entry.handler_key
             )
@@ -350,12 +225,7 @@ def acquire_download(ctx) -> Envelope:
         if ctx.args.job:
             job, warnings = drive_queued(ctx, store, ctx.args.job)
             return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
-        # READ FROM THE PATH AS TYPED, freeze it absolute. ``read_list`` refuses a
-        # pasted URL by matching a scheme at the front of the string, and
-        # ``expanduser().absolute()`` turns ``https://...`` into a relative path
-        # under the working directory, which that guard cannot see. Absolutising
-        # before the read swapped the sentence telling somebody to fetch the
-        # playlist into a list document for a file-not-found over a mangled path.
+        # Read from the path as typed, so ``read_list`` can still refuse a pasted URL.
         job = queue_list(store, cfg, Path(str(ctx.args.list)), handler_key=ctx.entry.handler_key)
         if job is None:
             return ctx.envelope(data=no_job("no-tracks"), outcome=Outcome.NO_OP)
@@ -363,34 +233,23 @@ def acquire_download(ctx) -> Envelope:
 
 
 def queue_list(
-    store: jobs.JobStore,
-    cfg: config.Config,
-    given: Path,
-    *,
-    handler_key: str,
+    store: jobs.JobStore, cfg: config.Config, given: Path, *, handler_key: str,
     extra: dict[str, Any] | None = None,
 ) -> jobs.Job | None:
     """Read a list, freeze it, and queue one item per track, or None for no tracks.
 
-    THE ONE SPELLING OF A DOWNLOAD JOB, which ``acquire download`` and the
-    guided label sync's go both queue through (U108), so a job the go queued
-    is a job ``acquire download --job`` drives and ``job resume`` respawns.
-    ``extra`` is what a composing verb adds to the payload beside the list and
-    its tracks; the worker reads neither key of it.
+    The one spelling of a download job, shared with the guided label sync (U108).
+    ``extra`` is what a composing verb adds to the payload; the worker reads none of it.
     """
     wanted = match_cli.read_list(given)
-    # ABSOLUTE, for the reason ``master`` freezes its recording absolute: the
-    # child a resume spawns inherits the resuming process's directory, and a
-    # relative path would name a different file there.
+    # Absolute, because a resumed child runs in another working directory.
     listed = given.expanduser().absolute()
     tracks = frozen_tracks(wanted)
     if not tracks:
         return None
     return jobs.enqueue(
-        store,
-        handler_key=handler_key,
-        payload={**(extra or {}), LIST: str(listed), TRACKS: tracks},
-        cfg=cfg,
+        store, handler_key=handler_key,
+        payload={**(extra or {}), LIST: str(listed), TRACKS: tracks}, cfg=cfg,
         item_ids=tuple(tracks),
     )
 
@@ -398,43 +257,29 @@ def queue_list(
 def drive_queued(ctx, store: jobs.JobStore, job_id: str) -> tuple[jobs.Job, tuple[dict[str, str], ...]]:
     """Drive one queued download in this process, and refuse unless it ended clean.
 
-    RECONCILE FIRST. A resume arrives after something stopped, and a claim left
-    behind by a driver that died is state the queue cannot see for itself.
-    Returns the job only when it succeeded or is still waiting; a parked, half
-    failed or cancelled one raises its own cause.
+    Reconciles first, since a resume arrives after something stopped. Returns the job
+    only when it succeeded or is still waiting; otherwise raises its own cause.
     """
     job = jobs.reconcile(store, job_id)
     warnings: tuple[dict[str, str], ...] = ()
     if job.is_open():
         if not jobs.items(store, job.job_id):
-            # THE ZERO ITEM RULE ON THE RESUME SIDE, which ``adopt`` and
-            # ``tagging`` both guard and ``master`` does not need because
-            # it always queues exactly one item. A job queued by a build
-            # before this unit carries a frozen list path and no items at
-            # all, and driving it reports SUCCEEDED over a list nothing
-            # acquired, which is R-198's empty queue wearing a full one's
-            # clothes.
+            # The zero item rule: a job with no items would report SUCCEEDED over a
+            # list nothing acquired (R-198).
             raise refuse(
                 "internal-error",
                 f"job {job.job_id} has no items to run, so driving it "
                 f"would report every track acquired over a list nothing "
                 f"read. It was queued by a build that did not record "
                 f"what its items were",
-                remedy=Remedy.REPORT_DEFECT,
-                origin=("acquire.cli",),
-                detail={"job_id": job.job_id},
+                remedy=Remedy.REPORT_DEFECT, origin=("acquire.cli",), detail={"job_id": job.job_id},
             )
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
-    # THE DECLINED TRACKS, OUTSIDE THE ``is_open`` BRANCH for the reason the
-    # check below is: a finished job asked about again is answered the same.
+    # Both below sit outside the ``is_open`` branch, so a finished job asked again
+    # answers the same; a parked or partly failed job raises rather than reads ok
+    # (R-290, R-225).
     warnings = (*warnings, *declined_warnings(store, job))
-    # THE VERB R-290 WAS FOUND ON. This worker is the one that parks, on a
-    # provider block or a dead session, and the park reached the report as
-    # ``ok`` with exit 0, legible only inside ``data.cause``. A list where one
-    # track landed and another did not did the same (R-225). OUTSIDE the
-    # ``is_open`` branch, so a job already failed on entry is answered the same
-    # way however many times it is asked.
     jobs.raise_for_state(job)
     return job, warnings
 
@@ -447,10 +292,8 @@ def drive_queued(ctx, store: jobs.JobStore, job_id: str) -> tuple[jobs.Job, tupl
 def staging_dir(root: Path, job_id: str, ordinal: int) -> Path:
     """The staging directory for one item of one job, cleared and recreated.
 
-    Cleared because whatever is in it belongs to an attempt that did not finish:
-    the wrapped tool writes straight into the directory it is given, so a kill
-    mid download leaves a partial file that a later attempt would otherwise
-    hand to the codec probe as the track.
+    Cleared because a killed attempt leaves a partial file the codec probe would take
+    for the track.
     """
     directory = root / ACQUIRE_STAGING_DIRNAME / job_id / str(ordinal)
     if directory.exists():
@@ -460,14 +303,7 @@ def staging_dir(root: Path, job_id: str, ordinal: int) -> Path:
 
 
 def _children(directory: Path) -> tuple[Path, ...]:
-    """What is in ``directory``, sorted, or nothing when it cannot be listed.
-
-    A directory the sweep cannot read is one it has nothing to say about, and
-    the caller's answer to both is identical: walk past it. This is NOT absence
-    read as evidence of absence, because nothing downstream concludes the
-    directory is empty; ``_reclaim`` still asks the filesystem itself before
-    anything is removed.
-    """
+    """What is in ``directory``, sorted, or nothing when it cannot be listed."""
     try:
         return tuple(sorted(directory.iterdir()))
     except OSError:
@@ -477,16 +313,8 @@ def _children(directory: Path) -> tuple[Path, ...]:
 def _reclaim(directory: Path, removed: list[Path]) -> None:
     """Remove ``directory`` if it holds nothing, and record that it went.
 
-    ``rmdir`` RATHER THAN A LISTING AND A DELETE, because the emptiness check
-    and the removal have to be one decision. A listing that came back empty is a
-    fact about the moment it was taken, and the sweep runs beside a driver that
-    is allowed to be writing into the same tree.
-
-    Every ``OSError`` reads the same way here, LEAVE IT. A directory holding an
-    evidence file answers ``ENOTEMPTY`` and one on a volume this process cannot
-    write to answers ``EACCES``, and the right response to both is to walk past
-    it and try again on the next run. Nothing is reported, because nothing was
-    lost and there is no decision for a person to make.
+    ``rmdir`` makes the emptiness check and the removal one decision beside a driver
+    that may be writing. Any ``OSError`` means leave it for the next run.
     """
     try:
         directory.rmdir()
@@ -496,40 +324,13 @@ def _reclaim(directory: Path, removed: list[Path]) -> None:
 
 
 def sweep_staging(root: Path, store: jobs.JobStore) -> tuple[Path, ...]:
-    """Reclaim the emptied staging directories of jobs that can no longer run.
+    """Reclaim the emptied staging directories of jobs that can no longer run (R-291).
 
-    R-291: ``staging_dir`` clears a directory on the NEXT attempt at the same
-    job and ordinal, so nothing ever removed one. A successful commit moves the
-    landing out and leaves the directory behind, one per item of every job ever
-    run, under the download staging root for good.
-
-    EMPTY DIRECTORIES ONLY, and the file left inside one is the reason. A
-    landing ``checked_landing`` refused stays where it is on purpose, because it
-    is the evidence for diagnosing the next demotion, and a sweep that deleted
-    it would trade one defect for a worse one. ``_reclaim`` therefore asks the
-    filesystem to remove a directory rather than asking whether it is empty, so
-    the deliberate part survives without this function ever having to know which
-    files are deliberate.
-
-    ONLY A TERMINAL JOB, because nothing moves out of one. An open job's
-    directories belong to work a resume is still entitled to redo, and an item
-    claimed by a driver running right now is writing into one of them.
-
-    A DIRECTORY NAMING A JOB THIS STORE DOES NOT HOLD IS LEFT ALONE. No code
-    path in this product deletes a job row, so an unresolvable identifier means
-    the tree and the queue are not from the same installation, and removing
-    another store's staging on that reading is the one mistake here that would
-    cost somebody a file. Recorded rather than swept.
-
-    THE QUEUE IS ASKED ABOUT THE DIRECTORIES THAT ARE THERE, through
-    ``jobs.states_of``, rather than asked for every terminal job it holds. The
-    tree is small and the queue only grows, so the other direction makes a verb
-    that runs in milliseconds pay for the whole history of the installation:
-    measured at 224 ms on a store of 2000 succeeded jobs, each freezing a two
-    hundred track list, because ``list_jobs`` decodes every payload it returns.
-
-    Returns what it removed, deepest first within a job, so a caller that wants
-    to report or assert on the sweep can. The callers today want neither.
+    Empty directories only, so a refused landing kept as evidence survives. Terminal
+    jobs only, since an open job's directories belong to work a resume may redo. A
+    directory naming a job this store does not hold is left alone, as it may be another
+    installation's. The queue is asked only about the directories present, because the
+    queue only grows. Returns what it removed, deepest first within a job.
     """
     tree = root / ACQUIRE_STAGING_DIRNAME
     if not tree.is_dir():
@@ -551,24 +352,16 @@ def request_for(item: jobs.Item, payload: dict[str, Any]) -> TrackRequest:
     """The item as a request: its identifier, and what the list said about it."""
     said = dict((payload.get(TRACKS) or {}).get(item.item_id) or {})
     return TrackRequest(
-        key=item.item_id,
-        artist=str(said.get("artist") or ""),
-        title=str(said.get("title") or ""),
+        key=item.item_id, artist=str(said.get("artist") or ""), title=str(said.get("title") or ""),
         isrc=str(said.get("isrc") or ""),
     )
 
 
 def _remedy(token: object, fallback: Remedy | None) -> Remedy | None:
-    """The adapter's remedy token in the CLI's vocabulary, which it already is by
-    reservation; the fallback is for a result that carried none.
+    """The adapter's remedy token as a CLI ``Remedy``, else ``fallback``.
 
-    THE FALLBACK MAY BE ``None``, and that is the point of it being a parameter.
-    ``adapter._unavailable`` leaves the remedy off a permanently unavailable
-    track deliberately, because there is nothing a person can do about a track
-    the provider no longer has, and a fallback that filled that absence in would
-    tell them to relax the lossless policy over a delisted track. An absent
-    remedy is passed on absent, and ``refuse`` then defaults it from the reason
-    table, which is the answer the whole class of failure already declares.
+    The fallback may be ``None``: a permanently unavailable track carries no remedy on
+    purpose, and ``refuse`` then defaults it from the reason table.
     """
     if token is not None:
         return Remedy(str(token))
@@ -581,14 +374,10 @@ def _refused_invocation(run: download.DownloadRun, request: TrackRequest) -> Cra
     return refuse(
         _INVOCATION_REASONS[invocation.outcome],
         f"{invocation.adapter} could not acquire {request.key}: {invocation.detail}{where}",
-        remedy=_remedy(invocation.remedy, Remedy.SWITCH_ADAPTER),
-        scope=Scope.SOURCE,
-        retryable=invocation.outcome is InvocationOutcome.AUTH_FAILED,
-        origin=("acquire.cli",),
+        remedy=_remedy(invocation.remedy, Remedy.SWITCH_ADAPTER), scope=Scope.SOURCE,
+        retryable=invocation.outcome is InvocationOutcome.AUTH_FAILED, origin=("acquire.cli",),
         detail={
-            "adapter": invocation.adapter,
-            "key": request.key,
-            "outcome": str(invocation.outcome),
+            "adapter": invocation.adapter, "key": request.key, "outcome": str(invocation.outcome),
             "alternatives": list(invocation.alternatives),
         },
     )
@@ -596,10 +385,8 @@ def _refused_invocation(run: download.DownloadRun, request: TrackRequest) -> Cra
 
 def _refused_track(result: TrackResult, adapter: str) -> CratekitError:
     transient = result.outcome is TrackOutcome.UNAVAILABLE_TRANSIENT
-    # NO FALLBACK OFF THE TRANSIENT PATH. A policy refusal always carries its own
-    # remedy, which the ``TrackResult`` validator enforces, so the only outcome
-    # that can reach a fallback here is a permanently unavailable track, and that
-    # one carries none on purpose.
+    # No fallback off the transient path: a policy refusal always carries its own
+    # remedy, and a permanent unavailability carries none on purpose.
     return refuse(
         _ITEM_REASONS[result.outcome],
         f"{adapter} did not acquire {result.key}: {result.detail}",
@@ -614,19 +401,9 @@ def _refused_track(result: TrackResult, adapter: str) -> CratekitError:
 def checked_landing(path: Path, key: str, *, policy: LosslessPolicy) -> Path:
     """The landed FILE against the frozen policy, whichever adapter landed it.
 
-    The vendored source already runs this check inside its ``fetch``, and the
-    check is run again here for two reasons that each stand alone. The contract
-    says checking the landed file is OPTIONAL for an implementation, so the
-    alternative adapter lands what it lands (R-213) and a fake in the suite
-    lands whatever it is told to; this is the one place every adapter's landing
-    passes through. And the rule the check enforces is the product's central
-    promise, which the item's row is the thing that records.
-
-    Two refusals, different remedies, and the difference is what the person is
-    told to do. A lossy file is a policy refusal naming the codec, and relaxing
-    the policy would admit it. A file nothing could read is a transient failure
-    that stays re-queueable, because it is almost always a truncated download,
-    and telling that person to relax the policy would make the product accept it.
+    Checked here because the landed file check is optional for an adapter (R-213), and
+    every landing passes this point. A lossy file is a policy refusal; an unreadable one
+    is transient and re-queueable, being almost always a truncated download.
     """
     from cratekit.acquire import vendored  # noqa: PLC0415 - the probe imports the audio stack
 
@@ -634,43 +411,22 @@ def checked_landing(path: Path, key: str, *, policy: LosslessPolicy) -> Path:
         return vendored.landed_file(True, path, key, policy=policy)
     except LosslessRefused as exc:
         raise refuse(
-            "lossy-refused",
-            str(exc),
-            remedy=_remedy(exc.remedy, Remedy.RELAX_LOSSLESS_POLICY),
-            scope=Scope.ITEM,
-            origin=("acquire.cli",),
-            detail={"key": key, "path": str(path)},
+            "lossy-refused", str(exc), remedy=_remedy(exc.remedy, Remedy.RELAX_LOSSLESS_POLICY),
+            scope=Scope.ITEM, origin=("acquire.cli",), detail={"key": key, "path": str(path)},
         ) from exc
     except RuntimeError as exc:
         raise refuse(
-            "unavailable-transient",
-            str(exc),
-            remedy=Remedy.RETRY_LATER,
-            scope=Scope.ITEM,
-            retryable=True,
-            origin=("acquire.cli",),
-            detail={"key": key, "path": str(path)},
+            "unavailable-transient", str(exc), remedy=Remedy.RETRY_LATER, scope=Scope.ITEM,
+            retryable=True, origin=("acquire.cli",), detail={"key": key, "path": str(path)},
         ) from exc
 
 
 def lossy_landing(path: Path, *, policy: LosslessPolicy) -> bool:
     """Whether the file that landed is LOSSY, asked of the file itself.
 
-    THE OFFER IS NOT EVIDENCE ABOUT THE FILE. ``requires_lossy_marker`` is
-    derived from what the provider said it was about to send, and the whole
-    reason the codec check exists is that the provider's claim and the bytes
-    that arrive are different facts: the setting said lossless, the provider
-    sent AAC, and nothing between them ever looked. Under the STRICT policy
-    ``checked_landing`` has already refused a lossy file, so there is nothing
-    left to ask and the probe is not run twice. Under a permissive policy the
-    file is kept either way, and the only remaining question is whether it must
-    be MARKED, which R21 answers about the file and not about the offer.
-
-    A file the probe cannot read answers nothing, so it is not called lossy on
-    the strength of a failed measurement. It is committed unmarked exactly as it
-    was before, and that gap is recorded rather than closed here, because
-    refusing an unreadable file under a policy that exists to keep files is a
-    different decision from this one.
+    The provider's offer is not evidence about the bytes. Under STRICT,
+    ``checked_landing`` already refused a lossy file, so the probe is skipped. A file
+    the probe cannot read is not called lossy and is committed unmarked.
     """
     if policy is LosslessPolicy.STRICT:
         return False
@@ -683,13 +439,9 @@ def lossy_landing(path: Path, *, policy: LosslessPolicy) -> bool:
 def marked_name(landed: Path, marker: str, *, required: bool) -> str:
     """The name the file is committed under: the landed name, marked if it must be.
 
-    R21 permits a lossy file only WITH the marker, and config owns the marker's
-    text (S3). The marker goes into the STAGING name because the staging name is
-    the only thing that travels with the file into the library stages, and the
-    naming engine reads a marked stem as the lossy flag. A configuration that
-    names no marker text cannot express a legal lossy landing at all, so the
-    file is refused rather than committed unmarked, which is the one state the
-    audit verb exists to find.
+    R21 permits a lossy file only with the configured marker (S3), carried in the
+    staging name because the naming engine reads it as the lossy flag. With no marker
+    text the file is refused rather than committed unmarked.
     """
     if not required:
         return landed.name
@@ -711,40 +463,21 @@ def marked_name(landed: Path, marker: str, *, required: bool) -> str:
 def handle(job, item, cfg) -> jobs.Produced:
     """Acquire ONE queued track. The per-item worker behind ``acquire.download``.
 
-    THE FIRST CALLER of ``acquire.build`` and of ``download.acquire_paced``, so
-    every answer the run can give is read here rather than assumed, and each one
-    lands on the item's row under its own slug:
+    Each answer lands on the item's row under its own slug:
 
-    * a parked run is the provider refusing the CLIENT, and the job is parked on
-      the cause the pacing layer built, with this item released, so no further
-      request is made into a block;
-    * a failed invocation is the adapter unable to run at all, and names the
-      replacement path;
-    * a per-track result that is not an acquisition carries the outcome's own
-      slug and remedy;
-    * a run that reports OK with no result for this key is refused as transient
-      rather than read as success, because absence is not evidence;
-    * an acquisition is checked at the FILE under the frozen policy, then staged
-      for the engine to commit.
+    * a parked run parks the job on the pacing layer's cause, releasing this item;
+    * a failed invocation names the replacement path;
+    * a per-track result that is not an acquisition carries its outcome's slug;
+    * an OK run with no result for this key is refused as transient, since absence is
+      not evidence;
+    * an acquisition is checked at the FILE under the frozen policy, then staged.
 
-    ``cfg`` is the configuration this job was FROZEN against (KTD9). The adapter
-    settings, the policy and the pacing are all read off it and nothing here
-    loads a fresh one, so a pacing delay edited while the job waited is not the
-    delay this run uses.
+    ``cfg`` is the configuration the job was FROZEN against (KTD9), so settings edited
+    while it waited do not apply. One request per call, since the engine claims one
+    item at a time.
 
-    ONE REQUEST PER CALL, because the engine claims one item at a time. The pool
-    still paces every request through the frozen delay, so a job of fifty items
-    is fifty paced requests; what the item granularity cannot express is
-    ``concurrency`` above one, and that is recorded rather than worked around.
-
-    A REFUSAL FOR GOOD BY POLICY IS DECLINED, NOT FAILED (U169). Whichever of
-    the paths above raised it, a cause in the ``REFUSED_BY_POLICY`` class that
-    is not retryable is the frozen policy's permanent answer about this track:
-    a lossy only offer or landing under the strict policy, a lossy file with no
-    marker text to carry, a track the provider no longer has. The engine
-    settles the item as skipped with that cause, so a list where every other
-    track landed ends ok, and the verb names each skipped track in a warning
-    (:func:`declined_warnings`). Everything else still fails the item.
+    A non-retryable ``REFUSED_BY_POLICY`` cause is declined, not failed (U169): the item
+    is skipped and named by :func:`declined_warnings`, so the rest of the list ends ok.
     """
     try:
         return _acquire(job, item, cfg)
@@ -756,22 +489,17 @@ def handle(job, item, cfg) -> jobs.Produced:
         raise
 
 
-#: ONE SESSION A DRIVE, NOT ONE A TRACK (U274). The engine enters the vendored
-#: adapter's drive around each drive of a download job (see
-#: :data:`cratekit.cli.handlers.PER_DRIVE_ATTRIBUTE`), so the token file is
-#: written, the session logged in and written back once for the whole job, and
-#: the file is erased when the drive ends or fails. Another adapter keeps its
-#: own scope per invocation.
+#: One session a drive, not one a track (U274): the engine enters the vendored
+#: adapter's drive around each drive of a download job, see
+#: :data:`cratekit.cli.handlers.PER_DRIVE_ATTRIBUTE`.
 handle.per_drive = vendored.drive  # type: ignore[attr-defined]
 
 
 def refused_for_good(cause: Cause) -> bool:
     """Whether a download's item refusal is the policy's permanent answer (U169).
 
-    READ OFF THE CAUSE'S EXIT CODE, not a list of slugs, so a policy refusal a
-    later unit adds is declined without a second edit here. Not retryable as
-    well, because a skip is never re-armed and a refusal some later attempt
-    could clear must stay a failure a resume can reach.
+    Read off the exit code so a later policy refusal is covered, and never retryable,
+    since a skip is never re-armed.
     """
     return cause.code is ExitCode.REFUSED_BY_POLICY and not cause.retryable
 
@@ -781,11 +509,7 @@ DECLINED_WARNING = "acquire-refused"
 
 
 def track_name(job: jobs.Job, item_id: str) -> str:
-    """One track of a download job as its list named it, title and artist.
-
-    Falls back to whichever of the two the list gave, then to the identifier,
-    which only the provider can read.
-    """
+    """One track as its list named it: title by artist, else either, else the identifier."""
     tracks = (job.payload or {}).get(TRACKS) or {}
     said = tracks.get(item_id) if isinstance(tracks, dict) else None
     said = said if isinstance(said, dict) else {}
@@ -794,12 +518,9 @@ def track_name(job: jobs.Job, item_id: str) -> str:
 
 
 def declined_warnings(store: jobs.JobStore, job: jobs.Job) -> tuple[dict[str, str], ...]:
-    """One warning per track the job declined, naming it as the list did.
+    """One warning per track the job declined, named as its list named it.
 
-    READ FROM THE ITEM ROWS, which keep the cause the worker declined with, so
-    the same job asked about again answers with the same warnings, and the
-    track is named by the title and artist its list gave it rather than by an
-    identifier only the provider can read.
+    Read from the item rows, so the same job asked again answers the same.
     """
     found: list[dict[str, str]] = []
     for item in jobs.items(store, job.job_id):
@@ -822,11 +543,9 @@ def declined_warnings(store: jobs.JobStore, job: jobs.Job) -> tuple[dict[str, st
 class DownloadRead:
     """A download job after its drive, as every verb that lands one reads it (R-1115).
 
-    ``done`` counts the tracks that landed. ``refused`` holds one row per track
-    refused for good, ``item_id``, ``reason`` and ``message``: a track the
-    worker declined (U169), skipped with its cause, or one that FAILED with a
-    cause no retry can clear. ``failed`` names the second kind alone, since
-    :func:`declined_warnings` already names the first. ``settled`` says the
+    ``done`` counts the tracks that landed. ``refused`` holds ``item_id``, ``reason``
+    and ``message`` per track refused for good: declined (U169), or FAILED with a cause
+    no retry can clear. ``failed`` names the second kind alone. ``settled`` says the
     download ended as one a tail may run on.
     """
 
@@ -843,21 +562,11 @@ class DownloadRead:
 
 
 def read_download(store: jobs.JobStore, job: jobs.Job) -> DownloadRead:
-    """Read a download job the one way ``sync land`` and ``label sync --go`` do.
+    """Read a download job the one way ``sync land`` and ``label sync --go`` do (R-1115).
 
-    SETTLED IS SUCCEEDED, OR FAILED ONLY BY TRACKS REFUSED FOR GOOD. A job that
-    succeeded settled, whatever it declined. A job that ended FAILED settled
-    only when at least one item failed, every failed item carries a cause that
-    is not retryable, and no item is still to run: a retry could clear nothing
-    there, so the tracks that landed are the download. A FAILED job with no
-    failed item, with a failure that records no cause, or with a track never
-    attempted did not settle, because nothing in it says the tracks it did not
-    land were refused. Anything else, open, parked or cancelled, did not settle
-    either, and the caller ends on the job's own refusal.
-
-    ONE READING, decided by R-1115. ``sync land`` read it this way first and
-    the go raised for every FAILED job, so the same lossy only track landed the
-    rest in one verb and nothing in the other.
+    Settled is SUCCEEDED, or FAILED with at least one failed item, every failure carrying
+    a non-retryable cause, and no item left to run. Anything else did not settle, and
+    the caller ends on the job's own refusal.
     """
     held = jobs.items(store, job.job_id)
     failed = [item for item in held if item.state is jobs.ItemState.FAILED]
@@ -905,28 +614,12 @@ def _acquire(job, item, cfg) -> jobs.Produced:
     if invocation.outcome in FAILED_INVOCATIONS:
         refusal = _refused_invocation(run, request)
         if invocation.outcome is InvocationOutcome.AUTH_FAILED:
-            # PARKED, NOT FAILED, and only this one of the two. This worker
-            # builds an adapter for every item, so failing the item lets the
-            # driver claim the next one, which asks again: a two hundred track
-            # list against an expired session would be two hundred failed
-            # logins into one account, and repeated failed logins are what
-            # triggers the lockout the module docstring records as
-            # unrecoverable. Since U274 the vendored adapter's drive also
-            # remembers the refusal and makes no call after it, so the park is
-            # no longer the only thing between a dead session and a lockout. A
-            # dead credential is also a fact about the RUN and never about the
-            # track, so nothing is lost by stopping. The item is released and
-            # the job records why, so one resume after fixing the credential
-            # redoes the whole remainder.
+            # Parked, not failed: failing would let the next item try the dead login
+            # again, and repeated failed logins lock the account. A dead credential
+            # is a fact about the run, so one resume after fixing it redoes the rest.
             raise jobs.Parked(refusal.cause)
-        # A BROKEN ADAPTER STILL FAILS THE ITEM, deliberately and asymmetrically.
-        # A tool that crashed mid transfer may have crashed on this track, and
-        # the unit's brief asks for exactly that: the item fails, the job stays
-        # resumable, and the resume redoes only it. The rebuild it costs per item
-        # is recorded rather than fixed by parking, because parking here would
-        # end a fifty track sync on one bad file (R-293). Since U274 a drive of
-        # the vendored adapter keeps its login across a track the tool broke
-        # on, so the next item rebuilds the adapter and not the session.
+        # A broken adapter still fails the item, since the tool may have broken on
+        # this track, and parking would end a whole sync on one bad file (R-293).
         raise refusal
     result = next((r for r in invocation.results if r.key == request.key), None)
     if result is None:
@@ -944,22 +637,14 @@ def _acquire(job, item, cfg) -> jobs.Produced:
         raise _refused_track(result, invocation.adapter)
 
     landed = checked_landing(Path(str(result.path)), request.key, policy=per_item.lossless_policy)
-    # THE OFFER OR THE FILE, whichever says the marker is owed. The offer's claim
-    # is what the provider intended to send and the probe is what arrived, and
-    # R21 is a rule about the file on disk. Trusting the claim alone commits an
-    # unmarked lossy file whenever the provider offers lossless and lands lossy,
-    # which is the one state the audit verb exists to find.
+    # The marker is owed if the offer or the file says so, since R21 is about the file.
     required = result.requires_lossy_marker or lossy_landing(
         landed, policy=per_item.lossless_policy
     )
     final = root / marked_name(landed, cfg.naming.lossy_marker or "", required=required)
     if final.exists():
-        # AFTER the download rather than before it, and that ordering is a cost
-        # this unit records rather than a choice it made: the file's name is the
-        # tool's to decide and is known only once it has landed. Refused rather
-        # than replaced, for the reason ``master`` refuses: what is there may
-        # have been kept on purpose, and the fresh copy is in this attempt's
-        # staging directory until the next attempt clears it.
+        # Checked after the download, the only point the name is known. Refused rather
+        # than replaced, since what is there may have been kept on purpose.
         raise refuse(
             "output-exists",
             f"{final} already exists, so the copy that just landed for "
@@ -983,12 +668,7 @@ def build_audit(parser, entry) -> None:
 
 
 def classify(suffix: str) -> str:
-    """``lossless``, ``lossy``, ``undecided``, or ``other`` for one lowercase suffix.
-
-    ``other`` is everything that is not audio at all, which a music directory
-    holds plenty of. It is a fourth answer rather than a silent skip so that the
-    walk below reads as a classification of every file it saw.
-    """
+    """``lossless``, ``lossy``, ``undecided``, or ``other`` (not audio) for one suffix."""
     if suffix in LOSSLESS_EXTS:
         return "lossless"
     if suffix in LOSSY_EXTS:
@@ -1001,48 +681,17 @@ def classify(suffix: str) -> str:
 def findings(root: Path, *, policy: LosslessPolicy, marker: str) -> tuple[dict[str, Any], ...]:
     """Every file under ``root`` that the lossless policy does not admit.
 
-    Four kinds, and each one is a state R21 forbids rather than a preference:
+    * ``lossy-under-strict``: a lossy file the strict policy says should not exist.
+      Not ``lossy-refused``, which is a declared cause key.
+    * ``lossy-unmarked``: a lossy file without the marker, the failure R21 prevents.
+    * ``marked-lossless``: a lossless file carrying the marker, so two different files
+      fold to one key.
+    * ``format-undecided``: a container its suffix cannot classify.
+    * ``path-unreadable``: a directory that could not be listed, so was not audited.
 
-    * ``lossy-under-strict``: a lossy file under the strict policy, which says a
-      track that exists only lossy is reported unacquired rather than downloaded.
-      The marker is irrelevant here; strict means the file should not be present.
-      NOT called ``lossy-refused``, which is what it said first: that string is
-      already a declared CAUSE key, raised by
-      :func:`cratekit.intake.pipeline.acquire_lossy_or_refuse` for the same policy
-      at acquisition time. A cause key carries a remedy and an exit code; a
-      finding kind is payload data with neither, and one string meaning both is
-      the "one symbol meaning two things in two modules" METHOD lists among the
-      things a green suite cannot see. The suite that noticed is
-      ``test_reserved_causes``, and it noticed by counting rather than by knowing.
-    * ``lossy-unmarked``: a lossy file under the permissive policy without the
-      marker. This is the single failure R21 exists to prevent, because the
-      marker is what a later stage strips to fold a lossy copy and its lossless
-      twin into one recording.
-    * ``marked-lossless``: a lossless file carrying the marker, which is the same
-      failure wearing the opposite hat. The marker is false, the naming engine
-      strips it anyway, and two genuinely different files fold to one key.
-    * ``format-undecided``: a container whose suffix cannot answer the question.
-      Reported rather than assumed, because a clean report over an unclassified
-      file is worse than a report that says it could not tell.
-    * ``path-unreadable``: a directory under the root that could not be listed.
-      Not a policy violation, and reported for the same reason as the kind above
-      it: a sweep that cannot see a directory has not audited it.
-
-    ``marker`` empty means the configuration declares no marker text, so no file
-    carries one. The two marker-dependent kinds cannot be decided in that state
-    and are not reported, which is the same answer ``library_template`` gives when
-    it returns a template with no marker rule rather than refusing the run.
-
-    **WHY ``os.walk`` WITH AN ERROR HOOK AND NOT ``Path.rglob``.** This was
-    written with ``rglob`` first, and driven on 2026-08-28: a music directory
-    holding ``open/a.mp3`` and a mode 0o000 ``locked/`` containing ``b.mp3``
-    reported exactly one finding and said nothing at all about ``locked``.
-    ``rglob`` swallows the ``PermissionError`` from ``scandir`` and yields what it
-    could reach, so the audit's answer over a partly unreadable library is
-    indistinguishable from its answer over a clean one. The producer is not
-    exotic: the library root is a removable volume, and macOS puts directories
-    this walk cannot enter at the root of one as a matter of course. ``os.walk``
-    takes an ``onerror`` hook, which turns the silence into a row.
+    An empty ``marker`` means no file carries one, so the marker kinds are not reported.
+    ``os.walk`` with ``onerror`` is used because ``Path.rglob`` silently skips an
+    unreadable directory, which would read as a clean report.
     """
     if not root.is_dir():
         return ()
@@ -1074,37 +723,20 @@ def findings(root: Path, *, policy: LosslessPolicy, marker: str) -> tuple[dict[s
 
 
 def _item(path: Path, root: Path, kind: str) -> dict[str, Any]:
-    """One finding projected for a listing: what it is and where.
-
-    The path is recorded RELATIVE to the library root. An absolute one would put
-    somebody's real directory layout into a payload a person may well paste into
-    an issue (R1), and the root is already the subject of the report.
-    """
+    """One finding projected for a listing, its path relative to the root (R1)."""
     try:
         where = str(path.relative_to(root))
     except ValueError:
-        # The walk never leaves the root, so this is unreachable through
-        # ``findings``. It is handled anyway because the alternative is a
-        # ValueError escaping a REPORT, and a report that raises over one odd
-        # path tells the user nothing about the files it had already classified.
+        # Unreachable through ``findings``; handled so a report never raises.
         where = path.name
-    return {
-        "id": where,
-        "queue": AUDIT_QUEUE,
-        "kind": kind,
-        "suffix": path.suffix.lower(),
-    }
+    return {"id": where, "queue": AUDIT_QUEUE, "kind": kind, "suffix": path.suffix.lower()}
 
 
 def acquire_audit(ctx) -> Envelope:
     """Report what the lossless policy does not admit. Writes nothing.
 
-    ``unresolved`` and the length of ``items`` are equal here and that is a
-    property of this verb rather than a coincidence worth relying on: nothing
-    pages, so the walk's whole result is the page. A later flag that returns a
-    subset must recompute ``unresolved`` from the walk, never from the page, for
-    the reason :mod:`cratekit.cli.review` gives: reporting the page size as the
-    backlog is how a person concludes they are finished.
+    ``unresolved`` equals the length of ``items`` only because nothing pages; a flag
+    returning a subset must count it from the walk, never the page.
     """
     cfg = load_config(("acquire.cli",))
     found = findings(
@@ -1122,33 +754,10 @@ def acquire_audit(ctx) -> Envelope:
 
 
 __all__ = [
-    "ACQUIRE_STAGING_DIRNAME",
-    "AUDIT_QUEUE",
-    "LIST",
-    "LOSSLESS_EXTS",
-    "LOSSY_EXTS",
-    "TRACKS",
-    "UNDECIDED_EXTS",
-    "acquire_audit",
-    "acquire_download",
-    "build",
-    "build_audit",
-    "checked_landing",
-    "classify",
-    "download_argv",
-    "drive_queued",
-    "findings",
-    "frozen_tracks",
-    "DECLINED_WARNING",
-    "DownloadRead",
-    "declined_warnings",
-    "handle",
-    "refused_for_good",
-    "marked_name",
-    "queue_list",
-    "read_download",
-    "request_for",
-    "staging_dir",
-    "sweep_staging",
+    "ACQUIRE_STAGING_DIRNAME", "AUDIT_QUEUE", "LIST", "LOSSLESS_EXTS", "LOSSY_EXTS", "TRACKS",
+    "UNDECIDED_EXTS", "acquire_audit", "acquire_download", "build", "build_audit",
+    "checked_landing", "classify", "download_argv", "drive_queued", "findings", "frozen_tracks",
+    "DECLINED_WARNING", "DownloadRead", "declined_warnings", "handle", "refused_for_good",
+    "marked_name", "queue_list", "read_download", "request_for", "staging_dir", "sweep_staging",
     "track_name",
 ]

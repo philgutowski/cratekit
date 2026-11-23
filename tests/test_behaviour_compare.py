@@ -1590,6 +1590,17 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     manifest = json.loads((captures[0] / compare.MANIFEST).read_text(encoding="utf-8"))
     assert manifest["scenarios"] == [
+        "acquire/a_tombstone_withholds_a_deleted_record",
+        "acquire/acquire_audit_and_the_refusals",
+        "acquire/match_verdicts_over_three_readers",
+        "acquire_bandcamp/bandcamp_plan_and_fetch",
+        "acquire_bandcamp/bandcamp_without_a_session",
+        "acquire_download/a_drive_lands_every_track",
+        "acquire_download/a_missing_session_parks",
+        "acquire_download/a_refused_login_and_a_withdrawn_session_park",
+        "acquire_fallback/fallback_offers_and_accepts",
+        "acquire_fallback_fetch/fallback_fetch_lands_marked",
+        "acquire_fallback_fetch/fallback_fetch_refused_when_strict",
         "adopt/scan_and_apply_jobs_queued_driven_and_reported",
         "backup/backup_capture_and_the_restore_plan",
         "cli/a_config_no_verb_can_use",
@@ -1647,7 +1658,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "49 scenarios" in summary and "no difference" in summary
+    assert "60 scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())

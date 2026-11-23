@@ -2,7 +2,7 @@
 title: The live library writes the head into the title tag, so a fixture with a plain tag proves nothing about a tag reader
 date: 2026-09-23
 category: integration-issues
-module: src/cratekit/acquire/match.py, src/cratekit/core/tags.py
+module: src/cratekit/acquire/match_library.py, src/cratekit/core/tags.py
 problem_type: integration_issue
 component: library_index
 severity: high
@@ -37,7 +37,7 @@ duplicates into the library.
 
 ## Where the cause actually was
 
-Not in the matcher and not in the filename stripper. `match._read_from_disk`
+Not in the matcher and not in the filename stripper. `match_library._read_from_disk`
 strips the `KEY - BPM - ` head from the filename stem and takes the title tag
 verbatim, on the reasoning that a tag is the file speaking. On this library
 the tag is not plain: the live system writes the same head into the title tag
