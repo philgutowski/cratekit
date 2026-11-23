@@ -349,14 +349,14 @@ def _workers_for(percent: int) -> int:
     return plan.workers
 
 
-def test_the_general_headroom_claims_three_quarters_of_what_is_left():
-    """Seventy five, pinned by the pool it produces. Darwin never runs this arm by default."""
-    assert _workers_for(pool.GENERAL_HEADROOM_PERCENT) == 75
-
-
-def test_the_darwin_headroom_claims_half_because_half_is_what_was_measured():
-    """Fifty, pinned the same way; half survives the measured inactive and free split."""
-    assert _workers_for(pool.DARWIN_HEADROOM_PERCENT) == 50
+@pytest.mark.parametrize(
+    "percent,workers",
+    [(pool.GENERAL_HEADROOM_PERCENT, 75), (pool.DARWIN_HEADROOM_PERCENT, 50)],
+    ids=["general-three-quarters", "darwin-half-as-measured"],
+)
+def test_each_headroom_share_is_pinned_by_the_pool_it_produces(percent, workers):
+    """Both shares, pinned by the pool they produce; darwin's arm never runs here by default."""
+    assert _workers_for(percent) == workers
 
 
 def test_the_absolute_reserve_is_two_gibibytes_of_the_reading_that_was_never_ours():
@@ -679,19 +679,17 @@ def test_a_pool_that_never_retires_a_child_is_one_generation():
 # The probe
 
 
-def test_the_probe_reports_what_it_measured_when_that_is_larger_than_the_floor():
-    measured = pool.measure_worker_bytes(
-        lambda: None, floor_bytes=1 * GIB, runner=lambda _loader: 3 * GIB
-    )
-    assert measured == 3 * GIB
-
-
-def test_the_probe_never_reports_below_the_declared_floor():
+@pytest.mark.parametrize(
+    "answered,reported",
+    [(3 * GIB, 3 * GIB), (300 * MIB, 1 * GIB)],
+    ids=["above-the-floor-is-reported", "never-below-the-floor"],
+)
+def test_the_probe_reports_its_measure_and_never_below_the_floor(answered, reported):
     """The floor is a floor, not a fallback: a working worker allocates past its load."""
     measured = pool.measure_worker_bytes(
-        lambda: None, floor_bytes=1 * GIB, runner=lambda _loader: 300 * MIB
+        lambda: None, floor_bytes=1 * GIB, runner=lambda _loader: answered
     )
-    assert measured == 1 * GIB
+    assert measured == reported
 
 
 @pytest.mark.parametrize(
@@ -1347,26 +1345,21 @@ def _host_reads(monkeypatch, available: int, **more) -> None:
     )
 
 
-def test_a_cgroup_with_a_cap_reports_what_is_left_inside_it(tmp_path):
-    _version_two(tmp_path, limit=str(512 * MIB), current=str(64 * MIB))
-    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 448 * MIB
-
-
-def test_the_older_cgroup_layout_is_read_too(tmp_path):
-    _version_one(tmp_path, limit=str(2 * GIB), usage=str(512 * MIB))
-    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 1536 * MIB
-
-
-def test_a_cap_whose_usage_cannot_be_read_is_still_a_cap(tmp_path):
-    """A cap with unreadable usage is still a cap, rather than the host's reading."""
-    _version_two(tmp_path, limit=str(512 * MIB), current=None)
-    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 512 * MIB
-
-
-def test_a_cgroup_already_over_its_cap_has_no_headroom_rather_than_negative(tmp_path):
-    """A cgroup over its cap has zero headroom, never a negative one."""
-    _version_two(tmp_path, limit=str(512 * MIB), current=str(600 * MIB))
-    assert pool.cgroup_memory_headroom_bytes(tmp_path) == 0
+@pytest.mark.parametrize(
+    "layout,written,headroom",
+    [
+        (_version_two, dict(limit=str(512 * MIB), current=str(64 * MIB)), 448 * MIB),
+        (_version_one, dict(limit=str(2 * GIB), usage=str(512 * MIB)), 1536 * MIB),
+        (_version_two, dict(limit=str(512 * MIB), current=None), 512 * MIB),
+        (_version_two, dict(limit=str(512 * MIB), current=str(600 * MIB)), 0),
+    ],
+    ids=["a-cap-reports-what-is-left", "the-older-layout", "unreadable-usage-is-still-a-cap",
+         "over-the-cap-is-zero-never-negative"],
+)
+def test_a_cgroup_cap_reports_what_is_left_inside_it(tmp_path, layout, written, headroom):
+    """A cap reads what is left in it in either layout, never negative, unreadable usage or not."""
+    layout(tmp_path, **written)
+    assert pool.cgroup_memory_headroom_bytes(tmp_path) == headroom
 
 
 @pytest.mark.parametrize(

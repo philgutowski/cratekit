@@ -1,9 +1,7 @@
 """U63: the provider account adapter behind the outbound seam, driven against fakes.
 
-The client is a fake injected at ``provider_session.CLIENT_FACTORY``, so nothing
-here reaches the provider. ONE SUBSTITUTION BEYOND IT: some end to end drives give
-the rows an ISRC through ``source.local_tracks`` and ``source.heart_candidates``,
-since a collection export carries none. D1 applies: no real volume, person or track.
+The client is a fake at ``provider_session.CLIENT_FACTORY``; some end to end drives
+also give rows an ISRC through ``source``, since an export carries none. D1 applies.
 """
 
 from __future__ import annotations
@@ -578,9 +576,8 @@ def test_a_row_with_neither_an_isrc_nor_a_reference_asks_the_provider_nothing():
     assert client.isrc_asked == [] and client.track_asked == []
 
 
-# ── 3. one paged read answers every heart question ──────────────────────────
-# Under U65 a complete walk ends on the empty page after the last, so a corpus
-# this small is two requests; a cache miss would show a second (100, 0).
+# 3. one paged read answers every heart question
+# A complete walk ends on the empty page after the last (U65), so this corpus is two requests.
 
 
 def test_has_heart_answers_a_whole_sweep_from_one_paged_read():
@@ -692,8 +689,7 @@ def test_a_rename_the_client_answers_false_is_the_items_cause_not_a_quiet_return
 
 
 def test_a_playlist_the_account_cannot_edit_refuses_rather_than_reporting_a_rename():
-    """THE MESSAGE IS THE ASSERTION: a missing editor called anyway fails inside ``_call``
-    with the same slug, scope and doing string; only the sentence tells them apart."""
+    """THE MESSAGE IS THE ASSERTION: a missing editor and ``_call`` differ only in the sentence."""
     foreign, client = warmup(ForeignPlaylist, name="Somebody Else")
     cause = refused(lambda: adapter(client).rename_playlist("pl-1", "DOWNLOADED Somebody Else"))
     assert cause.scope is Scope.ITEM
@@ -934,8 +930,7 @@ def queue(exported: Path, *, sweep: bool) -> str:
 
 
 def run_job(monkeypatch, client: FakeClient, exported: Path, *, sweep: bool, ok: bool = True):
-    """``client`` in, a session recorded, the job queued and resumed, its exit OK exactly
-    when ``ok``: the answer and the job."""
+    """Record a session, queue and resume the job, exit OK exactly when ``ok``."""
     use_client(monkeypatch, client)
     record_session()
     job_id = queue(exported, sweep=sweep)
@@ -966,16 +961,14 @@ def test_a_hearts_sweep_runs_to_done_and_the_ledger_records_every_heart(installe
 
 
 def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(installed, monkeypatch):
-    """And a second export finds the playlist recorded, so it neither creates nor sets the
-    visibility: the private step is part of the create behind the ledger's check."""
+    """A second export finds the playlist recorded, so it neither creates nor sets visibility."""
     exported = write_export(installed)
     client = FakeClient(isrcs=numbered(700))
     give_rows_an_isrc(monkeypatch)
     resumed, job_id = run_job(monkeypatch, client, exported, sweep=False)
     assert client.user.created == [outbound_fakes.CRATE]
     (playlist,) = client.playlists.values()
-    # Items two and three find the first item's record, so neither creates nor
-    # touches the visibility the first one set (R-834).
+    # Items two and three find the first's record and leave its visibility (R-834).
     assert playlist.privates == 1 and playlist.public is False
     assert playlist.members == ["701", "702", "703"]
     # ONE ADD FOR THE JOB'S THREE TRACKS (U270): the batch goes in one request.
@@ -1073,8 +1066,7 @@ def _three_tagged(installed, silence: bytes) -> dict[int, str]:
 
 
 def _releases_for_three_rows() -> dict[str, list]:
-    """Row 1 has an edit beside the plain record, row 2 two spelled alike, row 3 one
-    release. The export spells each row ``08A - 124 - Track N``."""
+    """Row 1 an edit beside the plain record, row 2 two alike, row 3 one release."""
     return {
         isrc_for("1"): [
             Track("501", "Track 1", "Radio Edit", ("Artist 1",)),
@@ -1212,9 +1204,8 @@ def test_the_adapter_pages_nothing_by_hand():
     assert calls == [], f"the adapter calls a paging method directly: {calls}"
 
 
-#: The removals the adapter may name on the client, each in the one member it
-#: may name it in: R-836's by position, U123's playlist delete, and U143's root
-#: playlist delete and legacy folder removal. Anything else is a new write.
+#: Each removal the adapter may name, in its one member: R-836's by position, U123's
+#: playlist delete, U143's root delete and legacy folder removal. Else a new write.
 ADMITTED_REMOVALS = {
     "remove_tracks": "remove_by_indices",
     "remove_playlist": "delete",
@@ -1251,8 +1242,7 @@ def _attributes(node: ast.AST, inside: str = ""):
 
 
 def test_the_client_library_still_offers_the_private_call_a_create_relies_on():
-    """``_make_private`` passes over a client with no such call rather than orphan the
-    playlist, so a rename upstream would turn R-834 off with a green suite."""
+    """``_make_private`` skips a client without the call, so a rename upstream turns R-834 off."""
     import tidalapi.playlist
 
     assert callable(getattr(tidalapi.playlist.UserPlaylist, "set_playlist_private", None))

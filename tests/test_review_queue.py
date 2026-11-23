@@ -1,11 +1,8 @@
 """U11: the review queue, the decision stores, and the split between them.
 
-R12: every state the product asks a person to adjudicate is a persisted,
-addressable review item, never a file the user must hand edit. The source
-system's comma separated files re-prompt every run, have no rejected state, and
-are per set directory; every test here is written against those three. The
-harder ones use a REAL second process, since only a second process sees what
-actually reached the disk.
+R12: every state a person adjudicates is a persisted, addressable review item,
+never a hand edited file. The harder tests use a REAL second process, since only
+a second process sees what reached the disk.
 """
 
 from __future__ import annotations
@@ -45,11 +42,7 @@ SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
-    """A configured library, saved, so a second process resolves the same one.
-
-    The environment variable is set as well as the file: ``from_dict`` relocates
-    a configured root onto whatever the environment says (P2).
-    """
+    """A configured, saved library; the environment is set too, as ``from_dict`` follows it (P2)."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
@@ -155,11 +148,7 @@ def _offer_one(store, *, key: str = "a", **overrides):
 
 
 def _offer_many(store, keys) -> list[str]:
-    """One item per key, in order, as ``_offer_one`` would make them.
-
-    Only the population skips the per commit fsync: WAL keeps every commit
-    visible to other connections and processes, and FULL is back before the test.
-    """
+    """One item per key, in order, skipping the per commit fsync for the population only."""
     store.conn.execute("PRAGMA synchronous=NORMAL")
     try:
         return [_offer_one(store, key=key).item_id for key in keys]
@@ -209,8 +198,7 @@ def test_an_identity_with_nothing_in_it_is_refused():
     assert excinfo.value.cause.reason == "review-selection-invalid"
 
 
-# The identity is NORMALIZED before it is hashed, so two producers that mean the
-# same candidate agree without coordinating, as ``_same_value`` already does.
+# The identity is NORMALIZED before hashing, so producers that mean one candidate agree.
 
 
 @pytest.mark.parametrize(
@@ -474,9 +462,8 @@ def test_clearing_an_item_that_was_never_resolved_changes_nothing(store):
     assert review.clear(store, item.item_id, actor="tester").verdict is None
 
 
-# A verdict this build cannot read (P2: two layers, one answer). The queue is
-# library scoped (KTD21), so builds at two versions share it; the Python reader
-# degrades an unknown verdict to unresolved, and every SQL consumer must agree.
+# A verdict this build cannot read (P2, KTD21): builds at two versions share the queue,
+# and every consumer reads an unknown verdict as unresolved.
 
 
 def _a_verdict_from_a_newer_build(store, item_id: str, raw: str = "deferred") -> None:
@@ -639,10 +626,7 @@ def test_batch_resolution_skips_what_is_already_settled_rather_than_refusing(sto
 
 
 def test_a_second_process_sweeping_the_same_predicate_does_not_abort_the_first(cfg, store):
-    """The loser of any one item's race must not abort a sweep that already wrote verdicts.
-
-    Two REAL processes, two hundred items, each sweep reporting what it settled.
-    """
+    """Two REAL sweeps over two hundred items: one losing a race does not abort the other."""
     outstanding = set(_offer_many(store, (f"{index:03d}" for index in range(200))))
     store.close()
     running = [
@@ -855,8 +839,7 @@ def test_an_unresolved_cause_says_how_many_are_outstanding_and_what_to_do():
     assert cause.remediation.steps
 
 
-# Part 7b: the third verdict, SUPERSEDED, written by the resolution that owned
-# the row and naming its rule, never by a person.
+# Part 7b: SUPERSEDED, written by the resolution that owned the row, never by a person.
 
 
 def test_supersede_retires_an_open_item_naming_the_rule_and_it_leaves_the_open_list(store):
@@ -1123,8 +1106,7 @@ def _declines_document(**fields) -> str:
     return json.dumps({"version": 1, "store": "declines", "decisions": [], **fields})
 
 
-#: Good JSON that is not this store. Each used to read as empty, and the next
-#: write then replaced the file with what it had read.
+#: Good JSON that is not this store, each once read as empty and then overwritten.
 STRUCTURALLY_WRONG_STORES = {
     "a top level list": "[]",
     "a top level scalar": "7",
@@ -1165,14 +1147,7 @@ def test_a_store_this_build_cannot_recognize_refuses_and_is_never_overwritten(cf
 def test_a_record_whose_payload_is_not_a_mapping_refuses_rather_than_raising(cfg):
     """``suppresses`` is asked once per candidate, so a type error out of it kills the pass."""
     declines = _declines_holding(
-        cfg,
-        json.dumps(
-            {
-                "version": 1,
-                "store": "declines",
-                "decisions": [{"id": "dc_one", "payload": [1, 2, 3]}],
-            }
-        ),
+        cfg, _declines_document(decisions=[{"id": "dc_one", "payload": [1, 2, 3]}])
     )
     with pytest.raises(CratekitError) as excinfo:
         declines.suppresses("removed-file", {"inode": 1})
@@ -1210,12 +1185,7 @@ PER_WORKER = 25
 
 
 def test_every_decision_and_revocation_by_eight_processes_at_once_survives(cfg):
-    """A lost record re-acquires a tombstoned version; a lost revocation stands forever.
-
-    ``atomic_write_bytes`` makes the rename atomic, not the read then write
-    around it. Eight processes record into each store at once (the two stores
-    have separate files and locks, so their rounds overlap), then eight revoke.
-    """
+    """Eight processes record, then revoke, into each store at once, and nothing is lost."""
     _all_succeed(
         [
             *_start_separate_processes(
@@ -1273,11 +1243,7 @@ def permissive_umask():
 
 
 def test_every_path_this_unit_creates_is_private_under_any_umask(permissive_umask, cfg):
-    """P1 over everything this unit writes, derived by walking three roots.
-
-    The queue and its sidecars, the decision store documents, and their sibling
-    locks, which ``os.open`` creates with an explicit mode.
-    """
+    """P1 over the queue, the decision store documents and their locks, derived by walking."""
     if not hasattr(os, "chmod"):  # pragma: no cover - platforms without POSIX modes
         return
     with review.open_store(cfg) as store:
@@ -1318,12 +1284,7 @@ def test_a_store_the_inventory_does_not_declare_is_refused(cfg):
 
 
 def test_a_match_producing_all_three_states_round_trips_across_two_processes(cfg, store):
-    """The unit's stated verification, end to end (R11).
-
-    Only needs review is an adjudication surface; matched and missing never reach
-    the queue. A person answers half, everything restarts, a second process
-    answers the rest.
-    """
+    """The unit's verification (R11): half answered, a restart, another process answers the rest."""
     matched = [{"row": "1", "state": "matched"}]
     needs_review = [{"row": "2", "state": "needs_review"}, {"row": "3", "state": "needs_review"}]
     missing = [{"row": "4", "state": "missing"}]
@@ -1512,9 +1473,8 @@ def test_an_export_and_an_import_round_trip_through_the_command_line(
     # A transport, not an editing surface: versioned JSON.
     document = json.loads(target.read_text())
     assert document["export"] == review.EXPORT_VERSION
-    # A SECOND library, reached as a relocation is: the root moves and the
-    # configuration follows it, since an environment override relocates any
-    # hand built Config straight back to this one.
+    # A SECOND library, reached as a relocation is, since an environment override
+    # relocates any hand built Config straight back to this one.
     elsewhere = tmp_path / "second-library"
     (elsewhere / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(elsewhere))
@@ -1651,16 +1611,12 @@ def test_an_import_of_a_file_that_is_not_there_refuses_by_name(tmp_path, cfg, st
     _refused("review", "import", str(tmp_path / "absent.json"), reason="review-file-unusable")
 
 
-# Not here on purpose: R33's "never reads standard input" is asserted over every
-# module by tests/test_cli_contract.py.
+# R33's "never reads standard input" is asserted over every module by test_cli_contract.
 
 
 # Part 11: what this unit settled that a LATER unit owes (P5)
-#
-# Each guard walks the syntax tree for a call that resolves to THIS module
-# through the import graph, never an attribute of the right name: a name match
-# was satisfied by an unrelated ``_Ranking.offer`` and missed ``from
-# cratekit.core.review import offer`` (P7). Both directions have fixtures.
+# Each guard resolves a call to THIS module through the import graph, never by
+# attribute name, which once matched an unrelated ``_Ranking.offer`` (P7).
 
 #: The reviewer's evasion: adjudicates nothing, hand edits the comma separated
 #: file R12 replaces behind an aliased import, and satisfies a name match.
@@ -1720,8 +1676,7 @@ def run(store, needing_review):
         )
 '''
 
-# The relative spellings a SIBLING of the review module would use, from the
-# residual "Two copies of one import walk still carry a relative-import defect".
+# The relative spellings a SIBLING of the review module would use.
 
 #: A sibling importing the symbol; ``node.module`` holds only ``review``.
 CORRECT_OFFER_SIBLING_RELATIVE_IMPORT = '''
@@ -1918,9 +1873,8 @@ def test_the_decision_store_countdown_stays_quiet_on_correct_code(source):
 
 # The countdowns themselves
 
-#: Every adjudication surface declared with NO legacy file, and the import
-#: target producing it (P5). While a target is in ``_pending.PENDING`` it is a
-#: countdown; once landed it must actually offer into its queue.
+#: Every adjudication surface with NO legacy file, and its producing import target (P5):
+#: a countdown while pending, and once landed it must offer into its queue.
 NEW_SURFACE_OWED_BY: dict[str, str] = {
     review.Queue.DUPLICATES: "cratekit.modules.reports",
     review.Queue.DELETION: "cratekit.deletion",
@@ -2129,11 +2083,7 @@ def test_the_duplicate_audit_offers_its_pairs_into_the_duplicates_queue():
 
 
 def test_the_adoption_plan_becomes_review_items_rather_than_a_file():
-    """U23's obligation, ARMED (R26): offers into the queue and writes no comma separated file.
-
-    A SHAPE check over the whole package (P3); the behavioural half is
-    ``tests/test_adoption.py``.
-    """
+    """U23's obligation, ARMED (R26): a shape check (P3); the behaviour is in test_adoption."""
     assert _target_offers_into("cratekit.adopt", "Queue.ADOPTION")
     offenders: list[str] = []
     for name, source in package_modules(SRC_ROOT / "cratekit" / "adopt"):

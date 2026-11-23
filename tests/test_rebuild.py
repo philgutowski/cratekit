@@ -1,8 +1,7 @@
 """The tree rebuild, the convergence check, and the record between them (U36).
 
-A tree that has cut over lives only in the database, so a restore leaves it
-short and nothing else notices; these tests cover noticing, reporting and
-repairing. D1: nothing below names a real volume, person or track.
+A cut over tree lives only in the database, so a restore leaves it short; these
+tests cover noticing, reporting and repairing that. D1 holds throughout.
 """
 
 from __future__ import annotations
@@ -1202,8 +1201,7 @@ def test_a_destination_that_lost_every_track_is_still_compared(
 def test_two_declared_destinations_on_one_display_pair_refuse(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """Two destinations on one display pair would file into one playlist for good; refused as
-    the XML side refuses it (U18), by the rebuild and by the read-only check."""
+    """Two destinations on one display pair are refused, by the rebuild and the check (U18)."""
     both = _energy_truth(cfg, declared, [(COMPOSED, 1), (PLAIN, declared.energy.scale_max)])
     _rebuild(cfg, db, adopted_root, declared, [], truth=both)
     nodes = rebuild.read_tree(db, str(adopted_root.ID))

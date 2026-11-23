@@ -1,11 +1,8 @@
 """R-796: a published genre by ISRC, from a general catalogue, after Beatport.
 
-Guarded: an unread catalogue or an unaskable file is never absence (six
-answers, one meaning absence); a refusal is recorded, never answered, and
-ends the catalogue's part in the run; an album word never stands in for an
-unread Beatport or a usable answer; and only a word that maps to a folder is
-written. Answers are synthetic JSON in the shape measured on 2026-10-01; the
-catalogue's own words are typed, as a measurement of its vocabulary.
+An unread catalogue or unaskable file is never absence; a refusal is recorded and
+ends the catalogue's part in the run; an album word never stands in for Beatport;
+only a word mapping to a folder is written. Answers are synthetic, shaped as measured.
 """
 
 from __future__ import annotations
@@ -48,18 +45,12 @@ BEATPORT_ART = "https://geo-media.beatport.com/image_size/250x250/cover-one.jpg"
 ARTIST = "Vulfpeck"
 TITLE = "track"
 
-#: A word no rule, alias or display in the template claims. Asserted below, so a
-#: template that one day declares it fails here rather than quietly changing
-#: what the tests around it prove.
+#: A word nothing in the template claims, asserted below so a template claiming it fails.
 UNDECLARED = "a genre word nothing declares"
 
 
 def _tag_with_no_bucket() -> str:
-    """A source string a declared rule answers with a TAG and no bucket.
-
-    Read off the rules, the only place that shape lives. It is the one answer
-    neither declined nor off taxonomy that still maps to no folder.
-    """
+    """A source string a declared rule answers with a TAG and no bucket, read off the rules."""
     for rule in TAXONOMY.suggest:
         if rule.tag and not rule.bucket and rule.all_of:
             word = " ".join(rule.all_of)
@@ -73,12 +64,9 @@ TAG_ONLY = _tag_with_no_bucket()
 
 
 def _with_no_vocabulary() -> Taxonomy:
-    """The shipped template as a copy written before R-799 holds it.
+    """The shipped template as a copy before R-799: no catalogue table, words resolve by alias.
 
-    No table of the general catalogue's own, so its words resolve by the
-    buckets' aliases, as every active copy does until it takes the edit. Section
-    B drives the chooser's tests on this path, since a declared table answers
-    before any of them is reached.
+    Section B drives the chooser's tests on this path.
     """
     source = resources.files("cratekit") / "templates" / "taxonomy.default.toml"
     raw = tomllib.loads(source.read_text(encoding="utf-8"))
@@ -135,11 +123,7 @@ RATE_LIMITED = Fetched(note="rate limited, 3 attempts spent without an answer", 
 
 
 def deezer_fetch(track, album=None, seen: list[str] | None = None):
-    """A fetch seam answering the two URLs the lookup asks, and nothing else.
-
-    Any other request, or an album no test supplied, fails the test, so "the
-    album was never asked" holds by construction.
-    """
+    """A fetch seam answering the lookup's two URLs; any other request fails the test."""
 
     def fetch(url: str) -> Fetched:
         if seen is not None:
@@ -236,8 +220,7 @@ def test_an_isrc_is_folded_before_it_is_asked_about():
     ],
 )
 def test_a_field_holding_several_values_is_read_as_its_first_isrc(given):
-    """Driven on 2026-10-01: an ID3 frame written with two ISRCs reads back as
-    one string joined by a null, which folds to nothing as a whole."""
+    """An ID3 frame with two ISRCs reads back joined by a null, which folds to nothing whole."""
     seen: list[str] = []
     said = lookup_over(deezer_track(), deezer_album(["Rock"]), seen=seen)(given)
     assert said.answer == "matched"
@@ -245,8 +228,7 @@ def test_a_field_holding_several_values_is_read_as_its_first_isrc(given):
 
 
 def test_the_two_value_id3_frame_is_the_shape_the_reader_really_hands_back(tmp_path):
-    """The producer, driven: the string the split above is written against is
-    what ``core.tags`` reads off a real ID3 container carrying two values."""
+    """The split's input is what ``core.tags`` reads off a real ID3 container with two values."""
     path = synth_container(tmp_path, ".mp3")
     assert tags.write_tag_values(path, "isrc", [ISRC, OTHER_ISRC])
     held = tags.read_tag(path, "isrc")
@@ -288,8 +270,7 @@ def test_a_track_answer_nobody_can_read_a_genre_off_is_never_a_miss(page, answer
 
 
 def test_a_429_is_waited_on_by_the_shared_backoff_and_then_is_blocked():
-    """The 429 scenario through the real fetch. Three attempts, two waits, and
-    then the answer is that the catalogue refused, with nothing tried after."""
+    """A 429 through the real fetch: three attempts, two waits, refused, nothing tried after."""
     calls: list[dict] = []
     waits: list[float] = []
 
@@ -383,8 +364,7 @@ def test_a_track_whose_album_the_catalogue_does_not_list_is_not_a_miss():
 
 
 def test_a_refusal_is_remembered_and_nothing_more_is_asked_in_the_run():
-    """The first BLOCKED answer ends the catalogue's part in the run. The next
-    ISRC is answered BLOCKED without a request, and says it was not asked."""
+    """The first BLOCKED ends the catalogue's run; the next ISRC is BLOCKED without a request."""
     seen: list[str] = []
     lookup = lookup_over(QUOTA, seen=seen)
 
@@ -416,8 +396,7 @@ def test_a_block_on_the_album_is_remembered_too():
     ],
 )
 def test_only_a_refusal_is_remembered(page):
-    """An outage, a parse break and a miss are answers about one request, and
-    the next ISRC is asked about."""
+    """An outage, a parse break and a miss are about one request; the next ISRC is asked."""
     seen: list[str] = []
     lookup = lookup_over(page, seen=seen)
     lookup(ISRC)
@@ -465,15 +444,13 @@ def test_an_album_that_could_not_be_read_is_asked_for_again():
 
 
 def test_no_picture_is_read_off_the_general_catalogues_answer():
-    """The answer carries a cover and this reader takes none. Pictures stay the
-    record shops' rows."""
+    """The answer's cover is not taken; pictures stay the record shops' rows."""
     said = lookup_over(deezer_track(), deezer_album(["Rock"]))(ISRC)
     assert COVER not in repr(said)
 
 
 def test_the_request_names_this_tool_and_not_a_browser(monkeypatch):
-    """KTD7. The lookup's own fetch, built with no seam injected, reaches the one
-    HTTP getter with headers that say what is asking."""
+    """KTD7: the unseamed fetch reaches the one HTTP getter with headers naming the asker."""
     sent: list[dict] = []
 
     class Answered:
@@ -495,8 +472,7 @@ def test_the_request_names_this_tool_and_not_a_browser(monkeypatch):
 
 
 def test_the_record_shops_are_still_asked_with_the_headers_they_were():
-    """The headers seam is new on the shared fetch, and its default is the old
-    constant, so the three catalogues are asked exactly as before."""
+    """The headers seam defaults to the old constant, so the other catalogues ask as before."""
     sent: list[dict] = []
 
     class Answered:
@@ -512,8 +488,7 @@ def test_the_record_shops_are_still_asked_with_the_headers_they_were():
 
 
 def test_the_suite_cannot_reach_the_live_catalogue_through_the_shared_lookup():
-    """The conftest guard. A worker test that binds only the searcher still
-    hands every file to this lookup, and it fails the test before a request."""
+    """The conftest guard fails a worker test binding only the searcher, before a request."""
     with pytest.raises(AssertionError, match="reached the live general catalogue"):
         published.for_lookup()(ISRC)
     assert published.for_lookup()("").answer == tag.NO_ISRC
@@ -530,15 +505,13 @@ def test_the_binders_build_without_touching_the_network(monkeypatch):
 
 
 def test_the_lookup_binder_hands_back_one_lookup_per_process(monkeypatch):
-    """A worker asks for its seam once per file. The refusal a lookup remembers
-    is only remembered across files if every file meets the same lookup."""
+    """Every file meets the same lookup, so a refusal is remembered across files."""
     monkeypatch.setattr(published, "_shared", [])
     assert published.for_lookup() is published.for_lookup()
 
 
 def test_a_refusal_on_one_file_reaches_the_next_files_seam(monkeypatch):
-    """The latch, through the binders a worker uses: two seams, built one per
-    file as the worker builds them, over one refused catalogue."""
+    """The latch through the binders, two seams built one per file over one refused catalogue."""
     seen: list[str] = []
     shared = lookup_over(QUOTA, seen=seen)
     monkeypatch.setattr(published, "_shared", [shared])
@@ -552,8 +525,7 @@ def test_a_refusal_on_one_file_reaches_the_next_files_seam(monkeypatch):
 
 
 def test_the_workers_seam_is_built_over_the_lookup_binder(monkeypatch):
-    """Replacing ``for_lookup`` replaces what a worker asks, which is the only
-    way a test, or the label gate's, hands a fake in."""
+    """Replacing ``for_lookup`` replaces what a worker asks, the one way to hand a fake in."""
     asked: list[object] = []
 
     def fake(isrc: object) -> published.Published:
@@ -596,21 +568,14 @@ def test_the_first_genre_that_maps_to_a_folder_is_chosen():
 
 @pytest.mark.parametrize("passed_over", [UNDECLARED, FALLBACK_GENRE, TAG_ONLY, REFUSED[0], ""])
 def test_a_word_that_maps_to_no_folder_is_passed_over_for_the_next(passed_over):
-    """Each way a word fails to map: nothing declares it, it resolves to a name too coarse to be
-    a tag, a rule gives it a tag with no bucket, the taxonomy refuses it outright, or it is
-    empty."""
+    """Each way a word fails to map: undeclared, too coarse, a bare tag, refused, or empty."""
     assert published.choose(NO_TABLE, [passed_over]) is None
     chosen = published.choose(NO_TABLE, [passed_over, SUB_GENRE])
     assert chosen is not None and chosen[0] == SUB_GENRE
 
 
 def _bucket_named_by_no_alias() -> str:
-    """A bucket display the resolver answers with no bucket identifier.
-
-    The resolver's last tier passes such a display through rather than off
-    taxonomy, since routing files it exactly. Read off the template so the
-    fixture moves with it.
-    """
+    """A bucket display the resolver passes through with no identifier, read off the template."""
     for bucket in TAXONOMY.buckets:
         answer = routing.suggest_tag(TAXONOMY, bucket.display)
         if (
@@ -624,8 +589,7 @@ def _bucket_named_by_no_alias() -> str:
 
 
 def test_a_word_that_is_a_buckets_own_name_maps_to_that_folder():
-    """The review drove this: a folder exists, routing files the word in it by
-    display, and asking only for a bucket identifier declined it."""
+    """A word routing files by display, though asking for a bucket identifier declined it."""
     word = _bucket_named_by_no_alias()
     assert published.choose(NO_TABLE, [word]) == (word, word)
     assert routing.resolve_bucket(NO_TABLE, word).match is routing.Match.PASSTHROUGH
@@ -635,10 +599,8 @@ def test_no_genres_chooses_nothing():
     assert published.choose(TAXONOMY, []) is None
 
 
-#: The catalogue's own top level words, measured on 2026-10-01, that the shipped
-#: template files, and the two it must not. Typed because they are the
-#: catalogue's vocabulary. The last two of the first list are the aliases this
-#: unit added.
+#: The catalogue's own top level words (measured 2026-10-01) the template files, and the
+#: two it must not. The last two of the first list are the aliases this unit added.
 PLACED = [
     "Rock", "R&B", "Folk", "Reggae", "Jazz", "Classical", "Pop", "Alternative",
     "Country", "Soul & Funk", "Rap/Hip Hop",
@@ -655,8 +617,7 @@ def test_the_shipped_template_files_the_catalogues_measured_words(word):
 
 @pytest.mark.parametrize("word", NOT_PLACED)
 def test_the_catalogues_catch_all_words_for_dance_music_are_declined(word):
-    """AE2's half of the vocabulary. The general catalogue calls most dance
-    music by one of these, and neither may become a file's genre."""
+    """AE2: the catalogue's dance catch-alls, neither of which may become a file's genre."""
     assert published.choose(TAXONOMY, [word]) is None
 
 
@@ -672,8 +633,7 @@ def test_the_aliased_word_for_a_style_resolves_to_a_sub_and_routes_into_it():
 
 @pytest.mark.parametrize(("word", "folder"), [("Soul & Funk", "Soul"), ("Rap/Hip Hop", "Hip-Hop")])
 def test_the_aliased_word_for_soul_or_hip_hop_resolves_to_the_folder_u118_gave_it(word, folder):
-    """Each resolved to a style sub until R-797 and U118 moved those subs to folders of their
-    own, split by energy, and "Soul & Funk" to Soul by its first word."""
+    """Moved to energy split folders by R-797 and U118, and "Soul & Funk" to Soul."""
     suggestion = routing.suggest_tag(TAXONOMY, word)
     promoted = next(bucket for bucket in TAXONOMY.buckets if bucket.display == folder)
     assert promoted.formerly or promoted.split_from
@@ -734,8 +694,7 @@ def test_a_file_that_needs_no_genre_is_not_asked_about():
 
 @pytest.mark.parametrize("beatport", ["unreachable", "parse-break", "blocked", searchers.NOT_ASKED])
 def test_beatport_must_have_answered_before_the_general_catalogue_is_asked(beatport):
-    """KTD4. A fallback's MISS made this a decline, and Beatport itself was not
-    read, so an album level answer written now would stand in for Beatport's."""
+    """KTD4: a fallback's MISS with Beatport unread is a decline, no album word written."""
     hit = SearchHit(
         answers=(
             SourceAnswer(searchers.BEATPORT, beatport),
@@ -753,8 +712,7 @@ def test_beatport_must_have_answered_before_the_general_catalogue_is_asked(beatp
 
 @pytest.mark.parametrize("given", ["", "CAT-0042"])
 def test_a_file_with_no_isrc_is_said_to_have_none_whatever_beatport_answered(given):
-    """KTD8. Beatport was not read, so nothing would be asked anyway, and the file still counts
-    as one with no ISRC, since another run will not change that."""
+    """KTD8: Beatport unread, nothing asked, and the file still counts as having no ISRC."""
     hit = SearchHit(
         answers=(
             SourceAnswer(searchers.BEATPORT, "unreachable"),
@@ -816,8 +774,7 @@ def test_an_answer_that_maps_to_no_folder_is_declined_and_says_what_was_answered
 
 
 def test_a_declined_answer_beside_beatports_own_declined_word_keeps_beatports():
-    """AE2 at the seam. Both answers are in the record, and the file's own
-    source genre stays the record shop's."""
+    """AE2 at the seam: both answers recorded, the source genre stays the record shop's."""
     hit = SearchHit(
         genre=None,
         source=searchers.BEATPORT,
@@ -836,8 +793,7 @@ def test_a_declined_answer_beside_beatports_own_declined_word_keeps_beatports():
 
 
 def test_a_published_genre_over_beatports_declined_word_is_written_and_keeps_beatports_picture():
-    """Beatport answered with a catch-all, which is not a usable answer, so the general
-    catalogue is asked and its answer is written."""
+    """A Beatport catch-all is not usable, so the general catalogue's answer is written."""
     hit = SearchHit(
         genre=None,
         source=searchers.BEATPORT,
@@ -902,8 +858,7 @@ BANDCAMP_CHALLENGE = Fetched(
 
 
 def shops(beatport: str = EMPTY_BEATPORT, *, traxsource=TRAXSOURCE_403, bandcamp=BANDCAMP_CHALLENGE):
-    """The searcher over the walk before U244, in the state measured on the author's machine:
-    Beatport answering and both fallbacks refusing."""
+    """The searcher before U244 as measured: Beatport answering, both fallbacks refusing."""
     return searchers.catalogue_searcher(
         TAXONOMY,
         fetch=_all_three(beatport=beatport, traxsource=traxsource, bandcamp=bandcamp),
@@ -913,13 +868,10 @@ def shops(beatport: str = EMPTY_BEATPORT, *, traxsource=TRAXSOURCE_403, bandcamp
 
 
 def test_ae1_a_track_beatport_does_not_carry_gets_the_published_genre(track):
-    """AE1. Beatport misses, the general catalogue calls the album by a word the taxonomy has a
-    folder for, and that is written."""
+    """AE1: Beatport misses, the catalogue's album word has a folder, and that is written."""
     word = "Rock"
     suggestion = routing.suggest_tag(TAXONOMY, word)
-    # THE FOLDER IS PINNED BY IDENTIFIER, not only by asking the resolver the
-    # code under test asks: AE1 names NonElectronic / Rock, and the tag written
-    # is that sub's own display, read off the template.
+    # THE FOLDER IS PINNED BY IDENTIFIER (AE1's NonElectronic / Rock), not by the resolver.
     assert (suggestion.bucket_id, suggestion.sub_id) == ("non_electronic", "rock")
     (rock,) = [sub for sub in TAXONOMY.bucket("non_electronic").subs if sub.id == "rock"]
     assert suggestion.tag == rock.display
@@ -948,8 +900,7 @@ def test_ae1_a_track_beatport_does_not_carry_gets_the_published_genre(track):
 
 
 def test_ae2_two_coarse_answers_write_nothing_and_the_record_shows_both(track):
-    """AE2. Beatport's catch-all and the general catalogue's, in the words each
-    was measured to use."""
+    """AE2: Beatport's catch-all and the catalogue's, in the words each was measured to use."""
     beatport = _beatport_page([_beatport_track(ARTIST, TITLE, "Electronica")])
 
     result = tag.tag_one(
@@ -980,8 +931,7 @@ def test_ae3_a_usable_beatport_answer_is_written_and_the_general_catalogue_is_no
 
 
 def test_ae4_a_file_with_no_isrc_is_reported_as_that_and_not_as_no_hit(tmp_path, silence):
-    """AE4, with every record shop answering MISS, which before this unit was a clean
-    ``no-hit``."""
+    """AE4, every record shop answering MISS, which was a clean ``no-hit`` before this unit."""
     path = tmp_path / f"{TITLE}.flac"
     shutil.copy2(silence, path)
     seen: list[str] = []
@@ -1000,8 +950,7 @@ def test_ae4_a_file_with_no_isrc_is_reported_as_that_and_not_as_no_hit(tmp_path,
 
 
 def test_a_file_with_no_isrc_beside_blocked_fallbacks_keeps_the_unread_reason(tmp_path, silence):
-    """``sources-unread`` keeps its R-791 meaning and wins. The answer still
-    says the file has no ISRC, which is what the verb's warning counts."""
+    """``sources-unread`` keeps its R-791 meaning and wins; the answer still says no ISRC."""
     path = tmp_path / f"{TITLE}.flac"
     shutil.copy2(silence, path)
 
@@ -1050,8 +999,7 @@ def test_a_blocked_general_catalogue_leaves_the_file_untagged_and_askable(track)
 
 
 def test_a_file_that_already_has_a_genre_is_not_asked_about(track):
-    """Fill if empty. The file is searched for its picture, and the general
-    catalogue is never asked for a genre the file does not need."""
+    """Fill if empty: searched for its picture, the catalogue never asked for a genre."""
     assert tags.write_genre(track, BUCKET_GENRE)
 
     result = tag.tag_one(track, searcher=shops(), published=opinion(never_asked))
@@ -1062,8 +1010,7 @@ def test_a_file_that_already_has_a_genre_is_not_asked_about(track):
 
 
 def test_a_searcher_that_refuses_is_not_offered_to_the_general_catalogue(track):
-    """No record shop was read, so the refusal propagates as it did, and the
-    general catalogue's answer does not stand in for a Beatport nobody asked."""
+    """No record shop read: the refusal propagates, the catalogue never stands in."""
 
     def refusing(artist: str, title: str):
         raise refuse(
@@ -1080,8 +1027,7 @@ def test_a_searcher_that_refuses_is_not_offered_to_the_general_catalogue(track):
 
 
 def test_the_shipped_searcher_refusing_reaches_the_same_end(track):
-    """The producer driven: Beatport unreachable and both fallbacks blocked is
-    the shipped searcher's own refusal, with nothing asked after it."""
+    """Beatport unreachable and both fallbacks blocked is the searcher's own refusal."""
     searcher = shops(Fetched(note="transport failure: down"))
     with pytest.raises(CratekitError) as raised:
         tag.tag_one(track, searcher=searcher, published=opinion(never_asked))
@@ -1089,8 +1035,7 @@ def test_the_shipped_searcher_refusing_reaches_the_same_end(track):
 
 
 def test_a_published_genre_brings_no_picture_and_the_image_fetch_is_not_called(track):
-    """The file has no picture and no record shop named one. The general
-    catalogue supplies the genre and nothing is fetched for a cover."""
+    """No picture anywhere: the catalogue supplies the genre and no cover is fetched."""
 
     def fetch_image(url: str) -> bytes:
         raise AssertionError(f"a picture was fetched, {url}")
@@ -1125,8 +1070,7 @@ def test_a_declined_published_word_does_not_put_the_picture_question_to_the_cata
 
 
 def test_a_match_with_no_genre_leaves_the_file_as_the_shops_left_it(track):
-    """Every record shop missed and the general catalogue knows the track with no genre
-    published."""
+    """Every record shop missed; the catalogue knows the track but publishes no genre."""
     result = tag.tag_one(
         track,
         searcher=shops(traxsource="<html></html>", bandcamp="<html><ul></ul></html>"),
@@ -1139,8 +1083,7 @@ def test_a_match_with_no_genre_leaves_the_file_as_the_shops_left_it(track):
 
 
 def test_beatports_picture_is_embedded_under_a_published_genre_and_says_whose_it_is(track):
-    """Beatport matched with a catch-all and named a cover. The general
-    catalogue supplies the genre, and the picture is still Beatport's row's."""
+    """A Beatport catch-all naming a cover: the genre is the catalogue's, the picture Beatport's."""
     import io
 
     from PIL import Image
@@ -1209,8 +1152,7 @@ def test_the_folder_pass_hands_the_seam_to_every_file(tmp_path, silence):
 
 
 def test_the_isrc_tag_is_not_read_for_a_file_a_record_shop_settled(track, monkeypatch):
-    """The seam is told None and the container is not opened for a field
-    nothing will use, which on a folder Beatport mostly answers is most files."""
+    """The seam is told None and the container is not opened for a field nothing will use."""
     read: list[str] = []
     real = tags.read_tag
 
