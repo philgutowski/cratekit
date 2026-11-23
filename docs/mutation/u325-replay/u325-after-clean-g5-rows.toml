@@ -1,0 +1,18 @@
+name = "u325-after-clean-g5"
+pass_kind = "replay"
+
+[[rows]]
+id = "r926.G5_atomic_write_unchecked"
+source = { table = "r926.json", id = "G5_atomic_write_unchecked" }
+description = "atomic_write_bytes no longer checks, so a ledger or token write from an unisolated test lands anywhere"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    _refuse_write_outside_test_root(path, system_temporary=True)
+    mkdir_private(path.parent)
+    fd, tmp = tempfile.mkstemp('''
+new = '''
+    mkdir_private(path.parent)
+    fd, tmp = tempfile.mkstemp('''
+moved = "Same lines in atomic_write_bytes; U298 renamed _mkdir_private to the public mkdir_private"

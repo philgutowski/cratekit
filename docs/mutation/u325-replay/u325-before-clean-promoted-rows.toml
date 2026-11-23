@@ -1,0 +1,95 @@
+name = "u325-before-clean-promoted"
+pass_kind = "replay"
+
+[[rows]]
+id = "r349-b.B3_clear_before_attempt"
+source = { table = "r349-b.json", id = "B3_clear_before_attempt" }
+description = "The handler no longer clears the previous attempt's record"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    backup_facts.clear_outcome(job.job_id, named)
+    report = perform_backup('''
+new = '    report = perform_backup('
+
+[[rows]]
+id = "r349-b.B4_stage_error_completes"
+source = { table = "r349-b.json", id = "B4_stage_error_completes" }
+description = "A staging write error escapes the handler instead of completing the item"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except OSError:
+        return None
+    return jobs.Produced'''
+new = '''
+    except KeyError:
+        return None
+    return jobs.Produced'''
+
+[[rows]]
+id = "r349-c.C2_write_failure_step"
+source = { table = "r349-c.json", id = "C2_write_failure_step" }
+description = "A failed record write returns the refusal without the step saying the record is missing"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_cli.py"]
+old = '''
+    except OSError as exc:
+        cause = refusal.cause'''
+new = '''
+    except OSError as exc:
+        return refusal
+        cause = refusal.cause'''
+
+[[rows]]
+id = "r757-c1.S3_work_body_plans_fast"
+source = { table = "r757-c1.json", id = "S3_work_body_plans_fast" }
+description = "perform_backup: plan in the fast mode whatever the payload froze"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '            full=bool(payload.get(FULL)),'
+new = '            full=False,'
+
+[[rows]]
+id = "r746-a.G7_sql_value_check_disarmed"
+source = { table = "r746-a.json", id = "G7_sql_value_check_disarmed" }
+description = "assert_created_rows_are_gridless: a value read from SQL is never a violation"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_db.py"]
+old = '''
+            if value not in EMPTY_ON_CREATE:
+                violations.append(f"{table}.{name} = {value!r}")'''
+new = '''
+            if False:
+                violations.append(f"{table}.{name} = {value!r}")'''
+
+[[rows]]
+id = "r746-d.G5_content_row_read_back_against_five_not_ten"
+source = { table = "r746-d.json", id = "G5_content_row_read_back_against_five_not_ten" }
+description = "assert_created_rows_are_gridless: a content row is held to the playlist tables' five columns, so a key or a rate rides in. Measured again after the key taint test its zero bought"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py", "tests/test_rb_writer_guard.py"]
+old = '        policy = CONTENT_ROW_EMPTY_COLUMNS if table == CONTENT_TABLE else GRIDLESS_ON_CREATE_COLUMNS'
+new = '        policy = GRIDLESS_ON_CREATE_COLUMNS'
+
+[[rows]]
+id = "u263.D20_energy_load"
+source = { table = "u263.json", id = "D20_energy_load" }
+description = "energy.features_from_path: decode through librosa.load again, so an M4A is unmeasured"
+file = "src/cratekit/analysis/energy.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py", "tests/test_analysis_workers.py"]
+old = '''
+        samples, decoded_rate = decode.load(
+            path, MEASURE_RATE, offset=offset, duration=SEGMENT_SECONDS
+        )'''
+new = '''
+        samples, decoded_rate = __import__("librosa").load(
+            str(path), sr=MEASURE_RATE, mono=True, offset=offset, duration=SEGMENT_SECONDS
+        )'''

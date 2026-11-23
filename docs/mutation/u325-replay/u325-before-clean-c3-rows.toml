@@ -1,0 +1,14 @@
+name = "u325-before-clean-c3"
+pass_kind = "replay"
+
+[[rows]]
+id = "u254.C3_append_test_root"
+source = { table = "u254.json", id = "C3_append_test_root" }
+description = "append_durable_bytes: drop the test root refusal"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '''
+    _refuse_write_outside_test_root(path, system_temporary=True)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'''
+new = '    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'

@@ -1,0 +1,10 @@
+[
+ "tests/test_config_test_root.py::test_a_link_inside_the_root_aimed_outside_it_is_refused",
+ "tests/test_config_test_root.py::test_a_lock_outside_every_temporary_folder_is_refused",
+ "tests/test_config_test_root.py::test_a_path_outside_the_root_is_refused_with_the_isolation_in_place",
+ "tests/test_config_test_root.py::test_a_path_resolution_that_leaves_the_root_is_refused",
+ "tests/test_config_test_root.py::test_a_state_write_outside_every_temporary_folder_is_refused",
+ "tests/test_config_test_root.py::test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place",
+ "tests/test_config_test_root.py::test_an_append_outside_every_temporary_folder_is_refused",
+ "tests/test_config_test_root.py::test_an_append_outside_the_root_is_refused_with_the_isolation_in_place"
+]
