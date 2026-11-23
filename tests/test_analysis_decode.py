@@ -344,3 +344,70 @@ def test_a_zero_takes_the_sign_each_measured_release_gives_it(left, right, befor
 def test_only_a_measured_release_takes_the_one_add(version, rule):
     """A release not measured, a patch or a pre release, is mixed by its own ``to_mono``."""
     assert decode._measured_zero_rule(version) is rule
+
+
+class _Centred:
+    """A librosa stand in and the decoder's seams, recording what ``centred`` asks of each (U344)."""
+
+    def __init__(self, monkeypatch, *, length, opens=True):
+        import sys
+        import types
+
+        self.loads: list[tuple] = []
+        self.ffmpeg = 0
+        stand_in = types.ModuleType("librosa")
+
+        def get_duration(*, path):
+            if isinstance(length, Exception):
+                raise length
+            return length
+
+        stand_in.get_duration = get_duration
+        monkeypatch.setitem(sys.modules, "librosa", stand_in)
+
+        def load(path, rate, *, offset=0.0, duration=None):
+            self.loads.append((path, rate, offset, duration))
+            return "loaded", rate
+
+        def asked(path):
+            if isinstance(opens, Exception):
+                raise opens
+            return opens
+
+        def ffmpeg_samples(path):
+            self.ffmpeg += 1
+            return np.arange(3000, dtype=np.float32)[None, :], 10  # 300 s at 10 Hz
+
+        monkeypatch.setattr(decode, "load", load)
+        monkeypatch.setattr(decode, "libsndfile_opens", asked)
+        monkeypatch.setattr(decode, "_ffmpeg_samples", ffmpeg_samples)
+        monkeypatch.setattr(decode, "_mono_at", lambda librosa, window, nr, r: window)
+
+
+def test_the_centre_of_a_file_libsndfile_reads_is_one_windowed_load(monkeypatch):
+    seen = _Centred(monkeypatch, length=300.0)
+    assert decode.centred("a.flac", 22050, 120.0) == ("loaded", 22050)
+    assert seen.loads == [("a.flac", 22050, 90.0, 120.0)]
+    assert seen.ffmpeg == 0
+
+
+def test_a_file_shorter_than_the_window_is_read_from_its_top(monkeypatch):
+    seen = _Centred(monkeypatch, length=100.0)
+    decode.centred("a.flac", 22050, 120.0)
+    assert seen.loads == [("a.flac", 22050, 0.0, 120.0)]
+
+
+@pytest.mark.parametrize("opens", [True, RuntimeError("no soundfile")], ids=["opens", "not-asked"])
+def test_a_length_that_fails_for_a_file_libsndfile_opens_reads_from_the_top(monkeypatch, opens):
+    seen = _Centred(monkeypatch, length=RuntimeError("no length"), opens=opens)
+    decode.centred("a.flac", 22050, 120.0)
+    assert seen.loads == [("a.flac", 22050, 0.0, 120.0)]
+    assert seen.ffmpeg == 0
+
+
+def test_a_file_only_ffmpeg_reads_is_decoded_once_and_its_centre_cut(monkeypatch):
+    seen = _Centred(monkeypatch, length=RuntimeError("no length"), opens=False)
+    window, rate = decode.centred("a.m4a", 22050, 120.0)
+    assert rate == 22050
+    assert seen.ffmpeg == 1 and seen.loads == []
+    assert np.array_equal(np.asarray(window).ravel(), np.arange(900, 2100, dtype=np.float32))

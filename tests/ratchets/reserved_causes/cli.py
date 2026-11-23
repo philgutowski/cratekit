@@ -217,6 +217,8 @@ KEBAB_LITERALS = {
         'internal-error',
         # 2026-11-05, U212: the name step's refusal it reads for a second copy.
         'rename-incomplete',
+        # 2026-11-23, U344: the restamp's no op when the run scored every staged file.
+        'scored-by-run',
         'source-missing',
     ],
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],

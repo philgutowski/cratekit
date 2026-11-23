@@ -18,16 +18,10 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping
 
 from cratekit.core import config
+from cratekit.core.rb_call_time import writer as _writer
 
 #: The writer's own logger, so a record reads as it did before the split.
 logger = logging.getLogger("cratekit.core.rb_writer")
-
-
-def _writer():
-    """``rb_writer`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import rb_writer
-
-    return rb_writer
 
 
 def snapshot_db(

@@ -42,9 +42,14 @@ U300 met three shapes of it on one split:
   targets `"cratekit.core.module.name"`), and every attribute read off it
   under any alias.
 - In the part, read every such name, every name the module still defines and
-  every name another part defines through the module at call time: a three
-  line `_writer()` that imports the module inside the function, and
-  `_writer().name` at each use. Import the part's leaf data directly.
+  every name another part defines through the module at call time: an
+  accessor that imports the module inside the function, and
+  `_writer().name` at each use. Since U329 the writer's and the session's
+  families each have one accessor in a part of its own (`rb_call_time.writer`,
+  `session_call_time.session`), which every part binds as `_writer` or
+  `_session` rather than copying; the restore's is `_restore` in
+  `restore_perform`, which `restore_retention` and `restore_recovery` import
+  (`restore_tags`, its fourth part, reads none). Import the part's leaf data directly.
 - Read module objects a test patches (`os`, `shutil`, `tempfile`) through the
   module as well, and keep them imported on it.
 - After the split, check every attribute anything reads off the module still

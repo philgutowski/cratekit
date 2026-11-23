@@ -17,14 +17,7 @@ from cratekit.core.cause import (
     refuse,
 )
 from cratekit.core.exit_codes import Remedy
-
-
-def _session():
-    """``session`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import session
-
-    return session
-
+from cratekit.core.session_call_time import session as _session
 
 #: Which refusal slug each mount verdict raises, a table so a new mount state
 #: with no entry fails a test rather than falling to a default.
