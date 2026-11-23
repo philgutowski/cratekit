@@ -3,8 +3,11 @@
 The engine is :mod:`cratekit.analysis.rekordbox_check`. What a skill needs
 from this verb is the exit status: **0** when the visit is done, **12** (a
 pending action verified by this verb) while rows wait for analysis, **27**
-under ``analysis-suspect`` when what rekordbox wrote looks wrong. An empty
-scope ends ``no_op``, exit 0, with a warning that nothing was checked.
+under ``analysis-suspect`` when a grid looks wrong. An empty scope ends
+``no_op``, exit 0, with a warning that nothing was checked. A title whose key
+or tempo differs from rekordbox's is counted and named with the verb that
+gives the title rekordbox's, ``crate analyze adopt``, and never holds the
+visit (U327).
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -30,6 +33,9 @@ NOTHING_CHECKED = "analysis-check-nothing"
 
 #: The warning naming the session records the log could not read.
 RECORDS_UNREAD = "analysis-check-records-unread"
+
+#: The verb that gives a differing title rekordbox's key and tempo (U327).
+ADOPT_VERB = "crate analyze adopt"
 
 #: How many rows a check's detail names before it counts the rest.
 _NAMED = 8
@@ -168,9 +174,16 @@ def checks_of(found: rc.Check) -> list[dict[str, Any]]:
             f"; the recorded agreement puts the floor for {compared} at "
             f"{100 * floor:.1f}% equal"
         )
-    checks.append(
-        _check("check.key_agreement", "fail" if found.key_suspect else "ok", agreement)
-    )
+    differing = found.differing
+    tempos = summary["tempo_differs"]
+    agreement += f"; {tempos} title tempo(s) more than {rc.TEMPO_TOLERANCE} beat from rekordbox's"
+    if differing:
+        agreement += (
+            f"; {len(differing)} title(s) name another key or tempo than rekordbox "
+            f"found, and {ADOPT_VERB} gives them rekordbox's: "
+            + _named(list(differing), _title)
+        )
+    checks.append(_check("check.key_agreement", "info" if differing else "ok", agreement))
     return checks
 
 
@@ -220,16 +233,6 @@ def _suspect_cause(found: rc.Check) -> Cause:
     if unread:
         said.append(f"{unread} analysed row(s) have a grid this check could not read")
         steps.append("analyse those rows again in rekordbox so each writes its analysis file")
-    if found.key_suspect:
-        counts = found.key_counts
-        said.append(
-            f"only {counts[rc.KEY_EQUAL]} of {found.key_compared} title keys equal "
-            f"rekordbox's, below the {100 * summary['key_equal_floor']:.1f}% the recorded "
-            f"agreement allows for that many"
-        )
-        steps.append(
-            "check that rekordbox's key analysis was on, and compare a few far keys by ear"
-        )
     steps.append("quit rekordbox and its agent, then run crate analyze check again")
     error = refuse(
         "analysis-suspect",
@@ -311,6 +314,7 @@ def analyze_check(ctx) -> Envelope:
 
 
 __all__ = [
+    "ADOPT_VERB",
     "NOTHING_CHECKED",
     "RECORDS_UNREAD",
     "analyze_check",

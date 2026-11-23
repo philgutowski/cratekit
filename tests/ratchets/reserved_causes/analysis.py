@@ -37,6 +37,33 @@ KEBAB_LITERALS = {
         'source-missing',
     ],
     'analysis/decode.py': ['utf-8'],  # 2026-11-12, U263: the one decoder joined.
+    # 2026-11-23, U327: analyze adopt, its engine and its verb.
+    'analysis/head_adopt.py': [
+        'analyze-adopt',
+        'decision-stale',
+        'file-missing',
+        'file-unreadable',
+        'held-out',
+        'internal-error',
+        'key-empty',
+        'key-not-camelot',
+        'no-head',
+        'no-path',
+        'no-reference',
+        'not-analysed',
+        'path-unmapped',
+        'tempo-zero',
+        'title-tag-differs',
+        'whitelist-violation',
+    ],
+    'analysis/head_adopt_cli.py': [
+        'adopt-answer-half-read',
+        'adopt-files-unwritten',
+        'adopt-heads-written',
+        'adopt-leave-unmatched',
+        'adopt-nothing-to-write',
+        'adopt-rows-left',
+    ],
     # 2026-11-12, U263: a file only ffmpeg decodes, on a machine without it.
     'analysis/detect.py': ['skipped-no-decoder', 'skipped-unanalysable', 'skipped-undecodable'],
     'analysis/energy.py': [
@@ -78,6 +105,8 @@ LITERAL_HOLDERS = {
         'source-missing',
     ],
     'analysis/energy.py': ['analysis-write-failed', 'energy-calibration-unreadable'],
+    # 2026-11-23, U327: analyze adopt's engine, refusing a moved plan and a bad read back.
+    'analysis/head_adopt.py': ['decision-stale', 'internal-error', 'whitelist-violation'],
     'analysis/rekordbox_check.py': ['analysis-check-landing-unknown'],  # 2026-10-31, U167
 }
 

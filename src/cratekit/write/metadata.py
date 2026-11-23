@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 PAD_CAMELOT = "pad-camelot"
 RETAG_GENRE = "retag-genre"
 RATING_BACKFILL = "rating-backfill"
+ADOPT_REKORDBOX_HEAD = "adopt-rekordbox-head"
 
 #: Every operation this module can enable, walked wherever a count or coverage
 #: claim is made (P3), so a new one is covered the moment it is added.
@@ -55,6 +56,14 @@ OPERATIONS: Mapping[str, rb_writer.FieldPolicy] = MappingProxyType(
         RATING_BACKFILL: rb_writer.FieldPolicy(
             owner=RATING_BACKFILL,
             fields=MappingProxyType({"Rating": rb_writer.Ownership.FILL_IF_EMPTY}),
+        ),
+        #: Owned, because its one caller lists every row at an explicit gate and
+        #: lets a row be held out by name (U327). It splices rekordbox's key and
+        #: tempo into the head's own spans and no other byte; the key and tempo
+        #: columns it reads stay unwritable, so the answer stays rekordbox's.
+        ADOPT_REKORDBOX_HEAD: rb_writer.FieldPolicy(
+            owner=ADOPT_REKORDBOX_HEAD,
+            fields=MappingProxyType({"Title": rb_writer.Ownership.OWNED}),
         ),
     }
 )
@@ -448,7 +457,7 @@ def assert_within_policy(plan: Plan) -> None:
 
 
 __all__ = [
-    "OPERATIONS", "PAD_CAMELOT", "RATING_BACKFILL", "RETAG_GENRE", "UNWRITABLE_FIELDS",
+    "ADOPT_REKORDBOX_HEAD", "OPERATIONS", "PAD_CAMELOT", "RATING_BACKFILL", "RETAG_GENRE", "UNWRITABLE_FIELDS",
     "Change", "Plan", "PolicyRefused", "Report", "Skipped", "write_plan",
     "assert_within_policy", "database_stars", "enable", "first_active_id", "plan_genre_retag",
     "plan_rating_backfill", "plan_title_padding", "rating_for", "resolve_genre_id",

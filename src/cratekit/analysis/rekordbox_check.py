@@ -1,8 +1,8 @@
 """Read rekordbox's own result for the landed rows, and say whether the visit is done right (U167).
 
 Is every landed row analysed, is each grid the right shape, is the Key column
-filled, and how far does rekordbox's key agree with the title head's: a verdict
-a skill can wait on (sitting 47's throwaway script made a product).
+filled, and how far do rekordbox's key and tempo agree with the title head's: a
+verdict a skill can wait on (sitting 47's throwaway script made a product).
 
 READ ONLY: the database through ``rb_writer.read_only_copy``, which refuses
 while rekordbox or its agent runs, and the analysis files as bytes. A grid is
@@ -14,10 +14,11 @@ of statements (U259), each row once.
 THE VERDICT:
 
 * **waiting** when any row in scope is not analysed.
-* **suspect** when a variable grid sits on a row not marked ``dyn`` (U157), an
-  analysed row's grid could not be read, or the title keys agree far less
-  often than recorded. SUSPECT OUTRANKS WAITING: a wrong grid says the
-  dialog's settings were wrong for the rows still to come as well.
+* **suspect** when a variable grid sits on a row not marked ``dyn`` (U157), or an
+  analysed row's grid could not be read. SUSPECT OUTRANKS WAITING: a wrong grid
+  says the dialog's settings were wrong for the rows still to come as well.
+  A TITLE KEY OR TEMPO THAT DIFFERS IS NEVER SUSPECT (U327): rekordbox's answer
+  is the one kept, and ``crate analyze adopt`` gives it to the title.
 * **done** otherwise. An empty scope says so rather than calling nothing done.
 
 Layer: modules.
@@ -74,6 +75,9 @@ KEY_UNKEYED = "unkeyed"
 #: The My Tag value U157 writes on a row whose tempo really moves, where a
 #: variable grid is right. The landing's own constant, read under any category.
 DYN_VALUE = native.DYN_VALUE
+
+#: How far, in whole beats, a head's tempo may sit from rekordbox's and stand (U327).
+TEMPO_TOLERANCE = 1
 
 #: How many standard errors below the recorded key agreement a sample's rate
 #: must fall to read as suspect: about once in seven hundred checks by chance.
@@ -205,6 +209,35 @@ def head_key(row: Any, *, template: NameTemplate) -> str | None:
         if parsed and parsed.get("key"):
             return str(parsed["key"])
     return None
+
+
+def head_tempo(row: Any, *, template: NameTemplate) -> int | None:
+    """The tempo the row's title head carries, the filename's when the title has no head."""
+    for name in (getattr(row, "Title", None), getattr(row, "FileNameL", None)):
+        parsed = parse_head(str(name or ""), template=template)
+        if parsed and parsed.get("bpm"):
+            return int(parsed["bpm"])
+    return None
+
+
+def reference_tempo(hundredths: Any) -> int | None:
+    """rekordbox's tempo as the whole number a head carries, None for none.
+
+    The column holds hundredths; 124.84 is 125, and 126.50 is 127.
+    """
+    try:
+        value = int(hundredths or 0)
+    except (TypeError, ValueError):
+        return None
+    return agreement.round_half_up(value / 100.0) if value > 0 else None
+
+
+def tempo_differs(head: int | None, reference: int | None) -> bool:
+    """Whether a head's tempo is more than :data:`TEMPO_TOLERANCE` beats from rekordbox's.
+    Either side missing is no difference."""
+    if head is None or reference is None:
+        return False
+    return abs(head - reference) > TEMPO_TOLERANCE
 
 
 def key_floor(compared: int) -> float | None:
@@ -433,7 +466,17 @@ class Row:
     key: str | None = None
     head_key: str | None = None
     relation: str = KEY_UNKEYED
+    #: rekordbox's tempo as a head would carry it, and the head's, None when absent.
+    tempo: int | None = None
+    head_tempo: int | None = None
     dyn: bool = False
+
+    @property
+    def differs(self) -> bool:
+        """The title head names another key or another tempo than rekordbox found."""
+        return self.relation in (KEY_ONE_STEP, KEY_FAR) or tempo_differs(
+            self.head_tempo, self.tempo
+        )
 
     @property
     def suspect_grid(self) -> bool:
@@ -454,6 +497,9 @@ class Row:
             "key": self.key,
             "head_key": self.head_key,
             "key_agreement": self.relation,
+            "tempo": self.tempo,
+            "head_tempo": self.head_tempo,
+            "differs": self.differs,
             "dyn": self.dyn,
             "suspect": self.suspect_grid,
         }
@@ -497,6 +543,8 @@ def read_row(
         "key": key,
         "head_key": None if head is None else pad_camelot(head),
         "relation": key_relation(head, key),
+        "tempo": reference_tempo(getattr(content, "BPM", None)),
+        "head_tempo": head_tempo(content, template=template),
         "dyn": content_id in dyn,
     }
     if one.action != analyzed.CLEAR:
@@ -536,8 +584,14 @@ class Check:
         return counts[KEY_EQUAL] + counts[KEY_ONE_STEP] + counts[KEY_FAR]
 
     @property
+    def differing(self) -> tuple[Row, ...]:
+        """The analysed rows whose title head names another key or tempo than rekordbox's."""
+        return tuple(row for row in self.analysed if row.differs)
+
+    @property
     def key_suspect(self) -> bool:
-        """Title keys agreeing with rekordbox's far below the recorded rate."""
+        """Title keys agreeing with rekordbox's far below the recorded rate: a
+        measure of the detector, reported and never a verdict (U327)."""
         floor = key_floor(self.key_compared)
         if floor is None:
             return False
@@ -547,7 +601,7 @@ class Check:
     def verdict(self) -> str:
         if not self.rows or self.counted(GONE) == len(self.rows):
             return NOTHING
-        if any(row.suspect_grid for row in self.rows) or self.key_suspect:
+        if any(row.suspect_grid for row in self.rows):
             return SUSPECT
         if self.counted(NOT_ANALYSED):
             return WAITING
@@ -578,6 +632,10 @@ class Check:
             "key_agreement": self.key_counts,
             "key_equal_floor": None if floor is None else round(floor, 4),
             "key_suspect": self.key_suspect,
+            "tempo_differs": sum(
+                1 for row in self.analysed if tempo_differs(row.head_tempo, row.tempo)
+            ),
+            "differs": len(self.differing),
         }
 
 
@@ -668,6 +726,7 @@ __all__: Sequence[str] = (
     "SCOPE_SESSION",
     "SCOPE_UNANALYSED",
     "SUSPECT",
+    "TEMPO_TOLERANCE",
     "UNREADABLE",
     "VARIABLE",
     "WAITING",
@@ -680,9 +739,12 @@ __all__: Sequence[str] = (
     "dyn_marked",
     "grid_ticks",
     "head_key",
+    "head_tempo",
     "key_floor",
     "key_relation",
     "read_grid",
     "read_row",
+    "reference_tempo",
     "resolve_scope",
+    "tempo_differs",
 )

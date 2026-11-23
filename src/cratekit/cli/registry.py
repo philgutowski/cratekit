@@ -1946,6 +1946,38 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
         doctor_checks=("library.mounted", "rekordbox.closed"),
     ),
+    # ── After the visit, a title takes rekordbox's key and tempo (U327) ─────
+    Entry(
+        name="analyze.adopt",
+        summary=(
+            "after the rekordbox visit, give each landed title whose key or tempo "
+            "differs rekordbox's, in the row's title, the file's title tag and its "
+            "key tag; never a key column, a tempo field or a file name"
+        ),
+        module="cratekit.analysis.head_adopt_cli", builder="build",
+        handler_key="analyze.adopt",
+        # No feature row. Gated by the analysis module, which alone stamps a
+        # head, with no extras: it runs no detector.
+        module_id="analysis", emits=frozenset({"plan"}), output_schema="plan/1",
+        #: The title tag and key tag of each file, and the row's ``Title`` alone.
+        writes=frozenset({"files", "db_metadata"}), destructive=True,
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            # A row whose file cannot be found is left, so the ratio decides the plan.
+            "library.paths_resolved",
+        ),
+        gates=(
+            GateSpec(
+                name="analyze.adopt.confirm", options=("apply", "abort"),
+                prompt="Give these titles rekordbox's key and tempo?",
+                #: Explicit (R34): a write to files and rows of a live library.
+                explicit=True, digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The set's permanent playlist (U121) ─────────────────────────────────
     # The backfill for a set landed without ``--set``.
     Entry(
