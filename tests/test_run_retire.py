@@ -1,15 +1,12 @@
-"""U170: old open gates are one line in ``crate status``, and ``crate run retire`` answers them.
+"""Old open gates are one line in ``crate status``, and ``crate run retire`` answers them (U170).
 
-Sitting 47 opened ``crate status`` on seventeen open gates from three weeks
-before, each a run nobody would resume, above the three lines that mattered.
-Status now collapses every open gate idle past a threshold, seven days by
-default and ``reports.open_gate_stale_days`` in the file, into one line with
-the count and the command, and ``crate run retire --older-than 7d`` answers
-each of them ``abort`` as ``session`` after one confirm. A newer gate shows
-and stays as before.
-
-Driven through the real dispatcher on a temporary library. A run's age is set
-the way it arises, by its ``created`` stamp and its record's last write.
+Status collapses every open gate idle past a threshold, seven days by default
+or ``reports.open_gate_stale_days``, into one line with the count and the
+command, so stale gates do not bury what matters. ``crate run retire
+--older-than 7d`` answers each ``abort`` as ``session`` after one confirm. A
+newer gate shows and stays as before. Driven through the real dispatcher on a
+temporary library, a run's age set by its ``created`` stamp and its record's
+last write.
 """
 
 from __future__ import annotations
@@ -27,8 +24,8 @@ from cratekit.core.exit_codes import ExitCode
 from tests import test_doctor as doctor_suite
 from tests.test_doctor import document_for, drive
 
-#: The temporary library and its saved configuration, by assignment for the
-#: reason ``tests/test_run_decide_continue.py`` gives for its own.
+#: The temporary library and its saved configuration, assigned for the
+#: reason ``tests/test_run_decide_continue.py`` gives.
 library = doctor_suite.library
 configured = doctor_suite.configured
 
@@ -383,7 +380,7 @@ def test_the_ceiling_itself_is_a_threshold(library):
 
 
 # ---------------------------------------------------------------------------
-# review round one: the guards a first suite left unpinned
+# Guards against a run or gate moving under the plan
 # ---------------------------------------------------------------------------
 
 

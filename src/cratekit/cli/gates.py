@@ -1,37 +1,12 @@
 """Named decisions, and the run state that makes them answerable later (R33).
 
-The source system has the right idea and the wrong seam. Its orchestrator takes
-a ``--decision`` flag, builds a fake input function that returns that answer
-once, and threads it into whatever asks first. Four things are wrong with it,
-and all four are visible in the shipped code:
-
-1. **The answer binds to prompt ORDER, not to a question.** Insert a prompt
-   anywhere upstream and the decision silently answers the new question.
-2. **The seam already leaks.** One call site omits the injected function
-   entirely, so a retry prompt falls back to the built-in input and sits outside
-   the non-interactive contract the docstring claims is complete.
-3. **Three prompts have no seam at all**, guarded only by a check for a
-   terminal. A terminal check is a behaviour change under a pipe, not an absence
-   of a read.
-4. **It makes the property untestable in substance.** Because every consumer
-   resolves its input function at call time, "no verb reads standard input"
-   becomes a whole-call-graph property that can only be asserted about one exact
-   run, never about a function.
-
-So a decision here is DATA ON THE RUN, not an answer to a prompt:
-
-* Gates are declared statically on the registry entry (``GateSpec``), with a
-  stable name and a closed option set.
-* Answers arrive from a named flag, or from a decision recorded against the run
-  by a separate act, and from nowhere else. No blanket affirmative, no config
-  key, no environment variable (R34).
-* An unanswered gate RAISES. The verb catches nothing; the CLI dispatcher
-  persists the run so it is resumable, puts the gate and its options in the
-  envelope, and exits with the documented code.
-
-Layer note: CLI. It resolves state paths through the config inventory rather
-than composing its own, so the run record is a declared state file with a root
-somebody decided on, not a directory this module invented.
+A decision is data on the run, bound to a gate's name rather than to prompt
+order. Gates are declared on the registry entry (``GateSpec``) with a closed
+option set; answers come from a named flag or a decision recorded against the
+run, and from nowhere else, no blanket affirmative, config key or environment
+variable (R34). An unanswered gate raises, and the dispatcher persists the run
+so it is resumable. Run records are a declared state file in the config
+inventory.
 """
 
 from __future__ import annotations
@@ -50,31 +25,17 @@ from cratekit.core import config, processes
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
 from cratekit.core.exit_codes import ExitCode, Remedy
 
-#: The run record's own schema version. The source system versions exactly one
-#: of its twenty-one state files, and every unversioned one is a file that
-#: cannot be migrated without guessing what wrote it.
+#: The run record's schema version, so a record is never migrated by guessing.
 RUN_SCHEMA_VERSION = 1
 
 
 class DecisionRequired(CratekitError):
     """A gate was reached and nothing had answered it.
 
-    ``context`` is WHAT THE VERB CONSULTED before it asked, carried through to
-    the refusal under ``shown`` so the question arrives with the facts it was
-    asked over. A prompt string is fixed at declaration and cannot name a backup
-    age or a lock holder, and a verb that built its own ``decision-required``
-    cause to say so would skip :attr:`RunState.open_gate` and the run record the
-    dispatcher saves on the way out, which is the thing that makes a refusal
-    resumable rather than one a person answers by starting over.
-
-    ABSENT AND EMPTY STAY DIFFERENT. A caller that passes nothing leaves no
-    ``shown`` key at all rather than an empty mapping, because "this verb shows
-    nothing here" and "this verb looked and found nothing" are two conditions,
-    and :mod:`cratekit.core.backup_facts` argues at length that collapsing them
-    is how a person is told the wrong thing about their own library.
-
-    The values must be JSON already. The envelope serializes this detail, so a
-    caller hands over ``holder.to_json()`` rather than the frozen dataclass.
+    ``context`` is what the verb consulted, carried under ``shown`` so the
+    question arrives with its facts. Absent and empty stay different: no
+    context leaves no ``shown`` key, since showing nothing and finding nothing
+    are two conditions. The values must be JSON already.
     """
 
     def __init__(
@@ -111,18 +72,11 @@ class DecisionRequired(CratekitError):
 class DecisionStale(CratekitError):
     """A decision was supplied, but the artifact it was made against moved.
 
-    ``offered`` IS THE GATE'S OWN STALE (R-1334), raised by
-    :meth:`Gates.require` over the plan it was just handed. That method has
-    already recorded the moved digest as the run's offer, and ``crate run
-    decide`` binds the next answer to the offer, so an answer recorded after
-    this refusal is taken over the moved plan and the resume applies it. The
-    refusal therefore carries the screen an open gate would show over that
-    plan, its options, prompt and ``shown``, so the plan a person answers is
-    the plan applied. ``context`` is that screen's ``shown``, absent when the
-    gate shows nothing, the rule :class:`DecisionRequired` states. A stale a
-    verb raises itself, on its write handle after the gate passed, moved no
-    offer and is left as it was: the answer recorded after it binds the plan
-    the gate showed, which is why ``offered`` defaults to false.
+    ``offered`` marks the gate's own stale (R-1334): :meth:`Gates.require` has
+    recorded the moved digest as the offer the next answer binds, so the
+    refusal carries the open gate's screen over the moved plan, ``context``
+    as its ``shown``. A stale a verb raises on its write handle moved no offer,
+    so ``offered`` defaults to false.
     """
 
     def __init__(
@@ -143,8 +97,7 @@ class DecisionStale(CratekitError):
             f"{spec.digest_source} that has since changed"
         )
         if pinned is not None:
-            # A PINNED FACT MOVED, not the digest (U161): name both values,
-            # since the plan itself digests the same.
+            # A pinned fact moved, not the digest (U161), so name both values.
             message = (
                 f"the decision on {spec.name!r} was answered with its {pinned} "
                 f"{expected!r} on the screen, and this run reads {actual!r}"
@@ -175,8 +128,7 @@ class DecisionStale(CratekitError):
 def _screen(spec: GateSpec, context: Mapping[str, Any] | None) -> dict[str, Any]:
     """What an open gate puts in front of the person, for a refusal that binds an offer.
 
-    The same keys :class:`DecisionRequired` carries, so the human screen and a
-    JSON reader read one shape whichever refusal recorded the offer.
+    The keys :class:`DecisionRequired` carries, so every refusal reads one shape.
     """
     screen: dict[str, Any] = {
         "options": list(spec.options),
@@ -191,11 +143,9 @@ def _screen(spec: GateSpec, context: Mapping[str, Any] | None) -> dict[str, Any]
 class UnknownOption(CratekitError):
     """A decision named an option the gate does not offer.
 
-    ``context`` IS THE SCREEN OF THE GATE IT WAS RAISED AT (R-1334), passed by
-    :meth:`Gates.require` only, which has recorded the run's offer by then. The
-    refusal reads as an open gate and invites ``crate run decide``, which binds
-    that offer, so it shows the plan the offer was taken over, as an open gate
-    does. ``crate run decide`` raises it with none, since it records nothing.
+    ``context`` is the screen of the gate it was raised at (R-1334), passed by
+    :meth:`Gates.require` only, so the plan the next answer binds is shown.
+    ``crate run decide`` passes none, since it records no offer.
     """
 
     def __init__(
@@ -226,23 +176,16 @@ class UnknownOption(CratekitError):
 class GateNotReached(CratekitError):
     """A decision named a gate that binds a plan, and the run has not reached it (R-1349).
 
-    ITS OWN REASON, NOT ``decision-required``, and no ``answer-decision``
-    remedy. Both mean an open gate: the human output prints a gate screen for
-    the one and verbs recognise an unanswered gate by the other, and either
-    would invite the very answer this refuses. The steps say what reaches
-    the gate instead: the answer on the gate the run waits at, if it waits at
-    one, then the run continued under ``--run``, which shows this gate and its
-    plan if it reaches it, then the answer once it has.
+    Its own reason and no ``answer-decision`` remedy, since both mean an open
+    gate and would invite the answer this refuses. The steps say what reaches
+    the gate: any gate the run waits at, the run continued, then the answer.
     """
 
     def __init__(self, state: RunState, spec: GateSpec) -> None:
         command = continue_command(state)
         waiting = state.open_gate
-        # NO STOP IS PROMISED (R-1349 round one). A continued run reaches the
-        # gate only if nothing before it refuses: organize's rekordbox area
-        # refuses before it plans while the backup acknowledgment is missing,
-        # and its gate is never asked. So the steps say what the run does if it
-        # reaches the gate, and that its own report says why if it does not.
+        # No stop is promised (R-1349): a refusal earlier in the run may keep
+        # it from the gate, and its report then says why.
         reach = (
             f"continue the run: {command}; it puts {spec.name} and its plan on the "
             f"screen if it reaches it, and its report says why if it does not"
@@ -288,10 +231,8 @@ class GateNotReached(CratekitError):
 def continue_command(state: RunState) -> str:
     """The command that continues a kept run with every answer it holds (U211).
 
-    The verb's own command line as its first invocation gave it, under
-    ``--run``, which is what ``run decide --continue`` dispatches. A run
-    recorded before U168 keeps no command line, so the verb's words stand
-    with an ellipsis for its arguments, as ``run decide`` says it then.
+    The verb's recorded command line under ``--run``; a run recorded before
+    U168 has none, so its words stand with an ellipsis.
     """
     if state.argv is not None:
         return shlex.join(["crate", "--run", state.run_id, *state.argv])
@@ -302,10 +243,8 @@ def continue_command(state: RunState) -> str:
 class Decision:
     """One recorded answer, with the actor who gave it and when.
 
-    R34 requires a write session to record WHICH ACTOR asserted each explicit
-    decision. Recording the actor on every decision rather than only the explicit
-    ones costs one field and means the audit does not depend on somebody having
-    classified the gate correctly first.
+    The actor is recorded on every decision (R34), so the audit does not hang
+    on a gate being classed explicit.
     """
 
     option: str
@@ -335,43 +274,29 @@ class Decision:
 class RunState:
     """What survives the process that hit a gate.
 
-    Keyed by ``run_id``, which is a generated identifier, never a display name
-    (R19). Decisions are keyed by GATE NAME, which is a stable identifier
-    declared in the registry and equally not a display name: the prompt text is
-    carried separately and exists only to be rendered.
+    Keyed by a generated ``run_id`` (R19); decisions are keyed by the gate's
+    declared name, never its prompt text.
     """
 
     run_id: str
     verb: str
     created: str
     decisions: dict[str, Decision] = field(default_factory=dict)
-    #: gate name -> the digest of the artifact the user was OFFERED.
-    #:
-    #: Recorded when the gate refuses, not when it is answered, because the
-    #: person answering from another process never sees the artifact and cannot
-    #: be asked to quote its identity. This is what makes staleness detectable
-    #: at all: without it, an answer given yesterday silently applies to a plan
-    #: regathered today, which is the "approve one plan, run a wider one"
-    #: failure the source system's digest check exists to prevent.
+    #: gate name -> the digest of the artifact the user was offered, recorded
+    #: when the gate refuses, since a later answerer cannot quote it. This is
+    #: what makes a stale answer detectable.
     offers: dict[str, str] = field(default_factory=dict)
-    #: gate name -> the facts the person was shown that the answer binds to
-    #: OUTSIDE the digest (U161), recorded when the gate is left open and
-    #: compared when a recorded answer is used. A native landing pins the
-    #: database file here, so its digest can name the library alone and a
-    #: copy rehearsal digest the same, while the answer still holds only for
-    #: the file the screen named.
+    #: gate name -> facts shown that the answer binds to outside the digest
+    #: (U161), recorded while the gate is open and compared when used, such as
+    #: the database file a landing reads.
     pins: dict[str, dict[str, str]] = field(default_factory=dict)
     pending: output.PendingHumanAction | None = None
     open_gate: str | None = None
-    #: The verb's own command line as its first invocation gave it (U168),
-    #: the verb's path and every argument after it, without the global
-    #: ``--run``, ``-d`` and ``--output``. What ``run decide --continue``
-    #: dispatches again under ``--run``. None for a run recorded before it.
+    #: The verb's path and arguments from its first invocation (U168), without
+    #: the global options, for ``run decide --continue``. None before U168.
     argv: tuple[str, ...] | None = None
-    #: Other runs this run is bound to, by role (U183). ``crate sync land``
-    #: names the ``sync all`` pass it queued or continued under ``pass_run``
-    #: the moment that pass is known, so the land run's own identifier
-    #: continues the pass, even after a run that failed or was interrupted.
+    #: Other runs this run is bound to, by role (U183), such as the ``sync
+    #: all`` pass a ``sync land`` run continues under ``pass_run``.
     related_runs: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
@@ -385,14 +310,11 @@ class RunState:
             "pending_human_action": self.pending.to_json() if self.pending else None,
             "open_gate": self.open_gate,
         }
-        # ONLY WHEN THERE ARE ANY, so a run no pinning gate reached keeps the
-        # record it had before U161.
+        # The later keys only when set, so an older record keeps its shape.
         if self.pins:
             record["pins"] = {name: dict(sorted(one.items())) for name, one in sorted(self.pins.items())}
-        # AND THE COMMAND LINE ONLY WHEN THERE IS ONE (U168), for the same reason.
         if self.argv is not None:
             record["argv"] = list(self.argv)
-        # AND THE RELATED RUNS ONLY WHEN THERE ARE ANY (U183), the same reason.
         if self.related_runs:
             record["related_runs"] = dict(sorted(self.related_runs.items()))
         return record
@@ -454,9 +376,7 @@ def run_path(run_id: str) -> Path:
 def save(state: RunState) -> Path:
     """Persist a run record atomically, owner-readable only.
 
-    Atomic because the dispatcher writes it on the way out of a refusal: a torn
-    record is a run that cannot be resumed, which is the one thing exiting with
-    ``DECISION_REQUIRED`` promises.
+    Atomic, since a torn record is a run that cannot be resumed.
     """
     path = run_path(state.run_id)
     config.atomic_write_bytes(
@@ -490,9 +410,8 @@ def load(run_id: str) -> RunState:
                 detail={"run_id": run_id, "error": str(exc)},
             )
         ) from None
-    # A RECORD IS AN OBJECT (U183). JSON that parses to anything else would
-    # raise AttributeError out of ``from_json``, past every reader that
-    # catches this module's refusals, the doctor's run scan among them.
+    # A record must be an object (U183), or ``from_json`` raises past every
+    # reader that catches this module's refusals.
     if not isinstance(raw, dict):
         raise CratekitError(
             Cause(
@@ -506,32 +425,18 @@ def load(run_id: str) -> RunState:
     return RunState.from_json(raw)
 
 
-#: The keys :func:`shown_plan` fills from the plan. A fact under one of these
-#: names would be overwritten without a word, so it is refused instead.
+#: The keys :func:`shown_plan` fills from the plan; a fact under one is refused.
 SHOWN_PLAN_KEYS = ("digest", "count", "items")
 
 
 def shown_plan(plan: Mapping[str, Any], facts: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """What a digest bound gate puts in front of the person (R-693).
 
-    The facts the caller names, then the plan's digest, its count and EVERY
-    ITEM the digest was taken over, so the screen is the plan a person
-    approves, and a JSON reader can compare it with the plan a declined run
-    returns where the verb returns one. R-670 and R-686 closed this shape one
-    verb at a time, and seven gates were still passing a digest and nothing to
-    show, so their screens carried the question and not the plan; a declined
-    run was the only way to read one. This is the one body every digest bound
-    gate shows through, and :meth:`Gates.require` calls it whenever a plan is
-    passed.
-
-    THERE IS NO BOUND. The digest covers every item, and a list cut short
-    would ask for approval of items nobody was shown. ``count`` is the number
-    of items, which is what the digest covers, and a verb whose own totals
-    count something narrower names them in its facts under their own names,
-    never under one of ``SHOWN_PLAN_KEYS``: a fact under one of those would
-    be overwritten by the plan's value without a word, so it is refused.
-
-    The values must be JSON already, the rule :class:`DecisionRequired` states.
+    The caller's facts, then the plan's digest, its count and every item the
+    digest covers, so the screen is the plan approved. There is no bound,
+    since a shortened list would approve items nobody saw. A fact named as
+    one of ``SHOWN_PLAN_KEYS`` is refused rather than overwritten. The values
+    must be JSON already.
     """
     named = dict(facts or {})
     taken = sorted(set(named) & set(SHOWN_PLAN_KEYS))
@@ -544,9 +449,8 @@ def shown_plan(plan: Mapping[str, Any], facts: Mapping[str, Any] | None = None) 
 def parse_decision_flags(values: list[str]) -> dict[str, str]:
     """Turn repeated ``gate=option`` arguments into a mapping.
 
-    Rejects a malformed pair rather than ignoring it. A silently dropped decision
-    is a run that stops at a gate the user believes they answered, and the next
-    thing they do is answer it again the same way.
+    A malformed pair is rejected, since a dropped decision stops at a gate the
+    user believes answered.
     """
     supplied: dict[str, str] = {}
     for raw in values:
@@ -573,14 +477,9 @@ class Gates:
     2. a decision recorded against the run by a separate act,
     3. a review-queue verdict, for gates whose options come from a review item.
 
-    Source 3 lands with the review queue (U11); the hook is left explicit rather
-    than implicit so that when it arrives it has one place to attach, and
-    ``tests/test_cli_contract.py`` holds the countdown.
-
-    There is deliberately no fourth source. A blanket affirmative flag, a config
-    key, or an environment variable would each satisfy every gate at once, which
-    is what R34 forbids and what "the user pressed yes to something" already
-    means in practice.
+    Source 3 lands with the review queue (U11). There is no fourth source: a
+    blanket flag, config key or environment variable would answer every gate
+    at once, which R34 forbids.
     """
 
     def __init__(
@@ -606,29 +505,16 @@ class Gates:
     ) -> str:
         """Return the chosen option, or raise so the CLI can exit resumably.
 
-        ``pinned`` IS WHAT THE ANSWER BINDS TO OUTSIDE THE DIGEST (U161): facts
-        the screen shows that two equal plans may differ by, such as which
-        database file a copy rehearsal reads. They are recorded on the run
-        when the gate is left open, and a recorded answer whose run pinned
-        other values is refused stale, naming the fact, so a digest left free
-        of a path for the sake of a rehearsal does not free the answer of it.
+        ``pinned`` is what the answer binds to outside the digest (U161),
+        recorded while the gate is open; a recorded answer whose run pinned
+        other values is refused stale, naming the fact.
 
-        ``context`` rides through to both refusals unchanged. BOTH, and that is
-        the point rather than an implementation detail: this method refuses at
-        two places, once because an explicit gate was answered inline and once
-        because nothing answered it at all, and a context carried at only one of
-        them would make what a person is shown depend on whether they typed a
-        flag. It is a display value and never an input to the decision, so
-        nothing below reads it.
+        ``context`` rides through to every refusal unchanged, so what a person
+        sees does not depend on whether they typed a flag. It is display only.
 
-        ``plan`` IS THE DIGESTED PLAN, ``digest`` AND ``items`` ON ONE MAPPING
-        (R-693). The digest the decision binds to is read off it, and the
-        screen shows its items through :func:`shown_plan`, with ``context`` as
-        the facts in front of them. One object for both, so what a person is
-        shown and what their answer is recorded against cannot be two plans.
-        A caller passes ``digest`` or ``plan`` and never both, because two
-        sources of the digest is exactly how the screen and the binding come
-        to disagree, and that is refused here rather than resolved quietly.
+        ``plan`` carries ``digest`` and ``items`` on one mapping (R-693), so
+        the screen and the binding are one plan. Passing both ``digest`` and
+        ``plan`` is refused.
         """
         if plan is not None:
             if digest is not None:
@@ -648,34 +534,11 @@ class Gates:
             self.state.pins[spec.name] = pins
 
         if inline is not None and spec.explicit:
-            # R34. An explicit gate is answered by a deliberate, separate act
-            # that is recorded with its actor, never inline in the same
-            # invocation that discovered the gate. Accepting it here would make
-            # "each requires its own explicit assertion" satisfiable by typing
-            # one more flag on the command that was already running.
-            #
-            # UNCONDITIONALLY, and it used to carry ``and recorded is None``.
-            # That qualifier meant the refusal held only until SOME decision
-            # existed, after which the ordinary precedence below preferred the
-            # inline value over the recorded one, so a flag could overturn an
-            # answer a person had deliberately recorded. It was invisible while
-            # no landed verb reached an explicit gate that minted anything: U49
-            # landed ``session.ack``, drove the ordering, and found that
-            # ``--run R -d session.ack.backup=acknowledged`` recorded the backup
-            # acknowledgment over a recorded ``abort``. That is the gate
-            # standing in front of every destructive write in the product being
-            # answered by the thing it gates, which is the one outcome R34
-            # exists to prevent. A supplied flag is now refused whatever the run
-            # already holds, so the recorded answer is the only answer.
-            #
-            # The open gate is still recorded before refusing, WHEN THE GATE IS
-            # GENUINELY OPEN. A refusal that does not leave the run resumable is
-            # a refusal the user answers by starting over, which is how people
-            # learn to reach for the blanket flag this rule exists to deny them.
-            # But a gate that already holds a recorded answer is not open, and
-            # marking it so would make ``crate run show`` list one gate as both
-            # answered and awaiting an answer, which is the run record
-            # contradicting itself about the only thing it is for.
+            # R34: an explicit gate is answered only by a separate recorded act,
+            # never inline, and an inline flag is refused whatever the run holds,
+            # so it can never overturn a recorded answer (U49). The gate is
+            # marked open only when it holds no answer, so the run stays
+            # resumable without reading as both answered and waiting.
             if recorded is None:
                 self.state.open_gate = spec.name
             raise DecisionRequired(spec, self.state.run_id, context)
@@ -690,9 +553,8 @@ class Gates:
         if spec.digest_source is not None and digest is not None:
             against = recorded.digest if recorded is not None else None
             if against is not None and against != digest:
-                # THE MOVED PLAN IS ON THE REFUSAL (R-1334). The offer above is
-                # already the moved digest, and the next ``run decide`` binds
-                # it, so the screen is the plan that answer applies.
+                # The moved plan is on the refusal (R-1334), since the next
+                # answer binds the offer just recorded.
                 raise DecisionStale(
                     spec, self.state.run_id, against, digest, offered=True, context=context
                 )
@@ -729,31 +591,15 @@ class Gates:
     ) -> str:
         """Carry the answer recorded on ``spec`` to a new run owned by ``verb``.
 
-        WHY THIS EXISTS. A verb that queues another verb's job has to freeze a
-        gate run the job's resume can load, and the dispatcher refuses a
-        ``--run`` whose record belongs to a different verb. So ``crate sync all``
-        cannot hand the favourites job its own run: the child ``sync favorites``
-        would be refused on every respawn. This mints the run that child can
-        load, holding the decision already given.
+        A queued job of another verb needs a run that verb owns, since the
+        dispatcher refuses a ``--run`` of a different verb. This copies an
+        answer and never supplies one: ``spec`` must hold a recorded decision
+        with a digest, the copy keeps its actor, time and digest, and the target
+        gate must offer the option and compare a digest.
 
-        IT COPIES AN ANSWER, IT NEVER SUPPLIES ONE. It refuses unless ``spec``
-        holds a RECORDED decision with a digest, which after ``require`` returned
-        is the decision a person gave, with its actor, against the artifact they
-        were offered. The copy keeps that actor, that time and that digest, so
-        the resumed child meets ``DecisionStale`` if what it rebuilds from the
-        payload is not what the person saw. The target gate must be declared by
-        ``verb``, must offer the chosen option, and must compare a digest, or the
-        copy would answer a question the person was never asked.
-
-        ``part`` IS FOR A COMPOSER WHOSE ONE ANSWER COVERS SEVERAL PLANS (U112).
-        ``crate organize`` asks one question over an area whose digest is taken
-        over every step's own digest, and a step it hands to ``adopt apply``'s
-        job must carry that step's digest, not the area's, or the job's resume
-        meets ``DecisionStale``. ``part`` is the document the recorded digest
-        was taken over and the step's digest inside it. The copy refuses unless
-        the document digests to exactly what the person answered and the
-        step's digest is one of its values, so the digest handed on is one the
-        recorded answer was given over and never one a caller made up.
+        ``part`` is for one answer over several plans (U112): the document the
+        recorded digest covers and one step's digest inside it, which is handed
+        on only when the document digests to the answer's digest.
 
         Returns the new run's identifier, saved before returning.
         """
@@ -843,19 +689,10 @@ def _strings(document: Any) -> set[str]:
 def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:
     """Write a decision into a run record, validating it against the gate.
 
-    The digest comes from what the run OFFERED, never from the caller. A person
-    answering in a later session has no way to quote the identity of something
-    they were shown by a process that has already exited.
-
-    SO A GATE THAT BINDS A PLAN IS ANSWERED ONLY ONCE ITS RUN REACHED IT
-    (R-1349). Its offer is recorded by :meth:`Gates.require` when the gate is
-    reached, and an answer recorded before that held no digest, which
-    ``require`` cannot compare, so the resume applied whatever plan it read
-    there with no screen ever shown. Reached means the run holds the gate's
-    offer, holds it open (a gate reached with nothing to digest is open and
-    offerless), or already holds an answer on it, which only a reached gate
-    can since this check. Refused before anything is written, so the run
-    reads exactly as it did.
+    The digest comes from what the run offered, never from the caller. So a
+    gate that binds a plan is answered only once its run reached it (R-1349),
+    meaning it holds the offer, holds the gate open, or holds an answer;
+    otherwise nothing is written.
     """
     if option not in spec.options:
         raise UnknownOption(spec, option)
@@ -879,10 +716,7 @@ def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:
 def blocked_by(state: RunState, verb: str) -> Cause | None:
     """The cause refusing ``verb`` while this run has an unverified pending action.
 
-    This is what makes ``pending_human_action`` load-bearing rather than
-    advisory. The source system tells the user to import an XML and then forgets;
-    nothing stops the next run from writing over the node that import was meant
-    to create.
+    What makes ``pending_human_action`` binding rather than advisory.
     """
     pending = state.pending
     if pending is None or verb not in pending.blocks:
@@ -920,8 +754,7 @@ def new_run(entry: Entry, run_id: str | None = None) -> RunState:
 # Open gates nobody will answer (U170)
 # ---------------------------------------------------------------------------
 
-#: The option an old open gate is retired with, and the only one. Every gate
-#: but two offers it, and a retirement answers nothing but no.
+#: The only option an old open gate is retired with: a retirement answers no.
 RETIRE_OPTION = "abort"
 
 
@@ -929,15 +762,10 @@ RETIRE_OPTION = "abort"
 class OldGate:
     """One open gate that has sat idle for longer than a threshold (U170).
 
-    ``idle_since`` is the LATER of the run's ``created`` stamp and the last
-    write of its record, because the dispatcher saves a run each time it is
-    resumed: a run started a month ago and resumed yesterday is a run somebody
-    is still working, and its age runs from yesterday.
-
-    ``kept`` is None when the gate can be retired, and otherwise says why not
-    in words. A gate whose verb no longer declares it, or whose options carry
-    no ``abort``, is old and still never answered by a retirement, since the
-    only safe answer to give on a person's behalf is no.
+    ``idle_since`` is the later of ``created`` and the record's last write,
+    since a resume saves the run. ``kept`` is None when the gate can be
+    retired, otherwise why not, for a gate its verb no longer declares or one
+    with no ``abort``.
     """
 
     run_id: str
@@ -972,9 +800,7 @@ def _instant(stamp: str) -> datetime | None:
 def idle_since(state: RunState, path: Path) -> datetime:
     """When this run was last touched: its start, or its record's last write if later.
 
-    A record whose file cannot be read for its time is as new as now, so a
-    gate whose age cannot be measured is never called old (absence of a
-    reading is not age).
+    An unreadable file time counts as now, so an unmeasured gate is never old.
     """
     try:
         written = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
@@ -989,10 +815,8 @@ def old_gate(
 ) -> OldGate | None:
     """This run's open gate when it has been idle for longer than ``older_than``.
 
-    THE ONE PREDICATE ``crate status`` AND ``crate run retire`` BOTH READ, so the
-    line status collapses and the set the command retires cannot be two sets.
-    None for a run with no open gate, a run waiting only on a pending human
-    action included, and for one touched within the threshold.
+    The one predicate ``crate status`` and ``crate run retire`` share, so they
+    name one set. None for a run with no open gate or one touched recently.
     """
     if state.open_gate is None:
         return None
@@ -1030,9 +854,7 @@ def old_gate(
 # Another run of the same verb at its gate (U186)
 # ---------------------------------------------------------------------------
 
-#: How long a recorded answer on another run stays worth naming (U186). An
-#: answer given this morning is the run whose write a second plan may have
-#: been read across; one given yesterday is history the plan already reflects.
+#: How long a recorded answer on another run stays worth naming (U186).
 SIBLING_WINDOW = timedelta(hours=12)
 
 #: The warning code a run carries when another run of its verb holds an open
@@ -1044,18 +866,10 @@ SIBLING_RUN = "gate-sibling-run"
 class Sibling:
     """Another run of the same verb that a second plan should know about (U186).
 
-    Either its gate is open, ``gate`` names it and ``at`` is when the run was
-    last touched (:func:`idle_since`, the same measure ``crate status`` ages a
-    gate by), or it answered within the window and ``gate`` is None. The
-    message says open when the gate is open, since a run that is waiting is
-    what a reader needs to hear first.
-
-    ``answers`` holds every answer the run gave within the window as
-    ``(gate, decision)``, oldest first, WHETHER OR NOT A LATER GATE IS OPEN.
-    A run that answered its plan and then stopped at the cloud sync gate has
-    still approved that plan, and ``run decide`` compares against exactly
-    that answer (the review of U186 drove a run left that way, and the
-    repeat went unsaid while the answers were dropped for an open gate).
+    Either ``gate`` names its open gate and ``at`` is :func:`idle_since`, or
+    it answered within the window and ``gate`` is None. ``answers`` holds
+    every answer inside the window, oldest first, even with a later gate open,
+    since an approved plan stays approved.
     """
 
     run_id: str
@@ -1078,8 +892,8 @@ class Sibling:
             )
         gate, latest = self.answers[-1]
         if self.gate is not None:
-            # AN APPROVED PLAN STOPPED AGAIN is named by its answer and its open
-            # gate both, never as unanswered (the second review round of U186).
+            # An approved plan stopped again is named by its answer and its
+            # open gate, never as unanswered.
             return (
                 f"another run of {self.verb}, {self.run_id}, answered {gate} "
                 f"{latest.option} as {latest.actor} at "
@@ -1106,18 +920,10 @@ def siblings(
 ) -> tuple[list[Sibling], list[str]]:
     """Every other run of ``verb`` with an open gate or an answer inside ``within``.
 
-    READ ONLY, and the one reader the dispatcher and ``run decide`` share
-    (U186), so the gate and the answer cannot name two sets. It takes no lock
-    and writes nothing: the warning it feeds informs, and ``decision-stale``
-    on the write handle stays the only guard.
-
-    ``exclude`` is the asking run, which is never its own sibling. The second
-    value is every record that could not be read, by its identifier: its verb is
-    unknown, so whether it is a sibling is unknown, and the caller says so
-    rather than reading the gap as no sibling (absence is not evidence).
-
-    An answer whose time cannot be read counts as inside the window, for the
-    same reason :func:`idle_since` calls an unmeasurable gate new.
+    Read only, and the one reader the dispatcher and ``run decide`` share;
+    the warning informs and guards nothing. ``exclude`` is the asking run. The
+    second value names every unreadable record, so a caller never reads the
+    gap as no sibling. An answer with an unreadable time counts as inside.
     """
     moment = now or datetime.now(timezone.utc)
     try:
@@ -1127,8 +933,7 @@ def siblings(
     found: list[Sibling] = []
     unreadable: list[str] = []
     for path in records:
-        # BY THE FILE NAME, which ``run_path`` makes the run's identifier, so the
-        # asking run is never read at all, and never named unreadable either.
+        # By file name, so the asking run is never read or named unreadable.
         if path.stem == exclude:
             continue
         try:
@@ -1189,15 +994,11 @@ def writes_the_database(verb: str) -> bool:
 #: Codes this module raises, listed so the dispatcher's mapping is checkable.
 GATE_CODES: tuple[ExitCode, ...] = (ExitCode.DECISION_REQUIRED, ExitCode.DECISION_STALE)
 
-#: Refusals outside the gates that keep their run (U211): the dispatcher saves
-#: the run with every answer it holds, answers ``resumable`` and ``blocked``,
-#: and names the command that continues it. Only a refusal whose cause clears
-#: on its own and that is raised before the step it guards belongs here. A
-#: process the scan could not read is that: the step that needed rekordbox
-#: closed was not run, and Sitting 54 spent a whole fresh run, three plans and
-#: about 15 minutes, recovering from one. Every gate is digest bound, so a
-#: continued run whose plan moved is asked again rather than applied to a
-#: different plan.
+#: Refusals outside the gates that keep their run (U211): saved with its
+#: answers, ``resumable`` and ``blocked``, with the command that continues it.
+#: Only a cause that clears on its own, raised before the step it guards,
+#: belongs here. A moved plan is still asked again, every gate being digest
+#: bound.
 KEPT_RUN_REASONS: tuple[str, ...] = (processes.UNCONFIRMED,)
 
 

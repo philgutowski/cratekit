@@ -1,0 +1,2243 @@
+name = "u303-replay-before-a"
+pass_kind = "replay"
+
+[[rows]]
+id = "r239-b.S5_converge_key_off"
+source = { table = "r239-b.json", id = "S5_converge_key_off" }
+description = "converge passes unlock=False again, so every native tree reads not compared on a real library"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '            handle = rb_writer.open_db(cfg=cfg)'
+new = '            handle = rb_writer.open_db(cfg=cfg, unlock=False)'
+
+[[rows]]
+id = "r685-b.C1_converge_opens_before_it_reads"
+source = { table = "r685-b.json", id = "C1_converge_opens_before_it_reads" }
+description = "Converge opens the database before reading the declaration, the order the review found"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+tests = ["tests/test_rebuild.py"]
+old = '''
+            declared = active_taxonomy.load(cfg)
+            handle = rb_writer.open_db(cfg=cfg)
+'''
+new = '''
+            handle = rb_writer.open_db(cfg=cfg)
+            declared = active_taxonomy.load(cfg)
+'''
+
+[[rows]]
+id = "r685-b.C2_converge_lets_the_refusal_escape"
+source = { table = "r685-b.json", id = "C2_converge_lets_the_refusal_escape" }
+description = "The declaration is read outside the try, so a refusal escapes instead of reading NOT COMPARED"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+tests = ["tests/test_rebuild.py"]
+old = '''
+        handle = declared = None
+        try:
+            declared = active_taxonomy.load(cfg)
+            handle = rb_writer.open_db(cfg=cfg)
+'''
+new = '''
+        handle = declared = None
+        declared = active_taxonomy.load(cfg)
+        try:
+            handle = rb_writer.open_db(cfg=cfg)
+'''
+
+[[rows]]
+id = "u89.C1_converge_threshold"
+source = { table = "u89.json", id = "C1_converge_threshold" }
+description = "converge _compare: pass None instead of the loaded cut"
+file = "src/cratekit/cli/converge.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '            vocal_threshold=metadata_cli.load_vocal_threshold(cfg),'
+new = '            vocal_threshold=None,'
+
+[[rows]]
+id = "r235-a.M10_verb_guard_removed"
+source = { table = "r235-a.json", id = "M10_verb_guard_removed" }
+description = "the revert verb no longer asks before the gate, leaving only the library's check after the approval"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''
+    tree_registry.assert_revertible(cfg, tree_id)
+    item = {**_recorded(standing), "registry": str(tree_registry.path_for(cfg))}'''
+new = '    item = {**_recorded(standing), "registry": str(tree_registry.path_for(cfg))}'
+
+[[rows]]
+id = "r235-b.M15_first_of_several_roots"
+source = { table = "r235-b.json", id = "M15_first_of_several_roots" }
+description = "more than one root no longer refuses, the first is adopted"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''
+    if len(roots) == 1:
+        return roots[0]'''
+new = '''
+    if len(roots) >= 1:
+        return roots[0]'''
+
+[[rows]]
+id = "r235-b.M16_native_tree_offered_again"
+source = { table = "r235-b.json", id = "M16_native_tree_offered_again" }
+description = "the verb no longer answers a tree already native before it asks"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''
+    if standing is not None and standing.mode == tree_registry.Mode.DATABASE:
+        return ctx.envelope(
+            data=_digested("tree.cutover", _recorded(standing), {"recorded": False}),'''
+new = '''
+    if False:
+        return ctx.envelope(
+            data=_digested("tree.cutover", _recorded(standing), {"recorded": False}),'''
+
+[[rows]]
+id = "r235-b.M19_unready_library_asked"
+source = { table = "r235-b.json", id = "M19_unready_library_asked" }
+description = "a library that fails its precheck is offered the plan instead of being refused"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''
+    results = tree_registry.cutover_precheck(cfg, export=export)
+    _refuse_unready(results)'''
+new = '    results = tree_registry.cutover_precheck(cfg, export=export)'
+
+[[rows]]
+id = "r235-b.M20_refusal_without_the_table"
+source = { table = "r235-b.json", id = "M20_refusal_without_the_table" }
+description = "the precheck refusal no longer carries every check's result"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '                detail={**cause.detail, "precheck": _precheck_rows(results)},'
+new = '                detail=dict(cause.detail),'
+
+[[rows]]
+id = "r235-b.M21_digest_blind_to_the_plan"
+source = { table = "r235-b.json", id = "M21_digest_blind_to_the_plan" }
+description = "the digest covers the kind of plan and not its item, so a root that changed leaves the approval standing"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '        "digest": digest_of({"kind": kind, "items": [item]}),'
+new = '        "digest": digest_of({"kind": kind}),'
+
+[[rows]]
+id = "r787.V1_verb_own_list"
+source = { table = "r787.json", id = "V1_verb_own_list" }
+description = "derivation_source keeps a list of its own, the routing tree and intake tree spelled inline, instead of asking cutover_trees"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''
+    if tree_id in accepted:
+        return tree_registry.DerivationSource.TAXONOMY'''
+new = '''
+    if tree_id in (declared.tree.id, declared.intake.id):
+        return tree_registry.DerivationSource.TAXONOMY'''
+
+[[rows]]
+id = "r787.V2_undeclared_step_routing_only"
+source = { table = "r787.json", id = "V2_undeclared_step_routing_only" }
+description = "the undeclared refusal's step names the routing tree alone rather than the set"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''
+            f"name a tree a cutover records, which this library declares as "
+            f"{', '.join(repr(t) for t in named)}",'''
+new = '''
+            f"name a tree a cutover records, which this library declares as "
+            f"{declared.tree.id!r}",'''
+
+[[rows]]
+id = "r787.V3_catalogue_refusal_loses_set"
+source = { table = "r787.json", id = "V3_catalogue_refusal_loses_set" }
+description = "the catalogue refusal carries the registry's detail alone, without the set a cutover accepts"
+file = "src/cratekit/cli/cutover.py"
+surface = "user"
+tests = ["tests/test_cutover_cli.py"]
+old = '''
+                detail={
+                    **cause.detail,
+                    "cutover_trees": sorted(tree_registry.cutover_trees(declared)),
+                },'''
+new = '                detail={**cause.detail},'
+
+[[rows]]
+id = "r-1.E1_dispatch_impl"
+source = { table = "r-1.json", id = "E1_dispatch_impl" }
+description = "Existing guard, sample: drop the requirement that the hook invokes hook-impl"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+    if _HOOK_DISPATCH not in body:
+        return f"it never invokes pre-commit's {_HOOK_DISPATCH}"
+'''
+new = ''
+
+[[rows]]
+id = "r-1.E2_config_inside_checkout"
+source = { table = "r-1.json", id = "E2_config_inside_checkout" }
+description = "Existing guard, sample: drop the requirement that the named configuration is inside the checkout"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '    if root.resolve() not in resolved.parents and resolved != root.resolve():'
+new = '    if False:'
+
+[[rows]]
+id = "r-1.T10_no_yaml_falls_back"
+source = { table = "r-1.json", id = "T10_no_yaml_falls_back" }
+description = "PyYAML missing falls back to the pre-commit floor instead of a sentence"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+    except ImportError:
+        return (
+            (),
+            (
+                f"PyYAML is not importable from this interpreter, so the hook types "
+                f"{config_file.name} configures could not be read. Install the dev "
+                f"extra, `pip install -e '.[dev]'`"
+            ),
+            None,
+        )
+'''
+new = '''
+    except ImportError:
+        return ("pre-commit",), None, None
+'''
+
+[[rows]]
+id = "r-1.T11_unreadable_config_falls_back"
+source = { table = "r-1.json", id = "T11_unreadable_config_falls_back" }
+description = "A configuration that cannot be read falls back to the pre-commit floor instead of a sentence"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+        return (
+            (),
+            f"{config_file} could not be read ({exc})",
+            access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
+        )
+'''
+new = '''
+        return ("pre-commit",), None, None
+'''
+
+[[rows]]
+id = "r-1.T12_caller_ignores_unknown"
+source = { table = "r-1.json", id = "T12_caller_ignores_unknown" }
+description = "The check ignores an unknown configuration and reports on no extra types"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '    if unknown is not None:'
+new = '    if False:'
+
+[[rows]]
+id = "r-1.T13_missing_other_hook"
+source = { table = "r-1.json", id = "T13_missing_other_hook" }
+description = "A configured hook type with no hook file is not reported"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+            absent.append(f"no {hook_type} hook at {other}")
+            continue
+'''
+new = '''
+            continue
+'''
+
+[[rows]]
+id = "r-1.T14_unreadable_other_hook"
+source = { table = "r-1.json", id = "T14_unreadable_other_hook" }
+description = "A configured hook file this account cannot read is skipped instead of reported unknown"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+        except (OSError, UnicodeDecodeError) as exc:
+            # The same split the pre-commit hook makes above:'''
+new = '''
+        except (OSError, UnicodeDecodeError) as exc:
+            continue
+            # The same split the pre-commit hook makes above:'''
+
+[[rows]]
+id = "r-1.T15_other_dispatch"
+source = { table = "r-1.json", id = "T15_other_dispatch" }
+description = "A configured hook that does not dispatch for its own stage is not reported"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+        if other_problem is not None:
+            absent.append(
+'''
+new = '''
+        if other_problem is not None:
+            continue
+            absent.append(
+'''
+
+[[rows]]
+id = "r-1.T16_same_configuration"
+source = { table = "r-1.json", id = "T16_same_configuration" }
+description = "Drop the requirement that every other hook dispatches to the pre-commit hook's configuration"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '        if _config_path(other_name, root).resolve() != config_file.resolve():'
+new = '        if False:'
+
+[[rows]]
+id = "r-1.T17_install_config_flag"
+source = { table = "r-1.json", id = "T17_install_config_flag" }
+description = "The install line never names a non-default configuration"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '    if config_name != _HOOK_CONFIG_DEFAULT:'
+new = '    if False:'
+
+[[rows]]
+id = "r-1.T18_remedy_floor"
+source = { table = "r-1.json", id = "T18_remedy_floor" }
+description = "With no readable configuration the install line names no type at all"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '    return _install_command(types if problem is None else ("pre-commit",))'
+new = '    return _install_command(types)'
+
+[[rows]]
+id = "r-1.T19_remedy_reads_config"
+source = { table = "r-1.json", id = "T19_remedy_reads_config" }
+description = "The fresh clone install line stops reading the configuration and names only pre-commit"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '    types, problem, _remedy = _configured_hook_types(root / _HOOK_CONFIG_DEFAULT)'
+new = '    types, problem, _remedy = ("pre-commit",), None, None'
+
+[[rows]]
+id = "r-1.T1_manual_skip"
+source = { table = "r-1.json", id = "T1_manual_skip" }
+description = "Stop skipping the manual stage, so a manual-only hook reads as an unknown stage"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+        if hook_type == "manual":  # run by hand, never by git
+            continue
+'''
+new = ''
+
+[[rows]]
+id = "r-1.T20_stage_parameter"
+source = { table = "r-1.json", id = "T20_stage_parameter" }
+description = "The dispatch check ignores the hook type it was asked about and always wants pre-commit"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '    stage = f"--hook-type={hook_type}"'
+new = '    stage = "--hook-type=pre-commit"'
+
+[[rows]]
+id = "r-1.T21_ok_names_others"
+source = { table = "r-1.json", id = "T21_ok_names_others" }
+description = "The OK detail stops naming the other stages it verified"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+        if len(types) > 1
+'''
+new = '''
+        if False
+'''
+
+[[rows]]
+id = "r-1.T22_pre_commit_floor"
+source = { table = "r-1.json", id = "T22_pre_commit_floor" }
+description = "Pre-commit is no longer the floor of the needed types"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+    types = ["pre-commit"]
+    for stage in named:
+'''
+new = '''
+    types = []
+    for stage in named:
+'''
+
+[[rows]]
+id = "r-1.T23_alias_value"
+source = { table = "r-1.json", id = "T23_alias_value" }
+description = "Map merge-commit to a realistic nearby wrong hook, pre-commit"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '"merge-commit": "pre-merge-commit"'
+new = '"merge-commit": "pre-commit"'
+
+[[rows]]
+id = "r-1.T2_alias_map"
+source = { table = "r-1.json", id = "T2_alias_map" }
+description = "Stop mapping the legacy stage spellings (commit, push, merge-commit) to their hook types"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = 'hook_type = _STAGE_ALIASES.get(stage, stage) if isinstance(stage, str) else None'
+new = 'hook_type = stage if isinstance(stage, str) else None'
+
+[[rows]]
+id = "r-1.T3_default_install_types"
+source = { table = "r-1.json", id = "T3_default_install_types" }
+description = "Ignore default_install_hook_types when deriving the needed hook types"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+    named.extend(document.get("default_install_hook_types") or [])
+'''
+new = ''
+
+[[rows]]
+id = "r-1.T4_default_stages"
+source = { table = "r-1.json", id = "T4_default_stages" }
+description = "Ignore default_stages when deriving the needed hook types"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+    named.extend(document.get("default_stages") or [])
+'''
+new = ''
+
+[[rows]]
+id = "r-1.T5_hook_stages"
+source = { table = "r-1.json", id = "T5_hook_stages" }
+description = "Ignore every hook's own stages, the reading that finds this repository's commit-msg stage"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '                named.extend(hook.get("stages") or [])'
+new = '                pass'
+
+[[rows]]
+id = "r-1.T6_unknown_stage"
+source = { table = "r-1.json", id = "T6_unknown_stage" }
+description = "Skip an unknown stage instead of refusing the configuration"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+        if hook_type not in _HOOK_TYPES:
+            return (
+                (),
+                f"{config_file} names a stage pre-commit installs no hook for, {stage!r}",
+                None,
+            )
+'''
+new = '''
+        if hook_type not in _HOOK_TYPES:
+            continue
+'''
+
+[[rows]]
+id = "r-1.T7_dedupe"
+source = { table = "r-1.json", id = "T7_dedupe" }
+description = "Append a type every time it is named rather than once"
+file = "src/cratekit/cli/doctor.py"
+surface = "maintainer"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+        if hook_type not in types:
+            types.append(hook_type)
+'''
+new = '''
+        types.append(hook_type)
+'''
+
+[[rows]]
+id = "r-1.T8_not_a_mapping"
+source = { table = "r-1.json", id = "T8_not_a_mapping" }
+description = "Drop the guard refusing a configuration whose top level is not a mapping"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+    if not isinstance(document, dict):
+        return (), f"{config_file} is not a pre-commit configuration", None
+'''
+new = ''
+
+[[rows]]
+id = "r-1.T9_yaml_error_falls_back"
+source = { table = "r-1.json", id = "T9_yaml_error_falls_back" }
+description = "A configuration that does not parse falls back to the pre-commit floor instead of a sentence"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+    except yaml.YAMLError as exc:
+        return (), f"{config_file} is not valid YAML ({exc})", None
+'''
+new = '''
+    except yaml.YAMLError:
+        return ("pre-commit",), None, None
+'''
+
+[[rows]]
+id = "r1255.D1_doctor_branches_on_the_scan"
+source = { table = "r1255.json", id = "D1_doctor_branches_on_the_scan" }
+description = "doctor _check_unresolved_session: never branch on the listing, so the log directory is named as an unreadable record"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_session_log_unlisted.py"]
+old = '''
+    if session.log_unlisted(unreadable, inputs.cfg):
+        unreadable_directory = session.log_dir(inputs.cfg)'''
+new = '''
+    if False:
+        unreadable_directory = session.log_dir(inputs.cfg)'''
+
+[[rows]]
+id = "r1255.D2_status_names_the_log"
+source = { table = "r1255.json", id = "D2_status_names_the_log" }
+description = "status _source_findings: never name an unlisted log, so a refused source reads as none in flight"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+    if session.log_unlisted(unreadable, cfg):
+        # A LOG NOBODY COULD LIST IS SAID'''
+new = '''
+    if False:
+        # A LOG NOBODY COULD LIST IS SAID'''
+
+[[rows]]
+id = "r1255.D3_status_guard_precise"
+source = { table = "r1255.json", id = "D3_status_guard_precise" }
+description = "status _source_findings: name any unread entry as an unlisted log, so one damaged record hides every source"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+    if session.log_unlisted(unreadable, cfg):
+        # A LOG NOBODY COULD LIST IS SAID'''
+new = '''
+    if unreadable:
+        # A LOG NOBODY COULD LIST IS SAID'''
+
+[[rows]]
+id = "r372-b.B1_doctor_majority_is_info"
+source = { table = "r372-b.json", id = "B1_doctor_majority_is_info" }
+description = "_check_paths_resolved: a majority is a note, so doctor stays green over it"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''
+    if totals.majority_unmapped:
+        cause = metadata_cli.majority_unmapped_cause(cfg, totals)
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,'''
+new = '''
+    if totals.majority_unmapped:
+        cause = metadata_cli.majority_unmapped_cause(cfg, totals)
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,'''
+
+[[rows]]
+id = "r372-b.B2_doctor_minority_fails"
+source = { table = "r372-b.json", id = "B2_doctor_minority_fails" }
+description = "_check_paths_resolved: a minority refuses, the sitting's own state after the hand edit"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''
+    if totals.unmapped:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,'''
+new = '''
+    if totals.unmapped:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,'''
+
+[[rows]]
+id = "r372-b.B4_doctor_reads_before_the_volume_checks"
+source = { table = "r372-b.json", id = "B4_doctor_reads_before_the_volume_checks" }
+description = "_check_paths_resolved: survey a database on a volume the mount checks could not recognise"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''
+    unreadable = _library_state_unreadable(inputs, "the database")
+    if unreadable is not None:'''
+new = '''
+    unreadable = _library_state_unreadable(inputs, "the database")
+    if False:'''
+
+[[rows]]
+id = "r372-b.B5_doctor_opens_the_live_path"
+source = { table = "r372-b.json", id = "B5_doctor_opens_the_live_path" }
+description = "_survey_paths: open the configured database itself rather than a copy"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '''
+    with rb_writer.read_only_copy(source, cfg=cfg) as db:
+        return metadata_cli.resolution_totals(cfg, db)'''
+new = '''
+    db = rb_writer.open_db(source, check_app_version=False, cfg=cfg)
+    try:
+        return metadata_cli.resolution_totals(cfg, db)
+    finally:
+        rb_writer.close_db(db)'''
+
+[[rows]]
+id = "r598-b.B6_doctor_clause_dropped"
+source = { table = "r598-b.json", id = "B6_doctor_clause_dropped" }
+description = "_open_state: list an orphaned record bare, so it reads as a run in progress with no verb named"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+    if session.orphaned(record):
+        return f"{record.state}, its process is gone, crate session release abandons it"'''
+new = '''
+    if False:
+        return f"{record.state}, its process is gone, crate session release abandons it"'''
+
+[[rows]]
+id = "r757-c2.D1_due_a_day_late"
+source = { table = "r757-c2.json", id = "D1_due_a_day_late" }
+description = "_check_full_comparison: say to run one only past the bound and not at it"
+file = "src/cratekit/cli/doctor.py"
+surface = "maintainer"
+tests = ["tests/test_backup_comparison.py", "tests/test_backup_cli.py", "tests/modules/test_tools.py", "tests/test_doctor.py"]
+old = '    due = f". {run_one}" if days >= FULL_COMPARISON_DUE_DAYS else ""'
+new = '    due = f". {run_one}" if days > FULL_COMPARISON_DUE_DAYS else ""'
+
+[[rows]]
+id = "r787.D1_doctor_own_list"
+source = { table = "r787.json", id = "D1_doctor_own_list" }
+description = "doctor's _declared_trees keeps a list of its own, the routing tree alone, instead of asking cutover_trees"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_cutover_cli.py", "tests/test_doctor.py", "tests/test_incremental_sync.py", "tests/test_intake_imported.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_paths_resolved.py", "tests/test_routing_workers.py"]
+old = '    return tuple(named), tree_registry.cutover_trees(declared), None'
+new = '    return tuple(named), frozenset({declared.tree.id}), None'
+
+[[rows]]
+id = "r787.D2_set_guard_removed"
+source = { table = "r787.json", id = "D2_set_guard_removed" }
+description = "doctor stops judging a native record by the set, so a native catalogue tree reads ok"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_cutover_cli.py", "tests/test_doctor.py", "tests/test_incremental_sync.py", "tests/test_intake_imported.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_paths_resolved.py", "tests/test_routing_workers.py"]
+old = '            tree_id not in may_cut_over or record.source not in tree_registry.REBUILDABLE'
+new = '            record.source not in tree_registry.REBUILDABLE'
+
+[[rows]]
+id = "r787.D3_source_guard_removed"
+source = { table = "r787.json", id = "D3_source_guard_removed" }
+description = "doctor stops judging a native record by its source, so a native inbox from a catalogue crawl reads ok"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_cutover_cli.py", "tests/test_doctor.py", "tests/test_incremental_sync.py", "tests/test_intake_imported.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_paths_resolved.py", "tests/test_routing_workers.py"]
+old = '            tree_id not in may_cut_over or record.source not in tree_registry.REBUILDABLE'
+new = '            tree_id not in may_cut_over'
+
+[[rows]]
+id = "u132.D1_doctor_behind"
+source = { table = "u132.json", id = "D1_doctor_behind" }
+description = "Doctor reads a copy behind the shipped schema as OK"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_cutover_cli.py", "tests/test_doctor.py", "tests/test_incremental_sync.py", "tests/test_intake_imported.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_paths_resolved.py", "tests/test_routing_workers.py"]
+old = '''
+    if not found.behind:
+'''
+new = '''
+    if found.behind:
+'''
+
+[[rows]]
+id = "u132.D2_doctor_defect"
+source = { table = "u132.json", id = "D2_doctor_defect" }
+description = "Doctor reports a shipped template defect as the copy not compared"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_backup_comparison.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_cutover_cli.py", "tests/test_doctor.py", "tests/test_incremental_sync.py", "tests/test_intake_imported.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_paths_resolved.py", "tests/test_routing_workers.py"]
+old = '''
+        if exc.cause.reason == "internal-error":
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "u159.M10_unread_reads_none_published"
+source = { table = "u159.json", id = "M10_unread_reads_none_published" }
+description = "_release_tags: a refused read answers no tags, so doctor says none is published"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+    if done.returncode != 0:
+        return None
+    tags = []'''
+new = '''
+    if done.returncode != 0:
+        return ()
+    tags = []'''
+
+[[rows]]
+id = "u159.M8_behind_reads_current"
+source = { table = "u159.json", id = "M8_behind_reads_current" }
+description = "_check_release: any parseable installed version passes, so a copy behind reads as current"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    if installed >= newest:'
+new = '    if True:'
+
+[[rows]]
+id = "u170.D1_kept_folded"
+source = { table = "u170.json", id = "D1_kept_folded" }
+description = "status: fold every old gate, the kept ones too"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '            if aged is not None and aged.retirable:'
+new = '            if aged is not None:'
+
+[[rows]]
+id = "u170.D2_status_week"
+source = { table = "u170.json", id = "D2_status_week" }
+description = "status: threshold fixed at seven days, not the file's"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '    runs, folded = _run_report(timedelta(days=cfg.reports.open_gate_stale_days))'
+new = '    runs, folded = _run_report(timedelta(days=7))'
+
+[[rows]]
+id = "u170.D3_open_runs_short"
+source = { table = "u170.json", id = "D3_open_runs_short" }
+description = "status: open_runs leaves the folded gates out"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '            "open_runs": sum(1 for f in findings if f.key.startswith("run.")) + folded,'
+new = '            "open_runs": sum(1 for f in findings if f.key.startswith("run.")),'
+
+[[rows]]
+id = "u170.D4_line_dropped"
+source = { table = "u170.json", id = "D4_line_dropped" }
+description = "status: fold the gates and print no line for them"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_run_retire.py", "tests/test_doctor.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_run_decide_continue.py"]
+old = '    if old and older_than is not None:'
+new = '    if False:'
+
+[[rows]]
+id = "u181.D1_extras_row_never_ok"
+source = { table = "u181.json", id = "D1_extras_row_never_ok" }
+description = "doctor install.extras: never report ok, so a copy whose model scores is told the extra is absent"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_cli_contract.py"]
+old = '''
+    missing = inputs.probes.vocal_requirement()
+    if missing is None:'''
+new = '''
+    missing = inputs.probes.vocal_requirement() or ("extra", "forced")
+    if missing is None:'''
+
+[[rows]]
+id = "u181.D2_files_offered_reinstall"
+source = { table = "u181.json", id = "D2_files_offered_reinstall" }
+description = "doctor install.extras: treat missing model files as the extra, so a reinstall that places nothing is printed"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    if kind != vocal_scoring.MISSING_EXTRA:'
+new = '    if False:'
+
+[[rows]]
+id = "u181.D3_release_form_dropped"
+source = { table = "u181.json", id = "D3_release_form_dropped" }
+description = "doctor vocals_install_command: ignore a release install, so the command is the folder or pip form"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+    if origin.kind == "vcs" and origin.url and origin.version and _is_release(origin.version):
+        extras = sorted({*origin.extras, VOCALS_EXTRA})'''
+new = '''
+    if False:
+        extras = sorted({*origin.extras, VOCALS_EXTRA})'''
+
+[[rows]]
+id = "u181.D4_release_form_no_vocals"
+source = { table = "u181.json", id = "D4_release_form_no_vocals" }
+description = "doctor vocals_install_command: the release form keeps the extras and does not add vocals"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '        extras = sorted({*origin.extras, VOCALS_EXTRA})'
+new = '        extras = sorted({*origin.extras})'
+
+[[rows]]
+id = "u181.D5_upgrade_never_adds_vocals"
+source = { table = "u181.json", id = "D5_upgrade_never_adds_vocals" }
+description = "doctor _kept: the upgrade command never adds vocals, so a scored library upgrades without it"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):'
+new = '    if True:'
+
+[[rows]]
+id = "u181.D6_upgrade_always_adds_vocals"
+source = { table = "u181.json", id = "D6_upgrade_always_adds_vocals" }
+description = "doctor _kept: the upgrade command adds vocals for a library never scored"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):'
+new = '    if VOCALS_EXTRA in origin.extras:'
+
+[[rows]]
+id = "u181.D7_scored_probe_false"
+source = { table = "u181.json", id = "D7_scored_probe_false" }
+description = "doctor _vocals_scored: never see the recorded calibration"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    return config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, cfg).is_file()'
+new = '    return False'
+
+[[rows]]
+id = "u184.D1_volume_not_established"
+source = { table = "u184.json", id = "D1_volume_not_established" }
+description = "_check_backup_acknowledgment: read the record off a volume nobody established, so a missing disk reads as none on record"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    unreadable = _library_state_unreadable(inputs, "the backup acknowledgment")'
+new = '    unreadable = None'
+
+[[rows]]
+id = "u184.D2_unreadable_is_a_note"
+source = { table = "u184.json", id = "D2_unreadable_is_a_note" }
+description = "_check_backup_acknowledgment: report a record that cannot be understood as a note rather than a failure"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+            status=Status.FAIL,
+            detail=(
+                f"{exc.cause.message}. Every destructive verb refuses while the "'''
+new = '''
+            status=Status.INFO,
+            detail=(
+                f"{exc.cause.message}. Every destructive verb refuses while the "'''
+
+[[rows]]
+id = "u184.D3_remedy_chosen_here"
+source = { table = "u184.json", id = "D3_remedy_chosen_here" }
+description = "_check_backup_acknowledgment: name a remedy chosen here instead of the reader's own"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+            remedy=exc.cause.remediation.remedy,
+        )
+    if recorded is None:'''
+new = '''
+            remedy=Remedy.ACKNOWLEDGE_BACKUP,
+        )
+    if recorded is None:'''
+
+[[rows]]
+id = "u184.D4_expired_read_as_valid"
+source = { table = "u184.json", id = "D4_expired_read_as_valid" }
+description = "_check_backup_acknowledgment: drop the expired branch, so a lapsed record reads as valid with time left"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    if not recorded.valid_at(now):'
+new = '    if False:'
+
+[[rows]]
+id = "u184.D5_wall_clock"
+source = { table = "u184.json", id = "D5_wall_clock" }
+description = "_check_backup_acknowledgment: read the wall clock rather than the run's own instant"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+    now = inputs.probes.now
+    expires = recorded.expires_at.replace(microsecond=0).isoformat()'''
+new = '''
+    now = datetime.now(timezone.utc)
+    expires = recorded.expires_at.replace(microsecond=0).isoformat()'''
+
+[[rows]]
+id = "u184.D6_hours_coefficient"
+source = { table = "u184.json", id = "D6_hours_coefficient" }
+description = "_check_backup_acknowledgment: halve the minutes per hour, so the time left is misstated"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    hours, minutes = divmod(int(left.total_seconds()) // 60, 60)'
+new = '    hours, minutes = divmod(int(left.total_seconds()) // 60, 30)'
+
+[[rows]]
+id = "u184.D7_rule_not_named"
+source = { table = "u184.json", id = "D7_rule_not_named" }
+description = "_check_backup_acknowledgment: name the terminal rule whatever minted the record"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '            f"the {recorded.rule} rule"'
+new = '            f"the terminal rule"'
+
+[[rows]]
+id = "u184.D8_check_unlisted"
+source = { table = "u184.json", id = "D8_check_unlisted" }
+description = "CHECKS: drop the new check, so doctor never shows the acknowledgment"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    Check("backup.acknowledgment", _check_backup_acknowledgment),'
+new = ''
+
+[[rows]]
+id = "u185.D1_push_newer_warns"
+source = { table = "u185.json", id = "D1_push_newer_warns" }
+description = "deadca7.push: invert the comparison, so a push after the last backup reads as held by it"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    if completed is not None and pushed > completed:'
+new = '    if completed is not None and pushed < completed:'
+
+[[rows]]
+id = "u185.D2_hidden_entries"
+source = { table = "u185.json", id = "D2_hidden_entries" }
+description = "deadca7.push: count hidden entries, so a .DS_Store reads as a push"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '        entry.stat().st_mtime for entry in folder.iterdir() if not entry.name.startswith(".")'
+new = '        entry.stat().st_mtime for entry in folder.iterdir()'
+
+[[rows]]
+id = "u185.D3_unread_folder"
+source = { table = "u185.json", id = "D3_unread_folder" }
+description = "deadca7.push: let an unreadable backup folder escape, so the check fails the report"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+    except OSError as exc:
+        # Unread is not none'''
+new = '''
+    except ZeroDivisionError as exc:
+        # Unread is not none'''
+
+[[rows]]
+id = "u186.N1_note_age"
+source = { table = "u186.json", id = "N1_note_age" }
+description = "doctor: the note's age halved to twelve hours, so a gate open twenty hours is listed"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = 'OPEN_GATE_NOTE_AGE = timedelta(days=1)'
+new = 'OPEN_GATE_NOTE_AGE = timedelta(hours=12)'
+
+[[rows]]
+id = "u186.N2_note_fails"
+source = { table = "u186.json", id = "N2_note_fails" }
+description = "doctor: the note is a failure when it lists a run, though the brief says never"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '    return Finding(key=OPEN_GATES_CHECK, title="runs at a gate", status=Status.INFO, detail=detail)'
+new = '    return Finding(key=OPEN_GATES_CHECK, title="runs at a gate", status=Status.FAIL if blocked else Status.INFO, detail=detail)'
+
+[[rows]]
+id = "u186.N3_note_unreadable_dropped"
+source = { table = "u186.json", id = "N3_note_unreadable_dropped" }
+description = "doctor: a record that cannot be read is skipped, so the note reads as clean over it"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_gate_siblings.py"]
+old = '''
+        except Exception:  # noqa: BLE001 - a note never fails; an unread record is named
+            unreadable.append(path.stem)
+            continue'''
+new = '''
+        except Exception:  # noqa: BLE001 - a note never fails; an unread record is named
+            continue'''
+
+[[rows]]
+id = "u206.M24_doctor_set_aside_unnamed"
+source = { table = "u206.json", id = "M24_doctor_set_aside_unnamed" }
+description = "_check_isrc_cache: leave the set aside files out of the note"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+    aside = cache.set_aside()
+    if aside:'''
+new = '''
+    aside = cache.set_aside()
+    if False:'''
+
+[[rows]]
+id = "u211.C1_doctor_closed_is_a_note"
+source = { table = "u211.json", id = "C1_doctor_closed_is_a_note" }
+description = "doctor rekordbox.closed: report an unconfirmed absence as OK rather than as a note"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_process_scan.py", "tests/test_doctor.py"]
+old = '''
+            status=Status.INFO,
+            detail=(
+                f"{exc.cause.message}. Every database write refuses until the scan "'''
+new = '''
+            status=Status.OK,
+            detail=(
+                f"{exc.cause.message}. Every database write refuses until the scan "'''
+
+[[rows]]
+id = "u211.C2_doctor_paths_take_no_copy"
+source = { table = "u211.json", id = "C2_doctor_paths_take_no_copy" }
+description = "doctor library.paths_resolved: let the unconfirmed refusal escape the check, so the rescue files it as a check that did not complete"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_process_scan.py", "tests/test_doctor.py", "tests/test_paths_resolved.py"]
+old = '''
+    except processes.AbsenceUnconfirmed as exc:
+        # NO COPY OVER AN ABSENCE NOBODY CONFIRMED (U211), said as unknown and'''
+new = '''
+    except LookupError as exc:
+        # NO COPY OVER AN ABSENCE NOBODY CONFIRMED (U211), said as unknown and'''
+
+[[rows]]
+id = "u224.M10_refused_backups_read_no_push"
+source = { table = "u224.json", id = "M10_refused_backups_read_no_push" }
+description = "_check_deadca7_push: a backup folder whose stat is refused reads as absent, so no push"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+        if isinstance(presence, OSError):
+            raise presence'''
+new = '''
+        if isinstance(presence, OSError):
+            presence = False'''
+
+[[rows]]
+id = "u224.M1_found_ignored"
+source = { table = "u224.json", id = "M1_found_ignored" }
+description = "_deadca7_presence: never count a present install place as found, so a bundle reads not installed again"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+            elif state:
+                found.append(place)'''
+new = '''
+            elif False:
+                found.append(place)'''
+
+[[rows]]
+id = "u224.M2_unread_place_dropped"
+source = { table = "u224.json", id = "M2_unread_place_dropped" }
+description = "_deadca7_presence: drop an install place the account cannot stat, so it reads absent"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '                unread.append(f"{place} could not be read ({_said(state)})")'
+new = '                pass'
+
+[[rows]]
+id = "u224.M3_broken_installed_probe_silent"
+source = { table = "u224.json", id = "M3_broken_installed_probe_silent" }
+description = "_deadca7_presence: an install probe that raises adds nothing, so it reads not installed"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '            unread.append(f"where its app is installed could not be located ({_said(exc)})")'
+new = '            pass'
+
+[[rows]]
+id = "u224.M4_unread_support_read_absent"
+source = { table = "u224.json", id = "M4_unread_support_read_absent" }
+description = "_deadca7_presence: a support folder whose stat is refused answers absent, so an installed app reads no push"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+            support = None
+            unread.append(f"{home} could not be read'''
+new = '''
+            support = False
+            unread.append(f"{home} could not be read'''
+
+[[rows]]
+id = "u224.M5_refused_stat_read_absent"
+source = { table = "u224.json", id = "M5_refused_stat_read_absent" }
+description = "_folder_presence: any refused stat answers absent, the Path.is_dir shape on later Pythons"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+    except OSError as exc:
+        return exc
+    return stat.S_ISDIR(mode)'''
+new = '''
+    except OSError as exc:
+        return False
+    return stat.S_ISDIR(mode)'''
+
+[[rows]]
+id = "u224.M6_unread_folded_into_not_installed"
+source = { table = "u224.json", id = "M6_unread_folded_into_not_installed" }
+description = "_check_deadca7_push: nothing found and something unread reads not installed"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+        if unread:
+            return said("whether DEADCA7 is installed here cannot be said: "'''
+new = '''
+        if False:
+            return said("whether DEADCA7 is installed here cannot be said: "'''
+
+[[rows]]
+id = "u224.M7_install_signals_always_asked"
+source = { table = "u224.json", id = "M7_install_signals_always_asked" }
+description = "_deadca7_presence: ask the install signals even with the support folder here"
+file = "src/cratekit/cli/doctor.py"
+surface = "maintainer"
+tests = ["tests/test_doctor.py"]
+old = '''
+    if not support:
+        try:
+            places = tuple(probes.deadca7_installed())'''
+new = '''
+    if True:
+        try:
+            places = tuple(probes.deadca7_installed())'''
+
+[[rows]]
+id = "u224.M8_default_probe_empty"
+source = { table = "u224.json", id = "M8_default_probe_empty" }
+description = "Probes: the install probe's default answers nothing, the regression that re-creates the bug"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    deadca7_installed: Callable[[], tuple[Path, ...]] = _deadca7_installed'
+new = '    deadca7_installed: Callable[[], tuple[Path, ...]] = lambda: ()'
+
+[[rows]]
+id = "u224.M9_path_through_a_file_unread"
+source = { table = "u224.json", id = "M9_path_through_a_file_unread" }
+description = "_folder_presence: a stat through a file reads unread rather than absent"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError as exc:
+        return exc'''
+new = '''
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        return exc'''
+
+[[rows]]
+id = "u263.D21_doctor_names_verbs"
+source = { table = "u263.json", id = "D21_doctor_names_verbs" }
+description = "doctor: drop the verbs from a failing binary row"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''            f"{', '.join(inputs.requiring(key))} ({source}; override with {override})"'''
+new = '            f"({source}; override with {override})"'
+
+[[rows]]
+id = "u27-reports-round-1.D2_required_gate"
+source = { table = "u27-reports-round-1.json", id = "D2_required_gate" }
+description = "Report a broken Trash as a failure even where no verb needs it"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+    if not inputs.required(key):
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"{status.problem}, and no verb this profile switches on moves a "
+                f"file to the Trash, so nothing depends on it today"
+            ),
+        )
+'''
+new = ''
+
+[[rows]]
+id = "u27-reports-round-1.D3_trash_remedy"
+source = { table = "u27-reports-round-1.json", id = "D3_trash_remedy" }
+description = "Answer a broken Trash with run-doctor, which is the token that sends a person here"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '        remedy=Remedy.GRANT_PATH_ACCESS,'
+new = '        remedy=Remedy.RUN_DOCTOR,'
+
+[[rows]]
+id = "u27-reports-round-2.D1_probe_creates"
+source = { table = "u27-reports-round-2.json", id = "D1_probe_creates" }
+description = "Round 1 zero, re-run against the replacement guard: take the creating default"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '    return trash.probe(path, create=False)'
+new = '    return trash.probe(path, create=True)'
+
+[[rows]]
+id = "u27-reports-round-3-fixes.F3_trash_absent_is_a_failure"
+source = { table = "u27-reports-round-3-fixes.json", id = "F3_trash_absent_is_a_failure" }
+description = "Report a volume whose Trash has not been created yet as a failure again"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '    if status.absent:'
+new = '    if False:'
+
+[[rows]]
+id = "u27-round-8-independent.D1_finding_no_classification"
+source = { table = "u27-round-8-independent.json", id = "D1_finding_no_classification" }
+description = "Invert the entry guard so a Finding carrying an exception is never classified"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+        if self.error is None:
+            return'''
+new = '''
+        if self.error is not None:
+            return'''
+
+[[rows]]
+id = "u27-round-8-independent.D2_finding_no_remedy_override"
+source = { table = "u27-round-8-independent.json", id = "D2_finding_no_remedy_override" }
+description = "Keep the branch's hard coded remedy token instead of the one the refusal kind chooses"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+        if self.remedy is not refusal.remedy:
+            object.__setattr__(self, "remedy", refusal.remedy)'''
+new = ''
+
+[[rows]]
+id = "u27-round-8-independent.D4_composite_reason"
+source = { table = "u27-round-8-independent.json", id = "D4_composite_reason" }
+description = "COMPOSITE for D4: the cause a finding gains carries the wrong reason slug"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+                Cause(
+                    reason=refusal.reason,'''
+new = '''
+                Cause(
+                    reason="internal-error",'''
+
+[[rows]]
+id = "u27-round-8-independent.E1_mount_detail_swapped"
+source = { table = "u27-round-8-independent.json", id = "E1_mount_detail_swapped" }
+description = "Swap the NOT_MOUNTED and MOUNTED_ELSEWHERE sentences, conflating unmounted with moved"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+        preflight.MountState.NOT_MOUNTED: (
+            "the recorded volume is not mounted anywhere and the configured root "
+            "does not exist. Attach it"
+        ),
+        preflight.MountState.MOUNTED_ELSEWHERE: (
+            "the recorded volume IS attached, at a different mount point than the "
+            "configured root. Nothing needs plugging in; the configured root is "
+            "pointing at the wrong place"
+        ),'''
+new = '''
+        preflight.MountState.NOT_MOUNTED: (
+            "the recorded volume IS attached, at a different mount point than the "
+            "configured root. Nothing needs plugging in; the configured root is "
+            "pointing at the wrong place"
+        ),
+        preflight.MountState.MOUNTED_ELSEWHERE: (
+            "the recorded volume is not mounted anywhere and the configured root "
+            "does not exist. Attach it"
+        ),'''
+
+[[rows]]
+id = "u27-round-8-independent.E2_identity_verdict_green"
+source = { table = "u27-round-8-independent.json", id = "E2_identity_verdict_green" }
+description = "Report the identity check GREEN for an absent and for a relocated volume"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+            preflight.MountState.NOT_MOUNTED: (Status.INFO, None),
+            preflight.MountState.MOUNTED_ELSEWHERE: (Status.INFO, None),'''
+new = '''
+            preflight.MountState.NOT_MOUNTED: (Status.OK, None),
+            preflight.MountState.MOUNTED_ELSEWHERE: (Status.OK, None),'''
+
+[[rows]]
+id = "u27-round-8-independent.E3_found_at_dropped"
+source = { table = "u27-round-8-independent.json", id = "E3_found_at_dropped" }
+description = "Stop telling the user where a relocated volume actually is"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
+old = '''
+    if status.state is preflight.MountState.MOUNTED_ELSEWHERE:
+        where = f" (configured root {status.configured_root}, found at {status.found_at})"'''
+new = ''
+
+[[rows]]
+id = "u97-b.B1_doctor_routes_the_wrong_credential_token"
+source = { table = "u97-b.json", id = "B1_doctor_routes_the_wrong_credential_token" }
+description = "doctor _CREDENTIAL_REMEDY: answer the provider check with SET_CREDENTIAL, the recognition token, so the report tells a person to paste a key they cannot have"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py"]
+old = '        "credential.provider": Remedy.AUTHENTICATE_PROVIDER,'
+new = '        "credential.provider": Remedy.SET_CREDENTIAL,'
+
+[[rows]]
+id = "r388-b.M12_listing_steps_say_take_a_backup"
+source = { table = "r388-b.json", id = "M12_listing_steps_say_take_a_backup" }
+description = "Replace the listing failure's first reserved step with the take a backup step it replaced"
+file = "src/cratekit/cli/exit_codes.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_reserved_causes.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+            "check the backup remote is reachable from this machine; the snapshot "
+            "is not known to be missing, a listing of it failed",'''
+new = '''
+            "no dated database snapshot exists for this library yet; take a "
+            "backup before a restore can be planned",'''
+
+[[rows]]
+id = "r388-c.M13_credential_step_dropped"
+source = { table = "r388-c.json", id = "M13_credential_step_dropped" }
+description = "Drop the credential step from the listing failure's reservation"
+file = "src/cratekit/cli/exit_codes.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_reserved_causes.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+            "check the remote's credential has not expired or been revoked, and "
+            "reconnect it in rclone if it has",
+'''
+new = ''
+
+[[rows]]
+id = "r388-d.M16_named_stamp_step_dropped_remeasured"
+source = { table = "r388-d.json", id = "M16_named_stamp_step_dropped_remeasured" }
+description = "Re-measure of M16 after the pin: drop the named stamp step added to no-snapshot-available"
+file = "src/cratekit/cli/exit_codes.py"
+surface = "user"
+tests = ["tests/modules/test_tools.py", "tests/test_reserved_causes.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+            "when --snapshot named a stamp, that snapshot or its database "
+            "folder is not on the remote; check the stamp, or leave the flag "
+            "off to take the newest",
+'''
+new = ''
+
+[[rows]]
+id = "u235.T1_tail_back_to_sixteen_bits"
+source = { table = "u235.json", id = "T1_tail_back_to_sixteen_bits" }
+description = "new_run_id: the tail goes back to token_hex(2), four hex characters, the width the card's failure came from"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(2)}"'''
+
+[[rows]]
+id = "u235.T2_tail_thirty_two_bits"
+source = { table = "u235.json", id = "T2_tail_thirty_two_bits" }
+description = "new_run_id: the tail narrows to token_hex(4), eight hex characters, a width the distinct test alone cannot tell from sixty four"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(4)}"'''
+
+[[rows]]
+id = "u235.T3_tail_fifty_six_bits"
+source = { table = "u235.json", id = "T3_tail_fifty_six_bits" }
+description = "new_run_id: the tail narrows by one byte, token_hex(7), fourteen hex characters"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(7)}"'''
+
+[[rows]]
+id = "u235.T4_tail_from_the_instant"
+source = { table = "u235.json", id = "T4_tail_from_the_instant" }
+description = "new_run_id: the tail keeps its sixteen hex characters but is read off the instant's microseconds, so two ids at one instant are equal"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{moment.microsecond:016x}"'''
+
+[[rows]]
+id = "u235.T5_instant_ignored"
+source = { table = "u235.json", id = "T5_instant_ignored" }
+description = "new_run_id: the instant a caller hands it is ignored and the clock is read instead"
+file = "src/cratekit/cli/output.py"
+surface = "maintainer"
+tests = ["tests/test_cli_contract.py"]
+old = '''
+    moment = now or datetime.now(timezone.utc)
+    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''
+    moment = datetime.now(timezone.utc)
+    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+
+[[rows]]
+id = "u235.T6_stamp_loses_its_colons"
+source = { table = "u235.json", id = "T6_stamp_loses_its_colons" }
+description = "new_run_id: the stamp drops its colons, so an id minted after the widening no longer reads like one minted before it"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    return f"{moment.strftime('%Y-%m-%dT%H%M%SZ')}-{secrets.token_hex(8)}"'''
+
+[[rows]]
+id = "u298.H1_config_cause_reason"
+source = { table = "u298.json", id = "H1_config_cause_reason" }
+description = "load_config: an unusable config ends a cause other than config-unusable"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''
+                reason="config-unusable",
+                message=str(exc),
+                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                origin=origin,'''
+new = '''
+                reason="internal-error",
+                message=str(exc),
+                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                origin=origin,'''
+
+[[rows]]
+id = "u298.H2_config_cause_origin"
+source = { table = "u298.json", id = "H2_config_cause_origin" }
+description = "load_config: the refusal no longer names the verb that met it"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''
+                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                origin=origin,
+                detail={"kind": type(exc).__name__},'''
+new = '''
+                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                origin=(),
+                detail={"kind": type(exc).__name__},'''
+
+[[rows]]
+id = "u298.H3_declared_gate_by_name"
+source = { table = "u298.json", id = "H3_declared_gate_by_name" }
+description = "declared_gate: the first gate on the entry is returned whatever its name"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py"]
+old = '''
+    for spec in entry.gates:
+        if spec.name == name:
+            return spec
+    raise RuntimeError('''
+new = '''
+    for spec in entry.gates:
+        return spec
+    raise RuntimeError('''
+
+[[rows]]
+id = "u298.H4_confirm_gate_refusal"
+source = { table = "u298.json", id = "H4_confirm_gate_refusal" }
+description = "confirm_gate: a verb with no gate of the name gets None instead of the typed refusal"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py"]
+old = '''
+            return spec
+    raise refuse(
+        "internal-error",
+        f"{entry.name} declares no gate named {name!r}, so there is no "'''
+new = '''
+            return spec
+    return None
+    raise refuse(
+        "internal-error",
+        f"{entry.name} declares no gate named {name!r}, so there is no "'''
+
+[[rows]]
+id = "u298.H5_approving_actor_default"
+source = { table = "u298.json", id = "H5_approving_actor_default" }
+description = "approving_actor: a run nobody decided reads as the cli actor"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py"]
+old = '    return decision.actor if decision is not None else ""'
+new = '    return decision.actor if decision is not None else "cli"'
+
+[[rows]]
+id = "u298.H6_no_job_id_string"
+source = { table = "u298.json", id = "H6_no_job_id_string" }
+description = "no_job: the job id of a run that queued nothing is null, which fails the job_state schema"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py"]
+old = '    return {"job_id": "", "state": state, "cause": None, "progress": dict(progress)}'
+new = '    return {"job_id": None, "state": state, "cause": None, "progress": dict(progress)}'
+
+[[rows]]
+id = "r83.P1_flush"
+source = { table = "r83.json", id = "P1_flush" }
+description = "R-346: drop the flush from the prompter's writer, the defect as found"
+file = "src/cratekit/cli/prompt.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '    print(text, file=sys.stderr, end="", flush=True)'
+new = '    print(text, file=sys.stderr, end="")'
+
+[[rows]]
+id = "r83.P2_nothing_entered_raise"
+source = { table = "r83.json", id = "P2_nothing_entered_raise" }
+description = "R-347: an empty secret raises the plain PromptUnavailable again"
+file = "src/cratekit/cli/prompt.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '            raise NothingEntered(f"nothing entered for {question!r}")'
+new = '            raise PromptUnavailable(f"nothing entered for {question!r}")'
+
+[[rows]]
+id = "a32.R1_gate_not_explicit"
+source = { table = "a32.json", id = "R1_gate_not_explicit" }
+description = "The confirm gate is answerable inline"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_repair_link.py", "tests/test_cli_contract.py"]
+old = '''
+                prompt="Write these probe values onto these rows?",
+                #: EXPLICIT (R34). A write to a row of a live library is
+                #: answered by a separate recorded act with an actor.
+                explicit=True,'''
+new = '''
+                prompt="Write these probe values onto these rows?",
+                #: EXPLICIT (R34). A write to a row of a live library is
+                #: answered by a separate recorded act with an actor.
+                explicit=False,'''
+
+[[rows]]
+id = "r185-r246-author.D2_cloud_gate_restored"
+source = { table = "r185-r246-author.json", id = "D2_cloud_gate_restored" }
+description = "Declare the cloud sync decision on a verb that opens no database, the half the contract suite calls spurious"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_jobs.py", "tests/test_label_approved.py", "tests/test_label_workers.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_pending_units.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_setbuilder_cli.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py", "tests/test_write_session.py"]
+old = '''
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
+        name="name.apply",'''
+new = '''
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
+    Entry(
+        name="name.apply",'''
+
+[[rows]]
+id = "r312.R1_summary_promises_a_replace"
+source = { table = "r312.json", id = "R1_summary_promises_a_replace" }
+description = "Put the registry summary back to the promise the verb does not keep"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_acquire_fallback_fetch.py", "tests/test_acquire_workers.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_analysis_workers.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_handlers.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_jobs.py", "tests/test_label_approved.py", "tests/test_label_workers.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_pending_units.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_setbuilder_cli.py", "tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_tag_workers.py", "tests/test_vocals_cli.py", "tests/test_write_session.py"]
+old = '''
+        summary="add already-routed tracks to their new place after a genre or energy "
+        "change, additive, the old membership stays and is named",'''
+new = '        summary="re-place already-routed tracks after a genre or energy change",'
+
+[[rows]]
+id = "r372-b.B12_verb_does_not_declare_the_check"
+source = { table = "r372-b.json", id = "B12_verb_does_not_declare_the_check" }
+description = "registry: the My Tags verb stops declaring library.paths_resolved"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_cli_contract.py", "tests/test_doctor.py"]
+old = '''
+            # reads the same ratio the verb refuses on.
+            "library.paths_resolved",'''
+new = '            # reads the same ratio the verb refuses on.'
+
+[[rows]]
+id = "r424.A1_writes_narrowed"
+source = { table = "r424.json", id = "A1_writes_narrowed" }
+description = "Restore the four local write surfaces the verb never reaches"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py"]
+old = '''
+        writes=frozenset({"remote"}),
+        adjudicates=True,
+        destructive=True,'''
+new = '''
+        writes=frozenset({"db_tree", "db_metadata", "xml", "files", "remote"}),
+        adjudicates=True,
+        destructive=True,'''
+
+[[rows]]
+id = "r424.A2_cloud_gate_absent"
+source = { table = "r424.json", id = "A2_cloud_gate_absent" }
+description = "Restore the cloud sync decision on a verb that never opens the database"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py"]
+old = '''
+                digest_source="plan",
+            ),
+        ),
+        # Landed by U33.'''
+new = '''
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+        # Landed by U33.'''
+
+[[rows]]
+id = "r424.A3_rekordbox_checks"
+source = { table = "r424.json", id = "A3_rekordbox_checks" }
+description = "Restore both rekordbox doctor checks for a verb that reads an export"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py", "tests/test_doctor.py"]
+old = '''
+        doctor_checks=("library.mounted", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="sync.favorites.confirm",'''
+new = '''
+        doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="sync.favorites.confirm",'''
+
+[[rows]]
+id = "r424.A4_library_mounted"
+source = { table = "r424.json", id = "A4_library_mounted" }
+description = "Drop library.mounted, which the outbound write ledger needs"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py", "tests/test_doctor.py"]
+old = '''
+        doctor_checks=("library.mounted", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="sync.favorites.confirm",'''
+new = '''
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="sync.favorites.confirm",'''
+
+[[rows]]
+id = "r424.A5_summary_both_ways"
+source = { table = "r424.json", id = "A5_summary_both_ways" }
+description = "Restore the summary that claims the verb moves favourites both ways"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_outbound_workers.py"]
+old = '''        summary="heart the library's favourites on the streaming service; add-only, never un-hearts",'''
+new = '        summary="sync hearted tracks both ways; add-only, never un-hearts",'
+
+[[rows]]
+id = "r770-d.C8_native_gate_answered_inline"
+source = { table = "r770-d.json", id = "C8_native_gate_answered_inline" }
+description = "registry: declare intake.file.native as an ordinary gate, answerable on the run that found it"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_intake_writers_native.py", "tests/test_cli_contract.py"]
+old = '''
+                prompt="Add this file to the collection?",
+                explicit=True,'''
+new = '''
+                prompt="Add this file to the collection?",
+                explicit=False,'''
+
+[[rows]]
+id = "r773-b.R1_doctor_check_not_declared"
+source = { table = "r773-b.json", id = "R1_doctor_check_not_declared" }
+description = "registry: the verb no longer declares library.paths_resolved"
+file = "src/cratekit/cli/registry.py"
+surface = "maintainer"
+tests = ["tests/test_export_collection.py"]
+old = '        doctor_checks=("library.mounted", "rekordbox.closed", "library.paths_resolved"),'
+new = '        doctor_checks=("library.mounted", "rekordbox.closed"),'
+
+[[rows]]
+id = "r923.N20_gate_takes_inline_answer"
+source = { table = "r923.json", id = "N20_gate_takes_inline_answer" }
+description = "The repair's gate accepts an inline answer, so a flag on the command writes the rows"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '''
+                name="repair.rows.confirm",
+                options=("apply", "abort"),
+                prompt="Give these rows rekordbox's own defaults?",
+                #: EXPLICIT (R34). A write to rows of a live library is answered
+                #: by a separate recorded act with an actor.
+                explicit=True,'''
+new = '''
+                name="repair.rows.confirm",
+                options=("apply", "abort"),
+                prompt="Give these rows rekordbox's own defaults?",
+                #: EXPLICIT (R34). A write to rows of a live library is answered
+                #: by a separate recorded act with an actor.
+                explicit=False,'''
+
+[[rows]]
+id = "u103-b.M1_identify_declared_adjudicating"
+source = { table = "u103-b.json", id = "M1_identify_declared_adjudicating" }
+description = "Take the adjudicates declaration off intake.identify"
+file = "src/cratekit/cli/registry.py"
+surface = "maintainer"
+tests = ["tests/intake/test_workers.py", "tests/test_cli_contract.py"]
+old = '''
+        # missing`` sets.
+        adjudicates=True,
+'''
+new = '''
+        # missing`` sets.
+'''
+
+[[rows]]
+id = "u129-author.A10_export_set_without_library_mounted"
+source = { table = "u129-author.json", id = "A10_export_set_without_library_mounted" }
+description = "Drop library.mounted from export.set so the INSPIRATION backfill opens a database doctor never checked"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_u129_set_account_playlist.py"]
+old = '''
+        doctor_checks=("library.mounted", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="export.set.confirm",
+'''
+new = '''
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="export.set.confirm",
+'''
+
+[[rows]]
+id = "u129-author.A11_export_archive_without_library_mounted"
+source = { table = "u129-author.json", id = "A11_export_archive_without_library_mounted" }
+description = "Drop library.mounted from export.archive so the no-name backfill opens library paths doctor never checked"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_u129_set_account_playlist.py"]
+old = '''
+        doctor_checks=("library.mounted", "credential.provider"),
+        gates=(
+            GateSpec(
+                name="export.archive.confirm",
+'''
+new = '''
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="export.archive.confirm",
+'''
+
+[[rows]]
+id = "u129-author.A9_land_without_provider_check"
+source = { table = "u129-author.json", id = "A9_land_without_provider_check" }
+description = "Drop credential.provider from intake.land so doctor never names the archive's session"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_u129_set_account_playlist.py"]
+old = '''
+            "library.paths_resolved",
+            "credential.provider",
+        ),
+'''
+new = '''
+            "library.paths_resolved",
+        ),
+'''
+
+[[rows]]
+id = "u263.D22_restamp_declares"
+source = { table = "u263.json", id = "D22_restamp_declares" }
+description = "registry: analyze restamp no longer declares binary.ffmpeg"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_cli_contract.py"]
+old = '        doctor_checks=("library.mounted", "rekordbox.pins", "binary.ffmpeg"),'
+new = '        doctor_checks=("library.mounted", "rekordbox.pins"),'
+
+[[rows]]
+id = "u27-adopt-apply-author.R1_marker_restored"
+source = { table = "u27-adopt-apply-author.json", id = "R1_marker_restored" }
+description = "Put planned_in back on the entry, so the conformance suite stops driving the landed verb"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_adoption.py", "tests/test_pending_units.py"]
+old = '''
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
+    # ── Deletion: one surface, TWO MODULES, and the split is the decision ────'''
+new = '''
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+        planned_in=ADOPT_APPLY_CLI_UNIT,
+    ),
+    # ── Deletion: one surface, TWO MODULES, and the split is the decision ────'''
+
+[[rows]]
+id = "u27-reports-round-1.R1_delete_review_precondition"
+source = { table = "u27-reports-round-1.json", id = "R1_delete_review_precondition" }
+description = "Stop delete.review declaring the Trash check as a precondition"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_rebuild.py", "tests/test_restore.py", "tests/test_write_session.py"]
+old = '''
+            "library.identity",
+            "library.trash",
+            "rekordbox.closed",'''
+new = '''
+            "library.identity",
+            "rekordbox.closed",'''
+
+[[rows]]
+id = "u27-restore-cli-independent.I_H1_the_landed_verb_keeps_its_marker"
+source = { table = "u27-restore-cli-independent.json", id = "I_H1_the_landed_verb_keeps_its_marker" }
+description = "Put planned_in back on restore.list, which is what would disarm the conformance properties again"
+file = "src/cratekit/cli/registry.py"
+surface = "maintainer"
+tests = ["tests/test_cli_contract.py", "tests/test_pending_units.py"]
+old = '''        # U27 LANDED IT. The marker was U32's, then U27's, and it is now gone'''
+new = '''
+        planned_in="U27",
+        # U27 LANDED IT. The marker was U32's, then U27's, and it is now gone'''
+
+[[rows]]
+id = "u28-skills-independent.R1_planned_in_restored"
+source = { table = "u28-skills-independent.json", id = "R1_planned_in_restored" }
+description = "the skills.install registry entry gets planned_in back, so the conformance properties skip it again"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''
+        module_id="skills",
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",'''
+new = '''
+        module_id="skills",
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        planned_in="U28",'''
+
+[[rows]]
+id = "u39-author-full.W2_unreachable_gate_restored"
+source = { table = "u39-author-full.json", id = "W2_unreachable_gate_restored" }
+description = "name.apply redeclares the cloud sync decision its work can never raise"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
+old = '''
+            GateSpec(
+                name="name.apply.confirm",
+                options=("apply", "abort"),
+                prompt="Apply these renames?",
+                digest_source="plan",
+            ),
+        ),
+'''
+new = '''
+            GateSpec(
+                name="name.apply.confirm",
+                options=("apply", "abort"),
+                prompt="Apply these renames?",
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+'''
+
+[[rows]]
+id = "u40-author-full.R3_ungated"
+source = { table = "u40-author-full.json", id = "R3_ungated" }
+description = "Drop the module toggle, so a Module row ships on in the slim profile (R5)"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''
+        module_id="repair",
+        argv_builder="retag_argv",'''
+new = '        argv_builder="retag_argv",'
+
+[[rows]]
+id = "u40-author-full.R5_row_unclaimed"
+source = { table = "u40-author-full.json", id = "R5_row_unclaimed" }
+description = "Claim no feature row, so row 18 becomes a Module the product owes and no verb cites"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_cutover_parity.py"]
+old = '        feature_rows=(18,),'
+new = '        feature_rows=(),'
+
+[[rows]]
+id = "u40-author-full.R6_row_still_cut"
+source = { table = "u40-author-full.json", id = "R6_row_still_cut" }
+description = "Leave row 18 dispositioned Cut while a verb claims it, which is the coupling across two trees"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_cutover_parity.py"]
+old = '    Feature(18, "genre correction for a tag already too coarse", "module"),'
+new = '    Feature(18, "genre correction for a tag already too coarse", "cut"),'
+
+[[rows]]
+id = "u40-author-round-2.R8_not_long_running"
+source = { table = "u40-author-round-2.json", id = "R8_not_long_running" }
+description = "Round one COLLECT ERROR rather than a zero, and the error was the finding. Declaring the sweep short removes the verb from every derived guard in the resume contract, so the suite loses three tests and goes green"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_queued_resume_contract.py"]
+old = '''
+        argv_builder="retag_argv",
+        long_running=True,'''
+new = '        argv_builder="retag_argv",'
+
+[[rows]]
+id = "u42-author-round-2.R2_handler_lookup_imports"
+source = { table = "u42-author-round-2.json", id = "R2_handler_lookup_imports" }
+description = "Make by_handler_key import the module, which is what the rewritten guard forbids"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = 'def by_handler_key(key: str) -> Entry:'
+new = '''
+def by_handler_key(key: str) -> Entry:
+    import importlib
+
+    importlib.import_module("cratekit.acquire.cli")'''
+
+[[rows]]
+id = "u42-author.R1_planned_marker_returns"
+source = { table = "u42-author.json", id = "R1_planned_marker_returns" }
+description = "Restore planned_in on acquire.download, which is the state that hid rows 6 and 7"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_acquire_cli.py", "tests/test_cutover_parity.py", "tests/test_cli_contract.py"]
+old = '''
+        doctor_checks=("credential.provider", "binary.ffmpeg"),
+        # U42 LANDED IT.'''
+new = '''
+        doctor_checks=("credential.provider", "binary.ffmpeg"),
+        planned_in="U15",
+        # U42 LANDED IT.'''
+
+[[rows]]
+id = "u43-author-light.R1_marker_restored"
+source = { table = "u43-author-light.json", id = "R1_marker_restored" }
+description = "The planned_in marker is put back on the setbuild entry, which withdraws the verb from every conformance property that only drives landed entries"
+file = "src/cratekit/cli/registry.py"
+surface = "maintainer"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
+old = '''
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        # U43 LANDED IT.'''
+new = '''
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        planned_in="U35",
+        # U43 LANDED IT.'''
+
+[[rows]]
+id = "u44-author.D1_registry_drops_long_running"
+source = { table = "u44-author.json", id = "D1_registry_drops_long_running" }
+description = "Remove long_running from the master entry, which should shrink two derived populations"
+file = "src/cratekit/cli/registry.py"
+surface = "maintainer"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
+old = '''
+        argv_builder="master_argv",
+        long_running=True,
+        emits=frozenset({"job_state"}),
+        output_schema="job_state/1",
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("binary.ffmpeg",),'''
+new = '''
+        argv_builder="master_argv",
+        emits=frozenset({"job_state"}),
+        output_schema="job_state/1",
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("binary.ffmpeg",),'''
+
+[[rows]]
+id = "u45-round-1.V3_marker_restored"
+source = { table = "u45-round-1.json", id = "V3_marker_restored" }
+description = "Put planned_in back, so the verb reads as unlanded and every conformance property stops arming against it"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
+old = '''
+        doctor_checks=("library.mounted", "binary.rclone"),
+        # U45 LANDED IT.'''
+new = '''
+        doctor_checks=("library.mounted", "binary.rclone"),
+        planned_in="U35",
+        # U45 LANDED IT.'''
+
+[[rows]]
+id = "u45-round-1.V5_module_toggle_dropped"
+source = { table = "u45-round-1.json", id = "V5_module_toggle_dropped" }
+description = "Drop the module toggle, so the verb is offered on a slim install that has no backup module"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
+old = '''
+        source_scripts=("backup.sh",),
+        module_id="backup",'''
+new = '        source_scripts=("backup.sh",),'
+
+[[rows]]
+id = "u69-b.M20_registry_schema"
+source = { table = "u69-b.json", id = "M20_registry_schema" }
+description = "Declare the verb plan/1 in the registry, which the human renderer does not show"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_intake_missing.py", "tests/test_cli_contract.py"]
+old = '''
+        # nothing else, and the one thing a person needs from this verb is the
+        # list's path and the command that downloads it (R-400).
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",'''
+new = '''
+        # nothing else, and the one thing a person needs from this verb is the
+        # list's path and the command that downloads it (R-400).
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",'''
+
+[[rows]]
+id = "u72.M8_registry_digest_source"
+source = { table = "u72.json", id = "M8_registry_digest_source" }
+description = "The registry gate declares no digest source"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_intake_land.py"]
+old = '''
+                prompt="Move these files into the library and write the intake file?",
+                digest_source="plan",'''
+new = '                prompt="Move these files into the library and write the intake file?",'
+
+[[rows]]
+id = "u91.G1_registry_xml"
+source = { table = "u91.json", id = "G1_registry_xml" }
+description = "registry route.unplaced: declare no write surface, so doctor and conformance 8 no longer see the xml write"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py", "tests/test_cli_contract.py"]
+old = '''
+        writes=frozenset({"xml"}),
+        taxonomy_terms=("genre_energy",),'''
+new = '        taxonomy_terms=("genre_energy",),'
+
+[[rows]]
+id = "u96-b.B1_no_library_check_declared"
+source = { table = "u96-b.json", id = "B1_no_library_check_declared" }
+description = "registry: declare library.mounted on the recovery verb, a check it needs to FAIL"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_cli_contract.py"]
+old = '''
+        doctor_checks=("rekordbox.closed",),
+        # U96.'''
+new = '''
+        doctor_checks=("rekordbox.closed", "library.mounted"),
+        # U96.'''
+
+[[rows]]
+id = "u27-reports-round-1.S1_limit_floor"
+source = { table = "u27-reports-round-1.json", id = "S1_limit_floor" }
+description = "Pass the limit through unfloored, so a negative one becomes a slice from the end"
+file = "src/cratekit/cli/reports.py"
+surface = "user"
+tests = ["tests/test_reports_cli.py"]
+old = '    limit = max(0, int(ctx.args.limit))'
+new = '    limit = int(ctx.args.limit)'
+
+[[rows]]
+id = "u27-reports-round-1.S2_truncation_row"
+source = { table = "u27-reports-round-1.json", id = "S2_truncation_row" }
+description = "Drop the row that says the list was capped"
+file = "src/cratekit/cli/reports.py"
+surface = "user"
+tests = ["tests/test_reports_cli.py"]
+old = '''
+    if len(listed) < len(report.uncovered):
+        findings.append(
+            Finding(
+                key="coverage.truncated",
+                title="the list above is not the whole answer",
+                status=Status.INFO,
+                detail=(
+                    f"{len(listed)} of {len(report.uncovered)} uncovered tracks "
+                    f"are listed; raise the limit to see the rest"
+                ),
+            )
+        )
+'''
+new = ''
+
+[[rows]]
+id = "u27-reports-round-1.S3_summary_total"
+source = { table = "u27-reports-round-1.json", id = "S3_summary_total" }
+description = "Derive the summary total from the truncated list, the arithmetic that hides the cap"
+file = "src/cratekit/cli/reports.py"
+surface = "user"
+tests = ["tests/test_reports_cli.py"]
+old = '            "uncovered": len(report.uncovered),'
+new = '            "uncovered": len(listed),'
+
+[[rows]]
+id = "u27-reports-round-2.S5_handler_key_wrong"
+source = { table = "u27-reports-round-2.json", id = "S5_handler_key_wrong" }
+description = "Round 1's S5 was inert because the engine default matched; pass a WRONG key instead"
+file = "src/cratekit/cli/reports.py"
+surface = "user"
+tests = ["tests/test_reports_cli.py"]
+old = '            view, store, template=_template(cfg), handler_key=ctx.entry.handler_key'
+new = '            view, store, template=_template(cfg), handler_key="duplicates"'
+
+[[rows]]
+id = "u27-reports-round-3-fixes.F1_as_of_falsiness"
+source = { table = "u27-reports-round-3-fixes.json", id = "F1_as_of_falsiness" }
+description = "Restore the falsiness test, so an explicitly empty as-of is read as an absent flag"
+file = "src/cratekit/cli/reports.py"
+surface = "user"
+tests = ["tests/test_reports_cli.py"]
+old = '    if written is None:'
+new = '    if not written:'
+
+[[rows]]
+id = "u27-reports-round-3-fixes.F5_gap_row_flood"
+source = { table = "u27-reports-round-3-fixes.json", id = "F5_gap_row_flood" }
+description = "Render one gap row per declared bucket again when the governed tree is absent"
+file = "src/cratekit/cli/reports.py"
+surface = "user"
+tests = ["tests/test_reports_cli.py"]
+old = '    if stats.shape.folders == 0:'
+new = '    if False:'
+
+[[rows]]
+id = "r679-a.E1_cli_offers_every_verdict"
+source = { table = "r679-a.json", id = "E1_cli_offers_every_verdict" }
+description = "review resolve: offer the whole enum as --verdict choices"
+file = "src/cratekit/cli/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '        choices=tuple(str(member) for member in review.PERSON_VERDICTS),'
+new = '        choices=tuple(str(member) for member in review.Verdict),'
+
+[[rows]]
+id = "r679-a.E2_listing_drops_the_actor"
+source = { table = "r679-a.json", id = "E2_listing_drops_the_actor" }
+description = "review list: leave the actor out of the listing, so a superseded row shows no rule"
+file = "src/cratekit/cli/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_match_states.py", "tests/intake/test_workers.py"]
+old = '''
+        "option": item.option,
+        "actor": item.actor,
+    }'''
+new = '''
+        "option": item.option,
+    }'''
+
+[[rows]]
+id = "r790-d.V1_group_page_refusal"
+source = { table = "r790-d.json", id = "V1_group_page_refusal" }
+description = "_list_grouped: accept --after and --limit and ignore them"
+file = "src/cratekit/cli/review.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_review_queue.py"]
+old = '    if not ctx.args.queue or ctx.args.after is not None or ctx.args.limit is not None:'
+new = '    if not ctx.args.queue:'

@@ -2,7 +2,7 @@
 title: "A DEADCA7 push reaches a disposable copy when DEADCA7 runs under a redirected home whose agent settings name the copy"
 date: 2026-11-13
 category: workflow-issues
-module: "core/foreign_tree.py, cli/doctor.py, docs/cutover.md"
+module: "core/foreign_tree.py, cli/doctor_backup.py, cli/doctor.py, docs/cutover.md"
 problem_type: workflow_issue
 component: development_workflow
 severity: medium

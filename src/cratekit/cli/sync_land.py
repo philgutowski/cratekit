@@ -1,107 +1,25 @@
 """``crate sync land``: one sync pass taken to its landing gate in one verb (U152).
 
-Until this verb a pass was ten commands, each typed with an identifier copied
-from the one before (sitting 47, ``docs/plans/2026-10-27-one-command-sync.md``):
-``sync all`` queued intake jobs nothing drove, ``intake missing``, ``acquire
-download`` and its job, the tail of ``tag folder``, ``analyze run``, ``analyze
-restamp`` and ``name apply``, and ``intake land``. Skipping the tail was
-possible and silent, and the sitting that skipped it planned 116 rows named by
-provider id with no vox score.
+A chain of the verbs a person would type, each run through the real
+dispatcher under its own run with its own gates and refusals, so nothing is
+decided twice; that is why it is a CLI module. Preflight, the pass, its intake
+jobs, the missing list and the download are this verb's; the tail and the
+landing are :mod:`cratekit.cli.tail`'s, shared with ``label sync --go`` (U190).
+Every job is driven to settled, and a tail step that fails ends the pass.
 
-A CHAIN OF THE VERBS A PERSON WOULD TYPE, NOT A SECOND IMPLEMENTATION OF THEM.
-Each step is the existing verb run through the real dispatcher in this process,
-under its own run, with its own gates and its own refusals, so nothing a step
-decides is decided again here. That is why this module is ranked CLI and not
-beside the sync source it starts from: the dispatcher is the CLI layer's, and
-only a module of that layer may reach it.
-
-THE TAIL AND THE LANDING ARE :mod:`cratekit.cli.tail`'s, SINCE U190. Preflight,
-the pass, its intake jobs, the missing list and the download are this verb's;
-the tail in its order over the absolute staging path, the stale tail job
-replaced, ``name apply``'s confirm and the landing stopped at its gate are the
-chain ``label sync --go`` runs too, lifted out of this module whole so the two
-verbs cannot disagree. Every job either meets is driven to settled in the
-foreground and read off the queue, and a tail step that does not succeed ends
-the pass there, so a landing is never planned over files the tail did not run on.
-
-NO PASS LANDS ROWS WITH NO VOCAL SCORE UNLESS TOLD TO (U181). Before the pass
-queues anything, on a profile with the vocals module on, it asks the vocals
-module whether the model can score here, and when it cannot it stops at its
-named gate ``sync.land.without-vocals``, whose screen names the command that
-mends it; ``go`` takes the pass on without vocal scores. Sitting 51
-landed nineteen rows with no voxlevel from a copy installed without the
-vocals extra, and found out from one clause of the landing plan.
-
-A TRACK AN UNLANDED PASS STAGED IS NOT DOWNLOADED AGAIN (U212). The listing
-counts a missing track a staged file already carries as staged, and the pass
-says how many on its missing step. Sitting 55 downloaded two such tracks
-again, and the copies stopped the name step on names already taken. Since
-R-1499 the pass does not land them either: they are another download's, so
-it refuses beside them, below, and names that download's own landing.
-
-A PASS LANDS ONLY ITS OWN (R-1499). Every download stages into the one folder
-and the landing lands the whole of it, so a label go's download waiting at
-its landing's gate, a plain download or an earlier pass's would land under
-this pass. The folder is read as ``label sync --go`` reads it since R-1467,
-:func:`cratekit.intake.beside.beside`, before the download and again before
-the tail: the pass's own is a track of a download over its own list at its
-download name, or a file its own tail left there, kept by name, size and
-modification time whichever way the tail stopped (:func:`_keep`), while its
-pass has no landing proof. Anything else refuses, naming each download and
-how it lands, a label go's by ``crate --run RUN label sync --go`` and an
-earlier pass's by its ``--pass-run``; a folder or a library root that cannot
-be read refuses too. What arrives while the tail runs, a download another
-process finished or a file a person put there, is renamed by ``name apply``
-with the pass's own, so the folder is compared once more after the tail with
-what it held as the tail started (:func:`cratekit.intake.beside.arrived`), and
-anything new refuses before the landing is planned, with no record kept.
-
-ONE PASS STAGES AT A TIME (U293). The pass holds
-:mod:`cratekit.core.staging_lock` for its whole length, as ``label sync --go``
-and the night pass, ``crate sync night``, do, so a second refuses
-``staging-held`` naming the holder before it asks anything; the reading above
-is what keeps a landing right whatever else put files in the folder.
-
-A DOWNLOAD REFUSAL IS RECORDED AND SKIPPED. An item the worker refused for good,
-a lossy only track above all, leaves the job failed with every other item
-durable. The pass names each refused track and goes on with the ones that
-landed. A refusal that waiting mends, a parked provider, or a job still open
-ends the pass instead, because the tracks it holds are still coming.
-
-IT STOPS WHERE A PERSON MUST ACT, AND SAYS WHAT THEY DO. The landing is planned
-by ``intake land`` itself, which reads the backup acknowledgment (this verb
-never mints one) and stops at its explicit gate on its own run. The envelope is
-then PENDING, naming that run, the two commands that answer and apply it as the
-session, and the rekordbox visit that follows. This verb never starts a backup,
-never opens rekordbox and never writes a beat grid; it refuses before any write
-while rekordbox or a backup is running.
-
-A DOWNLOAD ``crate organize`` QUEUED FOR AN ACCOUNT EDIT IS THE PASS'S TOO
-(U227). The rekordbox step ``mirror-downloads`` queues a track a person put
-on a mirrored playlist on the account, which the library lacks, under no run,
-and a pass reads its jobs by the run they carry, so sitting 85 left such a job
-open beside the pass and landed its track only because another playlist
-listed it too. A pass ``sync all`` has just started, or the run it named when
-it queued nothing and no earlier pass is open, takes every such job still
-queued, through :func:`cratekit.core.jobs.join_run`, and drives, lists,
-downloads and lands it with its own; a track two of the pass's jobs list is
-listed once, so it lands once. A continued pass takes none, since it may have
-listed already, and the job stays on the left open row until a new pass
-takes it. ``sync mark`` reads only the playlist sweep's own jobs, so the
-mirror's playlist is never marked.
-
-EITHER RUN ID CONTINUES THE PASS, SINCE U183. A pass has two: the land run this
-verb prints as its own, and the ``sync all`` run its intake jobs carry, which is
-the one every step reads. The land run's record names its pass the moment that
-pass is known, so ``--pass-run`` takes either, an id that is neither is refused
-before any step runs, and every way on the verb prints ends with the one
-command that continues the pass.
-
-THE OUTBOUND HEARTS ARE NOT THIS VERB'S. ``sync all`` is run with no export, so
-the favourites write half refuses its own precondition and stays behind its own
-gate, while the hearts are listed inbound like any playlist. A provider that
-withholds hearts is reported once, on the pass's own failing check, and never
-retried here.
+Rules that shape it. With the vocals module on and no model able to score,
+the pass stops at ``sync.land.without-vocals`` (U181). A pass lands only its
+own staged files: anything else in the staging folder, read through
+:func:`cratekit.intake.beside.beside` before the download, before the tail and
+after it, refuses naming how it lands (U212, R-1499). One pass stages at a
+time under :mod:`cratekit.core.staging_lock` (U293). A permanent download
+refusal is recorded and skipped; one that waiting mends ends the pass. It
+stops at ``intake land``'s gate, PENDING with the commands that answer it,
+and never mints an acknowledgment, starts a backup, opens rekordbox or writes
+a beat grid. Downloads ``crate organize`` queued under no run are joined to a
+new pass (U227). Either the land run or the ``sync all`` run continues a pass
+(U183). The outbound hearts write is not this verb's: ``sync all`` runs with
+no export.
 """
 
 from __future__ import annotations
@@ -146,9 +64,8 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
 
 _ORIGIN = ("cli.sync_land",)
 
-#: The steps, in the one order a pass runs them. Each is a check key on the
-#: envelope, ``sync.land.<step>``. The last six are the tail and the landing,
-#: :data:`cratekit.cli.tail.STEPS`, named here from that module.
+#: The steps in order, each a check key ``sync.land.<step>``; the last six are
+#: :data:`cratekit.cli.tail.STEPS`.
 PREFLIGHT = "preflight"
 SYNC = "sync"
 INTAKE = "intake"
@@ -166,8 +83,7 @@ SYNC_VERB = "sync.all"
 DOWNLOAD_VERB = tail.DOWNLOAD_VERB
 BACKUP_VERB = "backup.run"
 
-#: Why the favourites write half queues nothing in a pass this verb runs: no
-#: export is handed to it, so it refuses its own precondition (module docstring).
+#: Why the favourites write half queues nothing here: no export is handed to it.
 OUTBOUND_UNASKED = "outbound-export-required"
 
 #: This verb's own name, which a land run's record carries.
@@ -180,8 +96,7 @@ PASS_ROLE = "pass_run"
 #: How many of the library's recent passes a refused ``--pass-run`` names.
 RECENT_PASSES = 5
 
-#: The seam every step goes through, the shared chain's own, so one stand in
-#: serves both verbs that run it.
+#: The seam every step goes through, shared with the tail's other verb.
 Child = tail.Child
 
 #: The preflight's row for the vocal model, ``sync.land.vocal-model`` (U181).
@@ -265,14 +180,9 @@ def _report(progress: Callable[[str], None] | None) -> tail.Chain:
 def preflight(report: _Pass, cfg: config.Config) -> None:
     """Refuse before any step while rekordbox, or a backup's driver, is up.
 
-    Rekordbox through the guarded writer's own predicate, so this refusal and
-    the landing's are one question asked twice. A backup by its job's driver
-    lock, which is the one liveness test the queue trusts: a backup job open in
-    the queue whose driver died is not running and does not hold the pass.
-
-    SHARED WITH ``crate sync bandcamp`` (U179), which runs it as its own first
-    step, so the two sources of the driver refuse on one predicate. The verb
-    is named from the chain's title.
+    rekordbox through the guarded writer's predicate, a backup by its driver
+    lock, the queue's one liveness test. Shared with ``crate sync bandcamp``
+    (U179); the verb is named from the chain's title.
     """
     verb = f"crate {report.title}"
     report.say(PREFLIGHT, "rekordbox and backups")
@@ -315,9 +225,8 @@ def _continue_command(pass_run: str) -> str:
 def _land_record(run_id: str) -> gates.RunState | None:
     """``run_id``'s record when it is a ``sync land`` run's, else None.
 
-    Only a bare identifier is looked up, so a value with a path in it reads
-    no file outside the run records. A record that cannot be read is no land
-    run, since the refusal that follows names the ids that do work.
+    Only a bare identifier is looked up, so no file outside the run records is
+    read; an unreadable record is no land run.
     """
     if not run_id or run_id != Path(run_id).name or run_id.startswith("."):
         return None
@@ -333,10 +242,8 @@ def _land_record(run_id: str) -> gates.RunState | None:
 def _resolve(report: _Pass, cfg: config.Config, given: str) -> str:
     """The pass ``--pass-run`` names: a pass run as given, a land run as the pass it recorded.
 
-    A PASS RUN IS ONE AN INTAKE JOB OF THIS LIBRARY CARRIES, which is exactly
-    what ``intake missing --run`` asks of it at the fourth step, so an id that
-    passes here is never refused there for the same reason. Anything else is
-    refused now, before a step runs or a provider is called.
+    A pass run is one an intake job of this library carries, the same test
+    ``intake missing --run`` applies; anything else refuses before any step.
     """
     with jobs.open_store() as store:
         if _pass_jobs(store, given, cfg):
@@ -428,12 +335,7 @@ def _unknown_pass(
 
 
 def _remember(ctx: Context, report: _Pass, pass_run: str) -> None:
-    """Record the pass on this run's own record now, before any step can stop it.
-
-    The dispatcher saves the record only when the verb answers or a gate
-    refuses, so a pass that fails at a later step, or is interrupted, would
-    otherwise leave a land run whose id continues nothing.
-    """
+    """Record the pass on this run's record now, so a pass that stops later can be continued."""
     ctx.run.related_runs[PASS_ROLE] = pass_run
     gates.save(ctx.run)
     report.say(
@@ -446,24 +348,10 @@ def _remember(ctx: Context, report: _Pass, pass_run: str) -> None:
 def _vocals(ctx: Context, report: _Pass, cfg: config.Config) -> None:
     """Stop before the pass when the vocal model cannot score here, until told to go on (U181).
 
-    Sitting 51 landed a pass from a copy installed without the vocals extra:
-    ``analyze run`` finished every file with no voxlevel, the head it wrote
-    made every later run skip them, and the landing plan said so in one line.
-    So the pass asks first, through the vocals module's one test, and before
-    anything is queued it stops at its named gate, whose screen names what is
-    missing and the command that mends it. ``go`` takes the pass on without
-    vocal scores, and the summary and a warning say so; ``stop`` refuses
-    ``vocal-scoring-unavailable`` with the same command.
-
-    THE STOP IS THE GATE'S OWN REFUSAL, decision required, rather than a
-    precondition of its own: every gate a verb declares refuses that way and
-    leaves its run resumable, so the answer is given inline with ``-d`` or
-    recorded with ``crate run decide`` and continued with ``--run``, the two
-    ways every other gate is answered.
-
-    A PROFILE WITH THE VOCALS MODULE OFF IS NOT ASKED. It has no vocals verb,
-    and is a person who chose not to score vocals, so its pass goes on as it
-    always did and the row says why nothing was asked.
+    Asked before anything is queued, since unscored rows are skipped by every
+    later run. The stop is the gate's own refusal, so the run stays resumable;
+    ``go`` goes on with a warning, ``stop`` refuses ``vocal-scoring-unavailable``.
+    A profile with the vocals module off is not asked.
     """
     report.say(PREFLIGHT, "the vocal model")
     if not tail.vocals_on(cfg):
@@ -529,10 +417,8 @@ def _vocals(ctx: Context, report: _Pass, cfg: config.Config) -> None:
 def _lift_failed_checks(report: _Pass, envelope: dict[str, Any]) -> None:
     """The pass's own failing checks, carried whole so a shortfall is read once.
 
-    ONE IS LEFT, BY DESIGN. The favourites write half refuses for want of the
-    export this verb never hands it, every pass, and a FAIL row on every pass
-    for the act the verb chose not to take would teach a person to read past
-    the row beside it, the withheld hearts. It is said once, as a note.
+    The favourites write half's refusal is left out and said once as a note,
+    since it fails every pass by this verb's choice.
     """
     data = envelope.get("data") or {}
     not_queued = tail.summary_of(envelope).get("not_queued") or {}
@@ -587,25 +473,16 @@ def _open_passes(cfg: config.Config) -> dict[str, list[str]]:
 def _left_behind(report: _Pass, cfg: config.Config, taken: str | None) -> None:
     """Name every open intake job this pass will not drive, by playlist, with the way on.
 
-    ``sync all`` leaves a playlist out of a new pass while an intake job for it
-    is still open, whether an earlier pass queued that job or a person typed
-    ``intake playlist``, and that job holds the playlist out of every later
-    pass until it is driven. The pass drives only its own run's jobs, so the
-    rest are said here, on a failing row, rather than nowhere.
-
-    GROUPED BY PLAYLIST, WITH AGE, SIZE AND COPIES (U182). Sitting 51 read 17
-    such jobs as ids alone, six weeks old, ten of them copies of two lists, and
-    could not judge one. Each job now says how old it is, how many tracks it
-    holds and which other open job holds exactly the same ones, and the row
-    says what a cancel buys, since cancelling is how a stale job is let go.
+    Such a job holds its playlist out of every pass, so it is said on a failing
+    row, grouped by playlist with age, size and copies, and what a cancel buys
+    (U182).
     """
     with jobs.open_store() as store:
         holds = cli_jobs.intake_holds(store, cfg.library.volume_id, now=cli_jobs.now())
     left = [hold for hold in holds if not taken or _run_of(hold.job) != taken]
     if not left:
         return
-    # ONE PLAYLIST AS THE PASS READS IT, a typed URL and a sweep's id together,
-    # named by the newest job that froze the account's name, else the newest.
+    # One playlist as the pass reads it, named by the newest job with a frozen name.
     grouped: dict[str, list[cli_jobs.Hold]] = {}
     for hold in left:
         grouped.setdefault(hold.identity or hold.label(), []).append(hold)
@@ -671,9 +548,7 @@ def _way_on(hold: cli_jobs.Hold) -> str:
     if run_id:
         way = f"continue its pass with: {_continue_command(run_id)}"
     elif _mirror_download(job) and job.state is jobs.JobState.QUEUED:
-        # U227: queued by organize for an edit made on the account, and the
-        # next new pass takes it, so driving it by hand would land it outside
-        # one. Only a queued one: a pass takes no other (round two, R3).
+        # Queued by organize; the next new pass takes it if still queued (U227).
         way = (
             "queued by crate organize for a track added on the account; the next new "
             "pass takes it: crate sync land"
@@ -686,11 +561,8 @@ def _way_on(hold: cli_jobs.Hold) -> str:
 def _sync(report: _Pass, cfg: config.Config) -> str | None:
     """Run ``sync all`` and return the pass's run, or None when there is none to take.
 
-    A PASS THAT QUEUED NOTHING IS NOT A PASS WITH NOTHING TO DO. ``sync all``
-    leaves out a playlist whose intake job is still open from an earlier pass,
-    the state sitting 47 started from: ``sync all`` typed by hand, its jobs
-    queued and never driven. That earlier pass is then the one to take, and
-    when there are several, which is a person's choice and the pass names them.
+    When it queued nothing, a single earlier pass with open intake jobs is
+    taken; several are a person's choice and are named.
     """
     envelope = tail.required(report, SYNC, ["sync", "all"])
     _lift_failed_checks(report, envelope)
@@ -735,10 +607,8 @@ def _mirror_download(job: jobs.Job) -> bool:
 def _take_mirror_downloads(report: _Pass, cfg: config.Config, run_id: str) -> list[str]:
     """Take every download ``crate organize`` queued for an account edit into the pass (U227).
 
-    Each intake job of this library the ``mirror-downloads`` step queued that
-    is still queued and carries no run is given ``run_id``, so the pass drives,
-    lists, downloads and lands it with its own. A job another pass took in
-    between is refused by the write and left as it is. Answers the jobs taken.
+    Each still queued ``mirror-downloads`` job of this library with no run is
+    given ``run_id``; one another pass took meanwhile is left. Answers the jobs taken.
     """
     taken: list[str] = []
     with jobs.open_store() as store:
@@ -780,12 +650,8 @@ def _pass_jobs(store: jobs.JobStore, run_id: str, cfg: config.Config) -> list[jo
 def _intake(report: _Pass, run_id: str, cfg: config.Config) -> bool:
     """Drive every intake job of the pass to settled; any not succeeded ends it.
 
-    A CANCELLED JOB IS NEVER DRIVEN AGAIN (U182). A person cancels a stale job
-    to let its playlist go, often one copy of several holding the same tracks
-    in one run, so a continued pass names each cancelled job, drives the rest,
-    and lists them without it. Returns whether any job was left out that way.
-    When every job of the run was cancelled the pass has nothing to take, and
-    it says the next pass queues those playlists again, never to resume one.
+    A cancelled job is named and never driven again (U182); returns whether any
+    was. When every job was cancelled the pass has nothing to take.
     """
     with jobs.open_store() as store:
         found = _pass_jobs(store, run_id, cfg)
@@ -812,11 +678,8 @@ def _intake(report: _Pass, run_id: str, cfg: config.Config) -> bool:
             error = tail.job_error(report, job)
             if job.is_open():
                 raise _Stop(INTAKE, error)
-            # AN INTAKE JOB THAT ENDED is not driven again by a continued pass,
-            # so the way on is the job's own retry or a new pass.
-            # A RETRYABLE ONE IS, ONCE ITS OWN RETRY HAS RUN, so its way on ends
-            # with the continuation (U183); one that cannot succeed ends with a
-            # new pass, the one command that can.
+            # An ended job is not driven again: a retryable one is retried, then
+            # the pass continued (U183); otherwise a new pass.
             if job.cause is not None and job.cause.retryable:
                 retry = f"retry the job first: crate job resume {job.job_id}"
                 raise _Stop(INTAKE, tail.with_steps(error, retry))
@@ -848,14 +711,10 @@ class _Listed:
 def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> _Listed:
     argv = ["intake", "missing", "--run", run_id]
     if without_cancelled:
-        # THE LISTING'S OWN WORD FOR LEAVING A CLOSED JOB OUT, which it then
-        # names on a failing row of its own. Only cancelled jobs reach here: a
-        # failed one ended the pass at its intake step.
+        # Leaves cancelled jobs out; a failed one already ended the pass.
         argv.append("--skip-failed")
     envelope = tail.required(report, MISSING, argv)
-    # THE LISTING'S OWN FAILING ROWS RIDE THROUGH, a missing track the provider
-    # cannot name exactly above all: it is in no download list, and the pass
-    # would otherwise say nothing of it.
+    # The listing's failing rows ride through, so an unnameable track is said.
     _lift_failed_checks(report, envelope)
     summary = tail.summary_of(envelope)
     listed = summary.get("list")
@@ -873,8 +732,7 @@ def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> 
         raise _Done(MISSING)
     report.summary["staged"] = staged
     report.summary["land_name"] = land_name
-    # SAID ON THE STEP THAT DECIDED IT (U212), so a person reading the pass
-    # sees why fewer tracks were downloaded than the playlists asked for.
+    # Said here, so fewer downloads than asked for is explained (U212).
     held = (
         "staged already by a download not landed yet, not downloaded again; that "
         "download is landed on its own first, since this pass lands only its own (R-1499)"
@@ -905,17 +763,15 @@ def _staged_on(listed: _Listed) -> str:
 
 
 def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> jobs.Job | None:
-    """The download job already queued over this list, newest first, or None.
+    """The newest download job already queued over this list, or None.
 
-    A pass continued with ``--pass-run`` lists the same tracks into the same
-    file, and queueing it again would download each of them twice. A cancelled
-    job is nobody's claim on the list and is passed over.
+    So a continued pass does not download twice; a cancelled job is passed over.
     """
     from cratekit.acquire import cli as acquire_cli  # noqa: PLC0415 - one module's key
 
     key = registry.entry(DOWNLOAD_VERB).handler_key
     wanted = str(listed.expanduser().absolute())
-    # ``list_jobs`` IS NEWEST FIRST already, so the first match is the newest.
+    # ``list_jobs`` is newest first.
     for job in jobs.list_jobs(store):
         if (
             job.handler_key == key
@@ -930,10 +786,8 @@ def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> job
 def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
     """Download the list, skip what was refused for good, and return how many landed.
 
-    A pass whose every missing track is staged has no list (U212). Since
-    R-1499 the reading before this step refuses while the folder holds what
-    is not the pass's own, so the pass gets here with nothing to download
-    only when what is staged is its own.
+    A pass whose every missing track is already staged, as its own, has no list
+    (U212, R-1499).
     """
     from cratekit.acquire import cli as acquire_cli  # noqa: PLC0415 - one module's reading
 
@@ -962,12 +816,8 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
         with jobs.open_store() as store:
             job = jobs.get(store, job_id)
     job = tail.settle(report, DOWNLOAD, job)
-    # THE ONE READING OF A SETTLED DOWNLOAD (R-1115), shared with ``label sync
-    # --go``: SUCCEEDED, or FAILED only by tracks refused for good. A track the
-    # download declined is refused too (U169): since that unit a policy
-    # refusal settles the item as skipped and the job succeeds, so read alone
-    # the failed items would report a clean download over a track that never
-    # landed.
+    # The one reading of a settled download, shared with ``label sync``
+    # (R-1115); a declined track counts as refused (U169).
     with jobs.open_store() as store:
         read = acquire_cli.read_download(store, job)
     if not read.settled:
@@ -996,9 +846,7 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
             + (f"; {len(refused)} refused" if refused else "")
             + _staged_on(listed),
         )
-        # WHAT IS STAGED STILL LANDS (review round one, F1): a download that
-        # landed nothing ends the pass only when nothing was staged either,
-        # since the missing step already told the person the landing takes it.
+        # What is staged still lands, so this ends the pass only with nothing staged.
         if not listed.staged:
             raise _Done(DOWNLOAD)
         return 0
@@ -1014,10 +862,7 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
 def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
     """The PENDING envelope a pass ends on when a step waits for a person.
 
-    It names what the person does, as commands, in order, through the chain's
-    one wording of a stop (:func:`cratekit.cli.tail.attended`), and nothing is
-    answered here: the gate's run is the step's own, and the acknowledgment is
-    minted by the session through its own verb.
+    Worded by :func:`cratekit.cli.tail.attended`; nothing is answered here.
     """
     resume = report.summary.get("pass_run")
     if stop.step == LAND:
@@ -1029,8 +874,7 @@ def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
     said = tail.attended(report, stop, after=after)
     summary = "the pass " + said.summary
     if stop.step == LAND:
-        # WHAT THE DOWNLOAD DID, said first (review round two, finding 5): a
-        # pass that landed only what was staged downloaded nothing.
+        # What the download did, said first.
         if report.summary.get("downloaded") == 0:
             summary = (
                 "the pass downloaded nothing and is tagged, analysed and named over "
@@ -1091,12 +935,7 @@ def _choose(ctx: Context, report: _Pass, choose: _Choose) -> Envelope:
 
 
 def _own_downloads(store: jobs.JobStore, name: str, cfg: config.Config) -> set[str]:
-    """Every download job of this library over the pass's own list, by its name.
-
-    The name a pass's list and its landing share, the reading ``cli.tail``
-    names a pass's download by, so a cancelled job over the list, whose
-    finished tracks are in the folder, is the pass's own as well.
-    """
+    """Every download job of this library over the pass's own list, cancelled ones included."""
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
     return {
@@ -1111,14 +950,10 @@ def _alone(
 ) -> staged_reading.Settled:
     """Refuse the pass while the staging folder holds what is not its own (R-1499).
 
-    Read as R-1467 reads it for a label go, :func:`cratekit.intake.beside.beside`:
-    the pass's own is a track of its own download at its download name, or a
-    file its own tail left there (:func:`_keep`) while its pass has no landing
-    proof. Anything else would be landed with it under its pass, so the pass
-    stops at ``step``, before its download or before its tail, naming each
-    download and how it lands. A folder or a library root that cannot be read
-    stops it too. Returns what the folder then holds of other downloads, which
-    :func:`_arrived` compares the folder with once the tail has run.
+    Read through :func:`cratekit.intake.beside.beside`: the pass's own is its
+    download's tracks or what its tail left (:func:`_keep`). Anything else, or
+    an unreadable folder, stops it at ``step`` naming how each lands. Returns
+    the folder's state for :func:`_arrived`.
     """
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
@@ -1165,12 +1000,9 @@ def _land_command(staging: Path, name: str) -> str:
 def _own_unnamed(
     found: staged_reading.Beside, staging: Path, name: str, own: Collection[str]
 ) -> tuple[str, ...]:
-    """The way on when the files no download names may be the pass's own (review round one).
+    """The way on when unnamed files may be the pass's own, renamed with the record lost.
 
-    A pass whose tail renamed its tracks and whose record of them was lost, or
-    never kept by an older build, reads them as files no download names. Only
-    a person can tell, so the step says how to land them under the pass; only
-    for a pass with a download of its own (review round two, finding 8).
+    Only a person can tell; offered only for a pass with a download of its own.
     """
     if not (found.unnamed and own):
         return ()
@@ -1195,11 +1027,7 @@ def _unlistable(staging: Path, exc: OSError) -> CratekitError:
 def _arrived(
     cfg: config.Config, staging: Path, name: str, before: staged_reading.Settled
 ) -> CratekitError | None:
-    """The refusal for what arrived while the tail ran, or None (review round one).
-
-    :func:`cratekit.intake.beside.arrived`, read against what :func:`_alone`
-    saw as the tail started; a queue that cannot be read refuses too.
-    """
+    """The refusal for what arrived since :func:`_alone` read the folder, or None."""
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
     try:
@@ -1218,11 +1046,7 @@ def _arrived(
 
 
 def _planned_over(changed: CratekitError, stop: _Attend) -> CratekitError:
-    """The arrival refusal for a landing already planned over what arrived (round two).
-
-    The landing waits at its gate on its own run; that plan took what
-    arrived, so the step says not to answer it.
-    """
+    """The arrival refusal for a landing already planned, saying not to answer its gate."""
     run = (stop.cause.detail or {}).get("run_id")
     cause = changed.cause
     steps = (
@@ -1244,16 +1068,9 @@ def _keep(
 ) -> None:
     """Keep what the folder holds as the pass's tail stops, under its pass (R-1499).
 
-    The tail's ``name apply`` renames every track before the landing's gate,
-    so the pass continued finds its tracks under names no download recorded;
-    :func:`cratekit.intake.beside.keep` keeps them by name, size and
-    modification time, which is what lets it read them as its own and nothing
-    put there since. One that cannot be kept is a warning, and the pass
-    continued then refuses beside its own renamed tracks.
-
-    NOT WHEN ANYTHING ARRIVED WHILE THE TAIL RAN (review round one): what
-    arrived may have been renamed with the pass's own, so a record kept then
-    would read it as the pass's own; the warning says the record was not kept.
+    ``name apply`` renames the tracks, so they are kept by name, size and
+    modification time for a continued pass. Not kept when anything arrived
+    meanwhile, since it may have been renamed too; a lost record is a warning.
     """
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
@@ -1326,12 +1143,7 @@ def _ended(report: _Pass, stop: _Stop) -> CratekitError:
 
 
 def _with_warnings(report: _Pass) -> dict[str, Any]:
-    """The pass's record with its warnings, which a refusal has no other place for.
-
-    A refusal carries no warnings of its own, so a tail record the pass could
-    not keep (R-1499) would otherwise be said nowhere when the tail stopped on
-    a failed step (review round one).
-    """
+    """The pass's record with its warnings, since a refusal has no other place for them."""
     data = report.data()
     if report.warnings:
         data["warnings"] = list(report.warnings)
@@ -1340,9 +1152,7 @@ def _with_warnings(report: _Pass) -> dict[str, Any]:
 
 def sync_land(ctx: Context) -> Envelope:
     """Take one sync pass to its landing gate. See the module docstring."""
-    # ONE PASS STAGES AT A TIME (U293), held for the whole of the pass, so the
-    # night pass, a label go and a pass by hand never download together. The
-    # night pass runs this verb in its own process and already holds it.
+    # One pass stages at a time, for the whole pass (U293).
     with staging_lock.held("crate sync land", run_id=ctx.run.run_id):
         return _sync_land(ctx)
 
@@ -1354,8 +1164,7 @@ def _sync_land(ctx: Context) -> Envelope:
     try:
         preflight(report, cfg)
     except CratekitError as exc:
-        # A REFUSAL HERE NAMES THE WAY BACK (U183): the pass it would continue,
-        # or a new one.
+        # Names the way back (U183).
         again = _continue_command(taken) if taken else "crate sync land"
         raise tail.with_steps(exc, f"then run it again: {again}") from None
     _vocals(ctx, report, cfg)
@@ -1366,8 +1175,7 @@ def _sync_land(ctx: Context) -> Envelope:
             report.check(SYNC, "info", f"continuing the pass queued under run {run_id}")
         else:
             run_id = _sync(report, cfg)
-            # A PASS SYNC ALL STARTED, or the run it named over nothing new with
-            # no earlier pass open, takes the account's queued downloads (U227).
+            # A fresh pass takes the account's queued downloads (U227).
             fresh = str(report.summary.get("sync_run") or "")
             if fresh and run_id in (None, fresh) and _take_mirror_downloads(report, cfg, fresh):
                 run_id = fresh
@@ -1380,30 +1188,22 @@ def _sync_land(ctx: Context) -> Envelope:
         without = _intake(report, run_id, cfg)
         listed = _missing(report, run_id, without_cancelled=without)
         staging = cfg.paths.download_staging.expanduser().absolute()
-        # THE FOLDER HOLDS ONLY THE PASS'S OWN (R-1499), read before the
-        # download, so nothing is downloaded into a folder the pass cannot
-        # land, and again before the tail, over what arrived meanwhile.
+        # The folder must hold only the pass's own, before the download and the tail (R-1499).
         name = listed.land_name
         _alone(report, cfg, staging, name, DOWNLOAD)
         report.summary["downloaded"] = _download(report, listed, cfg)
         before = _alone(report, cfg, staging, name, TAG)
         try:
             folder = tail.through_name(report, staging, cfg, name)
-            # NOTHING ARRIVED WHILE THE TAIL RAN (review round one): a download
-            # another process finished meanwhile was renamed with the pass's
-            # own, and the landing would take it under the pass.
+            # Nothing may have arrived while the tail ran.
             changed = _arrived(cfg, staging, name, before)
             if changed is not None:
-                # NOT CONTINUED (review round two, D2): the pass continued
-                # refuses beside the tracks its tail renamed, since no record
-                # was kept; the way on is the landing by hand the steps name.
+                # Not continued, since no record was kept; the steps name the landing.
                 raise _Stop(LAND, changed, continues=False)
             try:
                 tail.land(report, folder, ["--pass", name])
             except _Attend as stop:
-                # READ ONCE MORE AFTER THE PLAN (review round two, finding 1):
-                # an arrival between the check above and the landing's own
-                # listing is in the plan, so the plan is refused, not handed on.
+                # Read again after the plan, since a late arrival is in it.
                 changed = _arrived(cfg, staging, name, before)
                 if changed is None:
                     raise

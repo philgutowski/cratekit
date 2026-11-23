@@ -1,67 +1,19 @@
 """``crate schedule``: the night pass on launchd, installed, read and removed (U295).
 
-``crate sync night`` (U293) is the sync pass run unattended up to its landing
-gate. These three verbs put it on a schedule, so it runs overnight on the Mac
-without anybody typing it:
+``install [--at HH:MM]`` writes one launchd user agent and bootstraps it into
+``gui/<uid>``, replacing any agent already there; ``show`` reads it back;
+``remove`` boots it out and deletes the plist. The agent runs exactly the
+absolute ``crate`` with ``sync night`` and nothing else, so every limit is the
+night verb's own. Only the person's own LaunchAgents directory and GUI domain
+are touched, and all three verbs refuse root.
 
-* ``crate schedule install [--at HH:MM]`` writes ONE launchd user agent and
-  loads it with ``launchctl bootstrap`` for the person's own GUI domain. An
-  agent already installed is booted out first and replaced, never duplicated.
-* ``crate schedule show`` reads it back: installed or not, the time, the
-  ``crate`` it runs, whether launchd has it loaded, and the last night's line.
-* ``crate schedule remove`` boots it out and deletes the plist. Nothing
-  installed is a no op.
-
-THE AGENT RUNS ``crate sync night`` AND NOTHING ELSE. Its program arguments are
-exactly the absolute ``crate`` that ran the install, ``sync`` and ``night``: no
-``-d``, no ``--calls``, no other verb, no shell. Every limit the night keeps is
-the night verb's own (it answers no gate, mints no acknowledgment, refuses
-beside rekordbox, a running job or another pass, and holds the night's budget),
-so nothing here can widen it. ``show`` reads an installed agent's arguments
-back and says so when they are anything else.
-
-ONLY THE PERSON'S OWN LAUNCHAGENTS. The plist goes in ``Library/LaunchAgents``
-under the home directory, resolved by :func:`launch_agents_dir` alone, and the
-agent is loaded into ``gui/<uid>``, the logged in person's own domain. Never a
-system domain and never a system directory; and all three verbs refuse to run
-as root, whose ``gui/0`` is nobody's login.
-
-IT NEVER CUTS A NIGHT SHORT, from a shell reading the installation the agent
-carries. Install and remove hold the staging lock while they boot the agent
-out, so a night pass in progress, which holds it for its whole run, is never
-ended by launchd under it: the verb refuses ``staging-held`` and the night runs
-on. The lock is the shell's installation's; a shell pointed at another state
-directory holds another lock (a residual of review round two).
-
-ONE PLACE STARTS A PROCESS. :func:`launchctl` is the only call into the
-operating system that runs anything, by its absolute path, and the suite
-replaces it in every test (``tests/conftest.py``), so no test ever loads,
-starts or removes a launchd job. :func:`platform` is the one reading of the
-platform, so the suite runs every verb as macOS on any machine.
-
-NOTHING HALF INSTALLED. Success means the plist is written AND launchd reads
-the agent loaded. A bootstrap that fails, or one launchd does not then read
-loaded, is refused with launchctl's own words and the plist written for it is
-removed, so the next ``show`` reads nothing installed rather than an agent
-that will never fire. A bootout that leaves the agent loaded keeps its plist,
-so ``show`` still reads what launchd holds.
-
-NO ENVIRONMENT OF THE PERSON'S BEYOND WHAT THE RUN NEEDS. launchd starts the
-agent with almost no environment. The plist carries a fixed ``PATH`` (the
-directory of the ``crate`` it runs, the directories the install found each
-binary in, the directories the binaries are looked for in, and the system's
-own); the configuration, state and provider gate
-directories AS THE INSTALL RESOLVED THEM, absolute, whether an override, an XDG
-variable or the platform's default found them (review round one, finding 1),
-so the night reads the installation the install read; and the library, staging,
-ISRC cache and binary overrides set at the install, each made absolute. Never a
-credential, and nothing else.
-
-WHAT IT WRITES. The plist in the LaunchAgents directory, the directory of the
-agent's log, the declared state entry ``schedule_log``, and, for install and
-remove, the staging lock's file under the installation's state. Nothing a library
-knows about, which is why the registry entry declares no library surface, on
-``crate skills install``'s argument.
+Install and remove hold the staging lock while booting out, so a night in
+progress is never cut short. Success means the plist is written and launchd
+reads it loaded; anything less is refused and the plist removed once launchd
+reads it absent. The plist carries a fixed ``PATH``, the configuration, state
+and provider gate directories as the install resolved them, and the overrides
+set at the install, all absolute, never a credential. :func:`launchctl` is the
+one place a process starts, replaced in every test.
 """
 
 from __future__ import annotations
@@ -96,8 +48,7 @@ NIGHT_ARGV: tuple[str, ...] = ("sync", "night")
 #: The one platform with launchd.
 MACOS = "darwin"
 
-#: The default firing, local time: deep in the night, outside the evening hours
-#: the catalogue is busiest, and off the hour, when most scheduled work fires.
+#: The default firing, local time: deep in the night and off the hour.
 DEFAULT_AT: tuple[int, int] = (3, 17)
 
 #: The declared state entry the agent's output is appended to.
@@ -116,8 +67,7 @@ NOT_LOADED_CODE = 113
 SYSTEM_PATH: tuple[str, ...] = ("/usr/bin", "/bin", "/usr/sbin", "/sbin")
 
 def resolved_names() -> tuple[str, ...]:
-    """The directories an agent always carries, as the install resolved them.
-    Read from the configuration module when asked, never bound at import."""
+    """The directories an agent always carries, read when asked, never at import."""
     return (config.ENV_CONFIG_DIR, config.ENV_STATE_DIR, config.ENV_PROVIDER_GATE_DIR)
 
 
@@ -132,8 +82,7 @@ def carried_names() -> tuple[str, ...]:
 
 
 def binary_names() -> tuple[str, ...]:
-    """The per binary overrides an agent carries when set: one per binary this
-    build knows, never a name merely starting with the prefix."""
+    """The per binary overrides an agent carries when set, one per known binary."""
     known = (*binaries.INSTALLABLE_BINARIES, *sorted(binaries.PLATFORM_BINARIES))
     return tuple(sorted({binaries.env_var(name) for name in known}))
 
@@ -176,11 +125,7 @@ def uid() -> int:
 
 
 def launch_agents_dir() -> Path:
-    """The person's own LaunchAgents directory, composed from the home directory.
-
-    The one place the plist's directory is resolved. Composed from
-    ``Path.home()`` so no home directory is spelled anywhere in this package.
-    """
+    """The person's own LaunchAgents directory, the one place it is resolved."""
     return Path.home() / "Library" / "LaunchAgents"
 
 
@@ -193,8 +138,7 @@ def log_path() -> Path:
 
 
 def _absolute(path: Path | str) -> Path:
-    """Made absolute against the install's directory, never resolved through
-    links, so a relative override names the place the install meant."""
+    """Made absolute without resolving links, so it names what the install meant."""
     return Path(os.path.abspath(path))
 
 
@@ -211,11 +155,10 @@ class Answer:
 
 
 def launchctl(*args: str) -> Answer:
-    """Run launchctl once. THE ONLY PLACE THIS MODULE STARTS A PROCESS.
+    """Run launchctl once, the only place this module starts a process.
 
-    A launchctl that cannot be started, or that outlives its timeout, answers
-    a failure in its own words rather than raising, so every caller refuses
-    through one path.
+    A launchctl that cannot start or times out answers a failure rather than
+    raising, so every caller refuses through one path.
     """
     import subprocess  # noqa: PLC0415 - confined to the one seam
 
@@ -253,8 +196,8 @@ UNKNOWN = "unknown"
 def loaded() -> tuple[str, Answer]:
     """Whether launchd holds the agent: loaded, not loaded, or unknown.
 
-    ONLY ``launchctl print``'s own not found code reads as not loaded. Any other
-    failure is unknown and said as such, never read as absent.
+    Only ``launchctl print``'s not found code reads as not loaded; any other
+    failure is unknown, never absent.
     """
     answer = launchctl("print", _service())
     if answer.ok:
@@ -270,12 +213,9 @@ def loaded() -> tuple[str, Answer]:
 
 
 def crate_path() -> Path:
-    """The absolute ``crate`` that is running this install.
+    """The absolute ``crate`` running this install, else the one beside the interpreter.
 
-    The ``crate`` this process was started as, when it was; otherwise the one
-    beside the interpreter running it, which is the same installation's. Not
-    resolved through symbolic links, so an agent naming a link keeps following
-    an upgrade that moves what the link names.
+    Not resolved through links, so an agent naming a link follows an upgrade.
     """
     started_as = Path(sys.argv[0]) if sys.argv and sys.argv[0] else None
     if started_as is not None and started_as.name == "crate":
@@ -304,16 +244,10 @@ def _resolved_crate() -> Path:
 
 
 def environment(crate: Path) -> dict[str, str]:
-    """The agent's whole environment, every value absolute.
-
-    A fixed PATH; the configuration, state and provider gate directories as
-    the install resolved them, always; and the location and binary overrides
-    set at the install. A credential is never carried: no carried name is one.
-    """
+    """The agent's whole environment, every value absolute, never a credential."""
     source = os.environ
     path: list[str] = []
-    # THE DIRECTORIES THE INSTALL FOUND EACH BINARY IN (review round two,
-    # finding 3), so a binary on the person's PATH alone is found at night.
+    # The directories the install found each binary in, so it is found at night.
     found = (binaries.find(name) for name in binaries.INSTALLABLE_BINARIES)
     found_in = [str(_absolute(Path(hit).parent)) for hit in found if hit]
     for directory in (
@@ -348,8 +282,7 @@ def agent(crate: Path, at: tuple[int, int], log: Path, env: Mapping[str, str]) -
 
 @dataclass(frozen=True, slots=True)
 class Installed:
-    """An installed plist, read back, and everything in it that is not the
-    agent this build writes."""
+    """An installed plist, read back, with every way it differs from this build's agent."""
 
     at: tuple[int, int] | None
     crate: str | None
@@ -375,17 +308,10 @@ def _interval(value: Any) -> tuple[int, int] | None:
 
 
 def read_agent(path: Path | None = None) -> Installed | None:
-    """The installed plist, None when there is none, and ``ValueError`` naming
-    why when a file is there and cannot be read as this agent.
+    """The installed plist, None when there is none, ``ValueError`` when unreadable.
 
-    WHAT LAUNCHD WILL DO, NOT ONLY WHAT THE FILE SAYS (review round one,
-    findings 2 and 7, and round two, finding 6). Every difference this can
-    read from the plist this build writes is a problem: another key, another
-    program or word, a crate that cannot run, a run at load, another calendar,
-    a name in its environment this build never carries, a carried directory
-    missing or relative, a log outside the state it carries. Any problem and
-    ``show`` fails. A directory changed by hand to another absolute one is not
-    told apart from one install wrote.
+    Every difference from the plist this build writes is a problem, judged by
+    what launchd will do, and any problem fails ``show``.
     """
     target = path if path is not None else plist_path()
     try:
@@ -439,8 +365,7 @@ def read_agent(path: Path | None = None) -> Installed | None:
     unknown = sorted(set(env) - allowed_names())
     if unknown:
         problems.append(f"its environment carries {', '.join(unknown)}, which this build never does")
-    # THE INSTALLATION IT READS (review round two, finding 6): the directories
-    # install always carries, each absolute, and its log in the state it names.
+    # The directories install always carries, each absolute, and the log in its state.
     absent = [name for name in ("PATH", *resolved_names()) if not env.get(name)]
     if absent:
         problems.append(f"its environment is missing {', '.join(absent)}")
@@ -536,8 +461,7 @@ def _macos_only(verb: str) -> None:
 
 
 def _as_the_person(verb: str) -> None:
-    """Refuse root: ``gui/0`` is nobody's login, and a root owned plist or log
-    directory would be one the person's own install could not replace."""
+    """Refuse root, whose ``gui/0`` is nobody's login."""
     if uid() == 0:
         raise refuse(
             "refused-by-policy",
@@ -571,9 +495,7 @@ def _row(key: str, title: str, detail: str, status: str = "info") -> dict[str, A
 def _boot_out(what: str) -> bool:
     """Boot the agent out if launchd may hold it. True when one was booted out.
 
-    Read again after: only launchd's own not loaded answer lets a caller go
-    on, so an agent still loaded, or one whose state cannot be read, refuses
-    with the words that say why.
+    Only launchd's not loaded answer afterwards lets a caller go on.
     """
     state, _answer = loaded()
     if state == NOT_LOADED:
@@ -588,8 +510,7 @@ def _boot_out(what: str) -> bool:
         else:
             said = check
         raise _launchctl_failed(what, said, state=after)
-    # ONE WAS BOOTED OUT only when launchd held it or the bootout took: a
-    # bootout refused over an agent launchd then reads absent booted nothing.
+    # One was booted out only when launchd held it or the bootout took.
     return state == LOADED or out.ok
 
 
@@ -620,8 +541,7 @@ def _install(crate: Path, at: tuple[int, int]) -> tuple[Path, Path, dict[str, st
         target.parent.mkdir(parents=True, exist_ok=True)
         config.atomic_write_bytes(payload, target, mode=PLIST_MODE)
     except OSError as exc:
-        # SAID, NOT LEFT TO BE FOUND (review round one, finding 3): the agent
-        # installed before is booted out by now, and its plist is unchanged.
+        # Say that the earlier agent is booted out by now, its plist unchanged.
         earlier = (
             "; the schedule installed before is booted out and its plist kept, so it is "
             "off until the next login or an install that succeeds"
@@ -638,10 +558,8 @@ def _install(crate: Path, at: tuple[int, int]) -> tuple[Path, Path, dict[str, st
     answer = launchctl("bootstrap", _domain(), str(target))
     state, check = loaded() if answer.ok else (UNKNOWN, answer)
     if state != LOADED:
-        # NOTHING HALF INSTALLED: whatever launchd took is booted out again, and
-        # the plist written for it is removed only once launchd reads it absent
-        # (review round one, finding 4); otherwise it is kept, so show and
-        # remove still find what launchd may hold.
+        # Nothing half installed: boot out again, and remove the plist only once
+        # launchd reads it absent, so show and remove still find what it holds.
         launchctl("bootout", _service())
         after, _after_answer = loaded()
         failed = answer if not answer.ok else check
@@ -704,9 +622,7 @@ def install(ctx: Context) -> Envelope:
 
 
 def _night_line(found: Installed | None) -> tuple[str, str]:
-    """The last night's line, read from the state the AGENT carries when one is
-    installed (review round one, finding 7), so a shell pointed elsewhere
-    still reads the night the agent writes."""
+    """The last night's line, read from the state the installed agent carries."""
     path = None
     if found is not None and found.environment.get(config.ENV_STATE_DIR):
         relative = config.state_file(sync_night.STATUS_KEY).relative
@@ -757,8 +673,7 @@ def show(ctx: Context) -> Envelope:
     if state == LOADED:
         loaded_words, loaded_status = f"loaded into {_domain()}", "ok"
         if found is None and unreadable is None:
-            # LAUNCHD HOLDS AN AGENT NO PLIST DESCRIBES: what it runs cannot be
-            # read here, so the report is not clean.
+            # Launchd holds an agent no plist describes, so the report is not clean.
             problem = f"launchd holds {LABEL} but no plist is at {target}; crate schedule remove unloads it"
             problems.append(problem)
             loaded_words, loaded_status = problem, "fail"
@@ -783,8 +698,7 @@ def show(ctx: Context) -> Envelope:
                 "argv": [] if found is None else list(found.program),
                 "runs_the_night": None if found is None else found.runs_the_night,
                 "problems": problems,
-                # NEVER A VALUE THIS BUILD WOULD NOT CARRY (review round two,
-                # finding 10): a name it never carries is named in problems.
+                # Never a value this build would not carry; problems name it.
                 "environment": {} if found is None else {
                     name: value for name, value in found.environment.items()
                     if name in allowed_names()
@@ -796,8 +710,7 @@ def show(ctx: Context) -> Envelope:
     }
     if not problems:
         return ctx.envelope(data=data, outcome=Outcome.NO_OP)
-    # AN AGENT THAT CANNOT BE READ, OR THAT IS ANYTHING BUT THE NIGHT'S, IS NOT
-    # A CLEAN REPORT: the rows say what was read, and the exit says it failed.
+    # An unreadable or foreign agent fails, with the rows saying what was read.
     cause = refuse(
         "schedule-agent-unusable",
         "; ".join(problems),

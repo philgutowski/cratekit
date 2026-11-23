@@ -1,16 +1,10 @@
-"""U227: a sync pass takes the download ``crate organize`` queued for an account edit.
+"""A sync pass takes the download ``crate organize`` queued for an account edit (U227).
 
-Sitting 85: ``crate organize``'s ``mirror-downloads`` step queued a track put
-on a mirrored genre playlist on the account, under no run, and the next
-``crate sync land`` left that job open ("1 open intake job(s) outside this
-pass"), landing the track only because another playlist listed it too. The
-pass now takes such a job into a run it started, and drives, lists, downloads
-and lands it with its own.
-
-The machine, the account and the stand ins are ``tests/test_sync_land.py``'s:
-the pass, its intake jobs, the missing list and the download run through the
-real dispatcher and workers, the tail and the landing stand in through the
-verb's one seam.
+``mirror-downloads`` queues a job under no run; ``crate sync land`` takes it
+into the run it started and drives, lists, downloads and lands it with its
+own, rather than leaving it open outside the pass. The machine, account and
+stand ins are ``tests/test_sync_land.py``'s; the tail and landing stand in
+through the verb's one seam.
 """
 
 from __future__ import annotations
@@ -162,8 +156,8 @@ def test_a_pass_continuing_an_earlier_one_over_nothing_new_takes_none(
 ):
     """Sync all queued nothing and one earlier pass is open: that pass is continued.
 
-    The left open row names the mirror job as the next new pass's, never as
-    one queued by hand to drive outside a pass (the review of U227, S12).
+    The left open row names the mirror job as the next pass's, never as one to
+    drive by hand outside a pass.
     """
     cfg, script = machine
     _account(monkeypatch, script, "101")

@@ -1,20 +1,11 @@
-"""U212: a sync pass does not download again a track an unlanded pass staged.
+"""A sync pass does not download, or land, a track an unlanded pass staged (U212, R-1499).
 
-SINCE R-1499 IT DOES NOT LAND IT EITHER. The second pass here used to land
-the first pass's staged tracks under its own pass; they are another
-download's, so it refuses before its download, naming the first pass and the
-command that lands it (:mod:`tests.test_sync_land_beside`).
-
-Sitting 55 (A70) ran ``crate sync land`` while two Yours tracks a pass of
-2026-10-31 had downloaded, tagged and named still sat in the staging folder,
-that pass's landing gate never answered. The pass listed and downloaded them
-again, and the copies stopped ``name apply`` on names already taken. Here the
-first pass runs through the real dispatcher to its landing gate and stays
-there, its downloads are tagged with the ISRC the real downloader writes (the
-fake adapter writes none), and a second pass over a new playlist is read.
-
-The stand ins are :mod:`tests.test_sync_land`'s: the pass, its intake jobs, the
-missing list and the download are real; the tail and the landing stand in.
+Those tracks are another pass's download, so a second pass leaves them off its
+list and refuses before its download, naming the first pass and the command
+that lands it (:mod:`tests.test_sync_land_beside`). The first pass runs through
+the real dispatcher to its landing gate and stays there, its downloads tagged
+with the ISRC the real downloader writes. The stand ins are
+:mod:`tests.test_sync_land`'s: the tail and the landing stand in.
 """
 
 # ruff: noqa: F811, the fixtures below are imported from the sync land suite by name
@@ -94,10 +85,8 @@ def _refused_beside_the_first(first: dict, second: dict) -> dict:
 def test_a_second_pass_beside_the_unlanded_first_lists_only_what_it_did_not_stage_and_refuses(
     machine, monkeypatch, tail
 ):
-    """U212's listing still leaves out what the first pass staged, and R-1499
-    no longer lands it under the second pass: the first pass's download is
-    another download's, so the second refuses before it downloads anything,
-    naming the first and the command that lands it."""
+    """The listing leaves out what the first pass staged, and the second pass
+    refuses before it downloads anything, naming the first and its command."""
     cfg, script = machine
     first = _first_pass(monkeypatch, script, cfg)
     landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
@@ -185,9 +174,8 @@ def _rename_incomplete(isrc: str) -> Cause:
 def test_a_name_stop_over_a_second_copy_names_the_pass_that_downloaded_it(
     machine, monkeypatch, tail
 ):
-    """The collision the listing cannot rule out, a copy downloaded anyway, is
-    stood in for at the name step. The refusal's ISRC is read against the
-    download jobs, and the step names the pass whose download it was."""
+    """A copy downloaded anyway, stood in for at the name step, is traced by its
+    ISRC to the pass whose download it was."""
     cfg, script = machine
     first = _first_pass(monkeypatch, script, cfg)
     (download,) = _by_key("acquire.download")
@@ -241,10 +229,9 @@ def _refusing_name(tail, cause: Cause):
 def test_a_second_pass_beside_an_unlanded_first_refuses_before_any_download_is_refused(
     machine, monkeypatch, tail
 ):
-    """Review round one of U212, F1, read again under R-1499: the second
-    pass's listed track is a lossy only offer and the rest is staged by the
-    first. It refuses before its download, so nothing is downloaded or
-    refused for good, and the first pass's tracks wait for their own landing."""
+    """With the listed track a lossy only offer and the rest staged by the first
+    pass, the second refuses before its download, so nothing is refused for
+    good and the first pass's tracks wait for their own landing."""
     cfg, script = machine
     first = _first_pass(monkeypatch, script, cfg)
     script.landings["103"] = Landing(kind="lossy")
@@ -292,9 +279,8 @@ def _download_job(cfg, list_name: str, isrc: str, *, finish: bool) -> str:
 
 
 def test_the_passes_named_are_this_librarys_finished_downloads_earliest_first(machine):
-    """Review round one, F7: the order, the finished item and the library are
-    each read, and a job that froze the track and never acquired it, or one
-    another library queued, is never named as its source."""
+    """Only this library's finished downloads are named, earliest first; a job
+    that froze the track and never acquired it, or another library's, is not."""
     from tests.test_sync_land import dataclasses_replace_library
 
     cfg, _script = machine
@@ -316,8 +302,8 @@ def test_the_passes_named_are_this_librarys_finished_downloads_earliest_first(ma
 def test_a_stop_that_is_not_rename_incomplete_or_cannot_read_the_queue_is_unchanged(
     machine, monkeypatch
 ):
-    """Review round one, F7: only the naming verb's own answer is read, and a
-    queue that cannot be read leaves its refusal as it was."""
+    """Only the naming verb's own answer is read, and a queue that cannot be
+    read leaves the refusal as it was."""
     from cratekit.core import jobs
     from cratekit.core.cause import CratekitError
 

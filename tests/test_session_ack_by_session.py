@@ -1,16 +1,10 @@
-"""U138: the session mints the backup acknowledgment on the five day rule, with no terminal.
+"""The session mints the backup acknowledgment on the five day rule, with no terminal (U138).
 
-Decided by the author on 2026-10-09, the bound set at five days on 2026-10-10.
 When the run record holds the gate's answer under the actor ``session``, the
-terminal check is replaced by the age rule: every backup portion under five
-days old mints, anything else is refused by name. A person's answer keeps the
-terminal check. The record says which rule minted it.
-
-Driven through the real dispatcher, three invocations each as R34 shapes them,
-with nobody at a terminal. The backup ages are recorded through the fact file's
-own writer. Every library here is a temporary one; no real backup is read.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+age rule replaces the terminal check: every backup portion under five days old
+mints, anything else is refused by name. A person's answer keeps the terminal
+check, and the record says which rule minted it. Driven through the real
+dispatcher with nobody at a terminal, on temporary libraries. D1 applies.
 """
 
 from __future__ import annotations
@@ -32,8 +26,8 @@ from tests.test_session_cli import (  # noqa: F401
     installed,
 )
 
-#: The configured, saved library fixture, by assignment for the reason
-#: ``tests/test_session_cli.py`` gives for its own.
+#: The configured, saved library fixture, assigned for the reason
+#: ``tests/test_session_cli.py`` gives.
 cfg = session_suite.cfg
 
 #: The actor a session answers under, spelled as the author's rule spells it.
@@ -151,7 +145,7 @@ def test_a_person_without_a_terminal_is_still_refused_over_fresh_backups(nobody_
 def test_a_person_at_a_terminal_mints_by_the_terminal_rule_and_the_record_says_so(
     installed,  # noqa: F811
 ):
-    """Old backups do not stop a person: their path is today's, ages shown, not judged."""
+    """Old backups do not stop a person: their path shows the ages without judging them."""
     _backed_up(installed, files=timedelta(days=30), database=timedelta(days=30))
 
     code, envelope = _answered_by("a-person")
@@ -162,7 +156,7 @@ def test_a_person_at_a_terminal_mints_by_the_terminal_rule_and_the_record_says_s
 
 
 def test_a_record_written_before_u138_reads_as_the_terminal_rule():
-    """A record with neither key is what every acknowledgment was before this unit."""
+    """A record with neither key reads as the terminal rule, as every older one was."""
     now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
     older = {
         "schema_version": session.ACK_SCHEMA_VERSION,
@@ -182,9 +176,8 @@ def test_a_record_written_before_u138_reads_as_the_terminal_rule():
     ids=["a-second-under-five-days", "exactly-five-days"],
 )
 def test_the_bound_is_strict_at_exactly_five_days(cfg, age, mints):
-    """On one clock, so "exactly" means exactly. Through the dispatcher the
-    verb reads the clock a moment after the fact was written, which makes a
-    five day fixture a little over and cannot tell under from at."""
+    """On one clock, so "exactly" means exactly; through the dispatcher the
+    clock moves after the fact is written and cannot tell under from at."""
     now = datetime(2026, 10, 12, 12, 0, tzinfo=UTC)
     for portion in backup_facts.Portion:
         backup_facts.record(cfg, portion, completed_at=now - age, destination="/backups/probe")
@@ -204,11 +197,8 @@ def test_the_bound_is_five_days_as_the_author_set_it():
 
 # ---------------------------------------------------------------------------
 # U184: ``crate session ack --as session``, the session's mint in one command.
-#
-# Filed from the friction review of sitting 51: three invocations and a wrong
-# turn at each became one. The age rule above is the only guard, and the flag
-# reaches it with no gate, so every drive below is ONE invocation with nobody
-# at a terminal, and every one ends with no run left waiting on an answer.
+# The age rule is the only guard, so every drive below is one invocation with
+# nobody at a terminal and ends with no run left waiting on an answer.
 # ---------------------------------------------------------------------------
 
 #: The one command, spelled as a session types it.
@@ -358,7 +348,7 @@ def test_an_unreadable_acknowledgment_is_replaced_by_one_command(nobody_at_a_ter
 
 
 def test_without_the_flag_the_gate_still_appears(nobody_at_a_terminal):
-    """The default road is today's: the explicit gate, and a run that waits on it."""
+    """Without the flag, the explicit gate appears and a run waits on it."""
     _backed_up(nobody_at_a_terminal, files=timedelta(days=1), database=timedelta(days=1))
 
     code, envelope = _drive(["session", "ack"])

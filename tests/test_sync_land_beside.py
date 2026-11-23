@@ -1,19 +1,11 @@
-"""R-1499: ``crate sync land`` lands only its own pass's tracks.
+"""``crate sync land`` lands only its own pass's tracks (R-1499).
 
 Every download stages into the one folder and ``intake land`` lands the whole
-of it. Until R-1499 a sync pass ran its tail and planned its landing over
-whatever the folder held, so a label go's download waiting at its own
-landing's gate, a plain ``acquire download`` or an earlier pass's unlanded
-download landed under this pass's name. R-1467 built the reading for the
-label go; the pass now reads the folder the same way,
-:func:`cratekit.intake.beside.beside`, before its download and again before
-its tail, and refuses beside anything that is not its own.
-
-WHAT STANDS IN. The suite's ``Tail`` answers ``name apply`` with nothing
-renamed; the real one renames every track before the landing's gate, so the
-stand in here renames them, at that moment (:class:`RenamingTail`). Every
-other step is :mod:`tests.test_sync_land`'s: the pass, its intake jobs, the
-missing list and the download are real.
+of it, so the pass reads the folder with :func:`cratekit.intake.beside.beside`
+before its download and again before its tail, and refuses beside anything
+that is not its own. The suite's ``Tail`` renames nothing, so
+:class:`RenamingTail` renames at the name step as the real one does; every
+other step is :mod:`tests.test_sync_land`'s.
 """
 
 # ruff: noqa: F811, the fixtures below are imported from the sync land suite by name
@@ -57,9 +49,8 @@ from tests.test_sync_land_staged import ISRC, _rows
 class RenamingTail(Tail):
     """The suite's tail, whose ``name apply`` renames every track as the real one does.
 
-    Each audio file in the folder not yet renamed is renamed to ``Artist -
-    <stem>.wav`` when the name step runs, before the landing's gate, which is
-    the state every batch stopped at its gate is in.
+    Each audio file not yet renamed becomes ``Artist - <stem>.wav`` when the
+    name step runs, before the landing's gate.
     """
 
     def __call__(self, argv: list[str]) -> tuple[int, dict]:
@@ -119,10 +110,8 @@ def _landable(script) -> None:
 def test_a_label_gos_download_at_its_landings_gate_renamed_refuses_the_pass_before_it_downloads(
     full, monkeypatch, renaming
 ):
-    """The card's scenario: the go ran its tail, which renamed its tracks, and
-    stopped at its landing's gate. A sync pass then downloaded and landed them
-    under its own pass. Now it refuses before its download, naming the go and
-    the command that lands it."""
+    """A go that renamed its tracks and stopped at its landing's gate makes the
+    pass refuse before its download, naming the go and the command that lands it."""
     cfg, script = full
     one_release_answered(monkeypatch, script)
     go_run, code, envelope = approved_go()
@@ -213,9 +202,8 @@ def test_a_plain_download_beside_the_pass_refuses_naming_it(machine, monkeypatch
 def test_an_earlier_passes_unlanded_download_refuses_a_new_pass_naming_how_it_lands(
     machine, monkeypatch, tail
 ):
-    """U212's second pass landed the first pass's tracks it also wanted under
-    its own pass. They are another download's, so it refuses now, and names
-    the first pass's own continue command."""
+    """An earlier pass's tracks are another download's, so a new pass refuses
+    and names the first pass's own continue command."""
     cfg, script = machine
     _landable(script)
     code, first = _pass(monkeypatch, "101", "102")
@@ -251,10 +239,8 @@ def test_an_earlier_passes_unlanded_download_refuses_a_new_pass_naming_how_it_la
 
 
 def test_an_earlier_pass_renamed_at_its_gate_is_named_by_its_pass(machine, monkeypatch, renaming):
-    """Sitting 55's state: the first pass's tail renamed its tracks and its
-    landing's gate was never answered. No download names them, and the
-    first pass, whose pass has no landing proof, is named as whose tail may
-    have renamed them."""
+    """A first pass whose tail renamed its tracks, its landing's gate never
+    answered, is named as whose tail may have renamed them."""
     cfg, script = machine
     _landable(script)
     code, first = _pass(monkeypatch, "101", "102")
@@ -424,7 +410,7 @@ def test_a_record_that_cannot_be_kept_is_a_warning_and_the_next_run_refuses(
     assert code == int(ExitCode.REFUSED_BY_POLICY), again
     cause = _refused_beside(again, sync_land.DOWNLOAD)
     assert cause["detail"]["unnamed"] == ["Artist - 101.wav"]
-    # REVIEW ROUND ONE, finding 5: the way on names the landing under the pass.
+    # The way on names the landing under the pass.
     name = _summary(first)["land_name"]
     assert (
         f"if the track(s) no download names are this pass's own, renamed by its tail "
@@ -512,7 +498,7 @@ def test_a_fresh_go_beside_a_sync_passes_download_names_its_continue_command(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 6. What arrives while the tail runs (review round one)
+# 6. What arrives while the tail runs
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -544,9 +530,8 @@ def _landings(tail: Tail) -> int:
 def test_a_download_finished_while_the_passes_tail_runs_refuses_its_landing(
     machine, monkeypatch, tmp_path
 ):
-    """Review round one, finding 1: a download another process finished while
-    the tail ran was renamed with the pass's own, planned into its landing and
-    kept as its own. Now the landing is not planned and nothing is kept."""
+    """A download another process finished while the tail ran is not planned
+    into the landing, and nothing is kept as the pass's own."""
     cfg, script = machine
     _landable(script)
     stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"))
@@ -565,8 +550,8 @@ def test_a_download_finished_while_the_passes_tail_runs_refuses_its_landing(
     )
     record = staged_reading.pass_record(cfg, name)
     assert not record.exists(), "the record kept what arrived as the pass's own"
-    # REVIEW ROUND TWO, D2: no continue command, which would refuse beside the
-    # pass's own renamed tracks with no record kept.
+    # No continue command, which would refuse beside the pass's own renamed
+    # tracks with no record kept.
     assert not any("crate sync land --pass-run" in one for one in cause["remediation"]["steps"])
     warnings = cause["detail"]["sync_land"]["warnings"]
     assert [one["code"] for one in warnings].count(sync_land.UNRECORDED_WARNING) == 1, warnings
@@ -597,7 +582,7 @@ def test_a_file_a_person_put_there_while_the_tail_ran_refuses_its_landing(
 def test_a_download_finished_while_a_gos_tail_runs_refuses_its_landing(
     full, monkeypatch, tmp_path
 ):
-    """The class one file over: the go's tail, in ``cli.label_sync``."""
+    """The same rule for the go's tail, in ``cli.label_sync``."""
     cfg, script = full
     stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"))
     monkeypatch.setattr(tail_chain, "dispatch", stand_in)
@@ -615,7 +600,7 @@ def test_a_download_finished_while_a_gos_tail_runs_refuses_its_landing(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 7. Whose a download is, by its list (review round one's zero rows)
+# 7. Whose a download is, by its list
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -670,9 +655,8 @@ def test_only_a_download_over_a_synced_list_is_a_passes():
 def test_a_download_finished_as_the_landing_is_planned_refuses_the_planned_landing(
     machine, monkeypatch, tmp_path
 ):
-    """Review round two, finding 1: an arrival between the check after the
-    tail and the landing's own listing is in the plan; the plan is refused,
-    naming its run, rather than handed on at its gate."""
+    """An arrival between the check after the tail and the landing's own listing
+    refuses the plan, naming its run, rather than handing it on at its gate."""
     cfg, script = machine
     _landable(script)
     stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"), ("intake", "land"))
@@ -708,7 +692,7 @@ def test_a_download_finished_as_a_gos_landing_is_planned_refuses_it(full, monkey
 def test_a_gos_tail_that_fails_while_a_download_arrives_says_its_record_was_not_kept(
     full, monkeypatch, tmp_path
 ):
-    """Review round two, finding 3: the record's warning rides the refusal."""
+    """The record's warning rides the refusal."""
     cfg, script = full
 
     def arrive_and_fail():

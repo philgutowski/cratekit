@@ -1,15 +1,8 @@
 """``crate profile show`` and ``crate profile set``.
 
-The second one is the interesting one. Changing a profile is the smallest real
-decision the product has: it is reversible, it touches one key, and it still has
-to be shown before it is applied, because a user moving from the full preset to
-the slim one is switching several modules off at once and the whole point of D6
-is that the change is visible rather than emergent.
-
-So it carries a gate, and the gate is the one this unit exists to demonstrate:
-declared statically, answered by name, refused with a documented code when
-nothing answered it, and refused as STALE when the membership it was answered
-against has since moved.
+Changing a profile can switch several modules at once, so ``profile set`` shows
+the change at a gate before applying it (D6), and refuses an answer as stale
+when the membership it was given against has since moved.
 """
 
 from __future__ import annotations
@@ -87,14 +80,9 @@ def build_set(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
 def _offer(cfg: config.Config, name: str) -> dict:
     """What adopting ``name`` would change, from ``cfg``, and the identity of that.
 
-    The digest identifies WHAT THE USER WAS SHOWN, not how it was worded: the two
-    profiles and the exact membership delta. A module toggled by hand between the
-    offer and the answer moves it, which is precisely when the answer stops
-    applying to the question that was asked.
-
-    One function because it is computed TWICE, once to show a person and once
-    under the write lock from the document that is actually there, and the two
-    must be the same calculation or the comparison between them means nothing.
+    The digest covers the two profiles and the membership delta, so a module
+    toggled in between moves it. One function, since it is computed again
+    under the write lock and the two must be the same calculation.
     """
     before = _membership(cfg)
     after = profiles.resolve(name, dict(cfg.modules.explicit))
@@ -123,14 +111,10 @@ def apply_profile(ctx: "Context") -> Envelope:
 
     spec = ctx.entry.gates[0]
     if not plan["items"]:
-        # Nothing to decide. A gate that asks about an empty change trains people
-        # to answer without reading, which is how a real change gets waved
-        # through later.
+        # No gate over an empty change, which trains people to answer unread.
         return ctx.envelope(data=plan, outcome=Outcome.NO_OP)
 
-    # THE DELTA IS SHOWN THROUGH THE GATE LAYER (R-693): each module turning
-    # on or off, the digest they were taken over, and the profile and totals
-    # in front of them, so a person adopts a profile whose change they read.
+    # The delta is shown through the gate layer, so a person reads the change (R-693).
     option = ctx.gate.require(
         spec, plan=plan, context={"profile": ctx.args.name, **plan["totals"]}
     )
@@ -138,19 +122,10 @@ def apply_profile(ctx: "Context") -> Envelope:
         return ctx.envelope(data=plan, outcome=Outcome.NO_OP)
 
     def revise(document: dict) -> dict:
-        """The re-decision, under the write lock, from what is on disk NOW.
+        """The re-decision, under the write lock, from what is on disk now.
 
-        The gate compared digests when it was asked, and the write is later than
-        that. A module switched by another command in between changes what this
-        write does, so the delta is recomputed from the fresh document and an
-        answer given to a different delta is refused as stale, which is the
-        refusal the gate itself would have made a moment earlier (R-116).
-
-        ``profiles.apply`` works on the serialized document rather than on the
-        typed object, so the write carries every other key through untouched,
-        including whatever that other command wrote. That is D6's "changing a
-        profile touches module membership and nothing else" made structural
-        instead of asserted.
+        A different delta is refused as stale (R-116). It edits the serialized
+        document, so every other key passes through untouched (D6).
         """
         fresh = _offer(config.from_dict(document), ctx.args.name)
         if fresh["digest"] != plan["digest"]:

@@ -259,8 +259,8 @@ def test_the_shipped_check_sends_the_searchers_agent_and_the_token_header(monkey
 
 
 def test_the_check_never_asks_through_the_shared_asker(monkeypatch):
-    """The shared asker holds the RECORDED token; the check is of one not yet
-    recorded, so building or reading the shared one would check the wrong token."""
+    """The shared asker holds the recorded token, and the check is of one not
+    yet recorded, so using the shared one would check the wrong token."""
 
     def forbidden():
         raise AssertionError("the token check read the process's shared asker")
@@ -396,8 +396,8 @@ def test_a_check_that_raises_stores_nothing_and_is_a_note(configured, monkeypatc
 
 
 def test_a_check_that_raises_anything_else_stores_nothing_and_is_a_note(configured, monkeypatch):
-    """Round one: a server posing as Discogs can make the JSON reader raise
-    (deep nesting), and setup runs after the configuration is saved."""
+    """A server posing as Discogs can make the JSON reader raise (deep
+    nesting), and setup runs after the configuration is saved."""
 
     def raising(token, *, fetch=None, sleep=None):
         raise RecursionError("maximum recursion depth exceeded")
@@ -412,8 +412,8 @@ def test_a_check_that_raises_anything_else_stores_nothing_and_is_a_note(configur
 
 
 def test_an_exception_carrying_the_token_never_reaches_the_note(configured, monkeypatch):
-    """Round two: the bare except's note names the exception's type and never
-    its words, which a client library may build from the request."""
+    """The note names the exception's type and never its words, which a client
+    library may build from the request."""
 
     def raising(token, *, fetch=None, sleep=None):
         raise ValueError(f"bad header Authorization: Discogs token={token}")
@@ -426,8 +426,8 @@ def test_an_exception_carrying_the_token_never_reaches_the_note(configured, monk
 
 
 def test_the_step_says_it_is_checking_before_it_asks_discogs(configured):
-    """Round one: a rate limited check waits up to a minute and a half, so the
-    line comes before the request, not after it."""
+    """A rate limited check waits up to a minute and a half, so the line comes
+    before the request, not after it."""
     person = Person(["yes"], [GOOD])
     order: list[str] = []
 
@@ -452,7 +452,7 @@ def test_the_step_says_it_is_checking_before_it_asks_discogs(configured):
 
 def test_a_refusal_the_fetch_raises_is_no_verdict_and_stores_nothing(configured):
     """The identity call reads a 401 as a rejection and re-raises any other
-    refusal, which the step notes without storing (round one's unkilled row)."""
+    refusal, which the step notes without storing."""
 
     def fetch(_url):
         raise CratekitError(
@@ -513,8 +513,8 @@ def test_a_secret_reader_that_fails_is_a_failure_note_never_a_raise(configured):
 
 
 def test_a_profile_whose_verbs_spend_no_token_is_not_offered_discogs(configured, monkeypatch):
-    """The step asks the doctor question the loop asked. Every shipped profile
-    carries the tagging verbs today, so the question is answered no here."""
+    """The step asks the doctor question the loop asked; every shipped profile
+    carries the tagging verbs, so it is answered no here."""
     asked: list[str] = []
 
     def offered(key, membership):
@@ -599,7 +599,7 @@ def test_a_declined_relink_keeps_the_recorded_token(configured):
     ids=["outage", "blocked", "transport"],
 )
 def test_a_replacement_discogs_could_not_check_keeps_the_recorded_token(configured, answer):
-    """Round one: an unchecked replacement would overwrite a token that may work."""
+    """An unchecked replacement would overwrite a token that may work."""
     secrets.set(NAME, GOOD)
     person = Person(["yes"], [NEW])
     wizard = link(configured, person, Discogs(answer), relink=True)
@@ -699,8 +699,7 @@ class Reply:
 
 def _drive_setup(tmp_path, monkeypatch, *, reply, recorded_first=None, relink=False):
     """The real dispatcher, every answer a flag, a person who says yes only to
-    Discogs, and only the getter under the shipped fetch faked (round one: the
-    wiring was pinned by source text alone)."""
+    Discogs, and only the getter under the shipped fetch faked."""
     import io
 
     from cratekit import cli

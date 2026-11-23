@@ -1,30 +1,11 @@
 """``crate rebuild``: queue a full-scope rebuild of one governed tree (U20).
 
-THE ACTOR IS TYPED. :class:`cratekit.core.convergence.Disposition` refuses an
-empty actor, so this surface carries a real one on the command line. It is
-never read from the process owner, never from a shell variable, and never
-defaulted. An actor nobody typed is the product answering for the user.
-
-THE FLAG IS CLEARED ONLY BY THE ENGINE. This module never names the
-clearing call. The worker that runs the queued job calls
-:func:`cratekit.write.rebuild.rebuild_tree`, which is handed the
-convergence check's own difference list.
-
-LONG WORK IS QUEUED. Conformance 5: a rebuild of a live tree is not an
-inline sweep in the shell that started it.
-
-ONE TREE IS ONE ITEM, and until U53 this verb passed no items at all. A job
-with nothing to claim is one the driver walks in a single empty pass and
-transitions straight to succeeded, so the queue reported a rebuild that
-happened over a library nothing had read. The items come off the registry:
-the tree the person named, or every tree that has cut over.
-
-A LIBRARY WITH NOTHING NATIVE FILES NO JOB. There is no item list to build
-for a library that has never flipped a tree, and filing an empty job is the
-defect above. It is not a refusal either: nothing is wrong, there is simply
-nothing to rebuild, so the verb says that and exits OK.
-
-Layer: cli.
+The actor is typed on the command line, never read from the process owner,
+never from a shell variable, and never defaulted, since an actor nobody typed
+is the product answering for the user.
+Only the engine clears the unconverged flag. The work is queued with one item
+per native tree (U53); a library with no native tree files no job, since an
+itemless job would report a rebuild over a library nothing read.
 """
 
 from __future__ import annotations
@@ -73,17 +54,9 @@ def rebuild_argv(job) -> list[str]:
 def tree_items(entries: tree_registry.Registry, tree_id: str | None) -> tuple[str, ...]:
     """The trees one queued rebuild will claim, one item each.
 
-    DERIVED FROM THE REGISTRY, never from a caller's list, which is the same
-    direction :func:`cratekit.write.rebuild.rebuild_tree` takes about placements
-    and for the same reason: the registry is what records that a tree has cut
-    over, and a rebuild of a tree still on the bridge writes membership the next
-    import overwrites.
-
-    A NAMED TREE IS STILL FILTERED THROUGH ``is_database_native`` here rather
-    than trusted from the refusal above. The refusal is what tells the person
-    why; this is what decides the items, and two readings of one question that
-    are only kept in agreement by the order of the lines is how one of them
-    eventually gets moved.
+    Derived from the registry, never a caller's list, since a tree still on
+    the bridge would have its membership overwritten by the next import. A
+    named tree is filtered here too, not trusted from the earlier refusal.
     """
     native = tuple(sorted(t for t in entries.tree_ids() if entries.is_database_native(t)))
     if tree_id is None:
@@ -94,26 +67,10 @@ def tree_items(entries: tree_registry.Registry, tree_id: str | None) -> tuple[st
 def _resume(ctx, store, job_id: str) -> Envelope:
     """Reconcile, refuse a foreign or itemless job, drive it, and report how it ended.
 
-    RECONCILE FIRST. A resume arrives after something stopped, and a claim a
-    dead driver left behind is state the queue cannot see for itself.
-
-    THE JOB HAS TO BE A REBUILD. ``handlers.run_job`` resolves the worker from
-    the JOB ROW and not from this verb, so without this line a rebuild naming
-    somebody else's job identifier would drive that verb's work in process,
-    under this verb's envelope and without that verb's own resume checks.
-
-    THE ZERO ITEM RULE ON THE RESUME SIDE. A rebuild queued by any build before
-    U53 carries no items at all, and ``jobs.drive`` walks an itemless job in one
-    empty pass and records it SUCCEEDED, which is precisely the defect this unit
-    exists to close arriving through the one door that predates the fix.
-
-    A JOB THAT ENDED BADLY IS NOT AN OK EXIT, which is R-225. ``drive`` raises
-    only when EVERY attempted item failed, so a rebuild over three trees where
-    one tree failed returns normally with the job recorded failed, and an
-    unconditional OK here exits 0 over two thirds of a library. It sits OUTSIDE
-    the ``is_open`` branch so a job already failed on entry is caught too, and it
-    catches ANY closed job carrying a cause, so a run stopped by a signal is not
-    an OK exit either.
+    Reconcile first, to release claims a dead driver left. The job must be a
+    rebuild, since ``run_job`` resolves the worker from the job row. An
+    itemless job is refused, since ``drive`` would record it succeeded. A job
+    that closed badly, partly or on entry, is never an OK exit (R-225).
     """
     job = jobs.reconcile(store, job_id)
     if job.handler_key != ctx.entry.handler_key:
@@ -141,31 +98,24 @@ def _resume(ctx, store, job_id: str) -> Envelope:
                 origin=("cli.rebuild",),
                 detail={"job_id": job.job_id},
             )
-        # THE CUT IS READ BEFORE ANYTHING IS DRIVEN, through the one loader,
-        # at the path the frozen configuration names, which is what the worker
-        # reads too (U89). The FILE is read as it stands now and is not frozen
-        # with the job, so a calibration made after queueing is the one used.
-        # A corrupt calibration refuses here before any item is claimed.
+        # The cut is read before anything is driven, as the worker reads it, so
+        # a corrupt calibration refuses before any claim (U89). The file is not
+        # frozen, so a later calibration is the one used.
         threshold = metadata_cli.load_vocal_threshold(jobs.frozen_config(job))
         # The declaration the worker derives with, read the same way (R-685).
         declared = active_taxonomy.load(jobs.frozen_config(job))
-        # THE TREES THIS RUN DRIVES, read before the drive: an item already
-        # done was driven by an earlier run and is not this run's to report.
+        # The trees this run drives; an item already done is an earlier run's.
         driven = [
             i.item_id for i in jobs.items(store, job.job_id) if i.state != jobs.ItemState.DONE
         ]
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
-        # WHAT THE REBUILD DID NOT COMPARE, beside the drift (R-316). The worker
-        # still returns None, so the engine is asked the question its report would
-        # have answered: the gap depends on the declaration and the threshold,
-        # never on the library. Only on the branch that drove, because a
-        # queue-only answer and a job finished on entry compared nothing in
-        # this run.
+        # What the rebuild did not compare, which depends on the declaration and
+        # threshold only, said only when this run drove (R-316).
         warnings = (
             *warnings,
             *engine.not_compared_warnings(engine.governed_not_compared(threshold, declared)),
-            # THE GENRE FAVORITES STEP SKIPPED, named with its cause (U132).
+            # The genre favorites step skipped, named with its cause (U132).
             *engine.favorites_skipped_warnings(declared, driven),
         )
     jobs.raise_for_state(job)
@@ -191,9 +141,8 @@ def rebuild(ctx) -> Envelope:
     cfg = load_config(("cli.rebuild",))
     with jobs.open_store() as store:
         if ctx.args.job:
-            # THE RESUME READS NO REGISTRY AND NO TREE FLAG. Everything this job
-            # needs was frozen when it was queued, so an unreadable registry here
-            # would permanently block work whose items are already decided.
+            # The resume reads no registry and no tree flag, so an unreadable
+            # registry never blocks work whose items are already frozen.
             return _resume(ctx, store, ctx.args.job)
         tree_id = getattr(ctx.args, "tree", None)
         entries = tree_registry.read(cfg)
@@ -208,23 +157,18 @@ def rebuild(ctx) -> Envelope:
             )
         declared = active_taxonomy.load(cfg)
         if tree_id is not None and not engine.derivable(declared, tree_id):
-            # NEVER QUEUED (U219). The engine refuses this tree too; deciding it
-            # here queues nothing that can only fail, and a tree a restore
-            # marked is answered by a person rather than by a derivation.
+            # Never queued, since the engine would refuse it; a person answers
+            # for it instead (U219).
             return _accept_as_it_stands(ctx, cfg, declared, tree_id)
         items = tuple(t for t in tree_items(entries, tree_id) if engine.derivable(declared, t))
         if not items:
-            # NOT A REFUSAL. A library that has never flipped a tree is the state
-            # every library is in until its first cutover, and nothing about it
-            # is wrong. What would be wrong is filing a job with nothing to
-            # claim: the driver walks it in one empty pass and transitions it
-            # straight to succeeded, so the queue would carry a rebuild that
-            # reports as done over a library nothing read.
+            # Not a refusal, nothing is wrong. An itemless job would report a
+            # rebuild done over a library nothing read, so none is filed.
             native = tree_items(entries, None)
             return ctx.envelope(
                 data=no_job(
-                    # A NATIVE TREE THE TAXONOMY DOES NOT DERIVE IS STILL NATIVE
-                    # (U219), so the count is read and the state says which zero.
+                    # A native tree the taxonomy does not derive is still native,
+                    # so the state says which zero (U219).
                     "no-derivable-tree" if native else "no-native-tree",
                     trees=len(entries.tree_ids()),
                     native=len(native),
@@ -258,29 +202,15 @@ ACCEPT_GATE = "rebuild.accept"
 def _accept_as_it_stands(ctx, cfg: config.Config, declared: Any, tree_id: str) -> Envelope:
     """Let a named person accept a marked tree no rebuild can reproduce (U219).
 
-    THE INTAKE TREE AFTER A RESTORE. The restore detection marks every native
-    tree, and every write to a marked tree refuses with this verb as its
-    remedy. For the routing tree the rebuild derives the whole membership and
-    clears the flag on the evidence of a check. For INBOX nothing derives its
-    batches, and the rebuild that used to run there wrote the routing tree's
-    genre folders under it and then cleared the flag over that (R-789). What is
-    left is what the convergence model already names for a difference nothing
-    can derive: a named person disposing of it, for this tree alone, recorded
-    as a :class:`cratekit.core.convergence.Disposition`. The flag stays set,
-    so a report still says the tree is unconverged, and the refusal is
-    answered. A later restore clears the disposition and marks it again.
-
-    THE ACTOR IS THE ONE WHO ANSWERED THE GATE. The gate is explicit, so the
-    answer is a separate act recorded with its actor (R34), and that recorded
-    actor, not the ``--actor`` string on this command line, is who the
-    disposition names.
-
-    A TREE THAT IS NOT REFUSING HAS NOTHING TO ACCEPT, and is refused as a
-    tree no rebuild can reproduce, before any gate is asked.
+    Nothing derives the intake tree's batches, so after a restore marks it a
+    person disposes of the difference, recorded as a
+    :class:`cratekit.core.convergence.Disposition` (R-789). The flag stays
+    set, so reports still say unconverged, but writes stop refusing. The
+    disposition names the gate's recorded actor, not ``--actor`` (R34). A tree
+    that is not refusing has nothing to accept and is refused before the gate.
     """
     if tree_registry.read(cfg).is_database_native(tree_id):
-        # THE DETECTION FIRST, so the record the gate shows is the one the
-        # database now warrants and not one a later restore has overtaken.
+        # Detect first, so the gate shows the record the database now warrants.
         engine.detect_restore(cfg)
     record = convergence.read(cfg).tree(tree_id)
     if record is None or not record.blocking:
@@ -299,9 +229,8 @@ def _accept_as_it_stands(ctx, cfg: config.Config, declared: Any, tree_id: str) -
                 "by you, until it is next marked"
             ),
         },
-        # THE ANSWER IS PINNED TO THE MARK IT WAS GIVEN OVER (U161's rule): a
-        # restore detected between the ask and the answer is a mark nobody
-        # was shown, and the answer recorded over the first is refused stale.
+        # The answer is pinned to the mark it was given over, so a restore in
+        # between makes it stale (U161).
         pinned={"since": str(record.since or ""), "reason": str(record.reason or "")},
     )
     if option != "accept":
@@ -321,10 +250,7 @@ def _left_alone(
 ) -> list[dict[str, str]]:
     """The native trees this rebuild left alone because the taxonomy does not derive them (U219).
 
-    The intake tree is native on a library whose landings write it, and a
-    rebuild of it wrote the routing tree's genre folders under INBOX (R-789).
-    Named rather than dropped in silence, so a person reads that it was left
-    alone on purpose.
+    Named, not dropped, so a person reads that it was on purpose (R-789).
     """
     others = engine.other_declared_trees(declared)
     skipped = [t for t in tree_items(entries, None) if t not in items and t in others]
@@ -342,38 +268,20 @@ def _left_alone(
 
 
 def handle(job, item, cfg) -> None:
-    """Rebuild ONE governed tree. The per-item worker behind ``handler_key`` rebuild.
+    """Rebuild one governed tree, the per-item worker behind ``handler_key`` rebuild.
 
-    THE ITEM IS THE TREE. ``item.item_id`` is the stable identifier this verb
-    queued, so a job over three trees is three claims, three commits and three
-    rows a resume can tell apart. A worker that rebuilt every tree per item would
-    do the whole sweep once per tree and report each pass as one item's work.
-
-    ``cfg`` IS THE FROZEN CONFIGURATION (KTD9) and is passed straight through.
-    Nothing here loads one.
-
-    IT PRODUCES NO ARTIFACT. A rebuild's output is playlist membership inside the
-    library's own database, which the engine commits behind its own capture; there
-    is no staged file for the driver to make durable, so this returns None rather
-    than inventing a path for the engine's report.
-
-    THE ACTOR IS NOT READ HERE, and that is deliberate rather than an omission.
-    It is frozen on the payload so the queued job records who asked, and the one
-    place the engine records a decision against a person is the convergence
-    disposition, which a rebuild does not write. Handing this actor to a call
-    that records an assertion would be the product asserting on the strength of a
-    string, which is what R34 forbids.
+    The item is the tree, so a resume can tell trees apart. ``cfg`` is the
+    frozen configuration (KTD9). It returns no artifact, since the output is
+    database membership the engine commits itself. The actor is deliberately
+    not read, since a rebuild records no assertion against a person (R34).
     """
     del job
-    # THE WORKFLOW IS NAMED HERE RATHER THAN DEFAULTED, so both workers over this
-    # engine state what they write under and a reader comparing the two sees one
-    # difference rather than one name and one absence.
+    # The workflow is named, not defaulted, as the other worker over this engine does.
     engine.rebuild_governed_tree(
         cfg,
         tree_id=str(item.item_id),
         workflow=engine.REBUILD_WORKFLOW,
-        # THE CALIBRATED CUT, through the one loader, at the path the frozen
-        # configuration names. None on a library never calibrated (U89, D7).
+        # The calibrated cut, or None on a library never calibrated (U89, D7).
         vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
     )
     return None

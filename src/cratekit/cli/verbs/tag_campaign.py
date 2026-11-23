@@ -1,72 +1,18 @@
 """``crate tag campaign``: apply the needs genre backlog under one gate (U294).
 
-WHAT IT ANSWERS. ``tag backlog`` (U292) sorts every row adoption leaves under
-needs genre by cause and names the existing gated verbs that settle it, in
-order. Driving them by hand is five verbs and five gates. This verb is that
-campaign under one approval: one gate over the backlog plan and every word a
-person answered, and then each step through its own verb's plan and apply.
+A composer, as ``crate organize`` is (U112): it owns the order, the one gate and
+the stop, and writes nothing itself. The steps are ``tag rows``, ``tag
+suggest`` at the backlog's floor, the words through ``taxonomy alias`` and
+``taxonomy folder``, and ``tag rows`` again for the rows those words filed, each
+planned on the library the steps before it left (R-1732) and held to what the
+gate showed. ``route resort`` is named, not run, since its gate binds adds
+known only after the steps write (#851).
 
-A COMPOSER, as ``crate organize`` is (U112). It owns the order, the one gate
-and the stop, and no write of its own: every row is written by ``tag rows``'s
-or ``tag suggest``'s apply, every file by ``tag suggest``'s or ``taxonomy
-alias``'s, and the copy by ``taxonomy alias``'s or ``taxonomy folder``'s.
-
-THE ORDER IS ``tag rows``'S, and for its reasons:
-
-* the backup acknowledgment is read before the plan and the gate (R-733);
-* the backlog is planned on a handle opened to read, by ``tag backlog``'s own
-  plan, and a library most of whose rows are under no prefix rule refuses;
-* the answers are checked against the plan, and every word the third step
-  writes is planned by ``taxonomy alias`` and ``taxonomy folder``'s own edits,
-  each alias with that verb's own walk of the files it retags, so an answer
-  the verbs refuse is refused before the gate and before any write;
-* the gate is asked over one digest, the backlog's, the answers' and every
-  file an alias retags, AND AN EMPTY PLAN STILL ASKS. It shows every write,
-  each file included, and what the verbs could not read. The run that answers
-  rebuilds all of it, so a library, an answer or a file that moved refuses as
-  stale with nothing written.
-
-THE DIGEST NAMES NO COPY. The backlog's covers its rows and words and no path,
-the answers are words and genres, and each file is named by its path under
-the library root, so a rehearsal on a disposable copy digests equal to the
-live plan, and ``--rehearsed`` sets the rehearsal's digest
-beside the live one at the gate for CLAUDE.md's rehearsal rule. It is shown and
-never digested: the answer binds the plan.
-
-THE STEPS, EACH PLANNED ON THE LIBRARY THE STEPS BEFORE IT LEFT (R-1732):
-
-1. ``tag rows``, narrowed to the rows the backlog served. A row it would move
-   into needs genre (R-1734), or any other routed row whose file differs, was
-   never shown, and is held out.
-2. ``tag suggest`` at the backlog's floor, narrowed to the proposals the backlog
-   showed with the genre it showed. One that appeared or moved since, as a
-   row's neighbours read the first step's genres, is left and named, so no
-   genre is written that was not shown or that the floor would not give now.
-3. The words: each settled word's one answer, then each answered word through
-   ``taxonomy alias`` or ``taxonomy folder``'s own plan and apply, each planned
-   again and refused as stale when its edit or its files are not the ones the
-   gate listed.
-4. ``tag rows`` again, narrowed to the rows of the words the third step wrote,
-   and to a file carrying the answer's own spelling, so a row the answer filed
-   is never written back into needs genre with another case of the word.
-5. ``route resort`` is NAMED, NOT RUN. Its adds are known only once the steps
-   have written, and its gate binds those adds, so this answer cannot stand for
-   them without one minted for a plan nobody was shown. Phillip answered on
-   #851 on 2026-11-21 that the resort keeps its own approval.
-
-A STEP THAT REFUSES STOPS THE CAMPAIGN THERE. Each step is its own verb's
-session, so what landed stays landed. The refusal is the step's own, reworded
-to name each step that landed with its count, the step that refused, and the
-steps not run, with the whole report in its detail. A second run plans only
-what is left.
-
-NEEDS GENRE IS MEASURED, before the campaign and after each step, by the
-backlog's own census (R-1737), never projected.
-
-THE GATE TAKES NO INLINE ANSWER, for the reason ``tag rows`` gives (R34).
-
-Layer: cli. It names the verbs it composes, ``taxonomy alias`` and ``taxonomy
-folder`` among them, which live on this layer.
+The backup acknowledgment is read before the plan (R-733), and every answer is
+checked before the gate, which asks over one digest even for an empty plan and
+takes no inline answer (R34). The digest names no copy, so a rehearsal digests
+equal to the live plan. A step that refuses stops the campaign there, naming
+what landed. Needs genre is measured by the backlog's census (R-1737).
 """
 
 from __future__ import annotations
@@ -226,8 +172,7 @@ def _held_by_copy(declared, spelling: str, kind: str, genre: str) -> bool:
     if declared is None:
         return False
     if kind == backlog.FOLDER:
-        # ITS OWN NAME EXACTLY, the folder the answer made (round two), or in
-        # another case, which ``own_folder`` alone answers.
+        # Its own name exactly, or in another case, which ``own_folder`` answers.
         return (
             declared.bucket_for_display(spelling) is not None
             or word_edit.own_folder(declared, spelling) is not None
@@ -259,18 +204,10 @@ def answers(
 ) -> tuple[Answer, ...]:
     """Each answer given, matched to its word in the plan, in the plan's word order.
 
-    REFUSED BEFORE ANYTHING IS WRITTEN when an alias is not ``WORD=GENRE``, a
-    word names none the backlog asks about in any of its spellings, a word is
-    answered twice, or the word is not one the backlog asks: a settled word,
-    which takes no answer, or one neither verb takes. The answer carries the
-    plan's spelling, so two cases of one word on the command line are one
-    answer and one digest.
-
-    AN ANSWER THE COPY ALREADY HOLDS IS TAKEN AS GIVEN AND DROPPED (round one
-    of the review): the same command run again once the words landed names a
-    word that is now settled, or that its folder now files and the backlog no
-    longer holds, and that is a person repeating an answer, never a new one.
-    ``declared`` is the copy those are read from.
+    Refused before any write when an alias is not ``WORD=GENRE``, or a word is
+    unknown, answered twice, settled, or unanswerable. The answer carries the
+    plan's spelling, so two cases of one word are one answer. An answer the
+    ``declared`` copy already holds is a repeat and is dropped.
     """
     given: list[tuple[str, str, str, str]] = []
     for value in alias:
@@ -326,12 +263,9 @@ SETTLED = "settled"
 class WordPlan:
     """One word the third step writes, planned before the gate by the verbs' own plans.
 
-    ``asked`` is the genre as given, which the apply plans again with;
-    ``genre`` is the genre folder the edit names. ``files`` is every file the
-    alias walk found carrying the word, each by its path under the library
-    root, as ``taxonomy alias``'s own gate lists it: written, left, or not
-    read. ``notes`` are that verb's own sentences about the files it leaves
-    and the files it could not read.
+    ``asked`` is the genre as given; ``genre`` is the folder the edit names.
+    ``files`` is every file the alias walk found carrying the word, by its path
+    under the library root; ``notes`` are that verb's sentences about them.
     """
 
     word: str
@@ -366,14 +300,9 @@ def plan_words(
 ) -> tuple[WordPlan, ...]:
     """Plan every word the third step writes, in order, before the gate. Writes nothing.
 
-    THE VERBS' OWN EDITS AND THE ALIAS VERB'S OWN FILE WALK (round one of the
-    review). Each edit is ``taxonomy alias``'s or ``taxonomy folder``'s, on the
-    text the words before it leave, so an answer the verbs refuse, or two that
-    cannot both be written, refuse here with the verb's own words. Each alias's
-    files are walked as that verb walks them, every audio file under the
-    library root, so every file the campaign retags is on the gate and in its
-    digest, by its path under the root, and the apply refuses as stale when the
-    walk then finds another set.
+    Each edit is the verbs' own, on the text the words before it leave, so a
+    refused answer refuses here. Each alias's files are walked as that verb
+    walks them, so every retagged file is on the gate and in its digest.
     """
     todo = [(word.spelling, SETTLED, word.settled_genre) for word in _settled(plan)]
     todo += [(answer.word, answer.answer, answer.genre) for answer in given if answer.answer != backlog.LEAVE]
@@ -422,11 +351,7 @@ def digest(
 ) -> str:
     """The fingerprint the one approval binds to: the backlog, the answers and the words.
 
-    NOTHING THAT NAMES A COPY: the backlog's digest names none, the answers
-    are words and genres, and each word's files are named by their path under
-    the library root, so a rehearsal on a disposable copy digests equal to the
-    live plan. A file that comes to carry a word, or stops carrying it, between
-    the plan and the approval moves it.
+    Nothing in it names a copy, so a rehearsal digests equal to the live plan.
     """
     return output.digest_of(
         {
@@ -501,8 +426,7 @@ def _unanswered(plan: backlog.Backlog, given: tuple[Answer, ...]) -> list[str]:
     return [word.spelling for word in plan.words if word.options and word.spelling not in answered]
 
 
-#: The backlog's own notes the campaign carries to its report: what it could
-#: not read, and the rows ``tag rows`` would have moved, which are held out.
+#: The backlog's own notes the campaign carries to its report.
 _CARRIED = (
     backlog_cli.FILES_UNREAD,
     backlog_cli.CATALOGUE_UNREAD,
@@ -514,9 +438,7 @@ _CARRIED = (
 def _notes(plan: backlog.Backlog, words: tuple[WordPlan, ...]) -> list[dict[str, str]]:
     """What the composed verbs say they could not read or left, in their own words.
 
-    THE BACKLOG'S NOTES AND THE ALIAS VERB'S (round one of the review): a gate
-    standing for those verbs shows what each would show at its own, so a clean
-    screen is never put over state a verb could not read.
+    A gate standing for those verbs shows what each would show at its own.
     """
     found = [
         note
@@ -524,9 +446,8 @@ def _notes(plan: backlog.Backlog, words: tuple[WordPlan, ...]) -> list[dict[str,
         if note["code"] in _CARRIED and note["code"] != backlog_cli.ROWS_JOINING
     ]
     if plan.joining:
-        # IN THE CAMPAIGN'S OWN WORDS (round two): the backlog's names the
-        # flag that holds such a row out of ``tag rows``, which this verb does
-        # for it, and which this verb's parser would read as another flag.
+        # In the campaign's own words, since the backlog's names a flag this
+        # verb does not take.
         found.append(
             {
                 "code": backlog_cli.ROWS_JOINING,
@@ -639,8 +560,8 @@ def _needing(cfg: config.Config, declared) -> int:
         rb_writer.close_db(db)
 
 
-#: Why a follower is held out: its file carries the word in another spelling
-#: than the one the answer filed, so ``tag rows`` would unfile it (round one).
+#: Why a follower is held out: its file carries another spelling of the word,
+#: so ``tag rows`` would unfile it.
 ANOTHER_SPELLING = "file-carries-another-spelling"
 
 
@@ -655,11 +576,9 @@ def _rows_step(
 ) -> None:
     """``tag rows``, its own plan and apply, narrowed to the rows ``keep`` names.
 
-    ``served`` says each kept row is one the backlog showed this verb writing,
-    as the first step's are; the fourth step's are a word's rows, some of which
-    agree with their file already. ``expected`` holds a kept row to the file
-    word its answer filed, so a row whose file carries another spelling of the
-    word is never written over the answer that filed it.
+    ``served`` marks rows the backlog showed this verb writing. ``expected``
+    holds a row to the file word its answer filed, so another spelling is never
+    written over it.
     """
     step.planned = len(keep)
     if not keep:
@@ -674,8 +593,7 @@ def _rows_step(
     narrowed = rows.narrowed(whole, keep - other)
     step.held = len(whole.writes) - len(narrowed.writes)
     writing = {item.content_id for item in narrowed.writes}
-    # A KEPT ROW THE VERB LEAVES keeps the verb's own reason, a word with no
-    # genre row above all, which ``tag rows`` links and never makes.
+    # A kept row the verb leaves keeps the verb's own reason.
     step.left = {
         item.content_id: item.reason
         for item in whole.items
@@ -683,7 +601,7 @@ def _rows_step(
     }
     step.left.update(dict.fromkeys(other, ANOTHER_SPELLING))
     if served:
-        # A SERVED ROW THE VERB NO LONGER WRITES moved since the plan showed it.
+        # A served row the verb no longer writes moved since the plan.
         step.moved = sorted(keep - writing - set(step.left))
     if not writing:
         step.state = EMPTY
@@ -736,10 +654,9 @@ def _words_step(
 ) -> None:
     """Each word the gate showed, by the verbs' own plan and apply, held to what it showed.
 
-    EACH WORD IS PLANNED AGAIN BY ITS VERB and refused as stale when the edit
-    or the files it would retag are not the ones the gate listed, so a file
-    that came to carry the word after the approval is never written. A word is
-    recorded once its apply returned, so a refusal names the words before it.
+    Each word is planned again and refused as stale when its edit or files
+    differ from the gate's. A word is recorded once its apply returns, so a
+    refusal names the words before it.
     """
     step.planned = len(words)
     for shown in words:
@@ -764,8 +681,7 @@ def _words_step(
                 output.digest_of([dict(item) for item in files]),
             )
         if planned.writes:
-            # THE VERB'S OWN ADVICE TO RUN TAG ROWS IS NOT CARRIED: the fourth
-            # step is that verb (round one of the review).
+            # The verb's advice to run tag rows is dropped; the fourth step does.
             step.sentences += [
                 sentence
                 for sentence in taxonomy_word.apply_alias(cfg, spec, run_id, planned)
@@ -789,13 +705,9 @@ def _words_step(
 
 
 def _followers(plan: backlog.Backlog, words: tuple[WordPlan, ...]) -> dict[str, str]:
-    """The rows of every word the third step wrote, each with the file word its
-    answer files, which ``tag rows`` follows.
+    """The rows of every word the third step wrote, each with the file word it files.
 
-    NO CAUSE IS CHECKED: every word the third step writes is an off taxonomy
-    word, and a row of any other cause carries a genre adoption files by, a
-    coarse word or none, so only an off taxonomy row can carry one (U294's
-    mutation table measured a check of the cause dead, and it was taken out).
+    No cause is checked, since only an off taxonomy row can carry such a word.
     """
     filed = {word.word.casefold(): word.genre for word in words}
     return {
@@ -952,7 +864,7 @@ def tag_campaign(ctx: "Context") -> Envelope:
     cfg = tail.load_config(_ORIGIN)
     declared = active_taxonomy.load(cfg)
     spec = output.confirm_gate(ctx.entry, CONFIRM_GATE, origin=_ORIGIN)
-    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    # Before the plan and the gate (R-733).
     session.assert_backup_acknowledged(cfg)
 
     args = ctx.args
@@ -1011,8 +923,7 @@ def tag_campaign(ctx: "Context") -> Envelope:
         except CratekitError as exc:
             step.state, step.error = REFUSED, exc
         except Exception as exc:  # noqa: BLE001 - raised below, never swallowed
-            # ANY OTHER FAILURE IS THIS BUILD'S OWN, and it is the step's: it
-            # is raised naming what landed, as organize names its steps.
+            # Any other failure is a defect, raised naming what landed.
             step.state = REFUSED
             step.error = refuse(
                 "internal-error",
@@ -1023,9 +934,8 @@ def tag_campaign(ctx: "Context") -> Envelope:
                 detail={"step": key, "kind": type(exc).__name__},
             )
         if step.state == REFUSED:
-            # A STEP THAT REFUSES MAY HAVE WRITTEN PART OF ITSELF, a file
-            # refusal after its rows landed above all, so needs genre is read
-            # again and a session the refusal names is kept (round one).
+            # A refused step may have written part of itself, so needs genre is
+            # read again and the refusal's session is kept.
             session_id = (step.error.cause.detail or {}).get("session")
             if session_id:
                 step.sessions.append(str(session_id))
@@ -1036,7 +946,7 @@ def tag_campaign(ctx: "Context") -> Envelope:
             step.needs_genre_after = after
             raise _stopped(steps, step, _report(data, steps, before, after))
         if key == WORDS and step.state == LANDED:
-            # THE COPY MOVED, so the rows that follow are planned on it.
+            # The copy moved, so the rows that follow are planned on it.
             declared = active_taxonomy.load(cfg)
         if step.state == LANDED:
             after = _needing(cfg, declared)

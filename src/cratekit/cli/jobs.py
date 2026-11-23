@@ -1,29 +1,11 @@
 """The four job verbs, and the one place a handler key becomes a command line.
 
-The engine below deliberately knows no verb: KTD23 puts verb strings in this
-layer, and KTD26 needs the engine to re-invoke the product without importing the
-module that does the work. Both are satisfied by the same seam. A job stores a
-HANDLER KEY, this file resolves that key against the registry, imports the owning
-module only at the moment it is actually needed, and hands the assembled argument
-list back to the engine to spawn.
-
-Resolving the key does not import anything, which is the property the conformance
-suite asserts directly: the engine validates a queued job's handler before it
-spawns, and validating by import would pull every feature module into the
-supervising process and walk straight around the lazy-import stubs.
-
-Two smaller decisions worth stating.
-
-**Reporting a job never fails because the job failed.** ``job show`` on a broken
-job exits 0 and carries the job's cause in its PAYLOAD, where ``job_state``
-already reserves a field for it. Making the verb's status mirror the job's status
-would leave a caller unable to tell "this job failed" from "I could not read this
-job", which is the same collapse KTD25 is about, one level up.
-
-**Resuming reconciles first.** A row that still says running while nobody holds
-the job's lock describes a driver that was killed, and believing that row would
-either refuse a resume forever or double-drive a job whose lock is genuinely
-held. Disk truth is the lock, not the row.
+The engine knows no verb (KTD23) and re-invokes the product without importing
+the working module (KTD26): a job stores a handler key, resolved here against
+the registry without importing anything, and the owning module is imported only
+to build the argument list. Reporting a job never fails because the job failed,
+so its cause rides in the payload (KTD25). Resuming reconciles first, since the
+lock, not the row, is the disk truth.
 """
 
 from __future__ import annotations
@@ -44,23 +26,16 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 if TYPE_CHECKING:  # pragma: no cover - typing only, and a cycle if imported for real
     from cratekit.cli import Context
 
-#: What a listing puts in the payload's single-job field. ``job_state`` is a
-#: per-job surface and a listing is not about one job, so the field is empty
-#: rather than carrying the first row's identifier, which a consumer would
-#: reasonably read as "this envelope describes that job".
+#: What a listing puts in the payload's single-job field, empty so no consumer
+#: reads the envelope as describing one job.
 NO_SINGLE_JOB = ""
 
 
 def _summary(store: jobs.JobStore, job: jobs.Job) -> dict[str, Any]:
     """One job flattened for the payload, progress and worker state included.
 
-    ``worker`` is the honest half of an unfinished cutover. Most queued verbs
-    still have no function behind their handler key, so their jobs sit for ever
-    while reporting cleanly. Before anything was bound that was at least uniform,
-    and a person could learn that queues do not run; with one verb working and the
-    rest silent the same report invites the opposite conclusion. The question is
-    answered from the declaration tables alone, which is what keeps a listing from
-    importing every feature module (KTD26).
+    ``worker`` says whether anything is bound to run the handler, so a job that
+    will sit for ever says so; answered from the declaration tables alone (KTD26).
     """
     bound = handlers.is_known(job.handler_key)
     row = {
@@ -77,8 +52,7 @@ def _summary(store: jobs.JobStore, job: jobs.Job) -> dict[str, Any]:
         "progress": jobs.progress(store, job.job_id),
         "cause": job.cause.to_json() if job.cause is not None else None,
     }
-    # U182. The playlist an intake job was made for, on ``job show`` and ``job
-    # list`` alike; a job of another verb gains no field.
+    # The playlist an intake job was made for (U182); other jobs gain no field.
     named = intake_playlist(job)
     if named is not None:
         row[PLAYLIST_FIELD], row[SOURCE_FIELD] = named
@@ -88,9 +62,7 @@ def _summary(store: jobs.JobStore, job: jobs.Job) -> dict[str, Any]:
 def _parse_states(values: Sequence[str]) -> tuple[jobs.JobState, ...]:
     """Turn ``--state`` arguments into states, refusing an unknown one.
 
-    Refusing rather than ignoring, for the reason a dropped decision is refused
-    upstream: a filter that silently matches nothing looks exactly like a queue
-    that is empty, and the user's next move is to conclude their job vanished.
+    A filter that silently matches nothing would read as an empty queue.
     """
     parsed: list[jobs.JobState] = []
     for value in values:
@@ -163,11 +135,8 @@ def show(ctx: "Context") -> Envelope:
         job = jobs.reconcile(store, ctx.args.job_id)
         summary = _summary(store, job)
         drifted = _drift_warning(job)
-    # R-349. What each backup item actually ran, read from the installation
-    # state rather than from the job, which keeps its frozen payload (KTD9).
-    # Read whatever the items' states are, because the record a FAILED item left
-    # is the one a person most needs. Absent for every job that recorded none,
-    # so a job of another verb gains no field.
+    # What each backup item ran, from installation state since the job keeps
+    # its frozen payload (KTD9, R-349); failed items included, absent when none.
     outcomes = backup_facts.read_outcomes(job.job_id)
     if outcomes is not None:
         summary[backup_facts.OUTCOMES_FIELD] = outcomes
@@ -185,13 +154,10 @@ def show(ctx: "Context") -> Envelope:
     )
 
 
-#: The handlers whose payload freezes the tracks an intake heard or listed,
-#: the payload key it freezes them under, and the field ``job show`` lists
-#: them in (R-925). Spelled here rather than imported from
-#: ``cratekit.intake.cli``, because these verbs must not load a feature module
-#: to report a job (KTD26); a test pins the spellings to that module's own.
-#: The field is NOT ``tracks``, which a dozen payloads use for a count, so a
-#: renderer can read it by name alone.
+#: The intake handlers, the payload key holding their frozen tracks, and the
+#: field ``job show`` lists them in (R-925). Spelled here so reporting loads no
+#: feature module (KTD26); a test pins them. The field is not ``tracks``, which
+#: other payloads use for a count.
 INTAKE_HANDLERS: frozenset[str] = frozenset({"intake.set", "intake.playlist"})
 INTAKE_TRACKS_KEY = "tracks"
 TRACKS_FIELD = "intake_tracks"
@@ -200,13 +166,8 @@ TRACKS_FIELD = "intake_tracks"
 def _intake_tracks(job: jobs.Job) -> list[dict[str, Any]] | None:
     """The tracks an intake job froze, in its order, or None for any other job.
 
-    THE PAYLOAD IS THE LIST. ``intake set`` freezes every identified row at the
-    queue and the worker reads nothing else, so what is listed here is what
-    would be resolved, and a person can read a five hour mix's tracks before
-    anything is acquired from it. A job of another handler gains no field, so
-    its report is unchanged. A frozen row that is not a mapping is listed with
-    its item and nothing else, rather than dropped, so the list's length is
-    always the payload's.
+    The payload is what the worker resolves, so this is what would be acquired.
+    A row that is not a mapping is listed by its item, never dropped.
     """
     if job.handler_key not in INTAKE_HANDLERS:
         return None
@@ -231,10 +192,7 @@ def _intake_tracks(job: jobs.Job) -> list[dict[str, Any]] | None:
 def _drift_warning(job: jobs.Job) -> tuple[dict[str, str], ...]:
     """Name what moved in the configuration since the job was queued (KTD9).
 
-    A warning rather than a refusal. The job runs against its frozen inputs
-    whatever this says; what the user needs is to know that the setting they just
-    edited is not the setting this run is using, which is the half the recorded
-    resume bug had no way to surface at all.
+    A warning, not a refusal: the job runs on its frozen inputs regardless.
     """
     try:
         current = config.load()
@@ -249,12 +207,9 @@ def _drift_warning(job: jobs.Job) -> tuple[dict[str, str], ...]:
 
 
 def _days(text: str) -> int:
-    """Parse ``--stale-days``, refusing zero and a negative AT THE PARSER (status 2).
+    """Parse ``--stale-days``, refusing zero and a negative at the parser (status 2).
 
-    The same kind of statement ``type=int`` makes, so it is argparse's usage
-    error and not a refusal. A cutoff of now or later would offer every queued
-    job as stale, one queued a second ago included, and a job that young is
-    not stale by any reading; a day is the least the flag means.
+    A cutoff of now would offer every queued job as stale; a day is the least.
     """
     value = int(text)
     if value < 1:
@@ -297,9 +252,8 @@ def cancel(ctx: "Context") -> Envelope:
         summary = _summary(store, job)
     if ctx.args.dry_run:
         summary[DRY_RUN_FIELD] = True
-    # Cancelling SUCCEEDS. The job is reported as cancelled in the payload, and
-    # that is the whole point of R22's distinction: a cancel that exited non-zero
-    # would be indistinguishable from a cancel that did not work.
+    # Cancelling succeeds, reported in the payload (R22), so a non-zero exit
+    # means only a cancel that did not work.
     return ctx.envelope(
         data={
             "job_id": job.job_id,
@@ -314,8 +268,7 @@ def cancel(ctx: "Context") -> Envelope:
 #: The field a dry run marks its answer with, and the three lists a stale
 #: cancel answers with, each a row per job (U182).
 DRY_RUN_FIELD = "dry_run"
-#: The state word of a stale cancel that found nothing to cancel, so a reader
-#: of the field is never told ``cancelled`` over a queue nothing changed in.
+#: The state word of a stale cancel that cancelled nothing.
 NOTHING_CANCELLED = "unchanged"
 STALE_FIELD = "stale_days"
 CANCEL_LIST = "cancel"
@@ -346,10 +299,7 @@ def _row(hold: Hold, **said: Any) -> dict[str, Any]:
 def _left_reason(hold: Hold, cutoff: datetime, days: int) -> str | None:
     """Why this open job is not stale, or None when it is a candidate.
 
-    ONLY A QUEUED JOB IS STALE. A running one is somebody's drive, and a
-    blocked one waits on a cause it names, so each is listed with its reason
-    and left. A job whose queued instant cannot be read is never stale: an age
-    nobody measured is not an old one.
+    Only a queued job with a readable queued instant can be stale.
     """
     state = hold.job.state
     if state is jobs.JobState.RUNNING:
@@ -374,11 +324,8 @@ def _left_reason(hold: Hold, cutoff: datetime, days: int) -> str | None:
 def _frees(hold: Hold, staying: Sequence[Hold]) -> str:
     """What cancelling this job lets the next pass do, in one sentence.
 
-    A pass leaves out a playlist while ANY open playlist job for it is open, so
-    a playlist is freed only when no job staying open holds the same playlist,
-    read as the pass reads it (:attr:`Hold.identity`), never by the reference
-    as typed: a URL typed by hand and the id a sweep froze are one playlist.
-    A set job holds no account playlist out of a pass at all.
+    A playlist is freed only when no job staying open holds it, compared as the
+    pass reads it (:attr:`Hold.identity`), never as typed.
     """
     if hold.job.handler_key != "intake.playlist":
         return "frees no account playlist: a set job holds none out of a pass"
@@ -400,16 +347,9 @@ def _frees(hold: Hold, staying: Sequence[Hold]) -> str:
 def _cancel_stale(ctx: "Context", days: int, *, dry_run: bool) -> Envelope:
     """List, or cancel, every queued intake job of this library older than ``days``.
 
-    THE EXISTING CANCEL, IN A LOOP, under the one command a person typed after
-    reading its ``--dry-run``: a cancel moves no file, and ``crate job resume``
-    reopens a cancelled job, so a recorded decision would gate nothing a person
-    cannot undo. Each cancel is taken holding the job's driver lock and only
-    while the row still says queued, so a driver that picked a job up after the
-    listing keeps it.
-
-    DUPLICATES KEEP THEIR NEWEST. Of every set of open intake jobs holding
-    exactly the same tracks, the newest is never cancelled here, and each copy
-    cancelled names it, so the tracks are still resolved once.
+    No gate, since a cancel moves no file and ``job resume`` undoes it. Each
+    cancel holds the driver lock and needs the row still queued. Of jobs holding
+    the same tracks the newest is kept, so the tracks still resolve once.
     """
     from cratekit.cli import tail  # noqa: PLC0415 - the one refusal for an unreadable config
 
@@ -418,8 +358,7 @@ def _cancel_stale(ctx: "Context", days: int, *, dry_run: bool) -> Envelope:
     cutoff = moment - timedelta(days=days)
     library = cfg.library.volume_id
     with jobs.open_store() as store:
-        # A RUNNING ROW NOBODY DRIVES WAS KILLED, and reads as queued once
-        # reconciled, the disk truth every job verb reports from.
+        # A running row nobody drives was killed; reconcile it to queued.
         for held in jobs.list_jobs(store, states=(jobs.JobState.RUNNING,)):
             if held.handler_key in INTAKE_HANDLERS and held.library_id == library:
                 jobs.reconcile(store, held.job_id)
@@ -515,11 +454,8 @@ def build_resume(parser: argparse.ArgumentParser, entry: registry.Entry) -> None
 def argv_for(job: jobs.Job) -> list[str]:
     """Turn a stored handler key and frozen payload back into a command line.
 
-    The registry lookup comes FIRST and imports nothing, so an unknown handler
-    fails before any module is loaded. The import happens only after the key is
-    known to be real, and only for the one module that owns it, which is what
-    keeps a queued analysis job from pulling the analysis dependencies into a
-    process that is merely listing jobs.
+    The registry lookup imports nothing, so an unknown handler fails first; only
+    then is the one owning module imported.
     """
     try:
         entry = registry.by_handler_key(job.handler_key)
@@ -556,11 +492,7 @@ def argv_for(job: jobs.Job) -> list[str]:
 def resume_argv(job: jobs.Job) -> list[str]:
     """The argument list that re-invokes a resume for one job.
 
-    The identity case of the contract every long-running verb owes: given the
-    frozen job, return the command line that continues it. It is written out here
-    rather than special-cased inside ``argv_for`` so that the registry's claim
-    that every long-running verb has a builder is true of this one too, and so the
-    test that walks the registry and looks each builder up finds a real function.
+    A real builder, so every long-running verb in the registry has one.
     """
     return ["job", "resume", job.job_id]
 
@@ -568,16 +500,11 @@ def resume_argv(job: jobs.Job) -> list[str]:
 def resume(ctx: "Context") -> Envelope:
     with jobs.open_store() as store:
         job = jobs.reconcile(store, ctx.args.job_id)
-        # Checked here so a user who resumes a job that is already running sees
-        # the refusal, rather than spawning a child that discovers the same thing
-        # and writes it into a log nobody is watching.
+        # Checked here so the refusal is seen, not logged by a spawned child.
         jobs.assert_free(job.job_id)
         if not job.is_open():
-            # ``retry`` REFUSES a closed job whose cause is not retryable (R-390),
-            # and that refusal is the engine's rather than this verb's on
-            # purpose: the verb is the engine's only shipped caller today, and a
-            # check written here alone would leave the next caller re-arming
-            # work the job has already said cannot succeed.
+            # ``retry`` refuses a cause that is not retryable (R-390), in the
+            # engine so every caller gets the check.
             job = jobs.retry(store, job.job_id)
         pid = jobs.spawn(store, job, argv_for(job))
         summary = _summary(store, job)
@@ -601,15 +528,14 @@ def resume(ctx: "Context") -> Envelope:
 # ---------------------------------------------------------------------------
 
 
-#: The payload keys an intake job freezes its playlist under (U182): the name
-#: the account gave it, and the reference it was listed from. Spelled here for
-#: :data:`INTAKE_TRACKS_KEY`'s reason; a test pins them to the intake module's.
+#: The payload keys an intake job freezes its playlist name and reference
+#: under (U182); a test pins them to the intake module's.
 INTAKE_PLAYLIST_KEY = "playlist_name"
 INTAKE_SOURCE_KEY = "source"
 #: The reserved reference the account's hearts are queued under, pinned the same way.
 INTAKE_HEARTS = "favorites"
-#: The payload key, and the value under it, that mark a job the playlists
-#: sweep queued, whose source is the listing's own id; pinned to ``sync.playlists``.
+#: The payload key and value marking a job the playlists sweep queued; pinned
+#: to ``sync.playlists``.
 INTAKE_SWEEP_KEY = "source_id"
 INTAKE_SWEEP_ID = "playlists"
 #: The fields ``job show`` and ``job list`` name an intake job's playlist in.
@@ -620,13 +546,9 @@ SOURCE_FIELD = "source"
 def intake_playlist(job: jobs.Job) -> tuple[str, str] | None:
     """The playlist an intake job was made for and its source, or None for any other job.
 
-    THE NAME IS THE ACCOUNT'S, FROZEN AT THE QUEUE (U113), because ``sync mark``
-    later renames the account's copy. A job queued by hand with ``intake
-    playlist`` froze no name, only the reference a person typed, so that
-    reference stands as its playlist rather than nothing: sitting 51 could not
-    tell 17 jobs apart for want of exactly this. A set's file and the hearts'
-    reserved reference are no playlist, so neither stands in for a name. Either
-    is ``""`` when the payload froze none.
+    The name is the account's, frozen at the queue (U113). A hand queued
+    playlist job with no name uses its reference instead; a set's file and the
+    hearts never stand in for a name. Either is ``""`` when none was frozen.
     """
     if job.handler_key not in INTAKE_HANDLERS:
         return None
@@ -643,16 +565,9 @@ def intake_playlist(job: jobs.Job) -> tuple[str, str] | None:
 def playlist_identity(job: jobs.Job, source: str) -> str:
     """The playlist a pass reads this job as holding, or ``""`` for none.
 
-    THE SWEEP'S OWN READING, ``sync.playlists.recorded_as``, written again here
-    rather than imported: that module reaches the rekordbox export writer at
-    module scope, and the match engine, which reaches this module, is held by
-    test to reach no export reader at any depth. A test pins the two readings
-    to agree. A job the sweep queued carries the listing's own id, kept as it
-    is; a reference typed by hand is parsed to the id the listing carries, so
-    a URL and a sweep's job for the same playlist are one playlist here as
-    they are to the pass, and a reference the parser does not recognise is
-    kept as typed. The hearts are held as one while any hearts job is open. A
-    set job holds no account playlist.
+    The sweep's own reading, ``sync.playlists.recorded_as``, copied rather than
+    imported to keep the export writer out of reach; a test pins them equal. A
+    typed reference is parsed to the listing's id, or kept as typed.
     """
     if job.handler_key != "intake.playlist":
         return ""
@@ -665,9 +580,7 @@ def playlist_identity(job: jobs.Job, source: str) -> str:
     try:
         return catalogue.playlist_id(source)
     except ValueError:
-        # THE PARSER'S REFUSAL IS A ``ValueError``, and so is what the URL
-        # parser itself raises over ``https://[::1``: either reference is kept
-        # as typed, rather than ending the listing on a traceback.
+        # Both refusals and malformed URLs raise ValueError; keep it as typed.
         return source
 
 
@@ -692,9 +605,8 @@ def age_days(job: jobs.Job, now: datetime) -> int | None:
 class Hold:
     """One open intake job, and what it holds out of a pass (U182).
 
-    ``same_tracks`` names every OTHER open intake job of the library whose items
-    are exactly this job's, newest first. Two copies of one 144 track list read
-    as two unrelated jobs until this was said, at sitting 51.
+    ``same_tracks`` names every other open intake job of the library whose items
+    are exactly this job's, newest first.
     """
 
     job: jobs.Job
@@ -736,9 +648,8 @@ def _newest(held: jobs.Job) -> tuple[datetime, str]:
 def intake_holds(store: jobs.JobStore, library_id: str, *, now: datetime) -> list[Hold]:
     """Every open intake job of this library, newest first, with what it holds.
 
-    THE TRACK SET IS THE JOB'S ITEMS, the identifiers its worker resolves, so
-    two jobs are copies only when they would do the same work. A job with no
-    item is nobody's copy: an empty set equal to another empty set says nothing.
+    Two jobs are copies only when their items match; a job with no item is
+    nobody's copy.
     """
     open_states = [state for state in jobs.JobState if state not in jobs.TERMINAL_STATES]
     found = sorted(

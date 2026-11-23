@@ -2,7 +2,7 @@
 title: "A verb's doctor checks are not what doctor reports for it, and a read still needs the pins"
 date: 2026-09-19
 category: integration-issues
-module: src/cratekit/cli/doctor.py
+module: "src/cratekit/cli/doctor_model.py, src/cratekit/cli/doctor.py"
 problem_type: integration_issue
 component: development_workflow
 severity: medium

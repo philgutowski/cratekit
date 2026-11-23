@@ -1,17 +1,10 @@
-"""R-235: the two verbs over the tree registry, driven through the real dispatcher.
+"""The two verbs over the tree registry, driven through the real dispatcher (R-235).
 
-WHAT THIS FILE IS FOR THAT ``test_cutover_precheck.py`` CANNOT BE. That file
-drives ``tree_registry.flip`` as a library, with a root identifier the test
-makes up. Nothing there finds a root, asks a gate, or is reachable by a person.
-Here every scenario goes through ``cli.run``, the root is a row in a real
-database file, and the approval is R34's two acts.
-
-THE LIBRARY IS A TEMPORARY ONE IN EVERY PART, the library root included. The
-registry is library state, beside the library root, so a fixture that redirected
-the configuration and the database and left the root alone would record its
-cutovers somewhere a real run reads.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+Unlike ``test_cutover_precheck.py``, every scenario here goes through
+``cli.run``, the root is a row in a real database file, and the approval is
+R34's two acts. The library root is temporary too: the registry sits beside
+it, so leaving the root real would record cutovers where a real run reads.
+D1 applies.
 """
 
 from __future__ import annotations
@@ -22,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.adopt import collection
-from cratekit.cli import cutover, doctor
+from cratekit.cli import cutover, doctor, doctor_state
 from cratekit.core import config, preflight, rb_writer, session, snapshot, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
@@ -422,10 +415,8 @@ def test_a_tree_the_taxonomy_does_not_declare_is_refused(ready):
 
 
 def test_the_intake_tree_cuts_over_on_the_same_answer_as_the_routing_tree(ready):
-    """R-746. The intake tree stayed on the bridge because flipping it would
-    have refused the splice that landed new rows. The landing now chooses its
-    medium by the tree's mode, so the refusal expired with the reason for it,
-    and the intake tree anchors to its own root the way the routing tree does."""
+    """The intake tree anchors to its own root on the same answer as the
+    routing tree, since the landing chooses its medium by the tree's mode (R-746)."""
     cfg, export, routing_root = ready
     intake_root = _add_folder(cfg, DECLARED.intake.display)
     code, acted, _refused = _two_acts(
@@ -702,16 +693,14 @@ def test_doctor_fails_on_a_registry_it_cannot_read_rather_than_listing_the_bridg
 
 
 # ---------------------------------------------------------------------------
-# What the review found, closed
+# Edge cases of the cutover's remedies
 # ---------------------------------------------------------------------------
 
 
 def test_the_steps_the_refused_adoption_names_are_the_steps_that_work(ready):
     """The remedy as a person follows it: refused, cut over, apply again.
 
-    DRIVEN BECAUSE THE FIRST DRAFT OF THE STEP WAS FALSE. It named a resume of
-    the refused job, and the engine refuses one: the job ended on a cause that
-    is not retryable. A step nobody drove is the defect this unit closes.
+    Driven, because a step nobody drove can name a resume the engine refuses.
     """
     cfg, export, root_id = ready
     _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
@@ -777,8 +766,8 @@ def _native(cfg: config.Config, tree_id: str, root_id: str, source) -> None:
 
 
 def test_doctor_reads_a_native_inbox_record_as_ok(machine):
-    """R-787. The verb records the intake tree since #224, so doctor failing it
-    sent the person to a revert that refuses once a native landing exists."""
+    """The verb records the intake tree, so doctor failing it would send the
+    person to a revert that refuses once a native landing exists (R-787)."""
     _native(machine, DECLARED.intake.id, "root-7", tree_registry.DerivationSource.TAXONOMY)
     finding = _tree_finding(machine)
 
@@ -835,20 +824,19 @@ def test_doctor_fails_a_native_inbox_whose_source_no_rebuild_reproduces(machine)
 
 
 def test_doctor_and_the_verb_read_one_set_of_cutover_trees(machine, monkeypatch):
-    """R-787. One function names the trees a cutover may record and both ask it.
+    """One function names the trees a cutover may record and both ask it (R-787).
 
-    Unpatched, the two answers are the one function's answer. Patched to a
-    sentinel, doctor hands back the sentinel itself and the verb's acceptance
-    moves with it, so neither can be holding a list of its own.
+    Patched to a sentinel, doctor hands back the sentinel and the verb's
+    acceptance moves with it, so neither holds a list of its own.
     """
     assert DECLARED.catalog is not None
     expected = frozenset({TREE, DECLARED.intake.id})
-    _declared, may_cut_over, _reason = doctor._declared_trees(machine)
+    _declared, may_cut_over, _reason = doctor_state._declared_trees(machine)
     assert may_cut_over == tree_registry.cutover_trees(DECLARED) == expected
 
     sentinel = frozenset({DECLARED.catalog.id})
     monkeypatch.setattr(tree_registry, "cutover_trees", lambda declared: sentinel)
-    _declared, may_cut_over, _reason = doctor._declared_trees(machine)
+    _declared, may_cut_over, _reason = doctor_state._declared_trees(machine)
     assert may_cut_over is sentinel
     assert (
         cutover.derivation_source(DECLARED, DECLARED.catalog.id)
