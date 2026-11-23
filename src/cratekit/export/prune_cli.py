@@ -1,24 +1,14 @@
 """``export.prune``: take tracks that left a library playlist off its remote copy (R-836).
 
-``export playlist`` adds a library playlist's tracks to a remote playlist and
-never removes, so a track taken out of the library playlist stays on the
-account. This verb plans which tracks the outbound ledger records as added to
-that remote playlist and no row of the library playlist matches any more, shows
-every one of them by artist and title at one explicit gate, and on ``apply``
-takes them off. The planning and the apply are
-:mod:`cratekit.modules.outbound.prune`'s.
-
-THE LIBRARY PLAYLIST IS READ FROM A COLLECTION EXPORT, as ``export playlist``
-reads it, and its age is shown on the gate. An export older than the one the
-remote playlist was last written from would read every track added since as
-gone, so the outbound ledger keeps that date and such an export leaves the
-playlist alone. A record from before the date was kept has none, and then the
-age on the gate is the only warning. A row the provider does not match, or a
-row the export names and does not carry, leaves the playlist alone, since its
-track may be one the ledger recorded.
-
-NOT QUEUED. A prune is one plan, one gate and a handful of removals, each
-recorded as it lands, so a run started again plans only what is left.
+``export playlist`` never removes, so this verb plans the tracks the outbound
+ledger records as added to the remote playlist that no row of the library
+playlist matches any more, shows each at one explicit gate and on ``apply``
+takes them off, by :mod:`cratekit.modules.outbound.prune`. The library
+playlist is read from a collection export, its age on the gate: an export
+older than the one last written from would read every track added since as
+gone, so it leaves the playlist alone, as does a row the provider does not
+match or the export does not carry. NOT QUEUED: each removal is recorded as
+it lands, so a run started again plans only what is left.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -39,7 +29,6 @@ def build_prune(parser, entry) -> None:
     parser.add_argument("playlist", help="stable identifier of the library playlist")
     parser.add_argument(
         "--export",
-        default=None,
         metavar="EXPORT",
         help=(
             "the rekordbox collection export holding the playlist as it is now; the "
@@ -106,15 +95,9 @@ def export_prune(ctx) -> Envelope:
             **prune.shown(planned),
         },
     )
+    again = "run crate export prune again; what was taken off is recorded and never asked twice"
     return prune.settle(
-        ctx,
-        cfg,
-        remote,
-        payload,
-        planned,
-        option=option,
-        origin=_ORIGIN,
-        again="run crate export prune again; what was taken off is recorded and never asked twice",
+        ctx, cfg, remote, payload, planned, option=option, origin=_ORIGIN, again=again
     )
 
 

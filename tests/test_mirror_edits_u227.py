@@ -1,17 +1,7 @@
 """U227: a track queued for download by an account edit is filed where the edit put it.
 
-Sitting 85 put a track the library lacked in a mirrored genre playlist on the
-account. The mirror queued its download, the landing filed it by its own tags
-into another band, and the next plan read that filing as a change made in
-rekordbox later than the account's, so rekordbox's place stood and the mirror
-would have taken the track off the playlist the person put it in. The landing's
-own filing is not a person's change: the rule here reads it as the landing's,
-by the places the landing filed the row into, and carries the account's edit
-once. A change made in rekordbox after the landing still goes by the later
-change rule.
-
-Pure: the rule reads nothing, so every reading is driven here without a
-database, an account or a queue.
+The landing's own filing is read as the landing's and the edit carried once; a change in
+rekordbox after the landing goes by the later change rule. Pure.
 """
 
 from __future__ import annotations
@@ -32,134 +22,94 @@ MOVED_AT = "2026-11-06 16:00:00.000 +00:00"
 FILED = {"t9": frozenset({("Afro House", "High")})}
 
 
-def _read(*, rekordbox_in=AHH, at=LANDED_AT, also=(), known=()):
+def _m(place, *, account=False, rekordbox=False, agreed=False, **added) -> edits.Mirrored:
+    """``place`` read three ways, each side holding t9 or not, the snapshot never ``None``."""
+    def t9(on: bool) -> frozenset[str]:
+        return frozenset({"t9"}) if on else frozenset()
+    return edits.Mirrored(place, t9(account), t9(rekordbox), t9(agreed), **added)
+
+
+def _read(*, rekordbox_in=AHH, at=LANDED_AT, also=(), known=False):
     """Jazz Med edited on the account, the row placed in ``rekordbox_in`` at ``at``."""
-    playlists = [
-        edits.Mirrored(
-            place=JZM,
-            account=frozenset({"t9"}),
-            rekordbox=frozenset({"t9"}) if rekordbox_in == JZM else frozenset(),
-            agreed=frozenset(),
-            account_added={"t9": ACCOUNT_AT},
-            rekordbox_added={"t9": at} if rekordbox_in == JZM else {},
-        ),
-    ]
-    for place in (AHH, AHM):
-        playlists.append(
-            edits.Mirrored(
-                place=place,
-                account=frozenset(known) if place == AHH else frozenset(),
-                rekordbox=frozenset({"t9"}) if place in (rekordbox_in, *also) else frozenset(),
-                agreed=frozenset(known) if place == AHH else frozenset(),
-                rekordbox_added={"t9": at} if place in (rekordbox_in, *also) else {},
-            )
+    placed = (rekordbox_in, *also)
+    return [
+        _m(
+            place,
+            account=place == JZM or (known and place == AHH),
+            agreed=known and place == AHH,
+            rekordbox=place in placed,
+            account_added={"t9": ACCOUNT_AT} if place == JZM else {},
+            rekordbox_added={"t9": at} if place in placed else {},
         )
-    return playlists
+        for place in (JZM, AHH, AHM)
+    ]
 
 
-def _only(decided: edits.Decided) -> edits.Decision:
-    (one,) = decided.decisions
+def _one(playlists, filed=FILED) -> edits.Decision:
+    (one,) = edits.decide(playlists, OWNED, filed).decisions
     return one
 
 
 def test_a_landings_own_filing_does_not_beat_the_edit_that_queued_it():
-    one = _only(edits.decide(_read(), OWNED, FILED))
+    one = _one(_read())
     assert (one.outcome, one.to, one.content_id) == (edits.MOVE, JZM, "c9")
-    assert "landed for the account's edit" in one.why
-    assert "Afro House High" in one.why
+    assert "landed for the account's edit" in one.why and "Afro House High" in one.why
     assert one.landed and one.item()["landed"] is True
-
-
-def test_without_the_landings_record_the_later_change_rule_stands_as_before():
-    one = _only(edits.decide(_read(), OWNED))
-    assert one.outcome == edits.REKORDBOX
-    assert "rekordbox's place stands" in one.why
+    # Without the landing's record the later change rule stands as before.
+    one = _one(_read(), None)
+    assert one.outcome == edits.REKORDBOX and "rekordbox's place stands" in one.why
     assert not one.landed and "landed" not in one.item()
+    # A track whose landing filed it nowhere is carried as before.
+    one = _one(_read(rekordbox_in=None))
+    assert (one.outcome, one.to) == (edits.MOVE, JZM) and not one.landed
 
 
 def test_a_move_made_in_rekordbox_after_the_landing_stands():
-    one = _only(edits.decide(_read(rekordbox_in=AHM, at=MOVED_AT), OWNED, FILED))
+    one = _one(_read(rekordbox_in=AHM, at=MOVED_AT))
     assert one.outcome == edits.REKORDBOX
     assert "Afro House Med" in one.why and "rekordbox's place stands" in one.why
     assert not one.landed
 
 
 def test_a_second_band_added_in_rekordbox_after_the_landing_stands():
-    one = _only(edits.decide(_read(also=(AHM,)), OWNED, FILED))
-    assert one.outcome == edits.REKORDBOX
-    assert not one.landed
+    one = _one(_read(also=(AHM,)))
+    assert one.outcome == edits.REKORDBOX and not one.landed
+
+
+def test_another_genres_band_of_the_landings_name_is_not_the_landings():
+    """A landing filed into Afro House High; Jazz High is rekordbox's place, not the landing's."""
+    jzh = edits.Place("Jazz High", "Jazz", "High", True)
+    jazz_med = _m(JZM, account=True, account_added={"t9": ACCOUNT_AT})
+    one = _one([jazz_med, _m(jzh, rekordbox=True, rekordbox_added={"t9": LANDED_AT})])
+    assert one.outcome == edits.REKORDBOX and not one.landed
 
 
 def test_a_track_a_snapshot_held_is_read_by_the_later_change_rule_alone():
-    """ONCE: after the edit is carried the snapshot holds the track, and the
-    landing's record never decides it again."""
-    playlists = [
-        edits.Mirrored(
-            place=JZM,
-            account=frozenset({"t9"}),
-            agreed=frozenset({"t9"}),
-            rekordbox=frozenset(),
-        ),
-        edits.Mirrored(
-            place=AHH,
-            account=frozenset(),
-            agreed=frozenset(),
-            rekordbox=frozenset({"t9"}),
-            rekordbox_added={"t9": LANDED_AT},
-        ),
-    ]
-    decided = edits.decide(playlists, OWNED, FILED)
-    # The account side did not change since the snapshot, so rekordbox's move
-    # is no account edit at all, and the landing's record is not read.
-    assert decided.decisions == ()
+    """ONCE: the snapshot holds the carried track and the account is unchanged, so no landing is read."""
+    playlists = [_m(JZM, account=True, agreed=True), _m(AHH, rekordbox=True, rekordbox_added={"t9": LANDED_AT})]
+    assert edits.decide(playlists, OWNED, FILED).decisions == ()
 
 
 def test_a_landing_filed_into_the_place_the_account_asked_agrees():
-    one = _only(edits.decide(_read(rekordbox_in=JZM), OWNED, {"t9": frozenset({("Jazz", "Med")})}))
+    one = _one(_read(rekordbox_in=JZM), {"t9": frozenset({("Jazz", "Med")})})
     assert one.outcome == edits.AGREED
 
 
-def test_a_track_whose_landing_filed_it_nowhere_is_carried_as_before():
-    one = _only(edits.decide(_read(rekordbox_in=None), OWNED, FILED))
-    assert (one.outcome, one.to) == (edits.MOVE, JZM)
-    assert not one.landed
-
-
 def test_a_folder_edit_for_a_landed_track_takes_the_folder_over_the_landings_band():
-    playlists = [
-        edits.Mirrored(place=JZV, account=frozenset({"t9"}), agreed=frozenset()),
-        edits.Mirrored(
-            place=AHH,
-            rekordbox=frozenset({"t9"}),
-            agreed=frozenset(),
-            rekordbox_added={"t9": LANDED_AT},
-        ),
-    ]
-    one = _only(edits.decide(playlists, OWNED, FILED))
+    one = _one([_m(JZV, account=True), _m(AHH, rekordbox=True, rekordbox_added={"t9": LANDED_AT})])
     assert (one.outcome, one.to) == (edits.FOLDER, JZV)
     assert one.landed
 
 
 def test_a_hand_move_back_into_the_landings_band_after_the_edit_was_carried_stands():
-    """ONCE, pinned (the review of U227, K1): once the snapshot holds the track,
-    a person's move back into the band its landing first filed is rekordbox's
-    change, even though the ledger still names that band."""
+    """K1: once the snapshot holds the track, a move back into the landing's band is rekordbox's."""
     jzh = edits.Place("Jazz High", "Jazz", "High", True)
-    playlists = [
-        edits.Mirrored(place=JZM, account=frozenset(), agreed=frozenset({"t9"})),
-        edits.Mirrored(
-            place=jzh,
-            account=frozenset({"t9"}),
-            agreed=frozenset(),
-            account_added={"t9": "2026-11-07T17:00:00+00:00"},
-        ),
-        edits.Mirrored(
-            place=AHH,
-            agreed=frozenset(),
-            rekordbox=frozenset({"t9"}),
-            rekordbox_added={"t9": "2026-11-07 18:00:00.000 +00:00"},
-        ),
-    ]
-    one = _only(edits.decide(playlists, OWNED, FILED))
+    one = _one(
+        [
+            _m(JZM, agreed=True),
+            _m(jzh, account=True, account_added={"t9": "2026-11-07T17:00:00+00:00"}),
+            _m(AHH, rekordbox=True, rekordbox_added={"t9": "2026-11-07 18:00:00.000 +00:00"}),
+        ]
+    )
     assert one.outcome == edits.REKORDBOX
     assert not one.landed and "rekordbox's place stands" in one.why

@@ -1,18 +1,11 @@
 """U81: an accepted second source candidate downloads into staging, marked lossy.
 
-``crate acquire fallback-fetch PATH`` resolves the list exactly as ``acquire
-fallback`` does, queues one job item per row whose candidate a person accepted
-in review, and the worker downloads that upload into the download staging
-directory, marked lossy and tagged from the ROW. A strict lossless policy
-refuses each such item before anything downloads.
+``crate acquire fallback-fetch PATH`` queues one job item per row whose candidate a
+person accepted in review, and the worker downloads that upload into staging, marked
+lossy and tagged from the ROW. A strict lossless policy refuses each item first.
 
-EVERYTHING BUT THE FETCHER IS REAL. The list reader, the library index, the
-review store, the job queue and its driver, the resume argv and the tag writer
-all run as shipped. The fetcher is a fake substituted where the worker looks it
-up, and the shipped ``yt-dlp`` fetcher is driven through a fake runner. NO TEST
-RUNS ``yt-dlp`` AND NO TEST DOWNLOADS ANYTHING.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track.
+Everything but the fetcher is real. The fetcher is a fake, and the shipped ``yt-dlp``
+fetcher is driven through a fake runner, so no test runs ``yt-dlp``.
 """
 
 from __future__ import annotations
@@ -41,17 +34,11 @@ UPLOAD = "https://soundcloud.example/2"
 OTHER_UPLOAD = "https://youtube.example/4"
 MARKER = "[LOSSY]"
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def _configure(library: Path, policy: str, marker: str | None = MARKER) -> config.Config:
     built = config.from_dict(
         valid_data(
-            library,
-            profile={"name": "full"},
-            acquisition={"lossless_policy": policy},
+            library, profile={"name": "full"}, acquisition={"lossless_policy": policy},
             naming={"lossy_marker": marker},
         )
     )
@@ -97,11 +84,7 @@ def no_real_subprocess(monkeypatch):
 
 
 class FakeFetcher:
-    """Lands an MP3 already tagged with the UPLOAD's page title, records every call.
-
-    The page tags are the point: a worker that kept what the upload carried
-    would commit a file named and tagged for somebody's upload, not the row.
-    """
+    """Lands an MP3 tagged with the UPLOAD's page title, so a worker that kept it is caught."""
 
     def __init__(self, *, fail: Exception | None = None, before=None, payload: bytes | None = None):
         self.calls: list[tuple[str, Path]] = []
@@ -196,21 +179,11 @@ def marked_final(cfg) -> Path:
     return staging(cfg) / f"{BOOT_ARTIST} - {BOOT_TITLE} {MARKER}.mp3"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The binding
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_the_fetch_key_resolves_to_this_worker():
     assert handlers.resolve("acquire.fallback-fetch") is fallback_cli.handle_fetch
     assert "acquire.fallback-fetch" not in handlers.HANDLERS_NOT_YET_BOUND
     entry = registry.entry("acquire.fallback-fetch")
     assert entry.long_running and entry.argv_builder == "fetch_argv"
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# The brief's four scenarios
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_lossy_file_lands_marked(permissive, tmp_path, monkeypatch):
@@ -237,17 +210,10 @@ def test_a_lossy_file_lands_marked(permissive, tmp_path, monkeypatch):
 def test_this_verb_sweeps_the_staging_tree_it_shares_with_the_download_verb(
     permissive, tmp_path, monkeypatch
 ):
-    """R-291 for the other writer of the tree, on both of this verb's paths.
+    """R-291: this verb fills the tree ``acquire download`` fills, so it sweeps it too.
 
-    ``handle_fetch`` stages through ``acquire_cli.staging_dir``, so it fills the
-    same tree ``acquire download`` fills. Leaving the sweep to that verb alone
-    would grow the tree without bound for anybody who works the second source
-    path and never runs the first.
-
-    BOTH PATHS ARE ASSERTED, because they are two call sites and they resolve
-    the staging root two different ways. The resume path reads no live
-    configuration at all, so it takes the root off the job's own frozen copy,
-    which is also the root that job actually staged into (KTD9).
+    Both paths are asserted, because the resume path takes the staging root off the
+    job's frozen copy rather than live configuration (KTD9).
     """
     accepted(permissive)
     bind(monkeypatch, FakeFetcher())
@@ -267,9 +233,7 @@ def test_this_verb_sweeps_the_staging_tree_it_shares_with_the_download_verb(
     assert not (tree / first).exists(), "the queue path never reclaimed the staging"
 
 
-def test_a_strict_policy_refuses_that_item_before_anything_downloads(
-    strict, tmp_path, monkeypatch
-):
+def test_a_strict_policy_refuses_that_item_before_anything_downloads(strict, tmp_path, monkeypatch):
     accepted(strict)
     fake = bind(monkeypatch, FakeFetcher())
     job_id = queued(tracklist(tmp_path, BOOT))
@@ -335,8 +299,7 @@ def test_artist_and_title_tags_come_from_the_row_not_the_upload_page(
 
 
 def _with_upload_tempo(landed: Path) -> None:
-    """What an uploader's MP3 can carry, written straight through mutagen because
-    the product's own writer cannot express a tempo at all (R17)."""
+    """Write a tempo through mutagen, which the product's own writer cannot (R17)."""
     from mutagen.id3 import TBPM, TXXX
     from mutagen.mp3 import MP3
 
@@ -349,9 +312,7 @@ def _with_upload_tempo(landed: Path) -> None:
 
 
 def test_a_tempo_the_upload_carried_is_never_committed(permissive, tmp_path, monkeypatch):
-    """R17 through the one path the tool leaves open: an upload already served as
-    MP3 is not converted, so the tool's metadata drop never runs on it. Found by
-    the unit's review, 2026-09-19, against the installed tool's source."""
+    """R17: an upload served as MP3 is not converted, so the tool's metadata drop never runs."""
     from mutagen.mp3 import MP3
 
     accepted(permissive)
@@ -407,11 +368,6 @@ def test_strip_tags_refuses_an_unknown_container_rather_than_guessing(tmp_path):
         tags.strip_tags(path)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# What becomes an item, and what does not
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_one_item_per_accepted_row_keyed_on_its_review_item(permissive, tmp_path, monkeypatch):
     item_id = accepted(permissive)
     job_id = queued(tracklist(tmp_path, BOOT, BOOT))
@@ -461,15 +417,11 @@ def test_a_row_with_a_provider_route_is_not_fetched_lossy(permissive, tmp_path):
     wanted = match.read_text_lines(TIDE)[0]
     with review.open_store(permissive) as items:
         review.offer(
-            items,
-            queue=candidates.QUEUE,
-            kind=candidates.KIND,
-            identity=candidates.identity(wanted),
-            payload={},
+            items, queue=candidates.QUEUE, kind=candidates.KIND,
+            identity=candidates.identity(wanted), payload={},
             options=[
                 review.Option(
-                    option_id="7001",
-                    summary="one",
+                    option_id="7001", summary="one",
                     detail={
                         "track": intake_cli.frozen(
                             dataclasses.replace(wanted, ref="7001", origin=match.TIDAL)
@@ -506,11 +458,6 @@ def test_the_accepted_upload_is_frozen_with_the_job(permissive, tmp_path, monkey
     run(job_id)
 
     assert [url for url, _ in fake.calls] == [UPLOAD]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Every other refusal the worker can give
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_no_marker_text_refuses_the_item_before_a_download(library, tmp_path, monkeypatch):
@@ -589,8 +536,7 @@ def test_a_missing_yt_dlp_parks_the_job_rather_than_failing_every_item(
         "file:///etc/hosts",
         "-o/tmp/x",
         "https://",
-        # A HOST IS NOT A WEB ADDRESS. Both have one, and neither is a page the
-        # tool should be handed (u81-fetch-a row W2 read zero until these joined).
+        # A host is not a web address, and neither is a page to hand the tool.
         "file://localhost/etc/hosts",
         "ftp://uploads.example/track.mp3",
     ],
@@ -610,23 +556,17 @@ def test_an_accepted_option_that_is_not_a_web_address_is_never_handed_to_the_too
     assert fake.calls == []
 
 
-def test_a_row_naming_no_artist_and_no_title_is_refused_before_a_download(
-    permissive, monkeypatch
-):
-    """Driven through a job queued by hand, because the list reader was not
-    shown to produce such a row: the reachability from a list is unmeasured.
-    What is measured is that the worker never commits a nameless file."""
+def test_a_row_naming_no_artist_and_no_title_is_refused_before_a_download(permissive, monkeypatch):
+    """Queued by hand: the worker never commits a nameless file."""
     fake = bind(monkeypatch, FakeFetcher())
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store,
-            handler_key="acquire.fallback-fetch",
+            store, handler_key="acquire.fallback-fetch",
             payload={
                 fallback_cli.LIST: "/nowhere/unlisted.txt",
                 fallback_cli.ROWS: {"nameless": {"artist": " ", "title": "", "url": UPLOAD}},
             },
-            cfg=permissive,
-            item_ids=("nameless",),
+            cfg=permissive, item_ids=("nameless",),
         )
 
     run(job.job_id)
@@ -641,11 +581,6 @@ def test_the_stem_is_the_rows_and_carries_no_path_separator():
     assert fallback_cli.fetch_stem("A/B", "Song") == "A-B - Song"
     assert fallback_cli.fetch_stem("", "Song") == "Song"
     assert fallback_cli.fetch_stem("Artist", "x" * 300) == ("Artist - " + "x" * 300)[:120]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# The shipped fetcher, through a fake runner
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Runner:
@@ -682,11 +617,8 @@ def test_the_shipped_fetcher_extracts_mp3_drops_upload_metadata_and_ends_on_the_
 @pytest.mark.parametrize(
     "runner",
     [
-        Runner(returncode=1),
-        Runner(lands=()),
-        Runner(lands=("fetched.mp3", "other.mp3")),
-        Runner(lands=("fetched.webm",)),
-        Runner(raises=subprocess.TimeoutExpired("yt-dlp", 1)),
+        Runner(returncode=1), Runner(lands=()), Runner(lands=("fetched.mp3", "other.mp3")),
+        Runner(lands=("fetched.webm",)), Runner(raises=subprocess.TimeoutExpired("yt-dlp", 1)),
         Runner(raises=OSError("no such file")),
     ],
     ids=["nonzero", "nothing", "two", "not-mp3", "timeout", "unstartable"],

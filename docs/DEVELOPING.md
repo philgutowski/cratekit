@@ -51,16 +51,20 @@ Nothing merges until all three are clean:
   measure that one again. Each run that reaches its reading leaves
   `.cloud-battery/verdict.json`,
   which `scripts/mutate.py --known-failures` reads in place of its own full
-  baseline when it is for the same commit, on a clean tree, on this machine,
+  baseline when it is for the same commit, on a tree clean then and now, on this machine,
   with the same known failures file (U271); `--measure-baseline` measures
   regardless.
   Each run keeps its temporary files in a fresh
   directory of one place, disk unless `baseline --temp memory` names the
   memory filesystem, and `compare` runs where the baseline did, refusing a
-  `--temp` naming the other; a baseline naming no place, measured before
-  U273, is measured again. Memory is not for a merge battery until #702 is
-  answered: the inode bound test fails on the container's disk alone, so a
-  memory baseline reads it as the machine's.
+  `--temp` naming the other; the baseline names its place in its header, the
+  driver keeps every child in the place its known failures name, and a
+  baseline naming no place, measured before U273, is measured again. In
+  memory the tests on the battery's `ON_DISK` list, the inode bound test alone
+  today, run a second time on disk and their disk outcome stands. Memory is
+  not for a merge battery until #702 is answered: the inode bound test fails
+  on the container's disk alone, so a memory baseline reads it as the
+  machine's.
 - `scripts/scan_repo.py` scans every tracked file, the vendored tree included,
   for personal literals (home directories, volumes, accounts, machine names)
   and credential-shaped content.
@@ -133,13 +137,16 @@ pass, scenario and capture.
 |---|---|
 | `killset.py list [PATH ...]` | reads every table under `docs/mutation/` and counts, per source file, the recorded kills that are live, stale, ambiguous or gone; `--rows` lists each row and its state |
 | `killset.py rows PATH ... --out FILE` | writes the live recorded kills of those files or directories as a row file for the driver's `replay` pass, each row naming the table and id it came from |
-| `killset.py rows --after BEFORE.json --out FILE` | writes the same kills after a refactor, each anchored where its text stands now, and lists the ones it could not place |
+| `killset.py rows --after BEFORE.json --out FILE` | writes the same kills after a refactor, each anchored where its text stands now, following text to another file only when that file did not hold it at the commit the first table was measured on, and lists the ones it could not place |
 | `killset.py check BEFORE.json AFTER.json` | exit 1 unless every row killed before is killed after, or is mapped there, with a reason, to a row that is; exit 2 for a table it cannot read |
 | `behaviour_compare.py capture --out DIR` | runs the scenarios under `tests/behaviour/` on a disposable library and keeps what each command printed and wrote; `--rev REV` runs them against that revision's `src/`, `--only EXPR` runs a selection |
 | `behaviour_compare.py compare A B` | prints each difference between two captures, exit 1 on any and 2 for a capture it cannot read; `--full` prints each difference whole |
 
 - A replay is a pass kind of `scripts/mutate.py`, `pass_kind = "replay"`, with
-  no row cap. The driver refuses a replay row that names no source, or one
+  no row cap. `rows` names the batch for its row file without the closing
+  `-rows`, so the driver writes the tables the next command reads. The driver
+  checks every replay row's source against the table it names, refusing a
+  replay row that names no source, or one
   whose source no table under `docs/mutation/` recorded as killed, and a
   replay resumes only from a sidecar of the same commit. It is never a unit's
   own table, whose cap stands.

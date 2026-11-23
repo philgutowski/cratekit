@@ -2,7 +2,7 @@
 title: A list row's ref is the provider's track only when its origin is the provider
 date: 2026-10-03
 category: integration-issues
-module: src/cratekit/acquire/match.py
+module: src/cratekit/acquire/match_list.py
 problem_type: integration_issue
 component: tooling
 severity: medium

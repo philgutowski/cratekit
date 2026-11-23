@@ -1,23 +1,11 @@
 #!/usr/bin/env python3
 """Regenerate the committed schema lock and the representative envelopes.
 
-The lock file is what turns "remember to bump the schema version" into something
-a build can check. The source system's record on remembering is perfect and
-negative: exactly one of its twenty-one state files carries a version, and the
-plan preview, the job records, the calibrations, and the label registries all
-changed shape more than once with no version to tell a reader which shape they
-are holding.
-
-So the rule is mechanical instead: every payload surface's structure is hashed
-and the hash is committed. Change the structure without bumping the major and
-``tests/test_cli_contract.py`` fails, naming the surface and telling you to bump.
-
-Run this ONLY when you meant to change a schema::
+Every payload surface's structure is hashed and the hash committed, so a change
+of structure without a major bump fails ``tests/test_cli_contract.py``. Run this
+ONLY when you meant to change a schema, then read the diff::
 
     python scripts/dump_schemas.py
-
-Then read the diff. A hash that moved with no major bump beside it is the thing
-the test is about to reject.
 """
 
 from __future__ import annotations
@@ -36,9 +24,7 @@ from cratekit.core.exit_codes import ExitCode, Remedy  # noqa: E402
 SCHEMA_DIR = REPO_ROOT / "tests" / "schemas"
 GOLDEN_DIR = SCHEMA_DIR / "golden"
 
-#: One representative payload per surface. They are the shape a consumer should
-#: expect to be able to read, so they carry a populated example rather than an
-#: empty one wherever the surface has a repeating element.
+#: One representative payload per surface, populated wherever an element repeats.
 EXAMPLES: dict[str, dict] = {
     "plan": {
         "digest": "0123456789abcdef",
@@ -64,13 +50,8 @@ EXAMPLES: dict[str, dict] = {
     },
     "diagnostic": {
         "checks": [
-            {
-                "key": "library.mounted",
-                "title": "library volume",
-                "status": "ok",
-                "detail": "",
-                "remedy": None,
-            }
+            {"key": "library.mounted", "title": "library volume", "status": "ok", "detail": "",
+             "remedy": None}
         ],
         "summary": {"ok": 1, "failed": 0},
     },
@@ -81,8 +62,7 @@ def golden_envelope(name: str) -> dict:
     """One envelope per surface, at a representative but not trivial state."""
     started = "2026-01-01T00:00:00+00:00"
     if name == "job_state":
-        # The one failure example, so a golden exists for the half of the
-        # envelope that only appears when something went wrong.
+        # The one failure example, so the failure half of the envelope has a golden.
         cause = Cause(
             reason="auth-failed",
             message="the provider rejected the stored credential",
@@ -130,8 +110,7 @@ def main() -> int:
     lock_path = SCHEMA_DIR / "lock.json"
     if lock_path.is_file():
         existing = json.loads(lock_path.read_text())
-    # Retired majors stay in the lock forever, so no version is silently dropped
-    # and a consumer holding an old envelope can still find out what it was.
+    # Retired majors stay in the lock forever, so no version is silently dropped.
     merged = {**existing, **lock}
     lock_path.write_text(json.dumps(merged, indent=2, sort_keys=True) + "\n")
     print(f"wrote {lock_path.relative_to(REPO_ROOT)} with {len(merged)} entries")

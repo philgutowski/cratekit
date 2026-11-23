@@ -1,16 +1,9 @@
 #!/bin/sh
-# SessionStart hook for a Claude Code cloud session on this repository.
-#
-# A cloud container is a fresh clone with no venv, so the battery cannot run
-# until one exists. This builds it, once, with the interpreter the project
-# supports, and tells the session what it found. Locally it does nothing: a
-# laptop has its venv already and CLAUDE_CODE_REMOTE is unset there.
-#
-# Stdout reaches the model as context. Facts only, briefly.
+# SessionStart hook: in a cloud container, build the venv once and say what was
+# found; locally, list the attended cards. Stdout reaches the model as context.
 cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" || exit 0
 
-# On Phillip's Mac: show the attended cards, the work only that machine can
-# do, so a local session opens on them. Never fails the session start.
+# Locally: never fails the session start.
 if [ -z "$CLAUDE_CODE_REMOTE" ]; then
     if [ -x .venv/bin/python ]; then
         out=$(timeout 20 .venv/bin/python scripts/board.py local 2>/dev/null) && {

@@ -1,58 +1,16 @@
-"""U15: bounded-concurrency acquisition that paces itself and knows when to stop.
+"""Bounded, paced acquisition that tells a throttle from a block (U15).
 
-WHY THIS EXISTS. The system Cratekit replaces downloads one track at a time, and
-it arranges that by shelling out to the wrapped tool before every run to write a
-concurrency of one and a three-to-nine second gap into that tool's own global
-``settings.json``. Two things are wrong with it and this unit fixes both.
+The concurrency cap is ``AdapterSettings.concurrency`` and nowhere else (KTD20).
 
-* The cap is not configurable, it is a constant buried in a subprocess call, and
-  the file it writes to is shared with every other process using that tool. Two
-  racing pacing writes and a kill landing mid-write have each reset that file to
-  factory defaults, which are lossy audio into the tool's own directory. KTD20
-  moved those settings into the adapter for exactly that reason, so the cap this
-  module reads is ``AdapterSettings.concurrency`` and there is no second one.
-* Every provider refusal is treated the same. The source retries any exception
-  with capped exponential backoff, so a rate limit and a ban get the identical
-  response, and the response to a ban is the one thing that makes it worse.
+A rate limit honours the provider's retry hint, or backs off, and keeps trying. A
+forbidden response or a bot challenge stops the whole run at once and parks it, because
+retrying into a block turns it into a lockout the account may not recover from. Mixed
+evidence reads as BLOCKED, a provider's hint is jittered upward only, and jitter is wide
+by default so runs do not re-converge into a retry storm.
 
-THE DISTINCTION THAT IS THE WHOLE UNIT. A throttle says "slower". A ban says
-"stop". Retrying into a ban is what turns a throttle into a lockout, and a
-lockout on a music provider is not a failed run, it is an account the user may
-not get back. So:
-
-* A rate-limit signal honours the provider's own retry hint when it gave one, or
-  backs off exponentially, and keeps trying.
-* A forbidden response or a bot challenge stops the ENTIRE run at once, parks it
-  with a structured cause, and never makes a second request.
-
-Two asymmetries follow from that, and both are deliberate:
-
-1. When the evidence is mixed, BLOCKED wins over RATE_LIMITED. A false stop
-   costs a re-run. A false retry costs the account. This mirrors the asymmetry
-   ``adapter.TRANSIENT_MARKERS`` already uses: the reading whose mistake is
-   unrecoverable is checked first.
-2. A provider retry hint is jittered UPWARD only. Symmetric jitter on an explicit
-   hint can return early, which is precisely the request the provider just asked
-   us not to make.
-
-WHY JITTER IS WIDE BY DEFAULT. Two runs started by the same person, or one run
-whose workers all backed off from the same rate limit, re-converge on the same
-schedule if the delay is fixed. They then arrive together, trip the limiter
-together, and back off together: a retry storm built out of politeness. The
-default width reproduces the source system's own proven window, which is three to
-nine seconds around a six second nominal, and that window is a fifty percent
-spread. It is expressed here as a fraction of the nominal rather than as a pair
-of endpoints so that it stays a fifty percent spread when the nominal changes.
-
-WHERE THE JOB ENGINE FITS. "Parks the job" is not something this module does. It
-returns the structured cause a job engine parks ON, because the acquisition layer
-sits below the engine and a module that reached up to park itself would be the
-layering violation KTD23 exists to forbid. ``DownloadRun.parked`` is that seam:
-a ``Cause`` that is non-retryable by construction and round-trips through JSON,
-which is what KTD26's subprocess boundary requires of anything a job stores.
-
-Layer note: MODULES. It may read the adapter's settings; it reads no config file
-and names no verb.
+The module returns the cause a job engine parks on (``DownloadRun.parked``) rather than
+parking itself, as KTD23's layering requires. It reads the adapter's settings, no config
+file, and names no verb.
 """
 
 from __future__ import annotations
@@ -110,53 +68,27 @@ STOPPING_SIGNALS = frozenset({ProviderSignal.BLOCKED})
 #: Signals that carry no pacing instruction at all.
 INERT_SIGNALS = frozenset({ProviderSignal.NONE})
 
-#: Status codes the provider uses to say "too fast". Read from the response
-#: object when there is one, because a machine-readable status beats prose that
-#: happens to contain a number.
+#: Status codes that mean "too fast", trusted over prose when present.
 RATE_LIMIT_STATUSES = frozenset({429})
 
-#: Status codes that mean the client, not the request, was refused. 403 is the
-#: whole set on purpose. 401 is authentication and is already the adapter's
-#: ``AdapterAuthFailed``; folding it in here would send a user with an expired
-#: session to a remedy about their account standing.
+#: Status codes that refuse the client. Not 401, which is ``AdapterAuthFailed``.
 BLOCKED_STATUSES = frozenset({403})
 
-#: Phrases that mean a bot wall, a challenge, or a refusal of the client. Checked
-#: BEFORE the rate-limit phrases: a bot wall commonly explains itself in the
-#: language of rate limiting, and reading a wall as a limit is the mistake that
-#: costs the account.
+#: Phrases for a bot wall or a refused client, checked before the rate-limit phrases,
+#: since a wall often explains itself as a rate limit.
 BLOCK_MARKERS = (
-    "forbidden",
-    "access denied",
-    "captcha",
-    "are you a robot",
-    "are you human",
-    "unusual traffic",
-    "automated traffic",
-    "bot detect",
-    "bot protection",
-    "cloudflare",
-    "attention required",
-    "temporarily banned",
-    "account suspended",
-    "ip banned",
+    "forbidden", "access denied", "captcha", "are you a robot", "are you human", "unusual traffic",
+    "automated traffic", "bot detect", "bot protection", "cloudflare", "attention required",
+    "temporarily banned", "account suspended", "ip banned",
 )
 
 #: Phrases that mean "too fast" and nothing worse.
 RATE_LIMIT_MARKERS = (
-    "too many requests",
-    "rate limit",
-    "rate-limit",
-    "ratelimit",
-    "slow down",
-    "throttled",
+    "too many requests", "rate limit", "rate-limit", "ratelimit", "slow down", "throttled",
     "throttling",
 )
 
-# Numeric statuses appearing in free text, matched on word boundaries. A bare
-# substring search for "403" also matches a track identifier such as 40312, and a
-# guard that stops a correct run on a coincidence is a guard someone will disable
-# (P7). The boundary is what keeps the numeric evidence honest.
+# Statuses in free text, on word boundaries so a track id such as 40312 is no 403 (P7).
 _BLOCK_STATUS_TEXT = re.compile(r"\b403\b")
 _RATE_LIMIT_STATUS_TEXT = re.compile(r"\b429\b")
 
@@ -170,14 +102,9 @@ _RETRY_IN_TEXT = re.compile(
     re.IGNORECASE,
 )
 
-#: Attribute chains a client library might expose a status through. Ordered, and
-#: the first one present wins. Written as a table rather than as a chain of
-#: getattr calls so a fourth client shape is one line rather than a new branch.
+#: Attribute chains a client may expose a status through; the first present wins.
 _STATUS_PATHS: tuple[tuple[str, ...], ...] = (
-    ("response", "status_code"),
-    ("response", "status"),
-    ("status_code",),
-    ("status",),
+    ("response", "status_code"), ("response", "status"), ("status_code",), ("status",),
 )
 
 
@@ -190,12 +117,7 @@ def _walk(obj: object, path: Sequence[str]) -> object | None:
 
 
 def status_of(exc: BaseException) -> int | None:
-    """The HTTP status a provider exception carries, if it carries one at all.
-
-    Returns None rather than guessing. A guessed status feeds the classifier
-    below, and the classifier decides whether to keep asking a provider that may
-    have just refused us.
-    """
+    """The HTTP status a provider exception carries, or None rather than a guess."""
     for path in _STATUS_PATHS:
         value = _walk(exc, path)
         if isinstance(value, bool):
@@ -210,24 +132,10 @@ def status_of(exc: BaseException) -> int | None:
 def classify_signal(exc: BaseException) -> ProviderSignal:
     """Read a provider failure as a pacing instruction.
 
-    Precedence, and the reason for each step:
-
-    1. **A structured status decides.** It is the provider's own machine-readable
-       answer, and a 429 body routinely contains prose about what is forbidden.
-       A status that says 429 while the body says "forbidden" is a throttle whose
-       explanation is badly worded, not a ban.
-    2. **Failing that, block phrases beat rate-limit phrases.** A bot wall
-       frequently describes itself as a rate limit, and this is the direction
-       where being wrong is unrecoverable.
-    3. **Failing both, no signal.** Silence here does not mean the request
-       succeeded; it means nothing about PACING was said, and the per-track
-       classifier in the contract still has its own answer.
-
-    A ``NoFileLanded`` says nothing about pacing, before any reading. Its text
-    quotes what the downloader swallowed for a person to read (R-703), a
-    track title or a tool message among it, and one "forbidden" there would
-    stop every worker and park the run as an account block. The provider gate
-    already counted any rate limit answer behind it at the transport.
+    A structured status decides first, since a 429 body often mentions "forbidden".
+    Failing that, block phrases beat rate-limit phrases, the direction where being
+    wrong is unrecoverable. Otherwise no signal. A ``NoFileLanded`` is never a signal:
+    its text quotes tool output, and one "forbidden" there would park the run (R-703).
     """
     if isinstance(exc, NoFileLanded):
         return ProviderSignal.NONE
@@ -247,29 +155,17 @@ def classify_signal(exc: BaseException) -> ProviderSignal:
     return ProviderSignal.NONE
 
 
-#: Read one header without assuming the container preserves case. The parser
-#: lives in ``core.provider_gate`` since R-705, because the gate reads the same
-#: header off the raw response and two parsers of one header can disagree.
+#: Reads one header case-insensitively with the gate's parser, so the two agree (R-705).
 _header = provider_gate.header_value
 
 
 def _as_seconds(value: object, now: datetime) -> float | None:
-    """Coerce a retry hint to seconds, accepting both forms the header allows.
-
-    Delegates to the ONE parser of ``Retry-After`` in the tree, the gate's,
-    with this module's datetime reference turned into the epoch it reads.
-    """
+    """Coerce a retry hint to seconds through the gate's one ``Retry-After`` parser."""
     return provider_gate.retry_after_seconds(value, now.timestamp())
 
 
 def retry_hint_seconds(exc: BaseException, *, now: datetime | None = None) -> float | None:
-    """How long the provider asked us to wait, or None if it did not say.
-
-    Three sources in order: an attribute a client library set, the response
-    header, then the exception's own text. The text form is last because it is
-    the least reliable, but it is present because several clients stringify the
-    header into the message and expose nothing else.
-    """
+    """How long the provider asked us to wait (attribute, header, then text), or None."""
     reference = now or datetime.now(timezone.utc)
 
     value = getattr(exc, "retry_after", None)
@@ -287,22 +183,14 @@ def retry_hint_seconds(exc: BaseException, *, now: datetime | None = None) -> fl
 # Pacing policy
 # ---------------------------------------------------------------------------
 
-#: The gap between acquisitions when configuration leaves it unset. Six seconds
-#: with the default jitter fraction reproduces the three-to-nine second window
-#: the source system settled on after tripping the provider's alarms with
-#: anything faster. It is a DEFAULT, not a second configuration point: config
-#: declares ``acquisition.pacing_delay_s`` and documents None as meaning "the
-#: adapter's own default", which is this value.
+#: The gap between acquisitions when ``acquisition.pacing_delay_s`` is None. With the
+#: default jitter it gives the replaced system's proven window of three to nine seconds.
 DEFAULT_BASE_DELAY_S = 6.0
 
-#: Half the nominal, either way, so a six second delay lands in [3, 9]. Wide
-#: enough that two runs drawing independently do not stay in step for long, which
-#: is the property that stops a shared rate limit from producing a shared retry.
+#: Half the nominal either way, wide enough that independent runs fall out of step.
 DEFAULT_JITTER_FRACTION = 0.5
 
-#: Below this width, two runs that started together stay together long enough to
-#: arrive as a burst. Asserted rather than assumed, so lowering the default is a
-#: decision somebody has to make deliberately.
+#: The narrowest jitter that still keeps runs started together from arriving as a burst.
 MIN_DECORRELATING_JITTER = 0.25
 
 
@@ -310,11 +198,8 @@ MIN_DECORRELATING_JITTER = 0.25
 class Pacing:
     """How this run waits: between acquisitions, and after being told to slow down.
 
-    Held apart from ``AdapterSettings`` because these are MECHANISM. The cap and
-    the nominal delay are the two things a user actually turns, and both live in
-    the adapter's settings where KTD20 put them. Everything here is the shape of
-    the waiting, which has one correct answer and no reason to be in a config
-    file where it could be set to zero by somebody debugging.
+    Mechanism, kept out of config so nobody can set it to zero; the cap and the
+    nominal delay live in ``AdapterSettings`` (KTD20).
     """
 
     base_delay_s: float = DEFAULT_BASE_DELAY_S
@@ -323,11 +208,7 @@ class Pacing:
     backoff_max_s: float = 300.0
     #: Total tries per track, first attempt included.
     max_attempts: int = 5
-    #: A hint longer than this is treated as a stop rather than a wait. A
-    #: provider that asks for a day has effectively refused us, and honouring it
-    #: by sleeping is indistinguishable from a hung process; honouring it by
-    #: truncating it is the early retry the hint existed to prevent. Parking is
-    #: the only answer that is neither.
+    #: A longer hint parks the run: sleeping it looks hung, truncating it retries early.
     retry_hint_ceiling_s: float = 900.0
 
     def __post_init__(self) -> None:
@@ -351,11 +232,8 @@ class Pacing:
     def from_settings(cls, settings: AdapterSettings, **overrides: float | int) -> Pacing:
         """Take the nominal delay from the adapter, keep the rest as mechanism.
 
-        ``pacing_delay_s`` is deliberately read with ``is None`` rather than with
-        a falsy test. The two are different answers: None means the user left it
-        to the adapter and gets the default above, while an explicit 0.0 means
-        the user turned pacing off and gets exactly that. A falsy test collapses
-        them and silently overrides a decision the user made.
+        ``is None`` rather than a falsy test, so an explicit 0.0 turns pacing off
+        instead of restoring the default.
         """
         delay = settings.pacing_delay_s
         base = DEFAULT_BASE_DELAY_S if delay is None else float(delay)
@@ -363,11 +241,7 @@ class Pacing:
 
 
 def backoff_delay(retry_index: int, pacing: Pacing) -> float:
-    """The un-jittered exponential wait before retry number ``retry_index``.
-
-    Pure and separate from the jitter so both halves can be asserted on their
-    own: that the sequence doubles and that it stops doubling at the ceiling.
-    """
+    """The un-jittered exponential wait before retry ``retry_index``, capped."""
     if retry_index < 0:
         raise ValueError("a retry index counts from zero")
     return min(pacing.backoff_max_s, pacing.backoff_base_s * (2.0**retry_index))
@@ -381,13 +255,7 @@ def jitter(rng: random.Random, seconds: float, fraction: float) -> float:
 
 
 def jitter_up(rng: random.Random, seconds: float, fraction: float) -> float:
-    """Spread a delay upward only, never below its nominal value.
-
-    Used for a wait the PROVIDER named. Symmetric jitter on an explicit hint can
-    return before the provider asked, which is the request it just told us not to
-    make; the decorrelation is still needed, so it is taken entirely from the
-    late side.
-    """
+    """Spread a delay upward only, for a wait the provider named, so no retry is early."""
     if seconds <= 0 or fraction <= 0:
         return max(0.0, seconds)
     return seconds * rng.uniform(1.0, 1.0 + fraction)
@@ -397,9 +265,8 @@ def jitter_up(rng: random.Random, seconds: float, fraction: float) -> float:
 # The parked cause: the seam the job engine consumes
 # ---------------------------------------------------------------------------
 
-#: What a person does about a provider block. Sentences rather than commands,
-#: because none of this is a command: D2 keeps command text in the CLI layer, and
-#: ``Remediation.steps`` exists for a fix that is not a command at all.
+#: What a person does about a provider block, as sentences: D2 keeps command text in
+#: the CLI layer.
 BLOCK_REMEDIATION_STEPS = (
     "Stop acquiring from this provider until you know why it refused.",
     "Sign in to the provider directly and check the account is in good standing.",
@@ -411,24 +278,14 @@ BLOCK_REMEDIATION_STEPS = (
 
 
 def blocked_cause(
-    *,
-    adapter: str,
-    key: str,
-    signal: ProviderSignal,
-    detail: str,
-    attempts: int,
+    *, adapter: str, key: str, signal: ProviderSignal, detail: str, attempts: int,
     retry_hint_s: float | None = None,
 ) -> Cause:
     """The structured reason a run stopped, in the shape a job engine parks on.
 
-    ``retryable`` is False and that is the load-bearing field. An engine deciding
-    whether to re-run reads it rather than the exit code, because the exit code's
-    class remediation for anything upstream is "retry later" and this is the one
-    member of that class where an automatic retry is the harm.
-
-    ``scope`` is RUN rather than ITEM. A block is a fact about the client, not
-    about the track that happened to be in flight when it arrived, so no
-    watermark may advance for any source in this run.
+    ``retryable`` is False, the load-bearing field, since an automatic retry here is
+    the harm. ``scope`` is RUN, because a block is about the client, so no watermark
+    advances.
     """
     return Cause(
         reason="provider-blocked",
@@ -437,15 +294,10 @@ def blocked_cause(
             f"Stopped after {attempts} attempt(s) without retrying, because retrying "
             f"into a block is what turns it into a lockout"
         ),
-        remediation=Remediation(steps=BLOCK_REMEDIATION_STEPS),
-        scope=Scope.RUN,
-        retryable=False,
+        remediation=Remediation(steps=BLOCK_REMEDIATION_STEPS), scope=Scope.RUN, retryable=False,
         origin=("acquire.download",),
         detail={
-            "adapter": adapter,
-            "key": key,
-            "signal": str(signal),
-            "attempts": attempts,
+            "adapter": adapter, "key": key, "signal": str(signal), "attempts": attempts,
             "retry_hint_s": retry_hint_s,
         },
     )
@@ -455,23 +307,14 @@ def blocked_cause(
 class DownloadRun:
     """One paced acquisition: what landed, and why it stopped if it stopped early.
 
-    Two fields rather than one because they answer different questions and a
-    caller needs both. ``invocation`` is the contract-shaped report every other
-    acquisition path already produces, so the sync layer's watermark and
-    quarantine decisions are unchanged. ``parked`` is the reason a job engine
-    parks on, present only when the provider refused the client outright.
-
-    The invariant below is the unit's own claim stated as a type. A run that was
-    blocked must never report a clean invocation, because a clean invocation
-    advances the source's watermark, and a watermark advanced across a block
-    skips every track the run never reached.
+    ``invocation`` is the contract-shaped report; ``parked`` is the cause, present only
+    when the provider refused the client. A parked run never reports a clean
+    invocation, which would advance the watermark past tracks it never reached.
     """
 
     invocation: InvocationResult
     parked: Cause | None = None
-    #: Every delay actually slept, in the order the sleeps happened. Carried so
-    #: the decorrelation property is observable on the result rather than only by
-    #: patching the clock, and so an operator can see what a run spent waiting.
+    #: Every delay slept, in order, so the pacing is observable on the result.
     schedule: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
@@ -503,16 +346,9 @@ class DownloadRun:
 class _SignalProbe:
     """A ``TrackSource`` wrapper that watches for pacing signals and re-raises.
 
-    The contract's per-track step turns an exception into a classified result, so
-    by the time a caller sees the result the exception object, its response, and
-    its headers are gone. Reconstructing a rate limit from the message text alone
-    would lose the retry hint, which is the one piece of information the provider
-    volunteered.
-
-    So this observes at the only point where the live exception exists and then
-    re-raises it UNCHANGED. Nothing about the per-track classification moves. One
-    probe is constructed per attempt, which is what keeps it free of shared state
-    under concurrency: there is no lock here because there is nothing to share.
+    It sees the live exception, retry hint included, before the per-track step turns
+    it into a result, and re-raises it unchanged. One probe per attempt, so nothing
+    is shared.
     """
 
     __slots__ = ("_clock", "_inner", "retry_hint", "signal")
@@ -598,13 +434,7 @@ def _stop_with_park(run: _Run, cause: Cause) -> None:
 
 
 def _stop_with_failure(run: _Run, exc: AdapterAuthFailed | AdapterBroken) -> None:
-    """Record an adapter-level failure and halt, matching the sequential loop.
-
-    First writer wins for the same reason the sequential loop returns on the
-    first one: after the session dies, every other worker's failure is a
-    consequence rather than a second cause, and reporting the consequence sends
-    the user to the wrong remedy.
-    """
+    """Record the first adapter-level failure and halt; later ones are its consequences."""
     outcome = (
         InvocationOutcome.AUTH_FAILED
         if isinstance(exc, AdapterAuthFailed)
@@ -619,17 +449,9 @@ def _stop_with_failure(run: _Run, exc: AdapterAuthFailed | AdapterBroken) -> Non
 def _acquire_with_retries(run: _Run, request: TrackRequest) -> TrackResult | None:
     """One track, retried under the pacing policy. None means the run stopped.
 
-    The pacing delay is taken INSIDE the semaphore and the backoff OUTSIDE it,
-    and the difference is the point of each. The pacing delay is what bounds the
-    request RATE, so it has to occupy a slot or the cap would bound only the
-    moment of the call. A backoff is a track waiting its turn again, so holding a
-    slot through it would let one rate-limited track idle capacity that other
-    tracks could use.
-
-    Unlike the sequential loop, EVERY acquisition waits first, including the
-    first one. At a cap above one, skipping the first delay would send the whole
-    first batch at the same instant, which is the synchronised burst the pacing
-    exists to prevent. At a cap of one it costs a single extra delay per run.
+    The pacing delay is taken inside the semaphore, so the cap bounds the request
+    rate; a backoff waits outside it, so a throttled track idles no slot. Every
+    acquisition waits first, so a batch never starts as one burst.
     """
     result: TrackResult | None = None
 
@@ -653,11 +475,8 @@ def _acquire_with_retries(run: _Run, request: TrackRequest) -> TrackResult | Non
             _stop_with_park(
                 run,
                 blocked_cause(
-                    adapter=run.adapter,
-                    key=request.key,
-                    signal=probe.signal,
-                    detail=result.detail or str(probe.signal),
-                    attempts=attempt + 1,
+                    adapter=run.adapter, key=request.key, signal=probe.signal,
+                    detail=result.detail or str(probe.signal), attempts=attempt + 1,
                     retry_hint_s=probe.retry_hint,
                 ),
             )
@@ -669,16 +488,13 @@ def _acquire_with_retries(run: _Run, request: TrackRequest) -> TrackResult | Non
                 _stop_with_park(
                     run,
                     blocked_cause(
-                        adapter=run.adapter,
-                        key=request.key,
-                        signal=probe.signal,
+                        adapter=run.adapter, key=request.key, signal=probe.signal,
                         detail=(
                             f"the provider asked for {hint:g}s, beyond this run's "
                             f"{run.pacing.retry_hint_ceiling_s:g}s ceiling, which is a "
                             f"refusal wearing a wait"
                         ),
-                        attempts=attempt + 1,
-                        retry_hint_s=hint,
+                        attempts=attempt + 1, retry_hint_s=hint,
                     ),
                 )
                 return None
@@ -697,19 +513,13 @@ def _acquire_with_retries(run: _Run, request: TrackRequest) -> TrackResult | Non
 def _soften(result: TrackResult) -> TrackResult:
     """Downgrade a permanent unavailability to a transient one.
 
-    Applied to every result of a FAILED invocation, and required rather than
-    tidy: ``InvocationResult`` refuses to carry a permanent result under a failed
-    outcome, because permanent feeds quarantine and quarantine is never
-    re-queued. A run that classified one track as delisted and was then blocked
-    has no way to know the first answer was honest, since a bot wall answers
-    with whatever status it likes. Keeping the track re-queueable costs one
-    lookup on the next run. Getting it wrong costs the track forever.
+    A failed invocation may not carry a permanent result, which feeds quarantine;
+    after a block the earlier answer cannot be trusted, and re-queueing costs a lookup.
     """
     if result.outcome is not TrackOutcome.UNAVAILABLE_PERMANENT:
         return result
     return TrackResult(
-        key=result.key,
-        outcome=TrackOutcome.UNAVAILABLE_TRANSIENT,
+        key=result.key, outcome=TrackOutcome.UNAVAILABLE_TRANSIENT,
         detail=(
             f"{result.detail} (reported permanent, but the invocation failed before "
             f"it finished, so it stays re-queueable)"
@@ -719,40 +529,23 @@ def _soften(result: TrackResult) -> TrackResult:
 
 
 def acquire_concurrently(
-    *,
-    adapter: str,
-    source: TrackSource,
-    requests: Iterable[TrackRequest],
-    settings: AdapterSettings,
-    pacing: Pacing | None = None,
-    alternatives: Sequence[str] = (),
-    sleep: Callable[[float], None] = time.sleep,
-    rng: random.Random | None = None,
-    executor: Executor | None = None,
-    clock: Callable[[], datetime] | None = None,
+    *, adapter: str, source: TrackSource, requests: Iterable[TrackRequest],
+    settings: AdapterSettings, pacing: Pacing | None = None, alternatives: Sequence[str] = (),
+    sleep: Callable[[float], None] = time.sleep, rng: random.Random | None = None,
+    executor: Executor | None = None, clock: Callable[[], datetime] | None = None,
 ) -> DownloadRun:
     """Acquire every request under a bounded, paced, signal-aware pool.
 
-    The cap is ``settings.concurrency`` and is read from there rather than
-    declared here, so there is exactly one place it is configured (KTD20). A
-    semaphore enforces it in addition to the pool's own worker count, because the
-    pool is replaceable through ``executor`` while the invariant is not: a caller
-    handing in a larger pool must not thereby widen the cap.
-
-    ``rng`` defaults to a fresh generator per run. That is what makes two
-    concurrent runs draw different schedules without either knowing the other
-    exists, which is the decorrelation R10 asks for.
+    The cap is ``settings.concurrency`` (KTD20), also enforced by a semaphore so a
+    larger ``executor`` cannot widen it. A fresh ``rng`` per run decorrelates
+    concurrent runs (R10).
     """
     ordered = tuple(requests)
     requested = tuple(request.key for request in ordered)
     resolved = pacing or Pacing.from_settings(settings)
 
     run = _Run(
-        adapter=adapter,
-        source=source,
-        settings=settings,
-        pacing=resolved,
-        sleep=sleep,
+        adapter=adapter, source=source, settings=settings, pacing=resolved, sleep=sleep,
         rng=rng if rng is not None else random.Random(),
         clock=clock or (lambda: datetime.now(timezone.utc)),
         gate=threading.Semaphore(settings.concurrency),
@@ -761,9 +554,7 @@ def acquire_concurrently(
     try:
         source.authenticate()
     except (AdapterAuthFailed, AdapterBroken) as exc:
-        return DownloadRun(
-            invocation=_failed(adapter, exc, requested, alternatives),
-        )
+        return DownloadRun(invocation=_failed(adapter, exc, requested, alternatives))
 
     slots: list[TrackResult | None] = [None] * len(ordered)
 
@@ -788,10 +579,8 @@ def acquire_concurrently(
     if run.failure is not None:
         outcome, detail, remedy = run.failure
     elif run.parked is not None:
-        # ADAPTER_BROKEN is the only invocation outcome that gives a block the
-        # three behaviours it needs: no watermark advances, nothing is
-        # quarantined, and everything that did not land stays queued. What it
-        # cannot express is WHY, which is what the parked cause carries.
+        # ADAPTER_BROKEN advances no watermark, quarantines nothing and keeps the rest
+        # queued, as a block needs; the parked cause says why.
         outcome = InvocationOutcome.ADAPTER_BROKEN
         detail = run.parked.message
         remedy = Remedy.PAUSE_AND_CHECK_ACCOUNT
@@ -802,23 +591,15 @@ def acquire_concurrently(
 
     return DownloadRun(
         invocation=InvocationResult(
-            adapter=adapter,
-            outcome=outcome,
-            results=tuple(landed),
-            requested=requested,
-            detail=detail,
-            remedy=remedy,
-            alternatives=tuple(alternatives),
+            adapter=adapter, outcome=outcome, results=tuple(landed), requested=requested,
+            detail=detail, remedy=remedy, alternatives=tuple(alternatives),
         ),
-        parked=run.parked,
-        schedule=tuple(run.slept),
+        parked=run.parked, schedule=tuple(run.slept),
     )
 
 
 def _failed(
-    adapter: str,
-    exc: AdapterAuthFailed | AdapterBroken,
-    requested: Sequence[str],
+    adapter: str, exc: AdapterAuthFailed | AdapterBroken, requested: Sequence[str],
     alternatives: Sequence[str],
 ) -> InvocationResult:
     """Shape an adapter-level failure exactly as the sequential loop does."""
@@ -828,28 +609,17 @@ def _failed(
         else InvocationOutcome.ADAPTER_BROKEN
     )
     return InvocationResult(
-        adapter=adapter,
-        outcome=outcome,
-        requested=tuple(requested),
-        detail=str(exc),
-        remedy=exc.remedy,
-        alternatives=tuple(alternatives),
+        adapter=adapter, outcome=outcome, requested=tuple(requested), detail=str(exc),
+        remedy=exc.remedy, alternatives=tuple(alternatives),
     )
 
 
 def acquire_paced(adapter: BaseAdapter, requests: Iterable[TrackRequest], **options) -> DownloadRun:
     """Drive a built adapter through the pool, credential live only for the run.
 
-    The run's credential is the adapter's own session scope. Inside a drive of
-    a download job the vendored adapter's scope is the drive's (U274), so the
-    session outlives this call and is erased when the drive closes.
-
-    This reaches into ``BaseAdapter``'s session scope and source hooks on
-    purpose. ``download`` is part of the adapter framework rather than a client
-    of it: it is the paced replacement for the sequential loop that
-    ``BaseAdapter.acquire`` calls, so it needs the same two hooks that loop is
-    given. Re-implementing the credential scope here instead would be a second
-    place where "no plaintext token survives a run" has to be remembered.
+    The credential is the adapter's session scope, the drive's inside a download job
+    (U274). It uses ``BaseAdapter``'s private hooks on purpose, as the paced
+    replacement for ``BaseAdapter.acquire``'s loop, so the credential rule lives once.
     """
     ordered = tuple(requests)
     alternatives = adapter._alternatives()
@@ -857,12 +627,8 @@ def acquire_paced(adapter: BaseAdapter, requests: Iterable[TrackRequest], **opti
         with adapter._session_scope() as scope:
             source = adapter._injected if adapter._injected is not None else adapter._source(scope)
             return acquire_concurrently(
-                adapter=adapter.name,
-                source=source,
-                requests=ordered,
-                settings=adapter.settings,
-                alternatives=alternatives,
-                **options,
+                adapter=adapter.name, source=source, requests=ordered, settings=adapter.settings,
+                alternatives=alternatives, **options,
             )
     except (AdapterAuthFailed, AdapterBroken) as exc:
         return DownloadRun(
@@ -873,27 +639,9 @@ def acquire_paced(adapter: BaseAdapter, requests: Iterable[TrackRequest], **opti
 
 
 __all__ = [
-    "BLOCKED_STATUSES",
-    "BLOCK_MARKERS",
-    "BLOCK_REMEDIATION_STEPS",
-    "DEFAULT_BASE_DELAY_S",
-    "DEFAULT_JITTER_FRACTION",
-    "INERT_SIGNALS",
-    "MIN_DECORRELATING_JITTER",
-    "RATE_LIMIT_MARKERS",
-    "RATE_LIMIT_STATUSES",
-    "RETRYING_SIGNALS",
-    "STOPPING_SIGNALS",
-    "DownloadRun",
-    "Pacing",
-    "ProviderSignal",
-    "acquire_concurrently",
-    "acquire_paced",
-    "backoff_delay",
-    "blocked_cause",
-    "classify_signal",
-    "jitter",
-    "jitter_up",
-    "retry_hint_seconds",
-    "status_of",
+    "BLOCKED_STATUSES", "BLOCK_MARKERS", "BLOCK_REMEDIATION_STEPS", "DEFAULT_BASE_DELAY_S",
+    "DEFAULT_JITTER_FRACTION", "INERT_SIGNALS", "MIN_DECORRELATING_JITTER", "RATE_LIMIT_MARKERS",
+    "RATE_LIMIT_STATUSES", "RETRYING_SIGNALS", "STOPPING_SIGNALS", "DownloadRun", "Pacing",
+    "ProviderSignal", "acquire_concurrently", "acquire_paced", "backoff_delay", "blocked_cause",
+    "classify_signal", "jitter", "jitter_up", "retry_hint_seconds", "status_of",
 ]
