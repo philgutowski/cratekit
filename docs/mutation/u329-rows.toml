@@ -189,7 +189,7 @@ id = "W3_rotate_holds_a_permissive_copy"
 description = "intake.rotate binds a watched_roots of its own that accepts an empty list, the copy the one home replaced"
 file = "src/cratekit/intake/rotate.py"
 surface = "user"
-tests = ["tests/test_inbox_rotate.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py", "tests/test_inbox_shelve.py", "tests/test_routing_workers.py"]
+tests = ["tests/test_inbox_rotate.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py", "tests/test_intake_shelve.py", "tests/test_routing_workers.py"]
 old = '''
 from cratekit.write.row_defaults import watched_roots
 '''
