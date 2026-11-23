@@ -135,19 +135,16 @@ def package_of(path, source_root) -> str | None:
 class ImportsOf:
     """How one source file reaches ONE named module, if it reaches it at all.
 
-    The four shapes the repository's own modules use::
+    Every import shape the repository uses::
 
         import cratekit.core.review            # cratekit.core.review.offer(...)
         import cratekit.core.review as rv      # rv.offer(...)
         from cratekit.core import review       # review.offer(...)
         from cratekit.core.review import offer # offer(...)
 
-    An ancestor package reaches the module too (``from cratekit import core``
-    then ``core.pool.PoolPlan(...)``), and a relative import, including the bare
-    ``from . import pool`` a sibling writes. Parameterized by module (U12 asks
-    about ``cratekit.core.pool``) and by the importing file's package, which
-    makes the relative half exact; without one it falls back to matching by
-    dotted tail, so a caller walking real files should pass it.
+    plus an ancestor package (``from cratekit import core``) and relative
+    imports. Pass the importing file's ``package`` so a relative import resolves
+    exactly rather than by dotted tail.
     """
 
     def __init__(self, tree: ast.AST, module: str, package: str | None = None) -> None:
@@ -652,23 +649,12 @@ def _declared_enum_values(tree: ast.AST) -> set[str]:
     return found
 
 
-#: How far a code is chased through names, members and arithmetic. Bounded so a
-#: mutually recursive pair of constants cannot hang the suite.
-#:
-#: THREE, the depth of the deepest spelling this guard promises to read:
-#: ``BASE = 30``, ``OFFSET = BASE``, ``OFFSET + 1``. It is a coverage dial, not
-#: a correctness constant: at three it reads at most two aliases before the
-#: literal, so this is reported::
-#:
-#:     A0 = 30
-#:     A1 = A0
-#:     CODES = {"config-unusable": A1}
-#:
-#: and a chain of three aliases is SILENT, the cost of the number. Measured: the
-#: three alias chain is silent at 2 and 3 and reported from 4.
-#: ``test_the_hop_bound_is_a_coverage_dial_and_this_is_what_it_gives_up`` and
-#: ``test_the_hop_bound_is_the_depth_of_the_deepest_spelling`` pin both edges; see
-#: the residual "One check in this unit is unreachable".
+#: How far a code is chased through names, members and arithmetic, bounded so a
+#: mutually recursive pair of constants cannot hang the suite. THREE, the depth
+#: of the deepest promised spelling (``BASE = 30``, ``OFFSET = BASE``,
+#: ``OFFSET + 1``). A coverage dial, not a correctness constant: two aliases
+#: before the literal are read, three are silent, the pinned cost of the number.
+#: See the residual "One check in this unit is unreachable".
 MAX_HOPS = 3
 
 
@@ -746,43 +732,26 @@ def _within_scope(body: list[ast.stmt]):
 
 
 #: THERE IS NO PER-LINE OFF SWITCH. The old ``# not-a-reservation: <reason>``
-#: silenced a one line ``def`` body, two statements on one line, and all of
-#: ``core/cause.py``'s registry from one comment, and was never used: the tree
-#: has zero offenders outside the two table owners, even with every kebab
-#: literal in the package added to the key set.
-#:
-#: Ordinary data keyed on a cause slug with an in-range integer is still
-#: REPORTED. The answer is a review: the value belongs in the table, or the file
-#: joins ``TABLE_OWNERS`` with a reason and the membership assertion updated.
-#: ``test_a_comment_cannot_silence_a_reservation`` fails if any escape returns.
+#: could silence a whole registry from one comment and was never used. Ordinary
+#: data keyed on a cause slug with an in-range integer is REPORTED, and answered
+#: by a review: into the table, or into ``TABLE_OWNERS`` with a reason.
 
 
 class ReservedCodeTable:
     """Reads one source for a second opinion about what a refusal cause exits with.
 
-    ONE KEY SET AND ONE VALUE RULE. Every string anybody in this repository has
-    declared to be a refusal cause is a key, and any of them beside a status is
-    a reservation: an ``ExitCode`` member in any import spelling, a conversion
-    round one, a code held in a name or a class attribute, a module's own
-    ``IntEnum`` member, a small piece of arithmetic, or a bare integer inside the
-    reserved range. The tiered key set before it was silent on fourteen of the
-    sixteen shapes in ``REGISTRY_SLUG_SECOND_TABLES``.
+    ONE KEY SET AND ONE VALUE RULE. Every declared refusal cause is a key, and
+    any of them beside a status is a reservation: an ``ExitCode`` member in any
+    spelling, a conversion round one, a code held in a name or class attribute,
+    a module's own ``IntEnum`` member, small arithmetic, or a bare integer inside
+    the reserved range (``True`` and ``False`` never). A false alarm costs one
+    look; a miss is a module quietly disagreeing with the registry. The key is
+    resolved through names too, and every construct holding keys in a subtree
+    asks ``cause_keys_within``.
 
-    The trade runs on error costs: a false alarm costs one look and a recorded
-    decision, a miss is a module quietly disagreeing with the registry. A bare
-    integer is ambiguous, so only one inside the reserved range counts, taken
-    from the live table; ``True`` and ``False`` are never a status. An
-    ``ExitCode`` member or a conversion round the vocabulary is a code at any
-    value. Not narrowed to the integers the enum uses, since a new module
-    inventing 33 for an unreserved cause is the case this exists for.
-
-    The key is resolved through names too, as the value is, and every construct
-    holding keys in a subtree asks ``cause_keys_within``, so one widening reaches
-    all of them.
-
-    THE RESIDUAL LIMIT: a poll interval or a width keyed by a cause slug reads as
-    a reservation, and is reported, since matching on variable names is a guard
-    a rename defeats. Shapes still silent are recorded in the residual
+    THE RESIDUAL LIMIT: a poll interval keyed by a cause slug reads as a
+    reservation and is reported, since matching on variable names is a guard a
+    rename defeats. Shapes still silent are recorded in the residual
     "The tiers were bought with a number that does not exist".
     """
 
@@ -1880,21 +1849,13 @@ def _rebinding_statements(scope: ast.AST, holders: dict[str, ast.AST]):
 
 
 def permissive_soft_delete_reads(source: str) -> list[str]:
-    """Every place this source reads the soft-delete marker PERMISSIVELY.
+    """Every place this source reads the soft-delete marker PERMISSIVELY (U18, U19, U21).
 
-    U18 removed this shape, U19 and U21 shipped it again, so the rule lives here.
     FORBIDDEN: a read supplying a FALSEY fallback, however spelled, or one
-    laundered a line later (:func:`_laundered_reads`). ``rb_local_deleted`` is a
-    bookkeeping column a binding change can stop exposing, and a falsey fallback
-    then silently promotes every tombstone to a live row.
-
-    LEFT ALONE (P7): a sentinel default the caller compares against, no default,
-    a plain attribute read, the constant's definition, and a ``.get`` on a
-    module-level table.
-
-    KNOWN LIMITS: a row subclass with a falsey class default, the column from a
-    function call other than a same-file writer accessor, a dictionary lookup,
-    and a runtime attribute name. Recorded in the residual
+    laundered a line later (:func:`_laundered_reads`), since a falsey fallback
+    silently promotes every tombstone to a live row. LEFT ALONE (P7): a compared
+    sentinel, no default, a plain read, the constant's definition, a ``.get`` on
+    a module-level table. Its limits are in the residual
     "What the soft-delete guard cannot see, and two gaps in the gate contract".
     """
     tree = ast.parse(source)
