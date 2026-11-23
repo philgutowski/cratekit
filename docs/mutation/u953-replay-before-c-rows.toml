@@ -375,6 +375,7 @@ new = '            _stage_companion_aside(step.target, decided.pre_restore_root)
 [[rows]]
 id = "r592-a.A1_occupancy_guard_removed"
 source = { table = "r592-a.json", id = "A1_occupancy_guard_removed" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "assert_recovery_target: find nothing occupied whatever the target holds, so a library whose database sits where this one lands is replaced unasked"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -385,6 +386,7 @@ new = '    existing = []'
 [[rows]]
 id = "r592-a.A2_database_dropped_from_fileset"
 source = { table = "r592-a.json", id = "A2_database_dropped_from_fileset" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "recovered_database_fileset: return the companions only, so a database already at the landing path is not an occupied target"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -395,6 +397,7 @@ new = '    return companions'
 [[rows]]
 id = "r592-a.A3_companions_dropped_from_fileset"
 source = { table = "r592-a.json", id = "A3_companions_dropped_from_fileset" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "recovered_database_fileset: return the database only, so a lone write-ahead log the database half would clear is not an occupied target"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -405,6 +408,7 @@ new = '    return (landing,)'
 [[rows]]
 id = "r592-a.A4_fileset_not_rebased"
 source = { table = "r592-a.json", id = "A4_fileset_not_rebased" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "recovered_database_fileset: land the database at its bare name at the top of the target for every layout, so the guard tests a path the transfer never writes"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -419,6 +423,7 @@ new = '''
 [[rows]]
 id = "r592-a.A5_replacing_existing_inverted"
 source = { table = "r592-a.json", id = "A5_replacing_existing_inverted" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "assert_recovery_target: refuse an occupied target only when it WAS named for replacement"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -429,6 +434,7 @@ new = '    if existing and replacing_existing:'
 [[rows]]
 id = "r592-a.A6_old_suffix_rule_restored"
 source = { table = "r592-a.json", id = "A6_old_suffix_rule_restored" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "assert_recovery_target: put the recursive any-database rule back, the behaviour R-592 records, so every interrupted recovery is refused on rerun"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -439,6 +445,7 @@ new = '    existing = sorted(entry for entry in where.rglob("*.db") if entry.is_
 [[rows]]
 id = "r592-a.A7_companion_suffix_wrong"
 source = { table = "r592-a.json", id = "A7_companion_suffix_wrong" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "recovered_database_fileset: name each companion with a dot before its suffix, master.db.-wal, so no real companion is ever found"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -457,6 +464,7 @@ new = '''
 [[rows]]
 id = "r592-a.A8_sample_stub_check_beside"
 source = { table = "r592-a.json", id = "A8_sample_stub_check_beside" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "SAMPLE, existing guard: assert_recovery_target refuses only a stub at or under the configured root, not the suffixed name beside it"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -477,6 +485,7 @@ new = '    probe = mount_probe or _is_mount_point'
 [[rows]]
 id = "u96-b.C1_engine_terminal"
 source = { table = "u96-b.json", id = "C1_engine_terminal" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "SAMPLE of the engine's guards, now reachable from a verb. bare_metal_session: disarm the controlling terminal refusal"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -493,6 +502,7 @@ new = '''
 [[rows]]
 id = "u96-b.C2_engine_acknowledged"
 source = { table = "u96-b.json", id = "C2_engine_acknowledged" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "SAMPLE. bare_metal_session: disarm the acknowledgment refusal"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -503,6 +513,7 @@ new = '    if False:'
 [[rows]]
 id = "u96-b.C3_engine_occupied_target"
 source = { table = "u96-b.json", id = "C3_engine_occupied_target" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "SAMPLE. assert_recovery_target: disarm the refusal of a target that already holds a database"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -513,6 +524,7 @@ new = '    if False:'
 [[rows]]
 id = "u96-b.C4_engine_stub"
 source = { table = "u96-b.json", id = "C4_engine_stub" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "SAMPLE. assert_recovery_target: disarm the refusal of the stub an unmounted volume leaves on the internal disk"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -523,6 +535,7 @@ new = '    if False:'
 [[rows]]
 id = "u96-b.C5_engine_library_is_mounted"
 source = { table = "u96-b.json", id = "C5_engine_library_is_mounted" }
+moved = "Moved from src/cratekit/core/restore.py to src/cratekit/core/restore_recovery.py by U300, which replayed this text there and kept the kill in u300-replay-after-c.json"
 description = "SAMPLE. assert_library_volume_is_gone: answer gone when the library is mounted and is the recorded volume"
 file = "src/cratekit/core/restore_recovery.py"
 surface = "user"
@@ -958,6 +971,7 @@ new = '''
 [[rows]]
 id = "u138-rerun.S5_bound_exclusive"
 source = { table = "u138-rerun.json", id = "S5_bound_exclusive" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "A portion exactly five days old is under the bound"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -972,6 +986,7 @@ new = '''
 [[rows]]
 id = "u138.E1_terminal_check"
 source = { table = "u138.json", id = "E1_terminal_check" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "Existing guard sample: the terminal check on a person's answer"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -986,6 +1001,7 @@ new = '''
 [[rows]]
 id = "u138.S10_older_record_reads_as_session"
 source = { table = "u138.json", id = "S10_older_record_reads_as_session" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "A record from before U138 reads as minted by the session's rule"
 file = "src/cratekit/core/session_ack.py"
 surface = "maintainer"
@@ -1000,6 +1016,7 @@ new = '''
 [[rows]]
 id = "u138.S11_rule_not_written"
 source = { table = "u138.json", id = "S11_rule_not_written" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "The record's rule key is not written to the file"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1012,6 +1029,7 @@ new = ''
 [[rows]]
 id = "u138.S12_message_names_the_portion"
 source = { table = "u138.json", id = "S12_message_names_the_portion" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "Reword the refusal so it no longer names the portion's age"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1026,6 +1044,7 @@ new = '''
 [[rows]]
 id = "u138.S13_remedy_points_back_at_ack"
 source = { table = "u138.json", id = "S13_remedy_points_back_at_ack" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "The too old refusal tells a person to acknowledge again rather than to run a backup"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1040,6 +1059,7 @@ new = '''
 [[rows]]
 id = "u138.S1_session_rule_gone"
 source = { table = "u138.json", id = "S1_session_rule_gone" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "A session's answer falls to the terminal check, as before U138"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1054,6 +1074,7 @@ new = '''
 [[rows]]
 id = "u138.S2_any_answer_gets_the_age_rule"
 source = { table = "u138.json", id = "S2_any_answer_gets_the_age_rule" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "Any recorded answer, a person's included, mints without a terminal on young backups"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1068,6 +1089,7 @@ new = '''
 [[rows]]
 id = "u138.S3_stale_not_refused"
 source = { table = "u138.json", id = "S3_stale_not_refused" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "The session mints over a portion five days old or of unknown age"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1078,6 +1100,7 @@ new = '        if False:'
 [[rows]]
 id = "u138.S6_bound_six_days"
 source = { table = "u138.json", id = "S6_bound_six_days" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "The bound is six days rather than five"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1092,6 +1115,7 @@ SESSION_MAX_BACKUP_AGE = timedelta(days=6)
 [[rows]]
 id = "u138.S8_rule_not_recorded"
 source = { table = "u138.json", id = "S8_rule_not_recorded" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "The record always says the terminal rule minted it"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1108,6 +1132,7 @@ new = '''
 [[rows]]
 id = "u138.S9_answer_not_recorded"
 source = { table = "u138.json", id = "S9_answer_not_recorded" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "The record never says who answered the gate"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1144,6 +1169,7 @@ new = '        actor=derive_actor(),'
 [[rows]]
 id = "u48-author.S1_remedy_fixed_at_repair"
 source = { table = "u48-author.json", id = "S1_remedy_fixed_at_repair" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "The session names the repair token again, which is the defect this unit closed"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1154,6 +1180,7 @@ new = '            remedy=Remedy.REPAIR_BACKUP_FACTS,'
 [[rows]]
 id = "u48-author.S2_remedy_fixed_at_grant"
 source = { table = "u48-author.json", id = "S2_remedy_fixed_at_grant" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_ack.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "The same defect mirrored: hard code the permission token over every condition"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -1164,6 +1191,7 @@ new = '            remedy=Remedy.GRANT_PATH_ACCESS,'
 [[rows]]
 id = "r598-a.A1_state_check_widened_to_non_terminal"
 source = { table = "r598-a.json", id = "A1_state_check_widened_to_non_terminal" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_holders.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "orphaned: accept any non terminal record rather than only open, so awaiting-import and committed-unverified records with a dead holder are abandoned and their own remedies hidden"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -1180,6 +1208,7 @@ new = '''
 [[rows]]
 id = "r598-a.A2_no_holder_read_as_gone"
 source = { table = "r598-a.json", id = "A2_no_holder_read_as_gone" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_holders.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "orphaned: read a record with no recorded holder as orphaned, so every intake landing left open for a deferred placement is abandoned"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -1194,6 +1223,7 @@ new = '''
 [[rows]]
 id = "r598-a.A3_liveness_not_consulted"
 source = { table = "r598-a.json", id = "A3_liveness_not_consulted" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_holders.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "orphaned: skip holder_alive and judge every open record with a holder orphaned, so a running write's record is ended behind it"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -1204,6 +1234,7 @@ new = '    return True'
 [[rows]]
 id = "r598-a.A4_unreadable_holder_read_as_gone"
 source = { table = "r598-a.json", id = "A4_unreadable_holder_read_as_gone" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_holders.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "orphaned: judge a holder this build cannot parse as gone rather than alive"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -1220,6 +1251,7 @@ new = '''
 [[rows]]
 id = "r598-a.A7_sweep_ignores_the_shown_list"
 source = { table = "r598-a.json", id = "A7_sweep_ignores_the_shown_list" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_holders.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "abandon_orphaned_sessions: end every orphan rather than only those shown, so one answer ends records the question never listed"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -1230,6 +1262,7 @@ new = '        if orphaned(record, here=here)'
 [[rows]]
 id = "r598-b.B7_sample_live_holder_released"
 source = { table = "r598-b.json", id = "B7_sample_live_holder_released" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_holders.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "release_stale_lock: skip the live holder refusal (existing guard, sampled because the sweep now sits behind it)"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -1244,6 +1277,7 @@ new = '''
 [[rows]]
 id = "r647-a.B10_live_identifier_not_asked"
 source = { table = "r647-a.json", id = "B10_live_identifier_not_asked" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_holders.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "_gone_since_an_earlier_boot: skip the live process check, so a live holder read through a moved clock has its claim cleared mid write"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -1254,6 +1288,7 @@ new = '    return True'
 [[rows]]
 id = "r647-a.B11_start_time_compared_again"
 source = { table = "r647-a.json", id = "B11_start_time_compared_again" }
+moved = "Moved from src/cratekit/core/session.py to src/cratekit/core/session_holders.py by U300, which replayed this text there and kept the kill in u300-replay-after-b.json"
 description = "_gone_since_an_earlier_boot: the review's defect restored, a live identifier keeps the claim only when its start time matches, so the Linux shape of a stepped clock clears a live claim"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"

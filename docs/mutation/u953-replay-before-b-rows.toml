@@ -4,6 +4,7 @@ pass_kind = "replay"
 [[rows]]
 id = "r1830.M11_held_object_left_stale"
 source = { table = "r1830.json", id = "M11_held_object_left_stale" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "renumber_memberships: leave the session's mapped rows holding the old number"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -14,6 +15,7 @@ new = '            pass'
 [[rows]]
 id = "r1830.M13_planned_rows_admitted_unjudged"
 source = { table = "r1830.json", id = "M13_planned_rows_admitted_unjudged" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "collection_removal_violations: admit any change to a row the rule renumbers"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -24,6 +26,7 @@ new = '                pass'
 [[rows]]
 id = "r1830.M14_other_columns_not_compared"
 source = { table = "r1830.json", id = "M14_other_columns_not_compared" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "_renumbering_violations: a renumbered row may change any other column"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -34,6 +37,7 @@ new = '    if False:'
 [[rows]]
 id = "r1830.M15_number_not_compared"
 source = { table = "r1830.json", id = "M15_number_not_compared" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "_renumbering_violations: a renumbered row may hold any number"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -44,6 +48,7 @@ new = '    if False:'
 [[rows]]
 id = "r1830.M16_marker_change_not_compared"
 source = { table = "r1830.json", id = "M16_marker_change_not_compared" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "_renumbering_violations: a renumbered row's marker may move"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -54,6 +59,7 @@ new = '    if (now[0], now[1], now[3]) != (then[0], then[1], then[3]):'
 [[rows]]
 id = "r1830.M17_positions_never_read"
 source = { table = "r1830.json", id = "M17_positions_never_read" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "database_reading: read no membership positions, so the confinement plans nothing"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -64,6 +70,7 @@ new = '            if False:'
 [[rows]]
 id = "r1830.M1_tie_counted_as_below"
 source = { table = "r1830.json", id = "M1_tie_counted_as_below" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "renumbered_positions: a removed row tying a survivor lowers it too"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -74,6 +81,7 @@ new = '        below = sum(1 for one in deleted.get(playlist, ()) if one <= int(
 [[rows]]
 id = "r1830.M23_unreadable_marker_passed_over"
 source = { table = "r1830.json", id = "M23_unreadable_marker_passed_over" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "removal_renumbering: plan around a NULL marker rather than refusing it, review round two's X1"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -84,6 +92,7 @@ new = '    if False:'
 [[rows]]
 id = "r1830.M2_marked_removed_row_counted"
 source = { table = "r1830.json", id = "M2_marked_removed_row_counted" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "renumbered_positions: a removed row marked removed counts, review round one's B1"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -94,6 +103,7 @@ new = '        if content in gone and number is not None:'
 [[rows]]
 id = "r1830.M3_marked_survivor_moved"
 source = { table = "r1830.json", id = "M3_marked_survivor_moved" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "renumbered_positions: a marked surviving row is lowered too"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -104,6 +114,7 @@ new = '        if content in gone or number is None:'
 [[rows]]
 id = "r1830.M4_one_place_whatever_removed"
 source = { table = "r1830.json", id = "M4_one_place_whatever_removed" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "renumbered_positions: a row moves one place however many removed rows sit below it"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -114,6 +125,7 @@ new = '            moved[key] = (playlist, int(number), int(number) - 1)'
 [[rows]]
 id = "r1830.M5_any_playlist_counts"
 source = { table = "r1830.json", id = "M5_any_playlist_counts" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "renumbered_positions: a removed row in any playlist lowers rows in every playlist"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -124,6 +136,7 @@ new = '        below = sum(1 for numbers in deleted.values() for one in numbers 
 [[rows]]
 id = "r1830.M8_renumbering_stamps_updated_at"
 source = { table = "r1830.json", id = "M8_renumbering_stamps_updated_at" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "renumber_memberships: write updated_at beside TrackNo, a byte rekordbox did not write"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -134,6 +147,7 @@ new = "        f'UPDATE \"{MEMBERSHIP_TABLE}\" SET \"{TRACK_NUMBER_COLUMN}\" = :
 [[rows]]
 id = "r1830.M9_moved_row_not_refused"
 source = { table = "r1830.json", id = "M9_moved_row_not_refused" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "renumber_memberships: a row that moved since the prepare is passed over silently"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -159,6 +173,7 @@ new = '''
 [[rows]]
 id = "u288.M10_changed_rows"
 source = { table = "u288.json", id = "M10_changed_rows" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "collection_removal_violations: read a changed row as unchanged"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -173,6 +188,7 @@ new = '''
 [[rows]]
 id = "u288.M11_added_rows"
 source = { table = "u288.json", id = "M11_added_rows" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "collection_removal_violations: read an added row as nothing"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -187,6 +203,7 @@ new = '''
 [[rows]]
 id = "u288.M12_still_names"
 source = { table = "u288.json", id = "M12_still_names" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "collection_removal_violations: drop the check that every row naming a removed track is gone"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -197,6 +214,7 @@ new = '            if False:'
 [[rows]]
 id = "u288.M13_counter_forward"
 source = { table = "u288.json", id = "M13_counter_forward" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "collection_removal_violations: accept a read back whose update count did not move"
 file = "src/cratekit/core/rb_removal.py"
 surface = "maintainer"
@@ -207,6 +225,7 @@ new = '        before.counter is None or after.counter is None or after.counter 
 [[rows]]
 id = "u288.M3_unmeasured_tables_skipped"
 source = { table = "u288.json", id = "M3_unmeasured_tables_skipped" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "content_references: ask no table, so a My Tag, sampler or unknown table naming the row is never refused nor kept"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -217,6 +236,7 @@ new = '        asked = []'
 [[rows]]
 id = "u288.M4_target_id_not_asked"
 source = { table = "u288.json", id = "M4_target_id_not_asked" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "content_references: drop the TargetID column, so an image row naming the track is left naming a row that is gone"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -227,6 +247,7 @@ new = '        if False:'
 [[rows]]
 id = "u288.M8_memberships_kept"
 source = { table = "u288.json", id = "M8_memberships_kept" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "remove_from_collection: delete from the five tables after the membership table only, so the track's memberships stay naming a row that is gone"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -237,6 +258,7 @@ new = '    for table in COLLECTION_REMOVAL_TABLES[2:]:'
 [[rows]]
 id = "u288.M9_whose_row_disappeared"
 source = { table = "u288.json", id = "M9_whose_row_disappeared" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "collection_removal_violations: let any row of any table disappear"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -247,6 +269,7 @@ new = '            if False:'
 [[rows]]
 id = "a32.A6_policy_left_behind"
 source = { table = "a32.json", id = "A6_policy_left_behind" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The commit's policies are left registered after the body, in the shared context manager"
 file = "src/cratekit/core/rb_tables.py"
 surface = "maintainer"
@@ -264,6 +287,7 @@ new = '''
 [[rows]]
 id = "a32.V4_policy_unrestricted"
 source = { table = "a32.json", id = "V4_policy_unrestricted" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The probe policy builder admits a column outside the probe set"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"
@@ -278,6 +302,7 @@ new = '''
 [[rows]]
 id = "r746-a.G8_key_dropped_from_the_content_policy"
 source = { table = "r746-a.json", id = "G8_key_dropped_from_the_content_policy" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "CONTENT_ROW_EMPTY_COLUMNS: KeyID is no longer a column a new content row must leave empty"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"
@@ -290,6 +315,7 @@ new = '        "SampleRate",'
 [[rows]]
 id = "r923.N18_policy_owns_the_fields"
 source = { table = "r923.json", id = "N18_policy_owns_the_fields" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The defaults policy owns its fields outright instead of filling only an empty one"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"
@@ -300,6 +326,7 @@ new = '    fields=MappingProxyType(dict.fromkeys(CONTENT_ROW_DEFAULTS, Ownership
 [[rows]]
 id = "r923.N19_default_is_an_analysis_column"
 source = { table = "r923.json", id = "N19_default_is_an_analysis_column" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "A tempo joins the defaults table, so the landing would declare an analysis column"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"
@@ -315,6 +342,7 @@ new = '''
 [[rows]]
 id = "u111-a.A6_playlist_not_removable"
 source = { table = "u111-a.json", id = "A6_playlist_not_removable" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "REMOVABLE_TABLES loses the playlist table, so the rotation's commit cannot carry a removed node"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"
@@ -325,6 +353,7 @@ new = 'REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE})'
 [[rows]]
 id = "u115.F3_file_id_policy_fill_if_empty"
 source = { table = "u115.json", id = "F3_file_id_policy_fill_if_empty" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The file id policy fills only an empty column, so a random id present on the row is never replaced"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"
@@ -335,6 +364,7 @@ new = '    fields=MappingProxyType({FILE_ID_COLUMN: Ownership.FILL_IF_EMPTY}),'
 [[rows]]
 id = "u115.F4_binding_limit_coefficient"
 source = { table = "u115.json", id = "F4_binding_limit_coefficient" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The binding's id limit is taken as 32 bits rather than 28"
 file = "src/cratekit/core/rb_tables.py"
 surface = "maintainer"
@@ -345,6 +375,7 @@ new = 'BINDING_ID_LIMIT = 1 << 32'
 [[rows]]
 id = "u163.W16_admittable_key"
 source = { table = "u163.json", id = "W16_admittable_key" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "ADMITTABLE_ROW_TABLES: admit djmdKey beside the lookups"
 file = "src/cratekit/core/rb_tables.py"
 surface = "user"

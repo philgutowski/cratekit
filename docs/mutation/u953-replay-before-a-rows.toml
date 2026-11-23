@@ -320,6 +320,7 @@ new = '            pass'
 [[rows]]
 id = "r746-a.G1_asking_for_any_table_is_not_refused"
 source = { table = "r746-a.json", id = "G1_asking_for_any_table_is_not_refused" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_changes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "guard_violations: a creation asked for in a table outside ADMITTABLE_ROW_TABLES is no longer itself a violation"
 file = "src/cratekit/core/rb_changes.py"
 surface = "user"
@@ -334,6 +335,7 @@ new = '''
 [[rows]]
 id = "r746-a.G2_admitted_row_judged_without_the_column_policy"
 source = { table = "r746-a.json", id = "G2_admitted_row_judged_without_the_column_policy" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_changes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "guard_violations: an admitted content row may declare any column, the ten included"
 file = "src/cratekit/core/rb_changes.py"
 surface = "user"
@@ -344,6 +346,7 @@ new = '            declared = set()'
 [[rows]]
 id = "r746-a.G3_content_row_admitted_without_asking"
 source = { table = "r746-a.json", id = "G3_content_row_admitted_without_asking" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_changes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "guard_violations: every commit admits a content row, whether or not it named the table"
 file = "src/cratekit/core/rb_changes.py"
 surface = "user"
@@ -354,6 +357,7 @@ new = '        if table == CONTENT_TABLE:'
 [[rows]]
 id = "r758-a.W1_marker_not_judged"
 source = { table = "r758-a.json", id = "W1_marker_not_judged" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_changes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "the guard stops judging a changed soft delete marker, so any writer removes a row in any table with the guard saying nothing"
 file = "src/cratekit/core/rb_changes.py"
 surface = "user"
@@ -368,6 +372,7 @@ new = '''
 [[rows]]
 id = "r758-a.W2_asked_table_not_held_to_the_set"
 source = { table = "r758-a.json", id = "W2_asked_table_not_held_to_the_set" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_changes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "a commit that asks for a removal in any table is admitted it, the refusal of the ask left standing"
 file = "src/cratekit/core/rb_changes.py"
 surface = "user"
@@ -380,6 +385,7 @@ new = ''
 [[rows]]
 id = "r758-a.W3_ask_outside_the_set_not_refused"
 source = { table = "r758-a.json", id = "W3_ask_outside_the_set_not_refused" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_changes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "asking for a removal outside the removable set is no longer itself a violation, the intersection left standing"
 file = "src/cratekit/core/rb_changes.py"
 surface = "user"
@@ -390,6 +396,7 @@ new = '    for table in sorted(admitted - admitted):'
 [[rows]]
 id = "u163.W15_lookup_policy"
 source = { table = "u163.json", id = "W15_lookup_policy" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_changes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "guard_violations: wave an admitted lookup row through without the creation policy"
 file = "src/cratekit/core/rb_changes.py"
 surface = "user"
@@ -411,6 +418,7 @@ new = '''
 [[rows]]
 id = "u288.M1_delete_admitted_by_any_name"
 source = { table = "u288.json", id = "M1_delete_admitted_by_any_name" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_changes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "guard_violations: admit a delete in any table once any table is named, not only the named one"
 file = "src/cratekit/core/rb_changes.py"
 surface = "user"
@@ -425,6 +433,7 @@ new = '''
 [[rows]]
 id = "u288.M2_deletable_set_unbounded"
 source = { table = "u288.json", id = "M2_deletable_set_unbounded" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_changes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "guard_violations: stop holding the named tables to DELETABLE_TABLES, so a commit can ask to delete anywhere"
 file = "src/cratekit/core/rb_changes.py"
 surface = "user"
@@ -445,6 +454,7 @@ new = '    r_created, r_modified, r_removed = _registry_changes(db)'
 [[rows]]
 id = "r1665-b.C1_w5_composite"
 source = { table = "r1665-b.json", id = "C1_w5_composite" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The composite for the zero W5_unreadable_check_passes in r1665.md, what it holds with the open refusal: an open the gate refuses and a consistency check that raises both answer True"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -469,6 +479,7 @@ new = '''
 [[rows]]
 id = "r1665.W1_check_opens_the_capture"
 source = { table = "r1665.json", id = "W1_check_opens_the_capture" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "integrity_ok: open the file it is given rather than its throwaway copy, the defect itself"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -479,6 +490,7 @@ new = '                db = _writer().open_db(snapshot_database, check_app_versi
 [[rows]]
 id = "r1665.W2_failed_copy_passes"
 source = { table = "r1665.json", id = "W2_failed_copy_passes" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "integrity_ok: a throwaway copy that cannot be made answers True"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -495,6 +507,7 @@ new = '''
 [[rows]]
 id = "r1665.W3_no_release_of_the_copy"
 source = { table = "r1665.json", id = "W3_no_release_of_the_copy" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "integrity_ok: release only the session, leaving the pooled connection on the throwaway copy open while it is removed"
 file = "src/cratekit/core/rb_copies.py"
 surface = "maintainer"
@@ -509,6 +522,7 @@ new = '''
 [[rows]]
 id = "r1665.W4_quick_check_ignored"
 source = { table = "r1665.json", id = "W4_quick_check_ignored" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "integrity_ok: answer True whatever quick_check says"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -519,6 +533,7 @@ new = '                return True'
 [[rows]]
 id = "r1665.W6_refused_open_passes"
 source = { table = "r1665.json", id = "W6_refused_open_passes" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "integrity_ok: an open the gate refuses answers True"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -533,6 +548,7 @@ new = '''
 [[rows]]
 id = "r1677.R1_raise_after_copy"
 source = { table = "r1677.json", id = "R1_raise_after_copy" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "integrity_ok: raise the copy failure for any OSError, after the copy too, so an open that fails is told as no room"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -543,6 +559,7 @@ new = '        if raise_copy_failure:'
 [[rows]]
 id = "r1677.R3_copied_never_set"
 source = { table = "r1677.json", id = "R3_copied_never_set" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "integrity_ok: never mark the copy made, so an error after it raises as a copy failure"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -557,6 +574,7 @@ new = '''
 [[rows]]
 id = "r1677.R5_file_set_drops_playlist"
 source = { table = "r1677.json", id = "R5_file_set_drops_playlist" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "_copy_file_set: copy the companions but not the playlist file, so the measured list and the copied list drift"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -598,6 +616,7 @@ def _gone(row):
 [[rows]]
 id = "r372-a.A10_copy_left_behind"
 source = { table = "r372-a.json", id = "A10_copy_left_behind" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "disposable_copy: leave the temporary directory and the copy in it"
 file = "src/cratekit/core/rb_copies.py"
 surface = "maintainer"
@@ -608,6 +627,7 @@ new = '        pass'
 [[rows]]
 id = "r372-a.A11_copy_under_a_running_application"
 source = { table = "r372-a.json", id = "A11_copy_under_a_running_application" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "read_only_copy: drop its own closed assertion, the layer beneath doctor and setup"
 file = "src/cratekit/core/rb_copies.py"
 surface = "maintainer"
@@ -618,6 +638,7 @@ new = '    pass'
 [[rows]]
 id = "r372-a.A12_separator_kept"
 source = { table = "r372-a.json", id = "A12_separator_kept" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "recorded_db_drives: keep the trailing separator rekordbox stores, so the rule never matches"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -628,6 +649,7 @@ new = '        stripped = value.strip()'
 [[rows]]
 id = "r663-a.M1_empty_not_refused_before_open"
 source = { table = "r663-a.json", id = "M1_empty_not_refused_before_open" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "the size of the copy is no longer asked before the open, so an empty copy reaches the binding and is classified only if the canary is what fails"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -638,6 +660,7 @@ new = '        refusal = None'
 [[rows]]
 id = "r663-a.M5_failed_listing_returns_empty_set"
 source = { table = "r663-a.json", id = "M5_failed_listing_returns_empty_set" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "a table listing whose query fails answers an empty set rather than None, so a file that could not be read is reported as holding nothing"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -654,6 +677,7 @@ new = '''
 [[rows]]
 id = "r663-a.M6_listing_opened_with_the_key_always"
 source = { table = "r663-a.json", id = "M6_listing_opened_with_the_key_always" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "the table listing opens every copy with the key rather than asking the header, so a plain foreign file cannot be listed"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -664,6 +688,7 @@ new = '            db = Rekordbox6Database(path=str(copied), unlock=True)'
 [[rows]]
 id = "r663-b.M2_every_open_refusal_classified"
 source = { table = "r663-b.json", id = "M2_every_open_refusal_classified" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_copies.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "the canary reason gate is removed, so any refusal on the way in, a pin or a failed open, is also asked whether the copy is a library"
 file = "src/cratekit/core/rb_copies.py"
 surface = "user"
@@ -917,6 +942,7 @@ def _gone(row):
 [[rows]]
 id = "r235-b.M22_nested_namesake_is_a_root"
 source = { table = "r235-b.json", id = "M22_nested_namesake_is_a_root" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "a folder of the tree's name anywhere in the library is a candidate root"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -929,6 +955,7 @@ new = '        if _is_folder(playlist)'
 [[rows]]
 id = "r235-b.M23_playlist_is_a_root"
 source = { table = "r235-b.json", id = "M23_playlist_is_a_root" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "a playlist of the tree's name under the playlist root is a candidate root"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -941,6 +968,7 @@ new = '        if str(getattr(playlist, "ParentID", "")) in ROOT_PARENT_SENTINEL
 [[rows]]
 id = "r758-a.W7_removed_row_marked_again"
 source = { table = "r758-a.json", id = "W7_removed_row_marked_again" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "remove_memberships marks a row that is already removed and reports it, so a second removal counts a row it did not remove"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -951,6 +979,7 @@ new = '        if key not in wanted:'
 [[rows]]
 id = "u111-a.A1_folder_refused"
 source = { table = "u111-a.json", id = "A1_folder_refused" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The writer no longer refuses a folder or smart playlist as the node it moves or removes"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -965,6 +994,7 @@ new = '''
 [[rows]]
 id = "u111-a.A3_parent_not_folder"
 source = { table = "u111-a.json", id = "A3_parent_not_folder" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "move_playlist_node no longer refuses a parent that is not a live folder"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -975,6 +1005,7 @@ new = '    if False:'
 [[rows]]
 id = "u111-a.A4_memberships_unmarked"
 source = { table = "u111-a.json", id = "A4_memberships_unmarked" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "remove_playlist_node marks the node and leaves its own memberships live"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -989,6 +1020,7 @@ new = '''
 [[rows]]
 id = "u111-a.A5_node_unmarked"
 source = { table = "u111-a.json", id = "A5_node_unmarked" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "remove_playlist_node marks the memberships and never the node itself"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -1004,6 +1036,7 @@ new = '''
 [[rows]]
 id = "u111-a.A7_content_compared"
 source = { table = "u111-a.json", id = "A7_content_compared" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The node judge no longer compares the content table"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -1018,6 +1051,7 @@ new = '''
 [[rows]]
 id = "u111-b.A10_renumber_scoped"
 source = { table = "u111-b.json", id = "A10_renumber_scoped" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The node judge admits a position change in any parent, not only one a node left or joined"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -1034,6 +1068,7 @@ new = '''
 [[rows]]
 id = "u111-b.A12_removed_keeps_no_live"
 source = { table = "u111-b.json", id = "A12_removed_keeps_no_live" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The node judge no longer asks that a removed node keeps no live membership"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -1044,6 +1079,7 @@ new = '        if False:'
 [[rows]]
 id = "u111-b.A13_confinement_raises"
 source = { table = "u111-b.json", id = "A13_confinement_raises" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "assert_node_changes_confined computes the violations and never raises"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -1064,6 +1100,7 @@ new = '''
 [[rows]]
 id = "u111-b.A8_membership_owner"
 source = { table = "u111-b.json", id = "A8_membership_owner" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The node judge admits a changed membership in any playlist, not only a removed one"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -1078,6 +1115,7 @@ new = '''
 [[rows]]
 id = "u111-b.A9_planned_move_made"
 source = { table = "u111-b.json", id = "A9_planned_move_made" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The node judge no longer asks whether each planned move sits live under its folder"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -1088,6 +1126,7 @@ new = '        if new is None:'
 [[rows]]
 id = "u127.W1_writable_always"
 source = { table = "u127.json", id = "W1_writable_always" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The writer's question always answers writable"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -1104,6 +1143,7 @@ new = '''
 [[rows]]
 id = "u127.W2_writable_reason_drift"
 source = { table = "u127.json", id = "W2_writable_reason_drift" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "The writer's question reads another reason than the writer raises"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -1114,6 +1154,7 @@ new = '        if exc.cause.reason != "mytag-category-missing":'
 [[rows]]
 id = "u288.M15_append_past_highest"
 source = { table = "u288.json", id = "M15_append_past_highest" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_nodes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "add_memberships: keep the binding's count plus one, so an append after a removal lands on a live row's position"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -1139,6 +1180,7 @@ new = '''
 [[rows]]
 id = "u211.W1_writer_falls_back"
 source = { table = "u211.json", id = "W1_writer_falls_back" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_probes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "_asked_or_scanned: re-raise pyrekordbox's error instead of asking the careful scan, the defect itself"
 file = "src/cratekit/core/rb_probes.py"
 surface = "user"
@@ -1149,6 +1191,7 @@ new = '        raise'
 [[rows]]
 id = "u211.W3_strict_at_commit"
 source = { table = "u211.json", id = "W3_strict_at_commit" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_probes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "_binding_probe: answer zero at commit too when the scan cannot confirm, so the binding commits over an unreadable live process"
 file = "src/cratekit/core/rb_probes.py"
 surface = "user"
@@ -1165,6 +1208,7 @@ new = '''
 [[rows]]
 id = "u211.W7_writer_unconfirmed_with_nothing_read"
 source = { table = "u211.json", id = "W7_writer_unconfirmed_with_nothing_read" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_probes.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "rekordbox_processes_running in the writer: a probe that could not confirm, with no rekordbox process read at all, answers clear instead of refusing"
 file = "src/cratekit/core/rb_probes.py"
 surface = "user"
@@ -1199,6 +1243,7 @@ new = '            if globals()[probe_name]():'
 [[rows]]
 id = "r1830.M10_planned_number_not_asked"
 source = { table = "r1830.json", id = "M10_planned_number_not_asked" }
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
 description = "renumber_memberships: write the new number whatever the row holds now"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
