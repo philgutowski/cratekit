@@ -124,6 +124,20 @@ def always_verified(_path: Path) -> bool:
     return True
 
 
+def _refusal(call, /, *arguments, **keywords):
+    """The cause of the ``CratekitError`` that ``call`` raises, failing if none is."""
+    with pytest.raises(CratekitError) as excinfo:
+        call(*arguments, **keywords)
+    return excinfo.value.cause
+
+
+def _refused(call, /, *arguments, **keywords) -> CratekitError:
+    """The ``CratekitError`` that ``call`` raises, failing if none is."""
+    with pytest.raises(CratekitError) as excinfo:
+        call(*arguments, **keywords)
+    return excinfo.value
+
+
 def write_state(cfg, key: str, payload) -> Path:
     """Put a document at one declared state entry and return its path."""
     path = config.state_path(key, cfg)
@@ -248,10 +262,9 @@ def test_a_capture_that_failed_its_integrity_check_is_never_restored_from(cfg, h
     captured = snapshot.capture(cfg, verifier=lambda _path: False)
     session.attach_capture(record, captured.root, cfg)
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.plan(cfg, record.session_id, held=held)
+    cause = _refusal(restore.plan, cfg, record.session_id, held=held)
 
-    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
+    assert cause.reason == "snapshot-integrity-failed"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -268,10 +281,8 @@ def test_restoring_across_a_later_committed_session_refuses_and_names_the_counts
         trees=(("routing", 7, 2), ("intake", 1, 0)),
     )
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.plan(cfg, older.session_id, held=held)
+    cause = _refusal(restore.plan, cfg, older.session_id, held=held)
 
-    cause = excinfo.value.cause
     assert cause.reason == "restore-discards-committed-work"
     assert cause.code is ExitCode.DECISION_REQUIRED
     # Tree and count, since one aggregate cannot answer the question asked.
@@ -474,10 +485,9 @@ def _assert_the_next_write_is_refused_over(cfg, tree_id: str) -> None:
 
     from cratekit.core import convergence  # noqa: PLC0415
 
-    with pytest.raises(CratekitError) as excinfo:
-        convergence.assert_converged(cfg, tree_id)
-    assert excinfo.value.cause.reason == "tree-unconverged"
-    assert excinfo.value.cause.detail["tree_id"] == tree_id
+    cause = _refusal(convergence.assert_converged, cfg, tree_id)
+    assert cause.reason == "tree-unconverged"
+    assert cause.detail["tree_id"] == tree_id
 
 
 def test_a_restore_predating_a_cutover_marks_that_tree_unconverged(cfg, held):
@@ -649,10 +659,9 @@ def test_pruning_refuses_before_the_session_it_belongs_to_has_committed(cfg):
     captured = take_capture(cfg)
     session.attach_capture(record, captured.root, cfg)
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.prune(cfg, owning=record)
+    cause = _refusal(restore.prune, cfg, owning=record)
 
-    assert "has not committed" in excinfo.value.cause.message
+    assert "has not committed" in cause.message
     assert captured.root.is_dir()
 
     session.close_session(record, cfg, **_close_seams(cfg))
@@ -773,10 +782,9 @@ def test_a_session_refuses_before_snapshotting_when_the_store_cannot_fit_one(
 
     with session.assert_gates(cfg, workflow="library-sweep", **gate_seams(cfg)):
         record = session.open_session(cfg, workflow="library-sweep")
-        with pytest.raises(CratekitError) as excinfo:
-            snapshot.capture(cfg, verifier=always_verified)
+        cause = _refusal(snapshot.capture, cfg, verifier=always_verified)
 
-    assert excinfo.value.cause.reason == "snapshot-store-full"
+    assert cause.reason == "snapshot-store-full"
     assert record.snapshot_path is None, "a refused capture is never attached"
 
 
@@ -787,10 +795,8 @@ def test_a_refused_capture_leaves_no_partial_file(cfg, monkeypatch):
     store = snapshot.store_root(cfg)
     before = _fingerprint(store.parent)
 
-    with pytest.raises(CratekitError) as excinfo:
-        snapshot.capture(cfg, verifier=always_verified)
+    cause = _refusal(snapshot.capture, cfg, verifier=always_verified)
 
-    cause = excinfo.value.cause
     assert cause.reason == "snapshot-store-full"
     assert cause.code is ExitCode.PRECONDITION
     assert cause.remediation.steps, "freeing disk is not a command, so it rides as steps"
@@ -814,11 +820,10 @@ def test_free_space_that_cannot_be_read_refuses_rather_than_passing(cfg, monkeyp
     """
     monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: None)
 
-    with pytest.raises(CratekitError) as excinfo:
-        snapshot.capture(cfg, verifier=always_verified)
+    cause = _refusal(snapshot.capture, cfg, verifier=always_verified)
 
-    assert excinfo.value.cause.reason == "snapshot-store-full"
-    assert "could not be read" in excinfo.value.cause.message
+    assert cause.reason == "snapshot-store-full"
+    assert "could not be read" in cause.message
 
 
 def test_the_capacity_estimate_counts_allocation_rather_than_apparent_size(cfg):
@@ -1429,10 +1434,9 @@ def test_a_restore_refuses_while_rekordbox_holds_the_database(cfg, held, monkeyp
         "cratekit.core.processes.running_process_names", lambda: ("rekordbox",)
     )
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held)
+    cause = _refusal(restore.run, decided, cfg, held=held)
 
-    assert excinfo.value.cause.reason == "rekordbox-running"
+    assert cause.reason == "rekordbox-running"
 
 
 @pytest.mark.parametrize(
@@ -1456,10 +1460,9 @@ def test_a_wrong_document_is_never_read_as_an_empty_one(cfg, document, why):
     config.mkdir_private(path.parent)
     path.write_text(document)
 
-    with pytest.raises(CratekitError) as excinfo:
-        reconcile.outstanding(cfg)
+    cause = _refusal(reconcile.outstanding, cfg)
 
-    assert excinfo.value.cause.reason == "restore-record-unusable", why
+    assert cause.reason == "restore-record-unusable", why
 
 
 def _run_side_by_side(script: str, argument_lists) -> None:
@@ -1589,10 +1592,9 @@ def test_a_capture_whose_manifest_names_a_path_outside_the_set_is_refused(cfg, h
     )
     (captured.root / snapshot.MANIFEST_NAME).write_text(json.dumps(manifest))
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.plan(cfg, record.session_id, held=held)
+    cause = _refusal(restore.plan, cfg, record.session_id, held=held)
 
-    assert "not a path any restore may replace" in excinfo.value.cause.message
+    assert "not a path any restore may replace" in cause.message
 
 
 def test_the_unconverged_decision_reads_the_captured_registry_not_a_date(cfg):
@@ -1610,10 +1612,9 @@ def test_a_held_session_used_after_its_block_is_refused(cfg):
         decided = restore.plan(cfg, record.session_id, held=open_session)
     assert not open_session.still_open
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=open_session)
+    cause = _refusal(restore.run, decided, cfg, held=open_session)
 
-    assert "not held by this process" in excinfo.value.cause.message
+    assert "not held by this process" in cause.message
     assert config.state_path("rekordbox_db", cfg).exists()
 
 
@@ -1630,10 +1631,9 @@ def test_a_restore_handed_an_ordinary_write_session_is_refused(cfg, held):
         token=held.token,
     )
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.plan(cfg, record.session_id, held=pretending)
+    cause = _refusal(restore.plan, cfg, record.session_id, held=pretending)
 
-    assert "declares itself a recovery" in excinfo.value.cause.message
+    assert "declares itself a recovery" in cause.message
 
 
 def test_a_rehearsal_reports_what_is_outstanding_rather_than_what_it_recorded(cfg, held):
@@ -1708,10 +1708,9 @@ def test_blocking_1_a_bare_metal_session_cannot_be_spent_on_the_library_it_refus
         assert bare_metal.authorises == replacement
         assert not bare_metal.authorises_path(cfg.library.root)
 
-        with pytest.raises(CratekitError) as refused:
-            restore.plan(cfg, record.session_id, held=bare_metal)
+        refused = _refusal(restore.plan, cfg, record.session_id, held=bare_metal)
 
-    cause = refused.value.cause
+    cause = refused
     assert "no session is recorded" in cause.message
     assert str(replacement) in cause.message
     assert str(cfg.library.root) not in cause.message
@@ -1856,12 +1855,11 @@ def test_u95_a_bare_metal_plan_never_reads_the_capture_the_refused_library_holds
     replacement_before = _tree_bytes(replacement)
 
     with _bare_metal(cfg, replacement) as bare_metal:
-        with pytest.raises(CratekitError) as refused:
-            restore.plan(cfg, record.session_id, held=bare_metal)
+        refused = _refusal(restore.plan, cfg, record.session_id, held=bare_metal)
 
     assert not moved_capture.exists() and captured.root.is_dir()
-    assert str(replacement) in refused.value.cause.message
-    assert str(cfg.library.root) not in refused.value.cause.message
+    assert str(replacement) in refused.message
+    assert str(cfg.library.root) not in refused.message
     assert _tree_bytes(cfg.library.root) == library_before
     assert _tree_bytes(replacement) == replacement_before
 
@@ -1932,11 +1930,10 @@ def test_u95_a_plan_built_for_the_target_is_refused_under_a_library_session(cfg,
     with restore.recovery_session(cfg, **gate_seams(cfg)) as library_session:
         # Compared inside the block, since the session writes its own record.
         inside = _tree_bytes(cfg.library.root)
-        with pytest.raises(CratekitError) as refused:
-            restore.run(for_the_target, cfg, held=library_session)
+        refused = _refusal(restore.run, for_the_target, cfg, held=library_session)
         assert _tree_bytes(cfg.library.root) == inside
 
-    cause = refused.value.cause
+    cause = refused
     assert "authorises" in cause.message
     assert cause.detail["authorises"] == str(cfg.library.root)
     assert _under(cause.detail["writing"], replacement)
@@ -1958,10 +1955,9 @@ def test_u95_a_library_session_still_refuses_a_configuration_for_another_library
         ),
     )
 
-    with pytest.raises(CratekitError) as refused:
-        restore.plan(elsewhere, record.session_id, held=held)
+    refused = _refusal(restore.plan, elsewhere, record.session_id, held=held)
 
-    cause = refused.value.cause
+    cause = refused
     assert "authorises" in cause.message
     assert cause.detail["writing"] == str(other)
     assert cause.detail["authorises"] == str(cfg.library.root)
@@ -2011,9 +2007,8 @@ def test_u95_the_staging_directory_is_a_write_location_and_is_authorised_too(
     aimed_away = dataclasses.replace(decided, pre_restore_root=stray)
 
     for dry_run in (True, False):
-        with pytest.raises(CratekitError) as refused:
-            restore.run(aimed_away, cfg, held=held, dry_run=dry_run)
-        assert refused.value.cause.detail["writing"] == str(stray)
+        refused = _refusal(restore.run, aimed_away, cfg, held=held, dry_run=dry_run)
+        assert refused.detail["writing"] == str(stray)
 
     assert log.read_bytes() == b"transactions no capture holds"
     assert not stray.exists()
@@ -2042,9 +2037,8 @@ def test_u95_staging_inside_the_library_but_not_under_its_store_is_refused(
     before = _tree_bytes(cfg.library.root)
 
     for dry_run in (True, False):
-        with pytest.raises(CratekitError) as refused:
-            restore.run(tampered, cfg, held=held, dry_run=dry_run)
-        assert "stages live companion files" in refused.value.cause.message
+        refused = _refusal(restore.run, tampered, cfg, held=held, dry_run=dry_run)
+        assert "stages live companion files" in refused.message
 
     assert (bystander / "keep.txt").read_bytes() == b"not this restore's to touch"
     assert _tree_bytes(cfg.library.root) == before
@@ -2059,10 +2053,9 @@ def test_u95_plan_checks_its_own_answer_rather_than_trusting_the_derivation(
     stray = tmp_path / "not-the-library" / "staged" / "attempt"
     monkeypatch.setattr(restore, "_pre_restore_root", lambda _cfg, now=None: stray)
 
-    with pytest.raises(CratekitError) as refused:
-        restore.plan(cfg, record.session_id, held=held)
+    refused = _refusal(restore.plan, cfg, record.session_id, held=held)
 
-    assert refused.value.cause.detail["writing"] == str(stray)
+    assert refused.detail["writing"] == str(stray)
     assert not stray.exists()
 
 
@@ -2080,9 +2073,8 @@ def test_u95_a_step_aimed_at_the_authorised_directory_itself_is_refused(cfg, hel
     before = _tree_bytes(cfg.library.root)
 
     for dry_run in (True, False):
-        with pytest.raises(CratekitError) as refused:
-            restore.run(tampered, cfg, held=held, dry_run=dry_run)
-        assert "not a path any restore" in refused.value.cause.message
+        refused = _refusal(restore.run, tampered, cfg, held=held, dry_run=dry_run)
+        assert "not a path any restore" in refused.message
 
     assert _tree_bytes(cfg.library.root) == before
 
@@ -2147,10 +2139,9 @@ def test_blocking_1_a_held_naming_an_unrelated_lock_this_process_holds_is_refuse
         assert str(lock.absolute()) in session._HELD
         assert not forged.still_open
 
-        with pytest.raises(CratekitError) as excinfo:
-            restore.plan(cfg, record.session_id, held=forged)
+        cause = _refusal(restore.plan, cfg, record.session_id, held=forged)
 
-    assert "not held by this process" in excinfo.value.cause.message
+    assert "not held by this process" in cause.message
 
 
 def test_blocking_1_a_token_is_withdrawn_when_its_guard_returns(cfg):
@@ -2179,11 +2170,10 @@ def test_blocking_2_a_capture_whose_database_is_gone_refuses_before_the_log_is_t
     log.write_bytes(b"committed transactions the main file does not hold")
     captured.database.unlink()
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.plan(cfg, record.session_id, held=held)
+    cause = _refusal(restore.plan, cfg, record.session_id, held=held)
 
-    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
-    assert "no longer on disk" in excinfo.value.cause.message
+    assert cause.reason == "snapshot-integrity-failed"
+    assert "no longer on disk" in cause.message
     assert log.read_bytes() == b"committed transactions the main file does not hold"
 
 
@@ -2212,10 +2202,8 @@ def test_blocking_2_a_failure_mid_restore_is_a_structured_refusal(cfg, held, mon
 
     monkeypatch.setattr(restore, "_replace_file", _explode)
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held)
+    cause = _refusal(restore.run, decided, cfg, held=held)
 
-    cause = excinfo.value.cause
     assert cause.reason == "restore-step-failed"
     assert cause.code is ExitCode.PRECONDITION
     assert cause.remediation.steps
@@ -2406,11 +2394,10 @@ def test_the_rehearsal_refuses_a_replacement_whose_source_is_gone(cfg, held):
     )
     replacement.source.unlink()
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held, dry_run=True)
+    cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
-    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
-    assert str(captured.root) in str(excinfo.value.cause.detail)
+    assert cause.reason == "snapshot-integrity-failed"
+    assert str(captured.root) in str(cause.detail)
 
 
 def test_the_rehearsal_refuses_a_target_directory_nobody_can_write_to(cfg, held):
@@ -2421,13 +2408,12 @@ def test_the_rehearsal_refuses_a_target_directory_nobody_can_write_to(cfg, held)
     database_dir.chmod(0o500)
 
     try:
-        with pytest.raises(CratekitError) as excinfo:
-            restore.run(decided, cfg, held=held, dry_run=True)
+        cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
     finally:
         database_dir.chmod(0o700)
 
-    assert excinfo.value.cause.reason == "restore-step-failed"
-    assert "not writable" in excinfo.value.cause.message
+    assert cause.reason == "restore-step-failed"
+    assert "not writable" in cause.message
 
 
 def test_a_plan_built_before_a_later_commit_is_refused_at_run(cfg, held):
@@ -2437,10 +2423,9 @@ def test_a_plan_built_before_a_later_commit_is_refused_at_run(cfg, held):
 
     completed_session(cfg, started="2026-08-03T00:00:00+00:00", stamp="later-capture")
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held)
+    cause = _refusal(restore.run, decided, cfg, held=held)
 
-    assert excinfo.value.cause.reason == "restore-discards-committed-work"
+    assert cause.reason == "restore-discards-committed-work"
     assert config.state_path("rekordbox_db", cfg).exists()
 
 
@@ -2450,12 +2435,10 @@ def test_a_reconciliation_store_on_an_unmounted_volume_is_not_an_empty_one(cfg):
     shutil.rmtree(cfg.library.root)
 
     for reader in (reconcile.records, reconcile.outstanding, reconcile.converged):
-        with pytest.raises(CratekitError) as excinfo:
-            reader(cfg)
-        assert excinfo.value.cause.reason == "restore-record-unusable"
+        cause = _refusal(reader, cfg)
+        assert cause.reason == "restore-record-unusable"
 
-    with pytest.raises(CratekitError):
-        session.close_session(stranded, cfg)
+    _refusal(session.close_session, stranded, cfg)
 
 
 def test_a_same_length_edit_inside_a_coupled_directory_still_marks(cfg, held):
@@ -2476,10 +2459,9 @@ def test_pruning_with_no_session_named_asks_the_log_instead_of_skipping(cfg):
     """``owning=None`` asks the log rather than checking nothing."""
     session.open_session(cfg, workflow="library-sweep")
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.prune(cfg)
+    cause = _refusal(restore.prune, cfg)
 
-    assert "not reached a terminal state" in excinfo.value.cause.message
+    assert "not reached a terminal state" in cause.message
 
 
 def test_the_tree_shortness_handoff_calls_the_module_that_owns_the_gate(
@@ -2798,10 +2780,9 @@ def test_round3_a_volume_between_the_two_rules_is_refused(cfg, held, monkeypatch
     assert estimate > largest_single, "the estimate is still one step's worth"
 
     monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: int(largest_single * 1.2))
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held, dry_run=True)
+    cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
-    assert excinfo.value.cause.reason == "snapshot-store-full"
+    assert cause.reason == "snapshot-store-full"
     assert config.state_path("rekordbox_db", cfg).read_bytes()[:1] == b"d"
 
 
@@ -2829,11 +2810,10 @@ def test_round2_the_restore_capacity_refusal_names_the_library_volume(
     record, _captured = completed_session(cfg)
     decided = restore.plan(cfg, record.session_id, held=held)
     monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: 1)
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held, dry_run=True)
+    cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
-    assert excinfo.value.cause.reason == "snapshot-store-full"
-    assert "LIBRARY volume" in " ".join(excinfo.value.cause.remediation.steps)
+    assert cause.reason == "snapshot-store-full"
+    assert "LIBRARY volume" in " ".join(cause.remediation.steps)
 
 
 def test_round2_a_pre_cutover_restore_is_gated_rather_than_merely_recorded(cfg, held):
@@ -2888,13 +2868,12 @@ def test_round2_a_directory_replacement_checks_its_parent_not_itself(cfg, held):
     coupled_parent.chmod(0o500)
 
     try:
-        with pytest.raises(CratekitError) as excinfo:
-            restore.run(decided, cfg, held=held, dry_run=True)
+        cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
     finally:
         coupled_parent.chmod(0o700)
 
-    assert excinfo.value.cause.reason == "restore-step-failed"
-    assert str(coupled_parent) in excinfo.value.cause.message
+    assert cause.reason == "restore-step-failed"
+    assert str(coupled_parent) in cause.message
 
 
 def test_round2_a_held_rebuilt_around_a_live_token_is_refused(cfg, tmp_path):
@@ -2918,10 +2897,9 @@ def test_round2_a_held_rebuilt_around_a_live_token_is_refused(cfg, tmp_path):
         )
         assert not laundered.still_open
 
-        with pytest.raises(CratekitError) as excinfo:
-            restore.plan(cfg, record.session_id, held=laundered)
+        cause = _refusal(restore.plan, cfg, record.session_id, held=laundered)
 
-    assert "not held by this process" in excinfo.value.cause.message
+    assert "not held by this process" in cause.message
     assert config.state_path("rekordbox_db", cfg).read_bytes() == (
         b"database, generation one"
     )
@@ -2943,15 +2921,15 @@ def test_round2_a_close_against_a_husk_is_refused_by_the_volume_gate(cfg):
     assert root.is_dir(), "the fixture is not the shape this test is about"
 
     # A stale stub reports the identity of whatever disk now holds the mount point.
-    with pytest.raises(CratekitError) as excinfo:
-        session.close_session(
-            stranded,
-            cfg,
-            identity_provider=lambda _path: _ELSEWHERE,
-            mount_enumerator=lambda: (),
-        )
+    cause = _refusal(
+        session.close_session,
+        stranded,
+        cfg,
+        identity_provider=lambda _path: _ELSEWHERE,
+        mount_enumerator=lambda: (),
+    )
 
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
 
     # Abandoning stays allowed, or a run could be neither finished nor given up.
     ended = session.close_session(stranded, cfg, state=session.SessionState.ABANDONED)
@@ -2964,9 +2942,8 @@ def test_round2_the_readers_still_answer_identically_on_a_gone_library(cfg):
     shutil.rmtree(cfg.library.root)
 
     for reader in (reconcile.records, reconcile.outstanding, reconcile.converged):
-        with pytest.raises(CratekitError) as excinfo:
-            reader(cfg)
-        assert excinfo.value.cause.reason == "restore-record-unusable"
+        cause = _refusal(reader, cfg)
+        assert cause.reason == "restore-record-unusable"
 
 
 def test_round2_a_write_against_a_husk_does_not_rebuild_the_state_tree(cfg):
@@ -3022,13 +2999,12 @@ def test_round3_an_unwritable_coupled_directory_refuses_at_the_rehearsal(cfg, he
     coupled.chmod(0o500)
 
     try:
-        with pytest.raises(CratekitError) as excinfo:
-            restore.run(decided, cfg, held=held, dry_run=True)
+        cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
     finally:
         coupled.chmod(0o700)
 
-    assert excinfo.value.cause.reason == "restore-step-failed"
-    assert str(coupled) in excinfo.value.cause.message
+    assert cause.reason == "restore-step-failed"
+    assert str(coupled) in cause.message
     # Nothing was touched: the rehearsal refused before the first destructive step.
     assert config.state_path("rekordbox_db", cfg).read_bytes() == (
         b"database, generation one"
@@ -3145,14 +3121,13 @@ def test_round4_an_unwritable_state_directory_refuses_at_the_rehearsal(cfg, held
     assert os.access(coupled, os.W_OK), "the target must stay writable"
 
     try:
-        with pytest.raises(CratekitError) as excinfo:
-            restore.run(decided, cfg, held=held, dry_run=True)
+        cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
     finally:
         parent.chmod(0o700)
 
-    assert excinfo.value.cause.reason == "restore-step-failed"
-    assert excinfo.value.cause.detail["unwritable"] == str(parent)
-    assert excinfo.value.cause.message.startswith(f"{parent} is not writable")
+    assert cause.reason == "restore-step-failed"
+    assert cause.detail["unwritable"] == str(parent)
+    assert cause.message.startswith(f"{parent} is not writable")
     # Nothing was touched: the rehearsal refused before the first destructive step.
     assert config.state_path("rekordbox_db", cfg).read_bytes() == (
         b"database, generation one"
@@ -3308,11 +3283,10 @@ def test_round5_the_capacity_headroom_decides_a_refusal_at_two_literal_volumes(
     assert snapshot.freed_bytes(config.library_coupled_dir(cfg)) == 4096
 
     monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: 10752)
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held, dry_run=True)
+    cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
-    assert excinfo.value.cause.reason == "snapshot-store-full"
-    assert excinfo.value.cause.detail["required_bytes"] == 11264
+    assert cause.reason == "snapshot-store-full"
+    assert cause.detail["required_bytes"] == 11264
     assert config.state_path("rekordbox_db", cfg).read_bytes() == (
         b"database, generation one"
     )
@@ -3350,10 +3324,8 @@ def test_round5_a_staged_companion_is_never_written_over(cfg, held):
     survivor = decided.pre_restore_root / log.name
     survivor.write_bytes(b"an earlier attempt's log, recoverable from nowhere else")
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held)
+    cause = _refusal(restore.run, decided, cfg, held=held)
 
-    cause = excinfo.value.cause
     assert cause.reason == "restore-staging-occupied"
     assert cause.code is ExitCode.PRECONDITION
     assert survivor.read_bytes() == (
@@ -3375,10 +3347,8 @@ def test_round6_the_occupied_staging_is_a_repeat_rather_than_a_defect(cfg, held)
     decided.pre_restore_root.mkdir(parents=True)
     (decided.pre_restore_root / log.name).write_bytes(b"an earlier attempt's log")
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held)
+    cause = _refusal(restore.run, decided, cfg, held=held)
 
-    cause = excinfo.value.cause
     assert cause.retryable is True, "a condition a repeat clears is retryable"
     assert cause.remediation.remedy is None, (
         "this refusal answers with steps, not with a remedy token, and the token it "
@@ -3425,18 +3395,16 @@ def test_round6_the_rehearsal_refuses_the_collision_the_real_run_refuses(cfg, he
     decided.pre_restore_root.mkdir(parents=True)
     (decided.pre_restore_root / index.name).write_bytes(b"an earlier attempt's index")
 
-    with pytest.raises(CratekitError) as rehearsal:
-        restore.run(decided, cfg, held=held, dry_run=True)
+    rehearsal = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
-    assert rehearsal.value.cause.reason == "restore-staging-occupied"
+    assert rehearsal.reason == "restore-staging-occupied"
     assert log.read_bytes() == (
         b"the live log, transactions committed since the checkpoint"
     ), "the rehearsal moved the first companion, which a rehearsal performs nothing"
 
-    with pytest.raises(CratekitError) as real:
-        restore.run(decided, cfg, held=held)
+    real = _refusal(restore.run, decided, cfg, held=held)
 
-    assert real.value.cause.reason == rehearsal.value.cause.reason, (
+    assert real.reason == rehearsal.reason, (
         "the rehearsal and the run disagree about this plan"
     )
     assert log.read_bytes() == (
@@ -3467,10 +3435,8 @@ def test_round6_the_performing_backstop_names_what_it_already_moved(cfg, held, m
 
     monkeypatch.setattr(restore, "_stage_companion_aside", stage_then_race)
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held)
+    cause = _refusal(restore.run, decided, cfg, held=held)
 
-    cause = excinfo.value.cause
     assert cause.reason == "restore-staging-occupied"
     assert cause.detail["already_staged"] == sorted([log.name, index.name])
     assert log.name in cause.message
@@ -3496,10 +3462,9 @@ def test_round6_a_dangling_link_at_the_resting_name_is_a_name_already_taken(cfg,
     assert not taken.exists(), "this link resolves, so it is not the shape under test"
     assert taken.is_symlink()
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held, dry_run=True)
+    cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
-    assert excinfo.value.cause.reason == "restore-staging-occupied"
+    assert cause.reason == "restore-staging-occupied"
     assert taken.is_symlink(), "the link was replaced, which is the defect"
     assert log.read_bytes() == (
         b"the live log, transactions committed since the checkpoint"
@@ -3540,10 +3505,9 @@ def test_round6_a_dangling_link_at_the_live_name_does_not_defeat_the_collision_g
     survivor = decided.pre_restore_root / log.name
     survivor.write_bytes(b"an earlier attempt's log, recoverable from nowhere else")
 
-    with pytest.raises(CratekitError) as excinfo:
-        restore.run(decided, cfg, held=held, dry_run=True)
+    cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
-    assert excinfo.value.cause.reason == "restore-staging-occupied"
+    assert cause.reason == "restore-staging-occupied"
     assert survivor.read_bytes() == (
         b"an earlier attempt's log, recoverable from nowhere else"
     ), "the link was renamed over the only copy of those transactions"
@@ -3574,12 +3538,10 @@ def test_round7_an_unreadable_staging_directory_still_refuses_the_same_way(cfg, 
         with pytest.raises(OSError):
             list(decided.pre_restore_root.iterdir())
 
-        with pytest.raises(CratekitError) as excinfo:
-            restore.run(decided, cfg, held=held)
+        cause = _refusal(restore.run, decided, cfg, held=held)
     finally:
         decided.pre_restore_root.chmod(0o700)
 
-    cause = excinfo.value.cause
     assert cause.reason == "restore-staging-occupied", (
         "an unreadable staging directory replaced the decided refusal with a "
         "different failure"
@@ -3619,9 +3581,8 @@ def test_round6_a_retry_after_a_partial_failure_still_runs(cfg, held):
 
     with pytest.MonkeyPatch.context() as full_disk:
         full_disk.setattr(restore, "_replace_file", _explode)
-        with pytest.raises(CratekitError) as excinfo:
-            restore.run(first, cfg, held=held)
-    assert excinfo.value.cause.reason == "restore-step-failed"
+        cause = _refusal(restore.run, first, cfg, held=held)
+    assert cause.reason == "restore-step-failed"
     stranded = first.pre_restore_root / log.name
     assert stranded.read_bytes() == b"the first attempt's log"
 

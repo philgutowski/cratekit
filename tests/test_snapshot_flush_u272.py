@@ -17,6 +17,7 @@ from cratekit.core import config, rb_writer, snapshot
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
 from tests.test_config import valid_data
+from tests.test_restore import _refusal, _refused
 from tests.test_snapshot import _fails, _passes, _write_coupled_state
 
 try:
@@ -190,9 +191,8 @@ def _failing_flush(monkeypatch, fails_on, *, after: int = 0) -> list[Path]:
 
 
 def _refused_capture(cfg, stamp: str) -> CratekitError:
-    with pytest.raises(CratekitError) as refused:
-        snapshot.capture(cfg, stamp=stamp, verifier=_passes)
-    return refused.value
+    refused = _refused(snapshot.capture, cfg, stamp=stamp, verifier=_passes)
+    return refused
 
 
 @pytest.mark.parametrize(
@@ -224,9 +224,8 @@ def test_a_capture_whose_flush_fails_refuses_and_says_it_is_not_verified(cfg, mo
     left = snapshot.read_manifest(root)
     assert left.integrity_verified is False
     assert not left.verified
-    with pytest.raises(CratekitError) as gate:
-        snapshot.assert_verified(left)
-    assert gate.value.cause.reason == "snapshot-integrity-failed"
+    gate = _refusal(snapshot.assert_verified, left)
+    assert gate.reason == "snapshot-integrity-failed"
 
 
 def test_a_flush_that_fails_after_the_manifest_leaves_it_saying_not_verified(cfg, monkeypatch):

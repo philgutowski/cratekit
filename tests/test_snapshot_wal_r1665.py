@@ -15,9 +15,8 @@ import pytest
 
 from cratekit.core import config, restore, session, snapshot
 from cratekit.core import rb_writer as W
-from cratekit.core.cause import CratekitError
 from tests import test_rb_writer_db as fixture
-from tests.test_restore import acknowledge, gate_seams
+from tests.test_restore import _refusal, _refused, acknowledge, gate_seams
 
 
 @pytest.fixture
@@ -382,9 +381,8 @@ def test_a_check_that_removes_a_captured_companion_is_not_recorded_verified(
 
     assert not captured.verified
     assert snapshot.read_manifest(captured.root).integrity_verified is False
-    with pytest.raises(CratekitError) as excinfo:
-        snapshot.assert_verified(captured)
-    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
+    cause = _refusal(snapshot.assert_verified, captured)
+    assert cause.reason == "snapshot-integrity-failed"
 
 
 def test_a_check_that_rewrites_the_captured_database_is_not_recorded_verified(
@@ -559,8 +557,7 @@ def test_a_capture_that_lost_its_log_after_the_verdict_is_refused_by_the_plan(cf
 
     acknowledge(cfg)
     with restore.recovery_session(cfg, **gate_seams(cfg)) as held:
-        with pytest.raises(CratekitError) as excinfo:
-            restore.plan(cfg, record.session_id, held=held)
+        error = _refused(restore.plan, cfg, record.session_id, held=held)
 
-    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
-    assert str(lost) in str(excinfo.value)
+    assert error.cause.reason == "snapshot-integrity-failed"
+    assert str(lost) in str(error)
