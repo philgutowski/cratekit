@@ -769,8 +769,9 @@ crate sync removed
 again, and lists each track its pass recorded that the account no longer
 lists, with what it would do about the track's row in the collection. The
 database is read on a copy, so rekordbox must be closed. A run that offers
-nothing ends there, and writes nothing but Cratekit's own record of synced
-playlists the account answered not found for (below).
+nothing ends there, and writes nothing but Cratekit's own records of synced
+playlists the account answered not found for and of those it read whole
+(both below).
 
 When a track is offered, the run reads your backup acknowledgment and stops
 at the explicit gate `sync.removed.confirm`, which lists every offered track
@@ -851,20 +852,33 @@ not been measured.
   crate --calls N --calls-per-hour M sync removed --retire
   ```
 
-  It reads every synced playlist, about two calls each, so on an account with
-  hundreds of them it needs the ceilings raised as a run that finds a removal
-  does. It stops at the explicit gate
+  It reads every synced playlist the kept reads (below) do not hold, about
+  two calls each, so a first one on an account with hundreds of them stops at
+  the call ceiling as a run that finds a removal does, and is continued the
+  same way. It stops at the explicit gate
   `sync.removed.retire`, which lists each one the account no longer lists
   whose id answered not found on this read, with its id and the dates. Answer
   it with `crate run decide RUN_ID sync.removed.retire retire --actor NAME`,
   then run `crate --run RUN_ID sync removed --retire` again; then run `crate
-  sync removed` to plan without them. `abort` writes nothing. A synced
-  playlist it could not read, or whose id failed other than not found, is
+  sync removed` to plan without them. `abort` writes nothing but the kept
+  reads. A synced playlist it could not read, or whose id failed other than not found, is
   named and never offered for retirement.
-- A run that finds a removal reads every synced playlist, about two calls
-  each, so on an account with hundreds of them it stops at the call ceiling
-  with nothing offered; run it again as `crate --calls N --calls-per-hour M
-  sync removed`, as a first `sync pair` plan needs.
+- **A run stopped part way continues where it stopped.** A run that finds a
+  removal reads every synced playlist, about two calls each, so on an account
+  with hundreds of them it stops at the call ceiling (500 calls by default)
+  or at the hour's read line with nothing offered. Each synced playlist it
+  read whole is kept, in the library's `sync_removed_reads.json`, with the
+  track count and the last updated stamp the account listed just before the
+  read, so running `crate sync removed` again reads only what is left, and
+  the stop says how many are kept. A kept read is used for three hours after
+  it was read, and only while the account still lists the playlist with that
+  count and stamp, so a playlist you or Cratekit wrote since is read again.
+  A playlist the account lists with no stamp, one it does not list, the
+  hearts, and a playlist gone, unreadable, short or empty are read on every
+  run. Runs that need more than the hour's line of 1,125 calls finish in the
+  next hour, once the first hour's calls have left the window, with nothing
+  read twice. The plan says how many playlists it took from the kept reads.
+  Deleting the file is safe; it only costs calls.
 
 ### Follow record labels
 
