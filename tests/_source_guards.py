@@ -2153,7 +2153,7 @@ class SoftDeleteNames:
       correct code SHOULD say and what a guard bound to the literal alone would
       be blind to;
     * ``_writer().SOFT_DELETE_COLUMN``, the call time accessor every part U300
-      split off the writer reads its seams through (R-1890);
+      split off the writer reads its seams through;
     * a local constant assigned any of those, one hop, because
       ``COLUMN = rb_writer.SOFT_DELETE_COLUMN`` at module level and
       ``getattr(row, COLUMN, 0)`` at the call is the obvious way around a guard
@@ -2174,7 +2174,7 @@ class SoftDeleteNames:
         #: Module level functions that import the writer and return it, the
         #: call time accessor ``def _writer(): from cratekit.core import
         #: rb_writer; return rb_writer`` every part U300 split off the writer
-        #: holds (R-1890). ``_writer().SOFT_DELETE_COLUMN`` names the column
+        #: holds. ``_writer().SOFT_DELETE_COLUMN`` names the column
         #: exactly as ``rb_writer.SOFT_DELETE_COLUMN`` does, and before this a
         #: part reading the marker through it with a falsey default passed.
         self.accessor_names: set[str] = _writer_accessors(tree)
@@ -2710,8 +2710,8 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
     is unstated gets trusted past it. Not caught: a row subclass carrying a
     falsey class-level default under a plain attribute read, the column arriving
     from a function call (other than the writer's own call time accessor,
-    ``_writer().SOFT_DELETE_COLUMN``, resolved since R-1890) or a dictionary lookup, and an attribute name computed
-    at runtime. Each needs type or value inference this does not have. They are
+    ``_writer().SOFT_DELETE_COLUMN``, resolved since U300 split the writer) or
+    a dictionary lookup, and an attribute name computed at runtime. Each needs type or value inference this does not have. They are
     recorded in the residual
     "What the soft-delete guard cannot see, and two gaps in the gate contract"
     rather than left for a reader to discover by being wrong.
