@@ -189,9 +189,10 @@ KEBAB_LITERALS = {
         'tag-set-scope-unknown',
         'whitelist-violation',
     ],
+    # 2026-11-23, R-1967 (#1008): the warning that the apply makes the genre row.
     'tagging/genre_set_cli.py': [
         'set-file-next',
-        'set-genre-has-no-row',
+        'set-genre-row-to-make',
         'set-genre-written',
         'set-leave-unmatched',
         'set-nothing-to-write',

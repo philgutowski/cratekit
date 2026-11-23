@@ -13,11 +13,12 @@ shown, since the person named each row.
 
 WHAT IT WRITES IS THE GENRE AND NOTHING ELSE: the file's genre tag through
 :func:`cratekit.core.tags.write_genre`, and the row's ``GenreID`` through
-:func:`cratekit.write.metadata.plan_genre_retag` under ``RETAG_GENRE``. A word
-with no active lookup row is NOT MINTED: the core writer admits a created
-lookup row for the native landing alone (``tests/test_rb_writer_guard.py``), so
-every row is left ``genre-unknown`` and nothing is written until rekordbox has
-made the row. THE FILE IS WRITTEN FIRST AND THE ROW ONLY WHEN ITS FILE READ BACK,
+:func:`cratekit.write.metadata.plan_genre_retag` under ``RETAG_GENRE``. A WORD
+WITH NO ACTIVE LOOKUP ROW IS MINTED ON THE COMMIT THAT LINKS IT (R-1967), by
+hand as the native landing mints one, and only when a row is written: the core
+writer admits a created ``djmdGenre`` row for this module and the landing
+alone (``tests/test_rb_writer_guard.py``), and the plan shows and digests the
+mint. THE FILE IS WRITTEN FIRST AND THE ROW ONLY WHEN ITS FILE READ BACK,
 inside the session, after every file's old genre is in the record, so a restore
 of the session puts the rows back from its capture and the files back from the
 record (:mod:`cratekit.core.restore_tags`).
@@ -66,8 +67,13 @@ CHANGE_KEY = rows.CHANGE_KEY
 #: there and here since this layer does not reach that module.
 RECORD_KEY = "genre_set_before"
 
-#: What a plan shows for a genre the library has no active lookup row for.
+#: What a plan shows for a genre the library has no active lookup row for and
+#: no row of the plan links.
 NO_ROW = "none"
+
+#: What a plan shows for a genre whose lookup row the apply makes, on the commit
+#: that links the first row to it.
+MINT = "mint"
 
 #: The outcomes, in the order a summary lists them, zero filled.
 WRITE = "write"
@@ -75,10 +81,9 @@ ALREADY = "already-that-genre"
 HELD_OUT = rows.HELD_OUT
 ROW_GONE = "row-gone"
 FILE_MULTI_VALUED = rows.FILE_MULTI_VALUED
-GENRE_UNKNOWN = rows.GENRE_UNKNOWN
 
 OUTCOMES: tuple[str, ...] = (
-    WRITE, ALREADY, HELD_OUT, ROW_GONE, GENRE_UNKNOWN, FILE_MULTI_VALUED, rows.FILE_UNREADABLE,
+    WRITE, ALREADY, HELD_OUT, ROW_GONE, FILE_MULTI_VALUED, rows.FILE_UNREADABLE,
     *rows.UNREAD[1:],
 )
 
@@ -150,6 +155,15 @@ class SetPlan(rows.Tallied):
     counts: Mapping[str, int]
     #: ``--leave`` identifiers naming no row in scope, shown and digested.
     leave_unmatched: tuple[str, ...] = ()
+    #: The apply makes the genre's lookup row: the library has no active one and
+    #: a row of the plan is to link it. Never when no row is written.
+    mint: bool = False
+
+    @property
+    def shown_row(self) -> str:
+        """The genre's lookup row as the gate shows it: its identifier,
+        :data:`MINT` when the apply makes it, or :data:`NO_ROW`."""
+        return self.genre_row or (MINT if self.mint else NO_ROW)
 
     @property
     def digest(self) -> str:
@@ -159,7 +173,7 @@ class SetPlan(rows.Tallied):
             {
                 "kind": WORKFLOW,
                 "genre": self.genre,
-                "genre_row": self.genre_row or NO_ROW,
+                "genre_row": self.shown_row,
                 "playlist": self.playlist,
                 "items": [item.digested() for item in self.items],
                 "counts": dict(self.counts),
@@ -377,10 +391,6 @@ def plan_set(
             reason = HELD_OUT
         elif file_word == genre and row_word == genre:
             reason = ALREADY
-        elif genre_row is None:
-            # NOTHING IS WRITTEN WITHOUT THE LOOKUP ROW, the file no more than the
-            # row, so file and row never part over a word only rekordbox can make.
-            reason = GENRE_UNKNOWN
         if reason:
             counts[reason] += 1
             items.append(Item(content_id, path, title, row_word, file_word, LEAVE, reason=reason))
@@ -401,6 +411,8 @@ def plan_set(
         items=tuple(items),
         counts=MappingProxyType(counts),
         leave_unmatched=tuple(sorted(held_out - listed)),
+        # A ROW IS MINTED ONLY FOR A ROW TO LINK, never for a file alone.
+        mint=genre_row is None and any(item.row_writes for item in items),
     )
 
 
@@ -440,12 +452,15 @@ def assert_plan_unchanged(approved: SetPlan, again: SetPlan) -> None:
         or content_id not in found
         or shown[content_id].digested() != found[content_id].digested()
     ]
-    if approved.genre_row != again.genre_row:
+    rows_moved = len(moved)
+    # THE LOOKUP ROW IS NAMED, AND NOT COUNTED AS A NAMED ROW: a genre row made
+    # since the gate, or one gone, changes what the apply would make.
+    if approved.shown_row != again.shown_row:
         moved.append(f"the lookup row for {approved.genre!r}")
     raise refuse(
         "decision-stale",
-        f"{len(moved) or 'the totals of'} of the named row(s) are not as the "
-        f"approved plan read them, so nothing was written: "
+        f"the plan taken again is not the approved plan ({rows_moved} named row(s) "
+        f"moved), so nothing was written: "
         + row_defaults.named(moved or ["the plan's totals"]),
         steps=("run the verb again and approve the plan as it is now",),
         origin=_ORIGIN,
@@ -464,9 +479,11 @@ FilesWritten = suggest.FilesWritten
 
 @dataclass(frozen=True, slots=True)
 class Written(row_defaults.RowsWritten):
-    """What one apply did, files and rows."""
+    """What one apply did, files and rows, and the lookup row it made."""
 
     files: FilesWritten = FilesWritten()
+    #: The genre lookup row this apply made and linked, or empty.
+    minted: str = ""
 
 
 def write_files(genre: str, items: Sequence[Item]) -> FilesWritten:
@@ -556,7 +573,11 @@ def apply_set(
     the capture, so a restore takes it back with the rows.
 
     THE CALLER TOOK THE PLAN AGAIN ON THIS HANDLE (:func:`assert_plan_unchanged`).
+    A plan that mints is refused here, before any file, when the handle finds an
+    active row for the genre: two rows of one name would split the folder.
     """
+    if plan.mint:
+        _assert_none_active(db, plan.genre)
     watched = row_defaults.watched_roots(analysis_roots)
     writes = plan.writes
     mapped = row_defaults.read_mapped(db, [item.content_id for item in writes])
@@ -578,7 +599,7 @@ def apply_set(
         rowed = [item for item in writes if item.content_id in landed and item.row_writes]
         ids = [item.content_id for item in rowed]
         before = row_defaults.read_columns(db, ids)
-        done = {"written": 0}
+        done: dict[str, Any] = {"written": 0, "minted": ""}
         try:
             if rowed:
                 _write_rows(cfg, db, plan, declared, rowed, mapped, done)
@@ -606,6 +627,7 @@ def apply_set(
         wrong=wrong,
         moved=moved,
         files=files,
+        minted=str(done["minted"]),
     )
 
 
@@ -618,10 +640,15 @@ def _write_rows(
     mapped: Mapping[str, Any],
     done: dict[str, Any],
 ) -> None:
-    """Link each row to the genre's lookup row, record each row's old bucket, and
-    commit. ``done`` holds the count as it happens, so a commit that raised after
-    landing is recorded with what it wrote."""
+    """Make the genre's lookup row when the plan mints, link each row to it,
+    record each row's old bucket, and commit. ``done`` holds the count and the
+    row made as they happen, so a commit that raised after landing is recorded
+    with what it wrote."""
     ids = [item.content_id for item in rowed]
+    # MADE HERE AND NOWHERE ELSE: after the files took, so a row is made only for
+    # a row that links it, and on the commit that links it, since rekordbox
+    # collects a lookup row nothing references.
+    done["minted"] = _mint_genre(db, plan.genre) if plan.mint else ""
     changes = metadata.plan_genre_retag(
         [mapped[content_id] for content_id in ids], dict.fromkeys(ids, plan.genre), db=db
     )
@@ -630,7 +657,46 @@ def _write_rows(
     done["written"] = len(metadata.write_plan(changes, mapped).written)
     # AFTER THE CAPTURE AND BEFORE THE COMMIT, so a restore takes it back.
     genre_moves.record(cfg, moved_out_of(rowed), into=named_bucket(declared, plan.genre))
-    rb_writer.commit_guarded(db)
+    # THE GENRE TABLE ALONE, AND ONLY ON THE COMMIT THAT MADE ITS ROW (R-1967).
+    rb_writer.commit_guarded(db, creations=(rb_writer.GENRE_TABLE,) if done["minted"] else ())
+
+
+def _assert_none_active(db: Any, genre: str) -> None:
+    """Refuse when the library now has an active lookup row for a genre the plan
+    found none for: the plan would make a second row of the name."""
+    found = metadata.resolve_genre_id(db, genre)
+    if found is None:
+        return
+    raise refuse(
+        "decision-stale",
+        f"the library has a genre row for {genre!r} ({found}) the approved plan did "
+        f"not find, so the plan would make a second one; nothing was written",
+        steps=("run the verb again and approve the plan as it is now",),
+        origin=_ORIGIN,
+        detail={"genre": genre, "genre_row": str(found)},
+    )
+
+
+def _mint_genre(db: Any, genre: str) -> str:
+    """Make the lookup row for ``genre`` on the write handle, flushed, and answer
+    its identifier as text, the form the stored rows carry.
+
+    BY HAND, as the native landing mints one: the binding's own adder refuses a
+    name a tombstone holds, and a tombstone is not the genre's row. An unused
+    identifier, the name and a fresh UUID; every other column is the binding's
+    default, judged by the guard as any created row is.
+    """
+    from uuid import uuid4
+
+    from pyrekordbox.db6 import tables
+
+    made = tables.DjmdGenre.create(
+        ID=str(db.generate_unused_id(tables.DjmdGenre)), Name=genre, UUID=str(uuid4())
+    )
+    db.add(made)
+    # FLUSHED, so the resolution that links the rows finds it on this handle.
+    db.flush()
+    return str(made.ID)
 
 
 def _assert_all_linked(changes: metadata.Plan, ids: Sequence[str], genre: str) -> None:
@@ -680,7 +746,7 @@ def assert_read_back(written: Written) -> None:
 
 
 __all__ = [
-    "ALREADY", "CHANGE_KEY", "FILE_MULTI_VALUED", "GENRE_UNKNOWN", "HELD_OUT", "LEAVE", "LEFT", "NO_ROW",
+    "ALREADY", "CHANGE_KEY", "FILE_MULTI_VALUED", "HELD_OUT", "LEAVE", "LEFT", "MINT", "NO_ROW",
     "OUTCOMES", "PATH_SEPARATOR", "RECORD_KEY", "ROW_GONE", "WORKFLOW", "WRITE", "FilesWritten",
     "Item", "SetPlan", "Written", "apply_set", "assert_declared", "assert_plan_unchanged",
     "assert_read_back", "judge", "moved_out_of", "named_bucket", "plan_set", "playlist_members", "scoped", "write_files",
