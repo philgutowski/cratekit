@@ -1164,9 +1164,14 @@ def _answer(ctx, cfg: config.Config) -> Envelope:
             cfg, store, entry, str(ctx.args.answer), list(ctx.args.releases or ()),
             run_id=ctx.run.run_id,
         )
+    # A LABEL IN A GENRE GROUP IS POINTED BACK INTO ITS GROUP (U341), since the
+    # answer may follow a ``--next --genre`` and a bare ``--next`` leaves it.
+    group = "" if entry.genre is None else (
+        f", or within this label's genre: crate label sync --next --genre {entry.genre!r}"
+    )
     return review_common.ended(ctx, [
         _answer_check(answered),
-        _check("next", "info", "the next question: crate label sync --next"),
+        _check("next", "info", f"the next question: crate label sync --next{group}"),
     ], _summary(answered=[answered]))
 
 
@@ -1223,13 +1228,16 @@ def _pick(prompter: prompt.Prompter, question: Question) -> list[str] | None:
     return None
 
 
-def _unanswerable(entry: labels.LabelEntry, answered: Sequence[Answered], exc) -> CratekitError:
+def _unanswerable(
+    entry: labels.LabelEntry, answered: Sequence[Answered], exc, genre: str | None = None
+) -> CratekitError:
+    again = "label sync" if genre is None else f"label sync --genre {genre!r}"
     return _refusal(
         "label-sync-unanswerable",
         f"the question about {entry.name!r} could not be answered at this "
         f"terminal ({exc}); the {len(answered)} answer(s) given before it are "
         f"saved and the question is waiting",
-        f"run label sync from a terminal, or drive it with: crate label "
+        f"run {again} from a terminal, or drive it with: crate label "
         f"sync --next --label {entry.label_id}, then crate label sync "
         f"--answer ANSWER --label {entry.label_id}",
         detail={"label": entry.label_id, "answered": [one.label_id for one in answered]},
@@ -1269,7 +1277,7 @@ def _walk(
             try:
                 answer, picks = _ask(prompter, listed.question)
             except prompt.PromptUnavailable as exc:
-                raise _unanswerable(entry, answered, exc) from exc
+                raise _unanswerable(entry, answered, exc, named) from exc
             if answer == QUIT:
                 stopped_at = entry.label_id
                 seen.append({"label_id": entry.label_id, "state": "unanswered"})
@@ -1318,7 +1326,8 @@ def _go(ctx, cfg: config.Config, **kwargs: Any) -> Envelope:
 def label_sync(ctx) -> Envelope:
     """Ask label by label at the terminal, print one question, record one answer, or go."""
     args = ctx.args
-    if args.genre is not None and (args.go or args.answer is not None or args.label is not None):
+    # ``--answer`` always names its label, so the ``--label`` clause refuses it too.
+    if args.genre is not None and (args.go or args.label is not None):
         raise _selection_invalid(
             "--genre chooses the labels a walk or --next asks; --go asks the one gate "
             "over every answer saved, --answer records one label's answer, and "

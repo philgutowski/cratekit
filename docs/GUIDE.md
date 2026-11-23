@@ -919,7 +919,8 @@ matched whatever its case; the run after a `quit` is told to name it again,
 so it resumes inside the group. `crate label registry list --genre GENRE`
 lists that group. A genre no followed label carries refuses, `label-unknown`,
 naming the genres they do carry. `--go` takes no genre: it stays the one gate
-over every answer saved.
+over every answer saved, and a genre walk ends at that same gate, so it shows
+an answer saved earlier for a label outside the group too.
 
 A label whose listing fails is a `[FAIL]` line, never "nothing new"; a run
 where no label could be read ends refused, `label-sync-unlisted`. When a

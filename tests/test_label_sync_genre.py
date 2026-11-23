@@ -6,6 +6,7 @@ from __future__ import annotations
 import pytest
 
 from cratekit.core.exit_codes import ExitCode
+from cratekit.label import cli as label_cli
 from cratekit.label import registry as labels
 from tests.cli_drive import drive
 from tests.test_label_sync import (
@@ -134,6 +135,35 @@ def test_the_walk_after_quit_resumes_inside_the_group(installed, monkeypatch):
     assert "epsilon-works" not in labels.RegistryStore().load().labels
 
 
+def test_a_genre_walk_nobody_can_answer_is_told_to_walk_the_group_again(
+    installed, monkeypatch
+):
+    fake = grouped(monkeypatch)
+    script(monkeypatch, "all")
+    envelope = refused_with("label-sync-unanswerable", "--genre", DEEP)
+    (step,) = envelope["cause"]["remediation"]["steps"]
+    assert step.startswith("run label sync --genre 'Deep House' from a terminal, or drive")
+    assert "--next --label delta-works" in step
+    assert fake.asked_for == ["alpha-works", "delta-works"]
+
+
+def test_an_answer_points_back_into_the_answered_labels_group(installed, monkeypatch):
+    grouped(monkeypatch)
+    next_ok("--genre", DEEP)
+    code, envelope = sync("--answer", "not-now", "--label", "Alpha Works")
+    assert code == int(ExitCode.OK), envelope
+    (said,) = checks(envelope, "next")
+    assert said["detail"] == (
+        "the next question: crate label sync --next, or within this label's genre: "
+        "crate label sync --next --genre 'Deep House'"
+    )
+    next_ok("--label", "Gamma Works")
+    code, envelope = sync("--answer", "not-now", "--label", "Gamma Works")
+    assert code == int(ExitCode.OK), envelope
+    (said,) = checks(envelope, "next")
+    assert said["detail"] == "the next question: crate label sync --next"
+
+
 def walked_with(*argv: str) -> list[str]:
     code, envelope = sync(*argv)
     assert code == int(ExitCode.DECISION_REQUIRED), envelope
@@ -207,8 +237,34 @@ def test_a_declared_genre_no_label_carries_refuses_as_a_group_of_none(installed,
 def test_a_genre_asked_of_labels_that_carry_none_says_how_to_set_one(installed, monkeypatch):
     grouped(monkeypatch, (("Alpha Works", None), ("Beta Works", None)))
     envelope = refused_with("label-unknown", "--genre", DEEP)
-    assert "no followed label carries a genre; set one with" in envelope["cause"]["message"]
+    assert envelope["cause"]["message"].endswith("; no followed label carries a genre")
+    assert envelope["cause"]["remediation"]["steps"] == [
+        "give a label its genre with: crate label registry set NAME --genre GENRE",
+    ]
     assert envelope["cause"]["detail"]["genres"] == []
+
+
+def test_a_refusal_whose_taxonomy_cannot_be_read_still_names_the_carried_genres(
+    installed, monkeypatch
+):
+    def unreadable(_cfg):
+        labels.check_genre("")  # raises, as an unreadable taxonomy would
+    monkeypatch.setattr(label_cli.active_taxonomy, "load", unreadable)
+    fake = grouped_unrouted(monkeypatch)
+    envelope = refused_with("label-unknown", "--genre", "Polka")
+    message = envelope["cause"]["message"]
+    assert "fallback" not in message
+    assert message.endswith("the followed labels carry Deep House, Rominimal")
+    assert fake.asked_for == []
+
+
+def grouped_unrouted(monkeypatch):
+    """The registry of :data:`FOLLOWED` written straight to the store, past the verb's
+    taxonomy check, for a test that takes the taxonomy away."""
+    store = labels.RegistryStore()
+    for name, genre in FOLLOWED:
+        store.add(name, genre=genre)
+    return bind(monkeypatch, {labels.slug(name): [] for name, _ in FOLLOWED})
 
 
 def test_a_genre_with_no_labels_followed_refuses_as_an_empty_registry(installed, monkeypatch):
@@ -216,8 +272,23 @@ def test_a_genre_with_no_labels_followed_refuses_as_an_empty_registry(installed,
 
 
 def test_an_empty_genre_refuses_as_a_shapeless_one(installed, monkeypatch):
+    fake = grouped(monkeypatch)
+    envelope = refused_with("label-name-invalid", "--genre", " ")
+    assert envelope["cause"]["message"] == (
+        "--genre names one genre group, a line with a letter or a digit in it, not ' '"
+    )
+    assert envelope["cause"]["remediation"]["steps"] == [
+        "pass --genre with one of the genres the followed labels carry, as "
+        "crate label registry lists them",
+    ]
+    assert fake.asked_for == []
+
+
+def test_an_answer_with_a_genre_and_no_label_refuses_for_the_label(installed, monkeypatch):
     grouped(monkeypatch)
-    refused_with("label-name-invalid", "--genre", " ")
+    envelope = refused_with("review-selection-invalid", "--answer", "all", "--genre", DEEP)
+    assert "needs the label it answers for" in envelope["cause"]["message"]
+    assert record(installed)["labels"] == {}
 
 
 @pytest.mark.parametrize("argv", [

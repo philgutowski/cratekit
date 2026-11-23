@@ -321,24 +321,40 @@ def genre_group_or_refuse(
     the genres they do carry, and says too when the library's taxonomy routes
     the word to nothing but its fallback, so a mistyped genre reads as one.
     """
-    wanted = labels.check_genre(genre)
+    try:
+        wanted = labels.check_genre(genre)
+    except CratekitError as exc:
+        # The shape check's own step speaks of setting a genre; this one names a group.
+        raise _refused(
+            "label-name-invalid",
+            f"--genre names one genre group, a line with a letter or a digit in it, "
+            f"not {genre!r}",
+            "pass --genre with one of the genres the followed labels carry, as "
+            "crate label registry lists them",
+            detail={"genre": genre},
+        ) from exc
     group = held.of_genre(wanted)
     if group:
         return str(group[0].genre), group
     carried = held.genres()
-    said = (
-        f"the followed labels carry {', '.join(carried)}"
+    said, step = (
+        (
+            f"the followed labels carry {', '.join(carried)}",
+            "pass --genre with one of the genres the followed labels carry, as "
+            "crate label registry lists them",
+        )
         if carried
-        else "no followed label carries a genre; set one with: crate label registry "
-        "set NAME --genre GENRE"
+        else (
+            "no followed label carries a genre",
+            "give a label its genre with: crate label registry set NAME --genre GENRE",
+        )
     )
     undeclared = _undeclared(wanted)
     raise _refused(
         "label-unknown",
         f"no followed label carries the genre {wanted!r}{undeclared}, so there is no "
         f"group to ask about; {said}",
-        "pass --genre with one of the genres the followed labels carry, as "
-        "crate label registry lists them",
+        step,
         detail={"genre": wanted, "genres": list(carried)},
     )
 

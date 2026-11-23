@@ -557,6 +557,21 @@ def test_a_sweep_whose_estimate_crosses_into_the_reserve_refuses_before_its_firs
     assert any("--next --label" in step for step in cause["remediation"]["steps"])
 
 
+def test_a_genre_walk_is_refused_in_its_own_words_over_its_group_alone(two_followed):
+    """U341: the estimate and the refusal speak of the one group asked."""
+    labels.RegistryStore().edit("Tide Works", genre="Deep House")
+    _spent_on_the_account(250)  # 50 of 300 left; the group is one label at 100
+    code, envelope = ls.sync("--next", "--genre", "deep house")
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = envelope["cause"]
+    assert cause["message"].startswith(
+        "walking the labels of genre 'Deep House' may ask the streaming provider about "
+        "100 calls over 1 label,"
+    )
+    assert cause["detail"]["labels"] == 1
+    assert two_followed.asked_for == []
+
+
 def test_one_label_named_is_not_held_to_the_sweeps_estimate(two_followed):
     _spent_on_the_account(150)
     code, envelope = ls.sync("--next", "--label", "Tide Works")
