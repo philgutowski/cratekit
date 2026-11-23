@@ -246,9 +246,11 @@ Four rules keep the split invisible:
   test is written `_writer().name`, `_session().name` or `_restore().name`
   inside a part, so a `monkeypatch.setattr(rb_writer, ...)` bites there too.
   `restore`'s parts read `os` and `shutil` the same way, since a capacity test
-  patches them on `restore`. Only `rb_tables`, which reads nothing back, is
-  imported directly, and `restore_retention` and `restore_recovery` take
-  `restore_perform`'s accessor and logger rather than holding their own.
+  patches them on `restore`. Of the writer's parts, only `rb_tables`, which
+  reads nothing back, is imported by the others directly; the session's parts
+  import none of each other; `restore_retention` and `restore_recovery`
+  import `restore_perform` for its accessor and logger rather than holding
+  their own.
 - **What the beat grid suites and the source guards read stays in the module
   itself**: every writer refusal slug `test_rb_writer_guard.py` scans for, the
   one read of the soft-delete marker, `commit_guarded`, the write lock, and
