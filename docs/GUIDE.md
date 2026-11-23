@@ -1425,15 +1425,20 @@ track's cleared R&B: its R&B band is Soul's split place again, which
 and lists it among the tree's differences as `unexpected:BUCKET/BAND:ROW`, by
 the folder's and band's stable identifiers and the track's row, whether or
 not anything else is filed into that playlist (the line shows the first 20
-differences), and `route resort` lists it as left behind. Under a folder
+entries, at most five `not-compared` ones first), and `route resort` lists it
+as left behind. Under a folder
 renamed in rekordbox it is listed the same way when a write recorded that
 playlist, or recorded the folder and nothing else is filed into that band:
 `adopt apply`, `rebuild` and `route resort` each record the playlists they
-file into, `adopt apply` only where nothing is recorded yet. Otherwise which
-genre's playlist it is cannot be read: while it bears a band's name and holds
-a track the tree files, `converge` names it `not-compared:FOLDER/PLAYLIST`,
-first in a `differing` line, or says `not-compared` where nothing else
-differs, never `matching`. Look in it in rekordbox for a track its genre no
+file into, `adopt apply` only where nothing is recorded yet. Otherwise it
+cannot be tied to one destination: under a renamed folder no write recorded,
+or beside a folder a `rebuild` or `adopt apply` made again under the genre's
+name, a playlist bearing a name a genre files into (a band, Favorites, a
+genre sub) and holding a track the tree files is named
+`not-compared:FOLDER/PLAYLIST`, first in a `differing` line, or `converge`
+says `not-compared` where nothing else differs, never `matching`. A folder of
+your own under the tree's root whose playlists bear such names and hold filed
+tracks reads the same way. Look in it in rekordbox for a track its genre no
 longer files, or give the folder back its genre's name where no other folder
 bears that name (a `rebuild` or `adopt apply` after the rename makes a folder
 of that name again) and it is compared. It is not a difference, so a

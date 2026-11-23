@@ -4,8 +4,8 @@ It is read only, opening no session, lock or acknowledgment, since it is what
 a person runs when a tree already refuses every write; it is a module apart
 from ``rebuild`` so the destructive verb never parks it. It never reports a
 tree converged that it could not compare: each check is matching, differing,
-or not compared and why, a comparison that ran but could not read a playlist
-under a renamed folder included (R-1991).
+or not compared and why, a comparison that ran but could not tie a playlist
+to one destination included (R-1991).
 """
 
 from __future__ import annotations
@@ -29,13 +29,17 @@ MATCHING = "matching"
 DIFFERING = "differing"
 NOT_COMPARED = "not-compared"
 
+#: How many playlists not compared a differing line names before its differences.
+UNREAD_SHOWN = 5
+
 #: What a person reads after a playlist the check could not tie to a genre (R-1991).
 UNIDENTIFIED = (
-    ": each sits under a folder whose name is no genre's, so which genre's "
-    "playlist it is cannot be read and a track left in it is not named; look "
-    "in each in rekordbox for a track its genre no longer files, or give the "
-    "folder back its genre's name, where no other folder bears that name, and "
-    "converge compares it"
+    ": each bears a name a genre files into, holds a track this tree files, "
+    "and could not be tied to one destination (its folder was renamed, or a "
+    "write made a folder of its genre's name again beside it), so a track left "
+    "in it is not named; look in each in rekordbox for a track its genre no "
+    "longer files, or give a renamed folder back its genre's name, where no "
+    "other folder bears that name, and converge compares it"
 )
 
 
@@ -101,8 +105,12 @@ def _compare(
         return NOT_COMPARED, exc.cause.message
     unread = tuple(f"{NOT_COMPARED}:{entry}" for entry in report.unidentified)
     if not report.converged:
-        # The playlists not compared first, so the cut never drops them (R-1991).
-        return DIFFERING, "; ".join((*unread, *report.summaries())[:20])
+        # At most five playlists not compared go first, so the cut at twenty
+        # drops neither kind (R-1991); the count says how many there are.
+        shown = "; ".join((*unread[:UNREAD_SHOWN], *report.summaries())[:20])
+        if len(unread) > UNREAD_SHOWN:
+            shown += f"; {len(unread)} playlist(s) not compared in all"
+        return DIFFERING, shown
     detail = f"{report.derived} declared placement(s) all present"
     if report.not_compared:
         detail += f"; not compared: {', '.join(report.not_compared)}"

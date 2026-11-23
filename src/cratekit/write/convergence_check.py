@@ -539,38 +539,56 @@ def unidentified(
     nodes: Sequence[TreeNode],
     compared: Collection[tuple[str, str]],
     not_compared: Sequence[str],
+    record: convergence.TreeConvergence | None,
     filed: Collection[str],
 ) -> tuple[TreeNode, ...]:
-    """The playlists under a folder renamed in rekordbox the check could not compare.
+    """The playlists the check could not tie to one destination that may hold a leftover.
 
-    A FOLDER WHOSE NAME DECLARES NO BUCKET (R-1991): when no write recorded it,
-    a playlist under it bearing a declared destination's playlist name could
-    be any bucket's; when a write did, :func:`namesakes` still leaves one whose
-    recorded reading is a destination already bound to another node (a write
-    that found its playlists by name made the folder again) or that the
-    recorded bucket does not declare. Either way, while it holds a track this
-    run files (``filed``), it may be a genre's playlist holding a cleared
-    second genre's track, so it is named as not compared rather than read as a
-    person's own. Left as they were, in ``foreign``: a node already
-    ``compared``, one rekordbox removed, one under a folder bearing a declared
-    bucket's name (:func:`namesakes` reads those by it), one whose name no
-    destination bears or bears only in a dimension this run did not compare
-    (U119), and one holding no filed track.
+    R-1991. Each folder is read as :func:`namesakes` reads it: by its name when
+    that declares a bucket, else by the bucket a write recorded for it. Under a
+    folder read so, a playlist bearing a destination of that bucket's names
+    that nothing compared is a second node of a destination already bound
+    elsewhere (a write that finds its playlists by name made the folder again
+    beside a renamed one, or the renamed one beside it). Under a folder read
+    as no bucket (renamed in rekordbox and never recorded), a playlist bearing
+    any destination's playlist name could be any bucket's. Either way, while
+    it holds a track this run files (``filed``), it may be a genre's playlist
+    holding a cleared second genre's track, so it is named as not compared
+    rather than read as a person's own. Left as they were, in ``foreign``: a
+    node already ``compared``, one rekordbox removed, one whose name its
+    folder's bucket (or, unread, any bucket) does not declare or declares only
+    in a dimension this run did not compare (U119), and one holding no filed
+    track.
     """
     names = declared_names(declared)
     readings: dict[str, set[str]] = {}
     for (_folder, playlist), (_bucket, sub) in names.items():
         readings.setdefault(playlist, set()).add(sub)
     skipped = _uncompared_subs(declared, not_compared)
-    bucket_names = {declared.bucket(bucket_id).display for bucket_id in declared.bucket_ids()}
+    known = set(declared.bucket_ids())
+    bucket_names = {declared.bucket(bucket_id).display for bucket_id in known}
+    recorded_folder = {
+        entry.folder_id: declared.bucket(entry.bucket).display
+        for entry in (() if record is None else record.nodes)
+        if entry.bucket in known
+    }
     holding = set(filed)
+
+    def subs(node: TreeNode) -> set[str]:
+        folder = node.folder_display
+        if folder not in bucket_names:
+            folder = recorded_folder.get(node.folder_id, "")
+        if not folder:
+            return readings.get(node.playlist_display, set())
+        place = names.get((folder, node.playlist_display))
+        return set() if place is None else {place[1]}
+
     return tuple(
         node
         for node in nodes
         if not node.removed
         and (node.folder_id, node.playlist_id) not in compared
-        and node.folder_display not in bucket_names
-        and readings.get(node.playlist_display, set()) - skipped
+        and subs(node) - skipped
         and node.content_ids & holding
     )
 
@@ -642,7 +660,7 @@ def check(
     unread = {
         (node.folder_id, node.playlist_id)
         for node in unidentified(
-            declared, nodes, governed, not_compared, set(resolved_id.values()) & active
+            declared, nodes, governed, not_compared, record, set(resolved_id.values()) & active
         )
     }
     unexpected: list[Difference] = []

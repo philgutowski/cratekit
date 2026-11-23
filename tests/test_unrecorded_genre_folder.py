@@ -153,6 +153,8 @@ def test_the_converge_verb_never_says_matching_over_an_unrecorded_renamed_folder
     assert check["status"] == converge_cli.NOT_COMPARED, check
     assert f"not-compared:{_under(RENAMED)}" in check["detail"]
     assert check["detail"].endswith(converge_cli.UNIDENTIFIED), check
+    # The caveat a write that made the folder again needs (round one).
+    assert "where no other folder bears that name" in converge_cli.UNIDENTIFIED
     # The dimension the run left out is still said, as the matching line says it.
     assert "; not compared: vocal;" in check["detail"], check
 
@@ -181,6 +183,28 @@ def test_the_converge_verb_says_differing_over_a_doubled_row_beside_an_unread_fo
     )
     assert status == converge_cli.DIFFERING
     assert detail == f"not-compared:{_under(RENAMED)}; doubled:{ONE}/{HIGH}:1"
+
+
+def test_the_converge_verb_names_a_difference_past_many_unread_playlists(monkeypatch):
+    """ROUND TWO: twenty unread playlists no longer push every difference past the cut."""
+    unread = tuple(f"{RENAMED} {number:02d}/High" for number in range(21))
+    missing = convergence_check.Difference(
+        convergence_check.Direction.MISSING, ONE, LOW, "Deep House", "Low", "2"
+    )
+    report = convergence_check.ConvergenceReport(
+        tree_id=TREE_ID, root_id="root", derived=1, missing=(missing,), unidentified=unread,
+    )
+    monkeypatch.setattr(rebuild, "report_convergence", lambda *_args, **_kwargs: report)
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", lambda _cfg: None)
+    status, detail = converge_cli._compare(
+        None, SimpleNamespace(get_playlist=list, get_content=list),
+        tree_id=TREE_ID, entries=None, declared=DECLARED,
+    )
+    assert status == converge_cli.DIFFERING
+    shown = [f"not-compared:{entry}" for entry in unread[: converge_cli.UNREAD_SHOWN]]
+    assert detail == "; ".join(
+        [*shown, f"missing:{ONE}/{LOW}:2", "21 playlist(s) not compared in all"]
+    )
 
 
 def test_a_rebuild_still_clears_a_restored_flag_over_an_unrecorded_renamed_folder(
@@ -310,17 +334,46 @@ def test_a_leftover_beside_a_folder_a_write_made_again_is_named_as_not_compared(
     assert report.unidentified == (_under(RENAMED, TWO, LOW),)
 
 
-def test_a_playlist_under_a_genre_named_folder_is_never_unidentified(
+def test_a_second_node_a_write_made_under_the_genres_own_name_is_named_as_not_compared(
     cfg, gates_pass, db, adopted_root
 ):
-    """A folder bearing a bucket's name is read by it; a playlist it does not compare stays foreign."""
-    _by_hand(db, adopted_root, {(ONE, HIGH): ("1",)})
-    folder = rb_writer.ensure_folder(db, DECLARED.bucket(TWO).display, parent=adopted_root)
-    own = rb_writer.ensure_playlist(db, _pair(THIRD, "candy")[1], folder)
-    rb_writer.add_membership(db, own, "1")
-    db.session.commit()
+    """ROUND TWO: the record binds Tech House / High to the renamed folder, and a
+    write that finds its playlists by name made Tech House / High again; the
+    track left there is named, not read as a person's own."""
+    _adopt(cfg, db, adopted_root, [(ONE, HIGH), (TWO, HIGH)])
+    _rename(db, adopted_root, TWO)
+    _by_hand(db, adopted_root, {(TWO, HIGH): ("1",)})
     report = _check(cfg, db, adopted_root, DECLARED, _derived(_track(cfg, second=None)))
-    assert report.unidentified == ()
+    assert _left(report) == [("1", TWO, HIGH)]
+    assert report.unidentified == (_under(DECLARED.bucket(TWO).display),)
+    assert report.foreign == ()
+
+
+def _anothers(bucket: str) -> str:
+    """A playlist name some other bucket declares and ``bucket`` does not."""
+    names = convergence_check.declared_names(DECLARED)
+    folder = DECLARED.bucket(bucket).display
+    own = {playlist for (named, playlist) in names if named == folder}
+    return next(playlist for (named, playlist) in sorted(names) if playlist not in own)
+
+
+def test_a_playlist_its_folders_genre_does_not_declare_stays_foreign(
+    cfg, gates_pass, db, adopted_root
+):
+    """Read by its folder's genre, it is no destination's; read by no genre, it could be one."""
+    _by_hand(db, adopted_root, {(ONE, HIGH): ("1",), (TWO, HIGH): ("1",)})
+    folder = db.get_playlist(ID=_node(db, adopted_root, TWO, HIGH).folder_id)
+    rb_writer.add_membership(db, rb_writer.ensure_playlist(db, _anothers(TWO), folder), "1")
+    db.session.commit()
+    placements = _derived(_track(cfg))
+    named = _check(cfg, db, adopted_root, DECLARED, placements)
+    assert named.converged, named.summaries()
+    assert named.unidentified == ()
+    assert named.foreign == (f"{DECLARED.bucket(TWO).display}/{_anothers(TWO)}",)
+
+    _rename(db, adopted_root, TWO)
+    unread = _check(cfg, db, adopted_root, DECLARED, placements)
+    assert f"{RENAMED}/{_anothers(TWO)}" in unread.unidentified
 
 
 # 3. What adoption's writer records

@@ -1239,9 +1239,10 @@ reachable.
 - **Reachable**: whether a producer can be driven to an input, versus when it
   became reachable (which decides whose finding it is).
 - **Foreign**: a convergence check's `foreign` nodes are undeclared nodes under a
-  governed root, reported (a playlist under a renamed folder that no write ties
-  to a genre, and that may be a genre's, is `unidentified`, not compared,
-  instead); the foreign folder `DEADCA7` at the playlist root is another
+  governed root, reported (one bearing a name a genre files into and holding a
+  filed track that the check could not tie to one destination, under a
+  renamed folder or beside a folder a write made again, is `unidentified`, not
+  compared, instead); the foreign folder `DEADCA7` at the playlist root is another
   app's, and no commit may touch it (`core/foreign_tree.py`).
 - **Relay**: native Relay is the retired local pipeline; the relay thread carries
   decisions page answers to cards.
