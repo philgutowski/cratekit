@@ -1,8 +1,6 @@
 """U154: ``crate intake shelve`` files an imported batch into the processed tree.
 
-Real files are landed through the native landing first, so the rows shelved are
-rows the product made, then the shelve is driven through the real dispatcher.
-D1 applies.
+The rows shelved are ones the native landing made. D1 applies.
 """
 
 from __future__ import annotations
@@ -416,9 +414,7 @@ def test_a_run_identifier_named_batch_files_as_downloads_or_as_the_subject_given
 def test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_drive(
     native_library, silence, monkeypatch
 ):
-    """The defect the hunt found: rows are stored under ``djmdProperty``'s base
-    drive when the volume was renamed, and a confinement check that reads under
-    the mounted path finds none of its own rows and refuses a correct commit."""
+    """Rows stored under a renamed volume's base drive are still the commit's own."""
     cfg, _root = native_library
     before = _land_three(cfg, silence)
     base, current = str(Path(cfg.library.root).parent / "elsewhere"), str(cfg.library.root)
@@ -436,9 +432,8 @@ def test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_dr
 def test_a_row_under_the_target_refuses_the_commit_and_the_free_target_rule_passes_it_over(
     native_library, silence, monkeypatch
 ):
-    """A folder filed by hand and moved since leaves rows under its name with
-    nothing on disk; the confinement check refuses a commit beside them, and
-    the free target rule is what keeps a plan from choosing it."""
+    """A folder moved since leaves rows with nothing on disk, so the free target rule
+    keeps a plan from choosing it."""
     cfg, _root = native_library
     before = _land_three(cfg, silence)
     ghost = _processed(cfg) / "2026" / FILED

@@ -199,26 +199,21 @@ def test_a_dance_label_passes_the_dance_words_and_holds_every_other(word):
     assert word in judged.reason
 
 
-def test_a_word_is_matched_whatever_its_case():
-    assert routing.published_kind(TAXONOMY, "CHRISTIAN") == "christian"
-    assert routing.published_kind(TAXONOMY, "  christian ") == "christian"
-
-
-def test_an_empty_word_is_no_kind():
-    assert routing.published_kind(TAXONOMY, "") is None
-    assert routing.published_kind(TAXONOMY, None) is None
-
-
-def test_the_first_rule_that_matches_wins():
-    # Both words contain a needle of a later rule: "dance" and "reggae".
-    assert routing.published_kind(TAXONOMY, "Dancehall/Ragga") == "reggae"
-    assert routing.published_kind(TAXONOMY, "Reggaeton") == "latin"
-
-
-def test_the_long_spelling_of_rnb_is_rnb_and_not_the_blues_it_contains():
-    assert routing.published_kind(TAXONOMY, "Rhythm & Blues") == "rnb"
-    assert routing.published_kind(TAXONOMY, "Rhythm and Blues") == "rnb"
-    assert routing.published_kind(TAXONOMY, "Blues") == "jazz"
+@pytest.mark.parametrize(
+    ("words", "kinds"),
+    [
+        pytest.param(("CHRISTIAN", "  christian "), ("christian",) * 2, id="whatever-its-case"),
+        pytest.param(("", None), (None, None), id="empty-is-no-kind"),
+        # Both words contain a needle of a later rule: "dance" and "reggae".
+        pytest.param(("Dancehall/Ragga", "Reggaeton"), ("reggae", "latin"), id="first-rule-wins"),
+        pytest.param(
+            ("Rhythm & Blues", "Rhythm and Blues", "Blues"), ("rnb", "rnb", "jazz"),
+            id="long-rnb-is-not-the-blues-it-contains",
+        ),
+    ],
+)
+def test_a_published_word_is_matched_to_its_kind(words, kinds):
+    assert tuple(routing.published_kind(TAXONOMY, word) for word in words) == kinds
 
 
 def test_one_word_of_the_labels_kind_passes_a_release_listing_another_kind_too():
@@ -322,46 +317,43 @@ def test_a_published_rule_with_no_matcher_is_refused(default_raw):
     )
 
 
-def test_a_published_rule_with_no_kind_is_refused(default_raw):
-    assert _says(default_raw, _published({"any_of": ["polka"]}), "needs a kind")
-
-
-def test_a_published_rule_naming_the_reserved_kind_is_refused(default_raw):
-    change = _published({"any_of": ["polka"], "kind": "any"})
-    assert _says(default_raw, change, "cannot be the kind of a word")
-
-
-def test_a_matcher_that_is_not_a_list_of_words_is_refused(default_raw):
-    change = _published({"any_of": "polka", "kind": "polka"})
-    assert _says(default_raw, change, "any_of must be a list of words")
-
-
-def test_published_rules_in_one_pair_of_brackets_are_refused(default_raw):
-    change = _gate("published", {"any_of": ["polka"], "kind": "polka"})
-    assert _says(default_raw, change, "two pairs of brackets")
-
-
-def test_a_default_kind_no_rule_names_is_refused(default_raw):
-    assert _says(default_raw, _gate("default_kind", "polka"), "default_kind 'polka' is not a kind")
-
-
-def test_a_default_kind_that_is_not_a_word_is_refused(default_raw):
-    assert _says(default_raw, _gate("default_kind", 7), "default_kind must be")
-
-
-def test_the_word_that_clears_a_kind_cannot_be_the_kind_of_a_word(default_raw):
-    change = _published({"any_of": ["polka"], "kind": "default"})
-    assert _says(default_raw, change, "clears a label's kind")
-
-
-def test_a_kind_no_label_could_be_marked_with_is_refused(default_raw):
-    """The registry stores a kind as one word, so a rule may name no other shape."""
-    change = _published({"any_of": ["polka"], "kind": "hip hop"})
-    assert _says(default_raw, change, "kind 'hip hop' is not one word")
-
-
-def test_a_default_kind_of_two_words_is_refused(default_raw):
-    assert _says(default_raw, _gate("default_kind", "hip hop"), "default_kind must be")
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        pytest.param(_published({"any_of": ["polka"]}), "needs a kind", id="rule-no-kind"),
+        pytest.param(
+            _published({"any_of": ["polka"], "kind": "any"}), "cannot be the kind of a word",
+            id="rule-reserved-kind",
+        ),
+        pytest.param(
+            _published({"any_of": "polka", "kind": "polka"}), "any_of must be a list of words",
+            id="matcher-not-a-list",
+        ),
+        pytest.param(
+            _gate("published", {"any_of": ["polka"], "kind": "polka"}), "two pairs of brackets",
+            id="rules-in-one-pair-of-brackets",
+        ),
+        pytest.param(
+            _gate("default_kind", "polka"), "default_kind 'polka' is not a kind",
+            id="default-kind-no-rule-names",
+        ),
+        pytest.param(_gate("default_kind", 7), "default_kind must be", id="default-not-a-word"),
+        pytest.param(
+            _published({"any_of": ["polka"], "kind": "default"}), "clears a label's kind",
+            id="rule-kind-is-the-clearing-word",
+        ),
+        # The registry stores a kind as one word, so a rule may name no other shape.
+        pytest.param(
+            _published({"any_of": ["polka"], "kind": "hip hop"}), "kind 'hip hop' is not one word",
+            id="rule-kind-of-two-words",
+        ),
+        pytest.param(
+            _gate("default_kind", "hip hop"), "default_kind must be", id="default-of-two-words"
+        ),
+    ],
+)
+def test_a_malformed_label_gate_is_refused_by_what_it_lacks(default_raw, change, said):
+    assert _says(default_raw, change, said)
 
 
 def test_a_share_rule_needle_typed_with_a_capital_matches_too(default_raw):

@@ -1,7 +1,5 @@
-"""U69 and U73: ``crate intake missing --job JOB`` and ``--run RUN``, driven
-through the real dispatcher: only missing rows are written, a job that has not
-resolved every track is refused, and the file downloads against the fake adapter.
-Every expected value is a literal from the fixture hearts. D1 applies.
+"""U69 and U73: ``crate intake missing --job JOB`` and ``--run RUN``: only missing
+rows are written, an unresolved job is refused, and the file downloads. D1 applies.
 """
 
 from __future__ import annotations
@@ -31,17 +29,11 @@ from tests.acquire_fakes import FAKE_ADAPTER, FAKE_DECLARATION, FakeAdapter, Lan
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, StrictCatalogue, catalogue_factory
 from tests.test_config import valid_data
+from tests.test_intake_missing_isrc import fresh_cache as fresh_cache  # noqa: PLC0414 - autouse
+from tests.test_intake_missing_isrc import library as library  # noqa: PLC0414 - fixture
+from tests.test_intake_missing_isrc import lists_dir
 
 # Fixtures
-
-
-@pytest.fixture
-def library(tmp_path, monkeypatch) -> Path:
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    return root
 
 
 @pytest.fixture
@@ -58,12 +50,6 @@ def cfg(library) -> config.Config:
     config.reset_cache()
     return built
 
-
-@pytest.fixture(autouse=True)
-def fresh_cache():
-    intake_cli.reset_cache()
-    yield
-    intake_cli.reset_cache()
 
 
 class Track:
@@ -161,9 +147,6 @@ def human(argv: list[str]) -> tuple[int, str]:
     code = cli.run(argv, stdout=out, stderr=err)
     return code, out.getvalue() + err.getvalue()
 
-
-def lists_dir(library: Path) -> Path:
-    return library.parent / "staging" / missing_cli.LISTS_DIR
 
 
 def tombstone(cfg: config.Config, artist: str, title: str) -> None:
@@ -472,9 +455,7 @@ def test_the_library_is_asked_where_it_is_now_not_where_the_job_froze_it(
     job_id = mixed_job(library, monkeypatch)
     moved = tmp_path / "moved"
     library.rename(moved)
-    # THE FILE MOVES THE ROOT, NOT THE ENVIRONMENT. The override re-bases a
-    # frozen configuration as well as the current one, so a move made through
-    # it cannot tell the two apart, which the mutation table measured.
+    # The file moves the root, not the environment, whose override re-bases both.
     monkeypatch.delenv(config.ENV_LIBRARY_ROOT)
     config.save(
         config.from_dict(
@@ -730,13 +711,8 @@ def test_a_deleted_credited_row_never_withholds_another_remix_of_the_recording(
     assert (summary["written"], summary["suppressed"]) == (1, 0)
 
 
-# One sync pass, one list (U73)
-#
-# ``crate sync all`` queues one intake job per new playlist under one run. The
-# jobs here are queued through the same ``queue_playlist`` the pass calls, with
-# the run and the source it stamps, and driven through the real worker. The run
-# identifier is shaped like a real one, colons and all, because the list's name
-# is derived from it and a colon cannot be in a name on an exFAT volume.
+# One sync pass, one list (U73), queued through the pass's own ``queue_playlist``;
+# the run id keeps its colons, which cannot be in an exFAT name.
 
 RUN = "2026-09-18T10:00:00Z-ab12"
 RUN_LIST = "2026-09-18T100000Z-ab12_synced.list.json"

@@ -1,8 +1,7 @@
 """U113 on the native medium: each account playlist is its own INBOX playlist row.
 
-The bridge suite's scenarios on the disposable database, so both media are
-held to one behaviour, and the rotation planned over what the landing wrote,
-which ages an account playlist by its landing record, not its name. D1 applies.
+The bridge suite's scenarios on the disposable database, and the rotation, which
+ages an account playlist by its landing record, not its name. D1 applies.
 """
 
 from __future__ import annotations
@@ -54,21 +53,15 @@ def pinned_day(monkeypatch):
     monkeypatch.setattr(batch_name, "today", lambda: DAY)
 
 
-# ---------------------------------------------------------------------------
 # The native landing suite's machine, its database built once and copied after
-# ---------------------------------------------------------------------------
 
 #: What a key's first build left in the database file, and what it answered.
 _BUILT: dict[str, tuple[bytes, str | None]] = {}
 
 
 def _templated(key: str, cfg: config.Config, build) -> str | None:
-    """Build ``cfg``'s database the first time, and copy those bytes in every time after.
-
-    Every test then starts from a byte identical database, for a copy rather
-    than a build; the suites over these fixtures build some ninety. A build that
-    left a sidecar beside the file is not copied, since the file alone would not
-    be the whole database.
+    """Build ``cfg``'s database the first time and copy those bytes in after, unless
+    the build left a sidecar, since the file alone would not be the whole database.
     """
     db = Path(cfg.library.db_path)
     if key in _BUILT:
@@ -189,11 +182,8 @@ def _land(pass_name: str = PASS) -> list[str]:
 
 
 def _inbox(cfg: config.Config, root_id: str) -> dict[str, list[str]]:
-    """Every live playlist directly under the intake root and the titles it holds.
-
-    All but INBOX / Analyze (U166), which every landing fills with the rows it
-    made and whose own suite is ``tests/test_inbox_analyzed.py``.
-    """
+    """Every live playlist directly under the intake root and its titles, but
+    INBOX / Analyze (U166)."""
     rows = _query(
         cfg,
         "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND rb_local_deleted = 0 "
@@ -256,9 +246,7 @@ def _actions(plan: rotate.RotationPlan) -> dict[str, str]:
     return {b.name: b.action for b in (*plan.moves, *plan.removals, *plan.kept)}
 
 
-# ---------------------------------------------------------------------------
 # The scenarios the brief names, on this medium
-# ---------------------------------------------------------------------------
 
 
 def test_two_swept_playlists_land_as_two_playlist_rows_under_their_exact_names(
@@ -333,9 +321,8 @@ def test_a_name_inbox_came_to_hold_after_the_plan_is_refused_and_nothing_is_writ
     cfg, root_id = native_library
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _stage(cfg, silence, "One")
-    # A playlist of that name sits under INBOX, and the verb is handed the
-    # names it would have chosen before it did, so only the engine's own
-    # check stands between the plan and a second playlist of one name.
+    # A playlist of that name sits under INBOX, so only the engine's own check
+    # stands between the plan and a second playlist of one name.
     _made(cfg, root_id, "Sunset Warmup 2026-10-03")
     chosen = account_playlists.named
     monkeypatch.setattr(
@@ -351,9 +338,7 @@ def test_a_name_inbox_came_to_hold_after_the_plan_is_refused_and_nothing_is_writ
     assert list(_inbox(cfg, root_id)) == ["Sunset Warmup 2026-10-03"]
 
 
-# ---------------------------------------------------------------------------
 # The record, and the rotation ageing what the landing wrote
-# ---------------------------------------------------------------------------
 
 
 def test_the_record_names_each_account_playlist_by_identifier(native_library, silence):
@@ -456,9 +441,7 @@ def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(nativ
     assert _members(cfg, gone_id) == []
 
 
-# ---------------------------------------------------------------------------
 # U128: the INBOX playlist mirrors the whole account playlist, owned rows too
-# ---------------------------------------------------------------------------
 
 
 def _owned(cfg: config.Config, silence: Path, titles: tuple[str, ...]) -> None:
@@ -523,9 +506,7 @@ def test_a_rerun_of_the_same_pass_adds_nothing_twice(native_library, silence, mo
     code, again = drive(_land())
     assert code == int(ExitCode.OK), again
     assert again["outcome"] == "no_op", again
-    # Late arrives and the same pass is landed again: the account playlist
-    # this pass already mirrored is not mirrored a second time, and the new
-    # landing's playlist holds only what it brought.
+    # Late arrives and the same pass lands again: no second mirror.
     _stage(cfg, silence, "Late")
     later = _landed(cfg)
     inbox = _inbox(cfg, root_id)
@@ -535,10 +516,7 @@ def test_a_rerun_of_the_same_pass_adds_nothing_twice(native_library, silence, mo
 
 
 def test_a_rerun_is_read_from_the_record_of_this_pass_alone(native_library, silence):
-    """Another pass of the same account playlist mirrors it whole again, as its own landing.
-
-    The first landing's gate screen counts the owned rows beside the new.
-    """
+    """Another pass of the same account playlist mirrors it whole again, as its own landing."""
     cfg, root_id = native_library
     _owned(cfg, silence, ("Held1",))
     swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})

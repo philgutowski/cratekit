@@ -129,9 +129,7 @@ def test_the_comparison_buckets_every_row_and_counts_what_it_could_not_compare()
 
 
 def test_a_head_off_by_four_is_not_off_by_one_to_three():
-    """Sitting 19's case, 144 against 140.00, is in the other bucket, not the
-    near miss one: the near miss bucket is the estimator's bin width and four
-    is outside it."""
+    """Sitting 19's 144 against 140.00 is outside the near miss bin, so other."""
     assert agreement.tempo_bucket(144, 140.0) == agreement.OTHER_LEVEL
 
 
@@ -429,9 +427,7 @@ def test_the_recorded_agreement_is_a_fresh_copy_with_every_bucket_named():
 
 
 def test_the_recorded_shape_is_the_shape_the_measurement_prints():
-    """Re-recording is a copy: every key the measurement's dictionary form
-    carries is in the record at the same level, so a session pasting the
-    script's JSON cannot drop within_one or nest it."""
+    """Re-recording copies every key of the measurement at the same level."""
     printed = agreement.compare(ROWS).as_dict()
     recorded = detect.head_agreement()
     for name in ("files", "tempo", "within_one", "key"):

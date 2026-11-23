@@ -1,9 +1,7 @@
 """U206: an ISRC the provider already answered is not asked again.
 
-The cache sits at the account's ``match_track`` and the catalogue's
-``tracks_for_isrc``, and every scenario is driven through one of those classes over
-a fake client that counts what it is asked. The client's own exception classes are
-used where the seams read a failure by its class.
+Driven through the account's ``match_track`` and the catalogue's
+``tracks_for_isrc`` over a fake client that counts what it is asked.
 """
 
 from __future__ import annotations
@@ -73,10 +71,7 @@ class HTTPFailure(Exception):
 
 
 class Client:
-    """Answers ``get_tracks_by_isrc`` from ``answers``: tracks, or an exception to raise.
-
-    ``failures`` are raised first, one per call.
-    """
+    """Answers ``get_tracks_by_isrc`` from ``answers``, raising ``failures`` first."""
 
     def __init__(self, answers: dict | None = None, *, country: str | None = "GB") -> None:
         self.answers = dict(answers or {})

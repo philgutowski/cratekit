@@ -1,9 +1,7 @@
 """U214: every INBOX node the mirror leaves off the account is named, with its reason.
 
-Three surfaces: the rotation's classifier and plan on a disposable database with
-its intake tree cut over, the organize step over the recording fake account, and
-the frozen plan that carries the lines to the run that applies. D1 applies:
-nothing here names a real account, person or track.
+The rotation's classifier and plan, the organize step over the fake account, and
+the frozen plan carrying the lines to the run that applies. D1 applies.
 """
 
 from __future__ import annotations
@@ -208,9 +206,7 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_record(native_l
         "and a record in it may)"
     )
     assert [(one.name, one.reason) for one in _rotation(cfg).left] == [(node.name, node.reason)]
-    # THE PLAN CARRIES THE LISTING TO EVERY WARNING THAT READS IT (review round
-    # one): the verb's and crate organize's rotation step say the log could not
-    # be listed, never a count of one record.
+    # The plan carries the listing to every warning: unlisted, never a count of one.
     plan = _rotation(cfg)
     assert plan.log_unlisted is True
     listed = (

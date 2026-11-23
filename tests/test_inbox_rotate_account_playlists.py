@@ -1,8 +1,7 @@
 """U113: the rotation ages an account playlist by its landing record, never by its name.
 
-An intake file's playlist has no identifier until rekordbox imports it, so its
-record names it and its batch folder: the import must be proven, the folder
-still there, and the latest landing of a name is the one it is aged by.
+The import must be proven, the batch folder still there, and the latest landing
+of a name is the one it is aged by.
 """
 
 from __future__ import annotations
@@ -34,11 +33,7 @@ def _intake_record(
     imported: bool = True,
     tag: str = "landing",
 ) -> None:
-    """An intake file's session record naming account playlists.
-
-    As ``place_files`` leaves it, awaiting its import, or as ``intake imported``
-    leaves it once the import is proven.
-    """
+    """An intake file's session record naming account playlists, imported or not."""
     started = datetime.combine(landed, datetime.min.time().replace(hour=12)).astimezone()
     detail: dict = {ingest.INBOX_PLAYLISTS_KEY: entries}
     if imported:

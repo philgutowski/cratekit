@@ -1,11 +1,8 @@
 """Tests for ``scripts/killset.py``, the recorded mutation kill set (U297).
 
-The kill set is what a refactor is held to: every mutation a test killed
-before it is still killed after. A reader that miscounts, a row file that does
-not say what its table recorded, or a check that passes a lost kill would each
-let a guard go untested with a table saying otherwise. So every count here is
-taken on a tree small enough to verify by hand, and the one end to end test
-runs the real driver over the driver suite's own throwaway package.
+A refactor is held to it: every mutation killed before is killed after, so a
+miscount or a check passing a lost kill would leave a guard untested. Counts
+are taken on trees small enough to verify by hand.
 """
 
 from __future__ import annotations
@@ -87,9 +84,7 @@ def _states(root: Path) -> dict[str, str]:
     return {row.id: row.state for row in killset.read_kill_set(root).rows}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # list: what a recorded row is today
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_row_is_live_stale_ambiguous_or_gone_by_what_the_tree_holds(tree):
@@ -173,9 +168,7 @@ def test_a_path_outside_the_checkout_is_refused(tree, tmp_path_factory, capsys):
     assert "is not inside" in capsys.readouterr().err
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # rows: a row file the driver can run
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_rows_writes_the_live_rows_and_counts_what_it_left_out(tree, capsys):
@@ -228,12 +221,8 @@ def test_rows_for_a_directory_takes_every_file_under_it(tree):
 
 
 def test_a_row_file_named_for_its_rows_measures_the_table_beside_it(tree):
-    """``u1-replay-before-rows.toml`` is measured into ``u1-replay-before.json``.
-
-    The driver names its table for the batch, and the next command of a
-    replay reads that table by name, so a batch named for the row file's
-    whole stem would leave the table one ``-rows`` away from where it is read.
-    """
+    """``u1-replay-before-rows.toml`` is measured into ``u1-replay-before.json``,
+    where the next command of a replay reads it by name."""
     _table(tree, "u1.json", [_recorded("A", "    return 1")])
     out = tree / "u1-replay-before-rows.toml"
     assert _run(tree, "rows", ALPHA, "--out", str(out)) == 0
@@ -323,9 +312,7 @@ def test_code_is_written_as_it_reads_when_a_literal_holds_it():
     assert killset.toml_text("x = 'a'") == '"x = \'a\'"'
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # check: every row killed before is killed after
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _measured(row_id: str, *, deaths: int = 1, status: str = "killed", **extra) -> dict:
@@ -448,12 +435,8 @@ AUTOMATIC = "the same text, now in src/pkg/beta.py, was in src/pkg/alpha.py"
 
 
 def test_a_row_the_tool_moved_must_still_die_by_a_test_that_killed_it_before(tmp_path, capsys):
-    """The review's finding, as a class: the same text elsewhere is not the same guard.
-
-    A guard deleted, and an identical line left, renamed or written new in
-    another file: the row is killed there, by that other line's tests. The
-    tool's own reason says only where the text is, so it vouches for nothing.
-    """
+    """The same text elsewhere is not the same guard: a row killed at an identical
+    line in another file vouches for nothing."""
     before = [_measured("A", killed=["tests/test_alpha.py::test_once"])]
     twin = [
         _measured(
@@ -551,9 +534,7 @@ def test_check_refuses_a_file_that_is_not_a_table(tmp_path, capsys):
     assert "is not a mutation table" in capsys.readouterr().err
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # After a refactor: where a recorded row lives now
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _git(root: Path, *args: str) -> str:
@@ -606,11 +587,7 @@ def test_rows_after_writes_text_still_in_its_file_as_it_was(tree, capsys):
 
 
 def test_rows_after_follows_text_that_moved_to_one_other_file(committed, capsys):
-    """A file split: the guard's text left ``alpha.py`` and is in ``moved.py`` once.
-
-    ``moved.py`` did not exist at the commit the table was measured on, so
-    the text can only have come there since.
-    """
+    """A file split: the guard's text left ``alpha.py`` for ``moved.py``, which is new."""
     tree, head = committed
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "moved.py").write_text("def once():\n    return 1\n", encoding="utf-8")
@@ -650,15 +627,8 @@ def _twin_is_split(tree: Path) -> None:
 def test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now(
     tree, capsys, refactor
 ):
-    """The review's finding, both rounds: the same line elsewhere is another guard.
-
-    The guard's line stood in two places at the commit the table was measured
-    on. The refactor deleted it from ``alpha.py``. One file holds the text
-    once now, which is everything a move looks like from today's tree, and
-    asking whether that file held it then is no better: the twin's file may
-    have been renamed or split since. Counting is what tells: two then, one
-    now, so the one left may be the twin's.
-    """
+    """The same line elsewhere is another guard: two then and one now, so the one
+    left may be the twin's, however much it looks like a move."""
     head = _with_a_twin(tree)
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     refactor(tree)
@@ -678,13 +648,8 @@ def test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now(
 def test_a_line_written_new_elsewhere_reads_as_a_move_and_check_is_what_catches_it(
     committed, capsys
 ):
-    """One place then and one now, yet another guard: nothing in the text can tell.
-
-    The guard is deleted and an identical line is written in a new file.
-    ``rows --after`` places the row there with its own reason, and says where
-    the text is. That reason vouches for nothing, which is why ``check``
-    holds a row at a new anchor to a test in common.
-    """
+    """One place then and one now, yet another guard, so ``check`` holds a row at a
+    new anchor to a test in common."""
     tree, head = committed
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "delta.py").write_text("def new():\n    return 1\n", encoding="utf-8")
@@ -788,13 +753,8 @@ def test_rows_after_refuses_a_table_whose_rows_name_no_source(tree, capsys):
 
 
 def test_a_replay_table_says_where_a_moved_guard_lives_now(tree):
-    """After a card moves a guard, the cards after it still find the kill.
-
-    The recorded text is gone from the file the first table names. A replay
-    table under ``docs/mutation`` killed the same source at its new place, so
-    the row is live there, with the tests that replay ran, and the replay
-    table is counted as no table of its own.
-    """
+    """After a card moves a guard, a replay table names the row live at its new
+    place, and counts as no table of its own."""
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "moved.py").write_text("def once():\n    return 1\n", encoding="utf-8")
     _table(tree, "u1.json", [_recorded("A", "    return 1")])
@@ -880,19 +840,12 @@ def test_the_newest_replay_gives_a_row_in_place_its_tests(tree):
     assert row.anchor.tests == ("tests/test_beta.py",)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # End to end, through the one driver
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_recorded_kills_replay_through_the_driver_and_check_clean(repo, capsys):
-    """Table, row file, replay, check: the whole chain on a package with a known answer.
-
-    The table records two kills in the driver suite's fixture package, one of
-    them with a subset that no longer exists. `rows` writes them, the driver
-    measures them under the replay pass, and `check` reads the measured table
-    against itself, then against a copy in which one kill was lost.
-    """
+    """Table, row file, replay, check: the whole chain on a package with a known
+    answer, then against a copy in which one kill was lost."""
     _table(
         repo,
         "u1.json",

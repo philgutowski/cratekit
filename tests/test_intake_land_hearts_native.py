@@ -1,7 +1,6 @@
 """U120 on the native medium: a heart the favourites sync lands joins All Favorites and its month.
 
-The hearts job queued and run as ``crate sync all`` does, the files landed with
-``--pass`` on the native suite's disposable database. Nothing here is real (D1).
+The hearts job run as ``crate sync all`` runs it, then landed with ``--pass``. D1.
 """
 
 from __future__ import annotations
@@ -208,9 +207,8 @@ def test_a_heart_of_the_twentieth_of_october_joins_its_month_and_an_undated_one_
 def test_once_a_band_holds_the_heart_the_additive_refresh_puts_it_in_that_folders_favorites(
     native_library, silence
 ):
-    """R11 through U119's engine: the heart reaches a genre Favorites once adoption
-    files it. First, the record carries the hearts placed under their own key,
-    and no grid, tempo or rating is written for the heart."""
+    """R11: the heart reaches a genre Favorites once adoption files it, and no grid,
+    tempo or rating is written for it."""
     cfg, _root_id = native_library
     _home(cfg)
     _hearted(cfg, silence, {"Hearted": NOV})
