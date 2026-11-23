@@ -218,6 +218,8 @@ def test_a_cleared_second_genre_alone_in_its_folder_is_named_by_the_check(
     assert leftover.location is not None and leftover.location.endswith(_rebuild_suite.COMPOSED)
     assert (leftover.folder, leftover.playlist) == routing_pass.destination(DECLARED, TWO, HIGH)
     assert report.foreign == ()
+    # What route resort names as left behind, the way a person is told to take it out.
+    assert rebuild.left_behind(report, DECLARED) == (leftover,)
 
 
 def test_a_cleared_second_genre_beside_another_track_of_that_folder_is_named_as_before(
