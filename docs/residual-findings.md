@@ -1987,3 +1987,77 @@ unseen.
 **Closes when:** the suite card (#869, U312) moves the parser cache into the
 shared test support with its rule beside it, or a change that breaks one of the
 three conditions takes its shortcut out. Ledger only.
+
+---
+
+## R-1884. Full suite baselines fail under parallel load on tests no card owns, so a kill set replay cannot run side by side on one container
+
+**Found:** at the kill set replay of #867, U310, 2026-11-22.
+
+**The mechanism.** A replay batch runs the whole suite twice before its first
+row, the baseline and the null control, and refuses the batch on any death.
+With three batches and four build workers on one four core container, five
+tests outside adopt and deletion failed one baseline or control each and
+passed alone: `tests/test_jobs.py::test_two_processes_claiming_the_same_job_never_claim_one_item_twice`,
+`tests/intake/test_set_progress.py::test_the_watcher_reports_the_bytes_written_while_the_download_runs`,
+`tests/test_rb_writer_guard.py::test_second_writer_refuses_while_lock_held`,
+and the two inode bound tests in `tests/test_repair_rows.py`, the first of
+which also failed alone in a clone under the temporary directory (#702).
+Each refusal came after an hour of baselines, and two batches were then cut
+at the two hour limit with about fifteen rows measured each.
+
+**Measured cost.** About five hours of replay time on this card, and the
+before batches moved to helper containers. The replays read a scratch copy of
+the measured known failures naming these five, the same file before and
+after; the measured `.cloud-battery/baseline.txt` was never edited.
+
+**Closes when:** the three load sensitive tests wait on an event rather than
+on time, or a replay batch on a shared container is documented as one at a
+time. Ledger only.
+
+---
+
+## R-1885. Patching digest_of on the revert module reaches nothing since the ledger was split
+
+**Found:** at the review of #867, U310, 2026-11-22.
+
+**The mechanism.** `adopt/revert.py` was split into `revert.py`,
+`revert_record.py` and `revert_changed.py`. `revert.py` re-exports
+`digest_of`, but its only callers are in `revert_changed.py`, which resolves
+its own module global. A test that patches `cratekit.adopt.revert.digest_of`,
+the site every such test used before the split, now changes nothing and
+passes or fails for another reason. The thirteen tests that patch it were
+moved to `revert_changed` and each was shown to bite.
+
+**Measured cost.** None to a person: no production path is affected. Base
+`tests/test_adoption.py` with its patches unchanged, run over the branch's
+source, fails 11 tests beyond the machine set, which is how the review
+measured it.
+
+**Closes when:** a guard refuses a patch of a name a module only re-exports,
+or the re-export is dropped once nothing outside imports it from `revert`.
+Ledger only.
+
+---
+
+## R-1886. A base cannot be captured with a branch's scenarios once the test modules they borrow import a module the branch added
+
+**Found:** at the behaviour comparison of #867, U310, 2026-11-22.
+
+**The mechanism.** `behaviour_compare.py capture --rev` swaps only `src/`,
+so scenarios and fixtures come from the working tree. This card's scenarios
+borrow fixtures from `tests/test_adoption.py` and `tests/test_deletion.py`,
+and after the split those test modules import `cratekit.adopt.revert_changed`,
+which the base does not have. A capture of the base from the branch's tree
+fails at collection, every scenario unrecorded. DEVELOPING's rule that a
+scenario names nothing the base lacks holds for the scenario file and not for
+the test modules it imports.
+
+**Measured cost.** The comparison was read against the base capture taken
+before the first edit, with the base's own fixtures, which holds it more
+strictly; nothing was lost here. A later card that wants to recapture this
+base from its own tree will meet the same refusal.
+
+**Closes when:** the capture refuses with the import named, or scenario
+fixtures live in a module that imports only what every revision has. Ledger
+only.
