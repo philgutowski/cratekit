@@ -1,12 +1,8 @@
 """U263: the librosa half of the one decoder, an M4A analysed on librosa 1.0.
 
-The head of an AAC and an ALAC M4A, the refusals, and the proof, by
-``array_equal``, that every format libsndfile reads decodes exactly as
-``librosa.load`` decodes it, which is the card's merge bar: nothing analysed
-today changes. Skipped where the analysis extra is absent, as the other
-analysis suites are. The ffmpeg half is ``tests/test_analysis_decode.py``.
-
-Every file is generated here; no library is read.
+The merge bar is ``array_equal``: every format libsndfile reads decodes
+exactly as ``librosa.load`` does. Skipped where the analysis extra is absent.
+Every file is generated here.
 """
 
 from __future__ import annotations

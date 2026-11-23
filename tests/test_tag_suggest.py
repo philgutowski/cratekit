@@ -1,16 +1,8 @@
 """U114: ``crate tag suggest`` offers a genre for a row with none, behind one gate.
 
-Three layers, in the order they are trusted. The rules, pure: the band, the
-weighing, what may be suggested. The plan, against a disposable database and
-real tagged containers, one scenario per line of the brief. Then the verb
-through the real dispatcher: the two acts R34 requires, the acknowledgment, the
-stale digest, the declined row offered again, and the file and the row agreeing
-after the write with no other column moved.
-
-The genre words are the shipped taxonomy's. The library's lookup rows are
-whatever this file seeds.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The rules, pure; the plan against a disposable database and real containers;
+then the verb through the real dispatcher, both acts, the acknowledgment, the
+stale digest, and file and row agreeing after the write. D1 applies.
 """
 
 from __future__ import annotations
@@ -196,9 +188,7 @@ class _Lookup:
         return self.answers.get(title, suggest.Asked(suggest.DECLINED))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The rules
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -245,9 +235,7 @@ def test_a_tie_between_declared_genres_is_a_split_with_no_default():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The plan
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_artist_with_eight_tracks_all_melodic_house_suggests_it_high(machine, silence):
@@ -448,9 +436,7 @@ def test_the_plan_groups_by_genre_and_band(machine, silence):
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The catalogue and its kept answers
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _searcher(*hits):
@@ -683,9 +669,7 @@ def test_a_kept_file_that_cannot_be_read_is_asked_again(machine):
         assert kept.answer("1", "a", "t", "").genre == DEEP and kept.asked == 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The verb
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _first_act(verb: list[str] = VERB) -> tuple[str, dict]:

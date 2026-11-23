@@ -2,7 +2,7 @@
 title: "A read that confines a path write must ask under the stored spelling, not the mounted one, or it finds none of its own rows and refuses a correct commit"
 date: 2026-10-26
 category: database-writes
-module: "src/cratekit/intake/shelve.py, src/cratekit/intake/native.py"
+module: "src/cratekit/intake/shelve.py, src/cratekit/intake/native_plan.py"
 problem_type: integration_issue
 component: rekordbox_write
 severity: high
@@ -18,7 +18,7 @@ tags: [djmdContent, FolderPath, base-drive, stored_folder_path, confinement, LIK
 
 rekordbox stores every row's path under the drive the database was MADE on,
 `djmdProperty`'s base drive, and remaps it to the mounted path at runtime.
-`native.stored_folder_path` has spelled a written path that way since R-746,
+`native_plan.stored_folder_path` (read through `native` too) has spelled a written path that way since R-746,
 so the landing's rows match the ones rekordbox made. The live library is such
 a library: it was built on one volume name and mounted under another, and
 every row it holds is stored under the old name.

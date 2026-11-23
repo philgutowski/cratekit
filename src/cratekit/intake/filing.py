@@ -1,23 +1,14 @@
 """A native landing files the rows it made into the library tree, under the landing's one answer (U165).
 
-WHY THIS IS NOT ONE COMMIT. Adoption's plan names its work by content id, and
-the rows a landing makes have none until it commits, so the adoption cannot
-join the landing's digest. What can is a PREDICTION: before any row exists
-the landing asks adoption's own rule, :func:`cratekit.adopt.plan.predicted_place`,
-where each file to be added would be filed, lists it on the gate screen and
-digests it with the rest of the plan. After the commit the same run plans
-adoption over the landed ids, and files them through the adopt worker's own
-order, :func:`cratekit.adopt.apply_cli.file_plan`, when every entry equals its
-prediction. Two commits, one answer.
+Two commits, one answer. A landing's rows have no content id until it commits,
+so the gate digests a PREDICTION, :func:`cratekit.adopt.plan.predicted_place`,
+of where adoption would file each; after the commit the run plans adoption over
+the landed ids and files them through
+:func:`cratekit.adopt.apply_cli.file_plan` only when every entry equals its
+prediction. When they differ nothing is filed and nothing rolled back: the
+landing stands, and the run names the rows and ``crate adopt apply``.
 
-WHEN THEY DIFFER NOTHING IS FILED AND NOTHING IS ROLLED BACK. A tree moved, a
-sub undeclared, a file retagged or a vocal sub renamed between the plan and
-the apply is a filing nobody approved, and the landing it follows is already
-true. The run says which rows differ and names ``crate adopt apply``, which
-asks its own question over the plan as it is.
-
-LAYER: modules. It composes the landing and adoption and writes through
-adoption's own writers.
+Layer: modules, writing through adoption's own writers.
 """
 
 from __future__ import annotations
@@ -79,11 +70,8 @@ def shown_place(place: plan_engine.Predicted) -> str:
 def predict(declared: taxonomy.Taxonomy, rows: Sequence[native.RowPlan]) -> tuple[Prediction, ...]:
     """Where adoption would file each row to be added, read off the plan and its file.
 
-    THE GENRE IS THE ROW'S, as the landing writes it (U163), since that is the
-    word adoption will read off the row. The energy is the file's, through
-    adoption's own checked reader, and an unreadable reading predicts as none,
-    which is what the scan records for it. The vocal sub is asked only for a
-    row the plan gives the vox tag.
+    The genre is the row's (U163), the word adoption reads; the energy the
+    file's, unreadable predicting as none, as the scan records it.
     """
     predicted: list[Prediction] = []
     for row in rows:
@@ -145,13 +133,9 @@ def file_landed(
 ) -> Filed:
     """Plan adoption over the rows the landing made and file them when every one is as predicted.
 
-    AFTER THE LANDING'S HANDLE IS CLOSED, since every writer it calls opens its
-    own. The collection cache is forgotten first: it may hold the library as
-    it was before the landing's commit.
-
-    A REFUSAL IS A FILING THAT DID NOT HAPPEN, NEVER A LANDING THAT FAILED. The
-    rows are in the library by now, so a refusal from adoption's writers comes
-    back as :data:`NOT_FILED` with its sentence for the landing to report.
+    After the landing's handle closes, the collection cache forgotten since it
+    may predate the commit. A refusal is a filing that did not happen
+    (:data:`NOT_FILED`), never a landing that failed.
     """
     by_target = {str(row.target): row.content_id for row in landed.added}
     expected = {
@@ -207,11 +191,7 @@ def file_landed(
 
 
 def _refuse_unplaced(membership: Any) -> None:
-    """Refuse before the ledger is marked when a landed row could not be placed in the tree.
-
-    The adopt worker's own rule (R-148), without its artifact: a landing has
-    no job to commit one under, and its envelope carries the rows instead.
-    """
+    """Refuse before the ledger is marked when a landed row could not be placed (R-148)."""
     if not membership.skipped:
         return
     unplaced = sorted({str(match.requested) for match in membership.skipped})
@@ -249,22 +229,3 @@ def warnings(filed: Filed) -> list[dict[str, str]]:
             }
         ]
     return []
-
-
-__all__ = [
-    "ADOPT_APPLY",
-    "FILED",
-    "FILED_DIFFERENTLY",
-    "FILED_DIFFERENTLY_WARNING",
-    "NOTHING_TO_FILE",
-    "NOT_FILED",
-    "NOT_FILED_WARNING",
-    "Filed",
-    "Prediction",
-    "fact",
-    "file_landed",
-    "identity",
-    "predict",
-    "shown_place",
-    "warnings",
-]

@@ -2184,3 +2184,154 @@ module's file name, or by every module whose dotted name starts with the
 module's own), the soft-delete guard resolves a call-time accessor, and the
 night ban matches the parts. The writer guard file needs Phillip's leave to
 change, since no card may touch it.
+
+---
+
+## R-1891. Intake still reaches three core modules off the named interface, so its import allowance is not empty
+
+**Found:** at the build and round one review of #864, U307, 2026-11-22.
+
+**The mechanism.** `tests/ratchets/imports/intake.txt` still holds three lines: `off-interface cratekit.core.binary_refusal` (imported by `intake/cli_identify.py` for the missing downloader refusal), `off-interface cratekit.core.drift` (by `native.py` and `native_plan.py`, the dynamics tag) and `off-interface cratekit.core.rehearsal` (by `land_cli.py` and `land_native.py`, the landing's rehearsal). U307's brief asks for the allowance empty. The named interface in `tests/test_import_rules.py` is at its cap of 25, so none of the three can join it without another leaving, and the modules are #857's (`rehearsal`, `drift`) and #858's (`binary_refusal`). Re-exporting them through an interface module from intake would hide the reach rather than remove it, so U307 left them and names them for the audit.
+
+**Measured cost.** None to a person: the imports work and nothing dangles with a toggle off. The cost is point 4 of #847's definition of done read on intake: three seam items left of the fifteen the survey counted.
+
+**Closes when:** the core cards or the final audit (#872) decide where the three live: a module on the interface list that carries what intake needs, the reach moved into intake where only intake uses it (`rehearsal` has no other feature package user), or the list changed by the card that owns it. Then `scripts/refactor_measure.py prune intake` empties the file. Ledger only.
+
+---
+
+## R-1892. A native landing that fails after its commit landed says no row was added, though the rows were committed
+
+**Found:** at the round one review of #864, U307, 2026-11-22.
+
+**The mechanism.** In `native.apply_rows`, a failure raised after `rb_writer.commit_guarded` has committed (the witness reads the commit as landed) is recorded in the session record with the rows the commit wrote, and then raised. The landing's refusal for it reads "the collection could not be written (after the commit); no row was added and N file(s) were already moved". The reviewer drove it on base `c919209` and on the branch by making `commit_guarded` commit and then raise: both printed that sentence while the database held the two landed rows and the session record named them. Behaviour is unchanged by U307; the sentence is the base's.
+
+**Measured cost.** A person reading the refusal is told nothing landed when the rows did, the shape of METHOD's first defect pattern. Reachability is unmeasured beyond the reviewer's fault injection: no producer of a real failure between the commit and the end of the apply was driven.
+
+**Closes when:** the refusal past a landed commit names what the session record holds (the rows committed, the files moved) and a test drives a failure after the commit and reads the sentence. Ledger only, since the reachability is unmeasured.
+
+---
+
+## R-1893. The monkeypatch undo ban reads only files whose text spells the call in ASCII, so an NFKC spelling passes it
+
+**Found:** at the round two review of #864, U307, 2026-11-22.
+
+**The mechanism.** `tests/test_isolation_survives_undo.py` bans a test that calls `monkeypatch.undo()`, which would undo the suite's isolation. U307 narrowed the files its syntax tree walk reads from every test file holding the text "undo" to those matching an ASCII regex (`_CALL`), for speed. Python folds identifiers with NFKC, so `ｍonkeypatch.undo()` (a fullwidth m) or `monkeypatch.ｕndo()` parses to the same attribute; the reviewer planted five files and the base ban flagged three of them, the branch's one. Neither version catches an aliased fixture (`mp = monkeypatch; mp.undo()`) or `pytest.MonkeyPatch().undo()`.
+
+**Measured cost.** None to a person: no test in the repository spells the call that way, and the producer is contrived. The guard is narrower than it was.
+
+**Closes when:** the prefilter folds the text with NFKC before matching, or the walk reads every file again, and a planted fullwidth spelling is refused by the ban's self check. Ledger only.
+
+---
+
+## R-1894. Intake's 42 owned test files are 402 lines over the card's target, the rest in the set verbs' suites
+
+**Found:** at the record of #864, U307, 2026-11-23.
+
+**The mechanism.** U307's brief asks the 42 test files it owns to come to at most 21,521 lines, from 29,083 on `c919209`. They stand at 21,923 on the branch head: 7,160 lines out, 402 short. The shortfall is in the set verbs' suites (`tests/test_set_inspiration_playlist.py`, `tests/test_u129_set_account_playlist.py`, `tests/test_u135_set_inbox_join.py`, `tests/intake/test_set_fetch.py`, `tests/intake/test_set_progress.py` and the three account playlist suites, 5,367 lines before and 4,416 after against 3,971 for their share), where the builder that trimmed them judged the rest to carry assertions the recorded kills need. The last 34 lines came back when `test_a_fetch_that_raises_still_stops_the_watcher` was made deterministic so r924's F5 is killed every time.
+
+**Measured cost.** None to a person and none to a guard: the test time target is met (the summed time of the 42 files down 43 and 38 percent in two alternated runs), every verb's behaviour compares equal, and every recorded kill is kept. The cost is #847's line target read on intake's tests, about two percent over.
+
+**Closes when:** a later card that touches the set verbs' suites folds their remaining repeated setups (the account playlist and inspiration fixtures each file repeats) while the kill set replay stays at zero lost, or the final audit (#872) accepts the figure. Ledger only.
+
+---
+
+## R-1895. The catalogue URL guard in test_locations now passes on a docstring line in searchers.py, not on the URLs, which moved to shops.py
+
+**Found:** at the review of #863, U306, 2026-11-22.
+
+**The mechanism.** `tests/test_locations.py`, in
+`test_the_one_permitted_call_is_still_there_and_is_still_a_query_string`,
+asserts that `src/cratekit/tagging/searchers.py` holds `https://` and no
+`file://`, to keep the one permitted `quote_plus` building a query string. U306
+split `searchers.py` by source: the catalogue search URLs now live in
+`tagging/shops.py`, and the only `https://` left in `searchers.py` is a line of
+`_query`'s docstring. The round one reviewer set `BANDCAMP_SEARCH` in
+`shops.py` to a `file://` path and the test passed; the same edit in the base
+`searchers.py` fails it. Rewording the docstring fails it with no behaviour
+change.
+
+**Measured cost.** None to a person today: the URLs are unchanged and the
+behaviour comparison is clean. The guard has lost its object, so a later
+`file://` search URL in `shops.py` would pass it.
+
+**Closes when:** the guard reads the module that builds the URLs (`shops.py`,
+or whatever module `_query`'s callers take their bases from). `tests/test_locations.py`
+is on no area card's list, so it is the suite card's, #869 (U312). Ledger only.
+
+---
+
+## R-1896. scripts/title_differential.py in titles base mode compares the tree's Beatport scorer with itself after the searchers split
+
+**Found:** at the review of #863, U306, 2026-11-22.
+
+**The mechanism.** In titles base mode the script loads a base revision's
+`searchers` and sets `base.titles = base_titles` so the base's Beatport scorer,
+`_beatport_best`, reads the base's titles. U306 moved `_beatport_best` to
+`tagging/shops.py` and re-exports it from `searchers`, so the function the
+script reaches resolves `titles` in `shops`' globals and the reroute no longer
+bites: the round one reviewer set a tripwire module as `base.titles`, which
+`c9192091` reaches and `511cb4be` never touches, and round two found
+`_title_matches` the same. The comment at `scripts/title_differential.py:393`
+("so Beatport's scorer is held to it as well") is now untrue. The default base
+mode, which the solutions entry on a strip that can empty a title describes,
+still builds its base side as it did, driven at its default base.
+
+**Measured cost.** A developer tool, not a verb: a session holding a future
+`titles` change against its base is told there are no Beatport differences
+when there may be some. Driven to the mechanism, not through a whole script
+run over a real change.
+
+**Closes when:** the script also sets the base's `shops.titles` (and
+`catalogues.titles`) when it loads a base, or loads the base package whole. `scripts/` is #870 (U313)'s. Ledger only.
+
+---
+
+## R-1897. U306 left tagging, analysis and vocals short of their line, code line and test targets, and with eleven seam lines other cards own
+
+**Found:** at the landing of #863, U306, 2026-11-22.
+
+**The mechanism.** #863's brief set, for the 40 source files and 36 test
+files of `tagging`, `analysis` and `vocals`, at most 17,444 source lines,
+10,189 code lines, 23,357 test lines and 30 percent less test time. Measured
+on the merged head by `scripts/refactor_measure.py lines` against the base
+`c9192091`: source 23,494 to 18,785, code lines 13,104 to 12,718, test lines
+31,668 to 29,619, and the test time not told apart on this container. No file is over
+1,500 lines and no copied block is left. The code that remains is mostly code
+the recorded kill set finds by its exact text, so cutting it means rewriting
+guarded code with every replayed row re-anchored by hand, which this card did
+not do. Eleven import allowance lines stay because the modules they name are
+another card's: `core.art` and `core.taxonomy_word` from tagging and
+`core.cores`, `core.discovery`, `core.drift`, `core.pool` from analysis, and
+`core.discovery` from vocals, all core modules off the interface list, which
+is full at 25 and which U301 (#858), merged in before this card landed, left
+as it was; the registry loading `analysis.check_cli` for a verb the analysis
+toggle does not gate (#860, U303); and vocals importing `analysis.artifacts`,
+`analysis.cli` and `analysis.vocals` at top level, which a lazy import would
+change for a person running the vocals verb with analysis off.
+
+**Measured cost.** None to a person: behaviour is unchanged. The cost is to
+#847's definition of done, points 2, 4 and 5, which the final audit measures.
+
+**Closes when:** the final audit, #872 (U315), measures the epic and files a
+further card for the gap, as #847 says a point that falls short gets. Ledger
+only.
+
+---
+
+## R-1898. The done verdict of analyze check has no behaviour scenario, since reaching it needs a beat grid file on disk
+
+**Found:** at the build of #863, U306, 2026-11-22.
+
+**The mechanism.** `tests/behaviour/analysis_check.py` drives `crate analyze
+check` to waiting (exit 12), suspect (exit 27), the fallback scope, nothing in
+scope and its refusals. The done verdict (exit 0) needs an analysis file that
+holds a readable grid, which no scenario may write under the standing rule
+against beat grids. Patching the grid reader would reach it, but a patch that
+stops biting after a later move would read as a false difference.
+
+**Measured cost.** None today: the verdict's code is covered by
+`tests/test_analyze_check.py`. The behaviour comparison cannot see a change to
+what the done verdict prints.
+
+**Closes when:** a scenario reaches the done verdict through a fake the
+product itself reads at call time, kept where the reader lives. Ledger only.

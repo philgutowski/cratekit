@@ -1,26 +1,11 @@
 """R-770: every intake writer chooses its medium by the intake tree's mode.
 
-``intake land`` has chosen that way since R-746. The ledger said every other
-writer still spliced, and named five. Driven, the list is shorter than it was
-read to be: two callers reach the intake emitter in ``src``, both through
-``place_files``, and one verb besides the landing drives them, ``intake file``.
-The favourites sweep, the composed pass and the label batch write nothing to
-the intake tree on either medium, and section 4 holds them to that on both.
-
-What this file pins, each against a native fixture and a bridge fixture:
-
-1. ``intake file`` on a native intake tree adds one content row and one batch
-   playlist under the adopted root, and writes nothing to an export.
-2. ``intake file`` on the bridge is unchanged.
-3. The splice itself refuses a native tree in its own words, naming the
-   landing, and never as a defect. That is the checking path, and it holds for
-   a caller that did not read the switch.
-4. The verbs the ledger named and that never splice run the same on both.
-5. One switch. Nothing beside it reads the intake tree's mode.
-
-The fixtures are the native landing's own, so the two suites cannot come to
-mean two libraries by "a native intake tree". D1 applies: nothing here names a
-real volume, a real person or a real track.
+Both callers of the intake emitter go through ``place_files``, driven by the
+landing and ``intake file``. Against the native landing's own fixtures this
+pins: ``intake file`` on a native tree adds one row and one batch playlist and
+writes no export (1), and on the bridge is unchanged (2); the splice refuses a
+native tree in its own words, never as a defect (3); the verbs that never
+splice run the same on both media (4); and one switch reads the mode (5). D1.
 """
 
 from __future__ import annotations
@@ -33,15 +18,14 @@ from pathlib import Path
 import pytest
 
 from cratekit.cli import gates
-from cratekit.core import config, jobs, preflight, rb_writer, session, tags, tree_registry
+from cratekit.core import config, jobs, rb_writer, session, tags, tree_registry
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import file_cli, ingest, land_cli, landing, native
 from cratekit.modules.outbound import source as outbound_source
-from tests import adopt_fixtures, outbound_fakes
-from tests._containers import synth_container
+from tests import outbound_fakes
+from tests import test_intake_land_native as land
 from tests.cli_drive import approve_and_queue, drive
-from tests.test_config import valid_data
 from tests.test_intake_land_native import (
     DECLARED,
     INTAKE,
@@ -49,15 +33,19 @@ from tests.test_intake_land_native import (
     MY_DEVICE,
     TODAY,
     _cut_over_intake,
+    _members,
     _query,
-    _seed_binding_rows,
 )
+from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
+from tests.test_intake_land_native import (
+    _release_process_locks as _release_process_locks,  # noqa: PLC0414
+)
+from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
 from tests.test_label_workers import LABELS, SLUGS, queued_sweep, readable, register
 from tests.test_label_workers import bind as bind_catalogue
 from tests.test_outbound_workers import _resume as resume_outbound
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_outbound_workers import catalog
-from tests.test_rb_writer_db import RECORDED_APP_VERSION
 from tests.xml_fixtures import _fresh_xml
 
 GATE = file_cli.FILE_GATE
@@ -70,17 +58,6 @@ NATIVE = "native"
 BASELINE = ("1", "2")
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture(autouse=True)
-def _release_process_locks():
-    yield
-    session._HELD.clear()
-
-
 @pytest.fixture(autouse=True)
 def _forget_libraries():
     outbound_source.forget_libraries()
@@ -88,48 +65,8 @@ def _forget_libraries():
     outbound_source.forget_libraries()
 
 
-@pytest.fixture(autouse=True)
-def _platform_seams(monkeypatch):
-    """What a temporary library cannot speak for, as the native landing patches it."""
-    from pyrekordbox.db6 import database as binding
-
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
-    monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
-    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
-    real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False)
-    )
-
-
 def _machine(tmp_path, monkeypatch, *, profile: str | None = None) -> config.Config:
-    root = tmp_path / "library"
-    (root / "db").mkdir(parents=True)
-    (root / "Music").mkdir(parents=True)
-    (tmp_path / "staging").mkdir()
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    data = valid_data(
-        root,
-        rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
-    )
-    if profile is not None:
-        data["profile"] = {"name": profile}
-    resolved = config.from_dict(data)
-    config.save(resolved)
-    config.reset_cache()
-    adopt_fixtures.build(resolved, ())
-    _seed_binding_rows(resolved)
-    monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
-    )
-    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
-    return resolved
+    return land._configured(land._library_root(tmp_path, monkeypatch), monkeypatch, profile=profile)
 
 
 @pytest.fixture
@@ -161,11 +98,12 @@ def either(request, tmp_path, monkeypatch) -> config.Config:
     return resolved
 
 
-@pytest.fixture
-def silence(tmp_path: Path) -> Path:
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    return synth_container(scratch, ".flac")
+@pytest.fixture(params=(BRIDGE, NATIVE))
+def both(request, bridge_library) -> config.Config:
+    """The acknowledged machine on each medium in turn."""
+    if request.param == NATIVE:
+        _cut_over_intake(bridge_library)
+    return bridge_library
 
 
 @pytest.fixture
@@ -184,10 +122,26 @@ def _single(cfg: config.Config, silence: Path, name: str = "Single.flac") -> Pat
     path = _music(cfg) / name
     shutil.copyfile(silence, path)
     assert tags.write_tags(
-        path,
-        {"title": f"01A - 124 - {Path(name).stem}", "artist": "Probe", "genre": "Deep House"},
+        path, {"title": f"01A - 124 - {Path(name).stem}", "artist": "Probe", "genre": "Deep House"},
     )
     return path
+
+
+def _outside(tmp_path: Path, silence: Path) -> Path:
+    """One tagged file in a folder outside the library."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    outside = elsewhere / "Out.flac"
+    shutil.copyfile(silence, outside)
+    assert tags.write_tags(outside, {"title": "Out", "artist": "Probe", "genre": "Deep House"})
+    return outside
+
+
+def _staged_one(cfg: config.Config, silence: Path) -> Path:
+    staged = Path(cfg.paths.download_staging) / "One.flac"
+    shutil.copyfile(silence, staged)
+    assert tags.write_tags(staged, {"title": "One", "artist": "Probe", "genre": "Deep House"})
+    return staged
 
 
 def _file(path: Path, *extra: str) -> list[str]:
@@ -207,15 +161,6 @@ def _playlists(cfg: config.Config, name: str) -> list[tuple]:
     return _query(cfg, "SELECT ID, ParentID, Attribute FROM djmdPlaylist WHERE Name = ?", name)
 
 
-def _members(cfg: config.Config, playlist_id: str) -> list[str]:
-    rows = _query(
-        cfg,
-        "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY TrackNo",
-        playlist_id,
-    )
-    return [str(row[0]) for row in rows]
-
-
 def _xml_anywhere(cfg: config.Config, tmp_path: Path) -> list[str]:
     """Every xml document under the test's own tree except the ones it made."""
     return sorted(
@@ -226,16 +171,8 @@ def _xml_anywhere(cfg: config.Config, tmp_path: Path) -> list[str]:
 
 
 def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
-    """R34's two acts against the explicit gate, then the acting drive."""
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    detail = refused["cause"]["detail"]
-    assert detail["gate"] == GATE and detail["explicit"] is True
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
-    code, acted = drive(["--run", run_id, *verb])
-    return code, acted, refused
+    """R34's two acts against this verb's explicit gate, then the acting drive."""
+    return land._two_acts(verb, GATE)
 
 
 def _assert_nothing_written(cfg: config.Config, tmp_path: Path) -> None:
@@ -252,11 +189,7 @@ def _assert_refused_before_the_gate(envelope: dict, code: int, reason: str) -> N
     assert not gates.run_path(envelope["run_id"]).exists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. intake file on a native intake tree
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     native_library, silence, tmp_path
 ):
@@ -277,6 +210,19 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     assert folder_path == str(path.resolve())
     assert title == ingest.read_meta(path, cfg=cfg)["name"]
     assert title.startswith("01A - 124 - ")
+    # The library's own device, and no analysis value on the row, column by
+    # column, nor a cue, mixer or file row naming it.
+    selected = ", ".join(native.LEFT_EMPTY)
+    ((device_id, master, *values),) = _query(
+        cfg, f"SELECT DeviceID, MasterDBID, {selected} FROM djmdContent WHERE ID = ?", content_id
+    )
+    assert (str(device_id), str(master)) == MY_DEVICE
+    assert len(values) == len(native.LEFT_EMPTY) > 0
+    for name, value in zip(native.LEFT_EMPTY, values):
+        assert value in (None, 0, 0.0, "", "0"), f"row {content_id} carries {name}={value!r}"
+    for table in rb_writer.CONTENT_ANALYSIS_TABLES:
+        ((count,),) = _query(cfg, f"SELECT COUNT(*) FROM {table} WHERE ContentID = ?", content_id)
+        assert count == 0, f"{table} holds a row for the new content row {content_id}"
 
     ((playlist_id, parent, attribute),) = _playlists(cfg, path.stem)
     assert str(parent) == root_id, "the batch playlist was not parented to the adopted root"
@@ -292,20 +238,12 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     assert item["action"] == file_cli.ADDED and item["content_id"] == str(content_id)
     assert item["left_empty"] == sorted(native.LEFT_EMPTY)
     assert playlist == {
-        "action": land_cli.PLAYLIST,
-        "playlist": path.stem,
-        "id": str(playlist_id),
-        "tree": INTAKE,
+        "action": land_cli.PLAYLIST, "playlist": path.stem, "id": str(playlist_id), "tree": INTAKE,
         "session": playlist["session"],
     }
-    assert acted["data"]["totals"] == {
-        "count": 1,
-        "added": 1,
-        "already present": 0,
-        "memberships": 1,
-    }
-    # U127: the machine records no vocal calibration, so the row joins with
-    # no vox My Tag and the second warning says why.
+    assert acted["data"]["totals"] == {"count": 1, "added": 1, "already present": 0, "memberships": 1}
+    # U127: no vocal calibration, so the row joins with no vox My Tag and the
+    # second warning says why.
     warning, vox = acted["warnings"]
     assert warning["code"] == land_cli.AWAITING_ANALYSIS
     # U166: the one playlist the visit selects, not the batch the row joined.
@@ -320,48 +258,19 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     assert record.sources == {INTAKE: "committed"}
     # U166: the batch's one membership and INBOX / Analyze's one.
     assert {change.tree: change.created for change in record.change.trees} == {
-        INTAKE: 2,
-        rb_writer.CONTENT_TABLE: 1,
+        INTAKE: 2, rb_writer.CONTENT_TABLE: 1,
     }
-
-
-def test_the_row_carries_the_librarys_own_device(native_library, silence):
-    cfg, _root = native_library
-    code, acted, _ = _two_acts(_file(_single(cfg, silence)))
-    assert code == int(ExitCode.OK), acted
-    ((device_id, master),) = _query(
-        cfg, "SELECT DeviceID, MasterDBID FROM djmdContent WHERE FolderPath IS NOT NULL"
-    )
-    assert (str(device_id), str(master)) == MY_DEVICE
-
-
-def test_after_the_write_no_analysis_value_is_on_the_new_row_column_by_column(
-    native_library, silence
-):
-    """The standing constraint on the new path, read from SQL on the row as
-    rekordbox will find it: every column an analysis pass fills, and no cue,
-    mixer or file row naming the new row."""
-    cfg, _root = native_library
-    code, acted, _ = _two_acts(_file(_single(cfg, silence)))
-    assert code == int(ExitCode.OK), acted
-
-    selected = ", ".join(native.LEFT_EMPTY)
-    ((content_id, *values),) = _query(
-        cfg, f"SELECT ID, {selected} FROM djmdContent WHERE FolderPath IS NOT NULL"
-    )
-    assert len(values) == len(native.LEFT_EMPTY) > 0
-    for name, value in zip(native.LEFT_EMPTY, values):
-        assert value in (None, 0, 0.0, "", "0"), f"row {content_id} carries {name}={value!r}"
-    for table in rb_writer.CONTENT_ANALYSIS_TABLES:
-        ((count,),) = _query(cfg, f"SELECT COUNT(*) FROM {table} WHERE ContentID = ?", content_id)
-        assert count == 0, f"{table} holds a row for the new content row {content_id}"
 
 
 def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database(
     native_library, silence, tmp_path
 ):
+    """And the gate takes no inline answer, and an abort writes nothing."""
     cfg, root_id = native_library
     path = _single(cfg, silence)
+    code, inline = drive(["-d", f"{GATE}=apply", *_file(path)])
+    assert code == int(ExitCode.DECISION_REQUIRED), inline
+    assert inline["cause"]["detail"]["gate"] == GATE
 
     code, refused = drive(_file(path))
 
@@ -369,9 +278,7 @@ def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database
     shown = refused["cause"]["detail"]["shown"]
     assert shown["file"] == str(path.resolve())
     assert shown["reads and writes"] == str(cfg.library.db_path)
-    assert shown["playlist"] == (
-        f"{path.stem} under {DECLARED.intake.display} (row {root_id})"
-    )
+    assert shown["playlist"] == f"{path.stem} under {DECLARED.intake.display} (row {root_id})"
     assert shown["left empty for rekordbox"] == list(native.LEFT_EMPTY)
     assert shown["adds"] == 1 and shown["already present"] == 0
     (item,) = shown["items"]
@@ -391,30 +298,13 @@ def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database
     }
     # THE LIBRARY'S VALUE, shown with its count, never the binding's (U126).
     assert item["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
-    assert shown["content link"] == (
-        f"{LIBRARY_LINK}, carried by 2 of the library's 2 live rows"
-    )
-    # U115: the file id is named as the sentence it is, since the number is
-    # read on the landed file when the row is made and no plan can know it.
+    assert shown["content link"] == f"{LIBRARY_LINK}, carried by 2 of the library's 2 live rows"
+    # U115: the file id is named as a sentence, since no plan can know the number.
     assert item["row"][rb_writer.FILE_ID_COLUMN] == native.FILE_ID_AT_LANDING
     # Nothing was written for a plan nobody answered.
     _assert_nothing_written(cfg, tmp_path)
     assert _playlists(cfg, path.stem) == []
 
-
-def test_the_native_gate_takes_no_inline_answer(native_library, silence, tmp_path):
-    cfg, _root = native_library
-    path = _single(cfg, silence)
-    code, envelope = drive(["-d", f"{GATE}=apply", *_file(path)])
-    assert code == int(ExitCode.DECISION_REQUIRED), envelope
-    assert envelope["cause"]["detail"]["gate"] == GATE
-    _assert_nothing_written(cfg, tmp_path)
-
-
-def test_an_abort_writes_nothing(native_library, silence, tmp_path):
-    cfg, _root = native_library
-    path = _single(cfg, silence)
-    code, refused = drive(_file(path))
     run_id = refused["run_id"]
     drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
     code, envelope = drive(["--run", run_id, *_file(path)])
@@ -423,61 +313,39 @@ def test_an_abort_writes_nothing(native_library, silence, tmp_path):
     _assert_nothing_written(cfg, tmp_path)
 
 
-def test_an_answer_given_for_one_title_is_stale_once_the_file_is_retagged(
-    native_library, silence, tmp_path
-):
-    """The digest covers the row's columns, so a plan approved over one title
-    does not write another."""
-    cfg, _root = native_library
-    path = _single(cfg, silence)
-    code, refused = drive(_file(path))
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert tags.write_tags(path, {"title": "02A - 126 - Renamed"})
-
-    code, envelope = drive(["--run", run_id, *_file(path)])
-
-    assert code != int(ExitCode.OK), envelope
-    assert envelope["cause"]["reason"] == "decision-stale", envelope
-    _assert_nothing_written(cfg, tmp_path)
+def _retitled(cfg: config.Config, path: Path) -> None:
+    """The digest covers the row's columns."""
+    tags.write_tags(path, {"title": "02A - 126 - Renamed"})
 
 
-def test_an_answer_is_stale_once_the_file_itself_changed_under_the_same_tags(
-    native_library, silence, tmp_path
-):
+def _grown(cfg: config.Config, path: Path) -> None:
     """The collection plan's half of the digest, alone: the size the row would
     carry moved and nothing the verb's own plan lists did."""
-    cfg, _root = native_library
-    path = _single(cfg, silence)
-    code, refused = drive(_file(path))
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
     with path.open("ab") as handle:
         handle.write(b"\0" * 64)
     assert ingest.read_meta(path, cfg=cfg)["name"].startswith("01A - 124 - ")
 
-    code, envelope = drive(["--run", run_id, *_file(path)])
 
-    assert envelope["cause"]["reason"] == "decision-stale", envelope
-    _assert_nothing_written(cfg, tmp_path)
-
-
-def test_an_answer_is_stale_once_the_artist_the_plan_showed_changed(
-    native_library, silence, tmp_path
-):
+def _reartisted(cfg: config.Config, path: Path) -> None:
     """The verb's own half of the digest, alone: the artist is on the plan the
     person read and on no column the row sets."""
+    size = path.stat().st_size
+    tags.write_tags(path, {"artist": "Other"})
+    assert path.stat().st_size == size, "the retag moved the size, so this proves nothing"
+
+
+@pytest.mark.parametrize("change", [_retitled, _grown, _reartisted])
+def test_an_answer_is_stale_once_the_file_changed_after_it(native_library, silence, tmp_path, change):
     cfg, _root = native_library
     path = _single(cfg, silence)
-    size = path.stat().st_size
-    code, refused = drive(_file(path))
+    _code, refused = drive(_file(path))
     run_id = refused["run_id"]
     drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert tags.write_tags(path, {"artist": "Other"})
-    assert path.stat().st_size == size, "the retag moved the size, so this proves nothing"
+    change(cfg, path)
 
     code, envelope = drive(["--run", run_id, *_file(path)])
 
+    assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "decision-stale", envelope
     _assert_nothing_written(cfg, tmp_path)
 
@@ -533,21 +401,15 @@ def test_a_file_already_in_the_collection_gains_a_membership_and_no_second_row(
     item = acted["data"]["items"][0]
     assert item["action"] == native.PRESENT and item["content_id"] == "held-1"
     assert "left_empty" not in item
-    assert acted["data"]["totals"] == {
-        "count": 1,
-        "added": 0,
-        "already present": 1,
-        "memberships": 1,
-    }
+    assert acted["data"]["totals"] == {"count": 1, "added": 0, "already present": 1, "memberships": 1}
     assert acted["warnings"] == [], "nothing joined the collection, so nothing awaits analysis"
 
 
 def test_an_export_on_a_native_tree_is_refused_by_name_and_not_as_a_defect(
     native_library, silence, export, tmp_path
 ):
-    """The residual's own sentence. Before this unit this drive reached the
-    emitter guard: ``tree-unconverged``, ``report-defect``, over a cutover the
-    person chose."""
+    """The residual's own sentence: this drive once reached the emitter guard,
+    ``tree-unconverged`` and ``report-defect``, over a cutover the person chose."""
     cfg, _root = native_library
     path = _single(cfg, silence)
     before = export.read_bytes()
@@ -562,64 +424,62 @@ def test_an_export_on_a_native_tree_is_refused_by_name_and_not_as_a_defect(
     _assert_nothing_written(cfg, tmp_path)
 
 
-def test_a_file_under_staging_is_refused_on_the_native_medium_too(
-    native_library, silence, tmp_path
-):
+def _from_staging(cfg, silence, tmp_path, monkeypatch):
     """A row stamped from staging dies when staging is cleaned, as a Location does."""
-    cfg, _root = native_library
     staged = Path(cfg.paths.download_staging) / "Staged.flac"
     shutil.copyfile(silence, staged)
-    code, envelope = drive(_file(staged))
-    _assert_refused_before_the_gate(envelope, code, "intake-staging-refused")
-    _assert_nothing_written(cfg, tmp_path)
+    return staged, ()
 
 
-def test_a_suffix_the_database_has_no_type_for_is_refused_before_the_gate(
-    native_library, silence, tmp_path
-):
-    cfg, _root = native_library
-    odd = _single(cfg, silence).rename(_music(cfg) / "Single.opus")
-    code, envelope = drive(_file(odd))
-    _assert_refused_before_the_gate(envelope, code, "intake-list-unusable")
-    assert "Single.opus" in envelope["cause"]["message"]
-    assert "no file type" in envelope["cause"]["message"]
-    _assert_nothing_written(cfg, tmp_path)
+def _untyped(cfg, silence, tmp_path, monkeypatch):
+    return _single(cfg, silence).rename(_music(cfg) / "Single.opus"), ("Single.opus", "no file type")
 
 
-def test_a_file_no_declared_sub_would_take_is_refused_before_the_gate(
-    native_library, silence, tmp_path, monkeypatch
-):
-    """The shipped taxonomy declares a sub for every file, so the placement
-    check is driven at its seam, and what this proves is that the native
-    medium asks it at all."""
-    cfg, _root = native_library
+def _unplaceable(cfg, silence, tmp_path, monkeypatch):
+    """The shipped taxonomy declares a sub for every file, so the check is driven
+    at its seam: this proves the native medium asks it at all."""
     path = _single(cfg, silence)
     monkeypatch.setattr(ingest, "decide_placement", lambda meta, declared: None)
+    return path, ("no declared sub",)
+
+
+def _outside_the_library(cfg, silence, tmp_path, monkeypatch):
+    """Once planned as an add and written, then never found again since the
+    matcher resolves under the root, so a second run planned a second row."""
+    return _outside(tmp_path, silence), ("Out.flac", "outside the library", str(cfg.library.root))
+
+
+def _rekordbox_running(cfg, silence, tmp_path, monkeypatch):
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
+    return _single(cfg, silence), ()
+
+
+@pytest.mark.parametrize(
+    ("made", "reason"),
+    [
+        (_from_staging, "intake-staging-refused"), (_untyped, "intake-list-unusable"),
+        (_unplaceable, "intake-list-unusable"), (_outside_the_library, "intake-list-unusable"),
+        (_rekordbox_running, "rekordbox-running"),
+    ],
+)
+def test_a_file_the_native_medium_cannot_take_is_refused_before_the_gate(
+    native_library, silence, tmp_path, monkeypatch, made, reason
+):
+    cfg, _root = native_library
+    path, said = made(cfg, silence, tmp_path, monkeypatch)
     code, envelope = drive(_file(path))
-    _assert_refused_before_the_gate(envelope, code, "intake-list-unusable")
-    assert "no declared sub" in envelope["cause"]["message"]
+    _assert_refused_before_the_gate(envelope, code, reason)
+    message = envelope["cause"]["message"]
+    assert [one for one in said if one not in message] == [], message
     _assert_nothing_written(cfg, tmp_path)
 
 
-def test_a_file_outside_the_library_is_refused_on_the_native_medium(
-    native_library, silence, tmp_path
-):
-    """The review drove this: a file outside the root was planned as an add,
-    written, and could never be found again, since the matcher resolves under
-    the root. A second run then planned a second row for it."""
-    cfg, _root = native_library
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    outside = elsewhere / "Out.flac"
-    shutil.copyfile(silence, outside)
-    assert tags.write_tags(outside, {"title": "Out", "artist": "Probe", "genre": "Deep House"})
-
-    code, envelope = drive(_file(outside))
-
-    _assert_refused_before_the_gate(envelope, code, "intake-list-unusable")
-    message = envelope["cause"]["message"]
-    assert "Out.flac" in message and "outside the library" in message
-    assert str(cfg.library.root) in message
+def test_no_acknowledgment_refuses_before_the_gate(machine, silence, tmp_path):
+    cfg = machine
+    _cut_over_intake(cfg)
+    code, envelope = drive(_file(_single(cfg, silence)))
+    _assert_refused_before_the_gate(envelope, code, "backup-acknowledgment-missing")
+    assert envelope["cause"]["remediation"]["remedy"] == "acknowledge-backup"
     _assert_nothing_written(cfg, tmp_path)
 
 
@@ -627,47 +487,17 @@ def test_a_file_outside_the_library_is_still_spliced_on_the_bridge(
     bridge_library, silence, export, tmp_path
 ):
     """The bridge never asked, and still does not: a Location is text."""
-    elsewhere = tmp_path / "elsewhere"
-    elsewhere.mkdir()
-    outside = elsewhere / "Out.flac"
-    shutil.copyfile(silence, outside)
-    assert tags.write_tags(outside, {"title": "Out", "artist": "Probe", "genre": "Deep House"})
+    outside = _outside(tmp_path, silence)
     code, envelope = drive(_file(outside, "--export", str(export)))
     assert code == int(ExitCode.PENDING_HUMAN), envelope
-    assert b"Out.flac" in (elsewhere / "Out_inboxed.xml").read_bytes()
+    assert b"Out.flac" in (outside.parent / "Out_inboxed.xml").read_bytes()
 
 
 def test_a_file_named_through_a_link_is_stored_under_the_configured_root(
     native_library, silence, tmp_path
 ):
-    """The row is spelled as the native landing spells its targets, under the
-    root as configured, so it matches the rows the collection holds whichever
-    way the person reached the file."""
-    cfg, _root = native_library
-    path = _single(cfg, silence)
-    alias = tmp_path / "alias"
-    alias.symlink_to(cfg.library.root, target_is_directory=True)
-    through = alias / path.relative_to(cfg.library.root)
-    assert through.is_file() and str(through) != str(path)
-
-    code, acted, _ = _two_acts(_file(through))
-
-    assert code == int(ExitCode.OK), acted
-    ((_content_id, _title, folder_path),) = _rows(cfg)
-    assert folder_path == str(Path(cfg.library.root) / cfg.library.music_dir / "Single.flac")
-    # And a second run finds the row it made, where the unresolved spelling
-    # planned a second one.
-    code, refused = drive(_file(through))
-    shown = refused["cause"]["detail"]["shown"]
-    assert shown["adds"] == 0 and shown["already present"] == 1
-
-
-def test_the_target_is_spelled_under_the_root_as_configured_not_as_resolved(
-    native_library, silence, tmp_path
-):
-    """A library configured through a link. The file is named by its real path
-    and the row is planned under the link, which is how the landing spells a
-    target and how the collection's rows are matched."""
+    """Spelled under the root as configured, as the landing spells its targets, so it
+    matches the collection's rows however the file was reached."""
     from dataclasses import replace
 
     cfg, _root = native_library
@@ -676,12 +506,22 @@ def test_the_target_is_spelled_under_the_root_as_configured_not_as_resolved(
     alias.symlink_to(cfg.library.root, target_is_directory=True)
     linked = replace(cfg, library=replace(cfg.library, root=alias))
     assert file_cli._in_the_library(path, linked) == alias / cfg.library.music_dir / "Single.flac"
+    through = alias / path.relative_to(cfg.library.root)
+    assert through.is_file() and str(through) != str(path)
 
+    code, acted, _ = _two_acts(_file(through))
 
+    assert code == int(ExitCode.OK), acted
+    ((_content_id, _title, folder_path),) = _rows(cfg)
+    assert folder_path == str(Path(cfg.library.root) / cfg.library.music_dir / "Single.flac")
+    # A second run finds the row it made, where the unresolved spelling planned another.
+    code, refused = drive(_file(through))
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["adds"] == 0 and shown["already present"] == 1
 def test_the_engine_refuses_a_target_it_cannot_resolve_instead_of_planning_an_add(
     native_library, silence, tmp_path
 ):
-    """Unasked is not absent. The matcher never looked for a row for a path it
+    """Unasked is not absent: the matcher never looked for a row for a path it
     could not put under the root, and the plan used to read that as no row."""
     cfg, _root = native_library
     outside = tmp_path / "elsewhere.flac"
@@ -690,11 +530,7 @@ def test_the_engine_refuses_a_target_it_cannot_resolve_instead_of_planning_an_ad
     try:
         with pytest.raises(CratekitError) as raised:
             native.plan_rows(
-                cfg,
-                db,
-                tree_id=INTAKE,
-                registry=tree_registry.read(cfg),
-                batch="probe",
+                cfg, db, tree_id=INTAKE, registry=tree_registry.read(cfg), batch="probe",
                 files=[(outside, outside)],
             )
     finally:
@@ -704,10 +540,13 @@ def test_the_engine_refuses_a_target_it_cannot_resolve_instead_of_planning_an_ad
     assert str(outside) in cause.message and "no row was planned" in cause.message
 
 
-def test_a_binding_failure_past_the_gate_says_what_it_leaves(
+def test_a_failure_past_the_gate_says_what_it_leaves_and_keeps_its_reason_and_remedy(
     native_library, silence, tmp_path, monkeypatch
 ):
-    cfg, _root = native_library
+    """A binding failure says what it leaves; the engine's skew refusal, whose
+    remedy is not its reason's default, keeps both, so a wrapper that dropped
+    the remedy would answer with another one."""
+    cfg, root_id = native_library
     path = _single(cfg, silence)
 
     def broken(*args, **kwargs):
@@ -724,15 +563,6 @@ def test_a_binding_failure_past_the_gate_says_what_it_leaves(
     assert path.is_file()
     assert _rows(cfg) == []
 
-
-def test_a_refusal_past_the_gate_keeps_its_reason_and_remedy(
-    native_library, silence, monkeypatch
-):
-    """The engine's own skew refusal, whose remedy is not its reason's default,
-    so a wrapper that dropped the remedy would answer with another one."""
-    cfg, root_id = native_library
-    path = _single(cfg, silence)
-
     def skewed(*args, **kwargs):
         raise tree_registry.RegistrySkew(
             "the adopted intake root could not be read back", tree_id=INTAKE, root_id=root_id
@@ -747,32 +577,8 @@ def test_a_refusal_past_the_gate_keeps_its_reason_and_remedy(
     assert "the adopted intake root could not be read back" in cause["message"]
     assert "no row was added" in cause["message"]
     assert cause["detail"]["tree_id"] == INTAKE and cause["detail"]["source"] == str(path)
-
-
-def test_no_acknowledgment_refuses_before_the_gate(machine, silence, tmp_path):
-    cfg = machine
-    _cut_over_intake(cfg)
-    code, envelope = drive(_file(_single(cfg, silence)))
-    _assert_refused_before_the_gate(envelope, code, "backup-acknowledgment-missing")
-    assert envelope["cause"]["remediation"]["remedy"] == "acknowledge-backup"
-    _assert_nothing_written(cfg, tmp_path)
-
-
-def test_rekordbox_running_refuses_before_the_gate(native_library, silence, tmp_path, monkeypatch):
-    cfg, _root = native_library
-    path = _single(cfg, silence)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
-    code, envelope = drive(_file(path))
-    _assert_refused_before_the_gate(envelope, code, "rekordbox-running")
-    _assert_nothing_written(cfg, tmp_path)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. intake file on the bridge, unchanged
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def test_on_the_bridge_the_export_is_spliced_as_before(bridge_library, silence, export):
+def test_on_the_bridge_the_export_is_spliced_as_before(bridge_library, silence, export, tmp_path):
     cfg = bridge_library
     path = _single(cfg, silence)
     before = export.read_bytes()
@@ -792,9 +598,15 @@ def test_on_the_bridge_the_export_is_spliced_as_before(bridge_library, silence, 
     assert _playlists(cfg, path.stem) == []
     (record,) = session.records(cfg)
     assert record.state is session.SessionState.AWAITING_IMPORT
+    # And the splice called directly still takes a bridge tree.
+    destination = tmp_path / "direct_inboxed.xml"
+    (placed,) = ingest.place_files([path], cfg=cfg, export=export, destination=destination)
+    assert placed.path == path and destination.is_file()
 
 
 def test_on_the_bridge_no_export_is_a_plan_and_asks_no_gate(bridge_library, silence, tmp_path):
+    """And the medium is read before the plan is shown, on the bridge too: an
+    unreadable registry is not read as "on the bridge", the verb says why."""
     cfg = bridge_library
     path = _single(cfg, silence)
     code, envelope = drive(_file(path))
@@ -805,61 +617,33 @@ def test_on_the_bridge_no_export_is_a_plan_and_asks_no_gate(bridge_library, sile
     assert gates.load(envelope["run_id"]).offers == {}
     _assert_nothing_written(cfg, tmp_path)
 
-
-@pytest.fixture(params=(BRIDGE, NATIVE))
-def both(request, bridge_library) -> config.Config:
-    """The acknowledged machine on each medium in turn."""
-    if request.param == NATIVE:
-        _cut_over_intake(bridge_library)
-    return bridge_library
-
-
-def test_a_file_that_is_not_there_refuses_from_the_vocabulary_on_either_medium(both, tmp_path):
-    """The conformance sample held the verb to this until it needed a file that
-    exists, so it is held here, on both media."""
-    cfg = both
-    code, envelope = drive(_file(_music(cfg) / "no-such-track.flac"))
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
-    assert "is not a file on this machine" in envelope["cause"]["message"]
-    _assert_nothing_written(cfg, tmp_path)
-
-
-def test_a_file_that_is_not_audio_refuses_on_either_medium(both, tmp_path):
-    cfg = both
-    notes = _music(cfg) / "notes.txt"
-    notes.write_text("not audio\n", encoding="utf-8")
-    code, envelope = drive(_file(notes))
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
-    assert "not an audio file" in envelope["cause"]["message"]
-    _assert_nothing_written(cfg, tmp_path)
-
-
-def test_a_registry_nobody_can_read_refuses_the_plan_with_its_own_cause(
-    bridge_library, silence, tmp_path
-):
-    """The medium is read before the plan is shown, on the bridge too. A
-    registry that cannot be read is not read as "on the bridge": the verb
-    cannot say whether there is a gate to ask, so it says why."""
-    cfg = bridge_library
-    path = _single(cfg, silence)
     registry_file = tree_registry.path_for(cfg)
     registry_file.parent.mkdir(parents=True, exist_ok=True)
     registry_file.write_text("{ not json", encoding="utf-8")
-
     code, envelope = drive(_file(path))
-
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "tree-registry-unusable"
     assert _rows(cfg) == [] and _xml_anywhere(cfg, tmp_path) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+def test_a_file_that_is_not_there_or_not_audio_refuses_from_the_vocabulary_on_either_medium(
+    both, tmp_path
+):
+    """The conformance sample held the verb to this until it needed a file that
+    exists, so it is held here, on both media."""
+    cfg = both
+    notes = _music(cfg) / "notes.txt"
+    notes.write_text("not audio\n", encoding="utf-8")
+    for path, said in (
+        (_music(cfg) / "no-such-track.flac", "is not a file on this machine"),
+        (notes, "not an audio file"),
+    ):
+        code, envelope = drive(_file(path))
+        assert code == int(ExitCode.PRECONDITION), envelope
+        assert envelope["cause"]["reason"] == "intake-list-unusable"
+        assert said in envelope["cause"]["message"]
+    _assert_nothing_written(cfg, tmp_path)
 # 3. The splice refuses a native tree in its own words
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def _assert_names_the_landing_and_no_defect(cause) -> None:
     assert cause.reason == "tree-unconverged"
     assert str(cause.remediation.remedy) == "fix-command-line"
@@ -873,123 +657,78 @@ def _assert_names_the_landing_and_no_defect(cause) -> None:
 def test_the_splice_refuses_a_native_intake_tree_naming_the_landing(
     native_library, silence, export, tmp_path
 ):
-    """A caller that did not read the switch. ``place_files`` is the one path
-    every xml intake write takes, so this is where the refusal has to be."""
+    """``place_files`` is the one path every xml intake write takes, so the refusal
+    is there, for a caller that did not read the switch, and before it looks
+    for the export: "export the collection again" would be the wrong remedy."""
     cfg, _root = native_library
     path = _single(cfg, silence)
     destination = tmp_path / "direct_inboxed.xml"
     before = export.read_bytes()
 
-    with pytest.raises(CratekitError) as raised:
-        ingest.place_files([path], cfg=cfg, export=export, destination=destination)
+    for given in (export, tmp_path / "no-such.xml"):
+        with pytest.raises(CratekitError) as raised:
+            ingest.place_files([path], cfg=cfg, export=given, destination=destination)
+        _assert_names_the_landing_and_no_defect(raised.value.cause)
 
-    _assert_names_the_landing_and_no_defect(raised.value.cause)
     assert export.read_bytes() == before
     assert not destination.exists()
     _assert_nothing_written(cfg, tmp_path)
 
 
-def test_the_splice_refuses_a_native_tree_before_it_looks_for_the_export(
-    native_library, silence, tmp_path
+def test_the_bridge_landing_engine_refuses_a_native_tree_the_same_way_and_moves_nothing(
+    native_library, silence, export, tmp_path
 ):
-    """On this medium there is no export to find, so "export the collection
-    again" would be the wrong thing to tell anybody."""
+    """The pre-move check reaches the emitter on a copy, and the apply reads the
+    registry again before its first move (R-677) for a cutover recorded between
+    the verb's read and the engine's: each says what the splice says, unwrapped."""
     cfg, _root = native_library
-    path = _single(cfg, silence)
-    with pytest.raises(CratekitError) as raised:
-        ingest.place_files(
-            [path],
-            cfg=cfg,
-            export=tmp_path / "no-such.xml",
-            destination=tmp_path / "direct_inboxed.xml",
-        )
-    _assert_names_the_landing_and_no_defect(raised.value.cause)
-
-
-def test_the_bridge_landing_engine_refuses_a_native_tree_the_same_way(
-    native_library, silence, tmp_path
-):
-    """The landing's pre-move check reaches the emitter on a copy. A caller that
-    came to the bridge engine on a native tree is told what the splice tells it,
-    with nothing moved."""
-    cfg, _root = native_library
-    staged = Path(cfg.paths.download_staging) / "One.flac"
-    shutil.copyfile(silence, staged)
-    assert tags.write_tags(staged, {"title": "One", "artist": "Probe", "genre": "Deep House"})
-    planned = landing.plan(Path(cfg.paths.download_staging), cfg, "2026-09-30_batch")
-
-    with pytest.raises(CratekitError) as raised:
-        landing.preflight(
-            planned,
-            cfg=cfg,
-            export=tmp_path / "no-such.xml",
-            destination=land_cli.intake_file(cfg, "2026-09-30_batch"),
-        )
-
-    _assert_names_the_landing_and_no_defect(raised.value.cause)
-    assert staged.exists()
-
-
-def test_a_bridge_apply_on_a_native_tree_moves_nothing_and_keeps_the_splices_cause(
-    native_library, silence, export
-):
-    """A cutover recorded between the verb's read and the engine's. The engine
-    reads the registry again before its first move (R-677), and what it finds
-    is refused there, unwrapped, with the file still in staging."""
-    cfg, _root = native_library
-    staged = Path(cfg.paths.download_staging) / "One.flac"
-    shutil.copyfile(silence, staged)
-    assert tags.write_tags(staged, {"title": "One", "artist": "Probe", "genre": "Deep House"})
+    staged = _staged_one(cfg, silence)
     planned = landing.plan(Path(cfg.paths.download_staging), cfg, "2026-09-30_batch")
     destination = land_cli.intake_file(cfg, "2026-09-30_batch")
 
     with pytest.raises(CratekitError) as raised:
-        landing.apply(planned, cfg=cfg, export=export, destination=destination)
-
+        landing.preflight(planned, cfg=cfg, export=tmp_path / "no-such.xml", destination=destination)
     _assert_names_the_landing_and_no_defect(raised.value.cause)
+    assert staged.exists()
+    with pytest.raises(CratekitError) as raised:
+        landing.apply(planned, cfg=cfg, export=export, destination=destination)
+    _assert_names_the_landing_and_no_defect(raised.value.cause)
+
     assert staged.exists() and not destination.exists()
     assert not (Path(cfg.library.root) / cfg.library.music_dir / "2026-09-30_batch").exists()
-
-
-def test_the_splice_still_takes_a_bridge_tree(bridge_library, silence, export, tmp_path):
-    cfg = bridge_library
-    path = _single(cfg, silence)
-    destination = tmp_path / "direct_inboxed.xml"
-    (placed,) = ingest.place_files([path], cfg=cfg, export=export, destination=destination)
-    assert placed.path == path and destination.is_file()
-
-
-def test_every_caller_of_the_intake_emitter_builds_its_tree_through_the_refusal():
-    """The emitter guard says ``report-defect``. A writer that reaches it with
-    a tree the refusal never saw tells a person who chose a cutover to file a
-    bug, which is the finding. The callers are named, so a third one is a line
-    somebody reads in a diff."""
+def test_every_intake_emitter_caller_builds_its_tree_through_the_one_refusing_builder():
+    """The emitter guard says ``report-defect``, so every named caller builds its tree
+    through the one function that refuses a native tree first; a second builder
+    would be a second way past it."""
     callers: dict[str, tuple[int, list[int]]] = {}
+    builders: list[str] = []
     for module in sorted(SRC.rglob("*.py")):
-        if module.name == "rbxml.py":
-            continue
         tree = ast.parse(module.read_text(encoding="utf-8"))
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
+            key = f"{module.relative_to(SRC).as_posix()}::{function.name}"
+            calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+            builders += [
+                key
+                for node in calls
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "intake_tree"
+            ]
             emits = [
                 node.lineno
-                for node in ast.walk(function)
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
+                for node in calls
+                if isinstance(node.func, ast.Attribute)
                 and node.func.attr == "insert_intake_playlist"
             ]
-            if not emits:
+            if not emits or module.name == "rbxml.py":
                 continue
             asked = [
                 node.lineno
-                for node in ast.walk(function)
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, (ast.Attribute, ast.Name))
+                for node in calls
+                if isinstance(node.func, (ast.Attribute, ast.Name))
                 and getattr(node.func, "attr", getattr(node.func, "id", ""))
                 == "bridge_intake_tree"
             ]
-            key = f"{module.relative_to(SRC).as_posix()}::{function.name}"
             callers[key] = (min(emits), asked)
 
     assert set(callers) == {"intake/ingest.py::place_files", "intake/landing.py::_check_export"}
@@ -998,27 +737,7 @@ def test_every_caller_of_the_intake_emitter_builds_its_tree_through_the_refusal(
             f"{key} reaches the intake emitter without building its tree through "
             f"the function that refuses a native one first"
         )
-
-
-def test_the_intake_tree_is_built_in_one_place_and_that_place_refuses_first():
-    """The write layer names no verb, so the refusal that names the landing
-    lives one layer up, in the one function that builds the tree a splice is
-    handed. A second builder is a second way past it."""
-    builders: list[str] = []
-    for module in sorted(SRC.rglob("*.py")):
-        tree = ast.parse(module.read_text(encoding="utf-8"))
-        for function in ast.walk(tree):
-            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for node in ast.walk(function):
-                if (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "intake_tree"
-                ):
-                    builders.append(f"{module.relative_to(SRC).as_posix()}::{function.name}")
     assert builders == ["intake/ingest.py::bridge_intake_tree"]
-
     (function,) = [
         node
         for node in ast.walk(ast.parse(Path(ingest.__file__).read_text(encoding="utf-8")))
@@ -1033,11 +752,7 @@ def test_the_intake_tree_is_built_in_one_place_and_that_place_refuses_first():
     assert isinstance(second, ast.Return)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The verbs the ledger named that never splice, on both media
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def _assert_the_intake_tree_was_left_alone(cfg: config.Config, exported: Path, before: bytes):
     assert exported.read_bytes() == before, "the export was written"
     assert tree_registry.pending_intake_xml(cfg) == (), "an intake file was written"
@@ -1109,11 +824,7 @@ def test_the_label_batch_sweeps_on_either_medium(either, monkeypatch):
     _assert_the_intake_tree_was_left_alone(cfg, exported, before)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. One switch
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_the_switch_reads_the_recorded_mode_and_nothing_else(machine):
     cfg = machine
     assert ingest.intake_medium(cfg).native is False
@@ -1127,32 +838,22 @@ def test_the_switch_reads_the_recorded_mode_and_nothing_else(machine):
         cfg,
         tree_registry.Registry().with_record(
             tree_registry.TreeRecord(
-                tree_id=DECLARED.tree.id,
-                mode=tree_registry.Mode.DATABASE,
-                cutover_on=TODAY,
-                root_id="root-genre",
-                source=tree_registry.DerivationSource.TAXONOMY,
+                tree_id=DECLARED.tree.id, mode=tree_registry.Mode.DATABASE, cutover_on=TODAY,
+                root_id="root-genre", source=tree_registry.DerivationSource.TAXONOMY,
             )
         ),
     )
     assert ingest.intake_medium(cfg).native is False
-
-
-def test_an_unreachable_library_root_decides_nothing(machine):
-    """The registry lives under the root. With no root there is no record to
-    read, and the bridge path is taken as it was before the second medium."""
-    cfg = machine
+    # The registry lives under the root: with no root there is no record to read,
+    # and the bridge path is taken as it was before the second medium.
     _cut_over_intake(cfg)
     shutil.move(str(cfg.library.root), str(Path(cfg.library.root).with_name("unmounted")))
     medium = ingest.intake_medium(cfg)
     assert (medium.declared, medium.registry, medium.native) == (None, None, False)
-
-
 def test_both_intake_verbs_read_the_one_switch_and_nothing_beside_it_reads_the_mode():
-    """No second switch. Under ``intake`` the recorded mode is read in one
-    module, and both verbs that write the intake tree call the function there.
-    So does the set playlist's backfill (U121), which writes no intake node
-    and asks the same switch only to refuse a bridge tree by name."""
+    """No second switch: under ``intake`` the recorded mode is read in one module,
+    and both verbs that write the intake tree call the function there, as does
+    the set playlist's backfill (U121), only to refuse a bridge tree by name."""
     readers: set[str] = set()
     switched: set[str] = set()
     for module in sorted((SRC / "intake").glob("*.py")):

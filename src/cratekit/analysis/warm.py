@@ -1,54 +1,22 @@
 """Compile the head's kernels one process at a time, before any worker measures (U241).
 
-librosa compiles a handful of its inner loops with numba the first time each
-is called, and keeps the compiled code in a cache on disk so the next process
-loads it. That cache is not safe to fill from two processes at once. Driven
-by the review of U241, on a fresh cache, with two light workers starting
-together: five runs in seven ended with a segmentation fault inside a numba
-kernel, first in a worker and then in the driver, which had fallen back to
-the same call. And the cache was left damaged, so every later analysis on that
-machine crashed the same way until the cache files were deleted by hand. One
-process at a time, on the same cold cache, ran clean six times in six, and so
-did two workers on a cache already filled.
+librosa's numba kernels are cached on disk, and two processes filling that
+cache at once crashed and left it damaged for every later run (U241 review);
+a fresh cache is every new install or upgrade.
 
-A fresh cache is not exotic. It is every new install, every new virtual
-environment, and every upgrade of librosa or numba. So before this unit no
-two librosa processes ever started together, and the first code that starts
-them owns this.
+THE FIX IS TO NEVER FILL THE CACHE FROM TWO PROCESSES: before its first head,
+``detect.analyse_file`` runs one whole head over audio made here, under a
+lock no other process of this user holds at the same time. The warm up must
+reach every kernel a real head reaches, which ``tests/test_analysis_warm.py``
+holds.
 
-THE FIX IS TO NEVER FILL THE CACHE FROM TWO PROCESSES. Every process, before
-its first head, runs one whole head over a few seconds of audio it makes
-itself, under a lock no other process of this user holds at the same time.
-``detect.analyse_file`` asks for it, so a worker, the driver, a script and a
-second command started beside the first all take the same turn. The first
-process in compiles every kernel and writes the cache; each one after it
-finds the cache whole and loads it. After that a process's kernels are in its
-own memory and the cache is not touched again.
+NOT COVERED: the restamp and calibrate energy path compiles a kernel of its
+own, so two of those started together are not held apart, and a platform
+with no ``fcntl`` takes no lock. A WAIT ON THE LOCK IS NOT BOUNDED: a holder
+suspended with Ctrl-Z holds every later run (U241's residual).
 
-THE WARM UP HAS TO REACH EVERY KERNEL A REAL HEAD REACHES, or the one it
-missed is compiled later by two workers at once, which is the defect again.
-That is held by a test and not by this paragraph:
-``tests/test_analysis_warm.py`` warms an empty cache, then measures real
-files of several lengths and shapes against it, and fails if the cache gained
-or changed a single file.
-
-WHAT IT DOES NOT COVER. ``analyze restamp`` and ``analyze calibrate`` measure
-energy from the file themselves, without the detector, and that path
-compiles a kernel of its own the warm up does not make (measured by the
-review: eleven cache files written on an empty cache, one of them a second
-specialisation absent from a warmed one). Each is a single process, as it
-was before this unit, so only two of those commands started together are
-not held apart. ``analyze vocals`` decodes without the detector too and was
-measured to write no cache file at all. And a platform with no ``fcntl``
-takes no lock, so its workers warm together.
-
-A WAIT ON THE LOCK IS NOT BOUNDED. A process waits for as long as the holder
-is alive, and a holder that is stopped rather than dead, a run suspended
-with Ctrl-Z inside its warm up, holds every later run until it is continued
-or killed. The residual U241 filed says what bounding it needs.
-
-Reads nothing of anybody's, writes one small audio file in a temporary
-directory of its own and removes it, and writes no tag, no tempo and no grid.
+Writes one small audio file in a temporary directory and removes it; no tag,
+no tempo, no grid.
 
 Layer: modules. The heavy stack is imported inside the functions.
 """
@@ -64,11 +32,8 @@ from typing import Iterator
 
 from cratekit.core.config import DEFAULT_TEMPO_CEILING, DEFAULT_TEMPO_FLOOR
 
-#: How long the audio a warm up measures runs. A length, not a tuned minimum:
-#: the coverage test passes at this value and the review of U241 found it
-#: passes at two seconds too, so what holds the warm up to reaching every
-#: kernel is that test over real files and not this number. Twelve seconds
-#: costs about half a second a process on a filled cache.
+#: How long the warm up's audio runs: a length, not a tuned minimum; the
+#: coverage test is what holds it.
 WARM_SECONDS = 12.0
 #: The rate the warm up's file is written at, so the decode resamples as it
 #: does for a real file.
@@ -94,11 +59,8 @@ def lock_path() -> Path:
 def exclusive(path: Path | None = None) -> Iterator[None]:
     """Hold the warm up lock: no other process is inside this block at the same time.
 
-    Waits for as long as the holder takes. A lock held by a process that died
-    is released by the platform, so nothing here can wait for ever on a
-    corpse. Where the lock cannot be taken at all, no ``fcntl`` or a lock file
-    that cannot be opened, the block runs unlocked: a worker that never
-    starts is a worse failure than the one this guards against.
+    A dead holder's lock is released by the platform. Where the lock cannot be
+    taken at all the block runs unlocked: a worker that never starts is worse.
     """
     target = path or lock_path()
     handle = None
@@ -138,10 +100,8 @@ def _signal(rate: int, seconds: float):
 def _measure_one_head() -> None:
     """One whole head, decode included, over audio made here.
 
-    The same calls ``detect.analyse_file`` makes, on the same types, because a
-    compiled kernel is kept per type and a warm up on other types would warm
-    other kernels. The energy is measured directly, since the detector skips
-    it without a calibration and a calibrated run does not.
+    The same calls on the same types, since a kernel is compiled per type. The
+    energy is measured directly, as the detector skips it uncalibrated.
     """
     import numpy as np
 
@@ -165,10 +125,8 @@ def _measure_one_head() -> None:
 def kernels() -> bool:
     """Warm this process's kernels, once, alone. True when a warm up ran here.
 
-    Does nothing where the analysis extra is absent, and nothing the second
-    time it is called in one process. A warm up that raises is not a reason to
-    refuse a worker: the head it was standing in for will raise the same thing
-    over a real file, by name, where the person can read it.
+    A warm up that raises refuses nothing: the real head will raise the same
+    thing over a real file, by name.
     """
     global _WARMED, _WARMING
     if _WARMED or _WARMING:

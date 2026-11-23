@@ -1,12 +1,8 @@
 """R-744: the tempo a head names is the one inside the window, to the beat.
 
-The estimator's raw precision is one tempogram bin, about six beats per minute
-near 128, which is where every "off by one to three" case came from. The
-interpolation below recovers the fraction of a bin, and the window decides
-which metrical level is named. Both are driven here on signals whose tempo is
-known by construction: a click train, and a sustained chord for the key.
-Skipped where the analysis extra is absent, because the estimator is
-librosa's tempogram and there is nothing to drive without it.
+The interpolation recovers the fraction of a bin and the window picks the
+metrical level, driven on signals of known tempo. Skipped where the analysis
+extra is absent.
 """
 
 from __future__ import annotations
@@ -57,11 +53,6 @@ C_MAJOR = (261.63, 329.63, 392.0)  # C, E, G
 def _write(path: Path, samples: np.ndarray) -> Path:
     soundfile.write(str(path), samples, RATE, subtype="PCM_16")
     return path
-
-
-# ---------------------------------------------------------------------------
-# The pure estimator
-# ---------------------------------------------------------------------------
 
 
 def _autocorrelation_peaked_at(lag: float, size: int = 384) -> np.ndarray:
@@ -153,11 +144,6 @@ def test_the_prior_prefers_the_level_nearer_the_centre_inside_the_window():
     assert int(np.argmax(strength)) == 29
     tempo = detect.tempo_from_autocorrelation(strength)
     assert tempo is not None and abs(tempo - 60.0 * RATE / (detect.TEMPO_HOP * 19.0)) < 0.5
-
-
-# ---------------------------------------------------------------------------
-# Driven on audio
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("known", [100.0, 122.0, 128.0, 140.0])

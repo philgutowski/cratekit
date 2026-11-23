@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import config, locations, tags
+from cratekit.core import config, jobs, locations, tags
 from cratekit.core.cause import CratekitError
 from cratekit.intake import ingest, landing
 from tests._containers import synth_container
@@ -57,6 +57,10 @@ def _staging(cfg: config.Config) -> Path:
     return Path(cfg.paths.download_staging)
 
 
+def _batch_dir(cfg: config.Config) -> Path:
+    return Path(cfg.library.root) / cfg.library.music_dir / BATCH
+
+
 def _stage(
     cfg: config.Config,
     silence: Path,
@@ -80,6 +84,19 @@ def _destination(cfg: config.Config) -> Path:
     return Path(cfg.library.root) / f"{BATCH}_inboxed.xml"
 
 
+def _land(cfg: config.Config, export: Path, planned: landing.Plan | None = None):
+    """Apply ``planned``, by default a plan of the staging folder made now."""
+    planned = planned or landing.plan(_staging(cfg), cfg, BATCH)
+    return landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
+
+
+def _refused(cfg: config.Config, export: Path, planned: landing.Plan | None = None):
+    """The cause :func:`_land` refuses with."""
+    with pytest.raises(CratekitError) as excinfo:
+        _land(cfg, export, planned)
+    return excinfo.value.cause
+
+
 def _rows(body: bytes) -> list[bytes]:
     collection = body[body.index(b"<COLLECTION") : body.index(b"</COLLECTION>")]
     return re.findall(rb"<TRACK\b[^>]*?Location=\"([^\"]+)\"", collection, re.S)
@@ -90,23 +107,12 @@ def test_three_tagged_files_land_in_one_intake_file(cfg, silence, export):
         _stage(cfg, silence, name)
     planned = landing.plan(_staging(cfg), cfg, BATCH)
     assert [p.name for p in planned.items] == ["One.flac", "Three.flac", "Two.flac"]
-
-    result = landing.apply(
-        planned, cfg=cfg, export=export, destination=_destination(cfg)
-    )
-
-    target = Path(cfg.library.root) / cfg.library.music_dir / BATCH
-    assert sorted(p.name for p in target.iterdir()) == [
-        "One.flac",
-        "Three.flac",
-        "Two.flac",
-    ]
+    result = _land(cfg, export, planned)
+    assert sorted(p.name for p in _batch_dir(cfg).iterdir()) == ["One.flac", "Three.flac", "Two.flac"]
     assert not any(_staging(cfg).glob("*.flac"))
     assert result.refused == ()
-    assert len(result.moved) == 3
-    assert len(result.placed) == 3
+    assert len(result.moved) == len(result.placed) == 3
     assert len({item.track_id for item in result.placed}) == 3
-
     body = _destination(cfg).read_bytes()
     assert b'<COLLECTION Entries="3">' in body
     locations_written = _rows(body)
@@ -123,18 +129,10 @@ def test_three_tagged_files_land_in_one_intake_file(cfg, silence, export):
 def test_a_name_collision_refuses_that_file_and_lands_the_rest(cfg, silence, export):
     for name in ("Keep.flac", "Clash.flac", "Also.flac"):
         _stage(cfg, silence, name)
-    target = Path(cfg.library.root) / cfg.library.music_dir / BATCH
-    target.mkdir(parents=True)
-    kept = target / "Clash.flac"
+    _batch_dir(cfg).mkdir(parents=True)
+    kept = _batch_dir(cfg) / "Clash.flac"
     kept.write_bytes(b"the copy somebody kept")
-
-    result = landing.apply(
-        landing.plan(_staging(cfg), cfg, BATCH),
-        cfg=cfg,
-        export=export,
-        destination=_destination(cfg),
-    )
-
+    result = _land(cfg, export)
     assert kept.read_bytes() == b"the copy somebody kept"
     assert (_staging(cfg) / "Clash.flac").is_file()
     assert [entry.path.name for entry in result.refused] == ["Clash.flac"]
@@ -144,38 +142,24 @@ def test_a_name_collision_refuses_that_file_and_lands_the_rest(cfg, silence, exp
     assert len(_rows(_destination(cfg).read_bytes())) == 2
 
 
-def test_a_file_with_no_genre_or_energy_lands_in_the_fallback_bucket(
-    cfg, silence, export
-):
-    """DRIVEN, not assumed. The shipped taxonomy resolves an empty genre and
-    an absent energy to a bucket that declares a sub, so the untagged file
-    lands and is placed, not refused."""
+def test_a_file_with_no_genre_or_energy_lands_in_the_fallback_bucket(cfg, silence, export):
+    """The shipped taxonomy places an untagged file in a bucket with a sub."""
     _stage(cfg, silence, "Tagged.flac")
     bare = _stage(cfg, silence, "Bare.flac", genre=None, energy=None)
     assert tags.read_genre_from_file(bare) is None
     assert tags.read_energy_from_file(bare) is None
-
-    result = landing.apply(
-        landing.plan(_staging(cfg), cfg, BATCH),
-        cfg=cfg,
-        export=export,
-        destination=_destination(cfg),
-    )
-
+    result = _land(cfg, export)
     assert result.refused == ()
     placed = {item.path.name: item for item in result.placed}
     assert set(placed) == {"Bare.flac", "Tagged.flac"}
-    assert placed["Bare.flac"].bucket
-    assert placed["Bare.flac"].sub
+    assert placed["Bare.flac"].bucket and placed["Bare.flac"].sub
     assert placed["Bare.flac"].bucket != placed["Tagged.flac"].bucket
 
 
 def test_a_file_with_no_declared_sub_is_left_in_staging_naming_tag_folder(
     cfg, silence, export, monkeypatch
 ):
-    """The other branch of the same scenario. The shipped taxonomy never
-    produces it, so a placement that answers None is substituted, and the
-    refusal is the engine's own, made before the file moves."""
+    """A placement answering None is substituted; the engine refuses before the move."""
     _stage(cfg, silence, "Placed.flac")
     _stage(cfg, silence, "Nowhere.flac", genre="Nowhere Genre")
     real = ingest.decide_placement
@@ -186,201 +170,123 @@ def test_a_file_with_no_declared_sub_is_left_in_staging_naming_tag_folder(
             None if meta.get("genre") == "Nowhere Genre" else real(meta, declared)
         ),
     )
-
-    result = landing.apply(
-        landing.plan(_staging(cfg), cfg, BATCH),
-        cfg=cfg,
-        export=export,
-        destination=_destination(cfg),
-    )
-
+    result = _land(cfg, export)
     assert (_staging(cfg) / "Nowhere.flac").is_file()
     assert [entry.path.name for entry in result.refused] == ["Nowhere.flac"]
     assert "crate tag folder" in result.refused[0].sentence
     assert [item.path.name for item in result.placed] == ["Placed.flac"]
 
 
-def test_a_stub_export_is_refused_before_any_move(cfg, silence, tmp_path):
+STUB = (
+    b'<?xml version="1.0" encoding="UTF-8"?>\r\n<DJ_PLAYLISTS>\r\n'
+    b'  <COLLECTION Entries="1">\r\n    <TRACK Name="A - One"/>\r\n'
+    b"  </COLLECTION>\r\n</DJ_PLAYLISTS>\r\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("body", "reason", "said"),
+    [
+        (STUB, "intake-export-is-stub", ""),
+        (_fresh_xml().replace(b'Name="INBOX"', b'Name="ELSEWHERE"'), "library-export-unusable", "nothing was moved"),
+        (None, "library-export-unusable", ""),
+    ],
+    ids=["stub", "no-intake-folder", "missing"],
+)
+def test_an_export_that_cannot_be_spliced_is_refused_before_any_move(
+    cfg, silence, tmp_path, body, reason, said
+):
     staged = [_stage(cfg, silence, name) for name in ("One.flac", "Two.flac")]
-    stub = tmp_path / "stub.xml"
-    stub.write_bytes(
-        b'<?xml version="1.0" encoding="UTF-8"?>\r\n<DJ_PLAYLISTS>\r\n'
-        b'  <COLLECTION Entries="1">\r\n    <TRACK Name="A - One"/>\r\n'
-        b"  </COLLECTION>\r\n</DJ_PLAYLISTS>\r\n"
-    )
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(
-            landing.plan(_staging(cfg), cfg, BATCH),
-            cfg=cfg,
-            export=stub,
-            destination=_destination(cfg),
-        )
-
-    assert excinfo.value.cause.reason == "intake-export-is-stub"
+    export = tmp_path / "export.xml"
+    if body is not None:
+        export.write_bytes(body)
+    cause = _refused(cfg, export)
+    assert cause.reason == reason
+    assert said in cause.message
     assert all(path.is_file() for path in staged)
     assert not (Path(cfg.library.root) / cfg.library.music_dir).exists()
     assert not _destination(cfg).exists()
 
 
-def test_an_export_with_no_intake_folder_is_refused_before_any_move(
-    cfg, silence, tmp_path
+@pytest.mark.parametrize("change", ["added", "replaced", "touched"])
+def test_an_added_file_or_one_changed_under_the_same_name_makes_the_plan_stale(
+    cfg, silence, export, change
 ):
+    """The digest is not of names alone: new bytes, or the same size touched."""
     staged = _stage(cfg, silence, "One.flac")
-    bare = tmp_path / "bare.xml"
-    bare.write_bytes(_fresh_xml().replace(b'Name="INBOX"', b'Name="ELSEWHERE"'))
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(
-            landing.plan(_staging(cfg), cfg, BATCH),
-            cfg=cfg,
-            export=bare,
-            destination=_destination(cfg),
-        )
-
-    assert excinfo.value.cause.reason == "library-export-unusable"
-    assert "nothing was moved" in excinfo.value.cause.message
-    assert staged.is_file()
-
-
-def test_a_missing_export_is_refused_before_any_move(cfg, silence, tmp_path):
-    staged = _stage(cfg, silence, "One.flac")
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(
-            landing.plan(_staging(cfg), cfg, BATCH),
-            cfg=cfg,
-            export=tmp_path / "absent.xml",
-            destination=_destination(cfg),
-        )
-    assert excinfo.value.cause.reason == "library-export-unusable"
-    assert staged.is_file()
-
-
-def test_an_added_file_makes_the_plan_stale(cfg, silence, export):
-    first = _stage(cfg, silence, "One.flac")
     planned = landing.plan(_staging(cfg), cfg, BATCH)
-    _stage(cfg, silence, "Late.flac")
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
-
-    assert excinfo.value.cause.reason == "decision-stale"
-    assert first.is_file()
+    if change == "added":
+        _stage(cfg, silence, "Late.flac")
+    else:
+        if change == "replaced":
+            tags.write_tags(staged, {"title": "A Different Recording, Longer Title"})
+        stat = staged.stat()
+        os.utime(staged, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
+        if change == "touched":
+            assert staged.stat().st_size == stat.st_size
+    assert _refused(cfg, export, planned).reason == "decision-stale"
+    assert staged.is_file()
     assert not _destination(cfg).exists()
-
-
-def test_a_file_replaced_under_the_same_name_makes_the_plan_stale(
-    cfg, silence, export
-):
-    """The digest is not of names alone. Same name, same count, new bytes."""
-    staged = _stage(cfg, silence, "One.flac")
-    planned = landing.plan(_staging(cfg), cfg, BATCH)
-    tags.write_tags(staged, {"title": "A Different Recording, Longer Title"})
-    stat = staged.stat()
-    os.utime(staged, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
-    assert excinfo.value.cause.reason == "decision-stale"
-    assert staged.is_file()
-
-
-def test_a_touched_file_of_the_same_size_makes_the_plan_stale(cfg, silence, export):
-    staged = _stage(cfg, silence, "One.flac")
-    planned = landing.plan(_staging(cfg), cfg, BATCH)
-    stat = staged.stat()
-    os.utime(staged, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
-    assert staged.stat().st_size == stat.st_size
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
-    assert excinfo.value.cause.reason == "decision-stale"
 
 
 def test_the_listing_is_flat_audio_only_and_skips_dotfiles(cfg, silence):
     _stage(cfg, silence, "Keep.flac")
     (_staging(cfg) / ".hidden.flac").write_bytes(b"x")
     (_staging(cfg) / "notes.txt").write_text("x")
+    (_staging(cfg) / "Album.flac").mkdir()
     partial = _staging(cfg) / landing.ACQUIRE_STAGING_DIRNAME / "job" / "1"
     partial.mkdir(parents=True)
     (partial / "Half.flac").write_bytes(b"x")
     nested = _staging(cfg) / "lists"
     nested.mkdir()
     (nested / "Deep.flac").write_bytes(b"x")
-
     planned = landing.plan(_staging(cfg), cfg, BATCH)
     assert [p.name for p in planned.items] == ["Keep.flac"]
 
 
-def test_an_empty_folder_is_refused_at_plan(cfg):
+@pytest.mark.parametrize("batch", [BATCH, "", "..", ".hidden", "a/b", " padded", "a\\b"])
+def test_an_empty_folder_or_a_batch_name_that_is_no_plain_folder_is_refused(cfg, silence, batch):
+    if batch != BATCH:
+        _stage(cfg, silence, "One.flac")
     (_staging(cfg) / "notes.txt").write_text("x")
-    with pytest.raises(CratekitError) as excinfo:
-        landing.plan(_staging(cfg), cfg, BATCH)
-    assert excinfo.value.cause.reason == "intake-list-unusable"
-
-
-@pytest.mark.parametrize("batch", ["", "..", ".hidden", "a/b", " padded", "a\\b"])
-def test_a_batch_name_that_is_not_one_plain_folder_is_refused(cfg, silence, batch):
-    _stage(cfg, silence, "One.flac")
     with pytest.raises(CratekitError) as excinfo:
         landing.plan(_staging(cfg), cfg, batch)
     assert excinfo.value.cause.reason == "intake-list-unusable"
 
 
-def test_a_staging_folder_on_another_device_is_refused_by_name(
-    cfg, silence, export, monkeypatch
-):
+def test_a_staging_folder_on_another_device_is_refused_by_name(cfg, silence, export, monkeypatch):
     staged = _stage(cfg, silence, "One.flac")
     planned = landing.plan(_staging(cfg), cfg, BATCH)
     staging = _staging(cfg)
     real = landing._device_of
-    monkeypatch.setattr(
-        landing, "_device_of", lambda path: -1 if path == staging else real(path)
-    )
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
-
-    assert excinfo.value.cause.reason == "intake-staging-refused"
-    assert "different device" in excinfo.value.cause.message
-    assert str(staging) in excinfo.value.cause.message
+    monkeypatch.setattr(landing, "_device_of", lambda path: -1 if path == staging else real(path))
+    cause = _refused(cfg, export, planned)
+    assert cause.reason == "intake-staging-refused"
+    assert "different device" in cause.message
+    assert str(staging) in cause.message
     assert staged.is_file()
     assert not (Path(cfg.library.root) / cfg.library.music_dir).exists()
 
 
-def test_an_absent_library_root_is_refused_before_the_device_probe(
-    cfg, silence, export
-):
+def test_an_absent_library_root_is_refused_before_the_device_probe(cfg, silence, export):
     staged = _stage(cfg, silence, "One.flac")
     planned = landing.plan(_staging(cfg), cfg, BATCH)
     root = Path(cfg.library.root)
     shutil.rmtree(root)
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
-
-    assert excinfo.value.cause.reason == "library-root-unreachable"
+    assert _refused(cfg, export, planned).reason == "library-root-unreachable"
     assert not root.exists()
     assert staged.is_file()
 
 
 def test_a_landing_target_under_staging_is_refused(cfg, silence, export):
-    """Staging configured as the music folder itself. Built from the root the
-    configuration actually holds, since the suite redirects the root."""
+    """Staging configured as the music folder itself, from the redirected root."""
     music = Path(cfg.library.root) / cfg.library.music_dir
     music.mkdir()
     inside = replace(cfg, paths=replace(cfg.paths, download_staging=music))
     staged = music / "One.flac"
     shutil.copyfile(silence, staged)
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(
-            landing.plan(music, inside, BATCH),
-            cfg=inside,
-            export=export,
-            destination=_destination(cfg),
-        )
-    assert excinfo.value.cause.reason == "intake-staging-refused"
+    cause = _refused(inside, export, landing.plan(music, inside, BATCH))
+    assert cause.reason == "intake-staging-refused"
     assert staged.is_file()
     assert not (music / BATCH).exists()
 
@@ -388,63 +294,46 @@ def test_a_landing_target_under_staging_is_refused(cfg, silence, export):
 def test_an_existing_intake_file_is_never_overwritten(cfg, silence, export):
     staged = _stage(cfg, silence, "One.flac")
     _destination(cfg).write_bytes(b"an earlier batch")
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(
-            landing.plan(_staging(cfg), cfg, BATCH),
-            cfg=cfg,
-            export=export,
-            destination=_destination(cfg),
-        )
-
-    assert excinfo.value.cause.reason == "output-exists"
+    assert _refused(cfg, export).reason == "output-exists"
     assert _destination(cfg).read_bytes() == b"an earlier batch"
     assert staged.is_file()
 
 
 def test_every_file_refused_writes_nothing(cfg, silence, export):
     _stage(cfg, silence, "Clash.flac")
-    target = Path(cfg.library.root) / cfg.library.music_dir / BATCH
-    target.mkdir(parents=True)
-    (target / "Clash.flac").write_bytes(b"kept")
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(
-            landing.plan(_staging(cfg), cfg, BATCH),
-            cfg=cfg,
-            export=export,
-            destination=_destination(cfg),
-        )
-
-    assert excinfo.value.cause.reason == "intake-list-unusable"
-    assert "Clash.flac" in excinfo.value.cause.message
+    _batch_dir(cfg).mkdir(parents=True)
+    (_batch_dir(cfg) / "Clash.flac").write_bytes(b"kept")
+    cause = _refused(cfg, export)
+    assert cause.reason == "intake-list-unusable"
+    assert "Clash.flac" in cause.message
     assert not _destination(cfg).exists()
 
 
-def test_a_move_that_fails_part_way_names_what_moved_and_writes_no_xml(
-    cfg, silence, export, monkeypatch
+@pytest.mark.parametrize("failing", ["A.flac", "B.flac"], ids=["first", "part-way"])
+def test_a_move_that_fails_names_what_moved_and_writes_no_xml(
+    cfg, silence, export, monkeypatch, failing
 ):
+    """A first move that fails leaves no batch folder either."""
     for name in ("A.flac", "B.flac", "C.flac"):
         _stage(cfg, silence, name)
     planned = landing.plan(_staging(cfg), cfg, BATCH)
     real = os.replace
 
     def replace(src, dst):
-        if Path(src).name == "B.flac":
+        if Path(src).name == failing:
             raise PermissionError(13, "Permission denied", str(src))
         return real(src, dst)
 
     monkeypatch.setattr(landing.os, "replace", replace)
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
-
-    cause = excinfo.value.cause
+    cause = _refused(cfg, export, planned)
     assert cause.reason == "path-permission-denied"
     assert "A.flac" in cause.message
-    assert cause.detail["moved"] == [
-        str(Path(cfg.library.root) / cfg.library.music_dir / BATCH / "A.flac")
-    ]
+    if failing == "A.flac":
+        assert cause.detail["moved"] == []
+        assert "nothing was moved" in cause.message
+        assert not _batch_dir(cfg).exists()
+    else:
+        assert cause.detail["moved"] == [str(_batch_dir(cfg) / "A.flac")]
     assert not _destination(cfg).exists()
     assert (_staging(cfg) / "B.flac").is_file()
     assert (_staging(cfg) / "C.flac").is_file()
@@ -453,10 +342,7 @@ def test_a_move_that_fails_part_way_names_what_moved_and_writes_no_xml(
 def test_a_splice_that_fails_after_the_moves_names_them_and_leaves_no_xml(
     cfg, silence, export, monkeypatch
 ):
-    """``place_files`` writes the intake file before it records intents, so a
-    ledger failure arrives after the write. The engine removes what this call
-    wrote and names the files it already moved, which now belong to the
-    library."""
+    """A ledger failure after the write: the file goes, the moved files are named."""
     for name in ("A.flac", "B.flac"):
         _stage(cfg, silence, name)
     planned = landing.plan(_staging(cfg), cfg, BATCH)
@@ -466,92 +352,45 @@ def test_a_splice_that_fails_after_the_moves_names_them_and_leaves_no_xml(
         raise OSError("the routing ledger could not be written")
 
     monkeypatch.setattr(ingest.routing_pass, "record_intents", broken_ledger)
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
-
-    cause = excinfo.value.cause
+    cause = _refused(cfg, export, planned)
     assert "A.flac" in cause.message and "B.flac" in cause.message
     assert len(cause.detail["moved"]) == 2
     assert not _destination(cfg).exists()
-    target = Path(cfg.library.root) / cfg.library.music_dir / BATCH
-    assert sorted(p.name for p in target.iterdir()) == ["A.flac", "B.flac"]
+    assert sorted(p.name for p in _batch_dir(cfg).iterdir()) == ["A.flac", "B.flac"]
 
 
-def test_a_refusal_from_place_files_keeps_its_own_reason(
-    cfg, silence, export, monkeypatch
-):
+def test_a_refusal_from_place_files_keeps_its_own_reason(cfg, silence, export, monkeypatch):
     _stage(cfg, silence, "A.flac")
     planned = landing.plan(_staging(cfg), cfg, BATCH)
 
     def refusing(*_args, **_kwargs):
-        raise ingest.refuse(
-            "intake-list-unusable", "a refusal only place_files can make"
-        )
+        raise ingest.refuse("intake-list-unusable", "a refusal only place_files can make")
 
     monkeypatch.setattr(ingest, "place_files", refusing)
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
-    cause = excinfo.value.cause
+    cause = _refused(cfg, export, planned)
     assert cause.reason == "intake-list-unusable"
     assert cause.inner is not None
     assert "A.flac" in cause.message
 
 
-def test_a_batch_where_nothing_lands_leaves_no_batch_folder(
-    cfg, silence, export, monkeypatch
-):
-    """The review's shape: every file refused, and the batch folder did not
-    exist before the call. The earlier test made that folder itself, so it
-    could never see one left behind."""
+def test_a_batch_where_nothing_lands_leaves_no_batch_folder(cfg, silence, export, monkeypatch):
+    """Every file refused and no batch folder before: none is made, none left."""
     _stage(cfg, silence, "Nowhere.flac", genre="Nowhere Genre")
     monkeypatch.setattr(ingest, "decide_placement", lambda meta, declared: None)
-    target = Path(cfg.library.root) / cfg.library.music_dir / BATCH
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(
-            landing.plan(_staging(cfg), cfg, BATCH),
-            cfg=cfg,
-            export=export,
-            destination=_destination(cfg),
-        )
-
-    assert excinfo.value.cause.reason == "intake-list-unusable"
-    assert "crate tag folder" in excinfo.value.cause.message
-    assert not target.exists()
-    # The music folder did not exist either, and nothing landed, so the
-    # refusal comes before any folder is made rather than tidying one after.
-    assert not target.parent.exists()
+    cause = _refused(cfg, export)
+    assert cause.reason == "intake-list-unusable"
+    assert "crate tag folder" in cause.message
+    assert not _batch_dir(cfg).exists()
+    # Not even the music folder: the refusal comes before any folder is made.
+    assert not _batch_dir(cfg).parent.exists()
     assert not _destination(cfg).exists()
 
 
-def test_a_first_move_that_fails_leaves_no_batch_folder(
-    cfg, silence, export, monkeypatch
-):
-    _stage(cfg, silence, "A.flac")
-    planned = landing.plan(_staging(cfg), cfg, BATCH)
-
-    def replace(src, _dst):
-        raise PermissionError(13, "Permission denied", str(src))
-
-    monkeypatch.setattr(landing.os, "replace", replace)
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(planned, cfg=cfg, export=export, destination=_destination(cfg))
-
-    assert excinfo.value.cause.detail["moved"] == []
-    assert "nothing was moved" in excinfo.value.cause.message
-    assert not (Path(cfg.library.root) / cfg.library.music_dir / BATCH).exists()
-
-
-def test_a_file_arriving_between_the_passes_is_not_replaced(
-    cfg, silence, export, monkeypatch
-):
-    """The check is asked again at the move. A file of the same name that
-    appears after the first pass is refused, not overwritten."""
+def test_a_file_arriving_between_the_passes_is_not_replaced(cfg, silence, export, monkeypatch):
+    """The target is asked again at the move, so an arrival is refused, not overwritten."""
     _stage(cfg, silence, "A.flac")
     _stage(cfg, silence, "B.flac")
-    target = Path(cfg.library.root) / cfg.library.music_dir / BATCH
+    target = _batch_dir(cfg)
     real = os.replace
 
     def replace(src, dst):
@@ -561,13 +400,7 @@ def test_a_file_arriving_between_the_passes_is_not_replaced(
         return result
 
     monkeypatch.setattr(landing.os, "replace", replace)
-    result = landing.apply(
-        landing.plan(_staging(cfg), cfg, BATCH),
-        cfg=cfg,
-        export=export,
-        destination=_destination(cfg),
-    )
-
+    result = _land(cfg, export)
     assert (target / "B.flac").read_bytes() == b"arrived in between"
     assert [entry.path.name for entry in result.refused] == ["B.flac"]
     assert (_staging(cfg) / "B.flac").is_file()
@@ -578,17 +411,9 @@ def test_a_folder_the_library_already_owns_is_refused(cfg, silence, export):
     owned.mkdir(parents=True)
     kept = owned / "Owned.flac"
     shutil.copyfile(silence, kept)
-
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(
-            landing.plan(owned, cfg, BATCH),
-            cfg=cfg,
-            export=export,
-            destination=_destination(cfg),
-        )
-
-    assert excinfo.value.cause.reason == "intake-list-unusable"
-    assert "already owned" in excinfo.value.cause.message
+    cause = _refused(cfg, export, landing.plan(owned, cfg, BATCH))
+    assert cause.reason == "intake-list-unusable"
+    assert "already owned" in cause.message
     assert kept.is_file()
     assert not (owned.parent / BATCH).exists()
 
@@ -598,30 +423,14 @@ def test_staging_configured_inside_the_library_still_lands(cfg, silence, export)
     downloads.mkdir()
     inside = replace(cfg, paths=replace(cfg.paths, download_staging=downloads))
     shutil.copyfile(silence, downloads / "One.flac")
-
-    result = landing.apply(
-        landing.plan(downloads, inside, BATCH),
-        cfg=inside,
-        export=export,
-        destination=_destination(cfg),
-    )
-
+    result = _land(inside, export, landing.plan(downloads, inside, BATCH))
     assert [item.target.name for item in result.moved] == ["One.flac"]
     assert not (downloads / "One.flac").exists()
 
 
-def test_a_directory_named_like_audio_is_not_listed(cfg, silence):
-    _stage(cfg, silence, "Keep.flac")
-    (_staging(cfg) / "Album.flac").mkdir()
-    planned = landing.plan(_staging(cfg), cfg, BATCH)
-    assert [p.name for p in planned.items] == ["Keep.flac"]
-
-
-def test_every_file_taken_at_the_move_writes_no_intake_file(
-    cfg, silence, export, monkeypatch
-):
-    """Every file passes the first pass and is found occupied at the move, the
-    shape a concurrent landing produces. No intake file, no batch folder."""
+def test_every_file_taken_at_the_move_writes_no_intake_file(cfg, silence, export, monkeypatch):
+    """Every file passes the first pass and is occupied at the move, as a concurrent
+    landing makes it: no intake file, no batch folder."""
     _stage(cfg, silence, "A.flac")
     _stage(cfg, silence, "B.flac")
     real = landing._occupied
@@ -634,32 +443,28 @@ def test_every_file_taken_at_the_move_writes_no_intake_file(
         return landing.Refused(path=item, reason="output-exists", sentence="taken")
 
     monkeypatch.setattr(landing, "_occupied", occupied)
-    with pytest.raises(CratekitError) as excinfo:
-        landing.apply(
-            landing.plan(_staging(cfg), cfg, BATCH),
-            cfg=cfg,
-            export=export,
-            destination=_destination(cfg),
-        )
-
-    assert excinfo.value.cause.reason == "intake-list-unusable"
+    assert _refused(cfg, export).reason == "intake-list-unusable"
     assert not _destination(cfg).exists()
-    assert not (Path(cfg.library.root) / cfg.library.music_dir / BATCH).exists()
+    assert not _batch_dir(cfg).exists()
     assert (_staging(cfg) / "A.flac").is_file()
 
 
-# ---------------------------------------------------------------------------
 # One landing per batch name (R-432)
-# ---------------------------------------------------------------------------
+
+
+def _second_holder(first: str, second: str, *, unnamed: bool = False):
+    """The cause a second holder of ``second`` meets while ``first`` is held, and the lock."""
+    with landing.batch_lock(first) as held:
+        if unnamed:
+            held.write_text("", encoding="utf-8")
+        with pytest.raises(CratekitError) as excinfo:
+            with landing.batch_lock(second):
+                raise AssertionError("two holders of one batch name")
+    return excinfo.value.cause, held
 
 
 def test_a_held_batch_name_refuses_a_second_holder_and_names_the_batch(cfg):
-    with landing.batch_lock(BATCH) as held:
-        with pytest.raises(CratekitError) as excinfo:
-            with landing.batch_lock(BATCH):
-                raise AssertionError("two holders of one batch name")
-
-    cause = excinfo.value.cause
+    cause, held = _second_holder(BATCH, BATCH)
     assert cause.reason == "job-driver-held"
     assert cause.retryable is True
     assert cause.detail["batch"] == BATCH
@@ -667,8 +472,7 @@ def test_a_held_batch_name_refuses_a_second_holder_and_names_the_batch(cfg):
     assert cause.detail["holder"].startswith(f"pid {os.getpid()}, since ")
     assert BATCH in cause.message
     assert f"pid {os.getpid()}" in cause.message
-    # Said in this engine's words. A landing has no job and no driver, and the
-    # lock's key is a digest nobody typed.
+    # In this engine's words: a landing has no job, and the key is a digest.
     assert cause.inner is None
     assert "job" not in cause.message
     assert landing.lock_key(BATCH) not in cause.message
@@ -676,40 +480,23 @@ def test_a_held_batch_name_refuses_a_second_holder_and_names_the_batch(cfg):
     assert cause.remediation.remedy is None
     assert len(cause.remediation.steps) == 2
     assert "--name" in cause.remediation.steps[1]
+    # The name in the file is for the message, never the liveness test.
+    cause, _held = _second_holder(BATCH, BATCH, unnamed=True)
+    assert cause.reason == "job-driver-held"
+    assert cause.detail["holder"] == "holder unknown"
 
 
-def test_a_holder_that_has_not_written_its_name_yet_is_unknown(cfg, monkeypatch):
-    """The name inside the file is for the message and is never the liveness
-    test, so a lock held over an empty file still refuses."""
-    with landing.batch_lock(BATCH) as held:
-        held.write_text("", encoding="utf-8")
-        with pytest.raises(CratekitError) as excinfo:
-            with landing.batch_lock(BATCH):
-                raise AssertionError("two holders of one batch name")
-    assert excinfo.value.cause.reason == "job-driver-held"
-    assert excinfo.value.cause.detail["holder"] == "holder unknown"
-
-
-def test_the_batch_lock_is_on_the_state_disk_and_never_under_the_library(cfg):
-    """The library volume is commonly exFAT, where an advisory lock was never
-    verified to hold, so the lock file must not follow the batch folder."""
-    with landing.batch_lock(BATCH) as held:
-        pass
-
-    assert held.parent == config.installation_state_dir() / "landing_locks"
-    assert Path(cfg.library.root).resolve() not in held.resolve().parents
+def test_the_batch_lock_is_on_the_state_disk_and_a_released_one_leaves_its_file(cfg):
+    """An advisory lock on exFAT was never verified, so the lock stays off the library.
+    Unlinking on release would let a second process lock a fresh inode."""
+    with landing.batch_lock(BATCH) as first:
+        inode = first.stat().st_ino
+    assert first.parent == config.installation_state_dir() / "landing_locks"
+    assert Path(cfg.library.root).resolve() not in first.resolve().parents
     entry = config.state_file(landing.LOCK_KEY)
     assert entry.root is config.StateRoot.INSTALLATION
     assert entry.snapshot is config.SnapshotRole.NEVER_RESTORED
-
-
-def test_a_released_batch_lock_leaves_its_file_and_can_be_taken_again(cfg):
-    """Unlinking on release lets a second process lock a fresh inode under the
-    same name while the first still holds the old one."""
-    with landing.batch_lock(BATCH) as first:
-        inode = first.stat().st_ino
     assert first.exists()
-
     with landing.batch_lock(BATCH) as second:
         assert second == first
         assert second.stat().st_ino == inode
@@ -718,42 +505,22 @@ def test_a_released_batch_lock_leaves_its_file_and_can_be_taken_again(cfg):
 
 
 def test_a_refusal_inside_the_batch_lock_releases_it(cfg):
-    """What this holds is a lock that OUTLIVES its ``with``, which mutation row
-    A4c measures. It cannot tell the release in the ``finally`` from CPython
-    freeing the finished generator's frame, which closes the descriptor at the
-    same moment (row A4, zero). Keeping the raised exception alive does not
-    separate them either: ``contextlib`` puts the caller's traceback back on
-    it, so the lock's frame is never held by one."""
+    """A lock that OUTLIVES its ``with`` (mutation row A4c). The release in the
+    ``finally`` cannot be told from CPython freeing the generator's frame (A4)."""
     with pytest.raises(RuntimeError):
         with landing.batch_lock(BATCH):
             raise RuntimeError("the landing failed")
-
-    with landing.batch_lock(BATCH):
-        pass
-
-
-def test_two_batch_names_are_held_together(cfg):
+    # Taken again, and beside a second batch name.
     with landing.batch_lock(BATCH) as one, landing.batch_lock(BATCH + "-b") as two:
         assert one != two
 
 
-@pytest.mark.parametrize(
-    "other",
-    [
-        BATCH.upper(),
-        BATCH.swapcase(),
-    ],
-)
+@pytest.mark.parametrize("other", [BATCH.upper(), BATCH.swapcase()])
 def test_two_spellings_of_one_folder_share_one_lock(cfg, other):
-    """A case insensitive volume makes both spellings one batch folder, so a
-    lock per spelling would let two landings into it."""
+    """A case insensitive volume makes both spellings one batch folder."""
     assert other != BATCH
     assert landing.lock_key(other) == landing.lock_key(BATCH)
-    with landing.batch_lock(BATCH):
-        with pytest.raises(CratekitError) as excinfo:
-            with landing.batch_lock(other):
-                raise AssertionError("two holders of one batch folder")
-    assert excinfo.value.cause.reason == "job-driver-held"
+    assert _second_holder(BATCH, other)[0].reason == "job-driver-held"
 
 
 def test_composed_and_decomposed_spellings_share_one_lock():
@@ -761,18 +528,13 @@ def test_composed_and_decomposed_spellings_share_one_lock():
     assert composed != decomposed
     assert landing.lock_key(composed) == landing.lock_key(decomposed)
     assert landing.lock_key(composed) != landing.lock_key("Cafe")
-
-
-def test_a_lock_key_is_a_plain_file_name_whatever_the_batch_is_called():
+    # And a key is a plain file name whatever the batch is called.
     key = landing.lock_key("a batch: with * every ? odd | character " + "x" * 300)
     assert re.fullmatch(r"[0-9a-f]{64}", key)
 
 
 def test_a_held_job_lock_raised_under_the_batch_lock_is_not_called_a_landing(cfg, tmp_path):
-    """Only the taking is translated. Whatever runs under the lock may refuse
-    with the same cause about something else, and that must arrive unchanged."""
-    from cratekit.core import jobs
-
+    """Only the taking is translated; a cause from the body arrives unchanged."""
     with pytest.raises(jobs.DriverHeld) as excinfo:
         with landing.batch_lock(BATCH):
             with jobs.driver_lock("a-job", root=tmp_path / "jobs"):

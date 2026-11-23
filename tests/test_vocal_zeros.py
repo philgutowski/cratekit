@@ -1,19 +1,8 @@
 """U171: why most of a landed batch stamps a vocal level of exactly 0.
 
-A64 measured what the frame model heard on the 116 files of sitting 47 and on
-ten known sung leads, and found the stamp to be exactly the share of frames
-whose Singing score reaches the floor, rounded to a whole percent. Of the 80
-zeros, 68 never reach the floor on a single frame and 12 reach it on under half
-a percent of their frames. No decode, chunking or column defect was involved.
-
-These tests drive ``vocals.analyse`` end to end with a fake model that plays
-back a Singing series shaped on those measurements, so each shape is scored
-through the same chunk walk, reduction and rounding a real track takes. The
-decode is bound to a constant signal, so ``vocal.decode`` is not exercised
-here; a real file's decode is A64's to measure.
-The shapes are synthetic: the frame values A64 printed are summaries (max,
-95th percentile, share at the floor), and each series below is built to match
-the summary of the row it names, not copied from a file.
+The stamp is the share of frames whose Singing score reaches the floor (A64).
+A fake model plays back Singing series shaped on A64's summaries through the
+real chunk walk, reduction and rounding; the decode is a constant signal.
 """
 
 from __future__ import annotations

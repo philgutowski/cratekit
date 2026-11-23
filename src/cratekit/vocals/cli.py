@@ -1,27 +1,15 @@
 """``crate analyze vocals``: re-score vocal tags, including Camelot-prefixed names.
 
-R-277. ``analyze.run`` skips a name that already carries the head, which is
-the resume marker, so a track finalized with no voxlevel is never scored
-again. ``analyze.restamp`` rewrites energy only. This verb is the source
-system's force path: it scores every audio file in the folder, head or
-not, and writes only the three vocal tags.
+R-277: ``analyze.run`` skips a name carrying the head, its resume marker, so a
+track finalized with no voxlevel is never scored again, and ``analyze.restamp``
+rewrites energy only. This verb scores every audio file, head or not, and
+writes only the three vocal tags.
 
-THE MODEL MODULE IS NEVER IMPORTED AT MODULE SCOPE. ``cli.jobs.argv_for``
-imports this module by name to build a resume line, and the model imports
-torch at load time, which the slim profile does not declare. A worker
-binds the shipped loader inside the function that needs it. Tests bind a
-fake the same way ``analyze.run`` does.
-
-THE ITEM IS A PATH RELATIVE TO THE FROZEN FOLDER, AND THE FOLDER IS FROZEN
-ABSOLUTE, for the same resume reason ``cratekit.analysis.cli`` states:
-``jobs.spawn`` starts the child in the resuming process's working directory.
-
-``--recursive`` (U93) makes that path more than one segment, so one
-invocation over the library root replaces the 343 leaf folder invocations
-R-376 measured at about 7.7 hours. The walk and the join both live in
-``core.discovery``: this module used to carry its own copy of the scan, the
-copy had to agree with the analysis module's, and it now cannot drift
-because there is one.
+THE MODEL MODULE IS NEVER IMPORTED AT MODULE SCOPE: ``cli.jobs.argv_for``
+imports this module to build a resume line, and the model imports torch,
+which the slim profile does not declare. The item is a path relative to the
+frozen absolute folder, for the reason ``cratekit.analysis.cli`` states, and
+``--recursive`` (U93) walks the library in one job through ``core.discovery``.
 """
 
 from __future__ import annotations
@@ -32,18 +20,12 @@ from typing import Any, Mapping
 from cratekit.analysis import artifacts
 from cratekit.analysis import cli as analysis_cli
 from cratekit.analysis import vocals as scoring
-from cratekit.cli.output import Envelope, load_config, no_job
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import config, discovery, jobs, tags
-from cratekit.core.cause import Outcome, refuse
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 
 _ORIGIN = ("vocals", "cli")
-
-
-
-def _folder_of(named: str) -> Path:
-    return Path(named).expanduser().absolute()
-
 
 #: Every file the folder held carries a vocal score already, so ``--unscored``
 #: queued nothing (U181).
@@ -53,31 +35,11 @@ NONE_UNSCORED = "none-unscored"
 UNSCORED = "--unscored"
 
 
-def _nothing_to_queue(
-    ctx, folder: Path, extra: tuple[dict[str, str], ...] = (), *, state: str = "no-audio"
-) -> Envelope:
-    if folder.is_dir():
-        return ctx.envelope(data=no_job(state), outcome=Outcome.NO_OP, warnings=extra)
-    return ctx.envelope(
-        data=no_job("folder-absent"),
-        outcome=Outcome.NO_OP,
-        warnings=(
-            {
-                "code": "folder-absent",
-                "message": f"{folder} is not a folder on this machine, so nothing was queued",
-            },
-            *extra,
-        ),
-    )
-
-
 def _require_extra() -> None:
     """Refuse when the model cannot load here and no fake loader is bound.
 
-    ``scoring.missing_requirement`` names the first thing that is missing, the
-    extra, the label table or the checkpoint, so a job that could score
-    nothing is refused before it is filed rather than driven to a clean
-    report of nothing scored (R-370).
+    ``scoring.missing_requirement`` names the first missing piece, so a job
+    that could score nothing is refused before it is filed (R-370).
     """
     if scoring.loader_bound():
         return
@@ -125,10 +87,8 @@ def _write_or_refuse(path: Path, fields: dict[str, Any]) -> None:
 def _folder_and_path(job, item) -> tuple[Path, Path]:
     """The frozen folder and the item's file in it, joined by the checked rule.
 
-    Since U93 an item id may carry separators, so the join is
-    ``discovery.item_path`` rather than an operator: an absolute id would
-    otherwise discard the frozen folder and the worker would read a file the
-    job never queued.
+    ``discovery.item_path`` rather than an operator, which an absolute id would
+    turn into a file the job never queued (U93).
     """
     folder = Path(str((job.payload or {}).get("folder") or ""))
     return folder, discovery.item_path(folder, str(item.item_id))
@@ -187,10 +147,8 @@ def build(parser, entry) -> None:
 def _unscored(cfg: config.Config, folder: Path, items: tuple[str, ...]) -> list[str]:
     """The items ``analyze run`` will never score again: the head, and no voxlevel (U181).
 
-    The head is the run's resume marker, so a file it finalized while the vocal
-    model could not load is skipped by every later run and keeps no score for
-    good. A file without the head is the run's to analyse, and one carrying a
-    score is left alone.
+    A file without the head is the run's to analyse, and one carrying a score
+    is left alone.
     """
     chosen = []
     for item in items:
@@ -244,8 +202,6 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         job, warnings = _advance(ctx, store, jobs.get(store, ctx.args.job))
         summary = analysis_cli.committed_summary(cfg, job.job_id)
         # THE RESUME CARRIES THE WALK'S OMISSIONS TOO, off the frozen payload.
-        # This is the report a person keeps, and the queue envelope is the one
-        # they scroll past.
         warnings = (*warnings, *discovery.warnings_of(job.payload))
         unscored = _unscored_warning(summary)
         if unscored is not None:
@@ -260,26 +216,21 @@ def analyze_vocals(ctx) -> Envelope:
     cfg = load_config(_ORIGIN)
     if ctx.args.job:
         return _resume(ctx, cfg)
-    folder = _folder_of(ctx.args.folder)
-    recursive = bool(getattr(ctx.args, "recursive", False))
-    scan = discovery.scan_audio(folder, recursive=recursive)
-    extra = discovery.walk_warnings(scan.skipped_links, scan.unreadable)
+    folder, recursive, scan, extra = analysis_cli.walk_folder(ctx)
     if not scan.items:
-        return _nothing_to_queue(ctx, folder, extra)
+        return analysis_cli.nothing_to_queue(ctx, folder, extra)
     items = list(scan.items)
     unscored = bool(getattr(ctx.args, "unscored", False))
     if unscored:
         items = _unscored(cfg, folder, scan.items)
         if not items:
-            return _nothing_to_queue(ctx, folder, extra, state=NONE_UNSCORED)
+            return analysis_cli.nothing_to_queue(ctx, folder, extra, state=NONE_UNSCORED)
     _require_extra()
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            # FROZEN WITH THE FOLDER. The resume replays the item list off the
-            # store and never re-scans, so this records what the queue meant and
-            # what it left out rather than feeding either back in.
+            # FROZEN WITH THE FOLDER: the resume replays the store, never a scan.
             payload={
                 "folder": str(folder),
                 **discovery.frozen_walk(scan, recursive=recursive),

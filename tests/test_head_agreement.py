@@ -1,11 +1,7 @@
 """R-744: a head is a measurement with a known error, and the error is measured.
 
-Three things are pinned here. The bucketing, which is the vocabulary the
-record and the verb's answer use. The key notation mapping, because rekordbox
-stores whichever notation its display was set to and a comparison that knows
-one spelling matches one library. And the measurement over a fixture copy,
-driven through the script, so the four buckets a session reads off the live
-library are the four buckets this suite has seen printed.
+The bucketing, the key notation mapping, and the measurement over a fixture
+copy driven through the script.
 """
 
 from __future__ import annotations
@@ -24,11 +20,6 @@ from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_data
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "head_agreement.py"
-
-
-# ---------------------------------------------------------------------------
-# The buckets
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -94,11 +85,6 @@ def test_every_classic_name_reaches_a_code_the_detector_can_emit():
     emitted = {agreement.pad_camelot(code) for code in detect._KEY_TO_CAMELOT.values()}
     for name in agreement._CLASSIC_TO_CAMELOT:
         assert agreement.camelot_from_scale_name(name) in emitted
-
-
-# ---------------------------------------------------------------------------
-# The comparison over rows
-# ---------------------------------------------------------------------------
 
 
 def _row_of(identifier, filename, hundredths, scale_name):
@@ -238,11 +224,6 @@ def test_the_script_refuses_a_step_below_one_before_it_reads_anything():
     )
     assert completed.returncode == 2
     assert "--step must be one or more" in completed.stderr
-
-
-# ---------------------------------------------------------------------------
-# The measurement over a fixture copy, through the script
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -435,11 +416,6 @@ def test_the_script_prints_the_four_buckets_over_a_fixture_copy(tmp_path, monkey
     assert "heads on disk against rekordbox own analysis" in out
 
 
-# ---------------------------------------------------------------------------
-# The recorded rate the verb answers with
-# ---------------------------------------------------------------------------
-
-
 def test_the_recorded_agreement_is_a_fresh_copy_with_every_bucket_named():
     first = detect.head_agreement()
     second = detect.head_agreement()
@@ -491,11 +467,6 @@ def test_the_run_answer_carries_the_bound_window_to_the_record():
 def test_the_run_answer_carries_the_recorded_agreement():
     source = (REPO_ROOT / "src" / "cratekit" / "analysis" / "cli.py").read_text(encoding="utf-8")
     assert 'summary["head_agreement"] = detect.head_agreement(' in source
-
-
-# ---------------------------------------------------------------------------
-# The window is a named setting, refused when empty
-# ---------------------------------------------------------------------------
 
 
 def test_the_window_defaults_are_the_source_system_window():
