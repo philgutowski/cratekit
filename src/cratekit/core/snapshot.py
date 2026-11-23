@@ -176,6 +176,14 @@ def database_paths(cfg: config.Config) -> tuple[Path, ...]:
     return (config.state_path(DATABASE_KEY, cfg), *config.sidecar_paths(DATABASE_KEY, cfg))
 
 
+def captured_paths(cfg: config.Config) -> frozenset[Path]:
+    """Every path a capture takes: the database fileset, the legacy playlist file, and
+    everything ``config.snapshot_sources`` declares. Restore replaces exactly these.
+    """
+    playlist = config.state_path(DATABASE_KEY, cfg).parent / rb_writer.MASTER_PLAYLIST_XML
+    return frozenset({*database_paths(cfg), *config.snapshot_sources(cfg), playlist})
+
+
 def _harden(root: Path) -> None:
     """Give every file and directory under ``root`` an explicit private mode.
 
@@ -425,10 +433,7 @@ def assert_room_for_capture(
     (P4), in allocated bytes.
     """
     destination_root = Path(root) if root is not None else store_root(cfg)
-    sources = {*database_paths(cfg), *config.snapshot_sources(cfg)}
-    playlist = config.state_path(DATABASE_KEY, cfg).parent / rb_writer.MASTER_PLAYLIST_XML
-    sources.add(playlist)
-    needed = sum(_allocated_size(source) for source in sorted(sources))
+    needed = sum(_allocated_size(source) for source in sorted(captured_paths(cfg)))
     return assert_room_for(
         needed,
         destination_root,

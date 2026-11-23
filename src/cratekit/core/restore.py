@@ -57,7 +57,6 @@ from cratekit.core import (
     config,
     preflight,
     processes,
-    rb_writer,
     reconcile,
     session,
     snapshot,
@@ -590,12 +589,7 @@ def restorable_targets(cfg: config.Config) -> frozenset[Path]:
     not skipped. No lock or session record can be a member, and :func:`plan`
     asserts membership rather than trusting the layout.
     """
-    targets = {
-        *snapshot.database_paths(cfg),
-        *config.snapshot_sources(cfg),
-        config.state_path(snapshot.DATABASE_KEY, cfg).parent / rb_writer.MASTER_PLAYLIST_XML,
-    }
-    return frozenset(targets)
+    return snapshot.captured_paths(cfg)
 
 
 def _captured_by_key(
