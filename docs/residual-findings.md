@@ -1658,3 +1658,111 @@ product defect. Not on the base's Linux baseline list.
 **Closes when:** the workers signal that they are ready (a marker file each,
 as the suite's other process tests do) and the race starts on both signals.
 Ledger only.
+
+---
+
+## R-1868. A heard title that carries its feat credit after the version reads an owned track as missing, and it is downloaded again
+
+**Found:** at sitting 103, 2026-11-22, the attended session.
+
+**The mechanism.** Recognition named `Sixth Sense (Louie Vega Remix) feat.
+Ursula Rucker`. The library holds `Sixth Sense (Louie Vega Remix)` by Josh
+Wink, cued. The set job reported the heard one missing, and the download took
+a second copy.
+
+**Measured cost.** One duplicate in 100 landed rows, read by comparing every
+landed title against the older rows. The set's INSPIRATION playlist was given
+the cued copy by hand.
+
+**Closes when:** a trailing feat credit after a version is read off the title
+before the match. Ledger only.
+
+---
+
+## R-1869. The scheduled night pass runs from the development checkout, so a pull during it ends it mid run with its downloads stranded in staging
+
+**Found:** at sitting 103, 2026-11-22, the attended session.
+
+**The mechanism.** `crate schedule install`, run from the development
+checkout at sitting 102, wrote that checkout's `.venv/bin/crate` into the
+launchd job, whose editable install reads the working tree. The night of
+2026-11-21 ran from 15:38Z to 15:44Z on the 22nd. The checkout was fast
+forwarded at 15:40:40Z across U298, and the run ended `internal-error`,
+`ImportError: cannot import name 'load_config' from
+'cratekit.cli.output'`, when it next imported lazily.
+
+**Measured cost.** The download had succeeded, 32 of 32 settled with one
+skipped. The pass never reached its tail or its gate, and `sync night`'s
+record names no pass run, no staging and no gate, so its files sit in
+download staging with no command naming them. The installed copy, 0.18.0,
+has no `sync night`.
+
+**Closes when:** the schedule names an installed copy rather than a
+checkout, or a night that dies after its download records the pass run a
+`crate sync land --pass-run` continues.
+
+---
+
+## R-1870. A set landing's rehearsal refuses whenever the set holds a track another landing brought in after the set's job ran
+
+**Found:** at sitting 103, 2026-11-22, the attended session.
+
+**The mechanism.** A set job freezes each track's report when it runs. At
+`intake land --set`, a track reported missing that no staged file answers is
+asked of the library through `_LibraryView`, which indexes the files under
+the configured music root. The rehearsal points that root at its own area,
+which holds only the landing's clones, so the live plan calls the track owned
+and the rehearsal's leaves it out, and the rehearsal refuses
+`decision-stale`.
+
+**Measured cost.** Six sets by one DJ share tracks. Three landings rehearsed
+equal; Third Floor Sounds refused twice (319 differing lines) and Salas Roma
+once (117), every differing line in the set playlist's members and left
+rows. Running `intake set` again for each refrozen the reports at no
+recognition cost, 0 calls each, about two minutes of fetching per mix, and
+all three then rehearsed equal and landed.
+
+**Closes when:** the rehearsal's ownership view reads the live library's
+files, or the refusal names running the set job again as its remedy.
+
+---
+
+## R-1871. The new rbxml_insert.py sits outside both readings of the emitter guard, which read rbxml.py alone
+
+**Found:** at the review of #859, U302, 2026-11-22.
+
+**The mechanism.** `tests/test_tree_registry.py` finds the XML byte writers
+two ways: `_public_functions` keeps only functions whose `__module__` is
+`cratekit.write.rbxml`, and `_byte_writers_by_source` parses `rbxml.py` alone.
+U302 moved the read only placement helpers into `write/rbxml_insert.py` and
+imports them back into `rbxml`, so a byte writer added to `rbxml_insert.py`
+later, and imported back the same way, is checked by neither reading. The
+review planted one there on a scratch copy: both conformance tests stayed
+green, while the same function in `rbxml.py` failed both.
+
+**Measured cost.** None today: no function in `rbxml_insert.py` changes a
+buffer (read by grep and by syntax tree). The producer is a future edit, not
+driven.
+
+**Closes when:** the guard reads every module under `write/` whose name
+starts `rbxml`, or `rbxml_insert.py` is folded back. `tests/test_tree_registry.py`
+is on no area card's list, so it is the suite card's, #869 (U312). Ledger only.
+
+---
+
+## R-1872. How the depth walk treats a truncated NODE open tag is pinned by no test, on the base and the branch alike
+
+**Found:** at the review of #859, U302, 2026-11-22.
+
+**The mechanism.** `rbxml._node_tokens`, which U302 folded out of
+`depth_of` and `matching_close`, stops at an open tag with no end. Counting
+that tag as a level before stopping changes only `depth_of`, and no test
+fails: 90 passed under the mutation, and the base form in `depth_of`
+survives the same mutation.
+
+**Measured cost.** None driven: a document holding an unterminated open tag
+inside the playlist section is one `playlists_span` and `node_at` already
+read as unusable, so no writer reaches the depth it would misread.
+
+**Closes when:** a test feeds the walk a truncated tag inside an otherwise
+readable playlist section, if such a document can be produced. Ledger only.
