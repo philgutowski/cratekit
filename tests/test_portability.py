@@ -33,9 +33,7 @@ def _load_scanner():
 scan = _load_scanner()
 
 
-# ---------------------------------------------------------------------------
-# Assembled bad literals, built rather than written (see the module docstring).
-# ---------------------------------------------------------------------------
+# ── Assembled bad literals, built rather than written (see the module docstring). ───
 
 _A_HOME = "/" + "Users" + "/" + "jdoe" + "/Documents/project"
 _A_VOLUME = "/" + "Volumes" + "/" + "BigAudioDrive" + "/Music"

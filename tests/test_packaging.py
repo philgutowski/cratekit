@@ -132,11 +132,9 @@ def test_slim_core_carries_no_dsp_web_or_ml_dependency(pyproject):
     )
 
 
-# ---------------------------------------------------------------------------
-# U269: every core dependency earns its place, and the comments name real files.
+# ── U269: every core dependency earns its place, and the comments name real files. ───
 #
 # lxml sat in the core list for months while nothing imported it.
-# ---------------------------------------------------------------------------
 
 #: A core dependency declared for a reason other than our own import, such as
 #: bounding a transitive one, named here with that reason. Empty today.
@@ -271,13 +269,11 @@ def test_no_author_identity_in_shipped_metadata(pyproject):
     assert authors == [{"name": "Cratekit contributors"}]
 
 
-# ---------------------------------------------------------------------------
-# scripts/ci_deps.py
+# ── scripts/ci_deps.py ───────────────────────────────────────────────────────
 #
 # CI installs whatever this prints. Its first CI run failed: shell quoting
 # survived command substitution, and pip got a literal ``'lxml>=5.0'``. These
 # pin the output contract: every line parses as a requirement, undecorated.
-# ---------------------------------------------------------------------------
 
 
 def _run_ci_deps(*args: str) -> list[str]:

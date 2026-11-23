@@ -48,9 +48,7 @@ TOP_VALUED = frozenset(
 TOP_OPTIONS = TOP_VALUED | {"-h", "--help", "--version"}
 
 
-# ---------------------------------------------------------------------------
-# What the code says
-# ---------------------------------------------------------------------------
+# ── What the code says ───────────────────────────────────────────────────────
 
 
 def _parser_flags() -> dict[str, frozenset[str] | None]:
@@ -126,9 +124,7 @@ def format_default(value: object) -> str:
     raise TypeError(f"no guide spelling for a default of type {type(value).__name__}")
 
 
-# ---------------------------------------------------------------------------
-# What a doc says
-# ---------------------------------------------------------------------------
+# ── What a doc says ──────────────────────────────────────────────────────────
 
 
 def code_snippets(text: str) -> list[tuple[int, str]]:
@@ -247,9 +243,7 @@ def dotted_keys(text: str, sections: set[str]) -> list[tuple[int, str]]:
     return found
 
 
-# ---------------------------------------------------------------------------
-# The guide against the code
-# ---------------------------------------------------------------------------
+# ── The guide against the code ───────────────────────────────────────────────
 
 
 @pytest.fixture(scope="module")
@@ -317,9 +311,7 @@ def test_every_config_key_a_doc_spells_exists(doc: Path) -> None:
     assert stray == [], f"{doc.name} spells config keys the schema does not have"
 
 
-# ---------------------------------------------------------------------------
-# The readers on doctored text, which is the proof each check can fail
-# ---------------------------------------------------------------------------
+# ── The readers on doctored text, which is the proof each check can fail ─────
 
 _VERBS: dict[str, frozenset[str] | None] = {
     "status": frozenset({"--help"}),

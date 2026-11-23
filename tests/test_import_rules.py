@@ -34,9 +34,7 @@ from tests._refactor_measure import measure
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# ---------------------------------------------------------------------------
-# The lists. Literals, because the script reads them without importing this.
-# ---------------------------------------------------------------------------
+# ── The lists. Literals, because the script reads them without importing this. ───
 
 #: The core modules a feature package may import: the named interface. These
 #: are the 25 that three or more feature packages reached when U290's survey
@@ -121,9 +119,7 @@ TOGGLE_HOMES = {
 CORE_NAMES_CEILING = 452
 
 
-# ---------------------------------------------------------------------------
-# Fixtures: a package of synthetic modules
-# ---------------------------------------------------------------------------
+# ── Fixtures: a package of synthetic modules ─────────────────────────────────
 
 
 def _tree(**modules: str):
@@ -146,9 +142,7 @@ def _lines(found: dict[str, collections.Counter[str]]) -> dict[str, list[str]]:
 HOMES = {"labels": ("cratekit.label",), "export": ("cratekit.export",), "repair": ()}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Rule one: no private name crosses a package
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Rule one: no private name crosses a package ──────────────────────────────
 
 
 def test_a_private_name_imported_across_packages_fails():
@@ -256,9 +250,7 @@ def test_a_dotted_import_under_another_name_is_followed_to_its_module():
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Rule two: a feature package imports only the named interface of core
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Rule two: a feature package imports only the named interface of core ─────
 
 
 def test_a_core_module_off_the_list_fails_from_a_feature_package():
@@ -312,9 +304,7 @@ def test_a_module_on_the_list_passes_from_a_feature_package():
     assert measure.off_interface(tree, ["config"]) == {}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Rule three: an always on package never imports a toggleable one at top level
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Rule three: an always on package never imports a toggleable one at top level ───
 
 
 def test_a_top_level_import_of_a_toggleable_package_fails_from_an_always_on_package():
@@ -402,9 +392,7 @@ def test_each_imported_name_is_one_place():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Rule four: with a toggle off, every verb that remains still builds
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Rule four: with a toggle off, every verb that remains still builds ───────
 
 
 def _verb(name: str, module: str, toggle: str | None = None, builder: str = "build"):
@@ -559,9 +547,7 @@ def test_nothing_is_followed_through_a_module_that_cannot_be_imported():
     assert export.edges == (("cratekit.label.registry", "cratekit.export.cli"),)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The count of core names
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The count of core names ──────────────────────────────────────────────────
 
 
 def test_core_names_are_counted_across_feature_packages_and_only_there():
@@ -629,9 +615,7 @@ def test_a_module_that_answers_for_any_name_has_every_attribute_counted():
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The lists and the readings they depend on
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The lists and the readings they depend on ────────────────────────────────
 
 
 def test_the_interface_is_at_most_25_core_modules_sorted_and_real():
@@ -694,9 +678,7 @@ def test_a_planned_entry_is_not_a_landed_verb():
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The real package
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The real package ─────────────────────────────────────────────────────────
 
 
 def test_no_package_crosses_a_seam_beyond_its_allowance():

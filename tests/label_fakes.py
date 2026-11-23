@@ -298,10 +298,7 @@ class FakeCatalogue:
 
 
 class StrictCatalogue(FakeCatalogue):
-    """A :class:`FakeCatalogue` that raises on any attribute outside the protocol.
-
-    So no path in the label package can even NAME an undeclared provider call.
-    """
+    """A :class:`FakeCatalogue` raising on any attribute outside the protocol."""
 
     def __getattr__(self, name: str):
         raise AssertionError(

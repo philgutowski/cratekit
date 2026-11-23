@@ -92,11 +92,7 @@ def _dotted(node: ast.AST) -> str | None:
 
 
 def _dotted_tail_of(candidate: str, path: str) -> bool:
-    """Whether ``candidate`` is a whole dotted tail of ``path``.
-
-    Only the fallback when the caller gives no package: it fires on a file in an
-    unrelated package writing ``from .pool import PoolPlan``. See :func:`package_of`.
-    """
+    """Whether ``candidate`` is a whole dotted tail of ``path``: the no-package fallback."""
     if not candidate:
         return False
     wanted = candidate.split(".")
@@ -104,11 +100,7 @@ def _dotted_tail_of(candidate: str, path: str) -> bool:
 
 
 def _absolute_module(package: str | None, level: int, module: str) -> str | None:
-    """The module a relative import names, resolved against the importing package.
-
-    None when there is no package, or the dots climb past the top, which the
-    interpreter refuses.
-    """
+    """The module a relative import names, or None with no package or dots past the top."""
     if level == 0:
         return module or None
     if package is None:
@@ -242,10 +234,7 @@ class ReviewImports(ImportsOf):
 
 
 def calls_attribute(source: str, module: str, wanted: str, *, package: str | None = None) -> bool:
-    """Whether this source CALLS ``module``'s ``wanted`` function, in any import shape.
-
-    ``package`` is the package the source sits in, so a relative import resolves exactly.
-    """
+    """Whether this source CALLS ``module``'s ``wanted`` function, in any import shape."""
     tree = ast.parse(source)
     imports = ImportsOf(tree, module, package)
     if not imports.reaches:
@@ -406,13 +395,11 @@ def package_modules(package_root) -> list[tuple[str, str]]:
     ]
 
 
-# ---------------------------------------------------------------------------
-# U38: the two shapes that bypass the reserved exit-code table.
+# ── U38: the two shapes that bypass the reserved exit-code table. ────────────
 #
 # Appended, so units landing at once conflict visibly rather than merging
 # silently. Answered against the name the source BOUND, never the text
 # ``ExitCode``, which anyone's class or one ``as`` would defeat.
-# ---------------------------------------------------------------------------
 
 #: The module that owns the status vocabulary. Its package and leaf are derived
 #: at use, so a test can move the constant and watch every question follow.
@@ -553,10 +540,7 @@ class ExitCodeImports:
 
 
 def _module_level_literals(tree: ast.AST) -> dict[str, ast.AST]:
-    """Every ``NAME = <expression>`` at module level, for resolution by name.
-
-    ``PRECONDITION = 30`` beside a table is the careful spelling, and is read.
-    """
+    """Every ``NAME = <expression>`` at module level, so a code held in a constant is read."""
     found: dict[str, ast.AST] = {}
     for node in getattr(tree, "body", []):
         if isinstance(node, ast.Assign):
@@ -718,10 +702,7 @@ def resolve_int(
 
 
 def _within_scope(body: list[ast.stmt]):
-    """Every node inside a block of statements, without entering a nested scope.
-
-    The rule ``_walk_scope`` applies to one node, shared rather than written twice.
-    """
+    """Every node inside a block of statements, without entering a nested scope."""
     for statement in body:
         if isinstance(
             statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
@@ -802,10 +783,7 @@ class ReservedCodeTable:
         return [element for element in _walk(node) if self.cause_key(element)]
 
     def _resolved(self, node: ast.AST | None) -> ast.AST | None:
-        """A key expression reduced to what it holds: a name or a class attribute.
-
-        Shares ``_through_names``'s bound, so the chase has one depth for both halves.
-        """
+        """A key expression reduced to what it holds, within ``_through_names``'s bound."""
         if node is None:
             return None
         if isinstance(node, ast.Attribute):
@@ -900,10 +878,7 @@ class ReservedCodeTable:
         return [(key, value, None) for key in keys for value in values]
 
     def pairs(self) -> list[tuple[ast.AST, ast.AST, str | None]]:
-        """Every place a key and a value are bound together, in any shape.
-
-        Each shape below was written as an evasion first.
-        """
+        """Every place a key and a value are bound together, in any shape."""
         found: list[tuple[ast.AST, ast.AST, str | None]] = []
         for node in _walk(self.tree):
             if isinstance(node, ast.Dict):
@@ -1064,9 +1039,7 @@ def _reservations(table: ReservedCodeTable) -> list[str]:
     return sorted(found)
 
 
-# ---------------------------------------------------------------------------
-# Ending the process with a bare integer.
-# ---------------------------------------------------------------------------
+# ── Ending the process with a bare integer. ──────────────────────────────────
 
 #: The standard-library modules that can end a process, and the attribute of
 #: each that does it, held by module IDENTITY.
@@ -1375,9 +1348,7 @@ def _scan_for_exits(
         _scan_for_exits(
             scope, exits.extended(scope), _scope_literals(scope, names), members, found
         )
-# ═══════════════════════════════════════════════════════════════════════════
-# The soft-delete marker: read it, never default it (appended, per this file)
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The soft-delete marker: read it, never default it (appended, per this file) ───
 
 #: The module that owns the binding's vocabulary, and its constant naming the
 #: soft-delete column, resolved through the import graph, so
@@ -1553,10 +1524,7 @@ class SoftDeleteNames:
         )
 
     def _is_falsey(self, node: ast.AST) -> bool:
-        """Whether this expression evaluates to something that reads as 'active'.
-
-        Constant-folded, since ``int()``, ``1 - 1`` and ``""`` are zero too.
-        """
+        """Whether this expression evaluates to 'active': ``0``, ``int()``, ``1 - 1``, ``""``."""
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             # A zero-argument builtin constructor is that type's empty value, falsey.
             if not node.args and not node.keywords:
@@ -1701,10 +1669,7 @@ def _local_names(scope: ast.AST) -> set[str]:
 
 
 def _is_container(node: ast.AST) -> bool:
-    """Whether this expression builds a mapping or a set: a per-column table.
-
-    Narrow on purpose: any other call could return a row.
-    """
+    """Whether this expression builds a mapping or a set: a per-column table, never a row."""
     if isinstance(node, (ast.Dict, ast.Set, ast.DictComp, ast.SetComp)):
         return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
@@ -1826,10 +1791,7 @@ def _is_presence_test(node: ast.AST) -> bool:
 
 
 def _rebinding_statements(scope: ast.AST, holders: dict[str, ast.AST]):
-    """Assignments that rebind a holder, including through ``nonlocal`` and ``global``.
-
-    The walk follows the declaration rather than the indentation, as Python does.
-    """
+    """Assignments that rebind a holder, including through ``nonlocal`` and ``global``."""
     for statement in _own_nodes(scope):
         if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
             yield statement

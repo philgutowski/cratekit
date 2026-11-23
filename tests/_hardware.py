@@ -54,9 +54,7 @@ _DETACH_ATTEMPTS = 5
 _DETACH_WAIT_SECONDS = 0.6
 
 
-# ---------------------------------------------------------------------------
-# Timing: a repeat count and a pass rate, never one number.
-# ---------------------------------------------------------------------------
+# ── Timing: a repeat count and a pass rate, never one number. ────────────────
 
 
 @dataclass(frozen=True)
@@ -191,10 +189,7 @@ class Calibration:
 
 
 def write_calibration(payload: dict, path: Path = CALIBRATION_PATH, *, force: bool = False) -> None:
-    """Store a calibration, refusing one whose spread says the machine was not quiet.
-
-    ``force`` is for a human who read the spread and chose to keep it.
-    """
+    """Store a calibration, refusing a noisy spread unless a human passes ``force``."""
     spread = float(payload["relative_spread"])
     if spread > SPREAD_LIMIT and not force:
         raise ValueError(
@@ -245,9 +240,7 @@ def threshold_seconds(multiplier: float, calibration: Calibration | None = None)
     return multiplier * cal.median_seconds
 
 
-# ---------------------------------------------------------------------------
-# Volumes: real images, mounted and torn down.
-# ---------------------------------------------------------------------------
+# ── Volumes: real images, mounted and torn down. ─────────────────────────────
 
 
 def hdiutil_available() -> bool:
@@ -343,10 +336,7 @@ def _content_manifest(root: Path) -> dict[str, str]:
 
 @contextmanager
 def fat_volume(*, size_mb: int = 64, label: str = "CKFAT") -> Iterator[Path]:
-    """A mounted FAT32 volume, yielded as its mountpoint, torn down on exit however the body ends.
-
-    The label rules are FAT's own: at most 11 characters, uppercase alphanumeric.
-    """
+    """A mounted FAT32 volume at its mountpoint, torn down on exit, FAT labels."""
     if size_mb < FAT32_MIN_MB:
         raise ValueError(
             f"FAT32 needs at least {FAT32_MIN_MB} MB; newfs_msdos refuses less, and "

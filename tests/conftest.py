@@ -52,10 +52,7 @@ _PRESENT: dict[str, bool] = {}
 
 
 def _module_if_present(dotted: str):
-    """Import ``dotted`` only if it exists, else return None.
-
-    Each redirection is a no-op until its module lands and bites once it does.
-    """
+    """Import ``dotted`` only if it exists, else None: a no-op until its module lands."""
     present = _PRESENT.get(dotted)
     if present is None:
         try:
@@ -364,10 +361,7 @@ def _block_real_library_paths(request, _isolate_state_roots):
 
 @pytest.fixture(autouse=True)
 def _favourites_without_pink(request):
-    """Default the favourites colour read to no pink rows (R-228).
-
-    A test marked ``real_pink_read`` keeps the real read.
-    """
+    """Default the favourites colour read to no pink rows (R-228) unless ``real_pink_read``."""
     favorites_cli = _module_if_present("cratekit.favorites.cli")
     if request.node.get_closest_marker("real_pink_read") is not None:
         yield
@@ -485,10 +479,7 @@ def _no_host_process_table(request):
 
 @pytest.fixture
 def rekordbox_on_the_host():
-    """rekordbox and rekordboxAgent running on the host, at psutil itself (U232).
-
-    Installed after the tripwire, so psutil's enumeration answers the fake host.
-    """
+    """rekordbox and rekordboxAgent on the host at psutil, beneath the tripwire (U232)."""
     with _own_patch() as monkeypatch:
         _host_processes.install(monkeypatch)
         yield _host_processes.OPEN

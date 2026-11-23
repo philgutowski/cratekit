@@ -27,9 +27,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 
-# ---------------------------------------------------------------------------
-# The layer ladder. Index is rank: lower index means lower layer.
-# ---------------------------------------------------------------------------
+# ── The layer ladder. Index is rank: lower index means lower layer. ──────────
 LAYERS = ("foundation", "domain", "infrastructure", "write", "modules", "cli")
 RANK = {name: index for index, name in enumerate(LAYERS)}
 
@@ -185,9 +183,7 @@ def layer_of(module: str) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# Rule 1: imports point downward only
-# ---------------------------------------------------------------------------
+# ── Rule 1: imports point downward only ──────────────────────────────────────
 
 
 def import_direction_violations(source: str, module: str) -> list[str]:
@@ -244,9 +240,7 @@ def _is_nested(tree: ast.AST, node: ast.AST) -> bool:
     return False
 
 
-# ---------------------------------------------------------------------------
-# Rule 2: a lower layer never NAMES a higher-layer concept
-# ---------------------------------------------------------------------------
+# ── Rule 2: a lower layer never NAMES a higher-layer concept ─────────────────
 
 
 def higher_concept_violations(source: str, module: str) -> list[str]:
@@ -299,9 +293,7 @@ def higher_concept_violations(source: str, module: str) -> list[str]:
     return problems
 
 
-# ---------------------------------------------------------------------------
-# Rule 3: no persisted record is keyed by a display name (R19)
-# ---------------------------------------------------------------------------
+# ── Rule 3: no persisted record is keyed by a display name (R19) ─────────────
 
 # Mapping operations whose FIRST argument is a key.
 _KEY_METHODS = frozenset({"get", "setdefault", "pop", "__getitem__", "__contains__"})
@@ -362,9 +354,7 @@ def persisted_display_name_violations(source: str, module: str) -> list[str]:
     return problems
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixture tests: each rule bites
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Fixture tests: each rule bites ───────────────────────────────────────────
 
 
 def test_layer_ladder_is_the_ktd23_order():
@@ -608,9 +598,7 @@ def test_displaying_a_display_name_passes():
     assert persisted_display_name_violations(source, "cratekit.write.trees") == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The real package
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The real package ─────────────────────────────────────────────────────────
 
 
 def _package_modules() -> list[tuple[str, str]]:

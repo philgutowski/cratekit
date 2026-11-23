@@ -40,9 +40,7 @@ def _vendored_sources() -> list[Path]:
     return sorted(VENDORED_PACKAGE.rglob("*.py"))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# It imports, from inside cratekit._vendor, with no network
-# ═══════════════════════════════════════════════════════════════════════════
+# ── It imports, from inside cratekit._vendor, with no network ────────────────
 
 
 def test_the_vendored_package_imports_from_inside_cratekit_vendor():
@@ -93,9 +91,7 @@ def test_no_module_still_imports_itself_by_its_upstream_name():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# No dependency specifier names the vendored project
-# ═══════════════════════════════════════════════════════════════════════════
+# ── No dependency specifier names the vendored project ───────────────────────
 
 
 def test_no_dependency_specifier_names_the_vendored_project(pyproject):
@@ -157,9 +153,7 @@ def test_nothing_in_the_repository_declares_it_as_a_requirement():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The licence ships, intact, in both places
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The licence ships, intact, in both places ────────────────────────────────
 
 
 def test_the_vendored_licence_is_present_and_non_empty():
@@ -203,9 +197,7 @@ def test_the_recorded_version_matches_the_code_on_disk():
     assert module.__version__ == DOWNLOADER.version
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# No credential material, in any of the three shapes it took upstream
-# ═══════════════════════════════════════════════════════════════════════════
+# ── No credential material, in any of the three shapes it took upstream ──────
 
 
 def test_the_atmos_client_credentials_are_empty():
@@ -271,9 +263,7 @@ def test_no_session_or_token_file_rode_along():
     assert not strays, f"credential-shaped files under the vendored tree: {strays}"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# R17: the vendored downloader writes no tempo tag
-# ═══════════════════════════════════════════════════════════════════════════
+# ── R17: the vendored downloader writes no tempo tag ─────────────────────────
 
 
 def test_the_vendored_downloader_writes_no_tempo_tag():
@@ -396,9 +386,7 @@ def test_the_persisted_token_records_which_client_minted_it():
     assert "is_pkce" in assigned, "token_persist writes the four keys again and drops is_pkce"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The reductions hold
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The reductions hold ──────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(

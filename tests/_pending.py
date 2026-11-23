@@ -33,13 +33,11 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# ---------------------------------------------------------------------------
-# Guards awaiting the module they govern.
+# ── Guards awaiting the module they govern. ──────────────────────────────────
 #
 # key   -> the dotted module path (checked with find_spec), or a "path:" key
 #          checked against the filesystem.
 # value -> (unit that lands it, one line saying what the guard asserts)
-# ---------------------------------------------------------------------------
 PENDING: dict[str, tuple[str, str]] = {
     # U16 APPENDED A SECOND OBLIGATION HERE AND IT HAS BEEN REMOVED, which is
     # worth a note because removing an obligation is normally the wrong move.

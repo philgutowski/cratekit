@@ -118,10 +118,7 @@ def test_the_empty_register_is_a_discharged_register_and_not_a_lost_one():
 
 @pytest.mark.parametrize("key", sorted(EXPECTED_PENDING))
 def test_a_pending_target_that_has_landed_must_be_removed_from_the_registry(key):
-    """The countdown, DESIGNED to fail when a unit lands; over nothing while the register is empty.
-
-    The fix is the three edits the module docstring names, in one commit.
-    """
+    """The countdown, DESIGNED to fail when a unit lands; discharge it by the three edits above."""
     unit, what = _pending.PENDING[key]
     assert _pending._is_absent(key), (
         f"{key} now exists, so {unit} has landed. DISCHARGE IS THREE EDITS IN "
@@ -199,13 +196,11 @@ def test_repository_wide_guards_are_never_gated_on_a_pending_unit(module):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The register's own spelling, and the trailer that would close it
+# ── The register's own spelling, and the trailer that would close it ─────────
 #
 # The countdown proves an entry EXPIRES, not that it names something that can
 # exist. A key no unit will build is absent forever, and when the unit closes
 # ``board.py contradictions()`` exits 2 for good.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _board():
@@ -451,10 +446,7 @@ def test_the_closing_check_is_wired_where_it_cannot_be_forgotten():
 
 
 def test_the_ci_step_judges_the_commits_the_push_added():
-    """CI judges the range from the ref's PREVIOUS TIP, not a merge base, which was always empty.
-
-    Asserted against the workflow text, the only way to see it from here.
-    """
+    """CI judges the range from the ref's PREVIOUS TIP, never a merge base."""
     workflow = (TESTS_DIR.parent / ".github" / "workflows" / "ci.yml").read_text()
     step = workflow[workflow.index("A unit may not close while a register") :]
     step = step[: step.index("\n  portable:")]
@@ -739,10 +731,7 @@ def test_a_closed_unit_a_register_still_owes_is_the_contradiction_the_audit_exit
 
 
 def test_a_register_owing_a_unit_with_no_issue_at_all_is_silence_not_a_crash():
-    """A register owing a unit with no issue at all is silence, not a crash.
-
-    Titles change, issues move and duplicates are dropped; ``audit`` must still report.
-    """
+    """A register owing a unit with no issue at all is silence, not a crash."""
     board = _board()
     graph = board.build_graph(
         [
@@ -764,10 +753,7 @@ def test_a_register_owing_a_unit_with_no_issue_at_all_is_silence_not_a_crash():
 
 
 def test_a_repointed_residual_issue_is_reported_through_the_same_call(monkeypatch):
-    """A repointed residual issue is reported through the same ``contradictions`` call.
-
-    The document is supplied, so the comparison is tested, not the live ledger.
-    """
+    """A repointed residual issue is reported through the same ``contradictions`` call."""
     board = _board()
     graph = board.build_graph(
         [

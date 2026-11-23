@@ -41,9 +41,7 @@ def _sources(**packages: str) -> dict[str, str]:
     return {f"src/cratekit/{name}/module.py": text for name, text in packages.items()}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# What a logical line is
-# ═══════════════════════════════════════════════════════════════════════════
+# ── What a logical line is ───────────────────────────────────────────────────
 
 
 def test_a_logical_line_is_a_statements_tokens_joined_by_single_spaces():
@@ -80,9 +78,7 @@ def test_a_string_inside_a_statement_is_kept_and_only_a_lone_string_is_dropped()
     assert [line.text for line in lines] == ['name = "kept"']
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The rule bites: six lines, in two places
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The rule bites: six lines, in two places ─────────────────────────────────
 
 
 def test_a_copy_of_six_lines_is_found_in_both_packages():
@@ -137,9 +133,7 @@ def test_the_block_size_is_six_logical_lines():
     assert measure.BLOCK_LINES == 6
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The allowance: a multiset of lines that only shrinks
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The allowance: a multiset of lines that only shrinks ─────────────────────
 
 
 def test_a_block_on_the_allowance_passes_and_a_new_one_beside_it_fails():
@@ -241,9 +235,7 @@ def test_a_window_is_described_by_where_it_stands():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The real package
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The real package ─────────────────────────────────────────────────────────
 
 
 def test_no_package_holds_a_copied_block_beyond_its_allowance():

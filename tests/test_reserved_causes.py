@@ -173,10 +173,7 @@ CONVERTED_ELSEWHERE: Mapping[str, str] = MappingProxyType(
 
 
 def package_sources() -> list[tuple[str, str]]:
-    """Every module this repository authors, as (path relative to the package, source).
-
-    Vendored code is excluded: it is not ours to hold to a later contract.
-    """
+    """Every module this repository authors, as (relative path, source), vendored code excluded."""
     return [
         (path.relative_to(PACKAGE_ROOT).as_posix(), path.read_text())
         for path in sorted(PACKAGE_ROOT.rglob("*.py"))
@@ -188,10 +185,7 @@ def package_sources() -> list[tuple[str, str]]:
 
 
 def test_no_reservation_was_collapsed_by_a_duplicate_key():
-    """A duplicate key in a dict literal collapses silently; the tuple keeps both.
-
-    Distinct codes are not counted: several causes share a code on purpose.
-    """
+    """A duplicate key collapses silently in a dict literal; the tuple keeps both."""
     causes = [reservation.cause for reservation in reserved_codes.RESERVATIONS]
     duplicates = sorted({cause for cause in causes if causes.count(cause) > 1})
     assert not duplicates, f"reserved more than once: {duplicates}"
@@ -304,10 +298,7 @@ def _candidate(code) -> reserved_codes.Reservation:
 
 @pytest.mark.parametrize("value", [0, 1, 2])
 def test_a_code_the_vocabulary_has_but_the_range_excludes_cannot_be_reserved(value):
-    """``ExitCode`` has members at 0, 1 and 2 only outside 10 to 59, so those test the range.
-
-    The assertion is on the message naming the range, not on any ValueError.
-    """
+    """``ExitCode``'s members at 0, 1 and 2 are refused by a message naming the range."""
     member = next(code for code in ExitCode if int(code) == value)
     with pytest.raises(ValueError) as excinfo:
         reserved_codes._index((_candidate(member),))
@@ -480,10 +471,7 @@ def _annotation_namespace(module: ModuleType | None) -> dict[str, object]:
 
 
 def _is_a_record(hint: type) -> bool:
-    """A dataclass or a ``NamedTuple``: the two ways this repository writes a record.
-
-    A ``NamedTuple`` is recognized as a tuple subclass carrying ``_fields``.
-    """
+    """A dataclass or a ``NamedTuple`` (a tuple subclass carrying ``_fields``): a record."""
     if dataclasses.is_dataclass(hint):
         return True
     return issubclass(hint, tuple) and hasattr(hint, "_fields")
@@ -2591,20 +2579,14 @@ def test_a_two_argument_call_is_not_a_conversion():
 
 
 def test_a_status_with_a_conversion_round_it_still_reaches_the_shell():
-    """``sys.exit(int(PRECONDITION))`` exits 30 as ``sys.exit(30)`` does, and is reported.
-
-    The second entry of the residual "One check in this unit is unreachable".
-    """
+    """``sys.exit(int(PRECONDITION))`` exits 30 as ``sys.exit(30)`` does, and is reported."""
     assert process_status_literals(EVASION_A_STATUS_WITH_A_CONVERSION_ROUND_IT) == [
         "line 8: sys.exit(int(PRECONDITION)) (status 30)"
     ]
 
 
 def test_the_derivation_refuses_to_answer_from_an_incomplete_walk():
-    """Handed a short walk, the derivation refuses rather than answer.
-
-    The sixth entry of the residual "One check in this unit is unreachable".
-    """
+    """Handed a short walk, the derivation refuses rather than answer."""
     with pytest.MonkeyPatch.context() as short_walk:
         short_walk.setitem(
             globals(),
@@ -2645,10 +2627,7 @@ def test_a_mutually_recursive_pair_of_constants_resolves_to_nothing():
 
 
 def test_the_residual_is_pinned_rather_than_discovered():
-    """Once a string IS a cause, a duration in range reads as a status, reported on purpose.
-
-    Matching on the variable's name instead would be a guard a rename defeats.
-    """
+    """Once a string IS a cause, a duration in range reads as a status, reported on purpose."""
     hits = reserved_code_tables(RESIDUAL_A_BACKOFF_ON_A_REAL_CAUSE, CAUSES, RANGE)
     assert hits == ["line 2: 'rekordbox-running' -> status 30"]
 
@@ -3059,10 +3038,7 @@ def test_a_record_written_as_a_mapping_is_still_a_record():
 
 
 def test_a_code_fetched_by_getattr_is_still_a_code():
-    """``getattr`` on the imported vocabulary is a code, as ``getattr(sys, "exit")`` is an exit.
-
-    Narrowed to the class this source imported.
-    """
+    """``getattr`` on the imported vocabulary class is a code, as ``getattr(sys, "exit")`` exits."""
     assert reserved_code_tables(
         EVASION_A_CODE_FETCHED_BY_GETATTR, declared_causes(), RANGE
     ) == ["line 4: 'config-unusable' -> getattr(ExitCode, 'PRECONDITION')"]
@@ -3130,10 +3106,7 @@ def test_the_key_side_carries_its_own_hop_bound_and_this_is_where_it_stops():
 
 
 def test_a_duplicate_key_in_a_second_table_is_reported_once():
-    """A duplicate key in a second table is reported once, so the count is right.
-
-    Covered by the dedupe; see the residual "One check in this unit is unreachable".
-    """
+    """A duplicate key in a second table is reported once, so the count is right."""
     assert reserved_code_tables(
         EVASION_A_DUPLICATE_KEY_IN_A_SECOND_TABLE, declared_causes(), RANGE
     ) == ["line 2: 'config-unusable' -> status 30"]
@@ -3233,10 +3206,7 @@ def test_a_negative_status_is_a_bare_status_too():
 
 
 def test_a_negative_is_outside_the_reserved_range_on_the_table_side():
-    """A second table mapping a cause to a negative is silent, by the reserved range.
-
-    So the unary-minus branch serves only the bare-status guard above.
-    """
+    """A second table mapping a cause to a negative is silent, by the reserved range."""
     assert reserved_code_tables(
         'CODES = {"config-unusable": -30}\n', declared_causes(), RANGE
     ) == []
@@ -3267,10 +3237,7 @@ def registry_only_causes() -> frozenset[str]:
 
 
 def package_of(relative: str) -> str:
-    """The dotted package a module's relative imports resolve against, as Python resolves it.
-
-    ``cli/render.py`` and ``cli/__init__.py`` both answer ``cratekit.cli``.
-    """
+    """The dotted package a module's relative imports resolve against, as Python resolves it."""
     return ".".join(["cratekit"] + relative.split("/")[:-1])
 
 
@@ -3357,10 +3324,7 @@ def owned_sources() -> list[str]:
 
 
 def residual_headings() -> list[tuple[str, str]]:
-    """Every heading in the findings documents, as (number, title), in order.
-
-    A list, never a set, so two byte identical headings stay two.
-    """
+    """Every heading in the findings documents, as (number, title), in order, as a list."""
     document = "".join((REPO_ROOT / name).read_text() for name in findings_documents())
     found = []
     for line in document.splitlines():
@@ -3512,13 +3476,11 @@ def test_the_package_scan_reaches_the_modules_it_claims_to():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The at-risk population, measured on ONE basis and pinned
+# ── The at-risk population, measured on ONE basis and pinned ─────────────────
 #
 # Every count is over the files ``package_sources()`` returns that are not
 # table owners, with the shipped ``cause_key`` asked of every ``ast.Name`` and
 # ``ast.Attribute``.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def population_under_measurement(
@@ -4352,10 +4314,7 @@ def _guard_module_source() -> str:
 
 
 def _with_a_fresh_hatch_wired_in(source: str) -> str:
-    """The guard module with a NEW per-line escape hatch, wired in where the old one was.
-
-    A different marker, no ``tokenize`` and none of the deleted hatch's names.
-    """
+    """The guard module with a NEW per-line escape hatch wired in where the old one was."""
     hatched = source.replace(
         "    tree = ast.parse(source)\n    table = ReservedCodeTable(",
         "    tree = ast.parse(source)\n"
@@ -4443,10 +4402,7 @@ def test_the_guard_cannot_be_given_a_comment_because_it_cannot_read_the_text():
 
 
 def test_the_guard_module_imports_only_what_reading_a_syntax_tree_needs():
-    """The guard module imports exactly ``ast`` and ``re``, so nothing that sees a comment gets in.
-
-    Adding an import costs one line here and the review it brings.
-    """
+    """The guard module imports exactly ``ast`` and ``re``: nothing that sees a comment gets in."""
     imported: set[str] = set()
     for node in ast.walk(ast.parse(_guard_module_source())):
         if isinstance(node, ast.Import):
@@ -4474,10 +4430,7 @@ def test_nobody_in_the_package_writes_the_marker_that_was_deleted():
 
 
 def test_the_key_set_is_the_union_of_all_three_declarations():
-    """The key set is the union of all three declarations; the empty derived term is driven.
-
-    The derived term is empty in the tree, so subset assertions were tautologies.
-    """
+    """The key set is the union of all three declarations; the empty derived term is driven."""
     derived = frozenset().union(*structured_refusal_causes().values())
     assert derived, "the walk found nothing, so the guard's key set collapsed to the table"
     assert derived == CAUSES, (
@@ -4508,10 +4461,7 @@ def test_the_key_set_is_the_union_of_all_three_declarations():
 
 
 def test_the_package_a_relative_import_resolves_against_is_derived():
-    """``package_of``, driven directly, since the absence-asserting scans it feeds cannot drive it.
-
-    One level up from a module and from a package's ``__init__`` is the same place.
-    """
+    """``package_of``, driven directly, since the absence-asserting scans cannot drive it."""
     assert package_of("cli/render.py") == "cratekit.cli"
     assert package_of("cli/__init__.py") == "cratekit.cli"
     assert package_of("__init__.py") == "cratekit"
