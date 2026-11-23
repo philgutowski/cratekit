@@ -1,5 +1,5 @@
-# commit c84dc4ac host vm temp disk history full ids whole
-# 132 failed, 22635 passed, 18 skipped, 3042 warnings, 116 errors in 409.98s (0:06:49)
+# commit 99e0cbc0 host vm temp disk history full ids whole
+# 133 failed, 22670 passed, 18 skipped, 3156 warnings, 116 errors in 337.58s (0:05:37)
 tests/modules/test_reports.py::test_every_report_runs_with_the_library_directory_read_only
 tests/modules/test_reports.py::test_the_lock_probe_sees_a_directory_that_was_not_locked
 tests/test_acquire_cli.py::test_a_directory_it_cannot_list_is_reported
@@ -209,6 +209,7 @@ tests/test_pool_sizing.py::test_a_line_this_reader_cannot_parse_is_skipped_rathe
 tests/test_pool_sizing.py::test_a_line_this_reader_cannot_parse_is_skipped_rather_than_raised_out_of[a-trailing-blank-line]
 tests/test_rb_writer_db.py::test_a_sealed_database_is_a_grant_rather_than_an_order_to_overwrite_it
 tests/test_rb_writer_db.py::test_a_sealed_sidecar_beside_the_database_is_the_same_answer
+tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random
 tests/test_restore.py::test_blocking_6_a_second_attempt_never_deletes_the_only_surviving_copy
 tests/test_restore.py::test_round2_a_directory_replacement_checks_its_parent_not_itself
 tests/test_restore.py::test_round3_an_unwritable_coupled_directory_refuses_at_the_rehearsal
