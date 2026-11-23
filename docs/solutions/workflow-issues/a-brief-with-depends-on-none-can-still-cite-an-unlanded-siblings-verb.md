@@ -15,7 +15,7 @@ applies_when:
   - The named verb belongs to a unit that has not landed on the tree being built against
 symptoms:
   - A test scenario in the issue body cannot be written because the verb it names does not exist on main
-  - grep for the cited command in src/cratekit/cli/registry.py or docs/GUIDE.md returns nothing
+  - grep for the cited command in src/cratekit/cli/registry_*.py or docs/GUIDE.md returns nothing
   - The unit is READY on the board despite one of its own test scenarios depending on unlanded work
   - The gap is discovered mid build rather than at board.py show time
 related_components:
@@ -73,7 +73,7 @@ declared dependencies closed. It does not answer whether every verb the
 brief's own prose leans on already exists. Before trusting a brief's test
 scenarios or approach section as buildable as written, check that any CLI
 verb, flag, or file it names is actually on the tree: grep the registry
-(`src/cratekit/cli/registry.py`) or run the command's `--help`. A brief can be
+(`src/cratekit/cli/registry_*.py`, its parts) or run the command's `--help`. A brief can be
 internally consistent about scope and still cite a sibling's unlanded surface,
 because the dependency line records unit order, not every name inside the
 prose.

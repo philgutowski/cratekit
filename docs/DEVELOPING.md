@@ -267,6 +267,39 @@ Four rules keep the split invisible:
 - **A restore part takes `restore`'s write rank** by one line of its own in
   `tests/test_layering.py`, as the ladder provides.
 
+## The verb table, in parts
+
+`cli/registry.py` defines every name code, scripts and tests read (`Entry`,
+`GateSpec`, `ENTRIES`, the indexes and the lookups), and the table's rows live
+in five parts beside it (U328), so no file of it passes 1,500 lines. Each part
+is one literal tuple of `Entry(...)` calls and a contiguous slice of the
+table; `registry.py` imports the parts once the names they read are bound and
+assembles `ENTRIES` in this order, which is the order `crate --help` lists the
+commands in:
+
+| Part | Its tuple | Holds |
+|---|---|---|
+| `cli.registry_state` | `STATE_VERBS` | setup, profiles and runs, the row repairs, the write session and its safety spine, jobs, review |
+| `cli.registry_pipeline` | `PIPELINE_VERBS` | intake, tagging and naming, acquisition, routing and the audits, analysis |
+| `cli.registry_sync` | `SYNC_VERBS` | the sync pass and its schedule, the label registry and its sweeps, a label's playlists on the account |
+| `cli.registry_modules` | `MODULE_VERBS` | adoption, deletion, export, the set builder, mastering, backup, the skills |
+| `cli.registry_later` | `LATER_VERBS` | every block appended since, in the order it landed |
+
+- **A new verb's block is appended to `cli/registry_later.py`**, so two
+  branches that add a verb conflict where a person reads it. Before that file
+  passes 1,500 lines the next block opens a new part, named `registry_*.py`
+  and starred into `ENTRIES` after it; `tests/test_cli_contract.py` fails on a
+  part nobody assembles, on a changed order and on a file over the bar.
+- **A part is a tuple of calls and `ENTRIES` a tuple of starred part names**,
+  because two scripts read the table as text and cannot import it:
+  `refactor_measure.py` (`verbs_from`) follows each starred name into the
+  tuple of that name, and `board.py` (`planned_units`) reads the `planned_in`
+  markers of every `registry*.py`. Both raise or are held to the live registry
+  by a test, so a shape they cannot read fails the battery.
+- **A verb is read through `cli.registry`, never from a part.** A part imports
+  `Entry`, `GateSpec` and the shared constants from `cli.registry`, so only
+  the registry imports a part, and every name a test patches stays there.
+
 ## CI
 
 `.github/workflows/ci.yml` proves packaging and portability, not the suite:
