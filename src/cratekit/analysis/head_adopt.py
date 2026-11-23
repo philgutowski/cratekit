@@ -388,12 +388,13 @@ def plan_row(
     )[1]:
         return Item(content_id, LEAVE_ACTION, reason=TAG_DIFFERS, **common, **on_file)
     on_file["new_tag_title"] = new_tag
+    if new_title == title and new_tag == tag_title:
+        # A TITLE THAT AGREES IS LEFT WHOLE, its key tag too: this verb corrects a
+        # head, and a key tag beside an agreeing head is not its to fill.
+        return Item(content_id, AGREE, **common, **on_file)
     if key is not None and parse_camelot(initialkey) != parse_camelot(key):
         on_file["new_initialkey"] = key
-    item = Item(content_id, ADOPT, **common, **on_file)
-    if not item.writes_title and not item.writes_file:
-        return Item(content_id, AGREE, **common, **on_file)
-    return item
+    return Item(content_id, ADOPT, **common, **on_file)
 
 
 def plan_adopt(
@@ -585,6 +586,9 @@ def apply_adopt(
     # THE EVIDENCE IS READ BEFORE IT IS REPLACED, as every content row write reads it.
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     metadata.enable((metadata.ADOPT_REKORDBOX_HEAD,))
+    # THE POLICY IS ASKED OF THE WHOLE PLAN BEFORE THE FIRST FILE, so a plan
+    # naming a column the operation does not own writes no file either.
+    metadata.assert_within_policy(row_changes(writes))
     with (
         session.assert_gates(
             cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -599,7 +603,6 @@ def apply_adopt(
         landed = frozenset(files.read_back)
         rowed = [item for item in writes if item.content_id in landed and item.writes_title]
         changes = row_changes(rowed)
-        metadata.assert_within_policy(changes)
         ids = [item.content_id for item in rowed]
         before = row_defaults.read_columns(db, ids)
         written = 0
