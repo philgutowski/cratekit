@@ -46,7 +46,14 @@ the Dynamic run with a closing Normal Analyze Tracks run on one row without
 
 **A batch whose every row carries `dyn` has no row to end on Normal.** That
 visit ends on Dynamic, says so in its record, and the next launch's dialog is
-cancelled for this known cause.
+cancelled for this known cause. Sitting 104 itself put the mode back by
+analysing a throwaway AIFF alone on Normal, under CLAUDE.md's clause for a
+probe; whether a visit may do that routinely is open (the residual U954
+filed).
+
+**The track list's filter offers no My Tag** (sitting 104), so the `dyn`
+rows are selected by Command clicks, and the Normal run's selection is every
+row with the `dyn` rows Command clicked out.
 
 **Unmeasured until the next attended visit**: that a visit ending on Normal
 leaves the next launch's dialog reading Normal, and that the closing run's
