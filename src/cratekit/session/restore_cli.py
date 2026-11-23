@@ -664,7 +664,7 @@ def perform_restore(ctx) -> Envelope:
 
 
 #: The refusal of a restore whose database half landed and whose files did not all
-#: take back the title tag and key tag the session kept.
+#: take back the tags the session kept (a title tag, a key tag or a genre).
 TAGS_UNWRITTEN = "restore-tags-unwritten"
 
 
@@ -678,8 +678,8 @@ def _tags_unwritten(outcome: restore.RestoreOutcome) -> CratekitError:
                 reason=TAGS_UNWRITTEN,
                 message=(
                     f"a dry run of the restore of session {session_id} wrote nothing, "
-                    f"and {len(files.failed)} of {files.planned} file(s) whose title tag "
-                    f"and key tag it would put back are gone or cannot be read: "
+                    f"and {len(files.failed)} of {files.planned} file(s) whose kept tags "
+                    f"it would put back are gone or cannot be read: "
                     + ", ".join(files.failed)
                 ),
                 remediation=Remediation(
@@ -705,7 +705,7 @@ def _tags_unwritten(outcome: restore.RestoreOutcome) -> CratekitError:
             message=(
                 f"session {session_id} was restored, the database and "
                 f"{len(files.read_back)} of {files.planned} file(s) put back, and these "
-                f"files do not carry the title tag and key tag the session kept: "
+                f"files do not carry the tags the session kept: "
                 + "; ".join(parts)
             ),
             remediation=Remediation(
