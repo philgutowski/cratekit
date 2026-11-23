@@ -309,6 +309,7 @@ def remaining(
     """
     entries = {entry.content_id: entry for entry in current.entries}
     refused = move_engine.refused_buckets(current.entries)
+    moved = move_engine.still_moved(current.entries, declared, moved)
     todo: list[move_engine.Move] = []
     gone: set[str] = set()
     stale: dict[str, str] = {}

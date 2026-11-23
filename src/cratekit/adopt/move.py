@@ -611,6 +611,26 @@ def standing_in(
     return _standing_in_tree(entry, bucket, placements, declared, tree=tree, refused=refused)
 
 
+def still_moved(
+    entries: Sequence[PlanEntry],
+    declared: taxonomy.Taxonomy,
+    moved: Mapping[str, frozenset[str]] | None,
+) -> Mapping[str, frozenset[str]]:
+    """``moved`` less every bucket ANY of a track's entries claims or whose genre
+    names it: asked per content identifier, never per entry, so a bucket a
+    second entry of the same track files it in (U340) is never left."""
+    if not moved:
+        return {}
+    kept: dict[str, set[str]] = {key: set(value) for key, value in moved.items()}
+    for entry in entries:
+        held = kept.get(entry.content_id)
+        if not held:
+            continue
+        held -= {bucket for bucket in held if claims(entry, bucket)}
+        held -= {bucket for bucket in held if genre_names(entry, bucket, declared)}
+    return {key: frozenset(value) for key, value in kept.items() if value}
+
+
 def genre_moved_out_of(
     entry: PlanEntry,
     bucket: str,
@@ -761,6 +781,7 @@ def build_move_plan(
     """
     moves: list[Move] = []
     left: list[Left] = []
+    moved = still_moved(plan.entries, declared, moved)
     if plan.placements.read:
         competing = {
             bucket.id: routing.competing_subs(declared, bucket.id) for bucket in declared.buckets

@@ -154,3 +154,26 @@ def test_a_genre_moved_back_asks_nothing_of_the_old_folder(filed):
     assert dict(genre_moves.read(filed)) == {"mover": frozenset({NEW_BUCKET})}
     assert _shown()["items"] == []
     assert _held(filed, "mover") == {_place(OLD_BUCKET, HIGH)}
+
+
+def _entry(bucket: str, genre: str) -> "adopt_move.PlanEntry":
+    from cratekit.adopt.plan import PlanEntry
+    from cratekit.adopt.scan import Disposition, Readability
+
+    return PlanEntry(
+        entry_id=f"e-{bucket}", content_id="mover", recorded="/m.flac",
+        disposition=Disposition.ROUTE, category=Readability.READABLE, genre=genre,
+        tree=DECLARED.tree.id, bucket=bucket, sub=HIGH, energy=8,
+    )
+
+
+def test_a_bucket_any_entry_of_the_track_claims_is_never_left():
+    """Per content identifier, never per entry, so a second genre folder an
+    entry of the same track files it in (U340) is kept."""
+    moved = {"mover": frozenset({OLD_BUCKET})}
+    alone = [_entry(NEW_BUCKET, NEW_GENRE)]
+    assert adopt_move.still_moved(alone, DECLARED, moved) == moved
+    both = [*alone, _entry(OLD_BUCKET, NEW_GENRE)]
+    assert adopt_move.still_moved(both, DECLARED, moved) == {}
+    named = [_entry(NEW_BUCKET, OLD_GENRE)]
+    assert adopt_move.still_moved(named, DECLARED, moved) == {}
