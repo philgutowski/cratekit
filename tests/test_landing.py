@@ -1,7 +1,6 @@
 """U71: the landing engine moves a staged batch into the library, then splices it.
 
-Real FLAC containers, tagged through the product's own writer, against the
-byte fixtures every splice test uses. Nothing here reaches a real library.
+Real FLAC containers tagged by the product's writer; nothing reaches a real library.
 """
 
 from __future__ import annotations
@@ -429,8 +428,7 @@ def test_staging_configured_inside_the_library_still_lands(cfg, silence, export)
 
 
 def test_every_file_taken_at_the_move_writes_no_intake_file(cfg, silence, export, monkeypatch):
-    """Every file passes the first pass and is occupied at the move, as a concurrent
-    landing makes it: no intake file, no batch folder."""
+    """Every file occupied at the move, as a concurrent landing makes it."""
     _stage(cfg, silence, "A.flac")
     _stage(cfg, silence, "B.flac")
     real = landing._occupied
@@ -487,8 +485,7 @@ def test_a_held_batch_name_refuses_a_second_holder_and_names_the_batch(cfg):
 
 
 def test_the_batch_lock_is_on_the_state_disk_and_a_released_one_leaves_its_file(cfg):
-    """An advisory lock on exFAT was never verified, so the lock stays off the library.
-    Unlinking on release would let a second process lock a fresh inode."""
+    """exFAT locking was never verified; unlinking on release would lock a fresh inode."""
     with landing.batch_lock(BATCH) as first:
         inode = first.stat().st_ino
     assert first.parent == config.installation_state_dir() / "landing_locks"
@@ -505,8 +502,7 @@ def test_the_batch_lock_is_on_the_state_disk_and_a_released_one_leaves_its_file(
 
 
 def test_a_refusal_inside_the_batch_lock_releases_it(cfg):
-    """A lock that OUTLIVES its ``with`` (mutation row A4c). The release in the
-    ``finally`` cannot be told from CPython freeing the generator's frame (A4)."""
+    """A lock that OUTLIVES its ``with`` (mutation row A4c)."""
     with pytest.raises(RuntimeError):
         with landing.batch_lock(BATCH):
             raise RuntimeError("the landing failed")

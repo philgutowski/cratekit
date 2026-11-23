@@ -1,28 +1,10 @@
-"""R-1724: a file asked by its name is asked with the title the name carries,
-never the ``_PN`` tail the older naming wrote after it.
+"""R-1724: a file asked by its name is asked with its title, never the old ``_PN`` tail.
 
-Measured at sitting 101: 5,637 of the library's 10,997 audio files end their
-name in ``_PN``, 1,692 of them right after a bracket group, and 3 of the 4
-by-name misses of job ``2026-11-21T15:04:44Z-c032`` were asked as
-"Attention_PN", "Promise to Stay Here_PN" and "Sunshine Hotel_PN". The tail
-also kept Discogs from setting a mix aside, and the shared matcher read
-``mix)_pn`` as the title's words, so "On The Rocks (Cafe Del Mar Mix)_PN"
-matched no release of "On The Rocks (Cafe Del Mar Mix)".
-
-WHAT THIS SUITE GUARDS, the card's merge blockers first:
-
-* A NAME LOSES ITS TAIL, in the question every source is asked and in the
-  text every row is matched against, through ``tag folder`` and ``tag
-  retag`` alike, so the Obiman release is the file's own.
-* A TITLE TAG IS NEVER TOUCHED: a tag ending in "_PN" is asked as written.
-* A NAME WITH NO TAIL IS READ EXACTLY AS BEFORE, byte for byte, and every
-  case of the matcher's corpus keeps its verdict.
-* A NAME WHOSE LAST PART IS THE TAIL ALONE IS READ AS WRITTEN, as before,
-  so it still reaches the general catalogue by its ISRC once the record
-  shops miss (round one of the review found the ISRC lost when such a name
-  asked nothing).
-
-Nothing here touches the network; the token is a fixture word.
+5,637 of 10,997 library files end in ``_PN``; the tail cost by-name misses, and the shared
+matcher read ``mix)_pn`` as title words. Guarded: a name loses its tail in every question and
+match, through ``tag folder`` and ``tag retag``; a title tag is never touched; a name with no
+tail reads byte for byte as before; and a name that is the tail alone is read as written, so
+it still reaches the general catalogue by its ISRC. No network; the token is a fixture word.
 """
 
 from __future__ import annotations
@@ -74,12 +56,7 @@ def store(tmp_path):
 
 
 def answering_every_question(seen: list[str]):
-    """A Discogs that answers the Obiman release whatever it is asked.
-
-    So a miss is the shared matcher's, never the search's: on main the
-    release came back and its track was read as no part of the file's
-    name, because the name's title read ``mix)_pn``.
-    """
+    """A Discogs answering the Obiman release to any question, so a miss is the matcher's."""
     tracks = [{"position": "A1", "type_": "track", "title": OBIMAN_RELEASE}]
 
     def fetch(url: str) -> searchers.Fetched:
@@ -97,9 +74,8 @@ def answering_every_question(seen: list[str]):
 
 
 def typed(seen: list[str], wanted: dict[tuple[str, str], str]):
-    """A Discogs that answers a release only for the artist and track a
-    person types, as sent: ``wanted`` maps one to the release's title, its
-    track and its style ``Balearic``. Every other source answers nothing."""
+    """A Discogs answering only the artist and track a person types, mapped by ``wanted`` to a
+    release, its track and ``Balearic``; every other source answers nothing."""
     numbered = {question: 20 + index for index, question in enumerate(wanted)}
     pages = {
         f"{searchers.DISCOGS_RELEASE}{numbered[question]}": release(
@@ -125,9 +101,7 @@ def typed(seen: list[str], wanted: dict[tuple[str, str], str]):
     return fetch
 
 
-# ---------------------------------------------------------------------------
-# A. The reading: the title a file's name carries
-# ---------------------------------------------------------------------------
+# ── A. The reading: the title a file's name carries ──
 
 
 @pytest.mark.parametrize(
@@ -184,8 +158,7 @@ def test_a_name_with_no_tail_is_read_byte_for_byte(stem):
     ],
 )
 def test_a_name_whose_last_part_is_the_tail_alone_is_read_as_written(stem, asked):
-    """No title is left past the tail, so the name is the same string and its
-    by-name read is the one main gave, written out here."""
+    """No title is left past the tail, so the by-name read is main's, written out."""
     assert titles.name_title(stem) is stem
     assert titles.by_name(stem) == asked
 
@@ -222,9 +195,7 @@ def test_the_name_read_of_a_name_with_no_tail_is_unchanged(stem, asked):
     assert (found.artist, found.title, found.read.value) == asked
 
 
-# ---------------------------------------------------------------------------
-# B. The card's scenarios, through tag_one and the shipped searcher
-# ---------------------------------------------------------------------------
+# ── B. The card's scenarios, through tag_one and the shipped searcher ──
 
 
 def test_sunshine_hotel_is_asked_by_its_artist_and_title_and_no_source_sees_the_tail(
@@ -248,8 +219,7 @@ def test_sunshine_hotel_is_asked_by_its_artist_and_title_and_no_source_sees_the_
 def test_the_obiman_name_is_asked_its_title_and_takes_the_release_a_person_would_type(
     tmp_path, silence
 ):
-    """Discogs sets the mix aside once the tail no longer follows it, and the
-    release a person finds by typing "On The Rocks" is the file's own."""
+    """Discogs sets the mix aside once no tail follows it, and takes the file's own release."""
     path = tagged(tmp_path, silence, f"{OBIMAN}.flac")
     seen: list[str] = []
     fetch = typed(seen, {("Obiman", "On The Rocks"): OBIMAN_RELEASE})
@@ -271,8 +241,7 @@ def test_the_obiman_name_is_asked_its_title_and_takes_the_release_a_person_would
 
 
 def test_the_obiman_name_matches_its_release_whatever_discogs_is_asked(tmp_path, silence):
-    """The match half alone: Discogs answers the release to any question, so
-    the file takes it only if the name's title is read past its tail."""
+    """The match half alone: taken only if the title is read past its tail."""
     path = tagged(tmp_path, silence, f"{OBIMAN}.flac")
     seen: list[str] = []
     result = tag.tag_one(path, searcher=build(answering_every_question(seen)))
@@ -333,9 +302,8 @@ def test_a_name_whose_last_part_is_the_tail_alone_is_asked_as_before(tmp_path, s
 
 @pytest.mark.parametrize("name", ["_PN", "8A - 124 - Sean Doron - _PN", "8A - 124 - Artist - ?_PN"])
 def test_a_name_with_no_title_past_its_tail_still_takes_its_genre_by_isrc(tmp_path, silence, name):
-    """Through the shipped ISRC seam, which asks the general catalogue only
-    once the record shops have answered: a name read to nothing and asked
-    nothing never reached it (review round one, finding 1)."""
+    """Through the ISRC seam, after the record shops answer: a name asked nothing never got
+    there (review round one, finding 1)."""
     path = tagged(tmp_path, silence, f"{name}.flac", isrc="GBAAA2600001")
     looked: list[str] = []
 
@@ -351,9 +319,7 @@ def test_a_name_with_no_title_past_its_tail_still_takes_its_genre_by_isrc(tmp_pa
     assert tags.read_genre_from_file(path) == result.genre_written
 
 
-# ---------------------------------------------------------------------------
-# C. The matcher's corpus: no verdict moves, and a tail is read off a name
-# ---------------------------------------------------------------------------
+# ── C. The matcher's corpus: no verdict moves, and a tail is read off a name ──
 
 CORPUS = [*SAME, *DIFFERENT, *HEADED, *HEADED_NOT]
 MATCHING = [*SAME, *HEADED]
@@ -371,9 +337,7 @@ def test_every_matching_corpus_name_still_matches_with_the_tail_written_after_it
     assert titles.matches(titles.read_file(named, "Bernard Badie"), titles.read_row(found))
 
 
-# ---------------------------------------------------------------------------
-# D. tag retag reads a name the same way
-# ---------------------------------------------------------------------------
+# ── D. tag retag reads a name the same way ──
 
 
 def test_retag_asks_a_file_with_no_title_tag_its_name_past_the_tail(folder, silence, store):

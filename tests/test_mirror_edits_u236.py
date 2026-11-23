@@ -1,6 +1,6 @@
 """U236: the month the library placed a favourite in is never read as rekordbox's addition.
 
-Pure, over ``decide``, ``placed_after`` and the ledger's record of a placement. D1 applies.
+Pure, over ``decide``, ``placed_after`` and the ledger's placement record. D1 applies.
 """
 
 from __future__ import annotations
@@ -81,8 +81,7 @@ def test_a_favourite_both_sides_put_in_another_month_leaves_the_placed_one():
 
 def test_a_placement_is_dropped_once_the_account_holds_its_track_with_no_hold():
     placed = {"t1": AT, "t2": AT, "t3": AT}
-    # t1 on the account and no hold: dropped. t2 held: kept. t3 refused or
-    # taken off in rekordbox, not on the account: kept, read only by its time.
+    # t1 on the account, no hold: dropped. t2 held, t3 off in rekordbox only: kept.
     assert edits.placed_after(placed, after={"t1", "t2"}, held={"t2"}) == {"t2": AT, "t3": AT}
     assert edits.placed_after({}, after={"t1"}, held={"t1"}) == {}
 

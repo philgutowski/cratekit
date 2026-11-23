@@ -1,10 +1,7 @@
 """U249: a library file's tags are read once per process, however many indexes ask.
 
-The reader remembers what each file said, keyed on the path, the name template and the
-file's stat (size, modification and change times, inode, device), and answers from memory
-only a file whose modification time is at least two seconds older than the moment the
-entry was made. Every index is still a fresh walk, so a gone file is absent and a new one
-is read. Library files here are set an hour back so the window is not met by accident.
+Remembered per path, name template and stat, and answered from memory only for a file at
+least two seconds older than its entry. Library files here are set an hour back.
 """
 
 from __future__ import annotations
@@ -152,8 +149,7 @@ def test_a_pass_of_three_playlists_opens_each_library_file_once(
 def test_a_file_rewritten_between_two_jobs_is_read_again_and_the_second_job_matches_its_new_tags(
     tmp_path, monkeypatch, tail, template_flac  # noqa: F811
 ):
-    """Row 5 belongs to the second playlist; a library file retagged as it, with its old
-    time put back, is read again by the second job and resolves the row owned."""
+    """Retagged as row 5 with its old time put back, it resolves the row owned."""
     music, _script = _pass(tmp_path, monkeypatch, template_flac)
     rewritten = music / "Artist 000 - Title 000.flac"
     before = rewritten.stat()
@@ -217,8 +213,7 @@ def test_an_unchanged_old_file_is_answered_from_memory_on_the_second_index(
 def test_a_file_rewritten_to_the_same_size_inside_the_window_is_read_again(
     tmp_path, monkeypatch, template_flac
 ):
-    """A FAT volume stamps in two second steps, so with change time and inode held still
-    the window is the one rule left to decide."""
+    """FAT stamps in two second steps, so with ctime and inode still the window decides."""
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B", old=False)
     held = path.stat()
@@ -245,8 +240,7 @@ def test_a_file_rewritten_to_the_same_size_inside_the_window_is_read_again(
 def test_a_restore_that_puts_the_old_size_and_time_back_is_read_again_on_its_change_time(
     tmp_path, monkeypatch, template_flac
 ):
-    """``rsync -a``, ``cp -p`` and ``os.utime`` restore the old modification time over new
-    bytes; the change time is the one stamp none of them sets."""
+    """``rsync -a``, ``cp -p`` and ``os.utime`` restore mtime; none of them sets ctime."""
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B")
     held = path.stat()
@@ -402,8 +396,7 @@ def test_the_name_template_is_part_of_the_key(tmp_path, template_flac):
 
 
 def test_a_read_that_failed_is_not_remembered(tmp_path, monkeypatch):
-    """An unopenable container reads as untagged and is read again by the next index, as a
-    failed read on an external volume can be a moment's I/O error."""
+    """A failed read on an external volume can be a moment's I/O error."""
     music = tmp_path / "Music"
     music.mkdir()
     path = music / "Named - Only.flac"
@@ -440,8 +433,7 @@ def test_a_read_that_is_not_whole_is_indexed_as_read_and_not_remembered(
 def test_a_read_that_is_not_whole_forgets_what_an_earlier_whole_read_left(
     tmp_path, monkeypatch, template_flac
 ):
-    """A file seen changing between two walks is read from disk on the third, even at the
-    first stamp."""
+    """Read from disk on the third walk, even at the first stamp."""
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B")
     first = match_library._stamp_of(path)
@@ -465,8 +457,7 @@ def test_a_read_that_is_not_whole_forgets_what_an_earlier_whole_read_left(
 
 @pytest.mark.parametrize("name", ["empty.m4a", "empty.ogg", "zeros.opus", "short.aac"])
 def test_a_container_the_reader_cannot_take_is_absent_and_not_whole(tmp_path, name):
-    """An unrecognised container answers no handle and an unread kind is refused before
-    any open; both read as absent and not whole, as :func:`tags.read_tags` answers."""
+    """No handle, or an unread kind refused before any open, as :func:`tags.read_tags`."""
     fields = ("artist", "title", "initialkey", "isrc")
     path = tmp_path / name
     path.write_bytes(b"\0" * 4 if name.startswith("zeros") else b"")
@@ -479,8 +470,7 @@ def test_a_container_the_reader_cannot_take_is_absent_and_not_whole(tmp_path, na
 def test_the_noting_reader_answers_what_the_lenient_reader_answers_and_says_what_failed(
     tmp_path, monkeypatch, template_flac
 ):
-    """One undecodable field reads as absent beside its neighbours and marks the read not
-    whole, where the checked reader would have raised."""
+    """One undecodable field reads absent and marks the read not whole, never raising."""
     path = _tagged(template_flac, tmp_path / "A - B.flac", "A", "B")
     fields = ("artist", "title", "initialkey", "isrc")
     assert tags.read_tags_noting(path, fields) == (tags.read_tags(path, fields), True)
@@ -543,8 +533,7 @@ def _held_clock(monkeypatch, at: int) -> list[int]:
 def test_the_window_is_two_seconds_to_the_nanosecond(
     tmp_path, monkeypatch, template_flac, age_ns, opened
 ):
-    """A file under two seconds older than its entry is read again; two seconds or older
-    is answered from memory."""
+    """Under two seconds older than its entry is read again; two or more is remembered."""
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B", old=False)
     now = time.time_ns()
@@ -559,8 +548,7 @@ def test_the_window_is_two_seconds_to_the_nanosecond(
 
 
 def test_the_entrys_moment_is_taken_before_the_read(tmp_path, monkeypatch, template_flac):
-    """A write landing during a read falls inside the window only if the moment is taken
-    before the read; the clock moves a second during each read here."""
+    """Or a write during the read escapes the window; the clock moves a second per read."""
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B", old=False)
     now = time.time_ns()

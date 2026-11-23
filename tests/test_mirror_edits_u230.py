@@ -1,7 +1,6 @@
-"""U230: a download an account edit queued is filed there even when that playlist already lists it.
+"""U230: a download an account edit queued is filed there even when that playlist lists it.
 
-The base of the playlist whose job queued the track is read without it while the landing's
-filing stands; every other base counts as before. Pure.
+The queueing playlist's base is read without the track while the landing's filing stands. Pure.
 """
 
 from __future__ import annotations
@@ -60,8 +59,7 @@ def test_the_same_reading_without_the_queue_is_no_edit_at_all_as_before():
     """A track the queue does not name reads as U227 reads it: no account change."""
     assert _decided(_read(agreed=T9), queued=None) == ()
     assert _decided(_read(), queued={}) == ()
-    # Nor for a queued track with no landing places: a landing that filed
-    # nothing, or one an adopt apply replaced (U227 round two).
+    # Nor with no landing places: nothing filed, or replaced by an adopt apply.
     assert _decided(_read(agreed=T9), filed={}) == ()
     assert _decided(_read(), filed=None) == ()
 

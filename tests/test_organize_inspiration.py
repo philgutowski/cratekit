@@ -1,10 +1,7 @@
 """U144: every downloaded set on the account gets its INSPIRATION playlist, by matching.
 
-Driven through the real dispatcher against the native landing suite's disposable
-database, with a strict account holding ``DOWNLOADED`` sets in a ``Downloaded
-Sets <year>`` folder and a catalogue listing their tracks from memory. A library
-track is a tagged file with its collection row. D1 applies: nothing here names a
-real volume, person or track.
+Through the real dispatcher on the native landing suite's disposable database, a strict
+account and a catalogue from memory. D1 applies.
 """
 
 from __future__ import annotations
@@ -242,8 +239,7 @@ def _inspiration_playlist(cfg: config.Config, name: str, folder_id: str) -> None
         rb_writer.close_db(handle)
 
 
-#: Fifteen the library holds, and three it does not whose titles share no word
-#: with any held, so the engine answers missing rather than asking a question.
+#: Fifteen held, and three sharing no word with any held, so they read missing.
 TITLES = (
     *(f"Cut {number:02d}" for number in range(1, 16)), "Absent Harbor", "Absent Lantern", "Absent Meadow"
 )
@@ -398,8 +394,7 @@ def test_the_writer_refuses_a_membership_the_plan_did_not_name(machine, account,
 def test_a_set_given_its_inspiration_playlist_since_the_plan_is_stale(machine, account, silence):
     _owned(machine, silence, "Cut 01")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
-    # THE FOLDER IS THERE AT THE PLAN, so its id is not what moves: only the
-    # playlist made since, which the write must skip rather than add to.
+    # THE FOLDER IS THERE AT THE PLAN: only the playlist made since moves.
     folder_id = cutover_fixtures.add_folder(machine, FOLDER)
     declared = active_taxonomy.load(machine)
     approved = _plan(machine, declared, account)

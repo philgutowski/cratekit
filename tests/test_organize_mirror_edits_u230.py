@@ -1,6 +1,6 @@
-"""U230: a download an account edit queued is filed there even though that playlist already lists it.
+"""U230: a download an account edit queued is filed there though that playlist lists it.
 
-Sitting 86 on U204's world, the edited playlist's base written by hand in the ledger. D1 applies.
+Sitting 86, the edited playlist's base written by hand in the ledger. D1 applies.
 """
 
 from __future__ import annotations
@@ -49,8 +49,7 @@ def _set_base(world, title: str, agreed) -> None:
 
 def _landed_with_base(world, agreed) -> None:
     _queued_landed_and_filed(world)
-    # Driven: the producers leave the edited playlist's snapshot without the
-    # track, which is U227's shape. The sitting's base is set by hand.
+    # The producers leave the edited snapshot without the track (U227's shape).
     assert "r3" not in (_snapshot(world, EDITED) or frozenset())
     _set_base(world, EDITED, agreed)
 

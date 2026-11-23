@@ -1,9 +1,7 @@
 """U44: ``crate master``, the shell over the mastering engine (row 30).
 
-``tests/modules/test_tools.py`` proves the engine; this file proves the shell
-reaches it on the path a person travels, with refusals arriving as refusals and
-a resume rebuilding the same run. The stand-in encoder dispatches on its argv,
-because one answering every call alike never reaches the encode stage.
+``tests/modules/test_tools.py`` proves the engine; this proves the shell reaches it, refusals
+arrive as refusals and a resume rebuilds the run. The stand-in encoder dispatches on its argv.
 """
 
 from __future__ import annotations
@@ -24,8 +22,7 @@ from cratekit.master import cli as master_cli
 from cratekit.modules.tools import mastering
 from tests._containers import require_ffmpeg
 
-#: One loudnorm report carrying both halves, so a single block answers the
-#: measure passes (``input_*``) and the encode's own report (``output_*``).
+#: One loudnorm report answering the measure passes and the encode's own report.
 LOUDNORM = json.dumps({
     "input_i": "-20.0", "input_lra": "5.0", "input_tp": "-3.0", "input_thresh": "-30.0",
     "target_offset": "0.5", "output_i": "-14.0", "output_lra": "5.0", "output_tp": "-1.0",
@@ -77,11 +74,7 @@ _RENDERED: dict[tuple, bytes] = {}
 
 
 def _synthesize(out: Path, source: str, seconds: int, *codec: str) -> Path:
-    """Render ``source`` to ``out`` with ffmpeg the first time, and copy those bytes after.
-
-    Rendered at ``out`` itself and never through ``tempfile``, whose name sequence
-    the behaviour scenarios seed.
-    """
+    """Render ``source`` to ``out`` once, then copy; never through ``tempfile``, which is seeded."""
     key = (out.suffix, source, seconds, codec)
     if key in _RENDERED:
         out.write_bytes(_RENDERED[key])
@@ -127,9 +120,7 @@ def _encoder(*, encode_returncode: int = 0, encode_writes: bool = True):
     return run
 
 
-# ---------------------------------------------------------------------------
-# The declared surface
-# ---------------------------------------------------------------------------
+# ── The declared surface ──
 
 
 def test_the_parser_accepts_the_whole_declared_argument_shape():
@@ -152,9 +143,7 @@ def test_the_entry_is_landed_declares_no_gate_and_is_absent_from_a_slim_profile(
     assert entry.destructive and entry.writes == frozenset({"files"})
 
 
-# ---------------------------------------------------------------------------
-# The queued half
-# ---------------------------------------------------------------------------
+# ── The queued half ──
 
 
 def _drive(argv: list[str]) -> tuple[int, dict]:
@@ -200,9 +189,7 @@ def test_naming_a_job_reports_it_rather_than_queueing_a_second(configured, monke
         assert len(jobs.list_jobs(store)) == 1
 
 
-# ---------------------------------------------------------------------------
-# The resume argv (R10)
-# ---------------------------------------------------------------------------
+# ── The resume argv (R10) ──
 
 
 class _Job:
@@ -238,9 +225,7 @@ def test_an_empty_output_dir_and_an_omitted_one_freeze_identically():
     assert "--output-dir" not in master_cli.master_argv(_Job(empty))
 
 
-# ---------------------------------------------------------------------------
-# The work half: the archive promise
-# ---------------------------------------------------------------------------
+# ── The work half: the archive promise ──
 
 
 def test_the_source_is_byte_identical_and_its_archive_verified_after_a_full_run(tmp_path):
@@ -271,9 +256,7 @@ def test_an_archive_holding_different_audio_refuses_and_keeps_both(tmp_path):
     assert source.exists()
 
 
-# ---------------------------------------------------------------------------
-# The work half: refusals arrive from the vocabulary
-# ---------------------------------------------------------------------------
+# ── The work half: refusals arrive from the vocabulary ──
 
 
 def test_a_recording_that_is_not_there_refuses_rather_than_raising(tmp_path):
@@ -352,9 +335,7 @@ def test_the_output_directory_is_honoured_and_never_the_source(tmp_path):
     assert reported["output"].endswith(mastering.OUTPUT_SUFFIX)
 
 
-# ---------------------------------------------------------------------------
-# Round two: the two archive-path zeros the author's table left
-# ---------------------------------------------------------------------------
+# ── Round two: the two archive-path zeros the author's table left ──
 
 
 def test_a_corrupt_archive_copy_refuses_and_leaves_no_false_safety_copy(tmp_path, monkeypatch):
@@ -393,9 +374,7 @@ def test_an_impostor_matching_the_first_chunk_is_still_a_different_recording(tmp
     assert not mastering.output_path(source).exists()
 
 
-# ---------------------------------------------------------------------------
-# U46: the queued work is actually run, read back from the item's row
-# ---------------------------------------------------------------------------
+# ── U46: the queued work is actually run, read back from the item's row ──
 
 
 def _queued(source: Path, *extra: str) -> str:
@@ -519,8 +498,7 @@ def test_a_job_that_failed_on_a_missing_source_is_not_reopened_and_a_fresh_job_m
     assert reported["outcome"] == "failed", reported
     assert _items(job_id)[0].state == jobs.ItemState.FAILED
 
-    # The reopening is refused (R-390): ``source-missing`` is permanent, and a
-    # recording that arrives later takes a fresh job.
+    # The reopening is refused (R-390): ``source-missing`` is permanent.
     _recording(configured.library.root)
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
     with jobs.open_store() as store:
@@ -698,9 +676,7 @@ def test_a_configuration_that_moved_reaches_the_person_as_a_warning_on_the_resum
     assert _items(job_id)[0].state == jobs.ItemState.DONE
 
 
-# ---------------------------------------------------------------------------
-# U105: a recording the player split into several files, and a loudness target
-# ---------------------------------------------------------------------------
+# ── U105: a recording the player split into several files, and a loudness target ──
 
 
 def _tone(directory: Path, name: str, *, seconds: int, rate: int = 44100) -> Path:
@@ -720,9 +696,7 @@ def _duration(path: Path) -> float:
     return float(proc.stdout.strip())
 
 
-#: What the stand-in probe reports for a part it has no override for: the whole
-#: layout ``probe_source`` reads, so a part differing in one field differs in
-#: that field alone.
+#: The stand-in probe's whole layout for a part with no override, so parts differ by field.
 PROBED = {"sample_rate": "44100", "sample_fmt": "s16", "channels": "2", "codec_name": "pcm_s16le"}
 
 
