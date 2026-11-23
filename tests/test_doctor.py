@@ -144,12 +144,40 @@ def finding_on(where, key: str, **overrides) -> doctor.Finding:
     return find(report_on(where, **overrides), key)
 
 
+def _isolated_config(tmp_path: Path, monkeypatch) -> None:
+    """A config directory and a state root of the test's own, the cache cleared."""
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    config.reset_cache()
+
+
+def _archive_remote(configured: config.Config) -> config.Config:
+    """``configured``'s library with its backup remote set to ``archive:``."""
+    document = document_for(configured.library.root)
+    document["backup"] = {"remote": "archive:"}
+    return config.from_dict(document)
+
+
 def drive(argv: list[str]) -> tuple[int, str, str]:
     import io
 
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(argv, stdout=out, stderr=err)
     return code, out.getvalue(), err.getvalue()
+
+
+def setup_argv(root: str, tmp_path: Path, *flags: str) -> list[str]:
+    """``crate --output json setup`` at ``root`` with ``flags``, slim, default taxonomy."""
+    return [
+        "--output", "json", "setup",
+        "--library-root", root,
+        *flags,
+        "--staging", str(tmp_path / "staging"),
+        "--profile", "slim",
+        "--taxonomy", "default",
+    ]
 
 
 # ═══ 1. The check table ═════════════════════════════════════════════════════
@@ -781,9 +809,7 @@ def test_no_acknowledgment_is_claimed_absent_off_a_volume_nobody_read(configured
 
 def test_a_remote_whose_provider_trashes_on_delete_is_reported(configured):
     """A trashing provider is reported: a pruned archive would keep counting against the quota."""
-    document = document_for(configured.library.root)
-    document["backup"] = {"remote": "archive:"}
-    cfg = config.from_dict(document)
+    cfg = _archive_remote(configured)
 
     trashing = probes(rclone_remotes=lambda _r: {"archive": {"type": "drive"}})
     finding = find(doctor.run(cfg, probes=trashing), "backup.remote")
@@ -1164,15 +1190,11 @@ def test_the_wizard_on_a_clean_machine_produces_a_valid_config_and_a_green_docto
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
 
     code, out, err = drive(
-        [
-            "--output", "json", "setup",
-            "--library-root", str(root),
+        setup_argv(
+            str(root), tmp_path,
             "--db-path", str(root / "db" / "master.db"),
             "--volume-id", VOLUME,
-            "--staging", str(tmp_path / "staging"),
-            "--profile", "slim",
-            "--taxonomy", "default",
-        ]
+        )
     )
     envelope = json.loads(out)
     written = config.load()
@@ -1839,15 +1861,11 @@ def test_an_empty_credential_leaves_the_exit_code_to_doctor(tmp_path, monkeypatc
     monkeypatch.setattr(setup_verb.prompt, "Prompter", lambda: scripted)
 
     code, out, err = drive(
-        [
-            "--output", "json", "setup",
-            "--library-root", str(root),
+        setup_argv(
+            str(root), tmp_path,
             "--db-path", str(root / "db" / "master.db"),
             "--volume-id", VOLUME,
-            "--staging", str(tmp_path / "staging"),
-            "--profile", "slim",
-            "--taxonomy", "default",
-        ]
+        )
     )
     checks = json.loads(out)["data"]["checks"]
     credential = [c for c in checks if c["key"].startswith("setup.credential.")]
@@ -2361,14 +2379,7 @@ def test_setup_refuses_end_to_end_rather_than_recording_the_boot_disk(
     monkeypatch.setattr(doctor, "Probes", lambda: probes(identity_provider=lambda _p: "BOOT"))
 
     code, _out, _err = drive(
-        [
-            "--output", "json", "setup",
-            "--library-root", str(absent),
-            "--db-path", str(absent / "db" / "master.db"),
-            "--staging", str(tmp_path / "staging"),
-            "--profile", "slim",
-            "--taxonomy", "default",
-        ]
+        setup_argv(str(absent), tmp_path, "--db-path", str(absent / "db" / "master.db"))
     )
     assert code == int(ExitCode.LIBRARY_UNAVAILABLE)
     with pytest.raises(config.ConfigMissing):
@@ -2387,15 +2398,11 @@ def test_setup_writes_nothing_beside_the_library_until_the_volume_is_asserted(
     monkeypatch.setattr(doctor, "Probes", lambda: probes(identity_provider=lambda _p: "0000"))
 
     code, out, _err = drive(
-        [
-            "--output", "json", "setup",
-            "--library-root", str(root),
+        setup_argv(
+            str(root), tmp_path,
             "--volume-id", VOLUME,
             "--db-path", str(root / "db" / "master.db"),
-            "--staging", str(tmp_path / "staging"),
-            "--profile", "slim",
-            "--taxonomy", "default",
-        ]
+        )
     )
 
     assert code == int(ExitCode.PRECONDITION)
@@ -2432,15 +2439,11 @@ def test_the_wizard_writes_the_active_template_once_the_volume_is_the_recorded_o
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
 
     drive(
-        [
-            "--output", "json", "setup",
-            "--library-root", str(root),
+        setup_argv(
+            str(root), tmp_path,
             "--volume-id", VOLUME,
             "--db-path", str(root / "db" / "master.db"),
-            "--staging", str(tmp_path / "staging"),
-            "--profile", "slim",
-            "--taxonomy", "default",
-        ]
+        )
     )
     assert config.state_path("taxonomy_active", config.load()).is_file()
 
@@ -2903,9 +2906,7 @@ def test_a_template_name_shaped_like_a_path_is_a_configuration_problem(library):
 @pytest.mark.parametrize("kind", ["onedrive", "box", "pcloud", "dropbox"])
 def test_a_provider_with_a_recycle_bin_is_no_longer_green_by_default(configured, kind):
     """A provider with a recycle bin is not green just for lacking a table row."""
-    document = document_for(configured.library.root)
-    document["backup"] = {"remote": "archive:"}
-    cfg = config.from_dict(document)
+    cfg = _archive_remote(configured)
     finding = finding_on(
         cfg, "backup.remote", rclone_remotes=lambda _r: {"archive": {"type": kind}}
     )
@@ -2916,9 +2917,7 @@ def test_a_provider_whose_no_trash_option_is_set_the_other_way_round_is_read_cor
     configured,
 ):
     """Drive's option must be false and OneDrive's true, each read the right way."""
-    document = document_for(configured.library.root)
-    document["backup"] = {"remote": "archive:"}
-    cfg = config.from_dict(document)
+    cfg = _archive_remote(configured)
 
     business = {"type": "onedrive", "drive_type": "business"}
     hardened = probes(rclone_remotes=lambda _r: {"archive": {**business, "hard_delete": "true"}})
@@ -2934,9 +2933,7 @@ def test_a_onedrive_remote_where_hard_delete_does_nothing_is_a_note(
     configured, drive_type, hard_delete
 ):
     """OneDrive hard_delete works only on business drives and libraries, else a note."""
-    document = document_for(configured.library.root)
-    document["backup"] = {"remote": "archive:"}
-    cfg = config.from_dict(document)
+    cfg = _archive_remote(configured)
     settings = {"type": "onedrive", "hard_delete": hard_delete}
     if drive_type is not None:
         settings["drive_type"] = drive_type
@@ -2948,9 +2945,7 @@ def test_a_onedrive_remote_where_hard_delete_does_nothing_is_a_note(
 @pytest.mark.parametrize("extra", [{}, {"permanent_delete": "true"}])
 def test_dropbox_is_not_told_to_set_an_option_rclone_does_not_have(configured, extra):
     """rclone's Dropbox backend has no per-remote delete option, so none is named."""
-    document = document_for(configured.library.root)
-    document["backup"] = {"remote": "archive:"}
-    cfg = config.from_dict(document)
+    cfg = _archive_remote(configured)
     finding = finding_on(
         cfg, "backup.remote", rclone_remotes=lambda _r: {"archive": {"type": "dropbox", **extra}}
     )
@@ -2960,9 +2955,7 @@ def test_dropbox_is_not_told_to_set_an_option_rclone_does_not_have(configured, e
 
 
 def test_a_remote_type_with_no_row_says_so_rather_than_passing(configured):
-    document = document_for(configured.library.root)
-    document["backup"] = {"remote": "archive:"}
-    cfg = config.from_dict(document)
+    cfg = _archive_remote(configured)
     finding = finding_on(
         cfg, "backup.remote", rclone_remotes=lambda _r: {"archive": {"type": "s3"}}
     )
@@ -2971,9 +2964,7 @@ def test_a_remote_type_with_no_row_says_so_rather_than_passing(configured):
 
 
 def test_a_remote_where_a_delete_is_a_delete_is_the_one_that_reports_green(configured):
-    document = document_for(configured.library.root)
-    document["backup"] = {"remote": "archive:"}
-    cfg = config.from_dict(document)
+    cfg = _archive_remote(configured)
     finding = finding_on(
         cfg, "backup.remote", rclone_remotes=lambda _r: {"archive": {"type": "local"}}
     )
@@ -2995,9 +2986,7 @@ def test_the_remote_path_form_resolves_to_the_remote_it_names(configured):
 
 def test_an_unknown_remote_is_not_sent_to_a_verb_that_cannot_fix_it(configured):
     """The wizard has no question, no flag and no code path for backup.remote."""
-    document = document_for(configured.library.root)
-    document["backup"] = {"remote": "archive:"}
-    cfg = config.from_dict(document)
+    cfg = _archive_remote(configured)
     finding = finding_on(
         cfg, "backup.remote", rclone_remotes=lambda _r: {"other": {"type": "local"}}
     )
@@ -3295,15 +3284,11 @@ def test_an_install_with_no_templates_offers_no_closed_set_rather_than_an_empty_
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
 
     code, out, err = drive(
-        [
-            "--output", "json", "setup",
-            "--library-root", str(root),
+        setup_argv(
+            str(root), tmp_path,
             "--volume-id", VOLUME,
             "--db-path", str(root / "db" / "master.db"),
-            "--staging", str(tmp_path / "staging"),
-            "--profile", "slim",
-            "--taxonomy", "default",
-        ]
+        )
     )
     assert code != int(ExitCode.USAGE), err
     checks = {c["key"]: c for c in json.loads(out)["data"]["checks"]}
@@ -4218,15 +4203,11 @@ def test_the_wizard_writes_the_active_template_on_a_linux_style_ordinary_directo
     )
 
     code, out, err = drive(
-        [
-            "--output", "json", "setup",
-            "--library-root", str(root),
+        setup_argv(
+            str(root), tmp_path,
             "--volume-id", VOLUME,
             "--db-path", str(root / "db" / "master.db"),
-            "--staging", str(tmp_path / "staging"),
-            "--profile", "slim",
-            "--taxonomy", "default",
-        ]
+        )
     )
     assert code != int(ExitCode.USAGE), err
     checks = {c["key"]: c for c in json.loads(out)["data"]["checks"]}
@@ -4566,14 +4547,10 @@ def test_setup_end_to_end_names_the_path_instead_of_asking_for_a_bug_report(
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
 
     code, out, err = drive(
-        [
-            "--output", "json", "setup",
-            "--library-root", str(sealed_ancestor),
+        setup_argv(
+            str(sealed_ancestor), tmp_path,
             "--db-path", str(sealed_ancestor / "db" / "master.db"),
-            "--staging", str(tmp_path / "staging"),
-            "--profile", "slim",
-            "--taxonomy", "default",
-        ]
+        )
     )
     assert code == int(ExitCode.LIBRARY_UNAVAILABLE), err
     envelope = json.loads(out)
@@ -4691,14 +4668,7 @@ def test_both_verbs_answer_a_real_permission_with_an_act_the_user_can_perform(
     config.reset_cache()
     monkeypatch.setattr(doctor, "Probes", lambda: probes())
 
-    argv = [
-        "--output", "json", "setup",
-        "--library-root", str(library),
-        "--db-path", str(library / "db" / "master.db"),
-        "--staging", str(tmp_path / "staging"),
-        "--profile", "slim",
-        "--taxonomy", "default",
-    ]
+    argv = setup_argv(str(library), tmp_path, "--db-path", str(library / "db" / "master.db"))
     if arrangement == "configuration-directory":
         # The identity is supplied, so the run reaches the configuration file.
         argv += ["--volume-id", VOLUME]
@@ -4869,16 +4839,7 @@ def test_the_database_probe_survives_a_recorded_path_it_cannot_stat(
     locked.chmod(0o000)
     try:
         assert setup_verb._probe_db_path() == str(locked / "master.db")
-        code, out, err = drive(
-            [
-                "--output", "json", "setup",
-                "--library-root", str(root),
-                "--volume-id", VOLUME,
-                "--staging", str(tmp_path / "staging"),
-                "--profile", "slim",
-                "--taxonomy", "default",
-            ]
-        )
+        code, out, err = drive(setup_argv(str(root), tmp_path, "--volume-id", VOLUME))
     finally:
         locked.chmod(0o755)
         config.reset_cache()
@@ -5020,11 +4981,7 @@ def _sealed(path: Path):
 
 def test_a_sealed_state_database_answers_with_its_path_and_an_act(tmp_path, monkeypatch):
     """A sealed ``queue.db`` answers with its path and an act, recorded at the connection."""
-    cfg_dir = tmp_path / "cfg"
-    cfg_dir.mkdir()
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
-    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
-    config.reset_cache()
+    _isolated_config(tmp_path, monkeypatch)
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
@@ -5053,10 +5010,7 @@ def test_a_sealed_state_database_answers_with_its_path_and_an_act(tmp_path, monk
 
 def test_a_refusal_that_names_no_path_does_not_claim_one(tmp_path, monkeypatch):
     """A refusal with no path is not classified as one."""
-    cfg_dir = tmp_path / "cfg"
-    cfg_dir.mkdir()
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
-    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
+    _isolated_config(tmp_path, monkeypatch)
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
@@ -5135,11 +5089,7 @@ def test_a_locked_file_is_routed_to_the_lock_and_names_the_destination(tmp_path,
 
     from cratekit.core import cause as cause_module
 
-    cfg_dir = tmp_path / "cfg"
-    cfg_dir.mkdir()
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
-    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
-    config.reset_cache()
+    _isolated_config(tmp_path, monkeypatch)
     destination = config.config_path()
     destination.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
     locked = subprocess.run(["chflags", "uchg", str(destination)], check=False)
@@ -5147,15 +5097,11 @@ def test_a_locked_file_is_routed_to_the_lock_and_names_the_destination(tmp_path,
 
     try:
         code, out, err = drive(
-            [
-                "--output", "json", "setup",
-                "--library-root", str(tmp_path / "library"),
+            setup_argv(
+                str(tmp_path / "library"), tmp_path,
                 "--db-path", str(tmp_path / "library" / "db" / "master.db"),
                 "--volume-id", VOLUME,
-                "--staging", str(tmp_path / "staging"),
-                "--profile", "slim",
-                "--taxonomy", "default",
-            ]
+            )
         )
     finally:
         subprocess.run(["chflags", "nouchg", str(destination)], check=False)
@@ -5272,26 +5218,18 @@ def test_an_unreadable_capture_manifest_is_not_a_defect_report(tmp_path):
 
 def test_the_wizard_does_not_call_an_intact_configuration_corrupt(tmp_path, monkeypatch):
     """The wizard does not call an unreadable but intact configuration corrupt."""
-    cfg_dir = tmp_path / "cfg"
-    cfg_dir.mkdir()
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
-    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
-    config.reset_cache()
+    _isolated_config(tmp_path, monkeypatch)
     document = config.config_path()
     document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
     intact = document.read_bytes()
 
     with _sealed(document):
         code, out, err = drive(
-            [
-                "--output", "json", "setup",
-                "--library-root", str(tmp_path / "library"),
+            setup_argv(
+                str(tmp_path / "library"), tmp_path,
                 "--db-path", str(tmp_path / "library" / "db" / "master.db"),
                 "--volume-id", VOLUME,
-                "--staging", str(tmp_path / "staging"),
-                "--profile", "slim",
-                "--taxonomy", "default",
-            ]
+            )
         )
     config.reset_cache()
 
@@ -5309,11 +5247,7 @@ def test_the_wizards_second_read_does_not_call_an_intact_configuration_corrupt(
     tmp_path, monkeypatch
 ):
     """The wizard's raw second read does not call a sealed incomplete config corrupt."""
-    cfg_dir = tmp_path / "cfg"
-    cfg_dir.mkdir()
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
-    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
-    config.reset_cache()
+    _isolated_config(tmp_path, monkeypatch)
     document = config.config_path()
     document.write_text("schema_version = 1\n")
     intact = document.read_bytes()
@@ -5345,11 +5279,7 @@ def test_the_wizards_second_read_does_not_call_an_intact_configuration_corrupt(
 
 def test_doctors_configuration_check_does_not_call_an_intact_file_corrupt(tmp_path, monkeypatch):
     """``config.present`` does not call a sealed but intact file corrupt."""
-    cfg_dir = tmp_path / "cfg"
-    cfg_dir.mkdir()
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
-    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
-    config.reset_cache()
+    _isolated_config(tmp_path, monkeypatch)
     document = config.config_path()
     document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
 
@@ -5366,11 +5296,7 @@ def test_doctors_configuration_check_does_not_call_an_intact_file_corrupt(tmp_pa
 
 def test_a_verb_that_lets_a_config_error_escape_is_classified_too(tmp_path, monkeypatch):
     """A ``ConfigError`` escaping a verb is classified at the dispatcher."""
-    cfg_dir = tmp_path / "cfg"
-    cfg_dir.mkdir()
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(cfg_dir))
-    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "state"))
-    config.reset_cache()
+    _isolated_config(tmp_path, monkeypatch)
     document = config.config_path()
     document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
 
@@ -5752,15 +5678,11 @@ def test_setup_leaves_under_the_code_a_refusing_check_reserved(monkeypatch, tmp_
     monkeypatch.setattr(doctor, "CHECKS", (_refusing_check(),))
 
     code, out, err = drive(
-        [
-            "--output", "json", "setup",
-            "--library-root", str(root),
+        setup_argv(
+            str(root), tmp_path,
             "--volume-id", VOLUME,
             "--db-path", str(root / "db" / "master.db"),
-            "--staging", str(tmp_path / "staging"),
-            "--profile", "slim",
-            "--taxonomy", "default",
-        ]
+        )
     )
     assert code == int(ExitCode.LIBRARY_UNAVAILABLE), err
     assert json.loads(out)["cause"]["reason"] == "library-volume-unmounted"
