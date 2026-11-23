@@ -40,6 +40,13 @@ UTC = timezone.utc
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
 
+#: The bytes the fixture database holds, and so what every restore puts back.
+_GENERATION_ONE = b"database, generation one"
+#: A live log holding transactions no capture has.
+_LIVE_LOG = b"the live log, transactions committed since the checkpoint"
+#: An earlier attempt's staged log, whose only copy is where it sits.
+_EARLIER_LOG = b"an earlier attempt's log, recoverable from nowhere else"
+
 #: The identity a foreign disk reports. Any value that is not the fixture's.
 _ELSEWHERE = "0000-0000-not-this-disk"
 
@@ -78,7 +85,7 @@ def cfg(tmp_path, monkeypatch):
     )
     config.save(built)
     config.reset_cache()
-    config.state_path("rekordbox_db", built).write_bytes(b"database, generation one")
+    config.state_path("rekordbox_db", built).write_bytes(_GENERATION_ONE)
     return built
 
 
@@ -95,6 +102,11 @@ def _nothing_is_running(monkeypatch):
     monkeypatch.setattr(
         "cratekit.core.processes.running_process_names", lambda: ()
     )
+
+
+def _database(cfg) -> Path:
+    """The live database the configuration names."""
+    return config.state_path("rekordbox_db", cfg)
 
 
 def matching_identity(cfg):
@@ -234,14 +246,14 @@ def test_a_completed_session_is_listed_with_its_timestamp_workflow_and_changes(c
 
 def test_a_restore_returns_a_modified_database_to_its_pre_session_bytes(cfg, held):
     """Exact pre-session bytes come back, proven on a synthetic library only."""
-    before = config.state_path("rekordbox_db", cfg).read_bytes()
+    before = _database(cfg).read_bytes()
     record, _captured = completed_session(cfg)
-    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    _database(cfg).write_bytes(b"database, generation two")
 
     decided = restore.plan(cfg, record.session_id, held=held)
     restore.run(decided, cfg, held=held)
 
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == before
+    assert _database(cfg).read_bytes() == before
 
 
 def test_a_restore_returns_the_coupled_state_with_the_database(cfg, held):
@@ -249,7 +261,7 @@ def test_a_restore_returns_the_coupled_state_with_the_database(cfg, held):
     write_state(cfg, "label_watermarks", {"source": "before"})
     record, _captured = completed_session(cfg)
     write_state(cfg, "label_watermarks", {"source": "after"})
-    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    _database(cfg).write_bytes(b"database, generation two")
 
     decided = restore.plan(cfg, record.session_id, held=held)
     restore.run(decided, cfg, held=held)
@@ -927,7 +939,7 @@ def test_the_live_companion_files_are_cleared_before_anything_is_copied(cfg, hel
 def test_only_the_companion_the_inventory_declares_restored_is_written_back(cfg, held):
     """Only the companion the inventory declares restored comes back, since a stale
     shared-memory index beside a fresh log gives the engine two views."""
-    database = config.state_path("rekordbox_db", cfg)
+    database = _database(cfg)
     for companion in config.sidecar_paths("rekordbox_db", cfg):
         companion.write_bytes(b"companion, generation one")
     record, _captured = completed_session(cfg)
@@ -1348,18 +1360,18 @@ def test_bare_metal_recovery_takes_the_installation_lock_not_the_library_one(cfg
 def test_a_dry_run_and_a_real_run_walk_the_same_list_in_the_same_order(cfg, held):
     """A preview built by a second code path is a report about a different program."""
     record, _captured = completed_session(cfg)
-    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    _database(cfg).write_bytes(b"database, generation two")
 
     decided = restore.plan(cfg, record.session_id, held=held)
     rehearsed = restore.run(decided, cfg, held=held, dry_run=True)
 
     assert rehearsed.performed == decided.steps
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == b"database, generation two"
+    assert _database(cfg).read_bytes() == b"database, generation two"
 
     real = restore.run(decided, cfg, held=held)
 
     assert real.performed == rehearsed.performed
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == b"database, generation one"
+    assert _database(cfg).read_bytes() == _GENERATION_ONE
 
 
 def test_a_rehearsal_never_clears_the_live_companion_files(cfg, held):
@@ -1560,7 +1572,7 @@ def test_a_held_session_used_after_its_block_is_refused(cfg):
     cause = _refusal(restore.run, decided, cfg, held=open_session)
 
     assert "not held by this process" in cause.message
-    assert config.state_path("rekordbox_db", cfg).exists()
+    assert _database(cfg).exists()
 
 
 def test_a_restore_handed_an_ordinary_write_session_is_refused(cfg, held):
@@ -1638,9 +1650,7 @@ def test_blocking_1_a_bare_metal_session_cannot_be_spent_on_the_library_it_refus
     assert str(replacement) in cause.message
     assert str(cfg.library.root) not in cause.message
     assert _tree_bytes(cfg.library.root) == before
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
-        b"database, generation one"
-    )
+    assert _database(cfg).read_bytes() == _GENERATION_ONE
 
 
 # U95: every path comes from the directory the session authorises
@@ -1691,7 +1701,7 @@ def test_u95_a_bare_metal_session_plans_and_runs_entirely_under_its_target(cfg, 
     """The capability R-8 item 3 asked for, end to end, against a recovered copy."""
     write_state(cfg, "label_watermarks", {"source": "before"})
     record, _captured = completed_session(cfg)
-    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    _database(cfg).write_bytes(b"database, generation two")
     write_state(cfg, "label_watermarks", {"source": "after"})
     replacement = _recovered_onto(cfg, tmp_path / "replacement")
     # The configured root is stripped of state so no read can be answered by a twin.
@@ -1713,7 +1723,7 @@ def test_u95_a_bare_metal_session_plans_and_runs_entirely_under_its_target(cfg, 
     assert outcome.performed == decided.steps
     assert restore.Act.REPLACE_TREE in {step.act for step in decided.steps}
     recovered_db = replacement / "db" / "master.db"
-    assert recovered_db.read_bytes() == b"database, generation one"
+    assert recovered_db.read_bytes() == _GENERATION_ONE
     recovered_marks = replacement / config.state_path("label_watermarks", cfg).relative_to(
         cfg.library.root
     )
@@ -1812,7 +1822,7 @@ def test_u95_a_plan_built_for_the_library_is_refused_under_a_bare_metal_session(
 ):
     """A plan is a value, and its targets were fixed when it was built."""
     record, _captured = completed_session(cfg)
-    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    _database(cfg).write_bytes(b"database, generation two")
     replacement = _recovered_onto(cfg, tmp_path / "replacement")
     acknowledge(cfg)
     with restore.recovery_session(cfg, **gate_seams(cfg)) as library_session:
@@ -1908,7 +1918,7 @@ def test_u95_the_staging_directory_is_a_write_location_and_is_authorised_too(
     """Companions are renamed into staging, which is no step target, so it is
     authorised separately, in both modes, before any log moves."""
     record, _captured = completed_session(cfg)
-    database = config.state_path("rekordbox_db", cfg)
+    database = _database(cfg)
     log = database.with_name(database.name + "-wal")
     log.write_bytes(b"transactions no capture holds")
     decided = restore.plan(cfg, record.session_id, held=held)
@@ -2062,7 +2072,7 @@ def test_blocking_1_a_token_is_withdrawn_when_its_guard_returns(cfg):
 
 def _wal_path(cfg) -> Path:
     """The live write-ahead log, resolved through the inventory rather than spelled."""
-    database = config.state_path("rekordbox_db", cfg)
+    database = _database(cfg)
     companions = config.sidecar_paths("rekordbox_db", cfg)
     return next(path for path in companions if path.name.startswith(database.name))
 
@@ -2073,7 +2083,7 @@ def test_blocking_2_a_capture_whose_database_is_gone_refuses_before_the_log_is_t
     """A capture whose database is gone refuses at plan, since the live log holds
     transactions no capture has."""
     record, captured = completed_session(cfg)
-    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    _database(cfg).write_bytes(b"database, generation two")
     log = _wal_path(cfg)
     log.write_bytes(b"committed transactions the main file does not hold")
     captured.database.unlink()
@@ -2304,7 +2314,7 @@ def test_the_rehearsal_refuses_a_replacement_whose_source_is_gone(cfg, held):
 def test_the_rehearsal_refuses_a_target_directory_nobody_can_write_to(cfg, held):
     """The other case the empty rehearsal reported clean."""
     record, decided = _planned(cfg, held)
-    database_dir = config.state_path("rekordbox_db", cfg).parent
+    database_dir = _database(cfg).parent
     database_dir.chmod(0o500)
 
     try:
@@ -2326,7 +2336,7 @@ def test_a_plan_built_before_a_later_commit_is_refused_at_run(cfg, held):
     cause = _refusal(restore.run, decided, cfg, held=held)
 
     assert cause.reason == "restore-discards-committed-work"
-    assert config.state_path("rekordbox_db", cfg).exists()
+    assert _database(cfg).exists()
 
 
 def test_a_reconciliation_store_on_an_unmounted_volume_is_not_an_empty_one(cfg):
@@ -2541,11 +2551,7 @@ def test_round2_a_restore_that_fits_is_not_refused(cfg, held):
     _build_capacity_shape(cfg, **_CAPACITY_SHAPE)
     record, decided = _planned(cfg, held)
     estimate = restore.space_peak_bytes(decided)
-    summed = sum(
-        snapshot.incoming_bytes(entry.source)
-        for entry in snapshot.read_manifest(decided.capture_root).sources
-        if entry.captured is not None
-    )
+    summed = sum(snapshot.incoming_bytes(entry.source) for entry in _captured_entries(decided))
 
     assert estimate < summed, "the estimate is no better than summing everything"
     outcome = restore.run(decided, cfg, held=held)
@@ -2561,7 +2567,7 @@ _CAPACITY_SHAPE = {"database": 512, "wal": 256, "items": 125}
 
 def _build_capacity_shape(cfg, *, database: int, wal: int, items: int) -> None:
     """One of the shapes the capacity rule was measured against. Sizes in KiB."""
-    config.state_path("rekordbox_db", cfg).write_bytes(b"d" * (database * 1024))
+    _database(cfg).write_bytes(b"d" * (database * 1024))
     _wal_path(cfg).write_bytes(b"w" * (wal * 1024))
     queue = config.state_path("review_queue", cfg)
     queue.mkdir(parents=True, exist_ok=True)
@@ -2640,7 +2646,7 @@ def test_round3_the_capacity_estimate_is_above_the_measured_peak(
     record, _captured = completed_session(cfg)
     if wipe_live:
         shutil.rmtree(config.library_coupled_dir(cfg), ignore_errors=True)
-        config.state_path("rekordbox_db", cfg).unlink()
+        _database(cfg).unlink()
 
     decided = restore.plan(cfg, record.session_id, held=held)
     estimate = restore.space_peak_bytes(decided)
@@ -2676,7 +2682,7 @@ def test_round3_a_volume_between_the_two_rules_is_refused(cfg, held, monkeypatch
     cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
     assert cause.reason == "snapshot-store-full"
-    assert config.state_path("rekordbox_db", cfg).read_bytes()[:1] == b"d"
+    assert _database(cfg).read_bytes()[:1] == b"d"
 
 
 def test_round3_a_staged_log_is_counted_as_permanent_growth(cfg, held):
@@ -2788,9 +2794,7 @@ def test_round2_a_held_rebuilt_around_a_live_token_is_refused(cfg, tmp_path):
         cause = _refusal(restore.plan, cfg, record.session_id, held=laundered)
 
     assert "not held by this process" in cause.message
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
-        b"database, generation one"
-    )
+    assert _database(cfg).read_bytes() == _GENERATION_ONE
 
 
 def test_round2_a_close_against_a_husk_is_refused_by_the_volume_gate(cfg):
@@ -2890,9 +2894,7 @@ def test_round3_an_unwritable_coupled_directory_refuses_at_the_rehearsal(cfg, he
     assert cause.reason == "restore-step-failed"
     assert str(coupled) in cause.message
     # Nothing was touched: the rehearsal refused before the first destructive step.
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
-        b"database, generation one"
-    )
+    assert _database(cfg).read_bytes() == _GENERATION_ONE
     assert reconcile.outstanding(cfg) == ()
 
 
@@ -2952,7 +2954,7 @@ def test_round4_a_completed_restore_survives_a_staged_attempt_it_cannot_prune(cf
     record, _captured = completed_session(cfg)
     _wal_path(cfg).write_bytes(b"transactions no capture holds")
 
-    store = config.state_path("rekordbox_db", cfg).parent / restore.PRE_RESTORE_DIR
+    store = _database(cfg).parent / restore.PRE_RESTORE_DIR
     # The oldest attempt is undeletable, with enough younger ones to reach it.
     locked = _staged_attempt(store, "attempt-locked", age=0, payload=b"the earliest log")
     fillers = [
@@ -2975,9 +2977,7 @@ def test_round4_a_completed_restore_survives_a_staged_attempt_it_cannot_prune(cf
     )
     assert not fillers[0].exists(), "the prune never reached the bound"
     assert (locked / "master.db-wal").read_bytes() == b"the earliest log"
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
-        b"database, generation one"
-    )
+    assert _database(cfg).read_bytes() == _GENERATION_ONE
 
 
 def test_round4_an_unwritable_state_directory_refuses_at_the_rehearsal(cfg, held):
@@ -2995,7 +2995,7 @@ def test_round4_an_unwritable_state_directory_refuses_at_the_rehearsal(cfg, held
         for step in decided.steps
     ), "the plan does not replace the coupled directory, so this proves nothing"
     parent = coupled.parent
-    assert parent != config.state_path("rekordbox_db", cfg).parent, (
+    assert parent != _database(cfg).parent, (
         "the coupled parent and the database parent must be different directories"
     )
     parent.chmod(0o500)
@@ -3010,16 +3010,29 @@ def test_round4_an_unwritable_state_directory_refuses_at_the_rehearsal(cfg, held
     assert cause.detail["unwritable"] == str(parent)
     assert cause.message.startswith(f"{parent} is not writable")
     # Nothing was touched: the rehearsal refused before the first destructive step.
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
-        b"database, generation one"
-    )
+    assert _database(cfg).read_bytes() == _GENERATION_ONE
     assert reconcile.outstanding(cfg) == ()
 
 
 def _playlist_xml_path(cfg) -> Path:
     """rekordbox's playlist document, the one restorable source outside the coupled
     directory, which puts a REMOVE ahead of the coupled REPLACE_TREE."""
-    return config.state_path("rekordbox_db", cfg).parent / rb_writer.MASTER_PLAYLIST_XML
+    return _database(cfg).parent / rb_writer.MASTER_PLAYLIST_XML
+
+
+def _captured_entries(decided) -> list:
+    """The manifest entries of the plan's capture that hold a captured copy."""
+    manifest = snapshot.read_manifest(decided.capture_root)
+    return [entry for entry in manifest.sources if entry.captured is not None]
+
+
+def _assert_the_pinned_allocations(cfg, decided) -> None:
+    """Pinned so a filesystem that allocates differently fails here."""
+    captured = {entry.source.name: entry.captured for entry in _captured_entries(decided)}
+    assert snapshot.incoming_bytes(captured["master.db"]) == 6144
+    assert snapshot.incoming_bytes(captured["coupled"]) == 8192
+    assert snapshot.freed_bytes(_database(cfg)) == 4096
+    assert snapshot.freed_bytes(config.library_coupled_dir(cfg)) == 4096
 
 
 def test_round4_the_peak_of_an_ordinary_plan_is_an_exact_number(cfg, held):
@@ -3033,16 +3046,7 @@ def test_round4_the_peak_of_an_ordinary_plan_is_an_exact_number(cfg, held):
     write_state(cfg, "label_watermarks", {"source": "before"})
     record, decided = _planned(cfg, held)
 
-    captured = {
-        entry.source.name: entry.captured
-        for entry in snapshot.read_manifest(decided.capture_root).sources
-        if entry.captured is not None
-    }
-    # Pinned so a filesystem that allocates differently fails here.
-    assert snapshot.incoming_bytes(captured["master.db"]) == 6144
-    assert snapshot.incoming_bytes(captured["coupled"]) == 8192
-    assert snapshot.freed_bytes(config.state_path("rekordbox_db", cfg)) == 4096
-    assert snapshot.freed_bytes(config.library_coupled_dir(cfg)) == 4096
+    _assert_the_pinned_allocations(cfg, decided)
 
     assert restore.space_peak_bytes(decided) == 10240
 
@@ -3077,14 +3081,10 @@ def test_round4_a_removal_ahead_of_a_tree_replacement_lowers_the_peak(cfg, held)
     assert acts.index(restore.Act.REMOVE) < acts.index(restore.Act.REPLACE_TREE), (
         "the removal must precede the tree replacement or this proves nothing"
     )
-    captured = {
-        entry.source.name: entry.captured
-        for entry in snapshot.read_manifest(decided.capture_root).sources
-        if entry.captured is not None
-    }
+    captured = {entry.source.name: entry.captured for entry in _captured_entries(decided)}
     assert snapshot.incoming_bytes(captured["master.db"]) == 6144
     assert snapshot.incoming_bytes(captured["coupled"]) == 1060864
-    assert snapshot.freed_bytes(config.state_path("rekordbox_db", cfg)) == 4096
+    assert snapshot.freed_bytes(_database(cfg)) == 4096
     assert snapshot.freed_bytes(config.library_coupled_dir(cfg)) == 1052672
     assert snapshot.freed_bytes(playlists) == 8192
 
@@ -3117,11 +3117,7 @@ def test_round4_a_volume_just_above_what_the_rule_demands_is_not_refused(
     record, decided = _planned(cfg, held)
 
     demanded = int(restore.space_peak_bytes(decided) * snapshot.CAPACITY_HEADROOM)
-    summed = sum(
-        snapshot.incoming_bytes(entry.source)
-        for entry in snapshot.read_manifest(decided.capture_root).sources
-        if entry.captured is not None
-    )
+    summed = sum(snapshot.incoming_bytes(entry.source) for entry in _captured_entries(decided))
     assert restore.space_peak_bytes(decided) < summed, (
         "this volume is not tight enough to say anything: the round 1 rule "
         "demanded the same multiple of the SUM, so it would have accepted this "
@@ -3132,7 +3128,7 @@ def test_round4_a_volume_just_above_what_the_rule_demands_is_not_refused(
     outcome = restore.run(decided, cfg, held=held)
 
     assert outcome.converged, "the tightest volume the rule allows was refused"
-    assert config.state_path("rekordbox_db", cfg).read_bytes()[:1] == b"d"
+    assert _database(cfg).read_bytes()[:1] == b"d"
 
 
 def test_round5_the_capacity_headroom_decides_a_refusal_at_two_literal_volumes(
@@ -3149,25 +3145,14 @@ def test_round5_the_capacity_headroom_decides_a_refusal_at_two_literal_volumes(
     write_state(cfg, "label_watermarks", {"source": "before"})
     record, decided = _planned(cfg, held)
 
-    captured = {
-        entry.source.name: entry.captured
-        for entry in snapshot.read_manifest(decided.capture_root).sources
-        if entry.captured is not None
-    }
-    # Pinned so a filesystem that allocates differently fails here.
-    assert snapshot.incoming_bytes(captured["master.db"]) == 6144
-    assert snapshot.incoming_bytes(captured["coupled"]) == 8192
-    assert snapshot.freed_bytes(config.state_path("rekordbox_db", cfg)) == 4096
-    assert snapshot.freed_bytes(config.library_coupled_dir(cfg)) == 4096
+    _assert_the_pinned_allocations(cfg, decided)
 
     monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: 10752)
     cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
     assert cause.reason == "snapshot-store-full"
     assert cause.detail["required_bytes"] == 11264
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
-        b"database, generation one"
-    )
+    assert _database(cfg).read_bytes() == _GENERATION_ONE
 
     monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: 11264)
     outcome = restore.run(decided, cfg, held=held)
@@ -3177,7 +3162,7 @@ def test_round5_the_capacity_headroom_decides_a_refusal_at_two_literal_volumes(
 
 def _shm_path(cfg) -> Path:
     """The live shared-memory index, resolved through the inventory like the log."""
-    database = config.state_path("rekordbox_db", cfg)
+    database = _database(cfg)
     companions = config.sidecar_paths("rekordbox_db", cfg)
     return next(
         path
@@ -3190,7 +3175,7 @@ def test_round5_a_staged_companion_is_never_written_over(cfg, held):
     """A staged companion is never overwritten, since a staged log is the only copy
     of its transactions. The refusal has its own slug and every field is pinned."""
     log = _wal_path(cfg)
-    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    log.write_bytes(_LIVE_LOG)
     record, decided = _planned(cfg, held)
     assert log in [
         step.target for step in decided.steps if step.act is restore.Act.CLEAR
@@ -3199,27 +3184,23 @@ def test_round5_a_staged_companion_is_never_written_over(cfg, held):
     # An earlier attempt's log under the name this one wants.
     decided.pre_restore_root.mkdir(parents=True)
     survivor = decided.pre_restore_root / log.name
-    survivor.write_bytes(b"an earlier attempt's log, recoverable from nowhere else")
+    survivor.write_bytes(_EARLIER_LOG)
 
     cause = _refusal(restore.run, decided, cfg, held=held)
 
     assert cause.reason == "restore-staging-occupied"
     assert cause.code is ExitCode.PRECONDITION
-    assert survivor.read_bytes() == (
-        b"an earlier attempt's log, recoverable from nowhere else"
-    )
-    assert log.read_bytes() == (
-        b"the live log, transactions committed since the checkpoint"
-    ), "the live log was moved anyway"
+    assert survivor.read_bytes() == _EARLIER_LOG
+    assert log.read_bytes() == _LIVE_LOG, "the live log was moved anyway"
 
 
 def test_round6_the_occupied_staging_is_a_repeat_rather_than_a_defect(cfg, held):
     """An occupied staging directory is retryable and says so in steps, not a remedy
     token, and a fresh plan of the same restore completes."""
     log = _wal_path(cfg)
-    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    log.write_bytes(_LIVE_LOG)
     record, _captured = completed_session(cfg)
-    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    _database(cfg).write_bytes(b"database, generation two")
     decided = restore.plan(cfg, record.session_id, held=held)
     decided.pre_restore_root.mkdir(parents=True)
     (decided.pre_restore_root / log.name).write_bytes(b"an earlier attempt's log")
@@ -3245,9 +3226,7 @@ def test_round6_the_occupied_staging_is_a_repeat_rather_than_a_defect(cfg, held)
     outcome = restore.run(again, cfg, held=held)
 
     assert outcome.converged, "the retry the refusal recommends does not work"
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
-        b"database, generation one"
-    )
+    assert _database(cfg).read_bytes() == _GENERATION_ONE
     assert (decided.pre_restore_root / log.name).read_bytes() == (
         b"an earlier attempt's log"
     ), "the retry destroyed the bytes the refusal existed to protect"
@@ -3258,7 +3237,7 @@ def test_round6_the_rehearsal_refuses_the_collision_the_real_run_refuses(cfg, he
     companion moves, so no half done state and no rehearsal that lies."""
     log = _wal_path(cfg)
     index = _shm_path(cfg)
-    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    log.write_bytes(_LIVE_LOG)
     index.write_bytes(b"the live shared-memory index")
     record, decided = _planned(cfg, held)
     cleared = [step.target for step in decided.steps if step.act is restore.Act.CLEAR]
@@ -3274,21 +3253,19 @@ def test_round6_the_rehearsal_refuses_the_collision_the_real_run_refuses(cfg, he
     rehearsal = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
     assert rehearsal.reason == "restore-staging-occupied"
-    assert log.read_bytes() == (
-        b"the live log, transactions committed since the checkpoint"
-    ), "the rehearsal moved the first companion, which a rehearsal performs nothing"
+    assert log.read_bytes() == _LIVE_LOG, (
+        "the rehearsal moved the first companion, which a rehearsal performs nothing"
+    )
 
     real = _refusal(restore.run, decided, cfg, held=held)
 
     assert real.reason == rehearsal.reason, (
         "the rehearsal and the run disagree about this plan"
     )
-    assert log.read_bytes() == (
-        b"the live log, transactions committed since the checkpoint"
-    ), "the run refused after moving the first companion, which is the half done state"
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
-        b"database, generation one"
+    assert log.read_bytes() == _LIVE_LOG, (
+        "the run refused after moving the first companion, which is the half done state"
     )
+    assert _database(cfg).read_bytes() == _GENERATION_ONE
 
 
 def test_round6_the_performing_backstop_names_what_it_already_moved(cfg, held, monkeypatch):
@@ -3296,7 +3273,7 @@ def test_round6_the_performing_backstop_names_what_it_already_moved(cfg, held, m
     the companion it already moved and where it is. The race is driven."""
     log = _wal_path(cfg)
     index = _shm_path(cfg)
-    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    log.write_bytes(_LIVE_LOG)
     index.write_bytes(b"the live shared-memory index")
     record, decided = _planned(cfg, held)
 
@@ -3319,15 +3296,15 @@ def test_round6_the_performing_backstop_names_what_it_already_moved(cfg, held, m
     assert any(
         str(decided.pre_restore_root) in step for step in cause.remediation.steps
     ), f"no step says where the moved companion is: {cause.remediation.steps}"
-    assert (decided.pre_restore_root / log.name).read_bytes() == (
-        b"the live log, transactions committed since the checkpoint"
-    ), "the log this run moved is not where the refusal says it is"
+    assert (decided.pre_restore_root / log.name).read_bytes() == _LIVE_LOG, (
+        "the log this run moved is not where the refusal says it is"
+    )
 
 
 def test_round6_a_dangling_link_at_the_resting_name_is_a_name_already_taken(cfg, held):
     """A dangling link at the resting name is a taken name, so ``lexists`` is asked."""
     log = _wal_path(cfg)
-    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    log.write_bytes(_LIVE_LOG)
     record, decided = _planned(cfg, held)
 
     decided.pre_restore_root.mkdir(parents=True)
@@ -3340,9 +3317,7 @@ def test_round6_a_dangling_link_at_the_resting_name_is_a_name_already_taken(cfg,
 
     assert cause.reason == "restore-staging-occupied"
     assert taken.is_symlink(), "the link was replaced, which is the defect"
-    assert log.read_bytes() == (
-        b"the live log, transactions committed since the checkpoint"
-    )
+    assert log.read_bytes() == _LIVE_LOG
 
 
 def test_round6_a_dangling_link_at_the_live_companion_is_still_moved_aside(cfg, held):
@@ -3375,14 +3350,14 @@ def test_round6_a_dangling_link_at_the_live_name_does_not_defeat_the_collision_g
 
     decided.pre_restore_root.mkdir(parents=True)
     survivor = decided.pre_restore_root / log.name
-    survivor.write_bytes(b"an earlier attempt's log, recoverable from nowhere else")
+    survivor.write_bytes(_EARLIER_LOG)
 
     cause = _refusal(restore.run, decided, cfg, held=held, dry_run=True)
 
     assert cause.reason == "restore-staging-occupied"
-    assert survivor.read_bytes() == (
-        b"an earlier attempt's log, recoverable from nowhere else"
-    ), "the link was renamed over the only copy of those transactions"
+    assert survivor.read_bytes() == _EARLIER_LOG, (
+        "the link was renamed over the only copy of those transactions"
+    )
     assert log.is_symlink(), "the live name was consumed by a rehearsal"
 
 
@@ -3394,12 +3369,12 @@ def test_round7_an_unreadable_staging_directory_still_refuses_the_same_way(cfg, 
     degraded ``already_staged`` and message are pinned too.
     """
     log = _wal_path(cfg)
-    log.write_bytes(b"the live log, transactions committed since the checkpoint")
+    log.write_bytes(_LIVE_LOG)
     record, decided = _planned(cfg, held)
 
     decided.pre_restore_root.mkdir(parents=True)
     survivor = decided.pre_restore_root / log.name
-    survivor.write_bytes(b"an earlier attempt's log, recoverable from nowhere else")
+    survivor.write_bytes(_EARLIER_LOG)
     decided.pre_restore_root.chmod(0o111)
     try:
         assert os.path.lexists(survivor), (
@@ -3430,12 +3405,8 @@ def test_round7_an_unreadable_staging_directory_still_refuses_the_same_way(cfg, 
         f"with nothing listable the message must still name the file it refused "
         f"to overwrite: {cause.message}"
     )
-    assert survivor.read_bytes() == (
-        b"an earlier attempt's log, recoverable from nowhere else"
-    )
-    assert log.read_bytes() == (
-        b"the live log, transactions committed since the checkpoint"
-    ), "the live log was moved anyway"
+    assert survivor.read_bytes() == _EARLIER_LOG
+    assert log.read_bytes() == _LIVE_LOG, "the live log was moved anyway"
 
 
 def test_round6_a_retry_after_a_partial_failure_still_runs(cfg, held):
@@ -3443,7 +3414,7 @@ def test_round6_a_retry_after_a_partial_failure_still_runs(cfg, held):
     log = _wal_path(cfg)
     log.write_bytes(b"the first attempt's log")
     record, _captured = completed_session(cfg)
-    config.state_path("rekordbox_db", cfg).write_bytes(b"database, generation two")
+    _database(cfg).write_bytes(b"database, generation two")
 
     first = restore.plan(cfg, record.session_id, held=held)
 
@@ -3462,9 +3433,7 @@ def test_round6_a_retry_after_a_partial_failure_still_runs(cfg, held):
     outcome = restore.run(second, cfg, held=held)
 
     assert outcome.converged, "the retry the sibling refusal promises was refused"
-    assert config.state_path("rekordbox_db", cfg).read_bytes() == (
-        b"database, generation one"
-    )
+    assert _database(cfg).read_bytes() == _GENERATION_ONE
     assert stranded.read_bytes() == b"the first attempt's log", (
         "the retry overwrote the bytes the first attempt staged"
     )
