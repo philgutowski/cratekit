@@ -2766,3 +2766,130 @@ whatever the test's outcome, and the mutation driver's state guard watches
 for a new entry at the filesystem root. Earns an issue: it silently corrupts
 every later mutation measurement on the machine, which is the kind of
 apparatus defect the null control exists to catch.
+
+---
+
+## R-1918. The verb registry stays over 1,500 lines because two scripts read its table from that one file
+
+**Found:** at the build of #860, U303, 2026-11-22.
+
+**The mechanism.** `src/cratekit/cli/registry.py` is 2,459 lines after U303,
+over the 1,500 line limit of #847's point 2. Its `ENTRIES` table alone is
+about 1,700 code lines, so prose cannot bring it under. #860's brief asked for
+the one table split by module group into several files, and that split cannot
+land from the shell's card: `scripts/refactor_measure.py` `verbs_from` raises
+unless `registry.py` holds `ENTRIES` as one literal tuple of `Entry(...)`
+keyword calls, and `scripts/board.py` `planned_units` reads the `planned_in`
+markers from that same file by syntax tree. Both are #870's files, and
+`tests/test_import_rules.py` holds the first reading equal to the live
+registry.
+
+**Measured cost.** None to a person: the table is value for value what it
+was, compared by syntax tree and by a dump in the behaviour scenario
+`cli/the_registry_value_for_value`. The cost is the audit's: one file over
+the limit.
+
+**Closes when:** both readers follow a table assembled from several modules
+(for example, reading every `ENTRIES` tuple of the modules `registry.py`
+names), and the table is then split by module group. Ledger only; #870 or a
+later card under #847 takes it.
+
+---
+
+## R-1919. Resolving the type hints of doctor's probes needs the deletion package imported
+
+**Found:** at the review of #860, U303, 2026-11-22.
+
+**The mechanism.** U303 moved the deletion import in
+`src/cratekit/cli/doctor_model.py` behind `TYPE_CHECKING`, so the shell no
+longer imports a toggleable package at load. The `Probes.trash_probe` field is
+annotated with `TrashStatus`, which is now only a string, so
+`typing.get_type_hints(doctor.Probes)` raises `NameError` where on `main` it
+resolved.
+
+**Measured cost.** None driven. The one caller of `get_type_hints` in the
+repository, `tests/test_reserved_causes.py`, walks exception classes only:
+one candidate was driven and none produces the error.
+
+**Closes when:** a caller needs the hints, and then it passes a namespace
+holding `TrashStatus`, or the field's annotation names a protocol in the
+shell. Ledger only.
+
+---
+
+## R-1920. The toggle scenario's last loop runs five verbs with every toggle on
+
+**Found:** at the review of #860, U303, 2026-11-22.
+
+**The mechanism.** `tests/behaviour/cli.py`
+`test_every_toggle_off_and_a_missing_extra` reads every toggle off through the
+real parser and keeps the verbs each preset lists, which is what the
+comparison holds. Its last loop then runs help and one verb of five modules
+named by hand, with no toggle turned off, so the five imports U303 moved
+inside functions are driven through a real verb only with their toggles on.
+
+**Measured cost.** None: turning a toggle off removes verbs from the parser
+and uninstalls nothing, and the review found no reachable difference.
+
+**Closes when:** the loop writes a configuration with each toggle off and
+runs the remaining verbs, or is dropped as covered by the parser reading.
+Ledger only.
+
+---
+
+## R-1921. The command shell misses its code, line and test targets under the refactor epic
+
+**Found:** at the build of #860, U303, 2026-11-22.
+
+**The mechanism.** #860's brief set targets on the 28 files the survey of
+#847 counted: at most 19,914 lines and 13,243 code lines, and the 23 test
+files at most 18,547 lines with their summed test time 30 percent lower.
+Three files landed in the area since (`schedule.py`, `sync_night.py`,
+`verbs/tag_campaign.py`), so the area U303 started from was 31 files,
+28,051 lines and 17,787 code lines. U303 split doctor, emptied the shell's
+import and copy allowances and shortened its prose; it did not rewrite code
+for size, since behaviour is frozen and every line changed is a kill set row
+to carry.
+
+**Measured cost.** Measured by `scripts/refactor_measure.py lines` on the
+merged head, given in `docs/restart/u303.md`: the lines target missed, the
+code lines target missed by a wide margin (the 15 percent code cut #847's
+prose answer asks of every card is not met), the test lines target missed,
+and the test time not cut, since no test was removed or rewritten. No cost
+to a person.
+
+**Closes when:** #872, the final audit, reads the shortfall against the
+193,000 line bar and files a further card for the shell's code and tests if
+the total needs it. Ledger only.
+
+---
+
+## R-1922. Two recorded kills of sync land's staged download read zero since R1499
+
+**Found:** at the kill set replay of #860, U303, 2026-11-23.
+
+**The mechanism.** U212's table recorded two kills in
+`src/cratekit/cli/sync_land.py`: `S2_download_refused_all`, which drops the
+`if not listed.staged` return so a download that lands nothing always stops
+the pass, and `S3_no_list_download`, which drops the info check and return
+when every missing track is staged already. Each was killed by one test in
+`tests/test_sync_land_staged.py`. R1499 (`f02eff82`) changed what a pass does
+beside an unlanded pass's staged files, from landing them to refusing, and
+renamed both tests to the refusing behaviour
+(`test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_refuses`,
+`test_a_second_pass_beside_an_unlanded_first_refuses_before_any_download_is_refused`).
+Neither renamed test, nor any other, fails on either mutation now: U303's
+replay before, on `main`'s code at `fd8173d3`, read both as zero on the
+subset and again on the full suite (`docs/mutation/u303-replay-before-c.md`).
+So the two lines are either no longer reached on the paths the tests drive, or
+reached with nothing checking what they do.
+
+**Measured cost.** None to a person shown: the refusal R1499 added comes
+first on the paths the renamed tests drive. The cost is to the kill set: two
+guards the ledger counts as killed are not, and `killset.py check` passes
+U303 on them only because they read zero before as well as after. U303 does
+not change either line, so the zeros are not this card's.
+
+**Closes when:** the next unit that edits sync land's staged download either
+shows the two branches unreachable and removes them, or writes the test that
+kills each. Ledger only.
