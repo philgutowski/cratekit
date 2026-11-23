@@ -119,7 +119,8 @@ ort merge of `unit/u26-label-registry-sweeps-import-harvest` on
 
 Look up the registry `module=` field before creating a package.
 
-Open `src/cratekit/cli/registry.py` and read `Entry.module` on every
+Open the verb table, `src/cratekit/cli/registry_*.py` (the parts
+`cli/registry.py` assembles), and read `Entry.module` on every
 verb the unit is supposed to land. That string is the landing path.
 The issue brief's Files line is a hint about what the unit contains,
 not a second source of truth for where the importable module lives.

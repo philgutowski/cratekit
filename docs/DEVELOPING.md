@@ -287,9 +287,14 @@ commands in:
 
 - **A new verb's block is appended to `cli/registry_later.py`**, so two
   branches that add a verb conflict where a person reads it. Before that file
-  passes 1,500 lines the next block opens a new part, named `registry_*.py`
-  and starred into `ENTRIES` after it; `tests/test_cli_contract.py` fails on a
-  part nobody assembles, on a changed order and on a file over the bar.
+  passes 1,500 lines the next block opens a new part, in three edits: the
+  part, named `registry_*.py`, imported and starred into `ENTRIES` after it;
+  its tuple's name added to `order` in
+  `test_the_table_is_every_part_in_order_and_each_file_is_under_the_bar`
+  (`tests/test_cli_contract.py`), which fails on a part nobody assembles, on
+  one its list does not name, on a changed order and on a file over the bar;
+  and `DOCTOR_HELP_CEILING` in `tests/test_cli_lazy.py` raised by one, since
+  every part loads at every start.
 - **A part is a tuple of calls and `ENTRIES` a tuple of starred part names**,
   because two scripts read the table as text and cannot import it:
   `refactor_measure.py` (`verbs_from`) follows each starred name into the
@@ -298,7 +303,8 @@ commands in:
   by a test, so a shape they cannot read fails the battery.
 - **A verb is read through `cli.registry`, never from a part.** A part imports
   `Entry`, `GateSpec` and the shared constants from `cli.registry`, so only
-  the registry imports a part, and every name a test patches stays there.
+  the registry imports a part, which the same test holds, and every name a
+  test patches stays there.
 
 ## CI
 

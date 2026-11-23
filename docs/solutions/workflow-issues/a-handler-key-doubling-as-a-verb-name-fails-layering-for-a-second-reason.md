@@ -100,10 +100,11 @@ Concretely, in this repo's `tests/test_layering.py`:
   just the module-path side, because every `handler_key` in this registry is
   also a verb name.
 
-The reason rule 2 catches the key side is a real invariant in
-`src/cratekit/cli/registry.py`: every `Entry` sets `handler_key=` to the same
-string as `name=` (confirmed across the ~64 `handler_key=` assignments in the
-file, e.g. `name="master"` at `registry.py:1475`). A handler-key table built
+The reason rule 2 catches the key side is a real invariant in the verb table
+(`src/cratekit/cli/registry_*.py` since U328, then `cli/registry.py`): every
+`Entry` sets `handler_key=` to the same string as `name=` (confirmed across the
+~64 `handler_key=` assignments in the file, e.g. `name="master"` at
+`registry.py:1475`). A handler-key table built
 in `core/` would therefore be a core module holding, as dict keys, a list of
 strings that are *also* the CLI's verb vocabulary — precisely what rule 2's
 "names the verb" branch exists to forbid, independent of whether the table
