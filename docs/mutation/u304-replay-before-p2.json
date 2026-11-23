@@ -5,10 +5,10 @@
   "head": "c9192091",
   "when": "2026-11-22 23:38 UTC",
   "valid": true,
-  "invalid_reason": "in progress",
+  "invalid_reason": "",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 199,
+  "pytest_runs": 247,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -7220,6 +7220,1908 @@
       "source": {
         "table": "u234.json",
         "id": "O9_after_without_the_window"
+      }
+    },
+    {
+      "id": "u234.S1_sample_finish_held_to_the_plans_reading",
+      "description": "sample, R-1411: the finish is not held to the plan's reading, so the rest of an off path order is moved from whatever the adapter reads",
+      "file": "src/cratekit/sync/pair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2df78f03a1f74558",
+      "subset": [
+        "tests/test_organize_mirror.py",
+        "tests/test_organize_mirror_frozen.py",
+        "tests/test_process_scan.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_order.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_root_order.py",
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_stopped.py",
+        "tests/test_sync_pair_stopped_order.py",
+        "tests/test_sync_pair_tie.py",
+        "tests/test_sync_pair_unread.py",
+        "tests/test_sync_pair_window_lag.py",
+        "tests/test_sync_twins.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 10,
+      "collected": 765,
+      "baseline_collected": 765,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_a_continue_of_a_refused_finish_is_held_to_the_plans_reading_not_the_checks[False]",
+        "tests/test_sync_pair_settle.py::test_a_continue_of_a_refused_finish_is_held_to_the_plans_reading_not_the_checks[True]",
+        "tests/test_sync_pair_settle.py::test_a_finish_planned_again_in_the_writing_command_is_held_to_its_own_reading",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_adds_served_as_the_moves_left_it_finishes",
+        "tests/test_sync_pair_settle.py::test_a_finish_that_also_removes_is_refused_on_a_reading_that_lags_the_stopped_move",
+        "tests/test_sync_pair_settle.py::test_a_finish_whose_added_track_the_provider_placed_elsewhere_is_not_refused",
+        "tests/test_sync_pair_settle.py::test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_place",
+        "tests/test_sync_pair_settle.py::test_a_pending_stop_agreed_off_its_path_is_finished_from_rekordbox",
+        "tests/test_sync_pair_stopped_order.py::test_an_account_the_stop_left_off_its_path_is_never_written_into_rekordbox"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if one.finishing_order and one.account_before",
+      "new": "            if False and one.finishing_order and one.account_before",
+      "source": {
+        "table": "u234.json",
+        "id": "S1_sample_finish_held_to_the_plans_reading"
+      }
+    },
+    {
+      "id": "u246.S10_pair_cli_started_empty",
+      "description": "pair: the stopped write's start as an empty set, so a folded base holds nothing it asked for",
+      "file": "src/cratekit/sync/pair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df1cc7db056347a9",
+      "subset": [
+        "tests/test_sync_pair_stopped.py",
+        "tests/test_sync_pair_stopped_order.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 236,
+      "baseline_collected": 236,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_stopped_order.py::test_a_track_the_stopped_write_added_then_taken_off_in_rekordbox_comes_off_the_account"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        started = set(stopped_write.start) if folded else set()",
+      "new": "        started = set()",
+      "source": {
+        "table": "u246.json",
+        "id": "S10_pair_cli_started_empty"
+      }
+    },
+    {
+      "id": "u246.S11_pair_cli_served_empty",
+      "description": "pair: the served keys as an empty set, so under a short listing every base key reads as withheld",
+      "file": "src/cratekit/sync/pair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "29551e27b5771a67",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_unread.py",
+        "tests/test_sync_pair_window_lag.py",
+        "tests/test_sync_pair_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 131,
+      "baseline_collected": 131,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair.py::test_a_short_listing_removes_nothing_from_the_account"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            served = set(account_keys)",
+      "new": "            served = set()",
+      "source": {
+        "table": "u246.json",
+        "id": "S11_pair_cli_served_empty"
+      }
+    },
+    {
+      "id": "u246.S12_pair_cli_made_here_empty",
+      "description": "pair: no account ids made this run, so discovery is told every pair, the ones this run made included, is already paired",
+      "file": "src/cratekit/sync/pair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aef5be92a90e4fde",
+      "subset": [
+        "tests/test_sync_pair_resume.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 14,
+      "baseline_collected": 14,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_resume.py::test_a_stop_between_making_a_playlist_and_filling_it_fills_it_and_makes_no_second[2-the make and the move]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            made_here = set(ours.values())",
+      "new": "            made_here = set()",
+      "source": {
+        "table": "u246.json",
+        "id": "S12_pair_cli_made_here_empty"
+      }
+    },
+    {
+      "id": "u246.S13_pair_cli_per_element",
+      "description": "pair: build the made here set once per pair again (the shape on main)",
+      "file": "src/cratekit/sync/pair_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "8ee070c4ee7726ab",
+      "subset": [
+        "tests/test_comprehension_sets.py",
+        "tests/test_sync_pair_discover.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 78,
+      "baseline_collected": 78,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_comprehension_sets.py::test_no_comprehension_in_the_package_rebuilds_an_invariant_set_per_element"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        if pair.account_id not in made_here",
+      "new": "                        if pair.account_id not in set(ours.values())",
+      "source": {
+        "table": "u246.json",
+        "id": "S13_pair_cli_per_element"
+      }
+    },
+    {
+      "id": "u198.D10_twins",
+      "description": "pair_discover: a twins folder is walked",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8e26e861af80986e",
+      "subset": [
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_discover.py::test_cratekits_own_trees_and_the_favorites_folder_are_never_discovered"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if _attribute(top) == FOLDER and TWIN_FOLDER.fullmatch(top_name):",
+      "new": "        if False:",
+      "source": {
+        "table": "u198.json",
+        "id": "D10_twins"
+      }
+    },
+    {
+      "id": "u198.D11_two_homes",
+      "description": "pair_discover: two favourites playlists read as one home, hidden",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8146b5e40294617c",
+      "subset": [
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_discover.py::test_two_favourites_playlists_leave_both_folders_out_and_say_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if len(named) > 1",
+      "new": "        if len(named) > 2",
+      "source": {
+        "table": "u198.json",
+        "id": "D11_two_homes"
+      }
+    },
+    {
+      "id": "u198.D2_favorites_home",
+      "description": "pair_discover: the one favourites home is walked like any folder",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c2481400f68db874",
+      "subset": [
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_discover.py::test_a_favourites_name_inside_another_apps_folder_does_not_unsettle_the_home",
+        "tests/test_sync_pair_discover.py::test_a_favourites_playlist_at_the_root_is_not_discovered",
+        "tests/test_sync_pair_discover.py::test_cratekits_own_trees_and_the_favorites_folder_are_never_discovered"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if not unsure:\n                return",
+      "new": "            if False:\n                return",
+      "source": {
+        "table": "u198.json",
+        "id": "D2_favorites_home"
+      }
+    },
+    {
+      "id": "u198.D3_held",
+      "description": "pair_discover: a playlist a pair holds is found again",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5541ef6ec02210ec",
+      "subset": [
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_discover.py::test_a_paired_playlist_is_not_listed_on_a_later_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if node_id in held:\n            return",
+      "new": "        if False:\n            return",
+      "source": {
+        "table": "u198.json",
+        "id": "D3_held"
+      }
+    },
+    {
+      "id": "u198.D4_skip",
+      "description": "pair_discover: a playlist under a skipped folder is found",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "07a11607d9c6223c",
+      "subset": [
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_discover.py::test_an_archive_playlist_is_listed_and_never_written",
+        "tests/test_sync_pair_discover.py::test_the_skip_list_is_the_configurations",
+        "tests/test_sync_pair_discover.py::test_two_favourites_playlists_leave_both_folders_out_and_say_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if skip_why:",
+      "new": "        if False:",
+      "source": {
+        "table": "u198.json",
+        "id": "D4_skip"
+      }
+    },
+    {
+      "id": "u198.D5_smart",
+      "description": "pair_discover: a smart playlist is found as a plain one",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "039b331e5560846f",
+      "subset": [
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_discover.py::test_a_smart_playlist_is_listed_not_paired"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if attribute != PLAIN:",
+      "new": "        if False:",
+      "source": {
+        "table": "u198.json",
+        "id": "D5_smart"
+      }
+    },
+    {
+      "id": "u198.D6_released",
+      "description": "pair_discover: a released playlist is found again",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "79e0c061edfe66ab",
+      "subset": [
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_discover.py::test_a_playlist_deleted_on_the_account_unpairs_stays_and_is_not_made_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if node_id in gone:",
+      "new": "        if False:",
+      "source": {
+        "table": "u198.json",
+        "id": "D6_released"
+      }
+    },
+    {
+      "id": "u198.D7_twice",
+      "description": "pair_discover: two playlists of one title are both found",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bbc22f7a21eccff7",
+      "subset": [
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_discover.py::test_two_playlists_taking_one_title_refuse_that_title_only"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if counted[one.title] > 1:",
+      "new": "        if counted[one.title] > 2:",
+      "source": {
+        "table": "u198.json",
+        "id": "D7_twice"
+      }
+    },
+    {
+      "id": "u198.D8_top_names",
+      "description": "pair_discover: a top folder the taxonomy names is walked",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a1e2bbc37546ff37",
+      "subset": [
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_discover.py::test_cratekits_own_trees_and_the_favorites_folder_are_never_discovered"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if top_id in roots or top_name in names or top_id in foreign:",
+      "new": "        if top_id in roots or top_id in foreign:",
+      "source": {
+        "table": "u198.json",
+        "id": "D8_top_names"
+      }
+    },
+    {
+      "id": "u198.D9_foreign",
+      "description": "pair_discover: another app's top folder is walked",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "db0375b49e43c463",
+      "subset": [
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair.py",
+        "tests/test_sync_twins.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 166,
+      "baseline_collected": 166,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_discover.py::test_a_favourites_name_inside_another_apps_folder_does_not_unsettle_the_home",
+        "tests/test_sync_pair_discover.py::test_another_apps_top_folder_is_never_discovered"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if top_id in roots or top_name in names or top_id in foreign:",
+      "new": "        if top_id in roots or top_name in names:",
+      "source": {
+        "table": "u198.json",
+        "id": "D9_foreign"
+      }
+    },
+    {
+      "id": "u202.D1_skip",
+      "description": "home_of: a folder the skip list names is made in",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fcd4f4264f41e113",
+      "subset": [
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_discover.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_home_of_refuses_each_place_it_cannot_decide"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if folder in set(str(one) for one in skip):",
+      "new": "        if False:",
+      "source": {
+        "table": "u202.json",
+        "id": "D1_skip"
+      }
+    },
+    {
+      "id": "u202.D2_two_tops",
+      "description": "home_of: two top folders of the name, the first is taken",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "847891ba11c67fbb",
+      "subset": [
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_discover.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_home_of_refuses_each_place_it_cannot_decide"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if len(top) > 1:",
+      "new": "        if len(top) > 2:",
+      "source": {
+        "table": "u202.json",
+        "id": "D2_two_tops"
+      }
+    },
+    {
+      "id": "u202.D3_longest",
+      "description": "home_of: the shortest subfolder name is read first",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "553936bf03f091f6",
+      "subset": [
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_discover.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_home_of_reads_the_longest_subfolder_and_strips_the_prefix"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            longest = max(len(named(row)) for row in fits)",
+      "new": "            longest = min(len(named(row)) for row in fits)",
+      "source": {
+        "table": "u202.json",
+        "id": "D3_longest"
+      }
+    },
+    {
+      "id": "u202.D5_name_taken",
+      "description": "home_of: a name the folder already holds is made again beside it",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f1134e7303370dd7",
+      "subset": [
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_discover.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_a_rekordbox_playlist_of_the_name_no_pair_holds_is_left_and_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if here:\n        where = \" / \".join(path) or \"the rekordbox root\"",
+      "new": "    if False:\n        where = \" / \".join(path) or \"the rekordbox root\"",
+      "source": {
+        "table": "u202.json",
+        "id": "D5_name_taken"
+      }
+    },
+    {
+      "id": "u202.D6_favourites",
+      "description": "home_of: the folder holding the favourites is made in",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e05ee1ee9e1a815b",
+      "subset": [
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_discover.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 83,
+      "baseline_collected": 83,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_back.py::test_home_of_refuses_the_folder_holding_the_favourites"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            _attribute(row) == PLAIN\n            and named(row) == favorites\n            and str(getattr(row, \"ParentID\", \"\") or \"\") in above",
+      "new": "            False",
+      "source": {
+        "table": "u202.json",
+        "id": "D6_favourites"
+      }
+    },
+    {
+      "id": "u216.M11_paired_raw",
+      "description": "downloaded_copy: compare the paired title as it stands, its folder prefix kept",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "80021f2021ab2ae5",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_a_downloaded_copy_in_a_created_folder_is_named_a_copy",
+        "tests/test_sync_pair_adopted.py::test_a_downloaded_copy_made_after_the_sync_beside_its_pair_is_named_a_copy[DOWNLOADED Genre Trivia! Techno]",
+        "tests/test_sync_pair_adopted.py::test_a_downloaded_copy_made_after_the_sync_beside_its_pair_is_named_a_copy[DOWNLOADED Techno]",
+        "tests/test_sync_pair_adopted.py::test_a_downloaded_copy_made_after_the_sync_beside_its_pair_is_named_a_copy[downloaded techno]",
+        "tests/test_sync_pair_adopted.py::test_a_playlist_and_its_downloaded_copy_made_in_one_sync_bring_in_the_one",
+        "tests/test_sync_pair_adopted.py::test_downloaded_copy_names_the_paired_title_it_copies"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if name_of(folder, one).casefold() == wanted:",
+      "new": "        if one.casefold() == wanted:",
+      "source": {
+        "table": "u216.json",
+        "id": "M11_paired_raw"
+      }
+    },
+    {
+      "id": "u216.M12_empty_rest",
+      "description": "downloaded_copy: a title with nothing left after the prefix copies a playlist titled as the folder alone",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "bcb9e3c6b46feaa5",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_downloaded_copy_names_the_paired_title_it_copies"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not wanted:\n        return \"\"\n    for one in sorted",
+      "new": "    for one in sorted",
+      "source": {
+        "table": "u216.json",
+        "id": "M12_empty_rest"
+      }
+    },
+    {
+      "id": "u216.M1_held_record_ignored",
+      "description": "before_adoption: a playlist the record says the folder held reads as new, so it is made in rekordbox",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cb261a0414ae05f1",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_a_downloaded_copy_made_after_the_sync_beside_its_pair_is_named_a_copy[DOWNLOADED Genre Trivia! Techno]",
+        "tests/test_sync_pair_adopted.py::test_a_downloaded_copy_made_after_the_sync_beside_its_pair_is_named_a_copy[DOWNLOADED Techno]",
+        "tests/test_sync_pair_adopted.py::test_a_downloaded_copy_made_after_the_sync_beside_its_pair_is_named_a_copy[downloaded techno]",
+        "tests/test_sync_pair_adopted.py::test_a_downloaded_copy_of_a_playlist_no_pair_holds_comes_in",
+        "tests/test_sync_pair_adopted.py::test_a_downloaded_copy_the_adopted_folder_held_is_named_and_never_made",
+        "tests/test_sync_pair_adopted.py::test_a_playlist_and_its_downloaded_copy_made_in_one_sync_bring_in_the_one",
+        "tests/test_sync_pair_adopted.py::test_before_adoption_reads_the_record_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if account_id in held:\n            return (",
+      "new": "        if False:\n            return (",
+      "source": {
+        "table": "u216.json",
+        "id": "M1_held_record_ignored"
+      }
+    },
+    {
+      "id": "u216.M2_created_folder_by_time",
+      "description": "before_adoption: drop the created folder answer, so an unrecorded created folder is read by time and its new playlists named",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "10d5c544ece8931b",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_a_created_folder_without_a_record_still_brings_in",
+        "tests/test_sync_pair_adopted.py::test_before_adoption_reads_the_record_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if created:\n        return \"\"\n    unrecorded = (",
+      "new": "    unrecorded = (",
+      "source": {
+        "table": "u216.json",
+        "id": "M2_created_folder_by_time"
+      }
+    },
+    {
+      "id": "u216.M3_no_moment_reads_new",
+      "description": "before_adoption: an unrecorded folder with no made pair to date it reads every playlist as new",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3b3726f792c3bed7",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_before_adoption_without_a_record_reads_the_time"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if adopted is None:\n        return (",
+      "new": "    if adopted is None:\n        return \"\" if True else (",
+      "source": {
+        "table": "u216.json",
+        "id": "M3_no_moment_reads_new"
+      }
+    },
+    {
+      "id": "u216.M4_no_time_reads_new",
+      "description": "before_adoption: a playlist with no creation time in an unrecorded folder reads as new",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "182434bcce7a1c83",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_before_adoption_without_a_record_reads_the_time",
+        "tests/test_sync_pair_adopted.py::test_without_a_record_a_creation_time_without_a_zone_is_no_time",
+        "tests/test_sync_pair_adopted.py::test_without_a_record_or_a_creation_time_every_unpaired_playlist_is_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if made is None or made.tzinfo is None:\n        return (",
+      "new": "    if made is None or made.tzinfo is None:\n        return \"\" if True else (",
+      "source": {
+        "table": "u216.json",
+        "id": "M4_no_time_reads_new"
+      }
+    },
+    {
+      "id": "u216.M5_naive_time_trusted",
+      "description": "before_adoption: a creation time without a zone is compared as given",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "98fae852e6665a50",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_before_adoption_without_a_record_reads_the_time",
+        "tests/test_sync_pair_adopted.py::test_without_a_record_a_creation_time_without_a_zone_is_no_time"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if made is None or made.tzinfo is None:",
+      "new": "    if made is None:",
+      "source": {
+        "table": "u216.json",
+        "id": "M5_naive_time_trusted"
+      }
+    },
+    {
+      "id": "u216.M6_equal_moment_new",
+      "description": "before_adoption: a playlist made at the adoption moment itself reads as new",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5efaa6d3df3fb012",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_before_adoption_without_a_record_reads_the_time"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if made <= adopted:",
+      "new": "    if made < adopted:",
+      "source": {
+        "table": "u216.json",
+        "id": "M6_equal_moment_new"
+      }
+    },
+    {
+      "id": "u216.M7_time_rule_off",
+      "description": "before_adoption: an unrecorded folder's playlist with a time never reads as held",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "866b94aba650a49a",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_before_adoption_without_a_record_reads_the_time",
+        "tests/test_sync_pair_adopted.py::test_without_a_record_the_creation_time_decides",
+        "tests/test_sync_pair_adopted.py::test_without_a_record_the_moment_is_read_from_this_folders_own_pairs"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if made <= adopted:",
+      "new": "    if False:",
+      "source": {
+        "table": "u216.json",
+        "id": "M7_time_rule_off"
+      }
+    },
+    {
+      "id": "u216.M8_moment_latest",
+      "description": "adoption_moment: the latest mark rather than the earliest, so a playlist made between two marks reads as held before",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "940b51a091069151",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_the_adoption_moment_is_the_earliest_readable_mark"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return min(found) if found else None",
+      "new": "    return max(found) if found else None",
+      "source": {
+        "table": "u216.json",
+        "id": "M8_moment_latest"
+      }
+    },
+    {
+      "id": "u216.M9_moment_naive_kept",
+      "description": "adoption_moment: keep a mark without a zone, which cannot be compared with the account's times",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f7704836a2121e37",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_account.py",
+        "tests/test_sync_pair_adopted.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_calls.py",
+        "tests/test_sync_pair_discover.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_hold_every.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_pair_resume.py",
+        "tests/test_sync_pair_resume_one.py",
+        "tests/test_sync_pair_tie.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 383,
+      "baseline_collected": 383,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_adopted.py::test_the_adoption_moment_is_the_earliest_readable_mark"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if moment.tzinfo is not None:\n            found.append(moment)",
+      "new": "        found.append(moment)",
+      "source": {
+        "table": "u216.json",
+        "id": "M9_moment_naive_kept"
+      }
+    },
+    {
+      "id": "u242.M25_copy_needs_the_prefix",
+      "description": "pair discovery: read a copy only by its prefix, so a stripped copy is made in rekordbox again",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b2413616f36be897",
+      "subset": [
+        "tests/test_u242_taken.py",
+        "tests/test_sync_pair_adopted.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u242_taken.py::test_pairing_techno_with_a_stripped_former_downloaded_techno"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not prefixed and not taken:",
+      "new": "    if not prefixed:",
+      "source": {
+        "table": "u242.json",
+        "id": "M25_copy_needs_the_prefix"
+      }
+    },
+    {
+      "id": "u242.M27_copy_pool_reads_no_taken",
+      "description": "pair discovery: a taken title with no prefix reads every taken playlist beside it, so two of one name are each the other's copy",
+      "file": "src/cratekit/sync/pair_discover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dc8f4e4c8a33ab28",
+      "subset": [
+        "tests/test_u242_taken.py",
+        "tests/test_sync_pair_adopted.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 76,
+      "baseline_collected": 76,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_u242_taken.py::test_a_prefixed_copy_beside_a_taken_original_is_still_its_copy"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if other_id != account_id and not (plain_taken and other_id in held)",
+      "new": "        if other_id != account_id",
+      "source": {
+        "table": "u242.json",
+        "id": "M27_copy_pool_reads_no_taken"
+      }
+    },
+    {
+      "id": "r1404.M1_disagreeing_base_ignored",
+      "description": "merge: a base whose two sides disagree on order no longer lets rekordbox lead, the defect R-1404 names",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9abd5d45344f2710",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_track_the_account_adds_is_placed_in_the_order_rekordbox_holds",
+        "tests/test_sync_pair_merge.py::test_only_the_tracks_both_sides_held_at_the_base_are_read_for_their_order",
+        "tests/test_sync_pair_merge.py::test_with_no_change_since_a_base_whose_sides_disagree_rekordbox_leads"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(\n            base.rekordbox, base.account\n        ):",
+      "new": "        if order_changed(rekordbox.keys, base.rekordbox) or False:",
+      "source": {
+        "table": "r1404.json",
+        "id": "M1_disagreeing_base_ignored"
+      }
+    },
+    {
+      "id": "r1404.M2_rekordbox_move_ignored",
+      "description": "merge: rekordbox's own reorder since the base no longer leads, only a disagreeing base does",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "49d7ab353589bafb",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair.py::test_a_whole_sync_after_a_skipped_one_finishes_both_sides_from_the_old_base",
+        "tests/test_sync_pair.py::test_when_rekordbox_alone_reorders_the_account_follows",
+        "tests/test_sync_pair_merge.py::test_when_rekordbox_alone_reordered_its_order_wins"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(\n            base.rekordbox, base.account\n        ):",
+      "new": "        if False or order_changed(\n            base.rekordbox, base.account\n        ):",
+      "source": {
+        "table": "r1404.json",
+        "id": "M2_rekordbox_move_ignored"
+      }
+    },
+    {
+      "id": "r1404.M3_account_move_not_guarded",
+      "description": "merge: rekordbox leads over a disagreeing base even when the account changed order since it, so an account reorder no longer reaches rekordbox",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f66a1f7c70bc4705",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair.py::test_when_both_sides_reorder_the_account_order_wins",
+        "tests/test_sync_pair_merge.py::test_the_account_reordered_since_a_base_whose_sides_disagree_still_leads",
+        "tests/test_sync_pair_merge.py::test_the_stopped_writes_order_is_not_read_against_the_base",
+        "tests/test_sync_pair_merge.py::test_when_both_sides_reordered_the_account_order_wins"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif base is not None and not order_changed(account.keys, base.account):",
+      "new": "    elif base is not None:",
+      "source": {
+        "table": "r1404.json",
+        "id": "M3_account_move_not_guarded"
+      }
+    },
+    {
+      "id": "r1404.M4_always_rekordbox",
+      "description": "merge: with neither side changed, rekordbox leads whatever the base, so a base whose sides agree takes the other tie between two additions",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "56592db022d09783",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_base_whose_sides_agree_leaves_the_account_leading_when_neither_side_moved",
+        "tests/test_sync_pair_merge.py::test_only_the_tracks_both_sides_held_at_the_base_are_read_for_their_order",
+        "tests/test_sync_pair_merge.py::test_the_base_s_disagreement_is_read_against_the_account_s_base_not_the_account_now",
+        "tests/test_sync_pair_merge.py::test_the_base_s_disagreement_is_read_at_the_base_not_between_the_sides_now"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(\n            base.rekordbox, base.account\n        ):",
+      "new": "        if True:",
+      "source": {
+        "table": "r1404.json",
+        "id": "M4_always_rekordbox"
+      }
+    },
+    {
+      "id": "r1404.M5_disagreement_read_now",
+      "description": "merge: the disagreement is read between the sides as they stand now rather than at the base",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "818c88491a7195a8",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_the_base_s_disagreement_is_read_against_the_account_s_base_not_the_account_now",
+        "tests/test_sync_pair_merge.py::test_the_base_s_disagreement_is_read_at_the_base_not_between_the_sides_now"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(\n            base.rekordbox, base.account\n        ):",
+      "new": "        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(\n            rekordbox.keys, account.keys\n        ):",
+      "source": {
+        "table": "r1404.json",
+        "id": "M5_disagreement_read_now"
+      }
+    },
+    {
+      "id": "r1404.M6_disagreement_read_against_the_account_now",
+      "description": "merge: the base's rekordbox order is compared with the account as it stands, not the account's base",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7e9624fc36ba6972",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_the_base_s_disagreement_is_read_against_the_account_s_base_not_the_account_now"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(\n            base.rekordbox, base.account\n        ):",
+      "new": "        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(\n            base.rekordbox, account.keys\n        ):",
+      "source": {
+        "table": "r1404.json",
+        "id": "M6_disagreement_read_against_the_account_now"
+      }
+    },
+    {
+      "id": "r1404.S1_default_leader",
+      "description": "sample: the account no longer leads by default, so a first sync and a both reordered pair take rekordbox's order",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "96495d2cc00ec3f6",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 16,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair.py::test_when_both_sides_reorder_the_account_order_wins",
+        "tests/test_sync_pair_merge.py::test_a_base_is_read_as_before_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_base_whose_sides_agree_leaves_the_account_leading_when_neither_side_moved",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_reads_its_order_against_it_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_into_an_empty_rekordbox_side_is_led_by_the_account_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_whose_order_is_kept_leads_with_the_account",
+        "tests/test_sync_pair_merge.py::test_only_the_tracks_both_sides_held_at_the_base_are_read_for_their_order",
+        "tests/test_sync_pair_merge.py::test_the_account_reordered_since_a_base_whose_sides_disagree_still_leads",
+        "tests/test_sync_pair_merge.py::test_the_account_reordered_since_the_stopped_write_leads_whatever_else_moved",
+        "tests/test_sync_pair_merge.py::test_the_base_s_disagreement_is_read_against_the_account_s_base_not_the_account_now",
+        "tests/test_sync_pair_merge.py::test_the_base_s_disagreement_is_read_at_the_base_not_between_the_sides_now",
+        "tests/test_sync_pair_merge.py::test_the_stopped_writes_order_is_not_read_against_the_base",
+        "tests/test_sync_pair_merge.py::test_when_both_sides_reordered_the_account_order_wins",
+        "tests/test_sync_pair_merge.py::test_when_the_account_alone_reordered_its_order_wins",
+        "tests/test_sync_pair_merge.py::test_with_no_change_since_the_stopped_write_the_side_that_led_it_leads_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    leader = ACCOUNT\n    if stopped is not None:",
+      "new": "    leader = REKORDBOX\n    if stopped is not None:",
+      "source": {
+        "table": "r1404.json",
+        "id": "S1_default_leader"
+      }
+    },
+    {
+      "id": "r1404.S2_stopped_leader_again",
+      "description": "sample, U225: with no change since a stopped write, the side that led it no longer leads again",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "66e7fb4c169351f9",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_the_stopped_writes_order_is_not_read_against_the_base",
+        "tests/test_sync_pair_merge.py::test_with_no_change_since_the_stopped_write_the_side_that_led_it_leads_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif not account_moved and stopped.leader == REKORDBOX:",
+      "new": "        elif False:",
+      "source": {
+        "table": "r1404.json",
+        "id": "S2_stopped_leader_again"
+      }
+    },
+    {
+      "id": "r1416.M1_rekordbox_does_not_lead",
+      "description": "merge: a first sync whose account order is not kept is led by the account again, the defect R-1416 names",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1fdbdf1ee4ecd104",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_led_by_rekordbox_places_the_accounts_tracks_after_their_neighbours",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_whose_order_is_not_kept_leads_with_rekordbox"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        # order rekordbox stands in, or the DJ's arrangement is lost for good.\n        leader = REKORDBOX",
+      "new": "        # order rekordbox stands in, or the DJ's arrangement is lost for good.\n        leader = ACCOUNT",
+      "source": {
+        "table": "r1416.json",
+        "id": "M1_rekordbox_does_not_lead"
+      }
+    },
+    {
+      "id": "r1416.M2_order_kept_ignored",
+      "description": "merge: the flag is ignored, so a first sync under GIG READY or with every pair's order kept is led by rekordbox",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "69a95d733d9ae66b",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_whose_order_is_kept_leads_with_the_account"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif base is None and not order_kept and rekordbox.keys:",
+      "new": "    elif base is None and rekordbox.keys:",
+      "source": {
+        "table": "r1416.json",
+        "id": "M2_order_kept_ignored"
+      }
+    },
+    {
+      "id": "r1416.M3_empty_rekordbox_leads",
+      "description": "merge: an empty rekordbox side leads its first sync, so the gate says the order follows rekordbox's where it takes the account's",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "19d97ee98493f6e8",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_into_an_empty_rekordbox_side_is_led_by_the_account_whatever_the_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif base is None and not order_kept and rekordbox.keys:",
+      "new": "    elif base is None and not order_kept:",
+      "source": {
+        "table": "r1416.json",
+        "id": "M3_empty_rekordbox_leads"
+      }
+    },
+    {
+      "id": "r1416.M4_first_sync_unguarded",
+      "description": "merge: a pair whose order is not kept is led by rekordbox whatever its base, so an account reorder after the first sync no longer reaches rekordbox",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "213df8cba9306704",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_base_is_read_as_before_whatever_the_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    elif base is None and not order_kept and rekordbox.keys:",
+      "new": "    elif not order_kept and rekordbox.keys:",
+      "source": {
+        "table": "r1416.json",
+        "id": "M4_first_sync_unguarded"
+      }
+    },
+    {
+      "id": "r1416.M5_stopped_write_yields",
+      "description": "merge: outside the scope a stopped write no longer decides the order, so the new first sync rule takes its place",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5d78814250167ec1",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_reads_its_order_against_it_whatever_the_order"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if stopped is not None:\n        # U225.",
+      "new": "    if stopped is not None and order_kept:\n        # U225.",
+      "source": {
+        "table": "r1416.json",
+        "id": "M5_stopped_write_yields"
+      }
+    },
+    {
+      "id": "r1416.M6_default_not_kept",
+      "description": "merge: the keyword's default reads the order as not kept, so a caller that says nothing is led by rekordbox on a first sync",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "4a85d29a18c258ec",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_whose_order_is_kept_leads_with_the_account"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    order_kept: bool = True,",
+      "new": "    order_kept: bool = False,",
+      "source": {
+        "table": "r1416.json",
+        "id": "M6_default_not_kept"
+      }
+    },
+    {
+      "id": "r1416.S2_placed_after_neighbour",
+      "description": "sample, U130: a track only the following side holds goes to the start rather than after its neighbour",
+      "file": "src/cratekit/sync/pair_merge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "56f115d256642418",
+      "subset": [
+        "tests/test_sync_pair.py",
+        "tests/test_sync_pair_back.py",
+        "tests/test_sync_pair_hold.py",
+        "tests/test_sync_pair_merge.py",
+        "tests/test_sync_twins_hold.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 22,
+      "collected": 224,
+      "baseline_collected": 224,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair.py::test_a_short_account_listing_reads_nothing_as_removed",
+        "tests/test_sync_pair.py::test_a_skipped_account_side_is_finished_by_the_next_sync",
+        "tests/test_sync_pair.py::test_a_track_added_in_rekordbox_only_lands_on_the_account",
+        "tests/test_sync_pair.py::test_an_unmatched_rekordbox_track_is_named_and_stays_in_rekordbox",
+        "tests/test_sync_pair.py::test_the_first_sync_marks_the_pair_and_adds_only",
+        "tests/test_sync_pair_back.py::test_a_removal_rekordbox_kept_no_moment_for_keeps_the_track_and_names_the_call",
+        "tests/test_sync_pair_back.py::test_a_removal_whose_row_time_predates_the_last_sync_is_no_moment",
+        "tests/test_sync_pair_back.py::test_a_row_held_as_two_releases_is_put_back_when_its_later_release_was",
+        "tests/test_sync_pair_hold.py::test_a_held_plan_other_than_the_offer_is_planned_again",
+        "tests/test_sync_pair_hold.py::test_a_no_change_sync_of_a_linked_pair_makes_no_isrc_lookup",
+        "tests/test_sync_pair_hold.py::test_a_two_gate_sync_makes_one_plans_lookups",
+        "tests/test_sync_pair_hold.py::test_an_unreadable_held_plan_is_planned_again_and_says_why",
+        "tests/test_sync_pair_hold.py::test_answers_continued_in_later_commands_ask_nothing_when_nothing_moved",
+        "tests/test_sync_pair_merge.py::test_a_base_whose_sides_agree_leaves_the_account_leading_when_neither_side_moved",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_reads_its_order_against_it_whatever_the_order",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it",
+        "tests/test_sync_pair_merge.py::test_a_first_sync_led_by_rekordbox_places_the_accounts_tracks_after_their_neighbours",
+        "tests/test_sync_pair_merge.py::test_a_run_of_new_tracks_at_the_head_of_the_other_side_keeps_its_own_order",
+        "tests/test_sync_pair_merge.py::test_a_track_added_in_rekordbox_only_is_added_on_the_account",
+        "tests/test_sync_pair_merge.py::test_a_track_added_mid_list_on_the_other_side_keeps_its_place",
+        "tests/test_sync_pair_merge.py::test_a_track_the_account_adds_is_placed_in_the_order_rekordbox_holds",
+        "tests/test_sync_pair_merge.py::test_the_first_sync_adds_only_and_keeps_every_track_either_side_holds"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        anchor += 1\n        result.insert(anchor, key)",
+      "new": "        result.insert(0, key)",
+      "source": {
+        "table": "r1416.json",
+        "id": "S2_placed_after_neighbour"
       }
     }
   ],
