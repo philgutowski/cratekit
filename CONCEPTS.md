@@ -721,9 +721,10 @@ U329 and the seam crossing ones since U331, and any line in one fails.
 The core modules a feature package may import, `CORE_INTERFACE` in
 `tests/test_import_rules.py`, at most 25. A reach into any other core module is
 a seam crossing. A listed module may re-export names of a core module off the
-list, each a counted core name, and never hands over a module: a module reached
-as an attribute of another, or imported from it, is a reach of that module
-itself (U331).
+list, each a counted core name. A module it imports at its top level is not one
+of them: reached as an attribute of the listed module, or imported from it, it
+is a reach of that module itself (U331). A module bound some other way is not
+followed.
 
 ### Seam crossing
 One of four things the import rules forbid: a private name used from another
@@ -735,9 +736,10 @@ package, one line per crossing however many files hold it.
 ### Toggle home
 The packages and modules a toggle of `core.profiles.MODULES` owns, `TOGGLE_HOMES`
 in `tests/test_import_rules.py`: what cannot be imported once it is off. A home
-is what the registry gates with the toggle, a package or the one module of a
-package that also builds verbs no toggle gates (U331). A package holding one is
-toggleable; every other package is always on.
+is a package, or the one module of a package that also builds verbs the toggle
+does not gate (U331); it never holds what builds such a verb. The table is kept
+by hand beside the registry, which no test holds it to. A package holding a
+home is toggleable; every other package is always on.
 
 ### Dangling verb
 A verb that no longer builds when a toggle that does not gate it is off, because

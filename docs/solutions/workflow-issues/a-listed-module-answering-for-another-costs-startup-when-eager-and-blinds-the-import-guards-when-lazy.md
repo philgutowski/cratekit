@@ -77,13 +77,25 @@ is made by what the module costs, not by what is least typing:
 2. **A listed module re-exports the names, eagerly.** Only where the listed
    module imported the other already, or the reports audit already admits it
    beside it and the cost was measured: `session` for `preflight`, `processes`
-   and `snapshot`, `config` for `profiles`, `tree_registry` for `foreign_tree`,
-   `jobs` for `discovery` and `cores`.
-3. **The module is the feature's own and lives in its package**, when one
-   feature package reaches it and nothing in core, write or the shell imports
-   it: `sync/held_plan.py`, `intake/rehearsal.py`, `intake/drift.py`.
+   and `snapshot`, `config` for `profiles`, `active_taxonomy` for
+   `foreign_tree`, `jobs` for `discovery`, `pool` for the cores' ceiling.
+3. **The module is no part of core and lives in the feature package that owns
+   it**, when nothing in core or write imports it: `sync/held_plan.py`,
+   `intake/rehearsal.py`, `intake/drift.py` (which analysis and the shell's
+   tail import from intake).
 
 Never the lazy `__getattr__`.
+
+**Measured does not mean measured at the listed module.** The first review
+found two re-exports that passed every check above and still cost something.
+`core.jobs` answered for the cores' ceiling, so `analysis/light.py`, which a
+spawned worker unpickles, imported the queue and the shell with it: 52.8 ms
+to import on the base, 110.6 ms on the branch, and 5 MB a worker. And
+`core.tree_registry` answered for `foreign_tree`, which loads the taxonomy
+that module had kept under `TYPE_CHECKING`. Ask who imports the listed module
+for the new name alone, and what else that module loads: the ceiling went to
+`pool`, which the worker imports already, and the foreign tree's names to
+`active_taxonomy`, which loads the taxonomy anyway.
 
 ## What to check before re-exporting
 
@@ -93,7 +105,11 @@ Never the lazy `__getattr__`.
   module in it, and is the other module in it already?
 - `grep -rn '"cratekit.core.<part>"' tests`: a guard that names the module
   resolves its callers by that name.
+- Every importer of the caller, a spawned worker's module above all: `python
+  -X importtime -c "import cratekit.<package>.<caller>"` before and after.
 - The tests that patch the name: with an eager re-export there are two
-  bindings, and a test patches the one its caller reads
-  (`tests/test_intake_land_rehearse.py` patches the room check on `snapshot`
-  for the capture and on `session` for the landing).
+  bindings, and a patch on one is not seen through the other. Assert the two
+  are one object (`tests/test_import_rules.py` does, for every name a listed
+  module takes from another core module) and patch below both where a test
+  must reach both (`tests/test_intake_land_rehearse.py` takes the room away
+  in `snapshot._free_bytes`).
