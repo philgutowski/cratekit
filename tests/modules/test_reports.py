@@ -1022,11 +1022,8 @@ def test_every_report_runs_with_the_library_directory_read_only(cfg, library_on_
         refused = _directories_refusing_a_write(directories)
         assert refused == directories, (
             f"only {refused} refused a write after chmod 0o555, so this proof "
-            f"would pass without proving anything for the rest. It needs an "
-            f"ordinary user and a filesystem that honours permission bits; "
-            f"running as root defeats it. There is deliberately no skip here, "
-            f"because a read-only claim that quietly stops being checked is the "
-            f"defect this unit is."
+            f"proves nothing for the rest. It needs an ordinary user and a "
+            f"filesystem honouring permission bits, and deliberately never skips."
         )
 
         stamped = sorted(music.glob("*.flac"))[0]
@@ -1039,11 +1036,8 @@ def test_every_report_runs_with_the_library_directory_read_only(cfg, library_on_
         except OSError:
             utimed = touched = False
         assert utimed and touched, (
-            "a bare stamp on a locked file was refused after all, so this lock "
-            "does cover the shape a sighting ledger reaches for and the docstring "
-            "above now says something false about its own limit. The digest is "
-            "what covers that act; this says so out loud so the two proofs are "
-            "not read as one."
+            "a bare stamp on a locked file was refused after all, so the lock "
+            "covers what only the digest was meant to cover; revisit both proofs."
         )
 
         view = export.read_export_file(library_on_disk)
@@ -2621,16 +2615,13 @@ def _files_this_unit_puts_on_disk() -> tuple[str, ...]:
         named |= {str(one.relative_to(REPO_ROOT)) for one in REPO_ROOT.glob(pattern)}
     absent = sorted(one for one in _PACKAGE_MODULES_ANOTHER_UNIT_OWNS if one not in named)
     assert absent == [], (
-        f"the exclusion names files the package does not hold: {absent}. A stale "
-        f"entry here silently shrinks the bound, which is the failure the bound "
-        f"exists to catch one level up"
+        f"the exclusion names files the package does not hold: {absent}, which "
+        f"silently shrinks the bound"
     )
     claimed = sorted(set(_PACKAGE_MODULES_ANOTHER_UNIT_OWNS) & set(CITED_FLOOR))
     assert claimed == [], (
-        f"the exclusion names files this unit's own floor claims: {claimed}. The "
-        f"two registers would then disagree about who owns them, and the widening "
-        f"that adds a genuinely owned file to the exclusion is exactly the drift "
-        f"this bound exists to refuse"
+        f"the exclusion names files this unit's own floor claims: {claimed}, so "
+        f"the two registers disagree about who owns them"
     )
     remaining = tuple(sorted(named - set(_PACKAGE_MODULES_ANOTHER_UNIT_OWNS)))
     assert remaining, "the exclusion emptied the bound, so it bounds nothing"
@@ -3100,11 +3091,9 @@ def test_the_allowlist_admits_no_writer_this_guard_cannot_name():
 
     assert not unnamed, (
         f"the reports allowlist admits modules whose writers this guard cannot "
-        f"name: {unnamed}. Either add each name to FILESYSTEM_MUTATIONS, or to "
-        f"QUALIFIED_MUTATIONS with the module in front of it, so a report calling "
-        f"it is caught, or drop the module from ALLOWED_IMPORTS. The allowlist's "
-        f"comment claims nothing it admits can touch a file except through "
-        f"pathlib, and that claim is what this asserts."
+        f"name: {unnamed}. Add each to FILESYSTEM_MUTATIONS, or to "
+        f"QUALIFIED_MUTATIONS behind its module, or drop the module from "
+        f"ALLOWED_IMPORTS."
     )
 
 
