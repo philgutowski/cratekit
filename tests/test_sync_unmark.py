@@ -1,13 +1,11 @@
 """``crate sync unmark``: a mark a pass wrote can be taken off again (R-838).
 
-A LEGACY MARK, SINCE U242. ``sync mark`` no longer retitles anything: it holds
-a playlist as taken in the record, and letting that go is driven in
-``tests/test_u242_taken.py``. What this file drives is the TITLE half of the
-verb, which still puts back every prefix a pass wrote before U242. Every test
-below drives ``crate sync all``, finishes its jobs and lists and lands the
-pass, through ``tests/test_sync_mark.py``'s own helpers, and then writes the
-record entry a pre U242 mark wrote, with the listing retitled to what that mark
-wrote, which is what the live account holds for every mark made before it.
+A legacy mark since U242: ``sync mark`` now holds a playlist as taken in the
+record (driven in ``tests/test_u242_taken.py``) and retitles nothing. This
+file drives the title half, which still puts back every prefix a pass wrote
+before U242. Each test lands a pass with ``tests/test_sync_mark.py``'s helpers
+and then writes the record entry and retitled listing a pre U242 mark left,
+as the live account holds them.
 """
 
 from __future__ import annotations
@@ -47,9 +45,10 @@ def fresh_cache():
 
 
 def _marked(slim_cfg, monkeypatch, *listed):
-    """A pass over ``listed``, landed whole and marked. Returns the fake
-    catalogue, the account, the pass's name and the intake file, with the
-    listing retitled to what the mark wrote."""
+    """A pass over ``listed``, landed whole and marked, the listing retitled to the mark.
+
+    Returns the fake catalogue, the account, the pass's name and the intake file.
+    """
     listed = listed or THREE
     fake, name = _swept_pass(monkeypatch, *listed)
     account = outbound_fakes.FakeAccount()
@@ -181,7 +180,7 @@ def test_a_playlist_the_pass_never_marked_is_refused_whatever_its_title(slim, mo
     assert refused["cause"]["detail"]["not_marked"] == ["pl-x"]
     assert fake.account_listings == listings, "the account was listed before the refusal"
 
-    # And left out of the whole pass's plan, which is every mark it made.
+    # And left out of the whole pass's plan.
     code, done = _answered(name)
     assert code == int(ExitCode.OK), done
     assert sorted(_by_id(done)) == ["pl-a", "pl-b"]
@@ -342,8 +341,8 @@ def test_a_mark_after_an_unmark_clears_the_stamp(slim, monkeypatch):
         json.dumps({"version": 1, "library_id": "another-library", "marks": []}),
         "LIBRARY:" + json.dumps({"version": 1, "marks": {}}),
         "LIBRARY:" + json.dumps({"version": 1, "marks": [{"pass": "p", "playlist_id": "x"}]}),
-        # Every field present and non empty, one of them not text: only the
-        # type check refuses it (row R4 in docs/mutation/r838-c.md).
+        # Every field present and non empty, one not text, so only the type
+        # check refuses it (row R4 in docs/mutation/r838-c.md).
         "LIBRARY:"
         + json.dumps(
             {
@@ -376,13 +375,12 @@ def test_an_unreadable_record_refuses_rather_than_reading_as_empty(slim, monkeyp
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 5. The review's findings, driven
+# 5. Stamps, record failures and a playlist gone from the account
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_title_already_put_back_is_skipped_without_a_stamp(slim, monkeypatch):
-    """An unmark whose stamp did not land, or a person who typed the old title
-    back: either way the title is what this verb would write."""
+    """A stamp that did not land, or the old title typed back, reads as this verb's title."""
     fake, account, name, _xml = _marked(slim, monkeypatch)
     fake.account = [_playlist("pl-a", "Warmup"), *fake.account[1:]]
     code, done = _answered(name)
@@ -407,8 +405,8 @@ def test_a_later_mark_by_another_pass_owns_the_prefix(slim, monkeypatch):
     code, theirs = _answered("later_synced")
     assert code == int(ExitCode.OK), theirs
     assert account.renamed[-1] == ("pl-a", "Warmup")
-    # THE LATER PASS'S ENTRY IS THE ONE STAMPED, never the first one the
-    # record holds for that playlist (row R3 in docs/mutation/r838-c.md).
+    # THE LATER PASS'S ENTRY IS THE ONE STAMPED, never the first the record
+    # holds for that playlist (row R3 in docs/mutation/r838-c.md).
     record = mark_record.MarkRecord(slim)
     assert record.of_pass("later_synced")[0].unmarked
     assert not {e.playlist_id: e.unmarked for e in record.of_pass(name)}["pl-a"]
@@ -446,7 +444,7 @@ def test_an_unreadable_record_refuses_the_mark_before_its_gate(slim, monkeypatch
 
 
 def test_a_record_that_cannot_be_written_refuses_the_mark_and_renames_nothing(slim, monkeypatch):
-    """Since U242 the record is the mark, so a full disk is the mark refused."""
+    """The record is the mark (U242), so a full disk refuses the mark."""
     _fake, name = _swept_pass(monkeypatch, *THREE)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)

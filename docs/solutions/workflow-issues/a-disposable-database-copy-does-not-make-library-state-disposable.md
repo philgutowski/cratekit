@@ -49,9 +49,10 @@ Stopping at the gate is safe on a copy: the plan and the census write nothing a
 live run reads as done. Going PAST a gate on a copy needs the library root
 redirected as well (`CRATEKIT_LIBRARY_ROOT`, or `library.root` in the temporary
 config) to a scratch directory, and the state inventory checked for every
-`StateRoot.LIBRARY` entry the verb touches. Grep the inventory in
-`src/cratekit/core/config.py` for `root=StateRoot.LIBRARY` before trusting any
-copy run that approves.
+`StateRoot.LIBRARY` entry the verb touches. List them before trusting any copy
+run that approves, from the runtime inventory rather than a grep of its source,
+whose spelling a refactor changes (U299):
+`python -c "from cratekit.core import config; print([e.key for e in config.STATE_FILES if e.root is config.StateRoot.LIBRARY])"`.
 
 ## How it was done, sittings 14 and 15
 

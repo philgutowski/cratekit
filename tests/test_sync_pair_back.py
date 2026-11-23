@@ -1,12 +1,9 @@
 """U202, ``crate sync pair`` with no argument, the other way: a playlist made on the account comes to rekordbox.
 
-Driven through the dispatcher on a disposable database and the fake account
-U198's tests built, so a playlist one sync makes is one the next sync lists.
-Every scenario the brief names is driven end to end, both explicit gates and
-their recorded answers included: an account playlist made in a synced root
-folder is made in the matching rekordbox folder and paired, and where a track
-was added on one side and taken off the other since the last sync, the later
-change wins, an unknown moment keeping the track and naming the call.
+An account playlist made in a synced root folder is made in the matching
+rekordbox folder and paired. Where a track was added on one side and taken off
+the other since the last sync, the later change wins, and an unknown moment
+keeps the track and names the call.
 """
 
 from __future__ import annotations
@@ -80,9 +77,7 @@ def gig(world):
     return folder
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # An account playlist in a synced folder comes to rekordbox
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_playlist_made_on_the_account_in_gig_ready_lands_in_its_folder_and_is_paired(
@@ -243,9 +238,7 @@ def pair_cli_verb() -> list[str]:
     return ["sync", "pair"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Where it goes: home_of, read on the database itself
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _home(world, folder: str, title: str, **kwargs):
@@ -322,9 +315,7 @@ def test_the_write_refuses_a_name_taken_since_the_plan(world, cfg, gig):
     assert caught.value.cause.reason == "decision-stale"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The later change wins
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _rekordbox_removed(world, playlist_id: str, content_id: str, when: datetime | None) -> None:
@@ -388,7 +379,7 @@ def test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off
 def test_without_its_added_date_the_account_reads_as_unchanged_and_the_removal_applies(
     world, gig
 ):
-    """R-990 as it was: no later date on the account, so rekordbox's removal is applied."""
+    """R-990: no later date on the account, so rekordbox's removal is applied."""
     playlist, account_id = _paired_on_both(world, gig)
     _rekordbox_removed(world, playlist, "5", soon(1))
     code, envelope = sync()
@@ -436,9 +427,7 @@ def test_a_track_put_back_in_rekordbox_after_the_account_took_it_out_stays_and_i
     assert call["added_on"] == "rekordbox" and call["added_at"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# From the review, round one
-# ═══════════════════════════════════════════════════════════════════════════
+# Failures, refusals and the gate's lines
 
 
 def test_a_failure_after_the_commit_still_pairs_the_playlist_made(world, cfg, gig, monkeypatch):
@@ -571,7 +560,7 @@ def test_home_of_refuses_the_twins_folder(world):
 
 
 def test_a_commit_that_lands_and_then_raises_still_pairs_the_playlist(world, cfg, gig, monkeypatch):
-    """From the second review: the binding's commit lands its SQL, then its own save raises."""
+    """The binding's commit lands its SQL and then its own save raises: still paired."""
     closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
     real = rb_writer.commit_guarded
 
@@ -594,13 +583,11 @@ def test_a_commit_that_lands_and_then_raises_still_pairs_the_playlist(world, cfg
     assert not _items(envelope["data"], "discovery", pair_discover.TAKEN)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# From the mutation table: what no earlier test reached
-# ═══════════════════════════════════════════════════════════════════════════
+# Scope, confinement and a racing reservation
 
 
 def test_a_set_playlist_sharing_a_name_does_not_stop_the_authors_own(world, gig, monkeypatch):
-    """C8: the scope check runs before names are counted, so a set's list takes no name."""
+    """The scope check runs before names are counted, so a set's list takes no name."""
     from cratekit.modules.outbound import ledger
 
     built = on_account(world, "GIG READY Closer", "GIG READY", "t6")
@@ -618,7 +605,7 @@ def test_a_set_playlist_sharing_a_name_does_not_stop_the_authors_own(world, gig,
 def test_with_every_pair_released_a_new_playlist_in_a_recorded_folder_still_comes(
     world, cfg, gig
 ):
-    """C10: a sync of every pair reads the account when only root folders are recorded."""
+    """A sync of every pair reads the account when only root folders are recorded."""
     world.delete_rekordbox(in_rekordbox(world, gig)["Opener"])
     assert sync()[0] == int(ExitCode.OK)
     assert not pairs.PairStore(cfg).all()
@@ -633,7 +620,7 @@ def test_with_every_pair_released_a_new_playlist_in_a_recorded_folder_still_come
 def test_a_write_outside_the_playlist_made_is_refused_with_nothing_written(
     world, cfg, gig, monkeypatch
 ):
-    """R2: the confinement check judges the write before its commit."""
+    """The confinement check judges the write before its commit."""
     closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
     real = rb_writer.add_memberships
 
@@ -655,7 +642,7 @@ def test_a_write_outside_the_playlist_made_is_refused_with_nothing_written(
 def test_reserving_an_account_playlist_a_pair_holds_answers_that_pair_and_makes_nothing(
     world, cfg, gig
 ):
-    """P1: two syncs racing to one account playlist never make two rekordbox playlists."""
+    """Two syncs racing to one account playlist never make two rekordbox playlists."""
     opener = world.titled("GIG READY Opener")
     store = pairs.PairStore(cfg)
     held = store.get(opener)

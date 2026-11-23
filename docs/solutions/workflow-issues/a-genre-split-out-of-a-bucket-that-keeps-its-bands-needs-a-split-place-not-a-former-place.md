@@ -2,7 +2,7 @@
 title: "A genre split out of a bucket that keeps its bands needs a split place, not a former place"
 date: 2026-10-09
 category: workflow-issues
-module: "core/taxonomy.py _check_former_places, adopt/move.py, write/rebuild.py, templates/taxonomy.default.toml"
+module: "core/taxonomy_build.py _check_former_places, adopt/move.py, write/rebuild.py, templates/taxonomy.default.toml"
 problem_type: workflow_issue
 component: core_logic
 severity: medium

@@ -1,276 +1,265 @@
 """Configuration, the two state roots, and the frozen identity a queued job runs against.
 
-TWO RULES GOVERN THIS MODULE. Both are here because the source system's
-equivalent survived four years without drifting, and the reason it did is that
-its docstring stated its rule and the rule was checkable.
+Rule 1: nothing here touches the filesystem at import, so ``crate --help`` and
+the health check run on a machine never set up. Config is lazy, so
+``config_dir()``, ``config_path()`` and ``load()`` are functions, and there is
+no module-level path constant for another module to snapshot, because a bound
+copy keeps the old value after a reload. ``tests/test_config.py`` fails the
+build if a module grows one.
 
-**Rule 1: nothing here touches the filesystem at import.** No mkdir, no write,
-no existence check, no read. This is what lets ``crate --help``, and the health
-check beside it, run on a machine that has never been set up, which is the only
-way a first-run wizard can ever be reached. The source module got this for free
-because it read environment variables only. Cratekit's config is a FILE, so it
-cannot resolve at import without breaking the rule. The resolution is that
-config is LAZY: ``config_dir()``, ``config_path()``, and ``load()`` are
-functions, none of them run at import, and there is no module-level path
-constant for anything else to snapshot.
+Rule 2: a value that can change without the user deciding it is state, not
+config. Watermarks, tombstones, declines, locks, calibration, session logs,
+cached tokens and the active taxonomy template live in a state root.
 
-That last clause is load-bearing. In the source system seventeen modules bound a
-state-directory path at their OWN import time. Reloading config after that point
-changed the config module and changed nothing else, so half the package tracked
-the new value and half kept the old one, silently, forever. There is no such
-constant here to bind, and ``tests/test_config.py`` fails the build if a module
-grows one.
+The two state roots (KTD21):
 
-**Rule 2: if a value can change without the user deciding it changed, it is
-state, not config.** Config carries decisions. Watermarks, tombstones, declines,
-lock state, calibration data, session logs, cached tokens, and the active
-taxonomy template are all things the software changes on its own, so none of
-them live in the config file. They live in one of the two state roots below.
-
----
-
-THE TWO STATE ROOTS (KTD21). This is the heart of the module.
-
-* **Installation-scoped**, under the platform's per-user config and state
+* Installation-scoped, under the platform's per-user config and state
   directories: config, credentials, the job queue, and caches that describe a
-  remote account or a replayable lookup rather than a library.
-* **Library-scoped**, in a dot-directory beside the library itself: the write
-  lock, the session log and its snapshots, per-source watermarks, tombstones and
-  declines, the deletion watermark, analysis calibration, the tree registry, and
-  the active taxonomy template.
+  remote account or a replayable lookup.
+* Library-scoped, in a dot-directory beside the library: the write lock, the
+  session log and its snapshots, watermarks, tombstones, declines, the deletion
+  watermark, calibration, the tree registry and the active taxonomy template.
 
-The source system stores essentially all of its state per installation. Carrying
-that forward breaks three concrete scenarios, and ``STATE_FILES`` below records,
-per entry, which one it breaks:
+Each ``STATE_FILES`` entry names the failure its root prevents: a second
+install against one library, a reinstall losing the undo logs, or the
+migration overlap. Every entry belongs to exactly one root, and installation
+entries also name their ``installation_area`` (config or state directory).
 
-1. **A second install against one library.** Two installation roots means two
-   write-lock files, which means zero mutual exclusion against a database that
-   only ever had one copy.
-2. **A reinstall or a fresh clone.** Two of the ported files are undo logs: the
-   only surviving record of a value that was overwritten on disk. Losing them to
-   a reinstall is unrecoverable data loss against the user's own music files.
-3. **The migration overlap**, where the old system and Cratekit both run against
-   one library. Locks that live per installation can never contend. A lock beside
-   the library is the only shape that both systems can open.
+The snapshot boundary (KTD21b): each library-scoped entry declares what a
+restore does to it, one subdirectory per answer, so the coupled set is a
+directory boundary rather than a list to keep in sync:
 
-``STATE_FILES`` assigns every entry to exactly ONE root. None straddles. Two
-source entries that did straddle are split into two named files each, one per
-root, which is the only way "exactly one" can be true of them.
-
-The installation root spans two PHYSICAL directories, the platform's config
-directory and its state directory, so each installation entry also names which of
-the two it lives in (``installation_area``). That is not a third KTD21 root; it is
-the resolver being able to say where an entry actually is. Leaving it implicit is
-how the config file itself came to be declared under the state directory while
-every loader and saver read the config directory: on macOS platformdirs returns
-one directory for both, so the two agreed by accident here and diverged on Linux.
-
----
-
-THE SNAPSHOT BOUNDARY (KTD21b). The second thing every library-scoped entry
-declares is what a RESTORE does to it, because the plan's top-ranked risk is the
-registry rolling back while the database does not. Three answers, one
-subdirectory each, so the coupled set is a directory boundary rather than a list
-somebody has to keep in sync:
-
-* ``COUPLED`` -> ``<state>/coupled/``. Captured with the database and replaced on
-  restore. The registry, the watermarks, the tombstones, the declines, the active
-  taxonomy, and the favorites state (R30 names most of these by name).
-* ``SURVIVES_ROLLBACK`` -> ``<state>/history/``. The record of what is
-  restorable. Rolling the session log back destroys the log of the sessions a
-  user might restore, and capturing the snapshot store nests every prior snapshot
-  inside the new one.
-* ``NEVER_RESTORED`` -> ``<state>/local/``. Rolling it back is either active data
-  loss or a broken invariant: the undo logs hold the ONLY surviving copy of values
-  already overwritten on the user's files, and a restore that replaces a directory
-  holding a lock swaps the inode a live advisory lock is held on, so mutual
-  exclusion disappears mid-session with nothing raised.
+* ``COUPLED`` -> ``<state>/coupled/``: captured with the database and replaced
+  on restore (registry, watermarks, tombstones, declines, active taxonomy,
+  favorites; R30).
+* ``SURVIVES_ROLLBACK`` -> ``<state>/history/``: the record of what is
+  restorable; rolling it back destroys the log of restorable sessions.
+* ``NEVER_RESTORED`` -> ``<state>/local/``: rolling it back loses data (the
+  undo logs) or swaps the inode a live lock is held on.
 
 U8 and U32 derive the snapshot set from this field (``coupled_state_files`` and
-``snapshot_sources``). A hand-maintained exclusion list is the drift this
-repository already refuses for its CI dependency list and its extras table.
+``snapshot_sources``), never from a hand-kept list.
 """
 
 from __future__ import annotations
 
 import copy
 import errno
-import hashlib
 import json
-import math
 import os
-import re
 import sys
 import tempfile
 import tomllib
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, field, fields, is_dataclass, replace
-from datetime import date
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-import platformdirs
 import tomli_w
 
-from cratekit.core import profiles
+from cratekit.core.config_base import (
+    CONFIG_FILENAME,
+    CURRENT_SCHEMA_VERSION,
+    LIBRARY_STATE_LAYOUT_VERSION,
+    TAXONOMY_TEMPLATE_KEY,
+    VOLUME_IDENTITY_KEY,
+    config_dir,
+    installation_state_dir,
+    is_inside,
+    template_name_is_usable,
+)
+from cratekit.core.config_base import (
+    ENV_CONFIG_DIR as ENV_CONFIG_DIR,
+)
+from cratekit.core.config_base import (
+    ENV_DOWNLOAD_STAGING as ENV_DOWNLOAD_STAGING,
+)
+from cratekit.core.config_base import (
+    ENV_ISRC_CACHE_DIR as ENV_ISRC_CACHE_DIR,
+)
+from cratekit.core.config_base import (
+    ENV_LIBRARY_ROOT as ENV_LIBRARY_ROOT,
+)
+from cratekit.core.config_base import (
+    ENV_PROVIDER_GATE_DIR as ENV_PROVIDER_GATE_DIR,
+)
+from cratekit.core.config_base import (
+    ENV_STATE_DIR as ENV_STATE_DIR,
+)
+from cratekit.core.config_schema import (
+    BACKUP_DESTINATION_KEYS,
+    LIBRARY_ROOT_TOKEN,
+    PREFIX_VOLUME_IDENTITY_KEY,
+    RETIRED_ADAPTER_NAMES,
+    AcquisitionConfig,
+    AnalysisConfig,
+    BackupConfig,
+    Config,
+    LabelsConfig,
+    LibraryConfig,
+    ModulesConfig,
+    NamingConfig,
+    PathsConfig,
+    PrefixMapping,
+    ProfileConfig,
+    ProviderConfig,
+    RecognitionConfig,
+    RekordboxConfig,
+    ReportsConfig,
+    TaxonomyConfig,
+    backup_remote_disagreement,
+    backup_remote_name,
+    current_adapter_name,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_DRIFT_CUT as DEFAULT_DRIFT_CUT,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_EXPORT_STALE_DAYS as DEFAULT_EXPORT_STALE_DAYS,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_INTAKE_EXPIRED_DAYS as DEFAULT_INTAKE_EXPIRED_DAYS,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_INTAKE_STALE_DAYS as DEFAULT_INTAKE_STALE_DAYS,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_LABEL_OFFER as DEFAULT_LABEL_OFFER,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_NEW_PLAYLIST_AGE_DAYS as DEFAULT_NEW_PLAYLIST_AGE_DAYS,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_OPEN_GATE_STALE_DAYS as DEFAULT_OPEN_GATE_STALE_DAYS,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_PAIR_SKIP_FOLDERS as DEFAULT_PAIR_SKIP_FOLDERS,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_PROCESSED_DIR as DEFAULT_PROCESSED_DIR,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_PROVIDER_CALLS_PER_COMMAND as DEFAULT_PROVIDER_CALLS_PER_COMMAND,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_PROVIDER_CALLS_PER_HOUR as DEFAULT_PROVIDER_CALLS_PER_HOUR,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_PROVIDER_COOLDOWN_S as DEFAULT_PROVIDER_COOLDOWN_S,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_PROVIDER_ISRC_CACHE_DAYS as DEFAULT_PROVIDER_ISRC_CACHE_DAYS,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_PROVIDER_MIN_INTERVAL_S as DEFAULT_PROVIDER_MIN_INTERVAL_S,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_PROVIDER_NIGHT_CALLS as DEFAULT_PROVIDER_NIGHT_CALLS,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_PROVIDER_NIGHT_CALLS_PER_HOUR as DEFAULT_PROVIDER_NIGHT_CALLS_PER_HOUR,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_PROVIDER_RESERVE_SHARE as DEFAULT_PROVIDER_RESERVE_SHARE,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_RECOGNITION_HOST as DEFAULT_RECOGNITION_HOST,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_RECOGNITION_MONTHLY_CALLS as DEFAULT_RECOGNITION_MONTHLY_CALLS,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_TEMPO_CEILING as DEFAULT_TEMPO_CEILING,
+)
+from cratekit.core.config_schema import (
+    DEFAULT_TEMPO_FLOOR as DEFAULT_TEMPO_FLOOR,
+)
+from cratekit.core.config_schema import (
+    MAX_EXPORT_STALE_DAYS as MAX_EXPORT_STALE_DAYS,
+)
+from cratekit.core.config_schema import (
+    MAX_OPEN_GATE_STALE_DAYS as MAX_OPEN_GATE_STALE_DAYS,
+)
+from cratekit.core.config_schema import (
+    PAIR_ORDER_EVERY_PAIR_KEY as PAIR_ORDER_EVERY_PAIR_KEY,
+)
+from cratekit.core.config_schema import (
+    PAIR_SKIP_FOLDERS_KEY as PAIR_SKIP_FOLDERS_KEY,
+)
+from cratekit.core.config_schema import (
+    RECOGNITION_HOST_DOMAIN as RECOGNITION_HOST_DOMAIN,
+)
+from cratekit.core.config_schema import (
+    OutboundConfig as OutboundConfig,
+)
+from cratekit.core.config_validate import (
+    ACKNOWLEDGMENT_KEY,
+    REQUIRED_KEYS,
+    _acquisition,
+    _apply_env_overrides,
+    _build,
+    _outbound,
+    derived_backup_remote,
+    validate,
+)
+from cratekit.core.config_validate import (
+    _validate_labels as _validate_labels,
+)
+from cratekit.core.config_validate import (
+    _validate_pair_order_every_pair as _validate_pair_order_every_pair,
+)
+from cratekit.core.config_validate import (
+    recognition_host_problem as recognition_host_problem,
+)
+from cratekit.core.state_files import (
+    _LIBRARY_SUBDIR_BY_ROLE as _LIBRARY_SUBDIR_BY_ROLE,
+)
+from cratekit.core.state_files import (
+    SET_WORKSPACE_DIRNAME,
+    SQLITE_SIDECARS,
+    STATE_FILES,
+    InstallationArea,
+    Medium,
+    RollbackEffect,
+    Sidecar,
+    SnapshotRole,
+    StateFile,
+    StateRoot,
+    config_path,
+    coupled_state_files,
+    library_coupled_dir,
+    library_history_dir,
+    library_local_dir,
+    library_state_dir,
+    out_of_band_effects,
+    provider_gate_dir,
+    rekey_records,
+    sidecar_paths,
+    snapshot_sources,
+    state_file,
+    state_files_for,
+    state_path,
+)
 
 try:
     import fcntl as _fcntl_module
 except ImportError:  # pragma: no cover - Windows has no fcntl
     _fcntl_module = None  # type: ignore[assignment]
 
-# ---------------------------------------------------------------------------
-# Schema version and the file name
-# ---------------------------------------------------------------------------
-
-#: The schema this build writes and validates. Bumped only alongside a migration
-#: entry in ``MIGRATIONS``; ``test_config_migration.py`` fails on a gap, so the
-#: version number can never get ahead of the code that upgrades to it.
-CURRENT_SCHEMA_VERSION = 1
-
-#: The on-disk SHAPE of the library state directory: which subdirectory each
-#: entry's snapshot role resolves into. Deliberately a second number, separate
-#: from ``CURRENT_SCHEMA_VERSION``, because the two need different mechanisms and
-#: only one of those mechanisms exists in this module.
-#:
-#: NOTHING MIGRATES AN EXISTING LIBRARY STATE DIRECTORY, AND THAT IS A RECORDED
-#: DEFERRAL RATHER THAN AN OVERSIGHT. ``MIGRATIONS`` is dict-to-dict by
-#: construction, which is exactly what makes "a failed migration leaves the
-#: original untouched" true by construction rather than by a cleanup path that
-#: can itself fail. The same purity makes it structurally incapable of moving a
-#: file, so it can never be the thing that reconciles a LAYOUT change.
-#:
-#: At version 1 there is nothing to reconcile. The role subdirectories
-#: (``coupled/``, ``history/``, ``local/``) were introduced before this package
-#: had any write path at all, so no build has ever written a library state
-#: directory in another shape and there is no installation on disk to move.
-#:
-#: The day this number moves, the unit that moves it owns a one-time on-disk
-#: reconciliation with its OWN mechanism: a directory walk under the same
-#: exclusive lock a config migration takes, idempotent, and refusing rather than
-#: half-moving. ``tests/test_config.py`` fails on a bump that arrives without
-#: one, so the deferral expires rather than persisting.
-LIBRARY_STATE_LAYOUT_VERSION = 1
-
-CONFIG_FILENAME = "config.toml"
-
-#: The key U31's destructive-operation assertion reads (R38). Named here so the
-#: unit that implements the assertion does not spell the key itself: a guard that
-#: hardcodes the name of the thing it guards stops guarding it the day it is
-#: renamed, and nothing fails.
-VOLUME_IDENTITY_KEY = "library.volume_id"
-
-#: The key naming which SHIPPED taxonomy template a library adopted (S6).
-#:
-#: This module validates its SHAPE and never its membership, and the split is
-#: deliberate rather than lazy. Membership is "does a template of that name ship
-#: in this wheel", which only the taxonomy module can answer, and that module
-#: sits a layer above this one: a foundation file that imported it would invert
-#: the import direction the layering guard exists to keep. So the closed set is
-#: enforced where it can be, by the wizard offering the shipped names as choices
-#: and by doctor refusing a name nothing ships, and what is enforced here is the
-#: one property those two cannot recover from: a value shaped like a path, which
-#: is composed into a packaged resource name by the reader.
-TAXONOMY_TEMPLATE_KEY = "taxonomy.template"
-
-#: A shipped template's short name: a bare token, never a path fragment.
-_TEMPLATE_NAME_SHAPE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+# Schema version and the file name.
 
 
-def template_name_is_usable(value: object) -> bool:
-    """Whether ``value`` is a shape this configuration can carry as a template name.
-
-    Public because the module that walks the packaged templates has to apply the
-    SAME rule when it decides which files to offer. A file called
-    ``taxonomy.deep.house.toml`` is a candidate on disk and its short name is one
-    this validator refuses, so a walker without this filter offers a closed-set
-    choice that configuration then rejects: two layers, one question, two
-    answers. That is the defect the shared walk was written to close, and it
-    reappears one layer down unless the shape is shared too.
-    """
-    return isinstance(value, str) and bool(_TEMPLATE_NAME_SHAPE.match(value))
-
-# Environment overrides. Exactly three, mirroring the source system's three,
-# and each one RELOCATES a configured value. None of them SUPPLIES one.
-#
-# That distinction is the whole design. An override that can supply a value lets
-# a machine with no setup at all resolve a library root from the environment and
-# start writing to it, which is precisely the "runs against the wrong volume"
-# failure R38 exists to prevent. An override that can only relocate an
-# already-configured value is useful for tests, for a remounted drive, and for
-# nothing else.
-#
-# THEY ARE APPLIED IN EXACTLY ONE PLACE, ``_apply_env_overrides``, BEFORE ANY
-# RULE IS DECIDED. That placement is the fix for a defect with two faces and one
-# cause. Validation used to dig ``library.root`` out of the raw file mapping
-# while the BUILDER applied the override, so the containment rule was decided
-# against the file's root and then lived against a different one. Both faces were
-# reproduced: a config that violates containment at runtime validated clean, and
-# a single save under a relocation wrote a root that the file's own db_path was
-# no longer under, producing a file that refused to load and that the user had
-# never edited.
-#
-# Relocating the root also RE-BASES a db_path that sat under it. That is what
-# "relocate" has to mean here: what the file records is where the database sits
-# RELATIVE to the library, so moving the library without moving the database
-# leaves a path aimed into a tree that is no longer the library. It is also a
-# safety property the test suite has been relying on without stating it, since
-# redirecting the library root is the whole mechanism keeping tests off the real
-# rekordbox database.
-ENV_CONFIG_DIR = "CRATEKIT_CONFIG_DIR"
-ENV_STATE_DIR = "CRATEKIT_STATE_DIR"
-ENV_LIBRARY_ROOT = "CRATEKIT_LIBRARY_ROOT"
-
-#: The directory the ISRC cache and its lock live in, when set (U206). Unset,
-#: they are installation state like any other. A copy run redirects
-#: ``CRATEKIT_STATE_DIR`` so nothing it does marks live state, and the ISRC
-#: answers it pays for are the one thing it should keep: they are facts about
-#: the provider's catalogue, so the copy run points this at the live state
-#: directory and its lookups are not paid for twice. ``core.rehearsal`` does
-#: that for every rehearsal it redirects.
-ENV_ISRC_CACHE_DIR = "CRATEKIT_ISRC_CACHE_DIR"
-
-#: The directory the provider gate's state file and its lock live in, when set
-#: (U278). Unset, they live under the PLATFORM's installation state directory,
-#: the one ``CRATEKIT_STATE_DIR`` overrides, and never under the override: the
-#: gate describes the account's allowance, and a copy run that redirects its
-#: state to scratch must still spend from the one allowance the live run reads.
-#: On 2026-11-12 a copy whose gate followed its state spent about 7,800
-#: catalogue calls the live gate never saw, and the live breaker then refused
-#: the label go they had cost. The suite sets this to each test's own state.
-ENV_PROVIDER_GATE_DIR = "CRATEKIT_PROVIDER_GATE_DIR"
-ENV_DOWNLOAD_STAGING = "CRATEKIT_DOWNLOAD_STAGING"
-
-_APP_NAME = "cratekit"
-
-
-# ---------------------------------------------------------------------------
-# Failure vocabulary
-#
-# Five types, not one. Each has a DIFFERENT remediation, and collapsing them
-# into a single ConfigError would force every caller to parse a message string
-# to find out what to tell the user (KTD25).
-# ---------------------------------------------------------------------------
+# Failure vocabulary: one type per remediation, so no caller parses a message
+# (KTD25).
 
 
 class Remedy(StrEnum):
-    """What to do about a configuration failure, as a TOKEN rather than a command.
+    """What to do about a configuration failure, as a token rather than a command.
 
-    D2: no foundation module contains the text a user types. The CLI layer, and
-    only the CLI layer, renders one of these into a command line, because the
-    command depends on the interface the user is actually sitting in front of and
-    this layer does not know which one that is.
-
-    The alternative, which this module shipped first, is remediation as prose
-    inside the message string. A caller that wants to tell a user what to do
-    about a missing config versus a too-new one then has to string-match the
-    message, which is exactly the KTD25 failure this module's own docstring
-    cites. ``secrets.py`` in the same unit already models it correctly; these
-    tokens are this module's contribution to the vocabulary U5 owns (S4), not a
-    competing scheme.
+    D2: no foundation module holds the text a user types; only the CLI renders
+    a token into a command. Part of the vocabulary U5 owns (S4).
     """
 
     RUN_SETUP = "run-setup"
@@ -284,10 +273,8 @@ class Remedy(StrEnum):
 class RemediedError(Exception):
     """An exception that always carries a structured remedy token.
 
-    Its class's own, or the one a raise names, for the case where one type
-    covers two remediations: an unrecorded rekordbox pin is a ConfigInvalid
-    whose answer is one specific decision, not "go read your config file".
-    The acquisition adapter's errors are this as well, with their own tokens.
+    Its class's own, or one a raise names when one type covers two remediations
+    (an unrecorded rekordbox pin is a ConfigInvalid with its own answer).
     """
 
     def __init__(self, message: str, *, remedy=None) -> None:
@@ -311,33 +298,24 @@ class ConfigMissing(ConfigError):
 class ConfigCorrupt(ConfigError):
     """The file exists but cannot be read as a versioned config.
 
-    Covers unparseable TOML and an absent or non-integer ``schema_version``.
-    An absent version is corruption rather than age: Cratekit has written the
-    field since its first release, so a file without one was hand-edited.
+    Covers unparseable TOML and an absent or non-integer ``schema_version``;
+    every release writes the field, so its absence means a hand edit.
     """
 
     remedy = Remedy.REPAIR_CONFIG_FILE
 
 
 class ConfigTooNew(ConfigError):
-    """The file was written by a newer Cratekit. Migrations are forward-only.
+    """The file was written by a newer Cratekit. Migrations are forward only.
 
-    Downgrading is never attempted. A newer build may have written keys this
-    build would silently drop on the next save, and a silent drop of a key the
-    user set is worse than a refusal that names the two versions.
+    Never downgraded, because a save could drop keys this build does not know.
     """
 
     remedy = Remedy.UPGRADE_CRATEKIT
 
 
 class ConfigInvalid(ConfigError):
-    """The config parsed but failed validation.
-
-    Carries EVERY problem, not the first. Validation that stops at the first
-    missing key turns one setup session into one round trip per missing key,
-    and the plan's first test scenario for this unit requires each missing key
-    to be named.
-    """
+    """The config parsed but failed validation. Carries every problem, not the first."""
 
     remedy = Remedy.FIX_CONFIG_VALUES
 
@@ -358,13 +336,9 @@ class ConfigInvalid(ConfigError):
 class ConfigLockUnavailable(ConfigError):
     """A config write could not take the exclusive lock, so it refused.
 
-    Advisory ledgers in the source system tolerate a failed ``flock`` and carry
-    on. A config MIGRATION must not: the job engine re-invokes the CLI as
-    subprocesses (KTD26), so two processes can reach an unmigrated file in the
-    same second, and two unsynchronized migrations of one file is how a config
-    ends up half-upgraded. ``save`` and ``update`` take the same lock for the
-    same reason, since an unsynchronized write loses a whole set of answers
-    while reporting success (R-116).
+    The job engine runs the CLI as subprocesses (KTD26), so two unsynchronized
+    migrations or saves of one file would half-upgrade it or lose answers while
+    reporting success (R-116).
     """
 
     remedy = Remedy.RETRY_WHEN_UNLOCKED
@@ -373,16 +347,10 @@ class ConfigLockUnavailable(ConfigError):
 class ConfigConflict(ConfigError):
     """Two writers changed the same value while one of them was deciding.
 
-    Raised by ``merge_changes`` and only when NOTHING was written. A writer that
-    read the document, took its time, and came back to find another writer's
-    answers on disk keeps both sets when they touch different values. When they
-    touch the same value differently there is no honest merge: picking either
-    one erases an answer somebody gave, which is the loss the lock exists to
-    end. So it refuses and names the keys.
-
-    The remedy is ``RUN_SETUP`` because running the wizard again reads the
-    document that is on disk now and completes THAT, so the person answers the
-    conflicting keys once, against the values they are actually replacing.
+    Raised by ``merge_changes`` only when nothing was written. Changes to
+    different values are both kept; the same value changed two ways has no
+    honest merge, so it refuses and names the keys. ``RUN_SETUP`` reruns the
+    wizard against the document on disk now.
     """
 
     remedy = Remedy.RUN_SETUP
@@ -396,3959 +364,29 @@ class ConfigConflict(ConfigError):
         )
 
 
-# ---------------------------------------------------------------------------
-# Directory resolution. Functions, never constants (Rule 1).
-# ---------------------------------------------------------------------------
+# Directory resolution: functions, never constants (Rule 1).
 
 
-def config_dir() -> Path:
-    """The installation-scoped configuration directory.
+# The state-file inventory.
 
-    Resolved through platformdirs rather than a hardcoded path so the deferred
-    Windows adapter costs nothing here (KTD6, R1). The override exists for tests
-    and for a user who keeps their dotfiles somewhere unusual.
 
-    Creates nothing. A caller that is about to write creates it at that moment.
-    """
-    override = os.environ.get(ENV_CONFIG_DIR)
-    if override:
-        return Path(override)
-    return Path(platformdirs.user_config_dir(_APP_NAME))
+# The typed schema: frozen dataclasses, so a typo is an AttributeError at the
+# call site rather than a None that travels.
 
 
-def config_path() -> Path:
-    """The path of the config file itself. Does not check that it exists.
+# Validation collects every problem before raising.
 
-    Resolved THROUGH the inventory rather than beside it. Composing
-    ``config_dir() / CONFIG_FILENAME`` here is what let the inventory declare the
-    config file under the installation STATE directory while every loader and
-    saver used the installation CONFIG directory: two roots for one file, invisible
-    on macOS where platformdirs returns the same directory for both. Going through
-    ``state_path`` makes the two answers the same answer by construction.
-    """
-    return state_path("config")
 
-
-def installation_state_dir() -> Path:
-    """The installation-scoped STATE directory, distinct from the config directory.
-
-    Kept separate rather than folded into the config directory because the two
-    have different backup semantics on every platform Cratekit targets: a user
-    who syncs their config directory between machines would otherwise sync a job
-    queue and a set of caches that describe one machine's work in progress.
-    """
-    override = os.environ.get(ENV_STATE_DIR)
-    if override:
-        return Path(override)
-    return Path(platformdirs.user_state_dir(_APP_NAME))
-
-
-def provider_gate_dir() -> Path:
-    """Where the provider gate's two files live: ``CRATEKIT_PROVIDER_GATE_DIR``
-    when set, else the platform's installation state directory (U278).
-
-    NOT :func:`installation_state_dir`. That honours ``CRATEKIT_STATE_DIR``,
-    which every copy run sets to scratch, and a gate that followed it gave each
-    copy an allowance of its own that the live gate could not see. The account
-    has one allowance, so every installation state pointed at it reads one gate.
-    """
-    override = os.environ.get(ENV_PROVIDER_GATE_DIR)
-    if override:
-        return Path(override)
-    return Path(platformdirs.user_state_dir(_APP_NAME))
-
-
-#: The state entries resolved under :func:`provider_gate_dir` rather than under
-#: their root's directory (U278). Resolved here, inside :func:`state_path`, so
-#: the gate, a report, doctor and a rehearsal's copy all get one answer.
-_PROVIDER_GATE_KEYS = frozenset({"provider_gate", "provider_gate_lock", "night_budget"})
-
-
-def library_state_dir(config: Config) -> Path:
-    """The library-scoped state root: a dot-directory beside the library.
-
-    Beside the library and not inside the platform state directory, because
-    everything in here describes THIS library and must travel with it, be
-    snapshotted with it (KTD21b), and be reachable from a second installation
-    and from the old system during the migration overlap.
-    """
-    return config.library.root / config.library.state_dirname
-
-
-def library_coupled_dir(config: Config) -> Path:
-    """The one directory a KTD21b snapshot copies and a restore replaces.
-
-    Named as a function so U8 and U32 can say "snapshot this directory" instead of
-    keeping a list of files in sync with ``STATE_FILES``. Everything inside it is
-    declared ``COUPLED``; nothing that is not is allowed in, and
-    ``tests/test_config.py`` asserts both halves.
-    """
-    return library_state_dir(config) / _LIBRARY_SUBDIR_BY_ROLE[SnapshotRole.COUPLED]
-
-
-def library_history_dir(config: Config) -> Path:
-    """Where the record of what is restorable lives: the session log and snapshots.
-
-    Outside the coupled directory on purpose. A snapshot that captured this would
-    nest every previous snapshot inside itself, and a restore that replaced it
-    would destroy the log of the sessions the user might still want to restore.
-    """
-    return library_state_dir(config) / _LIBRARY_SUBDIR_BY_ROLE[SnapshotRole.SURVIVES_ROLLBACK]
-
-
-def library_local_dir(config: Config) -> Path:
-    """Library state a restore must never touch: locks, undo logs, caches, calibration.
-
-    Two different failures share this directory. Rolling an undo log back discards
-    the only surviving copy of a value already overwritten on the user's files.
-    Replacing a directory that holds a lock file swaps the inode a live advisory
-    lock is held on, so two processes both believe they hold it and neither is
-    told otherwise.
-    """
-    return library_state_dir(config) / _LIBRARY_SUBDIR_BY_ROLE[SnapshotRole.NEVER_RESTORED]
-
-
-# ---------------------------------------------------------------------------
-# The state-file inventory
-# ---------------------------------------------------------------------------
-
-
-class StateRoot(StrEnum):
-    """Which of the two roots an entry lives under. There are only two."""
-
-    INSTALLATION = "installation"
-    LIBRARY = "library"
-
-
-class InstallationArea(StrEnum):
-    """Which physical directory an INSTALLATION entry lives in.
-
-    Not a third KTD21 root. The installation root has always spanned two
-    directories, the platform's config directory and its state directory, and
-    those have different backup and sync semantics on every platform Cratekit
-    targets. What was missing was any way for an ENTRY to say which one it meant,
-    so the resolver guessed one and the loader used the other. On macOS
-    platformdirs returns the same path for both, so the disagreement was invisible
-    on the machine this was written on.
-
-    Read only when ``root is StateRoot.INSTALLATION``. Library entries leave it at
-    the default, and ``tests/test_config.py`` asserts they do, so it can never
-    look meaningful where nothing reads it.
-    """
-
-    CONFIG = "config"
-    STATE = "state"
-
-
-class SnapshotRole(StrEnum):
-    """What a KTD21b restore does to this entry. Declared, never inferred.
-
-    The plan's top-ranked risk is the registry rolling back while the database
-    does not, so this is the field that risk turns on. Its three values are the
-    three incompatible categories that a single flat state directory mixed
-    together, and each one maps to its own subdirectory so the boundary between
-    them is a directory rather than a list a later unit has to maintain.
-    """
-
-    #: Captured with the database and replaced on restore. Restoring returns the
-    #: library to a self-consistent pre-session state only if this set is exact.
-    COUPLED = "coupled"
-
-    #: The record of WHAT is restorable, plus the snapshots themselves. Rolling it
-    #: back destroys that record; capturing it nests every prior snapshot inside
-    #: the new one.
-    SURVIVES_ROLLBACK = "survives-rollback"
-
-    #: Never captured, never replaced. Either its rollback is active data loss (an
-    #: undo log holds the only copy of a value already written to the user's files,
-    #: and a file write is not something a database restore undoes), or its
-    #: identity is live (a lock's inode, a heartbeat, a run in progress), or it
-    #: simply is not library state at all (everything installation-scoped: a
-    #: library snapshot has no business reaching outside the library).
-    NEVER_RESTORED = "never-restored"
-
-
-class RollbackEffect(StrEnum):
-    """What a COUPLED entry's records caused OUTSIDE the set a restore replaces.
-
-    A restore returns the database and its coupled state to a matched earlier
-    point. That is internally consistent and it is not the whole world. Some of
-    the records being discarded had an effect somewhere a rename cannot reach: a
-    playlist renamed at the provider, a file written to the music volume, a file
-    moved to the Trash. Rolling the record back does not undo the effect, so the
-    two disagree from the moment the restore lands, and nothing downstream can
-    tell.
-
-    DECLARED ON THE ENTRY, never listed in the module that reconciles them, for
-    the reason ``decision_store`` gives one line further down and ``sidecars``
-    gives above: a companion list is the drift this schema exists to remove, and
-    a derivation that covers 90 percent of the real set is worse than an honest
-    list because it invites trust (P4). A state entry added later with a real
-    out-of-band effect and no declaration here would simply never be reconciled,
-    and the silence would look like convergence.
-
-    ``NONE`` is a real answer and is spelled rather than left implicit. Most
-    coupled entries describe database rows and nothing else, and saying so is
-    what makes the set derivable: ``tests/test_restore.py`` parses this literal
-    and requires every COUPLED entry to name its answer, so "nobody decided" and
-    "somebody decided nothing happens" cannot look alike.
-    """
-
-    #: Nothing outside the coupled set. The records describe database rows.
-    NONE = "none"
-    #: A playlist or folder was renamed at the provider, so the marker that says
-    #: "already taken" lives on somebody else's server and does not roll back.
-    REMOTE_PLAYLIST_PREFIX = "remote-playlist-prefix"
-    #: Audio landed on the music volume. The rows go; the bytes stay, and the
-    #: next pass reads them as owned.
-    DOWNLOADED_FILE = "downloaded-file"
-    #: A file was moved to the Trash. Rolling the record back does not move it
-    #: out, and the library then holds a row for a file nobody can open.
-    TRASHED_FILE = "trashed-file"
-    #: A tag was written INTO a file on the music volume. Added at the U23 merge,
-    #: 2026-08-14, because adoption is the first feature whose coupled record
-    #: describes an edit to somebody else's bytes rather than a database row.
-    #:
-    #: Rolling the ledger back un-records that the entry was applied and does not
-    #: un-write the tag, so a restore leaves the library saying a file has not
-    #: been adopted while the file itself says it has. Declaring NONE here would
-    #: have been the exact failure this enum's docstring names: a real
-    #: out-of-band effect that is never reconciled, with the silence reading as
-    #: convergence.
-    #:
-    #: The original values are recoverable, and NOT from anything a rollback
-    #: restores. They live in the adoption tag revert log, which is
-    #: NEVER_RESTORED precisely so it outlives the rollback that would otherwise
-    #: erase the only record of what the tags held before.
-    WRITTEN_FILE_TAG = "written-file-tag"
-
-
-#: One subdirectory per role, so an entry's physical location is DERIVED from the
-#: answer it already gave rather than typed a second time. A relative path spelled
-#: per entry could disagree with the entry's own declared role; this cannot.
-_LIBRARY_SUBDIR_BY_ROLE: Mapping[SnapshotRole, str] = MappingProxyType(
-    {
-        SnapshotRole.COUPLED: "coupled",
-        SnapshotRole.SURVIVES_ROLLBACK: "history",
-        SnapshotRole.NEVER_RESTORED: "local",
-    }
-)
-
-
-class Medium(StrEnum):
-    """What the entry physically is.
-
-    ``KEYCHAIN`` is in this enum rather than being left out of the table because
-    the Definition of Done requires every state file to be dispositioned, and
-    "this one stopped being a file" is a disposition. Leaving it out would make
-    the table look complete while the sharpest credential exposure in the source
-    system, a long-lived refresh token in a default-permission file, quietly had
-    no row.
-    """
-
-    FILE = "file"
-    DIRECTORY = "directory"
-    KEYCHAIN = "keychain"
-
-
-@dataclass(frozen=True, slots=True)
-class Sidecar:
-    """A file the storage engine keeps BESIDE an entry, named by a suffix.
-
-    Declared here rather than kept as a companion list in the unit that captures
-    snapshots, for the reason every other field in this schema is declared: a
-    list maintained beside the schema is the drift this whole design exists to
-    remove, and here the cost of that drift is a torn database.
-
-    THE CONCRETE FAILURE. SQLite in WAL mode holds committed-but-uncheckpointed
-    transactions in ``<db>-wal`` and a shared index over them in ``<db>-shm``.
-    The database row declares ONE path, so a consumer that copies exactly what
-    ``snapshot_sources`` names, and no more, captures a database missing every
-    transaction still in the log. That copy opens cleanly and is silently behind,
-    which is the worst shape a backup can take. The source system captures the
-    database and both sidecars as one matched set; this is that set, declared.
-    """
-
-    suffix: str
-    #: True when a restore writes this sidecar back OUT of the snapshot.
-    #:
-    #: The source system's restore is deliberately asymmetric: it removes the
-    #: LIVE ``-wal`` and ``-shm`` first, so the engine cannot replay a log
-    #: belonging to the database that was just replaced, then copies the
-    #: snapshot's ``-wal`` and never its ``-shm``. The shared-memory index is
-    #: derived from the log, so restoring a stale one beside a fresh log hands
-    #: SQLite two disagreeing views of one database.
-    restored: bool
-
-
-#: The sidecars a SQLite database file travels with. Suffixes, not paths: they
-#: are composed onto whatever path the user's rekordbox install chose.
-SQLITE_SIDECARS: tuple[Sidecar, ...] = (
-    Sidecar(suffix="-wal", restored=True),
-    Sidecar(suffix="-shm", restored=False),
-)
-
-
-@dataclass(frozen=True, slots=True)
-class StateFile:
-    """One state entry, its root, what a restore does to it, and why.
-
-    ``why`` is not documentation for its own sake. Every future unit that adds
-    state has to answer the same question, and the answer is only checkable if
-    it is phrased as a failure: what breaks under a second install, under a
-    reinstall, or during the migration overlap.
-
-    ``snapshot`` carries no default, so the same is true of the KTD21b question.
-    A new entry cannot be added without deciding whether a restore rolls it back,
-    which is the decision that the plan's top-ranked risk turns on.
-    """
-
-    key: str
-    root: StateRoot
-    medium: Medium
-    relative: str
-    why: str
-    #: What a KTD21b restore does to this entry. Required: see the class docstring.
-    snapshot: SnapshotRole
-    #: Which physical installation directory this lives in. Read only when
-    #: ``root is StateRoot.INSTALLATION``.
-    installation_area: InstallationArea = InstallationArea.STATE
-    #: True when the ported shape keys its records on a playlist or folder
-    #: DISPLAY name. R19 and D5 forbid that, so the unit that owns the entry runs
-    #: the one-time re-key in ``rekey_records`` before first use.
-    rekey_from_display_name: bool = False
-    #: True when the entry sits at the library ROOT rather than inside the
-    #: library state directory. Only things another system has to find without
-    #: knowing Cratekit's layout belong here.
-    at_library_root: bool = False
-    #: Files that share this entry's path with a suffix and must be captured with
-    #: it as ONE matched set. Empty for everything that really is a single file.
-    #:
-    #: EVERY ONE OF THEM MAY LEGITIMATELY BE ABSENT, and a consumer must treat
-    #: absence as normal rather than as an error: a database that has just been
-    #: checkpointed, or that was never opened in WAL mode, has no sidecars on
-    #: disk at all. The source system copies each one only if it exists, and so
-    #: must anything reading this field.
-    sidecars: tuple[Sidecar, ...] = ()
-    #: True when this entry is one of R35 and R36's DECISION STORES: a revocable
-    #: set of suppressions that ``core.review`` reads and writes as one document.
-    #:
-    #: Declared on the entry rather than listed in the module that opens them, for
-    #: the reason every other field here is declared. The review module carried a
-    #: literal pair with a docstring saying it came from this inventory, which is a
-    #: list in disguise (P3): a store added to the inventory would not appear in
-    #: it, and a store REMOVED from the inventory would leave the module resolving
-    #: a path nobody declared a root for.
-    decision_store: bool = False
-    #: What this entry's records caused OUTSIDE the set a restore replaces. See
-    #: :class:`RollbackEffect`. Left empty on everything that is not COUPLED,
-    #: where the question does not arise at all.
-    #:
-    #: A TUPLE rather than one value, because one record can reach outside in
-    #: more than one direction at once: a label watermark advancing means both
-    #: that audio landed on the volume and that a playlist was renamed at the
-    #: provider, and a person dispositions those separately because the acts
-    #: that repair them are different acts.
-    rollback_effects: tuple[RollbackEffect, ...] = ()
-
-
-STATE_FILES: tuple[StateFile, ...] = (
-    # ── Installation-scoped ────────────────────────────────────────────────
-    #
-    # Every entry here is NEVER_RESTORED for one shared reason: a library snapshot
-    # covers a library. Reaching outside it to roll back a job queue or a
-    # credential index would roll back work that belongs to the MACHINE, and on a
-    # second install it would roll back state the restoring machine has never seen.
-    StateFile(
-        key="config",
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative=CONFIG_FILENAME,
-        why=(
-            "Config records decisions about THIS machine: which library is "
-            "mounted where, which adapter, which modules. Two machines "
-            "legitimately answer those differently for one library, so a shared "
-            "config would force one machine's mount path onto the other."
-        ),
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        # The CONFIG directory, not the state directory. This is the entry whose
-        # area was implicit and therefore wrong: the loader and saver read
-        # config_dir() while the inventory resolved installation_state_dir(),
-        # which are the same path on macOS and different everywhere else.
-        installation_area=InstallationArea.CONFIG,
-    ),
-    StateFile(
-        key="credentials",
-        root=StateRoot.INSTALLATION,
-        medium=Medium.KEYCHAIN,
-        relative="",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        why=(
-            "Was a plaintext env file whose 0600 came from the author's umask "
-            "rather than from any code, so on a machine with a laxer umask it "
-            "landed world readable. A credential is an account fact, not a "
-            "library fact: the same account serves every library, and no library "
-            "should carry a credential a second user of that library can read."
-        ),
-    ),
-    StateFile(
-        key="provider_session",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.KEYCHAIN,
-        relative="",
-        why=(
-            "A long-lived refresh token written by a third-party library that "
-            "does no chmod at all. Stored as ONE blob under one key so the token, "
-            "its refresh token, and the session fields cannot be updated apart "
-            "and leave a half-refreshed session that authenticates once and then "
-            "fails in a way that looks like a service outage."
-        ),
-    ),
-    StateFile(
-        key="provider_folder_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="provider_folder_cache.json",
-        why=(
-            "Remote folder identifiers keyed by year. It describes the remote "
-            "ACCOUNT, not the library, and a second install that loses it "
-            "re-derives it on the next run at the cost of one API call."
-        ),
-    ),
-    StateFile(
-        key="identify_usage",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="identify_usage.json",
-        why=(
-            "The monthly call counter for the identification service. It is "
-            "bound to the CREDENTIAL's quota, not to a library: two libraries "
-            "identified on one account share one quota, so one counter beside "
-            "the credential is the only placement that can tell the truth."
-        ),
-    ),
-    StateFile(
-        key="identify_usage_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="identify_usage.lock",
-        why=(
-            "A sibling lock serializing the read-modify-write of the counter "
-            "beside it. It follows its file to the same root by necessity: a lock "
-            "under a different root than the thing it protects is a lock two "
-            "processes can each hold while both edit the same file."
-        ),
-    ),
-    StateFile(
-        key="provider_gate",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="provider_gate.json",
-        why=(
-            "The streaming provider's pacing state (R-705): when the last call "
-            "went out, how many rate limit answers came back in a row, when the "
-            "breaker tripped and when its cooldown lifts, and the running call "
-            "totals, and each identity's calls in the last hour (U278). It "
-            "describes the ACCOUNT's allowance, not a library: two libraries "
-            "swept on one account share one limit, so one file beside the "
-            "credential is the only placement that can tell the truth. Resolved "
-            "under provider_gate_dir, never under a redirected state directory, "
-            "so a copy run spends from the same allowance as the live run."
-        ),
-    ),
-    StateFile(
-        key="provider_gate_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="provider_gate.lock",
-        why=(
-            "The one call at a time lock over the streaming provider, held for "
-            "the whole of each call so two drivers never have a request in "
-            "flight together. It follows its file to the same root by necessity: "
-            "a lock under a different root than the state it protects is a lock "
-            "two processes can each hold while both pace off the same account."
-        ),
-    ),
-    StateFile(
-        key="night_budget",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="night_budget.json",
-        why=(
-            "What the night pass has spent of its night's budget (U293): the "
-            "night, the calls its finished firings made, and the gate's running "
-            "total when a firing began, written before its first call so a run "
-            "that died is still charged. A fact about the ACCOUNT's allowance, "
-            "so it sits beside the gate under provider_gate_dir and a copy run "
-            "reads the same night."
-        ),
-    ),
-    StateFile(
-        key="night_status",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="night_status.json",
-        why=(
-            "The last night pass's one line of status and what it stopped on "
-            "(U293), which crate doctor shows and crate sync night --last "
-            "prints. It describes this installation's last unattended run, "
-            "not a library, and losing it loses only the line."
-        ),
-    ),
-    StateFile(
-        key="schedule_log",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="schedule/sync-night.log",
-        why=(
-            "What the scheduled night pass printed (U295): launchd appends the "
-            "agent's output and errors here, the one place a night that never "
-            "reached its own record says why. It describes this installation's "
-            "schedule, not a library, and losing it loses only the output."
-        ),
-    ),
-    StateFile(
-        key="staging_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="staging.lock",
-        why=(
-            "One pass stages at a time (U293): crate sync land, crate label "
-            "sync --go and crate sync night hold it for the whole of a run, so "
-            "the night pass and a pass by hand never download into the one "
-            "staging folder together; crate schedule install and remove hold "
-            "it around their bootout (U295), so they never end a night pass. The kernel releases it when its holder "
-            "dies; the holder written inside is for the refusal's words."
-        ),
-    ),
-    StateFile(
-        key="isrc_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="isrc_cache.json",
-        why=(
-            "What the streaming provider answered for an ISRC, by ISRC and "
-            "country, and when it was asked (U206). A fact about the provider's "
-            "CATALOGUE, not about a library, so it sits beside the pacing state "
-            "and a copy run that redirects the library's state shares it with "
-            "the live run. Losing it costs calls and no data: the next lookup "
-            "asks again."
-        ),
-    ),
-    StateFile(
-        key="isrc_cache_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="isrc_cache.lock",
-        why=(
-            "A sibling lock serializing the read, merge and replace of the ISRC "
-            "cache beside it, so two processes never lose each other's answers. "
-            "It follows its file to the same root by necessity: a lock under a "
-            "different root than the thing it protects is a lock two processes "
-            "can each hold while both edit the same file."
-        ),
-    ),
-    StateFile(
-        key="catalogue_refusals",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="catalogue_refusals.json",
-        why=(
-            "When each record shop began refusing this client, and its latest "
-            "refusal (U284), so a sweep's report and the refusal a sync pass "
-            "stops on can say how long a catalogue has refused. A fact about "
-            "this machine's client, not about a library. Losing it costs the "
-            "date and nothing else: the next refusal starts it again."
-        ),
-    ),
-    StateFile(
-        key="catalogue_refusals_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="catalogue_refusals.lock",
-        why=(
-            "A sibling lock serializing the read, merge and replace of the "
-            "catalogue refusal record beside it, so two sweeps never lose each "
-            "other's dates. It follows its file to the same root by necessity, "
-            "for the ISRC cache lock's reason."
-        ),
-    ),
-    StateFile(
-        key="identify_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.DIRECTORY,
-        relative="identify_cache",
-        why=(
-            "What the identification service answered about one recording, one "
-            "document per recording, named by a digest of the recording's bytes "
-            "and its chunk plan. An answer is a fact about the AUDIO and was paid "
-            "for on the credential's quota, so it sits beside the counter and "
-            "serves every library. Losing it costs money and no data: the next "
-            "pass over that recording pays for every chunk again."
-        ),
-    ),
-    StateFile(
-        key="mix_scratch",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.DIRECTORY,
-        relative="mix_scratch",
-        why=(
-            "Where a mix fetched from a web address sits while it is identified, "
-            "one folder per address, removed when the pass ends. A mix is INPUT "
-            "and never library material, so this is under the installation root "
-            "and never under the library: a file left beside the music is one "
-            "rekordbox can be pointed at and one a library walk would index. "
-            "Losing it costs a download and no data."
-        ),
-    ),
-    StateFile(
-        key="genre_lookup_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="genre_lookup_cache.json",
-        why=(
-            "A cache of third-party catalog lookups keyed by track. Every entry "
-            "is replayable from the network, so losing it costs time and no data. "
-            "It also has nothing to do with which library asked."
-        ),
-    ),
-    StateFile(
-        key="label_crawl_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.DIRECTORY,
-        relative="label_crawl",
-        why=(
-            "Half of a source directory that straddled both roots (D4). The crawl "
-            "half is what a catalog lookup returned: replayable, library-agnostic, "
-            "and 53 directories of it live in the source install. What actually "
-            "LANDED in a library is the other half, and it is library-scoped. "
-            "Since R-1091 each label's directory also holds the release reads a "
-            "full label playlists build keeps, so a build stopped part way "
-            "resumes; losing them costs provider calls and no data."
-        ),
-    ),
-    StateFile(
-        key="label_intent",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="label_intent.json",
-        why=(
-            "Half of a file that straddled both roots (D4). This half is curated "
-            "intent: the labels a user chose to follow and how deep to sweep them. "
-            "In the source system the whole file is COMMITTED TO GIT, so cloning "
-            "the repository hands every friend one person's label list AND their "
-            "watermarks. Splitting it makes the intent half exportable on purpose "
-            "and leaves the watermarks where they belong."
-        ),
-    ),
-    StateFile(
-        key="label_intent_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="label_intent.lock",
-        why=(
-            "The sibling lock for the curated label list. Two processes adding "
-            "one label each would both read the same document, both write, and "
-            "the second rename would discard the first add while reporting that "
-            "it saved. NEVER_RESTORED for the inode reason every lock here "
-            "shares: a restore that replaced the lock file would leave a live "
-            "holder believing it still owns a file whose inode is gone."
-        ),
-    ),
-    StateFile(
-        key="landing_locks",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.DIRECTORY,
-        relative="landing_locks",
-        why=(
-            "One lock per batch name, held by ``intake land`` across its moves "
-            "(R-432). The landing engine asks whether a target is free and then "
-            "renames over it, so two landings under one batch name could take "
-            "each other's files and intake file with neither told. Installation "
-            "scoped ON PURPOSE, against the rule that a lock follows what it "
-            "protects: the library volume is commonly exFAT, where an advisory "
-            "lock was never verified to hold, and a lock that silently does not "
-            "exclude is worse than one a second machine cannot see. Two machines "
-            "landing into one library at once is the case this gives up. "
-            "NEVER_RESTORED for the inode reason every lock here shares."
-        ),
-    ),
-    StateFile(
-        key="credential_index",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="credential_index.json",
-        why=(
-            "The NAMES of the credentials this installation has recorded, never "
-            "their values. It exists so doctor can answer 'is a credential set' "
-            "without retrieving one, which on macOS would raise the keychain's "
-            "authorization prompt during a health check that is supposed to be "
-            "unattended."
-        ),
-    ),
-    StateFile(
-        key="credential_index_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="credential_index.lock",
-        why=(
-            "A sibling lock serializing the read-modify-write of the presence "
-            "index beside it, for the reason the identification counter's lock "
-            "gives: a lock under a different root than the file it protects is a "
-            "lock two processes can each hold while both edit that file. Measured "
-            "before it existed: two processes recording one credential each left "
-            "the keychain holding both and the index naming one, in 23 of 25 "
-            "trials, and a lost name reads as 'not recorded', which sends a user "
-            "to re-record a credential the keychain already holds."
-        ),
-    ),
-    StateFile(
-        key="job_queue",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.DIRECTORY,
-        relative="jobs",
-        why=(
-            "KTD21 names the job queue installation-scoped, and it is: a detached "
-            "job belongs to the machine running it. One consequence follows and "
-            "the unit that builds the queue owns it: because the queue is per "
-            "install and a library is per config, a job record must NAME the "
-            "library it targets, or a queue drained after the user reconfigures "
-            "runs against the wrong volume."
-        ),
-    ),
-    StateFile(
-        key="backup_outcomes",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.DIRECTORY,
-        relative="backup_outcomes",
-        why=(
-            "What each queued backup item actually ran, one JSON file per job "
-            "and item: every rclone argv and its return code (R-349). Without it "
-            "a failed transfer could not be diagnosed from the job record, "
-            "because the job keeps counts and a cause and the per command report "
-            "left the claimed item with nowhere to go. A FAILED item writes here "
-            "directly rather than through the engine's artifact commit, since a "
-            "commit completes the item and a completed item is never re-armed. "
-            "Installation-scoped beside the job queue it is keyed by, so job "
-            "show finds it from the job identifier alone. NEVER_RESTORED for the "
-            "job queue's reason: it describes one machine's work, not the library."
-        ),
-    ),
-    StateFile(
-        key="backup_manifest",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="backup_manifest.json.gz",
-        why=(
-            "What the last completed file mirror left on the remote, path by "
-            "path, so a backup that changed little sends only the change and one "
-            "that changed nothing is skipped (U317). INSTALLATION and never "
-            "library state: the library's state folder is inside the mirrored "
-            "tree, so a record kept there would change the tree each time it was "
-            "written and no run could skip. It names the library, the mirror and "
-            "the exclude set it was kept for, and carries a token the library's "
-            "files fact is published with, so a record for any other library or "
-            "remote, or one a second installation or an older build has since "
-            "backed up past, is not trusted: either costs one full run and never "
-            "a wrong skip. NEVER_RESTORED: it describes the remote, which a "
-            "restore does not roll back."
-        ),
-    ),
-    StateFile(
-        key="backup_database_fingerprint",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="backup_database_fingerprint.json",
-        why=(
-            "The content fingerprint of the database set the last completed "
-            "snapshot copied, so a database that has not changed since is not "
-            "copied again (U317). Installation state for the manifest's reason, "
-            "and keyed by the database path, the snapshot root and the library "
-            "identity, so a fingerprint taken for another is not compared. "
-            "NEVER_RESTORED: it describes a snapshot on the remote."
-        ),
-    ),
-    StateFile(
-        key="backup_census",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="backup_census.json",
-        why=(
-            "How many files outside the library's own state folder the last "
-            "completed file mirror walked, for this library root and mirror "
-            "(R-1761). It is what lets a backup refuse an empty folder left "
-            "where an unmounted volume was, which a full sync would otherwise "
-            "empty the mirror to match. INSTALLATION for the manifest's reason, "
-            "and also because the library's own state goes with the volume it "
-            "would be guarding. Unlike the manifest it is NEVER removed before a "
-            "transfer, so a failed run still leaves it saying what the library "
-            "held. NEVER_RESTORED: it describes the remote."
-        ),
-    ),
-    StateFile(
-        key="run_state",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.DIRECTORY,
-        relative="runs",
-        why=(
-            "One record per run, holding the gates it reached, the decisions "
-            "recorded against them, and any human action still outstanding. It "
-            "is what makes R33 real: a gate is answerable from a DIFFERENT "
-            "process in a LATER session, which is impossible if the only place "
-            "an answer can live is the invocation that hit the gate."
-            " Installation-scoped alongside the job queue and for the same "
-            "reason: a detached run belongs to the machine executing it, and its "
-            "records name the library they target rather than assuming one."
-            " NEVER_RESTORED: a run is not library content. Rolling one back "
-            "would resurrect decisions a person made about work that no longer "
-            "exists."
-        ),
-    ),
-    StateFile(
-        key="held_plans",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.DIRECTORY,
-        relative="runs-held",
-        why=(
-            "One plan per run, held by a verb whose gates are answered in later "
-            "commands (U209), so the gate a person answers and the write that "
-            "follows use the plan the first command showed rather than planning "
-            "again, which for crate sync pair over a hundred playlists cost "
-            "thousands of provider calls a gate. A sibling of the run records "
-            "and not inside them, because every reader of a run record would "
-            "otherwise read the whole plan, and because that directory's files "
-            "are each read as a run. NEVER_RESTORED for the run records' reason: "
-            "a plan is about one run's work, and a rolled back one would answer "
-            "for a library that moved. Losing it costs a plan, never a write: a "
-            "run whose plan is not held plans again, digest bound."
-        ),
-    ),
-    StateFile(
-        key="app_token",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="app_token",
-        why=(
-            "A random token minted per server start for the local control plane. "
-            "It is not a service credential and must NOT survive a restart, which "
-            "is exactly why it stays a file with explicit 0600 rather than "
-            "joining the keychain."
-        ),
-    ),
-    StateFile(
-        key="dashboard_snapshot",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="dashboard_snapshot.json",
-        why=(
-            "Last-good render numbers so a dashboard still draws when the volume "
-            "is unmounted. Pure presentation cache: if it were library-scoped it "
-            "would be unreadable in exactly the situation it exists to serve."
-        ),
-    ),
-    # ── Library-scoped ─────────────────────────────────────────────────────
-    StateFile(
-        key="rekordbox_db",
-        snapshot=SnapshotRole.COUPLED,
-        # The database IS the coupled set's centre, and every row in it is
-        # replaced wholesale by the file copy. Nothing about that reaches
-        # outside; what reaches outside is recorded by the entries below, which
-        # is why they carry the effects and this one does not.
-        rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        # Composed from library.db_path rather than from a relative literal: the
-        # database's location is the user's decision, made in rekordbox, not ours.
-        relative="",
-        why=(
-            "The single most important piece of library-scoped state in the "
-            "product, and it had no row at all: an inventory that omits it looks "
-            "complete while the thing every other entry describes goes "
-            "undispositioned. It is library-scoped because a database is a "
-            "library, so a second installation that adopted a per-installation "
-            "database would adopt a DIFFERENT library under the same name. It is "
-            "COUPLED because KTD21b exists to roll it back together with the "
-            "registry, watermarks, tombstones and declines that describe it; that "
-            "coupling is the whole answer to the plan's top-ranked risk. Its "
-            "location is constrained rather than free: see the containment rule on "
-            "LibraryConfig.db_outside_root_acknowledged_on, which makes a database "
-            "on another filesystem an explicit decision at setup instead of a "
-            "surprise at the first snapshot."
-        ),
-        # The only entry with sidecars, and the only one that needs them: it is
-        # the only SQLite database in the inventory. Declaring them here is what
-        # keeps the KTD21b capture set derived rather than hand-listed by U8.
-        sidecars=SQLITE_SIDECARS,
-    ),
-    StateFile(
-        key="write_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="write.lock",
-        why=(
-            "KTD17 and R31, non-negotiable. In the source system this is a flock "
-            "on a path under the installation root while the database it protects "
-            "travels with the library, so a second install holds a lock the first "
-            "install cannot see and both open the database at once. During the "
-            "migration overlap the old system must be able to open this exact "
-            "file, which only a path beside the library can provide."
-            " NEVER_RESTORED for a second reason: a restore that replaced the "
-            "directory holding this file would swap the inode a live flock is "
-            "held on, and every process holding the old one would keep believing "
-            "it had exclusive access, with nothing raised."
-        ),
-    ),
-    StateFile(
-        key="session_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="session.lock",
-        why=(
-            "The whole-run lock, held for a destructive session end to end (R31). "
-            "Same failure as the write lock: per-installation placement makes two "
-            "machines mutually invisible."
-            " Same inode argument as the write lock: a restore must never "
-            "replace the file a live lock is held on."
-        ),
-    ),
-    StateFile(
-        key="session_log",
-        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="sessions",
-        why=(
-            "The per-run state machine, the frozen plans, and the created-playlist "
-            "ledger. Library-scoped for two reasons: KTD21b requires a snapshot to "
-            "cover the database and this log ATOMICALLY, and during the overlap a "
-            "Cratekit run that cannot read the old system's log treats its crash "
-            "debris as fresh intake."
-            " It SURVIVES a rollback rather than being part of one: rolling the "
-            "log back would erase the record of which sessions are restorable, "
-            "which is the one thing a user needs in order to restore again."
-        ),
-    ),
-    StateFile(
-        key="snapshots",
-        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="snapshots",
-        why=(
-            "The headline case in KTD21. Restore lives per installation in the "
-            "source system while the database it restores lives per library, so a "
-            "second machine simply cannot roll back the first machine's write. "
-            "Beside the library, any installation can restore any session."
-            " It SURVIVES a rollback for a structural reason as well as a "
-            "practical one: a snapshot that captured the snapshot store would "
-            "nest every previous snapshot inside the new one, and each capture "
-            "would then cost the sum of every capture before it."
-        ),
-    ),
-    StateFile(
-        key="favorites_state",
-        snapshot=SnapshotRole.COUPLED,
-        # The reverse half of the favorites sweep hearts a track at the
-        # provider. Rolling this file back forgets that it did, and the heart
-        # stays on somebody else's server.
-        rollback_effects=(RollbackEffect.REMOTE_PLAYLIST_PREFIX,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="favorites_state.json",
-        why=(
-            "It records rekordbox row identifiers that have already been colored "
-            "and tagged. A second install starts from an empty list and re-applies "
-            "every one of them, turning what should be a no-op run into a full "
-            "guarded write session against the live database, which is the highest "
-            "risk operation in the product."
-            " COUPLED: the rows it names are database rows, so a restore that "
-            "rolled the database back without it would leave this file claiming "
-            "work that no longer exists, and the next run would skip it."
-        ),
-    ),
-    StateFile(
-        key="favorites_state_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="favorites_state.lock",
-        why=(
-            "A sibling lock serializing the read-modify-write of the state file "
-            "beside it. Library-scoped for the same reason its file is: a lock in "
-            "a per-installation directory is invisible to a second machine, so "
-            "both would edit one library's record at once."
-            " NEVER_RESTORED for the inode reason every lock here shares."
-        ),
-    ),
-    StateFile(
-        key="energy_calibration",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="energy_calibration.json",
-        why=(
-            "Cut points fitted against THIS library's own values. KTD21 names "
-            "analysis calibration library-scoped, and the reason is that losing "
-            "it does not just cost a re-fit: it silently changes where the same "
-            "input track routes."
-            " NEVER_RESTORED: the restamp these cut points drove wrote values "
-            "into files on disk, and a database restore does not roll a file "
-            "write back. Rolling the cut points back alone would describe a "
-            "state the files are no longer in."
-        ),
-    ),
-    StateFile(
-        key="energy_feature_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="energy_features.json",
-        why=(
-            "Per-file signal features keyed on this library's files. Losing it to "
-            "a reinstall costs a full re-analysis pass over thousands of files."
-            " NEVER_RESTORED: it is keyed on files, which do not roll back, and "
-            "it is re-derivable, so a rollback costs a re-analysis and buys "
-            "nothing."
-        ),
-    ),
-    StateFile(
-        key="energy_undo_log",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="energy_undo.json",
-        why=(
-            "The ONLY surviving copy of each file's pre-restamp energy value, "
-            "which the restamp overwrote on disk. A reinstall that loses this is "
-            "unrecoverable data loss against the user's own music files, and the "
-            "source system's re-rate path refuses outright when it is absent."
-            " Which is exactly why a restore must never roll it back: the values "
-            "it protects were written to files, a database restore does not undo "
-            "a file write, and discarding the log makes those writes permanent. "
-            "Rolling this back is not a stale record, it is data loss."
-        ),
-    ),
-    StateFile(
-        key="vocal_calibration",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="vocal_calibration.json",
-        why=(
-            "The hand-set vocal cut, fitted against this library. Same failure as "
-            "energy calibration: losing it changes routing outcomes for unchanged "
-            "input, silently."
-            " NEVER_RESTORED for the same reason as energy calibration: its "
-            "effects already landed on files that do not roll back."
-        ),
-    ),
-    StateFile(
-        key="genre_gaps",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="genre_gaps.json",
-        why=(
-            "Counts of incoming genre strings that resolved to no folder in THIS "
-            "library's taxonomy. The same string is a gap in one library and a "
-            "match in another, so the count is meaningless anywhere else. Note "
-            "the keys are external vendor strings, not taxonomy display names, "
-            "which is why R19's re-key does not apply: the whole point of the "
-            "record is that the string matched nothing we own."
-            " NEVER_RESTORED: a gap observed is a fact about what arrived, not "
-            "about what the database holds, and re-deriving it costs a pass."
-        ),
-    ),
-    StateFile(
-        key="genre_tag_undo_log",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="genre_tag_undo.json",
-        why=(
-            "The replay source for reverting tag writes made to files on disk, "
-            "carrying each file's original value. Second undo log, same argument: "
-            "a reinstall that loses it makes hundreds of on-disk tag writes "
-            "permanent."
-            " And the same argument against rolling it back: the writes it "
-            "reverses are on disk, so a restore that discarded this log would "
-            "make them permanent too."
-        ),
-    ),
-    StateFile(
-        key="playlist_parole_ledger",
-        snapshot=SnapshotRole.COUPLED,
-        # First-seen dates for database rows, and nothing else leaves the
-        # database.
-        rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="playlist_parole.json",
-        why=(
-            "First-seen dates for playlists sitting in the rotation's holding "
-            "area. It describes this library's playlists and nothing else."
-            " COUPLED: the playlists it dates are database rows. A restore that "
-            "brought a playlist back while its first-seen date stayed at the "
-            "rolled-forward value would put it straight past the rotation "
-            "deadline and delete it early."
-        ),
-        rekey_from_display_name=True,
-    ),
-    StateFile(
-        key="track_provider_id_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="track_provider_ids.json",
-        why=(
-            "A map from file location to the provider's track identifier, keyed "
-            "on THIS library's file paths. On another library every key misses, so "
-            "an installation-scoped copy is a cache that can only ever be wrong "
-            "or empty."
-            " NEVER_RESTORED: keyed on file paths, which a database restore does "
-            "not move, and re-derivable at the cost of lookups."
-        ),
-    ),
-    StateFile(
-        key="review_queue",
-        snapshot=SnapshotRole.COUPLED,
-        # Items and verdicts about this library's own candidates. An item is
-        # a question, and asking one changes nothing outside.
-        rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="review",
-        why=(
-            "KTD12's one shared adjudication surface. Its items describe "
-            "candidates for THIS library, and an item adjudicated on one machine "
-            "must not be re-asked on another."
-            " COUPLED: an adjudicated item becomes a decline, and R30 rolls "
-            "declines back. Leaving the queue behind while the declines roll "
-            "back would leave an item simultaneously queued and already decided."
-        ),
-    ),
-    StateFile(
-        key="label_outcomes",
-        snapshot=SnapshotRole.COUPLED,
-        # What a sweep actually landed: the audio is on the music volume and
-        # the rows that named it are about to go, so the next pass reads those
-        # files as owned by nobody.
-        rollback_effects=(RollbackEffect.DOWNLOADED_FILE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="label_outcomes",
-        why=(
-            "The other half of the split directory (D4): what a label sweep "
-            "actually landed in this library. Distinct from the crawl cache, which "
-            "is only what a lookup returned."
-            " COUPLED for the same reason the watermarks are: it is a per-source "
-            "audit record of what this library took in, and R25 is meaningless "
-            "if it survives a rollback of the intake it describes."
-        ),
-    ),
-    StateFile(
-        key="label_watermarks",
-        snapshot=SnapshotRole.COUPLED,
-        # BOTH directions at once, which is why this field is a tuple. An
-        # advanced watermark means audio landed on the volume, and it means the
-        # provider playlist it consumed was renamed with the taken marker. The
-        # rows roll back; neither of those does.
-        rollback_effects=(
-            RollbackEffect.DOWNLOADED_FILE,
-            RollbackEffect.REMOTE_PLAYLIST_PREFIX,
-        ),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="label_watermarks.json",
-        why=(
-            "The other half of the split registry file (D4). A watermark is a "
-            "per-source audit record of what this library has already taken in "
-            "(R25). Committed to git in the source system, which ships one "
-            "person's sweep history to everyone who clones."
-            " COUPLED, named by R30: a watermark that survives a rollback of the "
-            "intake it recorded makes the next sync skip exactly the tracks the "
-            "restore removed."
-        ),
-    ),
-    StateFile(
-        key="label_watermarks_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="label_watermarks.lock",
-        why=(
-            "The sibling lock for the per-label last-pulled document. Two "
-            "sweeps finishing at once would both read the same years, both "
-            "write, and the second rename would discard the first label's "
-            "advance while reporting success. NEVER_RESTORED for the inode "
-            "reason every lock here shares, and it lives under local rather "
-            "than coupled so a restore cannot swap the inode a holder still "
-            "has open."
-        ),
-    ),
-    StateFile(
-        key="label_sync",
-        snapshot=SnapshotRole.COUPLED,
-        # The record describes review rows and itself. The download an answer
-        # leads to is U108's, and lands as an intake whose own records declare
-        # the downloaded file.
-        rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="label_sync.json",
-        why=(
-            "The guided label sync's record (U107): per label, which releases a "
-            "person has been asked about and when, the question waiting to be "
-            "answered, and every answer given. LIBRARY scoped because what was "
-            "asked depends on this library's holdings and its review queue, and "
-            "a copy run redirects library state so a rehearsal cannot move the "
-            "live marker. COUPLED because the record describes review rows: a "
-            "restore that puts the review queue back must put the asked set "
-            "back with it, or a release answered in a rolled back run is never "
-            "asked again."
-        ),
-    ),
-    StateFile(
-        key="tag_suggest_catalogue",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tag_suggest_catalogue.json",
-        why=(
-            "What the catalogues answered for each row tag suggest offered a "
-            "genre for (U114), kept a week so the run that applies a plan "
-            "rebuilds it from the same answers the gate showed. LIBRARY scoped "
-            "because it is keyed by this library's content identifiers. NEVER "
-            "RESTORED because every entry is replayable from the network: "
-            "losing it costs paced lookups and no data."
-        ),
-    ),
-    StateFile(
-        key="label_sync_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="label_sync.lock",
-        why=(
-            "The sibling lock for the guided label sync's record. An answer is "
-            "a read, modify, write of one document, and a structured answer "
-            "given beside an interactive run must not discard the other's. "
-            "NEVER_RESTORED for the inode reason every lock here shares."
-        ),
-    ),
-    StateFile(
-        key="tree_registry",
-        snapshot=SnapshotRole.COUPLED,
-        # A cutover's effect is entirely inside the database it adopted, so
-        # nothing here reaches outside. The tree still needs reconciling after a
-        # pre-cutover restore, and that is a different question with its own
-        # marker: see cratekit.core.reconcile.
-        rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tree_registry.json",
-        why=(
-            "KTD22. Cutover mode and the adopted root's identifier describe one "
-            "person's library. Committing them would ship the author's flips to "
-            "every friend, and would leave the old system, which cannot read the "
-            "new repository, unable to consult them at all. New state: the source "
-            "system has no equivalent."
-            " COUPLED, and it is the entry the plan's top-ranked risk is named "
-            "after: the registry rolling back while the database does not, or "
-            "the reverse, is the failure KTD21b exists to make impossible."
-        ),
-    ),
-    StateFile(
-        key="tree_registry_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tree_registry.lock",
-        why=(
-            "Recording a cutover reads the registry, adds one tree's record, and "
-            "writes the whole file back, because trees flip one at a time and a "
-            "whole-file overwrite would erase every other tree's record. That "
-            "cycle is not made atomic by the atomic rename at the end of it: two "
-            "processes that both read, both add and both rename leave one flip "
-            "on the floor while the call that lost it returns a registry "
-            "reporting success, and a tree whose cutover was lost then takes its "
-            "next write through the XML bridge, which under U9's A2 verdict "
-            "replaces the database-native tree on import. Library-scoped because "
-            "the registry is: a lock under the installation root is invisible to "
-            "a second machine writing the same library."
-            " NEVER_RESTORED for the inode reason every lock here shares, and it "
-            "matters more than usual because the registry is COUPLED: a restore "
-            "replaces the directory holding it, so a lock beside it would have "
-            "its inode swapped under every process holding it."
-        ),
-    ),
-    StateFile(
-        key="routing_intents",
-        snapshot=SnapshotRole.COUPLED,
-        # Intents and marks, both about database rows.
-        rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="routing_intents.json",
-        why=(
-            "Where each new track's intended placement is written down at the "
-            "moment it is decided, which is long before the library holds a row "
-            "for that track. It describes ONE library's files and one library's "
-            "playlist rows, so a second installation inheriting it would try to "
-            "place tracks that library has never seen, and a reinstall must find "
-            "it beside the library rather than beside the installation that "
-            "recorded it. New state: the source system decides placement and "
-            "writes it in one pass and therefore has nothing to persist."
-            " COUPLED, and this is the entry where the coupling is the entire "
-            "point. A track is marked routed only after its membership row is "
-            "committed, so a restore that rolled the membership back while the "
-            "mark survived would leave a run reporting placed tracks that sit in "
-            "no playlist at all, with nothing left on disk that knows to place "
-            "them again."
-        ),
-    ),
-    StateFile(
-        key="routing_intents_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="routing_intents.lock",
-        why=(
-            "The ledger beside it accumulates several runs from several sources, "
-            "and every writer of it reads, modifies and writes. Two of those "
-            "interleaving erases a decision that was fully recorded, and the run "
-            "that made it then closes clean over a track sitting in no playlist. "
-            "Library-scoped for the same reason the write lock is: a "
-            "per-installation lock is invisible to a second install and to the "
-            "old system during the overlap, so neither can contend for a file "
-            "that only ever had one copy."
-            " NEVER_RESTORED for the inode reason the write lock records: a "
-            "restore that replaced the directory holding this file would swap "
-            "the inode a live lock is held on, and every process holding the old "
-            "one would keep believing it had exclusive access."
-        ),
-    ),
-    # WRITTEN AT THE U32 MERGE, which is the first moment it could be written.
-    # ``RollbackEffect`` and the ``rollback_effects`` field are U32's and existed
-    # on neither branch alone, so this entry carried the line as a comment until
-    # both halves shared a build. Duplicating the enum to get it in early would
-    # have been worse than the gap: two enum classes with one name compare unequal
-    # member by member, and the merge would have resolved to whichever definition
-    # landed last. U32's guard parses this file and named this entry in a failing
-    # test the moment the two sides met, so the omission could not survive the
-    # merge silently, which is what that guard is for.
-    #
-    # THE ANSWER IS NONE DELIBERATELY RATHER THAN BY OMISSION. Every record this
-    # entry holds describes rows inside the database a restore replaces: a
-    # fingerprint of that database, a flag about a tree inside it, and the
-    # identifiers of playlist rows in it. None of the three caused anything
-    # outside the coupled set, so nothing survives a rollback for a person to
-    # reconcile, and saying so out loud is the whole point of U32's field.
-    StateFile(
-        key="tree_convergence",
-        snapshot=SnapshotRole.COUPLED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tree_convergence.json",
-        rollback_effects=(RollbackEffect.NONE,),
-        why=(
-            "R39. Three facts about THIS library's database-native trees: the "
-            "fingerprint of the database as Cratekit last left it, which tree is "
-            "unconverged and why, and the playlist row identifiers a previous "
-            "rebuild wrote each declared destination into. All three name rows in "
-            "one person's database, so a second installation inheriting them would "
-            "compare its own library against another one's counts and rebuild into "
-            "row identifiers it does not have. New state: the source system has no "
-            "convergence concept at all, which is the gap R39 names."
-            " COUPLED, and every one of the three fails differently if it is not. "
-            "A fingerprint that survived a rollback would report the restore it "
-            "was rolled back by as an out-of-band one, so Cratekit's own restore "
-            "would mark every native tree unconverged. A node map that survived "
-            "would point a rebuild at playlist rows the restore removed, and the "
-            "rebuild would create them again beside the real ones. An unconverged "
-            "flag that survived would outlive the damage it describes, exactly as "
-            "the committed-unverified session record did before U8 gave it a way "
-            "to be resolved."
-        ),
-    ),
-    StateFile(
-        key="tree_convergence_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tree_convergence.lock",
-        why=(
-            "The document beside it is read, modified and written by the rebuild, "
-            "by the convergence check, and by every governed write that records a "
-            "fingerprint at its close, which is several processes against one "
-            "file. Two of those interleaving discards an unconverged flag that was "
-            "fully recorded, and the next sync then runs over a tree nothing "
-            "believes is damaged. Library-scoped because the document is: a lock "
-            "under the installation root is invisible to a second machine writing "
-            "the same library."
-            " NEVER_RESTORED for the inode reason every lock here shares, and it "
-            "matters more than usual because the document it guards is COUPLED: a "
-            "restore replaces the directory holding it, so a lock beside it would "
-            "have its inode swapped under every process holding it."
-        ),
-    ),
-    StateFile(
-        key="tombstones",
-        snapshot=SnapshotRole.COUPLED,
-        # A tombstone is written when a file is removed, and removal here means
-        # the Trash. The record rolls back; the file does not walk out of the
-        # Trash on its own.
-        rollback_effects=(RollbackEffect.TRASHED_FILE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tombstones.json",
-        decision_store=True,
-        why=(
-            "R36. A suppressed acquisition is a fact about what this library has "
-            "deliberately declined to hold. New state; the source system has no "
-            "equivalent, so there is nothing to port and the shape is chosen here."
-            " COUPLED, named by R30."
-        ),
-    ),
-    StateFile(
-        key="declines",
-        snapshot=SnapshotRole.COUPLED,
-        # A decline suppresses an acquisition that never happened, so there is
-        # nothing outside to undo.
-        rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="declines.json",
-        decision_store=True,
-        why=(
-            "R36's other half: candidates a human rejected. Library-scoped so the "
-            "rejection is not re-asked from a second machine. New state."
-            " COUPLED, named by R30, and paired with the review queue: the two "
-            "roll back together or an item ends up both open and decided."
-        ),
-    ),
-    StateFile(
-        key="decision_store_locks",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="decision_locks",
-        why=(
-            "One sibling lock per decision store, serializing the read then write "
-            "each of them performs on its document. Without it two processes both "
-            "read the same set, both add their own record, and the second rename "
-            "discards the first one's while the call that lost reports success: "
-            "eight processes recording two hundred decisions left seventy one on "
-            "disk. A lost record re-offers a declined file and re-acquires a "
-            "tombstoned version, and a lost revocation leaves a suppression "
-            "standing forever with nothing to notice it. Library-scoped for the "
-            "reason the stores are: a lock in a per-installation directory is "
-            "invisible to a second machine, so both would edit one library's "
-            "record at once."
-            " NEVER_RESTORED for the inode reason every lock here shares, and it "
-            "is why this is a directory of its own rather than a file beside each "
-            "store: the stores are COUPLED, so a restore replaces the directory "
-            "holding them, and a lock inside it would have its inode swapped "
-            "under every process holding it."
-            " A DIRECTORY rather than one entry per store, so the lock a store "
-            "uses is derived from the store's own key and a third decision store "
-            "cannot arrive without one."
-        ),
-    ),
-    StateFile(
-        key="deletion_watermark",
-        snapshot=SnapshotRole.COUPLED,
-        # How far the deletion pass read. The deletions themselves are recorded
-        # as tombstones above, which is where the Trash effect is declared; this
-        # is a position, and a position has no effect of its own.
-        rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="deletion_watermark.json",
-        why=(
-            "R35. It marks how far the deletion pass has read THIS library's "
-            "soft-delete markers, and the number each absent landed row was "
-            "given when a pass first saw it gone (R-1037). New state."
-            " COUPLED, named by R30: a deletion watermark that survives a "
-            "rollback skips markers the restore put back."
-        ),
-    ),
-    StateFile(
-        key="deletion_watermark_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="deletion_watermark.lock",
-        why=(
-            "The sibling lock for the watermark above, which is a read then a "
-            "write over one document exactly as the decision stores are. "
-            "``atomic_write_bytes`` makes the RENAME atomic and does nothing for "
-            "the cycle around it, so two passes finishing at once both read the "
-            "same watermark, both advance it from what they read, and the second "
-            "rename discards the first one's advance while the call that lost "
-            "reports success. What that loses is not a number: the watermark is "
-            "what makes a removal HANDLED, so a dropped advance re-offers files "
-            "somebody already answered for, and a dropped RE-BASELINE offers a "
-            "whole library's historical removals at once. Library-scoped for the "
-            "reason the watermark is: a lock in a per-installation directory is "
-            "invisible to a second machine, so both would advance one library's "
-            "watermark at once."
-            " NEVER_RESTORED for the inode reason every lock here shares, and it "
-            "is a sibling rather than a lock beside the document because the "
-            "watermark is COUPLED: a restore replaces the directory holding it, "
-            "and a lock inside that directory would have its inode swapped under "
-            "every process holding it."
-        ),
-    ),
-    StateFile(
-        key="source_watermarks",
-        snapshot=SnapshotRole.COUPLED,
-        rollback_effects=(
-            RollbackEffect.DOWNLOADED_FILE,
-            RollbackEffect.REMOTE_PLAYLIST_PREFIX,
-        ),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="source_watermarks.json",
-        why=(
-            "R25's per-source audit record of how far each increment got on THIS "
-            "library. The cursor does not decide the next scope; owned-dedup "
-            "does. A second install that kept the same file would report "
-            "completions that never happened on this machine, and a watermark "
-            "that survives a rollback of the intake it recorded would tell "
-            "status a source was clean after the restore removed that intake. "
-            "Distinct from label_watermarks.json, which is the per-label "
-            "last-pulled document U26 owns; this file is one cursor per source id."
-        ),
-    ),
-    StateFile(
-        key="source_watermarks_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="source_watermarks.lock",
-        why=(
-            "The sibling lock for the source watermark document. Two increments "
-            "finishing at once would both read the same cursors, both write, and "
-            "the second rename would discard the first source's advance while "
-            "reporting success. Library-scoped for the reason the document is: a "
-            "lock in a per-installation directory is invisible to a second "
-            "machine editing the same library. NEVER_RESTORED because the "
-            "document is COUPLED and a lock inside that directory would have its "
-            "inode swapped under every process holding it."
-        ),
-    ),
-    StateFile(
-        key="bandcamp_fetched",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="bandcamp_fetched.json",
-        why=(
-            "U176. Every Bandcamp purchase this library has fetched into "
-            "download staging, by purchase id, so a later run plans only what "
-            "it has not taken. Kept by purchase and never as a checkpoint, "
-            "because a checkpoint hides every purchase older than it, which is "
-            "how a purchase filtered out once was never offered again. "
-            "Library-scoped because the files it records were staged for this "
-            "library. NEVER_RESTORED because what it records happened on disk "
-            "and at the account, and a database restore takes back neither: "
-            "rolled back, it would fetch a release again into staging beside "
-            "the copy already there."
-        ),
-    ),
-    StateFile(
-        key="bandcamp_fetched_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="bandcamp_fetched.lock",
-        why=(
-            "The sibling lock for the record above. Two fetches finishing at "
-            "once would both read it, both add their purchase, and the second "
-            "rename would drop the first one's, so that purchase is fetched "
-            "again on the next run. NEVER_RESTORED for the inode reason every "
-            "lock here shares."
-        ),
-    ),
-    StateFile(
-        key="sync_mark_record",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_marks.json",
-        why=(
-            "R-838. Which account playlists each sync pass renamed with the swept "
-            "prefix, the title before and the title written, so ``sync unmark`` "
-            "can put a mistaken mark back and refuse a prefix no pass of this "
-            "product wrote. The title alone cannot say who wrote it."
-            " NEVER_RESTORED for the undo logs' reason: the renames it records "
-            "are on somebody else's server and a database restore does not undo "
-            "them, so rolling the record back forgets a mark that is still there "
-            "and leaves the one verb that can remove it refusing to."
-        ),
-    ),
-    StateFile(
-        key="sync_mark_record_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_marks.lock",
-        why=(
-            "The sibling lock for the mark record, which is a read then a write "
-            "over one document. Two marks landing at once would both read the "
-            "same record and the second rename would discard the first one's "
-            "entries while reporting success. NEVER_RESTORED for the inode reason "
-            "every lock here shares."
-        ),
-    ),
-    StateFile(
-        key="sync_unavailable_record",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_unavailable.json",
-        why=(
-            "U320. Which synced account playlists ``sync removed`` found absent "
-            "from the account's list with their id answering not found, the first "
-            "and latest time it did, and which are retired, so a playlist deleted "
-            "on the account stops holding back every removal once it has answered "
-            "not found a day apart or a person retired it at the gate."
-            " NEVER_RESTORED for the mark record's reason: it records what "
-            "somebody else's server answered, which a database restore does not "
-            "undo, and rolled back it would read a deleted playlist as live again."
-        ),
-    ),
-    StateFile(
-        key="sync_unavailable_record_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_unavailable.lock",
-        why=(
-            "The sibling lock for the record above, a read then a write over one "
-            "document: two runs recording at once would both read it and the "
-            "second write would drop the first one's sightings. NEVER_RESTORED "
-            "for the inode reason every lock here shares."
-        ),
-    ),
-    StateFile(
-        key="sync_artifacts",
-        snapshot=SnapshotRole.COUPLED,
-        rollback_effects=(RollbackEffect.DOWNLOADED_FILE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_artifacts.json",
-        why=(
-            "The register of every file a sync run created, written at creation "
-            "time so crash debris in the staging directory cannot become the next "
-            "run's intake. Library-scoped because the files describe what THIS "
-            "library's run produced. COUPLED so a restore forgets registrations "
-            "for intake that no longer exists, and those leftover files become "
-            "debris again rather than being re-imported as if they were new."
-        ),
-    ),
-    StateFile(
-        key="sync_artifacts_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_artifacts.lock",
-        why=(
-            "The sibling lock for the artifact register. Two sources in one run "
-            "register files concurrently, and an unlocked read-modify-write would "
-            "drop one source's registrations, which is how crash debris becomes "
-            "invisible and then looks like next-run intake. NEVER_RESTORED for "
-            "the inode reason every lock here shares."
-        ),
-    ),
-    StateFile(
-        key="backup_ack",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="backup_ack.json",
-        why=(
-            "KTD18's queue-time acknowledgment and the backup age shown when it "
-            "was given. New state: the source system's backup script persists no "
-            "timestamp at all, it stats the remote, so there is nothing to port. "
-            "Library-scoped because the thing acknowledged is a backup of THIS "
-            "library."
-            " NEVER_RESTORED: the backup it acknowledges lives off this volume "
-            "and a restore does not un-take it, so rolling the record back would "
-            "demand the user re-acknowledge a backup that is still there."
-        ),
-    ),
-    StateFile(
-        key="backup_facts",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="backup_facts.json",
-        why=(
-            "When each portion of THIS library was last backed up, recorded PER "
-            "PORTION because the database portion refuses while rekordbox is "
-            "running and the file mirror completes anyway; one aggregate "
-            "timestamp would report a database that is weeks stale as fresh, "
-            "which is precisely the fact R15's warning exists to carry. It is a "
-            "FILE rather than a function call so R15's warning reads a fact "
-            "instead of importing a toggleable module (KTD23). New state: the "
-            "source system's script persists nothing and stats the remote "
-            "instead, so a machine that cannot reach the remote cannot answer "
-            "the question at all. Library-scoped because a second installation "
-            "must see the same answer; an installation-scoped copy reports "
-            "'never backed up' for a library that was backed up an hour ago "
-            "from the other machine, and a warning that cries wolf is one users "
-            "learn to click through."
-            " NEVER_RESTORED: the backup it describes lives off this volume and "
-            "a restore does not un-take it, so rolling the record back would "
-            "demand a fresh backup of something that is still there."
-        ),
-    ),
-    StateFile(
-        key="setbuilder_index_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="setbuilder_index.json",
-        why=(
-            "Per-file ranking signals keyed on THIS library's file paths and "
-            "modification times, so a repeat run re-reads only what changed. "
-            "Every key misses against another library, which makes an "
-            "installation-scoped copy a cache that can only be empty or wrong, "
-            "and the whole-library tag scan it avoids costs minutes per run on a "
-            "library of this size."
-            " NEVER_RESTORED: it is keyed on files, which a database restore "
-            "does not move, and every entry is re-derivable from the files "
-            "themselves at the cost of that scan."
-        ),
-    ),
-    StateFile(
-        key="taxonomy_active",
-        snapshot=SnapshotRole.COUPLED,
-        # A declaration of the tree this library means. Nothing outside the
-        # database reads it.
-        rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="taxonomy.toml",
-        why=(
-            "S6. The SHIPPED default template is packaged read-only data in the "
-            "wheel; the ACTIVE template is a copy made here at setup. That makes "
-            "a library self-describing: a second installation or a reinstall "
-            "resolves the same tree without re-answering the wizard, and a "
-            "snapshot rolls the taxonomy back with the database it describes."
-            " Which is to say COUPLED, explicitly: the tree in the database and "
-            "the template that describes it are one decision in two files."
-        ),
-    ),
-    StateFile(
-        key="taxonomy_origin",
-        snapshot=SnapshotRole.COUPLED,
-        # A record about the active copy. Nothing routes by it; doctor reads it.
-        rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="taxonomy.origin.toml",
-        why=(
-            "R-689. Which shipped text the active taxonomy copy was made from: "
-            "the template's short name and a digest of the packaged text setup "
-            "copied. Without it a copy that fell behind the shipped template "
-            "cannot be told from one a person edited, so doctor could not say "
-            "why a section the shipped template gained after setup is absent "
-            "from every verb. It lives beside the copy it describes and rolls "
-            "back with it, because a restored older copy under a newer record "
-            "would read as edited when it is not. Setup writes it once, with the "
-            "copy, and never for a copy it left alone, since it cannot know "
-            "where an existing copy came from."
-        ),
-    ),
-    StateFile(
-        key="active_run_sentinel",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative=".cratekit_active_run.json",
-        why=(
-            "The one entry the source system already places beside the library, "
-            "carried forward as-is rather than converted. It sits at the library "
-            "ROOT rather than inside the state directory on purpose: it is an "
-            "advisory cross-machine heartbeat, and a second system looking for it "
-            "should not have to know this layout."
-            " NEVER_RESTORED: it is a live heartbeat. Restoring one would "
-            "advertise a run that ended, to a machine that would then wait for it."
-        ),
-        at_library_root=True,
-    ),
-    StateFile(
-        key="set_workspaces",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="",
-        why=(
-            "Per-set stage artifacts, already correct by accident of location in "
-            "the source system: they live under the library's own sets directory "
-            "beside the audio they describe. Resolved from the CONFIGURED "
-            "directory names rather than from a literal, which is why its relative "
-            "path is empty here and ``state_path`` composes it. It names a "
-            "Cratekit-owned subdirectory INSIDE the sets directory, never the sets "
-            "directory itself: that directory holds the user's own recordings, and "
-            "an entry pointing at it puts the whole recordings tree into every "
-            "generic pass over the inventory. A snapshot would try to copy "
-            "hundreds of gigabytes of audio, a state report would list the user's "
-            "music as Cratekit state, and a future 'clear this library's state' "
-            "built off the inventory would target user content. NEVER_RESTORED "
-            "because a stage artifact belongs to a run, not to the database."
-        ),
-    ),
-    # ── U32's three entries, appended ───────────────────────────────────────
-    #
-    # APPENDED RATHER THAN FILED BESIDE THEIR SIBLINGS, deliberately, and for the
-    # reason the verb registry and the reason registry both give for the same
-    # choice: several units land against this literal at once, two entries
-    # inserted into different halves of it auto-merge, and a duplicate key is
-    # then resolved silently by whichever line comes last. An append conflicts
-    # textually, which is a conflict somebody reads.
-    StateFile(
-        key="restore_reconciliation",
-        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="restore_reconciliation.json",
-        why=(
-            "What a restore left behind that the restore itself could not undo, "
-            "and whether a person has dispositioned each one. A restore rolls the "
-            "database and its coupled state back together, which makes them agree "
-            "with each other and says nothing about the world: the audio the "
-            "discarded run downloaded is still on the volume, the playlist it "
-            "renamed at the provider is still renamed, and the file it moved to "
-            "the Trash is still in the Trash. Library-scoped because every one of "
-            "those facts is about THIS library, and a second machine restoring "
-            "the same session must see the same outstanding list rather than a "
-            "clean sheet. New state: the source system has no restore that "
-            "reconciles anything."
-            " It SURVIVES a rollback, for the reason the session log does and "
-            "one more. Rolling it back would erase the record of what is owed at "
-            "exactly the moment it is owed, and a second restore run against an "
-            "earlier point would wipe the first restore's outstanding list while "
-            "adding its own. It also holds the unconverged trees a pre-cutover "
-            "restore marks, and those must outlive every later rollback, because "
-            "the rebuild that clears them has not run yet."
-        ),
-    ),
-    StateFile(
-        key="restore_reconciliation_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="restore_reconciliation.lock",
-        why=(
-            "The sibling lock for the document above, which is read then written "
-            "as one cycle by a restore recording markers and by whoever "
-            "dispositions them. The rename at the end of that cycle is atomic and "
-            "the cycle is not: two processes both read the same set, both add "
-            "their own record, and the second rename discards the first one's "
-            "while the losing call returns a record reporting success. Two units "
-            "shipped exactly that bug before it was caught."
-            " NEVER_RESTORED for the inode reason every lock in this inventory "
-            "shares, and it matters here more than anywhere else in the file: the "
-            "process that replaces directories during a restore is the process "
-            "holding this lock. A lock inside a directory a restore replaces has "
-            "its inode swapped underneath every holder, and both then believe "
-            "they have exclusive access with nothing raised. The role-derived "
-            "layout is what enforces the separation rather than a convention: "
-            "NEVER_RESTORED resolves under the local directory and the document "
-            "resolves under the history directory, so the two cannot end up "
-            "beside each other by an edit to a relative path."
-        ),
-    ),
-    StateFile(
-        key="recovery_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="recovery.lock",
-        why=(
-            "The ONE gate a bare-metal recovery can still take. Every gate KTD21 "
-            "publishes is library-scoped on purpose, so that a second machine "
-            "contends with the first instead of holding an invisible lock of its "
-            "own. The cost is that all of them are unreachable when the library "
-            "volume is the thing that died, which is the one case a recovery "
-            "exists for. This is the substitute, and it is installation-scoped "
-            "because with the library gone the only contention that can exist is "
-            "between processes on this machine: there is no shared volume left "
-            "for two machines to contend over."
-            " NEVER_RESTORED for the inode reason every lock here shares, and "
-            "trivially so: it is installation-scoped, and a library snapshot has "
-            "no business reaching outside the library at all."
-        ),
-    ),
-    # APPENDED RATHER THAN FILED BESIDE A SIBLING, for the reason the verb
-    # registry and the pending register both give: two entries inserted into the
-    # middle of one literal by two units auto-merge into a table nobody read,
-    # while an append conflicts textually and a person resolves it.
-    StateFile(
-        key="adoption_ledger",
-        snapshot=SnapshotRole.COUPLED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="adoption_ledger.json",
-        # ADDED AT THE MERGE, 2026-08-14. U23 was cut before U32 landed the rule
-        # that every COUPLED entry names what its records caused outside the set
-        # a restore replaces, so neither branch alone could see this entry owed
-        # an answer. tests/test_restore.py parses the literal and refuses a
-        # coupled entry without one.
-        rollback_effects=(RollbackEffect.WRITTEN_FILE_TAG,),
-        why=(
-            "Which entries of an approved adoption plan have already been applied "
-            "to this library. R26 says a plan applies incrementally and resumably, "
-            "and resumably across SESSIONS, so the record has to outlive the "
-            "process that made it. Losing it to a reinstall re-applies a plan from "
-            "its first item against a library that already holds most of it."
-            " COUPLED: every record it holds names a playlist membership row a "
-            "restore rolls back. A ledger that survived a rollback would report "
-            "those entries applied while the rows were gone, and the resume would "
-            "then skip exactly the work the restore undid."
-        ),
-    ),
-    StateFile(
-        key="adoption_tag_revert_log",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="adoption_tag_revert.json",
-        why=(
-            "The only surviving copy of each file's tag value from before adoption "
-            "overwrote it on disk. A tag write is the one thing an adoption run "
-            "does that the XML re-import safety net never covered: re-importing an "
-            "export does not put a genre string back into a file. A reinstall that "
-            "loses this makes every on-disk write permanent."
-            " NEVER_RESTORED, and this is the third entry to carry that argument "
-            "for the same reason the two undo logs already here do: the writes it "
-            "reverses landed on FILES, a database restore does not undo a file "
-            "write, and discarding the log would make them permanent. Rolling this "
-            "back is not a stale record, it is data loss."
-            " ITS OWN ENTRY RATHER THAN THE ADOPTION LEDGER'S FIELD, because the "
-            "two answer to opposite snapshot roles and one file cannot be both."
-        ),
-    ),
-    StateFile(
-        key="adoption_locks",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="adoption_locks",
-        why=(
-            "One sibling lock per adoption document, serializing the read then "
-            "write each of them performs. An atomic rename makes the WRITE atomic "
-            "and does nothing for the cycle around it: two processes both read the "
-            "same set, both add their record, and the second rename discards the "
-            "first while the call that lost reports success. A dropped applied "
-            "record re-applies work, and a dropped revert record loses the only "
-            "copy of an overwritten tag. Library-scoped because the documents are: "
-            "a lock in a per-installation directory is invisible to the second "
-            "machine editing the same library."
-            " NEVER_RESTORED for the inode reason every lock here shares, and it "
-            "is why this is a directory of its own rather than a file beside each "
-            "document: the ledger is COUPLED, so a restore replaces the directory "
-            "holding it, and a lock inside that directory would have its inode "
-            "swapped under every process holding it."
-            " A DIRECTORY rather than one entry per document, so a third adoption "
-            "document cannot arrive without a lock."
-        ),
-    ),
-    # ── U33's two entries, appended ────────────────────────────────────────
-    #
-    # APPENDED RATHER THAN FILED BESIDE favorites_state, for the reason the
-    # verb registry and the reason registry both give: several units land
-    # against this literal at once, two entries inserted into different
-    # halves of it auto-merge, and a duplicate key is then resolved silently
-    # by whichever line comes last. An append conflicts textually.
-    StateFile(
-        key="outbound_writes",
-        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="outbound_writes.json",
-        why=(
-            "The remote identifiers a playlist export or a heart-back already "
-            "wrote on THIS library's streaming account. A second install that "
-            "lost it would create a second remote playlist for a crate that "
-            "already has one, and would re-heart tracks the account already "
-            "hearts. Library-scoped because the records name this library's "
-            "playlists and favourites, not the machine."
-            " It SURVIVES a rollback: the remote account does not roll back, "
-            "and forgetting a remote playlist id is how the next export "
-            "duplicates one. Coupled would be the wrong role, because a "
-            "restore of the database must not make the next export create."
-        ),
-    ),
-    StateFile(
-        key="outbound_writes_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="outbound_writes.lock",
-        why=(
-            "The sibling lock for the outbound write ledger. Two exports "
-            "finishing at once would both miss the same remote id, both "
-            "create, and the second rename would discard the first playlist "
-            "while reporting success. Library-scoped for the reason the "
-            "document is: a lock in a per-installation directory is invisible "
-            "to a second machine editing the same library. NEVER_RESTORED "
-            "for the inode reason every lock here shares."
-        ),
-    ),
-    # ── U130's two entries, appended ───────────────────────────────────────
-    StateFile(
-        key="playlist_pairs",
-        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="playlist_pairs.json",
-        why=(
-            "U130. Every account playlist the author marked to stay the same "
-            "list as one rekordbox playlist, by both identifiers, with what "
-            "each side held when the last sync finished. The next sync merges "
-            "each side against that snapshot, so a lost document makes every "
-            "pair's next sync a first one, which adds and never removes."
-            " It SURVIVES a rollback for the outbound ledger's reason: the "
-            "account does not roll back, and a snapshot older than the account "
-            "would read the account's current tracks as additions."
-        ),
-    ),
-    StateFile(
-        key="playlist_pairs_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="playlist_pairs.lock",
-        why=(
-            "The sibling lock for the playlist pairs, which are a read then a "
-            "write over one document. Two syncs recording at once would both "
-            "read the same document and the second would discard the first "
-            "one's snapshot. NEVER_RESTORED for the inode reason every lock "
-            "here shares."
-        ),
-    ),
-    StateFile(
-        key="mirror_plans",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="mirror_plans",
-        why=(
-            "The account mirror's plan frozen on the organize run whose gate it "
-            "was shown at, one JSON file per run: the library it read and every "
-            "match it made (R-1031). The run that applies rebuilds the mirror "
-            "from it, reading the account listing alone, so the digest approved "
-            "is the digest applied and a library write between the two acts "
-            "does not stale the decision. Library-scoped because it names this "
-            "library's content rows. NEVER_RESTORED for the run record's "
-            "reason: a frozen plan belongs to a run, and restoring one would "
-            "apply a plan nobody was shown against the restored library."
-        ),
-    ),
-    StateFile(
-        key="rehearsal_areas",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="rehearsals",
-        why=(
-            "The volume half of each rehearsal's scratch area, one folder per "
-            "run (U162): a copy of the database file set, a copy of the library "
-            "state it reads, and clones of the files the verb moves. On the "
-            "library volume so a clone stays a clone. Removed when the "
-            "rehearsal ends and kept, named, only when it failed. "
-            "NEVER_RESTORED: a scratch copy is nobody's state, and restoring one "
-            "would put a rehearsal's files back beside a library that never "
-            "had them."
-        ),
-    ),
-    StateFile(
-        key="rehearsals",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.DIRECTORY,
-        relative="rehearsals",
-        why=(
-            "The local half of each rehearsal's scratch area, the redirected "
-            "config and installation state a rehearsal runs under, and one "
-            "record per finished rehearsal, its plan digest and plan lines, "
-            "which the live run of the same verb over the same input compares "
-            "its own plan against (U162). Installation-scoped beside the run "
-            "records, since a rehearsal is a run on this machine."
-        ),
-    ),
-)
-
-_STATE_BY_KEY: Mapping[str, StateFile] = MappingProxyType({s.key: s for s in STATE_FILES})
-
-#: The Cratekit-owned directory inside the user's sets directory. Named here so
-#: the entry above and the resolver below cannot disagree about it.
-SET_WORKSPACE_DIRNAME = ".cratekit_workspaces"
-
-#: The two entries whose location is COMPOSED from configured values rather than
-#: from a fixed relative path, each with the function that composes it.
-#:
-#: A table rather than a chain of branches inside ``state_path``, because there
-#: are now two of them and a branch per row stops being readable at the third.
-#: They stay out of ``relative`` because neither is a constant: the database's
-#: location is the user's decision made in rekordbox, and the sets directory's
-#: name is a config value the user can change.
-_COMPOSED_PATHS: Mapping[str, Callable[["Config"], Path]] = MappingProxyType(
-    {
-        "rekordbox_db": lambda config: config.library.db_path,
-        "set_workspaces": lambda config: (
-            config.library.root
-            / config.library.music_dir
-            / config.library.sets_dir
-            / SET_WORKSPACE_DIRNAME
-        ),
-    }
-)
-
-
-def state_file(key: str) -> StateFile:
-    """Look up one inventory entry, or raise naming the closest thing to a menu."""
-    try:
-        return _STATE_BY_KEY[key]
-    except KeyError:
-        raise KeyError(
-            f"{key!r} is not a declared state entry. Every state file is declared "
-            f"in config.STATE_FILES with a root and the failure that root prevents; "
-            f"an undeclared one is a file nobody decided the root for. "
-            f"Declared: {', '.join(sorted(_STATE_BY_KEY))}"
-        ) from None
-
-
-def state_path(key: str, config: Config | None = None) -> Path:
-    """Resolve one state entry to a path. Creates nothing (Rule 1).
-
-    A library-scoped entry needs a ``Config`` because its root is the configured
-    library. Asking for one without a config raises rather than falling back to
-    the installation root, since a silent fallback is how the write lock ends up
-    per installation again.
-    """
-    entry = state_file(key)
-    if entry.medium is Medium.KEYCHAIN:
-        raise ValueError(
-            f"{key!r} is stored in the OS keychain and has no path. Read it "
-            f"through cratekit.core.secrets, which is the one place that knows "
-            f"how to fail when no keychain backend is reachable."
-        )
-    if entry.root is StateRoot.INSTALLATION:
-        if key in _PROVIDER_GATE_KEYS:
-            return provider_gate_dir() / entry.relative
-        # The installation root spans two physical directories with different
-        # backup and sync semantics, and the entry says which one it means. It
-        # used to be implicit, which is how the config file came to be declared
-        # under the state directory while every loader read the config directory.
-        base = (
-            config_dir()
-            if entry.installation_area is InstallationArea.CONFIG
-            else installation_state_dir()
-        )
-        return base / entry.relative
-    if config is None:
-        raise ValueError(
-            f"{key!r} is library-scoped, so resolving it needs the config that "
-            f"names the library. Passing no config would resolve it under the "
-            f"installation root, which is the exact placement KTD21 exists to end."
-        )
-    composed = _COMPOSED_PATHS.get(key)
-    if composed is not None:
-        return composed(config)
-    if entry.at_library_root:
-        return config.library.root / entry.relative
-    # One subdirectory per snapshot role, DERIVED from the role the entry already
-    # declared. That is what makes the KTD21b coupled set a directory boundary
-    # instead of a list U8 and U32 have to keep in sync with this table.
-    return library_state_dir(config) / _LIBRARY_SUBDIR_BY_ROLE[entry.snapshot] / entry.relative
-
-
-def state_files_for(root: StateRoot) -> tuple[StateFile, ...]:
-    """Every declared entry under one root, in declaration order."""
-    return tuple(s for s in STATE_FILES if s.root is root)
-
-
-def coupled_state_files() -> tuple[StateFile, ...]:
-    """Every entry a KTD21b snapshot must capture and a restore must replace.
-
-    Derived from the schema so U8 and U32 never maintain a second copy of it. A
-    hand-mirrored list is the drift this repository already refuses for its CI
-    dependency list and its extras table, and here the cost of that drift is the
-    plan's top-ranked risk: the registry rolling back while the database does not.
-    """
-    return tuple(s for s in STATE_FILES if s.snapshot is SnapshotRole.COUPLED)
-
-
-def out_of_band_effects() -> tuple[tuple[StateFile, RollbackEffect], ...]:
-    """Every coupled entry that reaches outside the set a restore replaces, paired
-    with each effect it declares.
-
-    DERIVED FROM THE SAME PREDICATE ``coupled_state_files`` uses, so the set a
-    restore reconciles and the set a restore replaces can never be two different
-    sets. A reconciler carrying its own list would answer about entries the
-    inventory no longer declares, and would say nothing at all about the next
-    entry somebody adds, which is the direction that fails silently.
-
-    ``RollbackEffect.NONE`` is filtered here rather than at each call site. It is
-    declared on the entry because "somebody decided nothing leaves the database"
-    and "nobody decided" have to look different in the source; it is dropped here
-    because a marker for it would ask a person to disposition an effect that does
-    not exist.
-    """
-    return tuple(
-        (entry, effect)
-        for entry in coupled_state_files()
-        for effect in entry.rollback_effects
-        if effect is not RollbackEffect.NONE
-    )
-
-
-def sidecar_paths(key: str, config: Config, *, restored_only: bool = False) -> tuple[Path, ...]:
-    """The sidecar paths that travel with one entry. Composed, never listed.
-
-    ``restored_only`` is the difference between the two consumers. A CAPTURE
-    wants every sidecar, because the log holds transactions the database file
-    does not. A RESTORE wants only the ones it writes back, because the
-    shared-memory index is derived from the log and a stale one put back beside
-    a fresh log describes a database that no longer exists. Both answers come
-    from the same declaration, so they cannot disagree.
-
-    These are paths, not files: any of them may be absent, which is normal (see
-    ``StateFile.sidecars``). Resolving a path never touches the disk (Rule 1).
-    """
-    entry = state_file(key)
-    base = state_path(key, config)
-    return tuple(
-        base.with_name(base.name + sidecar.suffix)
-        for sidecar in entry.sidecars
-        if sidecar.restored or not restored_only
-    )
-
-
-def snapshot_sources(config: Config) -> tuple[Path, ...]:
-    """Every path a KTD21b capture copies: the coupled directory, the database,
-    and the database's SQLite sidecars.
-
-    Few entries, not many, and that is the point of the layout. Everything
-    coupled except the database lives inside one directory, so capture is a
-    directory copy and restore is a directory replace. The database is the one
-    exception because its location is the user's decision, which is exactly why
-    ``validate`` constrains it: on one filesystem these two rename atomically, on
-    two they do not.
-
-    THE SIDECARS ARE PART OF THE ANSWER, NOT A DETAIL FOR THE CALLER. An entry
-    declares one path, and for a SQLite database that path is not the whole file
-    set: the write-ahead log beside it holds committed transactions the database
-    file does not yet contain. A consumer that copied exactly the paths this
-    function used to return would produce a database silently missing them. They
-    are expanded from ``StateFile.sidecars`` rather than appended by U8, because
-    a companion list in the capture unit is the hand-maintained set this schema
-    exists to abolish.
-
-    Some of the returned paths will not exist, and that is expected rather than
-    exceptional: see ``StateFile.sidecars`` for when a database legitimately has
-    no log beside it. Copy what is there.
-    """
-    coupled_dir = library_coupled_dir(config)
-    sources = [coupled_dir]
-    for entry in coupled_state_files():
-        if entry.medium is Medium.KEYCHAIN:
-            continue
-        path = state_path(entry.key, config)
-        if path == coupled_dir or coupled_dir in path.parents:
-            # Already covered by the directory copy, sidecars included.
-            continue
-        sources.append(path)
-        sources.extend(sidecar_paths(entry.key, config))
-    return tuple(sources)
-
-
-def rekey_records(
-    records: Mapping[str, object],
-    resolve_identifier: Callable[[str], str | None],
-) -> tuple[dict[str, object], tuple[str, ...]]:
-    """The one-time re-key D5 requires, as a pure function.
-
-    A record keyed by a display name is orphaned the instant the user renames
-    the thing it describes, and the orphan is invisible: the code simply finds no
-    entry and starts over. ``resolve_identifier`` maps an old display-name key to
-    the stable identifier, returning None when it no longer resolves.
-
-    Returns the re-keyed records and the keys that did not resolve. Unresolved
-    keys are RETURNED rather than dropped, because a record that cannot be
-    re-keyed is exactly the orphan the rule exists to surface, and dropping it
-    silently would make the migration look clean.
-    """
-    migrated: dict[str, object] = {}
-    unresolved: list[str] = []
-    for old_key, value in records.items():
-        identifier = resolve_identifier(old_key)
-        if identifier is None:
-            unresolved.append(old_key)
-            continue
-        migrated[identifier] = value
-    return migrated, tuple(unresolved)
-
-
-# ---------------------------------------------------------------------------
-# The typed schema
-#
-# Frozen dataclasses, not a dict. Every access is attribute access, so a typo is
-# an AttributeError at the call site rather than a None that travels three
-# functions before it fails as something else.
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class PrefixMapping:
-    """One entry of the ordered location prefix map (S1).
-
-    The TOML keys are ``from`` and ``to``. ``from`` is a Python keyword, so the
-    fields carry a suffix and the serializer maps them back. That mapping is
-    declared once, in ``_PREFIX_TOML_KEYS``, rather than spelled at each end.
-
-    On disk this is an ordered array of tables. The writer emits it as an inline
-    array of inline tables rather than repeated ``[[library.location_prefix_map]]``
-    headers, which is the same TOML value by every parser and only differs in how
-    it reads by hand. What matters, and what is asserted, is that ORDER survives:
-    one prefix can be another's prefix, first match wins, and an unordered map
-    resolves those two differently on different runs.
-    """
-
-    from_prefix: str
-    to_prefix: str
-    #: R38, per rule. The recorded identity of the volume ``to`` sits on, in the
-    #: shape ``library.volume_id`` has and for the same reason: a destructive
-    #: pass that follows this rule writes to that volume, and a mount path does
-    #: not say which disk is mounted there today. Unset is correct for a target
-    #: inside the library root, which the library's own identity answers for. A
-    #: target anywhere else with nothing recorded here refuses a destructive pass
-    #: rather than being trusted because its directory exists.
-    volume_id: str | None = None
-
-
-_PREFIX_TOML_KEYS = (("from", "from_prefix"), ("to", "to_prefix"))
-
-#: The one OPTIONAL key of a prefix mapping, and its TOML spelling is its field
-#: name. Separate from the pairs above because those are required and this is
-#: written only when set: a rule with no identity must serialize to the bytes it
-#: always did, or every existing configuration changes fingerprint (KTD9).
-PREFIX_VOLUME_IDENTITY_KEY = "volume_id"
-
-#: The one interpolation token a prefix mapping's ``to`` may contain. Keeping the
-#: map interpolated rather than absolute is what lets it survive the user
-#: remounting the library somewhere else without a rewrite.
-LIBRARY_ROOT_TOKEN = "{library.root}"
-
-#: The processed tree's default name, the one the author kept by hand before
-#: the product filed anything (U154). Named once so the setup wizard's default
-#: and the dataclass default cannot come to differ.
-DEFAULT_PROCESSED_DIR = "Processed_Tracks"
-
-
-@dataclass(frozen=True, slots=True)
-class LibraryConfig:
-    """Where the library is, what proves it is the right one, and how it is laid out."""
-
-    root: Path
-    #: R38. The recorded identity of the volume, asserted before any destructive
-    #: operation. A UUID or serial, NEVER a mount path: a mount path is exactly
-    #: what R38 says not to identify a volume by, because two different drives
-    #: mount at the same path on different days.
-    volume_id: str
-    #: The rekordbox database. Declared in ``STATE_FILES`` as ``rekordbox_db``,
-    #: library-scoped and COUPLED, and CONSTRAINED: it is expected under ``root``.
-    db_path: Path
-    #: The date the user accepted that their database sits outside the library
-    #: root. Unset means the containment rule applies and a database elsewhere
-    #: refuses at load.
-    #:
-    #: WHY THE RULE EXISTS, AND WHY IT IS NOT AN OUTRIGHT REFUSAL. KTD21b requires
-    #: the database and its coupled state to be captured in ONE atomic commit, and
-    #: the only atomic commit available is a rename, which is atomic only within
-    #: one filesystem. A friend who leaves rekordbox at its default location puts
-    #: the database in their home directory while the coupled state sits on the
-    #: music volume, and the plan's stated premise for the decision, "the coupled
-    #: state is a handful of small files beside the database", is then false for
-    #: that install. Refusing outright would lock out the platform default, so the
-    #: non-contained case stays supported and becomes a recorded decision with its
-    #: consequence attached. What is not acceptable is the silent default: the
-    #: failure has to be visible at setup, while the user can still move the
-    #: database, rather than at the first snapshot, when they cannot.
-    db_outside_root_acknowledged_on: str | None = None
-    music_dir: str = "Music"
-    #: The directory under ``music_dir`` where ``intake shelve`` files a landed
-    #: batch once it is imported, ``<processed_dir>/<year>/<MM_DD_YY subject>``
-    #: (U154). A setup answer, asked once with this default and kept, so the
-    #: layout a person already keeps by hand is the one the verb continues.
-    processed_dir: str = DEFAULT_PROCESSED_DIR
-    sets_dir: str = "Set_Recordings"
-    #: The library-scoped state root's directory name, relative to ``root``.
-    state_dirname: str = ".cratekit"
-    #: Ordered; FIRST MATCH WINS. Order is load-bearing because one prefix can be
-    #: another's prefix, and an unordered map resolves those two differently on
-    #: different runs. Populated at setup from what the database actually
-    #: contains, never from a constant.
-    location_prefix_map: tuple[PrefixMapping, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class PathsConfig:
-    """Paths that are not inside the library."""
-
-    #: Where fresh downloads land before they are moved into the library. It must
-    #: round-trip into the acquisition adapter's own setting (KTD20), which is why
-    #: it is one configured value rather than two that can disagree.
-    download_staging: Path
-
-
-@dataclass(frozen=True, slots=True)
-class ProfileConfig:
-    """Which named preset of module membership is in force."""
-
-    name: str
-
-
-@dataclass(frozen=True, slots=True)
-class ModulesConfig:
-    """Per-module toggles the user set EXPLICITLY.
-
-    Only what the file actually contains. Absence matters: a module the file does
-    not mention takes the profile's answer, and a module the file does mention
-    overrides it (D6). If this stored a fully defaulted mapping there would be no
-    way left to tell "the user chose off" from "the profile says off", and the
-    precedence rule would become unexpressible.
-    """
-
-    explicit: Mapping[str, bool] = field(default_factory=lambda: MappingProxyType({}))
-
-
-@dataclass(frozen=True, slots=True)
-class TaxonomyConfig:
-    """The taxonomy SELECTION only (S6).
-
-    The active template itself is library-scoped state. Config records which
-    template was chosen at setup, so a re-run of setup can seed the same one.
-    """
-
-    template: str = "default"
-
-
-@dataclass(frozen=True, slots=True)
-class NamingConfig:
-    """Naming POLICY values (S3).
-
-    U2 owns these values; the naming engine owns the mechanism and takes them as
-    parameters. The engine must not read config: a function that reaches for
-    global configuration cannot be exercised against two taxonomies in one
-    process, and proving a second template works needs exactly that.
-    """
-
-    lossy_marker: str = "[MP3]"
-    #: Both budgets are UTF-8 BYTES, not characters. The margin below the
-    #: filesystem's own ceiling is deliberate: a later zero-padding pass grows the
-    #: key field, and measuring against the padded form pre-reserves that growth.
-    path_budget_bytes: int = 250
-    filename_max_bytes: int = 255
-
-
-#: Adapter names a configuration file once recorded, each to the name the same
-#: adapter goes by now. The vendored downloader's key was its upstream project's
-#: name until U197 renamed it to a neutral one; a file written before that still
-#: says the old name, and reading it must select the same adapter rather than
-#: refuse. The fold happens where the file is read, so doctor, every report and
-#: every receipt name the adapter by its current key, and the acquisition
-#: registry consults the same mapping for a caller holding an old name. It lives
-#: here rather than beside the registry because a foundation module may not
-#: import ``cratekit.acquire``.
-RETIRED_ADAPTER_NAMES: Mapping[str, str] = MappingProxyType({"tidal_dl_ng": "vendored"})
-
-
-def current_adapter_name(name: str) -> str:
-    """The name an adapter goes by now, given any name configuration recorded."""
-    return RETIRED_ADAPTER_NAMES.get(name, name)
-
-
-@dataclass(frozen=True, slots=True)
-class AcquisitionConfig:
-    """What acquires, at what quality, under which lossless policy."""
-
-    adapter: str = "vendored"
-    quality: str = "lossless"
-    #: None means "the adapter's own default". The adapter owns pacing (KTD20).
-    pacing_delay_s: float | None = None
-    #: How many acquisitions run at once (R10). The value the system Cratekit
-    #: replaces could not express at all: there it was a constant written into
-    #: the wrapped tool's global settings file by a subprocess call before every
-    #: run, shared with any other process using that tool, and reset to lossy
-    #: factory defaults twice by a racing write. Here it is one declared value
-    #: the adapter carries in memory for one invocation, and the bounded pool
-    #: reads it rather than declaring a second cap.
-    concurrency: int = 1
-    #: R21 and S3. Two values only. There is deliberately no third value in which
-    #: a lossy file goes UNMARKED: marking is mandatory wherever lossy is
-    #: permitted at all, so a "lossy allowed, marking off" combination cannot be
-    #: expressed, which is stronger than validating it away.
-    lossless_policy: str = "strict"
-
-
-#: The tempo window the head's estimate is chosen inside, in beats per minute,
-#: both ends included. The window is the source system's default, and it is
-#: the one setting that decides which metrical level a head names: a track
-#: whose pulse reads as 83 or 166 is named by the value inside the window
-#: (R-744). A DJ whose library is drum and bass raises both bounds in the
-#: config file; nothing here reads a genre.
-DEFAULT_TEMPO_FLOOR = 80
-DEFAULT_TEMPO_CEILING = 160
-
-#: The drift at or above which a track reads as variable and its landed row is
-#: marked ``dyn`` for rekordbox's Dynamic analysis (U157), a percent spread of
-#: the tempo over the track's length (``core.drift``). Synthetic steady tracks
-#: measured 0.0 to 0.3 and a three beat ramp over two minutes 1.7, so the
-#: default sits above every steady reading and leans toward Normal, because a
-#: steady track sent to Dynamic comes back with a wobbling grid while a live
-#: track sent to Normal keeps the grid every track had before this setting.
-#: NOT YET CALIBRATED ON A LIBRARY: the card owes a sitting that reads the
-#: drifts of a batch holding both kinds and sets this from them.
-DEFAULT_DRIFT_CUT = 1.5
-
-
-@dataclass(frozen=True, slots=True)
-class AnalysisConfig:
-    """Analysis sizing, calibration selection, and the tempo window."""
-
-    #: None means "probe" (KTD10): worker count comes from a probe worker's
-    #: resident size against available memory, never from a CPU count.
-    jobs: int | None = None
-    energy_calibration: str = "auto"
-    #: The head names a tempo from the floor to the ceiling, both included.
-    tempo_floor: int = DEFAULT_TEMPO_FLOOR
-    tempo_ceiling: int = DEFAULT_TEMPO_CEILING
-    #: A drift at or above this reads as variable and is marked ``dyn`` (U157).
-    drift_cut: float = DEFAULT_DRIFT_CUT
-
-
-@dataclass(frozen=True, slots=True)
-class RekordboxConfig:
-    """The version pins the guarded writer refuses on.
-
-    ``pinned_app_version`` is None by default and None REFUSES (S2). It is never
-    auto-recorded from whatever is installed: a pin the software copies from the
-    running install is a tautology that refuses nothing, forever, which is the
-    entire property the pin exists to provide. Setup may READ the installed
-    version and PROPOSE it; recording it takes an explicit decision from the user.
-    """
-
-    pinned_pyrekordbox: str = "0.4.4"
-    pinned_db_version: str = "6000"
-    pinned_app_version: str | None = None
-    #: The date the user confirmed this pin against a real write. Without it, a
-    #: pin is a number somebody typed; with it, a stale pin is visible as stale.
-    validated_on: str | None = None
-    app_path: Path | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class BackupConfig:
-    """Remote backup destinations. All None by default, all wizard-supplied.
-
-    Every one of these is a hardcoded literal in the source system's backup
-    script, naming one person's remote and one person's bucket names.
-
-    EACH DESTINATION NAMES AN RCLONE REMOTE, ``remote:path``, AND ``validate``
-    REFUSES ONE THAT DOES NOT (R-345). The three are handed to rclone exactly as
-    typed, and rclone reads a value with no colon as a LOCAL path relative to
-    the working directory of whatever process runs it. Typed as bare folder
-    names, a dry run succeeded in four seconds because listing a folder that
-    does not exist is instant, and a real run would have copied the library
-    beside the detached worker's working directory and published a backup age
-    for that copy. ``remote`` is the name before the colon, derived from the
-    destinations when the file does not spell it and checked against them when
-    it does, so the name doctor looks up in rclone's configuration is the name
-    the transfers actually use.
-    """
-
-    remote: str | None = None
-    dest: str | None = None
-    archive_root: str | None = None
-    db_dest_root: str | None = None
-
-
-#: The three configuration keys rclone is handed as targets, in the order the
-#: wizard asks for them. Named once so the validator, the wizard and the backup
-#: verb's own refusal cannot disagree about which keys are destinations.
-BACKUP_DESTINATION_KEYS: tuple[str, ...] = (
-    "backup.dest",
-    "backup.archive_root",
-    "backup.db_dest_root",
-)
-
-#: An rclone remote name, as rclone's own configuration rule has it since
-#: 1.61: letters and digits in any script, underscore, dot, plus, at sign,
-#: hyphen and space, not starting with a hyphen or a space, not ending with a
-#: space. A value that fails it cannot be a configured remote whatever else it
-#: is. ``\w`` is Unicode aware here, which is what admits a letter rclone
-#: admits and a hand list of ASCII ranges would refuse.
-_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@][\w.+@ -]*(?<! )$")
-
-
-def backup_remote_name(value: object) -> str | None:
-    """The rclone remote a destination names, or None when it names none.
-
-    ``remote:path`` is rclone's spelling and the part before the FIRST colon is
-    the remote. Four shapes answer None and each is a value rclone would read
-    as something other than a configured remote: no colon at all is a local
-    relative path; an empty name before the colon is an on the fly backend
-    (``:local:/x`` is the local disk again); a single character before the
-    colon is a Windows drive letter, ``C:\\x`` and ``C:/x`` alike, which rclone
-    reads as a local path on that platform; and a name rclone's configuration
-    cannot hold, which therefore names nothing rclone has. Public because the
-    wizard derives ``backup.remote`` through the same rule the validator judges
-    by, and the doctor's lookup splits on the same colon.
-    """
-    if not isinstance(value, str):
-        return None
-    name, colon, _rest = value.partition(":")
-    if not colon or len(name) < 2:
-        return None
-    if not _RCLONE_REMOTE_NAME.match(name):
-        return None
-    return name
-
-
-def _validate_backup_destinations(data: Mapping) -> list[str]:
-    """Every backup destination names one rclone remote, and ``remote`` agrees.
-
-    Decided against the EFFECTIVE mapping, since ``validate`` applies the
-    environment overrides before this runs (P2). An UNSET destination is not a
-    problem here whether the backup module is on or off: the full preset turns
-    the module on for everybody, doctor already reports an unset remote as
-    INFO for that reason, and the backup verb refuses on its own missing
-    destination. What is refused is a value that IS set and would send rclone
-    somewhere other than a configured remote.
-    """
-    problems: list[str] = []
-    named: dict[str, str] = {}
-    for key in BACKUP_DESTINATION_KEYS:
-        value = _dig(data, key)
-        if value is None or (isinstance(value, str) and not value.strip()):
-            continue
-        name = backup_remote_name(value)
-        if name is None:
-            problems.append(
-                f"{key} must name a configured rclone remote as remote:path, "
-                f"found {value!r}. rclone reads a value with no remote before "
-                f"the colon as a local path relative to the working directory "
-                f"of the process running the backup, so a real run would copy "
-                f"the library beside that process and report a backup age for "
-                f"the copy (R-345)."
-            )
-            continue
-        named[key] = name
-    if len(set(named.values())) > 1:
-        spelled = ", ".join(f"{key} names {name!r}" for key, name in named.items())
-        problems.append(
-            f"the backup destinations must name one rclone remote and they "
-            f"name several: {spelled}. The mirror, the dated archive and the "
-            f"database snapshots are read back together, so they live under "
-            f"one remote."
-        )
-    disagreement = backup_remote_disagreement(data)
-    if disagreement is not None:
-        remote, expected = disagreement
-        problems.append(
-            f"backup.remote names {remote!r} and the backup destinations "
-            f"name {expected!r}. Doctor checks the remote it is told against "
-            f"rclone's configuration, and the transfers use the one in the "
-            f"destinations, so the two must agree or the check reports on a "
-            f"remote nothing writes to. Setup's --backup-remote replaces the "
-            f"spelled one (R-662)."
-        )
-    return problems
-
-
-def backup_remote_disagreement(data: Mapping) -> tuple[str, str] | None:
-    """The spelled ``backup.remote`` and the one remote the destinations name,
-    when the two differ; None otherwise.
-
-    None when no remote is spelled, and None when the set destinations do not
-    name exactly one remote, since destinations that disagree among themselves
-    are their own problem and give nothing to compare against. ``remote`` may be
-    spelled bare, ``gdrive``, or as ``gdrive:`` or ``gdrive:path``; the name is
-    what is compared, which is also what doctor looks up in rclone's
-    configuration.
-
-    Public because the wizard asks the same question to decide whether a re-run
-    may repair the remote and what its refusal tells a person to type (R-662).
-    One rule in one place, so the refusal and the repair cannot disagree about
-    whether there is a disagreement.
-    """
-    remote = _dig(data, "backup.remote")
-    if not isinstance(remote, str) or not remote.strip():
-        return None
-    named = {
-        name
-        for name in (backup_remote_name(_dig(data, key)) for key in BACKUP_DESTINATION_KEYS)
-        if name is not None
-    }
-    if len(named) != 1:
-        return None
-    expected = next(iter(named))
-    if remote.split(":", 1)[0] == expected:
-        return None
-    return remote, expected
-
-
-#: The intake ages the source system wrote into its own module as constants.
-#: Named HERE rather than only as field defaults, because ``slots=True`` replaces
-#: a dataclass field default with a descriptor on the class, so validation could
-#: not read them back off ``ReportsConfig`` and would have had to keep a second
-#: copy. Two copies of a default is how the file and the check come to disagree.
-DEFAULT_INTAKE_STALE_DAYS = 30
-DEFAULT_INTAKE_EXPIRED_DAYS = 90
-
-#: How long an open gate may sit idle before ``crate status`` folds it into
-#: one line and ``crate run retire`` offers to answer it (U170). A week, since
-#: sitting 47 opened on seventeen gates between one and five weeks old, every
-#: one a run nobody would resume. Named here for the reason the intake ages are.
-DEFAULT_OPEN_GATE_STALE_DAYS = 7
-
-#: Ten years, the ceiling ``MAX_EXPORT_STALE_DAYS`` gives and for its reason:
-#: the count becomes a duration, and a number with no bound overflows one.
-MAX_OPEN_GATE_STALE_DAYS = 3650
-
-
-@dataclass(frozen=True, slots=True)
-class ReportsConfig:
-    """Policy the read-only reports age against (R5, feature row 20).
-
-    These are DAY COUNTS and they live here rather than in the report module for
-    the reason S3 gives everywhere else: the mechanism belongs to the module and
-    the values belong to the user. The system Cratekit replaces wrote both of
-    them into the module as constants, so the only way to hold intake for longer
-    was to edit the software.
-
-    Defaults reproduce the source convention exactly, thirty days and ninety, so
-    an existing user's report says what it used to say. A default here is
-    correct where one on ``AgingThresholds`` would not be: this is the file that
-    OWNS the answer, and the report module has no way to construct the value
-    without being handed both halves.
-    """
-
-    intake_stale_days: int = DEFAULT_INTAKE_STALE_DAYS
-    intake_expired_days: int = DEFAULT_INTAKE_EXPIRED_DAYS
-    #: Open gates idle for longer than this many days are one line in
-    #: ``crate status`` and what ``crate run retire`` answers by default (U170).
-    open_gate_stale_days: int = DEFAULT_OPEN_GATE_STALE_DAYS
-
-
-#: How old a hand made collection export may be before the outbound verbs say so.
-#: Named here as well as on the field for the reason the intake ages above give:
-#: ``slots=True`` hides a field default from the validator.
-DEFAULT_EXPORT_STALE_DAYS = 7
-
-#: Ten years. NOT A POLICY, A CEILING: nobody means a longer one, and a number
-#: with no bound reaches a duration that cannot hold it. Ten billion days, a
-#: guess at switching the warning off, passed validation and then crashed all
-#: three outbound verbs at the gate with an ``OverflowError``.
-MAX_EXPORT_STALE_DAYS = 3650
-
-
-#: The rekordbox top folders a sync of every pair skips unless the file says
-#: otherwise (U198), decided by Phillip on 2026-11-04.
-DEFAULT_PAIR_SKIP_FOLDERS: tuple[str, ...] = ("ARCHIVE",)
-
-PAIR_SKIP_FOLDERS_KEY = "outbound.pair_skip_folders"
-
-#: U231. Whether ``crate sync pair`` keeps the account's order for every pair
-#: rather than only those whose rekordbox playlist is under GIG READY.
-PAIR_ORDER_EVERY_PAIR_KEY = "outbound.pair_order_every_pair"
-
-
-@dataclass(frozen=True, slots=True)
-class OutboundConfig:
-    """Policy for the verbs that write to a streaming account (R-227).
-
-    ``export_stale_days`` is A WARNING THRESHOLD AND NEVER A REFUSAL. Both
-    outbound verbs read a rekordbox collection export somebody made by hand, so
-    a sweep is only as current as that file, and past this many days the plan a
-    person confirms names the file's date and says it is old. The person still
-    decides: somebody who has not touched their library in a month has a month
-    old export that is exactly right, and only they know that.
-
-    A day count in the user's file rather than a constant in the module, on the
-    rule ``ReportsConfig`` states: the mechanism belongs to the module and the
-    value belongs to the user.
-    """
-
-    export_stale_days: int = DEFAULT_EXPORT_STALE_DAYS
-    #: The rekordbox top folders ``crate sync pair`` lists and never pairs
-    #: when it finds the author's own playlists (U198), by exact name. ARCHIVE
-    #: by Phillip's answer of 2026-11-04; an empty list pairs every folder.
-    pair_skip_folders: tuple[str, ...] = DEFAULT_PAIR_SKIP_FOLDERS
-    #: U231. ``crate sync pair`` puts an account playlist in rekordbox's order
-    #: only when its rekordbox playlist sits under the top folder GIG READY,
-    #: the one played from, since every move is a provider call and Sitting
-    #: 86's 65 orders took thousands of them. True keeps the order of every
-    #: pair; a pair outside the scope still syncs its tracks both ways.
-    pair_order_every_pair: bool = False
-
-
-#: The recognition service's identify endpoint for the region most accounts are
-#: made in. Named here as well as on the field for the reason the intake ages
-#: give: ``slots=True`` hides a field default from the validator.
-DEFAULT_RECOGNITION_HOST = "identify-us-west-2.acrcloud.com"
-
-#: Paid recognition calls this machine may make in one calendar month before
-#: it refuses. About three two hour sets. A DEFAULT RATHER THAN NO BOUND, because
-#: the source system shipped with none and spent 565 calls into a spent quota
-#: before anyone noticed; a person on a larger plan raises it in one line, and
-#: the refusal names the line.
-DEFAULT_RECOGNITION_MONTHLY_CALLS = 1000
-
-#: The only domain a recognition host may sit under. The access key and a
-#: signature over it go to this host with every paid call, so a typed value that
-#: named some other domain would hand them to whoever holds it.
-RECOGNITION_HOST_DOMAIN = "acrcloud.com"
-
-_HOST_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
-
-
-@dataclass(frozen=True, slots=True)
-class RecognitionConfig:
-    """Where paid recognition is sent and how much of it a month may cost (R-301).
-
-    ``host`` is the account's regional identify endpoint. An account belongs to
-    one region, and asking another region's host is an HTTP answer the
-    identifier reads as transient, five times, before it stops.
-
-    ``monthly_calls`` is A REFUSAL AND NEVER A WARNING. The identifier checks
-    what is owed against what the ledger already holds for the month before the
-    first chunk is carved, and refuses naming this key. The ledger counts what
-    THIS machine spent, so the service's own quota answer is still the ceiling
-    when another tool shares the key.
-
-    Both live in the user's file rather than as constants in the module, on the
-    rule ``ReportsConfig`` states, and both are frozen with a queued job like
-    everything else the job reads.
-    """
-
-    host: str = DEFAULT_RECOGNITION_HOST
-    monthly_calls: int = DEFAULT_RECOGNITION_MONTHLY_CALLS
-
-
-#: The least time between two consecutive calls to the streaming provider, from
-#: any process on this machine. One a second is well under any published music
-#: API allowance; the eleventh sitting's sweep, unpaced, tripped the account in
-#: minutes. Named here as well as on the field for the reason the intake ages
-#: give: ``slots=True`` hides a field default from the validator.
-DEFAULT_PROVIDER_MIN_INTERVAL_S = 1.0
-
-#: How long every provider call is refused after the breaker trips. Fifteen
-#: minutes, because the sitting's limit cleared in about ten and a window
-#: shorter than the clearing time is a second trip.
-DEFAULT_PROVIDER_COOLDOWN_S = 900
-
-#: The most calls to the streaming provider one command may make before it
-#: stops, keeping what it did, and names the command that continues (U193).
-#: Five hundred, Phillip's answer on the decisions page: a full label build of
-#: Defected spent 3,026 calls before the breaker parked it, against an estimate
-#: near 24,700. A person raises it for one run with ``--calls`` or for every run
-#: here. Named here as well as on the field for the reason the intake ages give.
-DEFAULT_PROVIDER_CALLS_PER_COMMAND = 500
-
-#: How many days an answer the streaming provider gave for an ISRC is reused
-#: before it is asked again (U206). Thirty, because a catalogue's filing of a
-#: recording moves rarely and a rehearsal and its live run are hours apart. A
-#: not found is kept a week at most, in ``acquire.isrc_cache``. Zero turns the
-#: cache off. Named here as well as on the field for the reason the intake ages
-#: give.
-DEFAULT_PROVIDER_ISRC_CACHE_DAYS = 30
-
-#: How many calls each identity, the account session and Cratekit's app
-#: credentials, may make to the streaming provider in any sixty minutes, from
-#: every command and every process that reads the one gate (U278). Fifteen
-#: hundred, well under the 7,800 in twenty minutes that preceded the block of
-#: 2026-11-12, and under the 3,600 the default pacing allows, so a day of reads
-#: can no longer use up what a label go needs. A person raises it for one run
-#: with ``--calls-per-hour`` or for every run here. Named here as well as on the
-#: field for the reason the intake ages give.
-DEFAULT_PROVIDER_CALLS_PER_HOUR = 1500
-
-#: How many calls the night pass may make to the streaming provider in one
-#: night, across every firing of it that night and every process that reads the
-#: one gate (U293). Twelve hundred: a hundred track pass spends about four
-#: hundred and fifty (sitting 100 measured 42 calls for a ten track download),
-#: and the whole is far below the 7,800 calls in twenty minutes that locked the
-#: account at sitting 94. A night runs from noon to noon, local time. Named here
-#: as well as on the field for the reason the intake ages give.
-DEFAULT_PROVIDER_NIGHT_CALLS = 1200
-
-#: The hour's budget the night pass holds the account to (U293), lower than
-#: ``calls_per_hour`` so an unattended run spends at most this much in any
-#: sixty minutes. Six hundred. The lower of this and ``calls_per_hour`` holds.
-DEFAULT_PROVIDER_NIGHT_CALLS_PER_HOUR = 600
-
-#: The share of the hour's budget a command that only reads may never spend,
-#: kept for the verbs that write the account or download (U278). A quarter, the
-#: brief's default: reads stop at 1,125 of 1,500 and a label go keeps 375.
-DEFAULT_PROVIDER_RESERVE_SHARE = 0.25
-
-
-@dataclass(frozen=True, slots=True)
-class ProviderConfig:
-    """How the streaming provider's account is protected from this machine (R-705).
-
-    ``min_interval_s`` is the pacing every call goes through, in
-    ``core.provider_gate``, measured from the last call ANY process made.
-    ``cooldown_s`` is how long the breaker holds once a rate limit has survived
-    the retry ladder. Both are refusals and never warnings: a call inside the
-    cooldown is not made, and the refusal names this section.
-
-    Both live in the user's file rather than as constants in the module, on the
-    rule ``ReportsConfig`` states, and both are frozen with a queued job like
-    everything else the job reads. There is no value that switches either off.
-
-    ``calls_per_command`` is the call ceiling (U193): the most calls one
-    command may make before the gate stops it the way a trip does. It is a
-    line per command and never per day, Phillip's answer, so the next run
-    starts fresh. There is no value that switches it off either.
-
-    ``isrc_cache_days`` is how long an ISRC the provider answered is not asked
-    again (U206), by any verb, in a rehearsal or a live run. Zero turns the
-    cache off and every lookup asks; that saves nothing and costs nothing but
-    calls.
-
-    ``calls_per_hour`` is the hour's budget (U278): the most calls each identity
-    may make in any sixty minutes, counted in the one gate across every command
-    and every process, and ``reserve_share`` the part of it a command that only
-    reads may never spend. Neither has a value that switches it off.
-
-    ``night_calls`` and ``night_calls_per_hour`` are the night pass's own
-    ceilings (U293): the most calls the night pass, ``sync.night``, may make in
-    one night, counted in the one gate across every firing and every process, and the
-    hour's budget it holds the account to while it runs. Both only lower what
-    the lines above allow; neither has a value that switches it off.
-    """
-
-    min_interval_s: float = DEFAULT_PROVIDER_MIN_INTERVAL_S
-    cooldown_s: int = DEFAULT_PROVIDER_COOLDOWN_S
-    calls_per_command: int = DEFAULT_PROVIDER_CALLS_PER_COMMAND
-    isrc_cache_days: int = DEFAULT_PROVIDER_ISRC_CACHE_DAYS
-    calls_per_hour: int = DEFAULT_PROVIDER_CALLS_PER_HOUR
-    reserve_share: float = DEFAULT_PROVIDER_RESERVE_SHARE
-    night_calls: int = DEFAULT_PROVIDER_NIGHT_CALLS
-    night_calls_per_hour: int = DEFAULT_PROVIDER_NIGHT_CALLS_PER_HOUR
-
-
-#: How many releases one sweep of one favourite label may offer for review,
-#: counting the ones already in the queue (R-790). Ten, because the first sweep
-#: of 32 labels at the old cap of four hundred filed 2,832 items nobody could
-#: answer in a sitting. Named here as well as on the field for the reason the
-#: intake ages give: ``slots=True`` hides a field default from the validator.
-DEFAULT_LABEL_OFFER = 10
-
-#: How many days a dated new releases playlist beside a label's year may sit
-#: before ``crate organize`` reports it (U117). Reported only, never merged.
-DEFAULT_NEW_PLAYLIST_AGE_DAYS = 30
-
-
-@dataclass(frozen=True, slots=True)
-class LabelsConfig:
-    """How much of a favourite label's catalogue one sweep offers (R-790).
-
-    ``offer_per_sweep`` IS A WINDOW OVER THE NEWEST RELEASES, NEVER A DATE.
-    A sweep walks the catalogue newest first and fills this many places with
-    releases the queue already holds and releases it files now, so a first
-    sweep files this many and a later one files only what has appeared above
-    them. The walk still reads the whole catalogue, which is what lets a
-    release owned without ever being offered be skipped without taking a place
-    (R-137), and what the window did not reach is counted rather than dropped,
-    less each release whose copyright line names another label (U238). A label's own registry entry may
-    raise or lower it for that label alone.
-
-    No value switches it off. A person who wants a label's back catalogue
-    raises the number for that label and decides what it files.
-    """
-
-    offer_per_sweep: int = DEFAULT_LABEL_OFFER
-    #: The age in days past which ``crate organize`` reports a dated
-    #: ``<label> <year> new <date>`` playlist on the account (U117).
-    new_playlist_age_days: int = DEFAULT_NEW_PLAYLIST_AGE_DAYS
-
-
-@dataclass(frozen=True, slots=True)
-class Config:
-    """The whole validated configuration, frozen.
-
-    Frozen matters beyond hygiene. KTD9 says a job runs against the configuration
-    frozen when it was QUEUED and reports drift rather than silently choosing a
-    version. A mutable config makes "the configuration it was queued against"
-    unanswerable, because the object the job holds could have been edited by
-    whatever queued it.
-    """
-
-    schema_version: int
-    library: LibraryConfig
-    paths: PathsConfig
-    profile: ProfileConfig
-    modules: ModulesConfig = field(default_factory=ModulesConfig)
-    taxonomy: TaxonomyConfig = field(default_factory=TaxonomyConfig)
-    naming: NamingConfig = field(default_factory=NamingConfig)
-    acquisition: AcquisitionConfig = field(default_factory=AcquisitionConfig)
-    analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
-    rekordbox: RekordboxConfig = field(default_factory=RekordboxConfig)
-    backup: BackupConfig = field(default_factory=BackupConfig)
-    # APPENDED rather than filed alphabetically, for the reason the verb registry
-    # and the pending register both give for the same choice: two fields inserted
-    # into the middle of one dataclass by two units auto-merge, and an append
-    # conflicts textually, which is a conflict somebody reads.
-    reports: ReportsConfig = field(default_factory=ReportsConfig)
-    outbound: OutboundConfig = field(default_factory=OutboundConfig)
-    recognition: RecognitionConfig = field(default_factory=RecognitionConfig)
-    provider: ProviderConfig = field(default_factory=ProviderConfig)
-    labels: LabelsConfig = field(default_factory=LabelsConfig)
-
-    # -- derived views -----------------------------------------------------
-
-    def enabled_modules(self) -> frozenset[str]:
-        """Effective module membership: the profile's preset, then explicit overrides."""
-        return profiles.resolve(self.profile.name, self.modules.explicit).modules
-
-    def available_capabilities(self) -> frozenset[str]:
-        """Everything the install can do, including what no profile may switch off."""
-        return profiles.resolve(self.profile.name, self.modules.explicit).available
-
-    def resolved_prefix_map(self) -> tuple[tuple[str, str], ...]:
-        """The prefix map with ``{library.root}`` interpolated, in declared order.
-
-        Returned as plain pairs because the consumer is a resolver that walks
-        them in order and takes the first match. Order is preserved end to end;
-        nothing here sorts or dedupes.
-        """
-        root = str(self.library.root)
-        return tuple(
-            (m.from_prefix, m.to_prefix.replace(LIBRARY_ROOT_TOKEN, root))
-            for m in self.library.location_prefix_map
-        )
-
-    def resolved_prefix_rules(self) -> tuple[tuple[str, str, str | None], ...]:
-        """The resolved prefix map with each rule's recorded volume identity.
-
-        A SECOND SHAPE RATHER THAN A WIDER FIRST ONE. Every reader of
-        ``resolved_prefix_map`` unpacks pairs, and only a pass that WRITES through
-        a rule has any use for the identity, so widening the pairs would break
-        ten callers to serve one. Built from the pairs rather than beside them so
-        the interpolation is written once and the two cannot disagree about where
-        a rule points.
-        """
-        return tuple(
-            (source, target, mapping.volume_id)
-            for (source, target), mapping in zip(
-                self.resolved_prefix_map(), self.library.location_prefix_map, strict=True
-            )
-        )
-
-    # -- serialization and identity ---------------------------------------
-
-    def to_toml_dict(self) -> dict:
-        """A TOML-safe, deterministically ordered plain dict.
-
-        Deterministic is a hard requirement, not a nicety: ``fingerprint`` hashes
-        exactly these bytes, and a fingerprint that depends on dict ordering
-        would report drift on a config nobody edited.
-
-        None values are OMITTED. TOML has no null, so an omitted key and a null
-        key are the same state, and writing one requires inventing a sentinel
-        that would then have to be un-invented on read.
-        """
-        return _to_toml_value(self)
-
-    def to_toml_bytes(self) -> bytes:
-        """The exact bytes ``save`` writes and ``fingerprint`` hashes."""
-        return tomli_w.dumps(self.to_toml_dict()).encode("utf-8")
-
-    def fingerprint(self) -> str:
-        """A stable identity for this configuration (KTD9).
-
-        The job engine records this at queue time alongside the specific values a
-        job needs, and compares at run time. Equal fingerprint means nothing
-        drifted; different means something did, and the job reports which rather
-        than silently picking a version.
-        """
-        return hashlib.sha256(self.to_toml_bytes()).hexdigest()
-
-    def db_is_inside_library_root(self) -> bool:
-        """True when the database and its coupled state share a filesystem (KTD21b).
-
-        A FACT, with no prose and no verb attached, because the two callers want
-        different things from it: validation refuses on it at load, and doctor
-        reports it on every run so a user who acknowledged the consequence months
-        ago is reminded that their snapshots are copies rather than atomic
-        commits.
-        """
-        return is_inside(self.library.db_path, self.library.root)
-
-    # -- preconditions -----------------------------------------------------
-
-    def assert_rekordbox_pin_recorded(self) -> None:
-        """Refuse when the application pin has never been explicitly recorded (S2).
-
-        Called by the guarded writer before it opens the database. Unset is a
-        refusal to WRITE, not a refusal to load: doctor, help, and every read-only
-        verb must still run on a config whose pin was never set, or a user could
-        not reach the setup step that sets it.
-        """
-        if not self.rekordbox.pinned_app_version:
-            # The message STATES what is wrong; the remedy token says what to do
-            # about it, and the CLI renders that token (D2). The two are separate
-            # because a caller choosing between "record this pin" and "fix these
-            # values" by string-matching a sentence is the KTD25 failure again.
-            raise ConfigInvalid(
-                [
-                    "rekordbox.pinned_app_version is not set, and an unset pin "
-                    "refuses every database write. A pin copied from whatever "
-                    "happens to be installed would refuse nothing, forever, which "
-                    "is the entire property the pin exists to provide. The pin is "
-                    "meaningful only together with rekordbox.validated_on, the "
-                    "date it was confirmed against a real write."
-                ],
-                remedy=Remedy.RECORD_REKORDBOX_PIN,
-            )
-
-
-# ---------------------------------------------------------------------------
-# Validation
-#
-# Collects EVERY problem before raising. The plan's first test scenario for this
-# unit is that a config missing required keys names each missing key.
-# ---------------------------------------------------------------------------
-
-#: Dotted paths that have no default and must appear in the file. Six of them,
-#: deliberately: a short required list is a short first-run wizard, and every
-#: other key is a decision the product can make on the user's behalf.
-REQUIRED_KEYS: tuple[str, ...] = (
-    "schema_version",
-    "library.root",
-    "library.volume_id",
-    "library.db_path",
-    "paths.download_staging",
-    "profile.name",
-)
-
-_LOSSLESS_POLICIES = ("strict", "allow_lossy_marked")
-
-
-def _dig(data: Mapping, dotted: str):
-    """Fetch a dotted key from nested mappings, or return None when absent."""
-    node: object = data
-    for part in dotted.split("."):
-        if not isinstance(node, Mapping) or part not in node:
-            return None
-        node = node[part]
-    return node
-
-
-def _env_path(variable: str) -> Path | None:
-    """An override path from the environment, or None.
-
-    Returns None for an unset variable so the caller can tell "relocate this"
-    from "leave it alone". Never used to SUPPLY a value that the file omitted;
-    see the note on the ENV_ constants above.
-    """
-    value = os.environ.get(variable)
-    return Path(value) if value else None
-
-
-def _apply_env_overrides(data: Mapping) -> dict:
-    """Return a copy of ``data`` with the relocation overrides applied.
-
-    THE ONE PLACE THE ENVIRONMENT ENTERS. Everything downstream, validation and
-    construction alike, reads the mapping this returns, so there is no longer a
-    "raw" answer and an "effective" answer for any rule to disagree about. The
-    defect this closes is recorded on the ENV_ constants: the containment rule
-    was decided against the file's root while every runtime consumer read the
-    overridden one.
-
-    Two properties, and both are load-bearing:
-
-    RELOCATE, NEVER SUPPLY. A key the file does not carry stays absent, so a
-    machine with no setup at all cannot resolve a library root out of the
-    environment and start writing to it (R38). Validation then reports the key
-    as missing, which is the correct outcome.
-
-    A RELOCATED ROOT CARRIES ITS DATABASE. What the file records is where the
-    database sits RELATIVE to the library, so a db_path that was under the old
-    root is re-based onto the new one. Leaving it behind would aim it into a
-    tree that is no longer the library, and would make a relocation violate the
-    containment rule for no reason the user could act on. A db_path that was
-    NOT under the old root is left exactly where it is: it was never expressed
-    relative to the library, so it still needs its own acknowledgment.
-
-    Idempotent, which matters because ``from_dict`` applies it and then calls
-    ``validate``, which applies it again: re-basing a path already under the
-    effective root maps it onto itself.
-    """
-    working = {key: (dict(value) if isinstance(value, Mapping) else value)
-               for key, value in data.items()}
-
-    library = working.get("library")
-    if isinstance(library, dict):
-        root_override = _env_path(ENV_LIBRARY_ROOT)
-        configured_root = library.get("root")
-        if (
-            root_override is not None
-            and isinstance(configured_root, str)
-            and configured_root.strip()
-        ):
-            db_path = library.get("db_path")
-            if (
-                isinstance(db_path, str)
-                and db_path.strip()
-                and is_inside(Path(db_path), Path(configured_root))
-            ):
-                relative = os.path.relpath(
-                    os.path.normpath(db_path), os.path.normpath(configured_root)
-                )
-                library["db_path"] = os.path.normpath(
-                    os.path.join(str(root_override), relative)
-                )
-            library["root"] = str(root_override)
-
-    paths = working.get("paths")
-    if isinstance(paths, dict):
-        staging_override = _env_path(ENV_DOWNLOAD_STAGING)
-        if staging_override is not None:
-            staged = paths.get("download_staging")
-            if isinstance(staged, str) and staged.strip():
-                paths["download_staging"] = str(staging_override)
-
-    return working
-
-
-def validate(data: Mapping) -> list[str]:
-    """Return EVERY problem with the EFFECTIVE configuration, as readable lines.
-
-    Side-effect free and list-returning rather than raising, so the setup wizard
-    can show a user all of their remaining work at once and the loader can raise
-    with the same content. One implementation, two consumers, no drift.
-
-    NOT A FUNCTION OF ``data`` ALONE, DELIBERATELY. The environment overrides are
-    applied here first, so every rule below is decided against the values the
-    running process will actually use. Validating the raw file mapping instead is
-    what let a config violate the containment rule at runtime and still validate
-    clean: the rule was checked against a root that nothing downstream read.
-    Callers do not have to remember to pre-apply anything, because there is no
-    way to reach these rules without going through this line.
-    """
-    data = _apply_env_overrides(data)
-    problems: list[str] = []
-
-    for key in REQUIRED_KEYS:
-        value = _dig(data, key)
-        if value is None or (isinstance(value, str) and not value.strip()):
-            problems.append(f"missing required key: {key}")
-
-    version = data.get("schema_version")
-    if version is not None and not isinstance(version, int):
-        problems.append(
-            f"schema_version must be an integer, found {type(version).__name__}"
-        )
-
-    volume_id = _dig(data, "library.volume_id")
-    if isinstance(volume_id, str) and volume_id.strip():
-        problems += _mount_path_problem(VOLUME_IDENTITY_KEY, volume_id)
-
-    template = _dig(data, TAXONOMY_TEMPLATE_KEY)
-    if template is not None and not template_name_is_usable(template):
-        problems.append(
-            f"{TAXONOMY_TEMPLATE_KEY} must be the short name of a shipped "
-            f"template, letters, digits, underscores and dashes only, found "
-            f"{template!r}. The name is composed into a packaged resource path, "
-            f"so a value carrying a separator would read some other file."
-        )
-
-    profile_name = _dig(data, "profile.name")
-    if profile_name is not None and profile_name not in profiles.PROFILE_NAMES:
-        problems.append(
-            f"profile.name must be one of {', '.join(profiles.PROFILE_NAMES)}, "
-            f"found {profile_name!r}"
-        )
-
-    modules = data.get("modules") or {}
-    if isinstance(modules, Mapping):
-        for name, value in modules.items():
-            if name not in profiles.MODULES:
-                problems.append(
-                    f"modules.{name} is not a known module. Known: "
-                    f"{', '.join(profiles.MODULES)}"
-                )
-            elif not isinstance(value, bool):
-                problems.append(f"modules.{name} must be true or false, found {value!r}")
-
-    policy = _dig(data, "acquisition.lossless_policy")
-    if policy is not None and policy not in _LOSSLESS_POLICIES:
-        problems.append(
-            f"acquisition.lossless_policy must be one of "
-            f"{', '.join(_LOSSLESS_POLICIES)}, found {policy!r}. There is no "
-            f"value that permits lossy without marking it (R21)."
-        )
-
-    concurrency = _dig(data, "acquisition.concurrency")
-    if concurrency is not None and (
-        not isinstance(concurrency, int)
-        or isinstance(concurrency, bool)
-        or concurrency < 1
-    ):
-        problems.append(
-            f"acquisition.concurrency must be a positive integer number of "
-            f"simultaneous acquisitions, found {concurrency!r}. Zero or a "
-            f"negative value would not be a slower run, it would be a run that "
-            f"acquires nothing while reporting success."
-        )
-
-    problems += _validate_db_containment(data)
-    problems += _validate_prefix_map(_dig(data, "library.location_prefix_map"))
-    problems += _validate_backup_destinations(data)
-
-    for key in ("naming.path_budget_bytes", "naming.filename_max_bytes"):
-        budget = _dig(data, key)
-        if budget is not None and (not isinstance(budget, int) or isinstance(budget, bool)):
-            problems.append(
-                f"{key} must be an integer number of UTF-8 bytes, found "
-                f"{budget!r}. S3 hands these to a pure naming engine as "
-                f"parameters, so a wrong type surfaces as a TypeError in the "
-                f"middle of a rename instead of as a named problem at load."
-            )
-
-    jobs = _dig(data, "analysis.jobs")
-    if jobs is not None and (not isinstance(jobs, int) or jobs < 1):
-        problems.append(
-            f"analysis.jobs must be a positive integer, or absent to probe "
-            f"available memory (KTD10). Found {jobs!r}."
-        )
-
-    problems += _validate_tempo_window(data)
-    problems += _validate_drift_cut(data)
-
-    problems += _validate_aging_thresholds(data)
-    problems += _validate_export_staleness(data)
-    problems += _validate_pair_skip_folders(data)
-    problems += _validate_pair_order_every_pair(data)
-    problems += _validate_open_gate_staleness(data)
-    problems += _validate_recognition(data)
-    problems += _validate_provider(data)
-    problems += _validate_labels(data)
-
-    return problems
-
-
-def _validate_labels(data: Mapping) -> list[str]:
-    """The per sweep offer of a favourite label (R-790).
-
-    Zero is refused rather than read as "offer nothing": a sweep that filed
-    nothing on purpose looks exactly like a label with nothing new, and the
-    person would never learn which it was.
-    """
-    key = "labels.offer_per_sweep"
-    offer = _dig(data, key)
-    if offer is not None and (
-        not isinstance(offer, int) or isinstance(offer, bool) or offer < 1
-    ):
-        return [
-            f"{key} must be a positive whole number of releases one sweep of a "
-            f"label may offer for review, found {offer!r}. A label's own "
-            f"registry entry can raise it for that label alone."
-        ]
-    key = "labels.new_playlist_age_days"
-    age = _dig(data, key)
-    if age is not None and (not isinstance(age, int) or isinstance(age, bool) or age < 1):
-        return [
-            f"{key} must be a positive whole number of days a dated new releases "
-            f"playlist may sit before organize reports it, found {age!r}."
-        ]
-    return []
-
-
-def _validate_provider(data: Mapping) -> list[str]:
-    """The pacing interval, the breaker's cooldown (R-705), the call ceiling (U193)
-    and how long an ISRC answer is kept (U206).
-
-    Checked here for the reason the recognition bound is: a wrong value in a
-    file is a problem with a key name attached, and a wrong interval reaching
-    the gate is an account rate limited with a clean configuration.
-    """
-    problems: list[str] = []
-    key = "provider.min_interval_s"
-    interval = _dig(data, key)
-    if interval is not None and (
-        isinstance(interval, bool)
-        or not isinstance(interval, (int, float))
-        or not math.isfinite(interval)
-        or interval <= 0
-    ):
-        problems.append(
-            f"{key} must be a positive number of seconds between two calls to the "
-            f"streaming provider, found {interval!r}. There is no value that "
-            f"switches pacing off; a person who wants it faster writes a smaller "
-            f"number."
-        )
-    key = "provider.cooldown_s"
-    cooldown = _dig(data, key)
-    if cooldown is not None and (
-        not isinstance(cooldown, int) or isinstance(cooldown, bool) or cooldown < 1
-    ):
-        problems.append(
-            f"{key} must be a positive whole number of seconds the breaker holds "
-            f"after the provider rate limits a run, found {cooldown!r}. There is "
-            f"no value that switches the cooldown off."
-        )
-    key = "provider.calls_per_command"
-    ceiling = _dig(data, key)
-    if ceiling is not None and (
-        not isinstance(ceiling, int) or isinstance(ceiling, bool) or ceiling < 1
-    ):
-        problems.append(
-            f"{key} must be a positive whole number of calls one command may make to "
-            f"the streaming provider before it stops, found {ceiling!r}. There is no "
-            f"value that switches the ceiling off; raise it for one run with --calls."
-        )
-    key = "provider.isrc_cache_days"
-    days = _dig(data, key)
-    if days is not None and (not isinstance(days, int) or isinstance(days, bool) or days < 0):
-        problems.append(
-            f"{key} must be a whole number of days an answer the streaming provider "
-            f"gave for an ISRC is reused, found {days!r}. Zero turns the cache off."
-        )
-    key = "provider.calls_per_hour"
-    hour = _dig(data, key)
-    if hour is not None and (not isinstance(hour, int) or isinstance(hour, bool) or hour < 1):
-        problems.append(
-            f"{key} must be a positive whole number of calls each identity may make "
-            f"to the streaming provider in an hour, found {hour!r}. There is no value "
-            f"that switches the budget off; raise it for one run with --calls-per-hour."
-        )
-    key = "provider.reserve_share"
-    share = _dig(data, key)
-    if share is not None and (
-        isinstance(share, bool)
-        or not isinstance(share, (int, float))
-        or not math.isfinite(share)
-        or share < 0
-        or share >= 1
-    ):
-        problems.append(
-            f"{key} must be a number from 0 up to but not including 1, the share of "
-            f"the hour's budget kept for writes and downloads, found {share!r}."
-        )
-    # U293. The night pass's own two lines, each a positive whole number, since
-    # a night pass that may make no call is a schedule that does nothing.
-    for key, what in (
-        ("provider.night_calls", "the night pass may make in one night"),
-        ("provider.night_calls_per_hour", "the night pass may make in an hour"),
-    ):
-        value = _dig(data, key)
-        if value is not None and (
-            not isinstance(value, int) or isinstance(value, bool) or value < 1
-        ):
-            problems.append(
-                f"{key} must be a positive whole number of calls {what} to the "
-                f"streaming provider, found {value!r}. There is no value that "
-                f"switches it off."
-            )
-    return problems
-
-
-def _validate_aging_thresholds(data: Mapping) -> list[str]:
-    """The two day counts the intake aging report bands against (feature row 20).
-
-    Checked HERE rather than only where the report builds its value, because a
-    wrong number in a file is a problem with a key name attached and a wrong
-    number reaching the report is a stack trace. The report's own value object
-    still refuses, since it is constructible from code that never touched a file,
-    and the two agree on the rule: both positive, and expiry no earlier than
-    staleness or the two bands overlap and a grouping is reported twice.
-
-    THE PAIR CHECK IS SKIPPED WHEN EITHER VALUE WAS SET AND REJECTED. A field the
-    user wrote and got wrong has already produced its own message naming the key;
-    substituting the DEFAULT for it and then reporting the pair would tell them
-    that a number they never wrote is in conflict with one they did, which sends
-    them to fix the wrong line. A field they left out genuinely does take its
-    default, and that case still reports, because it is the one that makes
-    changing only one of the two able to invert the pair.
-    """
-    problems: list[str] = []
-    read: dict[str, int] = {}
-    rejected: set[str] = set()
-    for field_name in ("intake_stale_days", "intake_expired_days"):
-        key = f"reports.{field_name}"
-        value = _dig(data, key)
-        if value is None:
-            continue
-        problem = _day_count_problem(
-            key,
-            value,
-            consequence=(
-                "Zero or a negative threshold does not report less, it reports "
-                "every intake grouping as overdue on the day it is created."
-            ),
-        )
-        if problem is not None:
-            problems.append(problem)
-            rejected.add(field_name)
-            continue
-        read[field_name] = value
-
-    if read and not rejected:
-        stale = read.get("intake_stale_days", DEFAULT_INTAKE_STALE_DAYS)
-        expired = read.get("intake_expired_days", DEFAULT_INTAKE_EXPIRED_DAYS)
-        if expired < stale:
-            problems.append(
-                f"reports.intake_expired_days ({expired}) is earlier than "
-                f"reports.intake_stale_days ({stale}). The bands would overlap, "
-                f"so a grouping would be reported as both stale and expired. Note "
-                f"that a value left out takes its default, which is what makes "
-                f"changing only one of the two able to produce this."
-            )
-    return problems
-
-
-def _day_count_problem(
-    key: str, value: object, *, consequence: str, maximum: int | None = None
-) -> str | None:
-    """What is wrong with one configured day count, or none. The rule, once.
-
-    A ``bool`` is refused by name because it IS an ``int`` to ``isinstance``, and
-    ``true`` read as one day looks like a switch somebody turned on. ``maximum``
-    is optional because only a count that becomes a duration has a ceiling to
-    respect; the intake ages are compared as whole days and have never had one.
-    """
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        return (
-            f"{key} must be a positive whole number of days, found {value!r}. "
-            f"{consequence}"
-        )
-    if maximum is not None and value > maximum:
-        return (
-            f"{key} must be a positive whole number of days no greater than "
-            f"{maximum}, found {value!r}. There is no value that switches the "
-            f"warning off, and a larger one cannot be held as a duration."
-        )
-    return None
-
-
-def _validate_export_staleness(data: Mapping) -> list[str]:
-    """The age past which an outbound verb calls its export old (R-227).
-
-    Checked here for the reason the intake ages are: a wrong number in a file is
-    a problem with a key name attached.
-    """
-    key = "outbound.export_stale_days"
-    value = _dig(data, key)
-    if value is None:
-        return []
-    problem = _day_count_problem(
-        key,
-        value,
-        consequence=(
-            "Zero or a negative threshold does not switch the warning off, it "
-            "calls every export old on the day it is made."
-        ),
-        maximum=MAX_EXPORT_STALE_DAYS,
-    )
-    return [] if problem is None else [problem]
-
-
-def _validate_pair_skip_folders(data: Mapping) -> list[str]:
-    """The rekordbox folders a sync of every pair leaves out (U198): a list of names."""
-    value = _dig(data, PAIR_SKIP_FOLDERS_KEY)
-    if value is None:
-        return []
-    if not isinstance(value, list | tuple) or not all(
-        isinstance(one, str) and one.strip() for one in value
-    ):
-        return [
-            f"{PAIR_SKIP_FOLDERS_KEY} must be a list of rekordbox folder names, found "
-            f"{value!r}. A folder that cannot be named would skip nothing, and the "
-            f"playlists under it would be paired with the account."
-        ]
-    return []
-
-
-def _validate_pair_order_every_pair(data: Mapping) -> list[str]:
-    """Whether every pair keeps the account's order (U231): true or false."""
-    value = _dig(data, PAIR_ORDER_EVERY_PAIR_KEY)
-    if value is None or isinstance(value, bool):
-        return []
-    return [
-        f"{PAIR_ORDER_EVERY_PAIR_KEY} must be true or false, found {value!r}. A value "
-        f"read as true would write the account's order for every pair, a provider call "
-        f"per track moved."
-    ]
-
-
-def _validate_open_gate_staleness(data: Mapping) -> list[str]:
-    """The age past which an open gate is folded away and offered for retirement (U170)."""
-    key = "reports.open_gate_stale_days"
-    value = _dig(data, key)
-    if value is None:
-        return []
-    problem = _day_count_problem(
-        key,
-        value,
-        consequence=(
-            "Zero or a negative threshold does not keep every gate in view, it "
-            "folds away and offers to retire a gate opened a minute ago."
-        ),
-        maximum=MAX_OPEN_GATE_STALE_DAYS,
-    )
-    return [] if problem is None else [problem]
-
-
-def recognition_host_problem(value: object) -> str | None:
-    """What is wrong with a recognition host, or none. The rule, once.
-
-    A BARE HOSTNAME UNDER ``RECOGNITION_HOST_DOMAIN``, lowercase, nothing else.
-    The identifier composes ``https://`` and the endpoint around it, so a scheme,
-    a path, a port or a space would build an address nobody meant, and the
-    domain is checked because the credential travels to it.
-    """
-    key = "recognition.host"
-    if not isinstance(value, str):
-        return f"{key} must be a hostname, found {value!r}"
-    labels = value.split(".")
-    if not all(_HOST_LABEL.match(label) for label in labels) or not value.endswith(
-        f".{RECOGNITION_HOST_DOMAIN}"
-    ):
-        return (
-            f"{key} must be a bare lowercase hostname under "
-            f"{RECOGNITION_HOST_DOMAIN}, such as {DEFAULT_RECOGNITION_HOST}, found "
-            f"{value!r}. No scheme and no path: the access key and its signature "
-            f"are sent to this host with every paid call."
-        )
-    return None
-
-
-def _validate_tempo_window(data: Mapping) -> list[str]:
-    """The tempo window is two whole numbers, floor below ceiling (R-744).
-
-    An empty window would leave the estimator no bin to choose, and the head
-    would carry no tempo on every track with no problem named. Refused at load
-    with the key names attached, as the analysis job count is.
-    """
-    problems: list[str] = []
-    bounds: dict[str, object] = {}
-    for key in ("tempo_floor", "tempo_ceiling"):
-        value = _dig(data, f"analysis.{key}")
-        if value is None:
-            continue
-        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-            problems.append(
-                f"analysis.{key} must be a whole number of beats per minute above "
-                f"zero, found {value!r}."
-            )
-            continue
-        bounds[key] = value
-    floor = bounds.get("tempo_floor", DEFAULT_TEMPO_FLOOR)
-    ceiling = bounds.get("tempo_ceiling", DEFAULT_TEMPO_CEILING)
-    if isinstance(floor, int) and isinstance(ceiling, int) and floor >= ceiling:
-        problems.append(
-            f"analysis.tempo_floor must be below analysis.tempo_ceiling, found "
-            f"{floor} and {ceiling}. The head names a tempo inside that window, "
-            f"and an empty window names none."
-        )
-    return problems
-
-
-def _validate_drift_cut(data: Mapping) -> list[str]:
-    """The drift cut is a finite percent above zero (U157).
-
-    A cut of zero or below would mark every measured track ``dyn`` and send a
-    whole batch of steady tracks to Dynamic analysis, and a NaN would mark
-    none while every row read as checked, so both are refused at load with
-    the key named, as the tempo window is.
-    """
-    key = "analysis.drift_cut"
-    value = _dig(data, key)
-    if value is None:
-        return []
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or not math.isfinite(value)
-        or value <= 0
-        or value > 100
-    ):
-        return [
-            f"{key} must be a percent above zero and at most 100, the drift at or "
-            f"above which a track is marked dyn, found {value!r}."
-        ]
-    return []
-
-
-def _validate_recognition(data: Mapping) -> list[str]:
-    """The recognition host and the monthly call bound (R-301).
-
-    Checked here for the reason the intake ages are: a wrong value in a file is
-    a problem with a key name attached, and a wrong host reaching the identifier
-    is five paid attempts read as a network blip.
-    """
-    problems: list[str] = []
-    host = _dig(data, "recognition.host")
-    if host is not None:
-        problem = recognition_host_problem(host)
-        if problem is not None:
-            problems.append(problem)
-    key = "recognition.monthly_calls"
-    bound = _dig(data, key)
-    if bound is not None and (
-        not isinstance(bound, int) or isinstance(bound, bool) or bound < 1
-    ):
-        problems.append(
-            f"{key} must be a positive whole number of paid recognition calls, "
-            f"found {bound!r}. There is no value that switches the bound off; a "
-            f"person on a larger plan writes a larger number."
-        )
-    return problems
-
-
-def is_inside(child: Path, parent: Path) -> bool:
-    """True when ``child`` is ``parent`` or sits under it. PURELY TEXTUAL.
-
-    No ``resolve()`` and no ``exists()``: Rule 1 forbids this module from touching
-    the filesystem, and validation runs before anything is mounted. ``normpath``
-    collapses ``..`` so a path cannot escape by spelling, which is the only
-    evasion that matters for a value the user typed.
-    """
-    child_parts = Path(os.path.normpath(str(child))).parts
-    parent_parts = Path(os.path.normpath(str(parent))).parts
-    return child_parts[: len(parent_parts)] == parent_parts
-
-
-#: The shape ``library.db_outside_root_acknowledged_on`` must take. Anchored at
-#: both ends: a substring match would accept a date buried in a sentence.
-_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-ACKNOWLEDGMENT_KEY = "library.db_outside_root_acknowledged_on"
-
-
-def _validate_acknowledgment_date(value: object) -> list[str]:
-    """Shape-check the containment acknowledgment. It is a DATE, never a flag.
-
-    Accepting any non-empty string made ``no``, ``true``, and ``2026-13-99`` all
-    switch the containment refusal off, and two of those read to a human as the
-    opposite of what they did. Its sibling in this same validator,
-    ``library.volume_id``, is shape-checked for exactly this reason: a value that
-    is merely truthy passes a truthiness test while meaning nothing.
-
-    A real calendar date, not just a date-shaped string, because the point of
-    recording WHEN the consequence was accepted is that something can later
-    compare it to today. ``fromisoformat`` alone would accept the compact
-    ``20260801`` form, so the pattern runs first and pins the layout.
-    """
-    if not isinstance(value, str) or not _ISO_DATE.match(value.strip()):
-        return [
-            f"{ACKNOWLEDGMENT_KEY} must be an ISO calendar date (YYYY-MM-DD), "
-            f"found {value!r}. It records WHEN the non-atomic-snapshot "
-            f"consequence was accepted, so it is a date rather than a flag: a "
-            f"value that is merely non-empty would switch the containment "
-            f"refusal off while saying nothing a later run could check."
-        ]
-    try:
-        date.fromisoformat(value.strip())
-    except ValueError:
-        return [
-            f"{ACKNOWLEDGMENT_KEY} is date-shaped but is not a real calendar "
-            f"date: {value!r}. An unparseable acknowledgment is not an "
-            f"acknowledgment, so the containment rule still applies."
-        ]
-    return []
-
-
-def _validate_db_containment(data: Mapping) -> list[str]:
-    """The containment rule for the rekordbox database (KTD21b).
-
-    See ``LibraryConfig.db_outside_root_acknowledged_on`` for why the rule exists
-    and why it is a recorded acknowledgment rather than a flat refusal.
-
-    Decided against the EFFECTIVE root: ``validate`` applies the environment
-    overrides before this runs, so the root judged here is the root every runtime
-    consumer reads. It used to be the file's raw value, which meant the rule was
-    decided against one root and enforced against another.
-    """
-    root = _dig(data, "library.root")
-    db_path = _dig(data, "library.db_path")
-    acknowledged = _dig(data, "library.db_outside_root_acknowledged_on")
-
-    problems: list[str] = []
-    accepted = False
-    if acknowledged is not None:
-        # Shape-checked whether or not the database is actually outside the root,
-        # because a malformed date is a defect in the file either way, and the
-        # user should learn about it while they are still looking at the file.
-        shape_problems = _validate_acknowledgment_date(acknowledged)
-        problems += shape_problems
-        accepted = not shape_problems
-
-    if not isinstance(root, str) or not isinstance(db_path, str):
-        return problems  # a missing required key is already reported by the caller
-    if not root.strip() or not db_path.strip():
-        return problems
-    if is_inside(Path(db_path), Path(root)):
-        return problems
-    if accepted:
-        return problems
-    return problems + [
-        f"library.db_path ({db_path!r}) is not under library.root ({root!r}). "
-        f"KTD21b captures the database and its coupled state in one atomic "
-        f"commit, and the only atomic commit available is a rename, which is "
-        f"atomic within one filesystem and not across two. A database on another "
-        f"volume makes every snapshot a non-atomic copy, so it is permitted only "
-        f"as a recorded decision: library.db_outside_root_acknowledged_on carries "
-        f"the date that consequence was accepted."
-    ]
-
-
-def _mount_path_problem(key: str, volume_id: str) -> list[str]:
-    """Refuse a volume identity that is shaped like a path. One rule, two keys.
-
-    R38 identifies a volume by RECORDED IDENTITY, not by mount path. A value
-    shaped like a path means somebody recorded where the drive happened to be
-    mounted, which is the failure the requirement names: the next drive to mount
-    there would pass the assertion. Shared by ``library.volume_id`` and by every
-    prefix rule's ``volume_id`` so the two cannot come to mean different things
-    by an identity.
-    """
-    if volume_id.startswith(("/", "\\")) or ":\\" in volume_id:
-        return [
-            f"{key} looks like a mount path ({volume_id!r}). "
-            f"Record the volume's own identity, a UUID or serial, so a "
-            f"different drive mounted at the same path fails the assertion "
-            f"instead of passing it (R38)."
-        ]
-    return []
-
-
-def _validate_prefix_map(raw: object) -> list[str]:
-    """Validate the ordered array-of-tables prefix map (S1)."""
-    if raw is None:
-        return []
-    if not isinstance(raw, list):
-        return [
-            "library.location_prefix_map must be an ordered array of tables, each "
-            "with 'from' and 'to'. Order is load-bearing: one prefix can be "
-            "another's prefix, and first match wins."
-        ]
-    problems: list[str] = []
-    for index, entry in enumerate(raw):
-        where = f"library.location_prefix_map[{index}]"
-        if not isinstance(entry, Mapping):
-            problems.append(f"{where} must be a table with 'from' and 'to'")
-            continue
-        for toml_key, _ in _PREFIX_TOML_KEYS:
-            value = entry.get(toml_key)
-            if not isinstance(value, str) or not value:
-                problems.append(f"{where}.{toml_key} must be a non-empty string")
-        to_value = entry.get("to")
-        if isinstance(to_value, str):
-            unknown = _unknown_tokens(to_value)
-            if unknown:
-                problems.append(
-                    f"{where}.to contains unsupported interpolation "
-                    f"{', '.join(sorted(unknown))}; only {LIBRARY_ROOT_TOKEN} is "
-                    f"interpolated"
-                )
-        if PREFIX_VOLUME_IDENTITY_KEY in entry:
-            # PRESENT AND UNUSABLE IS A PROBLEM, NEVER A DEFAULT. Reading a blank
-            # or mistyped identity as "none recorded" would send the rule down
-            # the library's own identity for a target inside the root, which is
-            # a check passing on a value the person got wrong.
-            identity = entry[PREFIX_VOLUME_IDENTITY_KEY]
-            key = f"{where}.{PREFIX_VOLUME_IDENTITY_KEY}"
-            if not isinstance(identity, str) or not identity.strip():
-                problems.append(
-                    f"{key} must be a non-empty string when it is given; leave "
-                    f"the key out for a target inside the library root"
-                )
-            else:
-                problems += _mount_path_problem(key, identity)
-    return problems
-
-
-def _unknown_tokens(text: str) -> set[str]:
-    """Every ``{...}`` token in ``text`` that is not the one supported token."""
-    found: set[str] = set()
-    rest = text
-    while "{" in rest:
-        start = rest.index("{")
-        if "}" not in rest[start:]:
-            break
-        end = rest.index("}", start)
-        token = rest[start : end + 1]
-        if token != LIBRARY_ROOT_TOKEN:
-            found.add(token)
-        rest = rest[end + 1 :]
-    return found
-
-
-# ---------------------------------------------------------------------------
-# dict -> typed, typed -> dict
-# ---------------------------------------------------------------------------
+# Dict to typed and back.
 
 
 def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
     """Build a validated, frozen ``Config``, or raise ``ConfigInvalid`` with all problems.
 
-    Optional keys are merged OVER freshly constructed defaults, so a missing or
-    unknown optional key degrades instead of crashing. Required keys do the
-    opposite and fail loudly. Those two policies are written as two separate code
-    paths on purpose: in the source system they were one function, and the
-    tolerant half quietly swallowed the intolerant half's failures.
-
-    The environment overrides are applied ONCE, up front, and everything below
-    reads the result. Applying them here rather than field by field inside
-    ``_build`` is what makes the values this returns the same values ``validate``
-    just judged; the two used to disagree about the library root.
+    Optional keys are merged over defaults, so a missing or unknown one
+    degrades; required keys fail loudly, on a separate code path so the
+    tolerant half never swallows the strict half's failures. The overrides are
+    applied once, up front, so this returns the values ``validate`` judged.
     """
     data = _apply_env_overrides(data)
     problems = validate(data)  # re-applies the overrides; the operation is idempotent
@@ -4388,11 +426,8 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
         acquisition=_acquisition(data.get("acquisition") or {}),
         analysis=_build(AnalysisConfig, data.get("analysis") or {}),
         rekordbox=_build(RekordboxConfig, data.get("rekordbox") or {}),
-        # ``remote`` DERIVED from the destinations when the file does not spell
-        # it. Validation above has already established that every set
-        # destination names one remote, so the first one's name is the name.
-        # A file that spells the remote keeps its own spelling, which validation
-        # has checked against the same destinations.
+        # ``remote`` is derived from the destinations when the file omits it;
+        # validation has checked that they name one remote.
         backup=_build(
             BackupConfig,
             data.get("backup") or {},
@@ -4406,140 +441,15 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
     )
 
 
-def derived_backup_remote(data: Mapping) -> str | None:
-    """The remote name the destinations carry, when the file spells none.
+# Forward-only migrations, applied in memory over a deep copy, validated in
+# full, and only then written.
 
-    None when ``backup.remote`` is already set, so the file's own value wins
-    (the two were checked to agree), and None when no destination is set, so a
-    configuration with no backup at all keeps ``remote`` unset and the backup
-    verb's own refusal still names it.
-
-    Public because the wizard writes the same derivation INTO the document it
-    saves, so the file carries the name doctor looks up. One rule in one place:
-    a second copy in the wizard is how the file and the load come to derive two
-    different names.
-    """
-    remote = _dig(data, "backup.remote")
-    if isinstance(remote, str) and remote.strip():
-        return None
-    for key in BACKUP_DESTINATION_KEYS:
-        name = backup_remote_name(_dig(data, key))
-        if name is not None:
-            return name
-    return None
-
-
-def _build(cls, raw: Mapping, *, overrides: Mapping[str, object] | None = None):
-    """Construct one schema dataclass from a raw mapping.
-
-    Unknown keys are ignored rather than rejected. That is deliberate for a
-    FORWARD-only migration model: a file written by a newer build is refused
-    outright by version, so an unknown key here can only come from a hand edit,
-    and crashing on a stray key would lock a user out of their own config over a
-    typo they can still see.
-    """
-    kwargs: dict[str, object] = {}
-    for f in fields(cls):
-        if overrides and f.name in overrides and overrides[f.name] is not None:
-            kwargs[f.name] = overrides[f.name]
-            continue
-        if f.name not in raw:
-            continue
-        kwargs[f.name] = _coerce(f.type, raw[f.name])
-    return cls(**kwargs)
-
-
-def _outbound(raw: Mapping) -> OutboundConfig:
-    """The outbound section, the skip list held as a tuple so the frozen config stays hashable."""
-    built = _build(OutboundConfig, raw)
-    return replace(built, pair_skip_folders=tuple(str(one) for one in built.pair_skip_folders))
-
-
-def _acquisition(raw: Mapping) -> AcquisitionConfig:
-    """The acquisition section, with a retired adapter name read as its current one."""
-    built = _build(AcquisitionConfig, raw)
-    current = current_adapter_name(built.adapter)
-    if current == built.adapter:
-        return built
-    return replace(built, adapter=current)
-
-
-def _coerce(annotation, value):
-    """Turn a TOML scalar into the field's declared type. Paths and floats only."""
-    text = annotation if isinstance(annotation, str) else getattr(annotation, "__name__", "")
-    if "Path" in text and isinstance(value, str):
-        return Path(value)
-    if "float" in text and isinstance(value, int) and not isinstance(value, bool):
-        return float(value)
-    return value
-
-
-def _to_toml_value(value):
-    """Recursively convert a schema object into TOML-safe, sorted plain data."""
-    if is_dataclass(value) and not isinstance(value, type):
-        out: dict[str, object] = {}
-        for f in sorted(fields(value), key=lambda f: f.name):
-            item = getattr(value, f.name)
-            if item is None:
-                continue  # TOML has no null; absent and null are the same state
-            converted = _to_toml_value(item)
-            # An all-default section serializes to an empty table, and an empty
-            # table means exactly what its absence means. Emitting one would make
-            # two configurations with identical meaning produce different bytes,
-            # and therefore different fingerprints, which is the one thing the
-            # fingerprint must never do (KTD9).
-            if isinstance(converted, dict) and not converted:
-                continue
-            out[f.name] = converted
-        return _apply_toml_key_aliases(value, out)
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, Mapping):
-        return {k: _to_toml_value(value[k]) for k in sorted(value)}
-    if isinstance(value, tuple | list):
-        return [_to_toml_value(v) for v in value]
-    return value
-
-
-def _apply_toml_key_aliases(source, out: dict) -> dict:
-    """Reshape the two dataclasses whose TOML form differs from their field names.
-
-    ``PrefixMapping`` uses ``from`` and ``to`` on disk, because those read as
-    English in a file a user edits by hand, and ``from`` cannot be a Python
-    field name.
-
-    ``ModulesConfig`` FLATTENS: the file has ``[modules]`` with one key per
-    module, not ``[modules.explicit]``. The wrapper exists in code so that
-    "explicitly set" stays distinguishable from "defaulted" (see the class), and
-    that distinction is a code concern the user should never have to type.
-    """
-    if isinstance(source, PrefixMapping):
-        aliased = {toml_key: out[field_name] for toml_key, field_name in _PREFIX_TOML_KEYS}
-        if PREFIX_VOLUME_IDENTITY_KEY in out:
-            aliased[PREFIX_VOLUME_IDENTITY_KEY] = out[PREFIX_VOLUME_IDENTITY_KEY]
-        return aliased
-    if isinstance(source, ModulesConfig):
-        return out.get("explicit", {})
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Forward-only migrations
-#
-# Applied IN MEMORY over a deep copy, validated in full, and only then written.
-# ---------------------------------------------------------------------------
-
-#: Every migration is ``dict -> dict``. No I/O, no Path, no network. That is what
-#: makes each one a two-line unit test, and it is also what makes the "a failed
-#: migration leaves the original untouched" property true BY CONSTRUCTION rather
-#: than by a cleanup path that can itself fail.
+#: Every migration is ``dict -> dict`` with no I/O, which makes "a failed
+#: migration leaves the original untouched" true by construction.
 Migration = Callable[[dict], dict]
 
-#: Keyed by the version the step upgrades FROM. Empty at schema 1 because there
-#: is nothing before schema 1. Inventing historical versions to exercise the
-#: machinery would make the version number a lie, so the machinery is exercised
-#: with a ladder supplied by the test instead, and the shipped table is checked
-#: for gaps by ``test_config_migration.py``.
+#: Keyed by the version the step upgrades from. Empty at schema 1; tests supply
+#: their own ladder, and ``test_config_migration.py`` checks this one for gaps.
 MIGRATIONS: Mapping[int, Migration] = MappingProxyType({})
 
 
@@ -4549,14 +459,10 @@ def migrate(
     current: int = CURRENT_SCHEMA_VERSION,
     migrations: Mapping[int, Migration] = MIGRATIONS,
 ) -> dict:
-    """Upgrade a raw config dict to ``current``. Pure, forward-only.
+    """Upgrade a raw config dict to ``current``. Pure, forward only.
 
-    Steps run in ascending version order over a deep copy of the input, so a step
-    that raises halfway leaves the caller's data untouched and leaves nothing at
-    all on disk. The plan phrases this as "applied to a temporary file that
-    replaces the original only after all steps succeed"; in memory is strictly
-    stronger, because a temp file still has to be cleaned up when step two of
-    three raises, and the cleanup is one more thing that can fail.
+    Steps run in ascending order over a deep copy, so a step that raises leaves
+    the caller's data untouched and nothing on disk, with no cleanup to fail.
     """
     found = data.get("schema_version")
     if found is None:
@@ -4589,9 +495,7 @@ def migrate(
     return working
 
 
-# ---------------------------------------------------------------------------
-# Reading and writing
-# ---------------------------------------------------------------------------
+# Reading and writing.
 
 
 def _read_raw(path: Path) -> dict:
@@ -4599,9 +503,7 @@ def _read_raw(path: Path) -> dict:
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
-        # No instruction in the message: the remedy is the RUN_SETUP token on the
-        # class, and only the CLI knows what running setup looks like from
-        # wherever the user is (D2).
+        # No instruction in the message; the remedy token carries it (D2).
         raise ConfigMissing(f"no configuration file at {path}") from None
     except OSError as exc:
         raise ConfigCorrupt(f"{path} could not be read: {exc}") from exc
@@ -4620,24 +522,13 @@ def load_from_path(
 ) -> Config:
     """Read, migrate, validate, and only then write. Not memoized.
 
-    Order is the whole design:
+    1. parse, 2. migrate in memory over a deep copy, 3. validate the fully
+    migrated data, 4. back up the original, 5. atomically replace it. No byte
+    reaches disk before step 3 passes.
 
-    1. parse, 2. migrate in memory over a deep copy, 3. validate the FULLY
-    migrated data, 4. back up the original, 5. atomically replace it.
-
-    No byte reaches the disk before step 3 passes. So a migration that raises at
-    step two of three leaves the original file byte-identical and leaves no
-    orphan behind, because there was never a partial artifact to orphan.
-
-    THE DECISION IS MADE TWICE, AND THE SECOND TIME IS UNDER THE LOCK. The first
-    pass answers the caller: parse, migrate, validate, return a Config even when
-    nothing is written. The write then re-reads the file with the lock held and
-    re-decides from what is actually there. Deciding once, outside the lock, is
-    the shape that lets two processes reach an unmigrated config in the same
-    second, both decide to migrate, and the second one copy ALREADY-MIGRATED bytes
-    into a backup named for the version it came from. A file called
-    ``config.toml.v1.bak`` holding version 3 is the half-safe outcome the lock's
-    own docstring says it exists to prevent.
+    The decision is made twice, the second time under the lock: the write
+    re-reads and re-decides, so two processes migrating at once cannot copy
+    already-migrated bytes into a backup named for an older version.
     """
     raw = _read_raw(path)
     found = raw.get("schema_version")
@@ -4648,53 +539,37 @@ def load_from_path(
         return config
 
     with _write_lock(path):
-        # Re-read and re-decide. Everything above ran without the lock, so the
-        # file may have been migrated by another process while this one waited.
+        # Re-read: another process may have migrated while this one waited.
         current_raw = _read_raw(path)
         found_now = current_raw.get("schema_version")
         if found_now == current:
-            # Another process did the work, including its own backup. Rebuild from
-            # what is on disk rather than returning the value derived from the
-            # bytes that are no longer there.
+            # Another process did the work; rebuild from what is on disk.
             return from_dict(current_raw, path=path)
 
         migrated = migrate(current_raw, current=current, migrations=migrations)
         config = from_dict(migrated, path=path)
-        # The backup holds the bytes this call is about to replace, re-read under
-        # the lock, so it can no longer hold a version other than the one its name
-        # claims. Overwriting an older backup of the same version is correct for
-        # the same reason: what a user needs back is what was just replaced.
+        # The backup holds the bytes about to be replaced, re-read under the
+        # lock, so its name always matches its version.
         _back_up_version(path, found_now)
         atomic_write_bytes(tomli_w.dumps(migrated).encode("utf-8"), path)
     return config
 
 
 def _write_lock(path: Path) -> exclusive_lock:
-    """The ONE lock every writer of the configuration document takes.
+    """The one lock every writer of the configuration document takes, the
+    migration included, so no write lands inside another's cycle (R-116).
 
-    It is the lock the migration has always taken, under the name it has always
-    had, because a migration IS a writer: a wizard's write landing between a
-    migration's re-read and its replace would be erased by it, exactly as one
-    wizard erased another in R-116. One lock for all of them is what makes
-    "re-read under the lock" mean the bytes cannot move before the write.
-
-    NEVER CALL ``load`` OR ``load_from_path`` WHILE HOLDING IT. ``flock`` locks
-    belong to the open file description, so a second open of the lock file from
-    the same process blocks on the first for ever, and a load of an unmigrated
-    file takes this lock to write back. Code under the lock reads through
-    ``_document_on_disk``, which migrates in memory and writes nothing.
-
-    It is also where a write under pytest is checked against the test root
-    (R-926), before the lock file exists, because every writer comes here first.
+    Never call ``load`` or ``load_from_path`` while holding it: ``flock`` locks
+    belong to the open file description, so a second open from the same process
+    blocks for ever. Code under the lock reads through ``_document_on_disk``.
+    Also checks a write under pytest against the test root (R-926).
     """
     _refuse_write_outside_test_root(path)
     return exclusive_lock(path.with_name(path.name + ".migrate.lock"))
 
 
-#: Where a state write may land while this process runs under pytest.
-#: The suite's isolation fixture sets it to pytest's base temporary directory
-#: for the life of each test. None under pytest means that fixture never ran
-#: for this test, and then every write is refused.
+#: Where a state write may land while this process runs under pytest, set by
+#: the suite's isolation fixture. None under pytest refuses every write.
 _TEST_WRITE_ROOT: Path | None = None
 
 
@@ -4705,34 +580,14 @@ class WriteOutsideTestRoot(RuntimeError):
 def _refuse_write_outside_test_root(path: Path, *, system_temporary: bool = False) -> None:
     """Under pytest, refuse a state write that would land outside the test root.
 
-    R-926. On 2026-10-08 a probe test run from a folder outside ``tests/`` wrote
-    a pytest library into the real ``config.toml``, because ``tests/conftest.py``
-    loads only for files under ``tests/`` and the isolation it gives is the
-    environment it sets. This check reads no environment variable on purpose. It
-    asks whether pytest is loaded in this process and whether the resolved
-    target sits under the root the isolation fixture registered, so a probe
-    that skips the conftest, a test that undoes its patches, or a mutant of the
-    path resolution all fail loudly here instead of writing the user's file.
-
-    Resolved on both sides, unlike ``is_inside`` alone, because the temporary
-    folder is reached through a symlink on macOS and a link inside the root can
-    point anywhere. A process without pytest loaded is never checked.
-
-    Called from the four primitives every state writer in the package goes
-    through, ``_write_lock`` for the configuration document, then
+    R-926. Reads no environment variable: it asks whether pytest is loaded and
+    whether the resolved target (resolved on both sides, for macOS symlinks)
+    sits under the registered root. Called from ``_write_lock``,
     ``atomic_write_bytes``, ``append_durable_bytes`` (U254) and
-    ``exclusive_lock``, so a ledger, a watermark or a session lock written by
-    an unisolated test is refused the same way, and a link swapped in after the
-    configuration check is caught again at the write.
-
-    ``system_temporary`` is what those three primitives pass. Shipped code writes
-    its own scratch files through them into a folder ``tempfile.mkdtemp`` made,
-    the provider session's token among them, and the user's state never lives
-    there, so the system temporary directory is a second allowed root for them
-    and never for the configuration document. Without it 101 tests were
-    refused, measured 2026-10-09. It holds with no root registered too, because
-    a test's child process that imports a helper from ``tests`` has pytest
-    loaded and no conftest, and writes its locks under the test's own folder.
+    ``exclusive_lock``, so every state writer is covered. ``system_temporary``,
+    passed by the last three, also allows the system temporary directory for
+    shipped scratch files, even with no root registered; never for the
+    configuration document.
     """
     if "pytest" not in sys.modules:
         return
@@ -4766,14 +621,10 @@ _MEMO: dict[tuple, Config] = {}
 def load(path: Path | None = None) -> Config:
     """The ordinary entry point: the validated config, memoized on file identity.
 
-    Memoized on ``(path, inode, mtime, size)``. The inode is in the key because
-    every write here goes through an atomic replace, which mints a NEW inode, so
-    a rewritten file can never be served from the cache even on a filesystem
-    whose timestamp resolution is coarse.
-
-    Memoization is what makes it safe for callers to call ``load()`` wherever they
-    need a value instead of binding one at their own import time. Removing the
-    reason to snapshot is the only thing that actually stops the snapshotting.
+    Memoized on ``(path, inode, mtime, size)``; every write is an atomic replace
+    that mints a new inode, so a rewritten file is never served stale. Memoized
+    so callers call ``load()`` where they need a value instead of binding one at
+    import.
     """
     target = config_path() if path is None else path
     try:
@@ -4794,43 +645,19 @@ def reset_cache() -> None:
 def save(config: Config, path: Path | None = None) -> Path:
     """Write the config atomically and return where it went.
 
-    IT REFUSES TO WRITE A FILE THIS MODULE WOULD REFUSE TO LOAD. That is not
-    belt-and-braces; it is the property that stops a save from locking a user out
-    of their own configuration. The concrete case it was added for: an
-    environment override relocated the library root, ``save`` serialized the
-    relocated root beside a db_path the override had not touched, and the
-    resulting file failed the containment rule at the next load. The user had
-    never edited it and had no way to know what to change.
+    Refuses to write a file this module would refuse to load, so a save never
+    locks a user out. Creates its directory through ``mkdir_private`` just
+    before the write, never at import.
 
-    That specific inconsistency is now impossible upstream, because a relocated
-    root carries its database with it (see ``_apply_env_overrides``). The check
-    stays because the CLASS of failure is not specific to those two fields: any
-    future pair of values that a validation rule relates can drift apart in
-    memory, and a write is the moment that turns a runtime inconsistency into a
-    permanent one. Validating the exact bytes about to be written closes all of
-    them at once, and costs one pure function call on a path that runs at setup.
-
-    DIRECTORY CREATION. This is one of three places in the module that creates a
-    directory (the others are ``atomic_write_bytes`` and ``exclusive_lock``),
-    and all three go through ``mkdir_private`` so no state directory's
-    permissions depend on the user's umask. Each creates immediately before a
-    write, never at import (Rule 1).
-
-    THIS IS A WHOLE-DOCUMENT WRITE, FOR A CALLER WITH NO PRIOR READ. It takes
-    the write lock, so it cannot land inside another writer's cycle, and it
-    replaces whatever is there. A caller that READ the document, decided
-    something, and is now writing the result back must go through ``update``
-    instead, because between that read and this write another command may have
-    written answers this call would erase while reporting success (R-116).
-    Nothing under ``src/`` outside this module calls ``save``, and a guard in
-    ``tests/test_config_update.py`` keeps it that way.
+    A whole-document write for a caller with no prior read; a caller that read
+    and writes back uses ``update`` (R-116). Nothing under ``src/`` outside this
+    module calls ``save``, which ``tests/test_config_update.py`` guards.
     """
     target = config_path() if path is None else path
     problems = validate(config.to_toml_dict())
     if problems:
         raise ConfigInvalid(problems, path=target)
-    # Created under the lock rather than before it, so a write the test root
-    # refuses (see ``_write_lock``) leaves no directory behind either.
+    # Created under the lock, so a refused write leaves no directory behind.
     with _write_lock(target):
         mkdir_private(target.parent)
         atomic_write_bytes(config.to_toml_bytes(), target)
@@ -4839,20 +666,17 @@ def save(config: Config, path: Path | None = None) -> Path:
 
 
 def _document_on_disk(path: Path) -> tuple[dict, int | None]:
-    """The document as it is NOW, and the schema version its bytes carry.
+    """The document as it is now, and the schema version its bytes carry.
 
-    For code holding the write lock, so it migrates in memory and never writes
-    (see ``_write_lock`` for why a ``load`` here would hang). Three shapes, the
-    same three the setup wizard reads before it asks anything, so a caller
-    comparing its first read with this one compares like with like:
+    For code holding the write lock: migrates in memory and never writes. The
+    same three shapes the setup wizard reads, so first and second reads compare
+    like with like:
 
     * no file: an empty document and no version;
-    * a file that loads: its EFFECTIVE form, migrated, overrides applied,
-      defaults filled, which is what ``load().to_toml_dict()`` returns;
-    * a file that parses and is merely incomplete: the migrated raw document.
+    * a file that loads: its effective form, as ``load().to_toml_dict()``;
+    * a file that parses but is incomplete: the migrated raw document.
 
-    A corrupt file or one from a newer build raises, so nothing is written over
-    a document a person has to look at.
+    A corrupt or newer file raises, so nothing is written over it.
     """
     try:
         raw = _read_raw(path)
@@ -4868,36 +692,23 @@ def _document_on_disk(path: Path) -> tuple[dict, int | None]:
 def update(
     revise: Callable[[dict], Mapping], path: Path | None = None
 ) -> tuple[Config, Path]:
-    """The configuration read-modify-write, as ONE locked cycle every writer uses.
+    """The configuration read-modify-write, as one locked cycle every writer uses.
 
-    Take the lock, read what is on disk, hand it to ``revise``, validate what
-    comes back, write it, release. Returns the configuration that was written and
-    where it went.
+    Take the lock, read the document on disk, hand it to ``revise``, validate,
+    write, release. Returns the written configuration and its path.
 
-    THE DECISION IS MADE TWICE, AND THE SECOND TIME IS UNDER THE LOCK, which is
-    the shape ``load_from_path`` documents for a migration. A caller reads the
-    document and decides whatever it needs to OUTSIDE the lock, as slowly as it
-    likes: the setup wizard asks a person questions, the profile verb waits
-    on a gate. ``revise`` is then the re-decision, handed the document that is
-    actually there, which may hold another command's answers the first read
-    never saw. Deciding once, outside, is how two wizards each reported success
-    and the second erased the first.
+    The caller decides outside the lock as slowly as it likes; ``revise`` is the
+    re-decision under the lock against what is actually there, which may hold
+    another command's answers (R-116). ``revise`` must not prompt, since it
+    holds the lock; it computes or raises, and a raise writes nothing.
 
-    ``revise`` MAY NOT ASK ANYBODY ANYTHING. It runs with the lock held, and a
-    lock held across a prompt blocks every other command on somebody typing.
-    It computes, or it raises to refuse, in which case nothing is written:
-    ``merge_changes`` raises ``ConfigConflict``, and the profile verb
-    raises its stale decision when the membership it showed has moved.
-
-    An unmigrated document gets the same version backup a migration writes,
-    because this write replaces those bytes just as finally.
+    An unmigrated document gets the same version backup a migration writes.
     """
     target = config_path() if path is None else path
     with _write_lock(target):
         current, found = _document_on_disk(target)
         config = from_dict(revise(current), path=target)
-        # The serialized form is what the next load reads, so it is what gets
-        # judged. See ``save`` for the defect that made this a rule.
+        # Judge the serialized form, which is what the next load reads.
         problems = validate(config.to_toml_dict())
         if problems:
             raise ConfigInvalid(problems, path=target)
@@ -4908,8 +719,7 @@ def update(
     return config, target
 
 
-#: What a leaf holds when the key is not in the document at all. TOML has no
-#: null, so "absent" cannot be spelled as a value and needs a marker of its own.
+#: What a leaf holds when the key is absent, since TOML has no null.
 _ABSENT = object()
 
 
@@ -4931,18 +741,11 @@ def _leaves(document: Mapping, prefix: tuple[str, ...] = ()) -> dict[tuple[str, 
 def merge_changes(base: Mapping, desired: Mapping, current: Mapping) -> dict:
     """``current`` with the changes between ``base`` and ``desired`` laid over it.
 
-    The re-decision for a writer that holds answers rather than a rule. ``base``
-    is the document as the caller first read it, ``desired`` is what it would
-    have written, and ``current`` is what ``update`` found under the lock. Only
-    the leaves the caller actually CHANGED are applied, so a value it merely
-    carried through from its first read cannot overwrite what another writer
-    has put there since. That distinction is the whole repair: a wizard that
-    kept the recorded ``profile.name`` without asking has no answer about it to
-    lose, and the one that changed it does.
-
-    A leaf both sides changed, to different values, raises ``ConfigConflict``
-    naming every such key, and the caller writes nothing. Both arriving at the
-    same value is agreement and is not a conflict.
+    ``base`` is the caller's first read, ``desired`` what it would write, and
+    ``current`` what ``update`` found under the lock. Only leaves the caller
+    changed are applied, so a value merely carried through cannot overwrite
+    another writer's. A leaf both changed to different values raises
+    ``ConfigConflict`` naming every such key; the same value is agreement.
     """
     if current == base:
         return copy.deepcopy(dict(desired))
@@ -4975,40 +778,22 @@ def merge_changes(base: Mapping, desired: Mapping, current: Mapping) -> dict:
 #: The mode every state file this package writes lands at, on every machine.
 PRIVATE_FILE_MODE = 0o600
 
-#: The mode every directory this package CREATES lands at, on every machine.
-#:
-#: A 0600 file inside a 0777 directory is not a private file. Directory write
-#: permission is what governs unlink and rename, so any local account can delete
-#: the file and put its own in place, whatever the file's own mode says. The
-#: credential presence index is the sharp case: it carries no credential values,
-#: but replacing it lets any local account decide what doctor reports about which
-#: credentials are set.
+#: The mode every directory this package creates lands at. Directory write
+#: permission governs unlink and rename, so a 0600 file in a 0777 directory can
+#: be replaced by any local account.
 PRIVATE_DIR_MODE = 0o700
 
-#: True when this platform has POSIX modes at all. Probed once, so every
-#: mode-setting call site degrades the same way instead of each guessing.
+#: True when this platform has POSIX modes, probed once for every call site.
 _CAN_SET_MODE = hasattr(os, "chmod")
 
 
 def mkdir_private(path: Path) -> None:
     """Create ``path`` and any missing parent, owner-only, on any umask.
 
-    NOT ``Path.mkdir(mode=...)``, and the difference is the whole reason this
-    function exists. ``mkdir`` applies the process umask to the mode it is given,
-    and with ``parents=True`` it creates the intermediate levels at the DEFAULT
-    0o777 rather than at the mode the caller asked for. Under a permissive umask
-    that leaves a world-writable directory one level above a 0600 file, which
-    negates the file's mode entirely: the observed result was a 0o777 config
-    directory and a 0o777 installation state directory holding correctly-moded
-    0600 files.
-
-    So each missing level is created and then chmodded explicitly. Only levels
-    this call actually created are touched: a directory that already existed
-    belongs to the user, and tightening their home directory because a state root
-    happened to be under it would be a far worse bug than the one being fixed.
-
-    Guarded on ``_CAN_SET_MODE`` so a platform with no POSIX modes degrades to an
-    ordinary mkdir rather than crashing (R1, KTD6).
+    Not ``Path.mkdir(mode=...)``: the umask applies to that mode, and with
+    ``parents=True`` intermediate levels get 0o777. Each missing level is
+    created then chmodded; levels that already existed belong to the user and
+    are never touched. Degrades to a plain mkdir without POSIX modes (R1, KTD6).
     """
     if path.is_dir():
         return
@@ -5018,43 +803,23 @@ def mkdir_private(path: Path) -> None:
         try:
             level.mkdir()
         except FileExistsError:
-            # Another process won the race. Not ours to create, so not ours to
-            # re-mode either.
+            # Another process created it, so it is not ours to re-mode.
             continue
         if _CAN_SET_MODE:
             os.chmod(level, PRIVATE_DIR_MODE)
 
 
 def atomic_write_bytes(payload: bytes, path: Path, *, mode: int = PRIVATE_FILE_MODE) -> None:
-    """Write ``payload`` to ``path`` atomically at an EXPLICIT mode, or not at all.
+    """Write ``payload`` to ``path`` atomically at an explicit mode, or not at all.
 
-    Two properties, and both were learned from a defect.
+    Atomic: the temp file is in the target's directory so ``os.replace`` is a
+    same-filesystem rename, and it is fsynced first so a crash cannot leave a
+    correctly named file with unwritten contents.
 
-    ATOMIC. The temp file is created in the TARGET's directory so ``os.replace``
-    is a same-filesystem rename and therefore atomic; a temp file in the system
-    temp directory would make it a copy, which can be interrupted halfway. The
-    fsync before the replace is the source system's one omission: without it a
-    crash can leave a correctly named file whose contents never reached the
-    platter.
-
-    0600 REGARDLESS OF UMASK. ``mkstemp`` already creates at 0600, so the mode was
-    previously an undocumented side effect that nothing would have caught if the
-    writer changed. The explicit chmod makes it a stated property, and it is the
-    reason this function is the shared writer for every state file, beside only
-    the append :func:`append_durable_bytes` makes to a file this one created,
-    rather than one of two: the sibling that wrote the credential presence index with
-    ``write_text`` inherited the user's umask and landed 0666 under umask 000,
-    which is the exact defect class ``secrets.py`` was chartered to end. That file
-    carries no credential VALUES, but world-writable means any local account can
-    forge or erase the answer doctor gives about which credentials are set.
-
-    THE DIRECTORY MODE IS PART OF THE FILE MODE. A 0600 file inside a
-    world-writable directory is not private: unlink and rename are governed by
-    the DIRECTORY's permissions, so anyone who can write the directory can
-    replace the file whatever its own mode says. The mkdir here therefore goes
-    through ``mkdir_private`` rather than through ``Path.mkdir``, which would
-    take its mode from the umask (see that function for why the obvious
-    ``mode=`` argument does not fix it).
+    0600 regardless of umask, by an explicit chmod. This is the shared writer
+    for every state file, with :func:`append_durable_bytes` for appends, so no
+    state file inherits the umask. Its directory goes through ``mkdir_private``,
+    since a world-writable directory makes the file's mode meaningless.
     """
     _refuse_write_outside_test_root(path, system_temporary=True)
     mkdir_private(path.parent)
@@ -5073,26 +838,17 @@ def atomic_write_bytes(payload: bytes, path: Path, *, mode: int = PRIVATE_FILE_M
         raise
 
 
-
 def append_durable_bytes(payload: bytes, path: Path) -> None:
-    """Append ``payload`` to the EXISTING file at ``path`` and sync it, or raise.
+    """Append ``payload`` to the existing file at ``path`` and sync it, or raise.
 
-    The second shared state writer, beside :func:`atomic_write_bytes`, for a
-    ledger that grows a record at a time (U254). Rewriting a whole ledger to add
-    one record makes N records cost N squared bytes, and every one of them a
-    synced write; appending makes them cost N.
+    The second shared state writer, for a ledger that grows a record at a time
+    (U254), so N records cost N bytes rather than N squared.
 
-    WHAT IT DOES NOT PROMISE IS ATOMICITY, and the caller is built for that. A
-    kill partway through leaves the file with a torn last line, so a caller
-    appends only whole lines, one per call, under its own lock, and reads a torn
-    last line as the record that did not land. It never creates the file: the
-    first write of a file goes through :func:`atomic_write_bytes`, which sets
-    the owner only mode and the private directory this keeps.
-
-    SYNCED BEFORE IT RETURNS, which is the durability the atomic writer's fsync
-    gives: a record a caller was told is written is on the disk. The same test
-    root refusal as every other state writer, so a test that escaped its
-    isolation cannot append to a real file either.
+    Not atomic: a kill can leave a torn last line, so a caller appends whole
+    lines under its own lock and reads a torn last line as a record that did
+    not land. Never creates the file; the first write goes through
+    :func:`atomic_write_bytes` for its mode. Synced before it returns, and
+    refused outside the test root like every state writer.
     """
     _refuse_write_outside_test_root(path, system_temporary=True)
     fd = os.open(path, os.O_WRONLY | os.O_APPEND)
@@ -5105,21 +861,15 @@ def append_durable_bytes(payload: bytes, path: Path) -> None:
         os.close(fd)
 
 
-#: The request that empties the drive's OWN write cache as well as the
-#: operating system's, on the platforms that have one, and None where a plain
-#: sync is the strongest flush on offer. Read from the platform, never spelled.
-#:
-#: On macOS ``fsync`` hands the bytes to the drive and returns; the drive may
-#: still hold them in its cache, and a pulled cable or a power cut loses them.
-#: ``F_FULLFSYNC`` asks the drive to write its cache out before answering. A
-#: capture asks for it, decided in U272 as the conservative reading of
-#: Phillip's answer of 2026-11-13, because the restore point lives under the
-#: library root and on most libraries that is an external drive.
+#: The request that empties the drive's own write cache as well as the
+#: operating system's, or None where a plain sync is the strongest flush. On
+#: macOS ``fsync`` returns with the bytes possibly still in the drive cache;
+#: ``F_FULLFSYNC`` does not. A capture asks for it (U272), since the restore
+#: point usually lives on an external drive.
 _FULL_FLUSH: int | None = getattr(_fcntl_module, "F_FULLFSYNC", None)
 
-#: What a filesystem answers when it has no full flush to give: the request is
-#: not supported, not a request it knows, or not one its descriptor takes.
-#: Every other error is a flush that failed, and raises.
+#: What a filesystem answers when it has no full flush to give. Every other
+#: error is a flush that failed, and raises.
 _FULL_FLUSH_UNSUPPORTED = frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL, errno.ENOTTY})
 
 
@@ -5131,24 +881,14 @@ def _full_flush(fd: int, operation: int) -> None:
 def flush_to_disk(path: Path) -> None:
     """Flush one file's or one directory's contents and entries to the device, or raise.
 
-    The third durability primitive, beside :func:`atomic_write_bytes` and
-    :func:`append_durable_bytes`, for bytes another writer put on disk: a copy
-    taken with ``shutil``, which writes and never syncs (U272). A directory is
-    flushed through the same call, because a file created in it is an entry in
-    the directory, and an unflushed directory loses the entry exactly as an
-    unflushed file loses its bytes.
+    The third durability primitive, for bytes another writer put on disk, such
+    as a ``shutil`` copy (U272). A directory is flushed too, since an unflushed
+    directory loses a new file's entry.
 
-    THE FULL FLUSH WHERE THE PLATFORM HAS ONE, see ``_FULL_FLUSH``. A
-    filesystem that answers it does not support one gets the plain sync, which
-    is the strongest flush it has, as SQLite does; refusing there would leave
-    every write on such a drive with no restore point at all.
-
-    NOTHING IS SWALLOWED. Every other error, from either flush or from opening
-    the path, raises, because the caller records a verdict on the strength of
-    this returning, and a flush that failed quietly is a verdict about bytes
-    that may not be there. Not to be confused with the directory flush in
-    ``core/jobs.py``, which ignores its errors for a reason that does not hold
-    here.
+    Uses the full flush where the platform has one (``_FULL_FLUSH``), falling
+    back to the plain sync where the filesystem does not support it, as SQLite
+    does. Nothing else is swallowed, because the caller records a verdict on
+    this returning; unlike the directory flush in ``core/jobs.py``.
     """
     if os.name == "nt" and Path(path).is_dir():  # pragma: no cover - needs Windows
         # A directory cannot be opened for a flush on Windows, and NTFS
@@ -5158,9 +898,7 @@ def flush_to_disk(path: Path) -> None:
     try:
         _flush_descriptor(fd)
     except OSError as exc:
-        # A flush is asked of a descriptor, so its error names no file, and a
-        # refusal that cannot say which file of a capture failed is one a
-        # person cannot act on.
+        # A descriptor's error names no file, so name it for the person.
         if exc.filename is not None:
             raise
         raise OSError(exc.errno, exc.strerror or str(exc), str(path)) from exc
@@ -5181,28 +919,15 @@ def _flush_descriptor(fd: int) -> None:
 
 
 class exclusive_lock:
-    """An exclusive advisory lock that REFUSES rather than proceeding unlocked.
+    """An exclusive advisory lock that refuses rather than proceeding unlocked.
 
-    The source system's equivalent tolerates a failed ``flock`` and carries on,
-    which is defensible for an advisory ledger and wrong here. Two ``crate``
-    subprocesses (KTD26) can reach an unmigrated config in the same second, and
-    two concurrent migrations of one file is how it ends up half-upgraded.
+    Two ``crate`` subprocesses (KTD26) migrating one file at once would leave it
+    half-upgraded.
 
-    THE LOCK FILE PERSISTS AFTER A SUCCESSFUL MIGRATION, DELIBERATELY. Unlinking
-    a lock file on release is the classic way to lose the exclusion it provides:
-    process A holds the lock on inode X and unlinks the NAME, process B creates a
-    fresh file at that name and takes the lock on inode Y, and both then believe
-    they hold the only lock with nothing raised. That failure is silent and
-    survives review, which is exactly the failure the lock exists to prevent, so
-    the file stays. The source system's own write-session lock is never unlinked
-    for the same reason.
-
-    What made a persistent lock file a real exposure was its MODE, not its
-    lifetime. Opened through the builtin ``open(path, "w")`` it landed 0666 under
-    a permissive umask, in a directory that was itself 0777, so any local account
-    could hold it, making every future migration refuse, or truncate it out from
-    under the process holding it. It is created 0600 now, inside a 0700
-    directory, which makes persisting cost one empty file and nothing else.
+    The lock file persists after release on purpose: unlinking the name lets a
+    second process lock a fresh inode while the first still holds the old one,
+    and both believe they hold the only lock. It is created 0600 inside a 0700
+    directory, so no other account can hold or truncate it.
     """
 
     def __init__(self, path: Path) -> None:
@@ -5215,17 +940,13 @@ class exclusive_lock:
         try:
             import fcntl
 
-            # os.open with an explicit mode rather than the builtin open(): the
-            # builtin creates at 0666 masked by the umask, so a permissive umask
-            # yields a world-writable lock. The mode here is masked too, but 0600
-            # carries no group or other bits for a mask to add, so masking can
-            # only ever leave it at or below 0600.
+            # os.open at 0600 rather than the builtin open(), which creates at
+            # 0666 masked by the umask.
             fd = os.open(self.path, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE)
             self.handle = os.fdopen(fd, "r+b")
             if _CAN_SET_MODE:
-                # O_CREAT sets the mode only when it CREATES the file. A lock
-                # left behind by a build from before this fix is already there,
-                # already 0666, and would keep that mode forever without this.
+                # O_CREAT sets the mode only on creation; an older lock file
+                # may still be 0666.
                 os.chmod(self.path, PRIVATE_FILE_MODE)
             fcntl.flock(self.handle, fcntl.LOCK_EX)
         except (ImportError, OSError) as exc:
@@ -5246,16 +967,14 @@ class exclusive_lock:
             self.handle = None
 
 
-# ---------------------------------------------------------------------------
-# What every state document's store did for itself, once (U298)
-# ---------------------------------------------------------------------------
+# What every state document's store did for itself, once (U298).
 
 
 @contextmanager
 def held(lock_path: Path, refused: Callable[[ConfigLockUnavailable], BaseException]) -> Iterator[None]:
     """Hold the exclusive lock at ``lock_path`` across one read then write cycle.
 
-    ONLY THE ACQUISITION is translated, by ``refused``, into the store's own
+    Only the acquisition is translated, by ``refused``, into the store's own
     refusal. A failure raised by the body keeps its own identity.
     """
     lock = exclusive_lock(lock_path)
@@ -5275,10 +994,8 @@ def lock_within(
 ) -> Iterator[bool]:
     """Hold the lock at ``lock_path`` and yield True, or yield False when it was not had in time.
 
-    For a writer that would rather skip one write than wait on another process,
-    a cache or a tally. THE LOCK FILE IS NEVER UNLINKED, for the reason
-    :class:`exclusive_lock`'s is not: one holder unlinking the name while another
-    creates a fresh file at it is how two processes each hold "the" lock.
+    For a writer that would rather skip one write than wait, a cache or a
+    tally. The lock file is never unlinked, for :class:`exclusive_lock`'s reason.
     """
     try:
         mkdir_private(lock_path.parent)
@@ -5306,19 +1023,13 @@ def lock_within(
 
 
 def lock_now(path: Path) -> tuple[Any, bool]:
-    """Open the lock file at ``path`` and take its lock WITHOUT WAITING.
+    """Open the lock file at ``path`` and take its lock without waiting.
 
-    Returns the open handle, whose close releases the lock, and whether the
-    lock was had. A lock another process holds is ``False`` with the handle
-    still open: the holder's own words are in the file, and the caller refuses
-    with them. ``os.open`` with an explicit mode and never the builtin
-    ``open``, which creates at 0666 masked by the umask and would leave a lock
-    any local account could hold, refusing every later run.
-
-    A platform with no advisory locks reads as had. Refusing there would make
-    the product unusable on it, and what each caller guards is a transaction
-    of its own. The handle is closed on any other failure, which leaves as
-    itself.
+    Returns the open handle, whose close releases the lock, and whether the lock
+    was had. A lock held elsewhere is ``False`` with the handle open, so the
+    caller can quote the holder's words from the file. Opened at 0600 through
+    ``os.open``. A platform with no advisory locks reads as had. On any other
+    failure the handle is closed and the failure leaves as itself.
     """
     mkdir_private(path.parent)
     handle = os.fdopen(os.open(path, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE), "r+")
@@ -5340,13 +1051,10 @@ def lock_now(path: Path) -> tuple[Any, bool]:
 def flock_exclusive(target: Path, harden: Callable[[Path], None]):
     """Open ``target`` owner only, harden it, and take its exclusive lock.
 
-    Returns the open handle, whose close releases the lock. THE HANDLE IS
-    CLOSED ON ANY FAILURE, an interrupt included, and the failure leaves as
-    itself, so the caller decides which of them is its own refusal.
-    ``os.open`` with an explicit mode and never the builtin ``open``, which
-    creates at 0666 masked by the umask (P1). ``harden`` is the caller's,
-    because ``O_CREAT`` applies the mode only when it CREATES the file and each
-    caller decides what a lock left behind at another mode means.
+    Returns the open handle, whose close releases the lock. On any failure,
+    an interrupt included, the handle is closed and the failure leaves as
+    itself. Opened at 0600 through ``os.open`` (P1). ``harden`` is the caller's,
+    since ``O_CREAT`` sets the mode only on creation.
     """
     handle = None
     try:
@@ -5366,9 +1074,7 @@ def flock_exclusive(target: Path, harden: Callable[[Path], None]):
 def read_bytes_if_present(path: Path) -> bytes | None:
     """A state file's bytes, or None when there is no file.
 
-    Absent is an answer, the empty record every ledger names. Any other
-    failure to read leaves as the ``OSError`` it is, for the caller to refuse
-    in its own words.
+    Any other read failure leaves as its ``OSError`` for the caller to refuse.
     """
     try:
         return path.read_bytes()
@@ -5379,11 +1085,9 @@ def read_bytes_if_present(path: Path) -> bytes | None:
 def read_json(path: Path, unusable: Callable[[str], BaseException]) -> tuple[bool, Any]:
     """Whether a state document exists at ``path``, and what it parses to.
 
-    A DOCUMENT THAT EXISTS AND CANNOT BE READ IS REFUSED, never read as empty:
-    an unreadable record read as unset asks every question again, and the next
-    write then persists that emptiness over the real one. ``unusable`` builds
-    the store's own refusal from the clause that says what was wrong. An
-    absent file is ``(False, None)``, which is not a document holding ``null``.
+    A document that exists and cannot be read is refused, never read as empty,
+    or the next write would persist the emptiness. ``unusable`` builds the
+    store's refusal from a clause. An absent file is ``(False, None)``.
     """
     if not path.exists():
         return False, None
@@ -5398,8 +1102,8 @@ def read_json(path: Path, unusable: Callable[[str], BaseException]) -> tuple[boo
 def read_json_map(path: Path, unusable: Callable[[str], BaseException]) -> Mapping[str, Any] | None:
     """:func:`read_json` for a document that must be a map, None when the file is absent.
 
-    Anything else at the top level is refused in the store's own words, since
-    a list or a scalar read as an empty record is deleted by the next write.
+    Any other top level is refused, since read as empty it would be deleted by
+    the next write.
     """
     found, raw = read_json(path, unusable)
     if not found:
@@ -5412,9 +1116,8 @@ def read_json_map(path: Path, unusable: Callable[[str], BaseException]) -> Mappi
 def read_json_as_text(path: Path, unusable: Callable[[str], BaseException]) -> tuple[bool, Any]:
     """:func:`read_json`, for the two stores that read the file in the platform's encoding.
 
-    Not merged with it, because the two differ in what a person sees: here a
-    file that is not text in that encoding leaves as the ``UnicodeDecodeError``
-    it is, where :func:`read_json` refuses it as not JSON.
+    Kept apart because a file that is not text in that encoding leaves here as
+    a ``UnicodeDecodeError`` rather than being refused as not JSON.
     """
     if not path.exists():
         return False, None
@@ -5429,93 +1132,23 @@ def read_json_as_text(path: Path, unusable: Callable[[str], BaseException]) -> t
 
 
 __all__ = [
-    "ACKNOWLEDGMENT_KEY",
-    "BACKUP_DESTINATION_KEYS",
-    "CONFIG_FILENAME",
-    "CURRENT_SCHEMA_VERSION",
-    "LIBRARY_ROOT_TOKEN",
-    "LIBRARY_STATE_LAYOUT_VERSION",
-    "MIGRATIONS",
-    "PRIVATE_DIR_MODE",
-    "PRIVATE_FILE_MODE",
-    "REQUIRED_KEYS",
-    "RETIRED_ADAPTER_NAMES",
-    "SET_WORKSPACE_DIRNAME",
-    "SQLITE_SIDECARS",
-    "STATE_FILES",
-    "TAXONOMY_TEMPLATE_KEY",
-    "VOLUME_IDENTITY_KEY",
-    "AcquisitionConfig",
-    "AnalysisConfig",
-    "BackupConfig",
-    "Config",
-    "ConfigConflict",
-    "ConfigCorrupt",
-    "ConfigError",
-    "ConfigInvalid",
-    "ConfigLockUnavailable",
-    "ConfigMissing",
-    "ConfigTooNew",
-    "InstallationArea",
-    "LibraryConfig",
-    "Medium",
-    "Migration",
-    "ModulesConfig",
-    "NamingConfig",
-    "PathsConfig",
-    "PrefixMapping",
-    "ProfileConfig",
-    "RekordboxConfig",
-    "RemediedError",
-    "Remedy",
-    "RollbackEffect",
-    "Sidecar",
-    "SnapshotRole",
-    "StateFile",
-    "StateRoot",
-    "TaxonomyConfig",
-    "append_durable_bytes",
-    "atomic_write_bytes",
-    "backup_remote_disagreement",
-    "backup_remote_name",
-    "derived_backup_remote",
-    "config_dir",
-    "config_path",
-    "coupled_state_files",
-    "current_adapter_name",
-    "flush_to_disk",
-    "from_dict",
-    "installation_state_dir",
-    "library_coupled_dir",
-    "library_history_dir",
-    "library_local_dir",
-    "library_state_dir",
-    "load",
-    "load_from_path",
-    "merge_changes",
-    "migrate",
-    "exclusive_lock",
-    "flock_exclusive",
-    "held",
-    "is_inside",
-    "lock_now",
-    "lock_within",
-    "mkdir_private",
-    "out_of_band_effects",
-    "provider_gate_dir",
-    "read_bytes_if_present",
-    "read_json",
-    "read_json_as_text",
-    "read_json_map",
-    "rekey_records",
-    "reset_cache",
-    "save",
-    "sidecar_paths",
-    "snapshot_sources",
-    "state_file",
-    "state_files_for",
-    "state_path",
-    "template_name_is_usable",
-    "update",
-    "validate",
+    "ACKNOWLEDGMENT_KEY", "BACKUP_DESTINATION_KEYS", "CONFIG_FILENAME", "CURRENT_SCHEMA_VERSION",
+    "LIBRARY_ROOT_TOKEN", "LIBRARY_STATE_LAYOUT_VERSION", "MIGRATIONS", "PRIVATE_DIR_MODE",
+    "PRIVATE_FILE_MODE", "REQUIRED_KEYS", "RETIRED_ADAPTER_NAMES", "SET_WORKSPACE_DIRNAME",
+    "SQLITE_SIDECARS", "STATE_FILES", "TAXONOMY_TEMPLATE_KEY", "VOLUME_IDENTITY_KEY",
+    "AcquisitionConfig", "AnalysisConfig", "BackupConfig", "Config", "ConfigConflict",
+    "ConfigCorrupt", "ConfigError", "ConfigInvalid", "ConfigLockUnavailable", "ConfigMissing",
+    "ConfigTooNew", "InstallationArea", "LibraryConfig", "Medium", "Migration", "ModulesConfig",
+    "NamingConfig", "PathsConfig", "PrefixMapping", "ProfileConfig", "RekordboxConfig",
+    "RemediedError", "Remedy", "RollbackEffect", "Sidecar", "SnapshotRole", "StateFile",
+    "StateRoot", "TaxonomyConfig", "append_durable_bytes", "atomic_write_bytes",
+    "backup_remote_disagreement", "backup_remote_name", "derived_backup_remote", "config_dir",
+    "config_path", "coupled_state_files", "current_adapter_name", "flush_to_disk", "from_dict",
+    "installation_state_dir", "library_coupled_dir", "library_history_dir", "library_local_dir",
+    "library_state_dir", "load", "load_from_path", "merge_changes", "migrate", "exclusive_lock",
+    "flock_exclusive", "held", "is_inside", "lock_now", "lock_within", "mkdir_private",
+    "out_of_band_effects", "provider_gate_dir", "read_bytes_if_present", "read_json",
+    "read_json_as_text", "read_json_map", "rekey_records", "reset_cache", "save", "sidecar_paths",
+    "snapshot_sources", "state_file", "state_files_for", "state_path", "template_name_is_usable",
+    "update", "validate",
 ]

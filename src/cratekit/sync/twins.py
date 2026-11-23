@@ -1,41 +1,23 @@
 """Custom playlist twins: the permanent rekordbox copy of a downloaded custom playlist (U149).
 
-Decided by Phillip on 2026-10-15
-(``docs/plans/2026-10-15-1330-feat-rekordbox-tidal-parity-plan.md``, R6 to
-R10). A custom playlist the author builds on the account is swept, lands as an
-INBOX playlist, is marked (held as taken since U242, prefixed ``DOWNLOADED ``
-before it) and filed into the account's
-``<year>`` folder for good, while its INBOX copy rotates out of rekordbox. The
-TWIN is the copy that stays: one plain playlist named as the account playlist
-less any old prefix, in the top level folder ``Custom Playlists <year>``, holding
-the rows the library owns for its tracks in the account's order, and paired
-with the account playlist so ``crate sync pair`` keeps the two one list.
+A taken custom playlist is filed into the account's ``<year>`` folder while
+its INBOX copy rotates out. The TWIN is the copy that stays: one plain
+playlist named as the account playlist less any old prefix, in the top level
+folder ``Custom Playlists <year>``, holding the library's rows in the account's
+order, and paired so ``crate sync pair`` keeps the two one list.
 
-**TWO MAKERS, ONE RULE.** ``crate sync twins`` backfills every taken
-custom playlist the account already holds in a year folder, once; the native
-landing of an account playlist pass writes the twin of each account playlist
-it writes an INBOX playlist for, in the same commit. Both take the folder, the
-name and the refusals from here.
+Two makers share the folder, name and refusals from here: ``crate sync twins``
+backfills once, and a native landing writes the twin in its own commit.
 
-**THE FOLDER IS NOT A TREE.** It is not declared in the taxonomy and no
-registry records it, so the pair rule, which refuses a rekordbox playlist under
-one of Cratekit's own trees, lets a twin pair, and the rotation, the mirror and
-the adoption never read it. It is found by name at the top level, live, and
-made there once when absent. Two live top level folders of one year's name
-leave that year's twins unplanned and named, since which one is the year's is
-not something a name decides.
+The folder is not a tree, so no registry records it and the pair rule lets a
+twin pair. It is found by name at the top level and made once when absent;
+two live folders of one year's name leave that year's twins unplanned.
 
-**A NAME THE FOLDER HOLDS IS REFUSED, NEVER COUNTED.** A twin is the one
-playlist of its name in its folder. A playlist already there under that name
-may be a twin an interrupted run wrote and could not pair, and a second one
-beside it, ``Phil 9-30-26 2``, would be a copy nobody pairs. So the twin is
-left and named, and ``crate sync pair`` pairs the one there by hand. Two
-account playlists of one name in one year leave the second the same way.
+A name the folder already holds is refused, never counted: it may be a twin
+an interrupted run could not pair, and a second beside it would be a copy
+nobody pairs. ``crate sync pair`` pairs that one by hand.
 
-**ADD ONLY.** A folder, a playlist and its memberships are made; nothing is
-renamed, moved or removed, in rekordbox or on the account. A twin whose
-account playlist later disappears is unpaired by ``crate sync pair`` and left
-where it is, named.
+ADD ONLY: nothing is renamed, moved or removed, in rekordbox or on the account.
 
 Layer: modules.
 """
@@ -58,13 +40,11 @@ from cratekit.write import playlist_pair, trees
 #: The folder's name before its year, decided on 2026-10-15.
 FOLDER_PREFIX = "Custom Playlists"
 
-#: The session workflow the backfill is recorded under, and the stable key its
-#: commit is counted under, since the folder is no registered tree.
+#: The backfill's session workflow and commit key, since the folder is no registered tree.
 WORKFLOW = "custom-playlist-twins"
 RECORD_KEY = "custom-playlist-twins"
 
-#: A root folder on the account whose title is a year, the plain ``<year>``
-#: the filing step moves a marked custom playlist into (U116).
+#: An account root folder titled with a year, where filing puts a marked playlist (U116).
 YEAR = re.compile(r"[0-9]{4}")
 
 #: What becomes of one planned twin.
@@ -74,7 +54,7 @@ LEFT = "left"
 #: Why a track of the account playlist is not in its twin.
 NOT_OWNED = "the library holds no row for it"
 AMBIGUOUS = "more than one library row carries it, so none was chosen"
-#: Said after what the reader found wanting in a track it would not read (U213).
+#: Follows the reader's complaint about a track it would not read (U213).
 UNREAD_NOT_FOUND = "and no recorded link or ISRC finds its row"
 
 _ORIGIN = ("sync", "twins")
@@ -214,9 +194,8 @@ class Twin:
     whole: bool = True
     #: Why it is not made, when ``action`` is :data:`LEFT`.
     why: str = ""
-    #: The refusal that left it, when its listing was refused (U213). The plan's
-    #: digest carries this and not ``why``, whose words are the provider's own
-    #: and may differ between the run that asked and the run that writes.
+    #: The refusal that left it (U213). The digest carries this, not ``why``,
+    #: whose provider words may differ between the asking and writing runs.
     refused: str = ""
 
     def identity(self) -> dict[str, Any]:
@@ -236,11 +215,7 @@ class Twin:
 
 
 def place(name: str, folder: Folder, taken: set[str]) -> str:
-    """Why a twin of ``name`` cannot go in ``folder``, or ``""`` when it can.
-
-    ``taken`` is the names this plan already gave in that folder, and is added
-    to when the answer is yes.
-    """
+    """Why a twin of ``name`` cannot go in ``folder``, or ``""``, adding it to ``taken`` when it can."""
     if folder.why:
         return folder.why
     if not name:
@@ -265,11 +240,9 @@ def place(name: str, folder: Folder, taken: set[str]) -> str:
 class Library:
     """Every way the backfill finds an account track's row, read once.
 
-    In order, the first that answers deciding: the account mirror's recorded
-    link to that very track (U147), the database's ISRC, the ISRC the mirror
-    recorded for a row whose file carries it, and the rows of the INBOX
-    playlists a landing made for that account playlist (U128). A row the
-    library removed is never an answer.
+    The first that answers decides: the mirror's recorded link (U147), the
+    database's ISRC, the mirror's recorded ISRC, then the landing's INBOX rows
+    for that playlist (U128). A removed row is never an answer.
     """
 
     by_remote: Mapping[str, tuple[str, ...]]
@@ -302,21 +275,17 @@ def _grouped(pairs: Iterable[tuple[str, str]], live: Iterable[str]) -> dict[str,
 def read_library(cfg: config.Config, db: Any, account_ids: Iterable[str]) -> Library:
     """The library's answers for the account playlists named, read on ``db``."""
     from cratekit.modules.outbound import ledger
-    from cratekit.sync import pair_cli
+    from cratekit.sync import pair_read
 
-    # MATERIALIZED ONCE: a generator read inside the comprehension below is
-    # spent by its first account, and every later one would lose its source.
+    # MATERIALIZED ONCE: a generator would be spent by the first account below.
     wanted = set(account_ids)
     links = ledger.mirror_links(cfg)
     live = playlist_pair.content(db, links)
-    # THE UNREAD HALF IS DROPPED HERE BY THIS READER'S OWN POLICY (R-1383).
-    # The backfill holds a track it finds no row for and queues nothing, and
-    # its write refuses at the session gate on any entry the log cannot read,
-    # so an unread record never reaches a download; the gate before that
-    # write shows its misses with no word of the record (a residual).
-    mirrors, _unread = pair_cli.landed_inbox_playlists(cfg)
+    # THE UNREAD HALF IS DROPPED BY POLICY (R-1383): the backfill queues
+    # nothing and its write refuses at the session gate on an unreadable entry.
+    mirrors, _unread = pair_read.landed_inbox_playlists(cfg)
     landed = {
-        account_id: pair_cli.landed_isrcs(cfg, db, playlist_ids)
+        account_id: pair_read.landed_isrcs(cfg, db, playlist_ids)
         for account_id, playlist_ids in mirrors.items()
         if account_id in wanted
     }
@@ -338,13 +307,9 @@ def matched(
 ) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...], tuple[Miss, ...]]:
     """The account playlist's tracks as rows in its order, the links, and the misses.
 
-    ``tracks`` is the listing as the intake reader folds it, each track once,
-    so a miss's position counts the folded listing, a track listed twice once.
-
-    ``unread`` names, by id, each track the reader would not read and what it
-    found wanting (U213). Such a track is still found by its recorded link
-    and its ISRC, which never needed its title, and joins its twin when one
-    row answers; when none does, its miss says why it could not be read.
+    ``tracks`` is the folded listing, so a miss's position counts each track
+    once. ``unread`` maps an unread track's id to the reader's complaint
+    (U213); such a track is still found by link or ISRC, and its miss says why.
     """
     unread = unread or {}
     rows: list[str] = []
@@ -410,11 +375,9 @@ def candidates(
 ) -> list[tuple[str, str, str]]:
     """Every downloaded custom playlist in a year folder, as ``(year, id, name)``, by year then name.
 
-    ``own`` is the account playlists listed as the author's, id to name, and
-    ``excluded`` the ones a label, a set or the mirror keeps. A playlist in two
-    year folders is read once, under its first year. DOWNLOADED MEANS TAKEN
-    (U242): one ``taken``, the record's taken ledger, holds, or one whose
-    title still carries the old prefix.
+    ``own`` maps the author's playlists id to name; ``excluded`` are kept by a
+    label, a set or the mirror. A playlist in two year folders counts under
+    its first. DOWNLOADED MEANS TAKEN (U242): in ``taken``, or still prefixed.
     """
     kept = set(excluded)
     held = frozenset(taken)
@@ -445,11 +408,9 @@ def plan_backfill(
     excluded: Iterable[str],
     paired: Iterable[str],
 ) -> Backfill:
-    """Decide a twin for every downloaded custom playlist the account holds that has none.
+    """Decide a twin for every downloaded custom playlist that has none, writing nothing.
 
-    Reads the account and the database and writes nothing. A playlist already
-    paired, as a twin or by hand, is counted and never planned again, which is
-    what makes a second run plan nothing.
+    An already paired playlist is counted, never planned, so a second run plans nothing.
     """
     from cratekit.intake import cli as intake_cli
     from cratekit.sync import pair_merge
@@ -469,10 +430,8 @@ def plan_backfill(
         if folder is None:
             folder = folders[year] = find_folder(db, year)
         name = twin_name(account_name)
-        # ONE PLAYLIST'S LISTING NEVER STOPS THE OTHERS (U213). A playlist the
-        # provider cannot list, or whose rows carry no id, is left and named,
-        # the refusals the sweep of every playlist already takes per playlist;
-        # a track the reader would not read is named in its twin, below.
+        # ONE PLAYLIST'S LISTING NEVER STOPS THE OTHERS (U213): a per playlist
+        # refusal leaves that twin, named.
         try:
             listing = intake_cli.list_playlist_readable(found, account_id)
         except CratekitError as exc:
@@ -594,21 +553,17 @@ def addition_violations(
     folders: Mapping[str, str],
     playlists: Mapping[str, tuple[str, str, frozenset[str]]],
 ) -> list[str]:
-    """Every difference between two readings that the twins this write made do not explain.
+    """Every difference between two readings that the twins made do not explain.
 
-    ``folders`` maps each folder row the write made to its name, and
-    ``playlists`` each playlist row it made to ``(name, parent row, the
-    content rows it holds)``. Empty means the write was confined. PURE, so
-    every branch is reachable with literal readings. What it explains, and
-    nothing more:
+    ``folders`` maps each folder row made to its name, ``playlists`` each
+    playlist row made to ``(name, parent row, content rows)``. Empty means
+    confined. PURE, so every branch is testable. It explains only:
 
-    * no content row and no existing membership row differs, appears or goes;
-    * the playlist rows added are exactly the folders and playlists made, live,
-      a folder at the top level and a plain playlist under its planned parent;
-    * no existing playlist row disappears, and one may move only its
-      bookkeeping, and only when it sits at the top level beside a folder made
-      or inside a folder a twin was made in;
-    * every membership row added is live and puts a planned row in its twin.
+    * no content row or existing membership changes;
+    * the playlist rows added are exactly those made, live and well placed;
+    * an existing playlist row changes only bookkeeping, and only beside a
+      folder made at the top level or inside a folder a twin was made in;
+    * every membership added is live and puts a planned row in its twin.
     """
     violations: list[str] = []
     if before.content != after.content:
@@ -797,12 +752,9 @@ def write(
 ) -> Written:
     """Make every planned twin, its folder when absent, and its memberships, in one guarded commit.
 
-    THE SESSION SPINE IS CALLED, NOT REBUILT, as every database membership
-    writer calls it: the gates with a record kept, a capture verified before
-    anything is written, the analysis watch over the roots named, the commit
-    witness, and the guarded commit. The folders, names and rows are read
-    again on this handle first, and the commit is CONFINED FROM SQL before it
-    lands, so the write cannot reach a row the plan did not name.
+    THE SESSION SPINE IS CALLED, NOT REBUILT, as every membership writer does.
+    The plan is rechecked on this handle first, and the commit is CONFINED
+    FROM SQL before it lands, so it cannot reach a row the plan did not name.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -813,8 +765,7 @@ def write(
         )
     made_twins = planned.made
     recheck(db, made_twins)
-    # THE FOLDER IS NO TREE, so an out of band restore is detected and marked,
-    # never refused, as the Favorites writers do.
+    # THE FOLDER IS NO TREE, so an out of band restore is marked, never refused.
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     created: list[tuple[Twin, str]] = []
     folders_made: dict[str, str] = {}
@@ -895,14 +846,11 @@ def assert_read_back(planned: Backfill, written: Written) -> None:
 
 
 def pair_backfilled(cfg: config.Config, planned: Backfill, written: Written) -> int:
-    """Mark each twin's pair, and record both snapshots when its account listing was whole.
+    """Mark each twin's pair, recording both snapshots when its listing was whole; answer the count.
 
-    The backfill read the whole account playlist and wrote its twin and read
-    it back, which is what a whole sync is, so the next ``sync pair`` merges
-    both ways from here. A short listing marks the pair with its links alone,
-    so its first sync adds only. Each twin's misses are recorded as its hold
-    (U221), so ``sync pair`` names them and queues none until ``sync release``
-    lets that twin's go. Answers how many pairs were marked.
+    A whole listing is a whole sync, so the next ``sync pair`` merges both
+    ways; a short one marks links alone, so its first sync adds only. Misses
+    are the twin's hold (U221), queued only after ``sync release``.
     """
     from cratekit.modules.outbound import pairs
 
@@ -911,12 +859,9 @@ def pair_backfilled(cfg: config.Config, planned: Backfill, written: Written) -> 
     marked = 0
     for made in written.twins:
         one = by_account[made.account_id]
-        # U221. EVERY TRACK THE TWIN WAS MADE WITHOUT IS HELD for the author's
-        # choice, recorded with the mark, so no sync queues it on its own. A
-        # SHORT LISTING RECORDS NO HOLD: a track the account withheld from it
-        # is in no miss, so the pair is read by time instead, as one paired
-        # before U221, which holds every track listed before the mark (the
-        # review's round one).
+        # U221. EVERY MISS IS HELD, so no sync queues it on its own. A SHORT
+        # LISTING RECORDS NO HOLD, since a withheld track is in no miss; the
+        # pair is read by time instead, holding everything listed before the mark.
         store.mark(
             one.account_id,
             made.playlist_id,
@@ -948,11 +893,9 @@ def pair_backfilled(cfg: config.Config, planned: Backfill, written: Written) -> 
 
 @dataclass(frozen=True, slots=True)
 class LandingTwin:
-    """One twin a native landing plans beside the INBOX playlist of an account playlist.
+    """One twin a native landing plans beside an account playlist's INBOX playlist.
 
-    It holds what that INBOX playlist holds, the rows this landing made and
-    the ones the library owned, in the account playlist's order, so the rows
-    are the landing's and are not planned here.
+    It holds what that INBOX playlist holds, so its rows are the landing's, not planned here.
     """
 
     account_id: str
@@ -975,12 +918,10 @@ class LandingTwin:
 def plan_landing(
     db: Any, accounts: Sequence[tuple[str, str]], *, year: str | int, paired: Iterable[str]
 ) -> tuple[LandingTwin, ...]:
-    """The twin of each account playlist a landing writes an INBOX playlist for.
+    """The twin of each ``(account id, name)`` a landing writes an INBOX playlist for.
 
-    ``accounts`` is ``(account id, the account's name)`` per INBOX playlist the
-    landing plans. An account playlist already paired, as a twin or by hand,
-    gets none: its pair brings this landing's new rows at the next
-    ``sync pair``, which finds them through the landing's own record (U128).
+    An already paired playlist gets none: its next ``sync pair`` brings the
+    new rows through the landing's record (U128).
     """
     held = set(paired)
     wanted = [(account_id, name) for account_id, name in accounts if account_id not in held]
@@ -1043,9 +984,8 @@ def write_landing(
 ) -> tuple[LandedTwin, ...]:
     """Make each planned twin in the landing's open transaction, holding its INBOX rows.
 
-    ``rows`` maps an account id to the content rows its INBOX playlist was
-    given, in order. A twin whose INBOX playlist holds nothing is not made.
-    Nothing is committed here: the landing's one guarded commit carries it.
+    ``rows`` maps an account id to its INBOX rows in order; an empty one makes
+    no twin. Nothing is committed here, the landing's guarded commit carries it.
     """
     made = [one for one in planned if one.action == CREATE and rows.get(one.account_id)]
     if not made:
@@ -1076,11 +1016,9 @@ def write_landing(
 def pair_landed(cfg: config.Config, written: Sequence[LandedTwin]) -> list[dict[str, str]]:
     """Mark each landed twin's pair, with no snapshot, and say what could not be.
 
-    The landing read the account's tracks from its intake job rather than from
-    the account, so no snapshot is recorded: the pair's first ``sync pair``
-    adds only, and records both sides. A pair that cannot be marked is a
-    warning naming the twin and the hand step, never a failed landing, since
-    the landing's commit has already landed.
+    The tracks came from the intake job, not the account, so no snapshot is
+    recorded and the first ``sync pair`` adds only. A failed mark is a warning,
+    never a failed landing, since the commit has already landed.
     """
     from cratekit.core.cause import CratekitError
     from cratekit.modules.outbound import pairs
@@ -1091,8 +1029,7 @@ def pair_landed(cfg: config.Config, written: Sequence[LandedTwin]) -> list[dict[
     unpaired: list[str] = []
     for one in written:
         try:
-            # U221. A LANDING'S TWIN HOLDS NOTHING: the sweep that landed it
-            # was the choice to download that playlist.
+            # U221. A LANDING'S TWIN HOLDS NOTHING, the sweep was the choice.
             store.mark(
                 one.account_id, one.playlist_id, name=one.account_name, twin=True, on_hold={}
             )
@@ -1129,42 +1066,10 @@ LANDED_UNPAIRED = "custom-playlist-twins-unpaired"
 
 
 __all__ = [
-    "AMBIGUOUS",
-    "CREATE",
-    "LANDED",
-    "LANDED_UNPAIRED",
-    "FOLDER_PREFIX",
-    "LEFT",
-    "NOT_OWNED",
-    "RECORD_KEY",
-    "WORKFLOW",
-    "Backfill",
-    "Folder",
-    "LandedTwin",
-    "LandingTwin",
-    "Library",
-    "Made",
-    "Miss",
-    "Twin",
-    "Written",
-    "addition_violations",
-    "assert_confined",
-    "assert_read_back",
-    "candidates",
-    "facts",
-    "find_folder",
-    "folder_name",
-    "matched",
-    "pair_backfilled",
-    "pair_landed",
-    "plan_landing",
-    "payload",
-    "place",
-    "plan_backfill",
-    "read_library",
-    "recheck",
-    "recheck_landing",
-    "twin_name",
-    "write",
-    "write_landing",
+    "AMBIGUOUS", "CREATE", "LANDED", "LANDED_UNPAIRED", "FOLDER_PREFIX", "LEFT", "NOT_OWNED",
+    "RECORD_KEY", "WORKFLOW", "Backfill", "Folder", "LandedTwin", "LandingTwin", "Library", "Made",
+    "Miss", "Twin", "Written", "addition_violations", "assert_confined", "assert_read_back",
+    "candidates", "facts", "find_folder", "folder_name", "matched", "pair_backfilled",
+    "pair_landed", "plan_landing", "payload", "place", "plan_backfill", "read_library", "recheck",
+    "recheck_landing", "twin_name", "write", "write_landing"
 ]

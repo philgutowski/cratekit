@@ -1,25 +1,18 @@
 """The rekordbox side of a pair whose account playlist came first (U202).
 
-Decided by Phillip on 2026-11-04: a playlist he makes on the account inside one
-of the root folders a sync of every pair made (U198) comes into rekordbox at
-the next ``crate sync pair``, in the matching rekordbox folder, and is paired as
-one the product made. ``sync/pair_discover.home_of`` says where it goes; this
-module makes it: one plain playlist, holding the library rows the account
-playlist's tracks matched, in the account's order.
+An account playlist made inside a root folder a sync of every pair made (U198)
+comes into rekordbox in the matching folder and is paired as the product's.
+``sync/pair_discover.home_of`` says where; this makes one plain playlist of
+the matched library rows, in the account's order.
 
-**ADD ONLY, CONFINED FROM SQL.** One playlist row and its memberships are
-made, in a folder that is already there, and nothing else: no folder is made,
-and no row of the collection, no other playlist and no other membership is
-touched. The write is judged before its commit by the twins' confinement check
-(``sync/twins.assert_confined``), which reads both node tables from SQL and
-refuses any difference the playlist made does not explain.
+**ADD ONLY, CONFINED FROM SQL.** One playlist row and its memberships, in a
+folder already there, and nothing else. ``sync/twins.assert_confined`` reads
+both node tables before the commit and refuses any other difference.
 
-**THE SESSION SPINE IS CALLED, NOT REBUILT**, as every database membership
-writer calls it: the gates with a record kept, a capture verified before
-anything is written, the analysis watch over the roots named, the commit
-witness, and the guarded commit. The parent, the name and the rows are read
-again on the write handle first, and a parent gone, a name taken or a row gone
-since the plan was approved refuses with nothing written.
+**THE SESSION SPINE IS CALLED, NOT REBUILT**: gates with a record, a verified
+capture, the analysis watch, the commit witness and the guarded commit. The
+parent, name and rows are read again on the write handle first, and any of
+them moved since the plan refuses with nothing written.
 
 Layer: modules.
 """
@@ -109,11 +102,9 @@ def create(
 ) -> playlist_pair.Written:
     """Make the playlist at ``home`` holding ``rows`` in order, in one guarded commit.
 
-    ``source`` is the stable identifier the session records the commit under.
-    ``on_commit`` is told the new playlist's identifier once the commit has
-    landed, whether ``commit_guarded`` returned or raised after the witness
-    saw it land, so a caller can pair it even when a later step fails. The playlist
-    is read back after the commit; the caller checks it.
+    ``source`` is what the session records the commit under. ``on_commit`` is
+    told the new playlist's id once the commit landed, even if a later step
+    raised, so the caller can pair it. The caller checks the read back.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -155,8 +146,7 @@ def create(
                 if witness.landed:
                     _record_commit(record, source, created=len(added) + 1, cfg=cfg)
                     # A COMMIT THAT LANDED AND THEN RAISED still made the
-                    # playlist (U202, from the second review), so the caller
-                    # is told, as the session record is, by the witness.
+                    # playlist, so the caller is told (U202).
                     if on_commit is not None and playlist_id:
                         on_commit(playlist_id)
                 raise

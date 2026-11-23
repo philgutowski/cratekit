@@ -1,13 +1,11 @@
 """U242: the DOWNLOADED prefix is retired, and Cratekit records what it took itself.
 
-THE PRODUCER IS THE PRODUCT. A hand prefixed playlist is one the fake account
-lists under the prefix with nothing in the cursor or the record, which is the
-shape the live account's 599 take. A Cratekit marked one is made by driving
-``crate sync all``, finishing its jobs, landing the pass and answering ``crate
-sync mark``'s gate, through ``tests/test_sync_mark.py``'s own helpers. What is
-faked is the two provider seams. The fake catalogue does not see the fake
-account's renames, so each test retitles the listing to what the account would
-list after a strip, as ``tests/test_sync_unmark.py`` does after a mark.
+THE PRODUCER IS THE PRODUCT. A hand prefixed playlist is listed under the
+prefix with nothing in the cursor or the record, as the live account's 599
+are. A Cratekit marked one is made by the real verbs through
+``tests/test_sync_mark.py``'s helpers; only the two provider seams are faked.
+The fake catalogue does not see the fake account's renames, so each test
+retitles the listing to what the account would list after a strip.
 """
 
 from __future__ import annotations
@@ -59,7 +57,7 @@ def _items(done: dict) -> dict[str, dict]:
 
 
 def _retitled(fake, account: outbound_fakes.FakeAccount) -> None:
-    """The listing as the account would read after the renames the fake took."""
+    """The listing as the account would read it after the fake's renames."""
     renamed = dict(account.renamed)
     fake.account = [
         AccountPlaylist(
@@ -313,8 +311,7 @@ def test_a_hand_prefixed_playlist_is_recorded_stripped_and_never_offered(slim, m
 
 
 def test_a_cratekit_marked_playlist_is_never_offered_once_stripped(slim, monkeypatch):
-    """A mark made before U242 is a legacy prefix with a record entry: the strip
-    keeps it taken under its pass, and no later sync offers it."""
+    """A legacy prefix with a record entry stays taken under its pass after the strip, never offered."""
     fake, name = _swept_pass(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     record = mark_record.MarkRecord(slim)
     record.record_marked(name, {"pl-a": ("Warmup", "DOWNLOADED Warmup")})
@@ -441,7 +438,7 @@ def test_a_ceiling_stop_names_what_landed_and_a_second_run_resumes(slim, monkeyp
 
 
 def test_no_rename_is_made_for_a_playlist_the_record_does_not_hold(slim, monkeypatch):
-    """THE MERGE BLOCKER: a rename before the record holds the id would offer it as new."""
+    """A rename before the record holds the id would offer the playlist as new."""
     bind_playlists(monkeypatch, HAND)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -600,7 +597,7 @@ def test_filing_reads_a_found_prefix_as_undated_and_a_pass_mark_as_dated():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 7. Round one of the review, driven through the producers
+# 7. Marks, labels and releases, driven through the producers
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -633,8 +630,7 @@ def _filed(cfg, fake, account) -> dict[str, object]:
 
 
 def test_filing_after_a_real_strip_reads_every_playlist_as_it_did_before(slim, monkeypatch):
-    """Row 1: the strip's own records are no dated marks, so a hand mark stays
-    undated and a pass mark keeps the year of its pass."""
+    """The strip's records are no dated marks: a hand mark stays undated, a pass mark keeps its year."""
     from cratekit.organize import filing
 
     record = mark_record.MarkRecord(slim)
@@ -657,7 +653,7 @@ def test_filing_after_a_real_strip_reads_every_playlist_as_it_did_before(slim, m
 
 
 def test_a_stripped_playlist_named_like_a_followed_label_is_still_filed_by_its_mark(slim, monkeypatch):
-    """Row 5: the record stands in for the prefix that kept a label's name off it."""
+    """The record stands in for the prefix that kept a label's name off the playlist."""
     from cratekit.organize import filing
 
     record = mark_record.MarkRecord(slim)
@@ -673,7 +669,7 @@ def test_a_stripped_playlist_named_like_a_followed_label_is_still_filed_by_its_m
 
 
 def test_unmark_of_the_migration_lets_nothing_go_and_nothing_is_offered(slim, monkeypatch):
-    """Row 3: a playlist found prefixed is no pass's, so no unmark releases it."""
+    """A playlist found prefixed is no pass's, so no unmark releases it."""
     _stripped(slim, monkeypatch, HAND, FRESH)
     code, done = _answered(["sync", "unmark", "--pass", mark_record.MIGRATION], "sync.unmark.confirm")
     assert code == int(ExitCode.OK), done
@@ -687,7 +683,7 @@ def test_unmark_of_the_migration_lets_nothing_go_and_nothing_is_offered(slim, mo
 
 
 def test_unmark_of_a_legacy_pass_after_the_strip_releases_and_stamps_it(slim, monkeypatch):
-    """Row 4: the release is the whole undo, and the stamped mark is not taken again."""
+    """The release is the whole undo, and the stamped mark is not taken again."""
     record = mark_record.MarkRecord(slim)
     record.record_marked("old-pass", {"pl-m": ("Marked", "DOWNLOADED Marked")})
     _stripped(slim, monkeypatch, (_playlist("pl-m", "DOWNLOADED Marked", 1), _tracks("701")))
@@ -702,7 +698,7 @@ def test_unmark_of_a_legacy_pass_after_the_strip_releases_and_stamps_it(slim, mo
 
 
 def test_unmark_of_a_legacy_pass_after_the_strip_is_put_back_renames_back(slim, monkeypatch):
-    """Row 4, its second half: the strip's records are no later mark of the pass's."""
+    """The strip's records are no later mark of the pass's."""
     record = mark_record.MarkRecord(slim)
     record.record_marked("old-pass", {"pl-m": ("Marked", "DOWNLOADED Marked")})
     fake, account = _stripped(slim, monkeypatch, (_playlist("pl-m", "DOWNLOADED Marked", 1), _tracks("701")))
@@ -717,7 +713,7 @@ def test_unmark_of_a_legacy_pass_after_the_strip_is_put_back_renames_back(slim, 
 
 
 def test_a_legacy_archive_mark_a_strip_superseded_no_longer_holds_the_rename(slim):
-    """Row 2: the set rename reads only a prefix a pass wrote that still stands."""
+    """The set rename reads only a prefix a pass wrote that still stands."""
     from cratekit.export import set_cli
 
     record = mark_record.MarkRecord(slim)
@@ -727,7 +723,7 @@ def test_a_legacy_archive_mark_a_strip_superseded_no_longer_holds_the_rename(sli
     assert set_cli._standing_mark(slim, "pl-s") is None
     record.record_unmarked(strip_cli.PASS, "pl-s")
     assert set_cli._standing_mark(slim, "pl-s").pass_name == "set-pass", "the strip put back"
-    # A set prefixed by hand and stripped carries only the strip's record: no mark.
+    # A set prefixed by hand and stripped carries only the strip's record, no mark.
     record.record_marked(strip_cli.PASS, {"pl-h": ("DOWNLOADED Mine", "Mine")})
     assert set_cli._standing_mark(slim, "pl-h") is None
 
@@ -768,14 +764,16 @@ def test_unmark_playlist_narrows_the_releases(slim, monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 8. Round two of the review
+# 8. Titles retitled since, and strip records older than a mark
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_release_whose_title_was_retitled_since_stamps_the_pass_mark(slim, monkeypatch):
-    """Row 1: the strip trims ``Warmup `` to ``Warmup``, so the title half reads
-    retitled since; the release still stamps the pass's mark, and neither the
-    next migration nor the next strip takes it again."""
+    """The strip trims ``Warmup `` to ``Warmup``, which reads retitled since.
+
+    The release still stamps the pass's mark, and neither the next migration
+    nor the next strip takes it again.
+    """
     record = mark_record.MarkRecord(slim)
     record.record_marked("old-pass", {"pl-a": ("Warmup ", "DOWNLOADED Warmup ")})
     _stripped(slim, monkeypatch, (_playlist("pl-a", "DOWNLOADED Warmup ", 1), _tracks("1")))
@@ -790,7 +788,7 @@ def test_a_release_whose_title_was_retitled_since_stamps_the_pass_mark(slim, mon
 
 
 def test_a_title_retitled_since_and_still_prefixed_is_left_alone_and_stays_taken(slim, monkeypatch):
-    """Row 1, its other half: main's "left alone", since the title still says taken."""
+    """A retitled title still prefixed is left alone, since it still says taken."""
     fake, name = _swept_pass(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     record = mark_record.MarkRecord(slim)
     record.record_marked(name, {"pl-a": ("Warmup", "DOWNLOADED Warmup")})
@@ -823,7 +821,7 @@ def test_a_release_that_fails_part_way_names_what_was_let_go(slim, monkeypatch):
 
 
 def test_a_prefixed_copy_beside_a_taken_original_is_still_its_copy():
-    """Row 3: only a taken title with no prefix ignores the taken beside it."""
+    """Only a taken title with no prefix ignores the taken beside it."""
     fresh = [("pl-o", "Genre Trivia! Disco"), ("pl-c", "DOWNLOADED Disco"), ("pl-x", "Disco")]
     taken = frozenset({"pl-o", "pl-c", "pl-x"})
     assert pair_discover.copy_candidates(fresh, "pl-c", "DOWNLOADED Disco", taken) == [
@@ -838,7 +836,7 @@ def test_a_prefixed_copy_beside_a_taken_original_is_still_its_copy():
 
 
 def test_a_strip_record_older_than_the_prefix_mark_does_not_supersede_it(slim):
-    """Row 7's N06: only a strip record LATER than the mark takes it off."""
+    """N06: only a strip record LATER than the mark takes it off."""
     from cratekit.export import set_cli
 
     record = mark_record.MarkRecord(slim)

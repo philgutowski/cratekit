@@ -1,10 +1,7 @@
-"""The three R25 sources, keyed by stable identifier, never by display name.
+"""The R25 sources, keyed by stable identifier, never by display name (D5).
 
-D5 forbids a persisted record keyed on a playlist title. The same rule applies
-to the source list itself: ``labels``, ``favorites``, and ``playlists`` are
-identifiers. A later unit that adds a source appends a spec here, and
-``enabled`` derives the queued set from the active profile rather than from a
-second hand list (P3).
+A new source appends a spec here; ``enabled`` derives the queued set from the
+active profile rather than a second list (P3).
 """
 
 from __future__ import annotations
@@ -18,39 +15,24 @@ from cratekit.core import profiles
 class SourceSpec:
     """One increment source, the profile module that switches it, and its worker.
 
-    ``module_id`` is None when the source is core. Playlists are core (feature
-    row 3). Labels and favorites are modules, so a slim profile enables only
-    playlists.
+    ``module_id`` is None for a core source (playlists), so a slim profile
+    enables only playlists.
 
-    ``handler_key`` is the key the source's OWN verb queues under, and None when
-    no worker exists for the source yet or when the source is guided (below).
-    ``crate sync all`` queues each source
-    under this key and never under its own, so a source with None is reported as
-    not built rather than queued as work nothing runs (R-203). The keys are
-    pinned against the registry in ``tests/test_sync_all.py``, since this layer
-    may not import it (KTD23).
+    ``handler_key`` is the key the source's own verb queues under, which
+    ``crate sync all`` reuses; None (no worker, or guided) is reported as not
+    built rather than queued as work nothing runs (R-203). Keys are pinned
+    against the registry in ``tests/test_sync_all.py``, which this layer may
+    not import (KTD23).
 
-    ``inbound_key`` is the key a source's READ ONLY half queues under, when the
-    source has one (U74). Favourites writes hearts to the account behind a
-    confirmation and also reads the account's hearts into the library; the read
-    needs no consent, so ``crate sync all`` queues it whatever the confirmation's
-    answer. It is a field of the source rather than a source of its own, because
-    it is switched by the same module and ``PLANNERS`` is pinned to ``SPECS``.
+    ``inbound_key`` is the key of a source's read only half (U74), queued
+    whatever a write confirmation answers since a read needs no consent.
 
-    ``no_cursor`` is why nothing records this source's watermark, and None when
-    something does (R-263). A missing record then means two different facts:
-    "never completed cleanly" for a source that records one, and "records none"
-    for a source that does not. ``watermarks.status_rows`` reports the second
-    as its own state rather than telling a person a clean sweep never ran.
+    ``no_cursor`` says why nothing records this source's watermark (R-263), so
+    ``watermarks.status_rows`` reports "records none" rather than "never ran".
 
-    ``guided_by`` is the registry name of the verb that takes this source
-    INSTEAD of ``crate sync all``, and None for a source the composer runs
-    (U109). Such a source is still declared, so ``crate sync status`` still
-    reports it, but the composer plans nothing for it, calls no provider for
-    it and queues nothing, and its report names that verb as the way in. A
-    guided source declares no ``handler_key``, because nothing ``sync all``
-    queues is its work. The name is pinned against the registry in
-    ``tests/test_sync_all.py`` beside the handler keys.
+    ``guided_by`` names the verb that takes this source instead of
+    ``crate sync all`` (U109). The composer plans, calls and queues nothing for
+    it, its report names that verb, and it declares no ``handler_key``.
     """
 
     source_id: str
@@ -72,34 +54,25 @@ SPECS: tuple[SourceSpec, ...] = (
         "favorites",
         module_id="favorites",
         handler_key="sync.favorites",
-        # THE HEARTS LISTING (U74), queued as ``crate intake playlist favorites``
-        # queues it, so the intake worker resolves each heart.
+        # THE HEARTS LISTING (U74), resolved by the intake worker.
         inbound_key="intake.playlist",
-        # NEITHER WORKER RECORDS A CURSOR, measured by grep 2026-09-20: the
-        # only writers of this document are ``run.increment``, which no
-        # favorites path calls, and the playlists sweep. A missing record is
-        # therefore no evidence about whether a favorites sync ran.
+        # NEITHER WORKER RECORDS A CURSOR, so a missing record says nothing
+        # about whether a favorites sync ran.
         no_cursor="no favorites worker records a cursor, so a completed sync "
         "leaves nothing to report here",
     ),
     SourceSpec(
         "labels",
         module_id="labels",
-        # GUIDED, NOT COMPOSED (U109). A routine sync swept every favourite
-        # label whether the author wanted that today or not, and the sweep's
-        # offers grew the review queue to thousands of back catalogue releases.
-        # Label releases are now taken only when ``crate label sync`` asks,
-        # label by label, so ``sync all`` names that verb and touches nothing.
+        # GUIDED, NOT COMPOSED (U109). A routine sweep of every label flooded
+        # the review queue, so labels are taken only by ``crate label sync``.
         guided_by="label.sync",
-        # NO CURSOR HERE, still. ``crate label sync`` keeps its own per label
-        # marker of the releases it has asked about, and this document is not
-        # it.
+        # NO CURSOR HERE; ``crate label sync`` keeps its own per label marker.
         no_cursor="label releases are taken by crate label sync, which keeps "
         "its own marker per label of the releases it has asked about rather "
         "than a cursor here",
     ),
-    # NO WORKER OF ITS OWN (U64). Each new account playlist is queued as the
-    # job ``crate intake playlist`` queues, so the intake worker runs it.
+    # NO WORKER OF ITS OWN (U64); the intake worker runs each new playlist.
     SourceSpec("playlists", handler_key="intake.playlist"),
 )
 

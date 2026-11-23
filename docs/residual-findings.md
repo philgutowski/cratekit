@@ -2335,3 +2335,275 @@ what the done verdict prints.
 
 **Closes when:** a scenario reaches the done verdict through a fake the
 product itself reads at call time, kept where the reader lives. Ledger only.
+
+---
+
+## R-1899. A relative import of a split module's part passes the night job's and the heard path's import bans
+
+**Found:** at review round one of #952, R-1890, 2026-11-23.
+
+**The mechanism.** `tests/test_sync_night.py` and `tests/test_label_heard.py`
+read imports by their absolute dotted names, and R-1890 widened both bans to
+the parts' names. A relative import is read as its written module, so
+`from ..core import session_holders` appended to `cli/sync_night.py`, and
+`from ..core import rb_nodes` appended to `label/heard_cli.py`, each passed
+(driven by the review). The same was true of `from ..core import session`
+before R-1890. Round two drove the same class in
+`tests/test_split_modules.py`: its import graph drops every import with a
+level, so a part off the convention imported only by `from . import x` in its
+module has no importer and is not derived; with `Kind.UNCONVERGED_TREE` and a
+typed suffix in such a part, 102 tests passed across the restore scans.
+
+**Measured cost.** None today: `src` holds no relative import, measured, though
+the lint selection does not ban one. The night job taking the library lock
+through a relative import of the session would pass the ban written to stop
+it.
+
+**Closes when:** the bans resolve a relative import against the module's
+package (`tests/_source_guards.py` has `_absolute_module` for this), or a lint
+rule bans relative imports in `src`. Ledger only.
+
+---
+
+## R-1900. A split module's part named off the glob, imported from elsewhere and holding no accessor, falls out of every scan
+
+**Found:** at review round one of #952, R-1890, 2026-11-23.
+
+**The mechanism.** `tests/_split_modules.py` finds each split module's parts
+by the glob of its file name, and `tests/test_split_modules.py` fails on a
+part the glob misses when the `docs/DEVELOPING.md` table names it, when only
+its module and its parts import it by an absolute import, or when it holds
+an accessor back to its module in the parts' spelling (a module level
+function returning a name `from cratekit.core import X` bound; round two
+drove `import cratekit.core.restore as r; return r` and an accessor nested
+under `if True:`, both passing). A part named off the convention that some
+other module also imports, or only a relative import reaches, holds no
+accessor in that spelling, and is missing from the table matches none of the three,
+so every scan reading the module through the helper skips it. `rb_tables`
+and `session_analysis` already hold no accessor, so that half is the house's
+shape.
+
+**Measured cost.** None today: all thirteen parts follow the convention and
+the import graph derives exactly the glob's sets. A part breaking the
+`DEVELOPING.md` rule that a part is imported from nowhere else would be needed
+first.
+
+**Closes when:** a part declares its module (a module level marker every part
+carries, held by a test), so the scope no longer rests on naming. Ledger only.
+
+---
+
+## R-1901. The soft delete guard resolves the writer's accessor in one spelling, so a permissive read through any other passes
+
+**Found:** at review round one of #952, R-1890, 2026-11-23.
+
+**The mechanism.** `tests/_source_guards.py` now resolves
+`_writer().SOFT_DELETE_COLUMN` when `_writer` is a function of the same file
+that imports `cratekit.core.rb_writer` and returns the name it bound. The
+review drove other spellings through the beat grid suite's two package wide
+tests and each passed: `getattr(row, _restore().rb_writer.SOFT_DELETE_COLUMN,
+0)` in `restore_perform.py`, the `_session()` twin in `session_ack.py`,
+`getattr(row, getattr(_writer(), "SOFT_DELETE_COLUMN"), 0)`, and
+`writer = writer or _writer()` in `rb_copies.py`; on fixtures an accessor
+reached through `importlib` or `sys.modules`, a lambda, a method, or one
+imported from a sibling part is not recognized either. Round two drove five
+more that return nothing: a module level import returned by `def _writer():
+return rb_writer`, `w = rb_writer; return w`, `return rb_writer if True else
+None`, `from cratekit import core; return core.rb_writer`, and `(w :=
+_writer()).SOFT_DELETE_COLUMN` at the call. And reading an accessor at any
+depth makes an outer function wrapping one, or a method named like a free
+function, read as the writer too: `outer().SOFT_DELETE_COLUMN` fires though
+`outer()` returns `object()`, a false firing on shapes not in the tree (366
+files, five accessors, all module level `_writer`). The fix rounds added the
+dotted return and an accessor at any depth; the rest are named in the guard's
+known limits.
+
+**Measured cost.** None today: every accessor in `src` uses the one recognized
+spelling, and no `_restore().rb_writer` or `_session().rb_writer` exists. A
+part written in one of the other spellings with a falsey default would read
+a removed row as active and pass the guard.
+
+**Closes when:** the guard resolves the writer by value rather than by
+spelling (a call whose result is the writer module however reached), or the
+parts' accessors are held to the one spelling by a guard of their own.
+Ledger only: a maintainer facing gap with no producer in the tree.
+
+---
+
+## R-1902. The writer parts guard reads only refusals raised through the two factories, so a part's own refusal route is outside it
+
+**Found:** at review round one of #952, R-1890, 2026-11-23.
+
+**The mechanism.** `tests/test_rb_writer_parts_guard.py` applies the beat grid
+suite's refusal scan to the writer's parts, and like that scan reads calls of
+`_unavailable` and `_running`. A part's `_node_refusal("node-change-unconfined",
+...)` at `rb_nodes.py`, a factory bound to a local name first, and a bare
+`raise Exception(...)` each passed it (driven by the review).
+
+**Measured cost.** None to a person: the population pins in
+`tests/test_reserved_causes.py` failed on the unreserved slug through
+`_node_refusal`, so a wider guard holds that route; the bare exception is the
+same limit the beat grid suite's scan has. The file's docstring now says what
+it reads.
+
+**Closes when:** the writer's refusal scan reads every `CratekitError` a part
+constructs, or the parts are held to raising through the two factories.
+Ledger only.
+
+---
+
+## R-1903. The composed path lint's accessor coverage reads only config.__all__, so an accessor left out of it escapes both checks
+
+**Found:** at the review of #856, U299, 2026-11-22, round two.
+
+**The mechanism.** `tests/test_config.py` holds the composed path lint to
+`_STATE_ROOT_ACCESSORS` and checks that set against the `*_dir` names in
+`config.__all__`. A new directory accessor that is not listed in `__all__`
+escapes the coverage test, and a module composing a path under it then
+escapes the lint as well. The review drove it with a planted
+`library_scratch_dir` and a consumer composing under it: both checks stayed
+green on the branch (accessor in `core/state_files.py`) and equally on `main`
+at `c919209` (accessor in `core/config.py`, left out of `__all__`). The miss
+predates U299.
+
+**Measured cost.** None to a user today: no such accessor exists. It is a
+guard that checks a declared list rather than the definitions.
+
+**Closes when:** the coverage test reads every public function returning a
+directory from config and its parts (U299's `config_parts()` in the same file),
+not `__all__`. Ledger only.
+
+---
+
+## R-1904. A refusal raised behind a function level import is unseen by the reserved causes named cause scan
+
+**Found:** at the build of #856, U299, 2026-11-22.
+
+**The mechanism.** U299 moved `Config` to `core/config_schema.py`, and
+`Config.assert_rekordbox_pin_recorded` imports `ConfigInvalid` and `Remedy`
+from `core.config` inside the method, since `config` imports the schema. The
+reserved causes suite's named cause scan resolves names through module level
+imports, so `core/config_schema.py` holds no named cause by its reading and
+`record-rekordbox-pin` left `core/config.py`'s pinned population without
+joining another module's. The pins were measured again on the tree, as their
+file says.
+
+**Measured cost.** None today: `ConfigError` and its subclasses are excluded
+from the derivation by name (`CONVERTED_ELSEWHERE`), so the refusal is held
+by the command line boundary either way. A refusal of a type that is not
+excluded, raised behind a local import, would be missed by the scan.
+
+**Closes when:** the scan also reads function level imports, or a test pins
+that no module in the package raises a structured refusal behind one. Ledger
+only.
+
+---
+
+## R-1905. config.Remedy repeats six tokens of exit_codes.Remedy, and the reserved causes guard needs them written as literals
+
+**Found:** at the build of #856, U299, 2026-11-22.
+
+**The mechanism.** `core/config.py`'s `Remedy` declares six tokens that
+`core/exit_codes.py`'s `Remedy` also declares, the one copied block of six
+logical lines left inside U299's area (two windows of one block). Writing
+config's members as `exit_codes.Remedy.X.value` removes the copy and keeps
+every value, and was driven: `tests/test_reserved_causes.py`'s
+`test_the_static_enum_rule_agrees_with_the_interpreter_over_the_whole_package`
+then fails, because its static rule reads a cause shaped enum's values only
+from string literals in the class body, and two pinned populations move. The
+change was reverted, since that suite is another card's file.
+
+**Measured cost.** None to a user. It leaves the area's duplication allowance
+with this one block, against the card's target of none.
+
+**Closes when:** the static enum rule resolves a member written as another
+enum's value, after which config's six members read from exit_codes and the
+allowance line goes; or the area keeps the copy as the declared subset it is.
+Ledger only.
+
+---
+
+## R-1906. A mutant that lifts the test root guard leaves the suite's outside sentinel on the machine, and every later run there fails eight tests and reads false kills
+
+**Found:** at the kill set replay of #856, U299, 2026-11-22.
+
+**The mechanism.** `tests/test_config_test_root.py` points its writes at
+`OUTSIDE`, `/cratekit-r926-outside-every-test-root`, and asserts the refusal
+left nothing there. A row that disables the guard in `core/config.py`
+(`r926.G1_never_checks` is one) lets the write land, so the directory is left
+holding `config.toml`, its migrate lock, `ledger.json` and `session.lock`.
+`scripts/mutate.py` guards the two state roots under the home directory and
+nothing else, so the directory outlives the row. On U299's replay, slice 3
+met it twice: every later row whose subset held that file read eight extra
+deaths from it (`u254.C2_append_one_write`, whose own recorded killer still
+died), and the after pass's baseline refused, eight tests red, until the
+directory was removed by hand.
+
+**Measured cost.** None to a user. To a replay, a row after the culprit that
+lost its real kill can still read killed from the eight sentinel tests, and
+the next batch on the same container refuses at its baseline. U299's check
+read each affected row's kills by name.
+
+**Closes when:** the driver includes the sentinel in what it guards and
+restores (or the test removes what an escaped write left, in a finalizer),
+so no row's verdict depends on the rows before it. Ledger only.
+
+---
+
+## R-1907. Sync ends U304 short of its line, code line and test targets, so a further card is owed for the audit
+
+**Found:** at the record of #861, U304, 2026-11-22.
+
+**The mechanism.** U304 split `sync/pair_cli.py` (5,785 lines) into seven modules under 1,500 lines, emptied sync's duplication allowance, cut its import allowance to one line, and shortened the prose of the package and its 27 test files to each rule and its reason. It did not simplify the code: the split adds an import block to each new module and a re-export block to `pair_cli`, and every guard's text was kept in place so the kill set replays row for row. Measured on the final head against `c9192091`: source lines 16,703 to 15,352 (target 12,574); code lines 11,066 to 11,095, up, where Phillip's answer on #847 asks every card for 15 percent fewer; test lines 21,897 to 21,323 (target 15,374); the suites' summed test time is not cut. The brief's targets were measured at `ff8e5ec`, before `removed.py` and `unavailable.py` landed.
+
+**Measured cost.** None to a person: behaviour is unchanged. The cost is point 2 and point 5 of #847's definition of done, which the final audit (#872) measures.
+
+**Closes when:** a later card simplifies sync's code itself (the longest functions are `plan_pair`, `check`, `sync_pair` and `_warnings`), anchoring each kill row it moves, and trims the suites where one test's kills are covered by another. Ledger only: #847's audit files a further area card for a point that falls short.
+
+---
+
+## R-1908. Sync still reaches core.held_plan, a module off the named interface, because its file is another card's
+
+**Found:** at the build of #861, U304, 2026-11-22.
+
+**The mechanism.** `tests/ratchets/imports/sync.txt` keeps one line, `off-interface cratekit.core.held_plan`. Sync is the only feature package that holds a plan across its gates, through `core/held_plan.py`, which is not on `CORE_INTERFACE` in `tests/test_import_rules.py`. U304 owns neither file: `core/held_plan.py` was #857's (U300), which landed without moving it, and the interface list is the import rules test's, capped at 25, which admits a module only when another leaves.
+
+**Measured cost.** None to a person. Point 4 of #847 asks for every package's allowance empty.
+
+**Closes when:** the final audit (#872) or a later core card either puts `held_plan` behind a module on the interface (`session`, which owns the write path the plan feeds, is the natural home) or trades it onto the list, and sync's line is pruned. Ledger only.
+
+---
+
+## R-1909. The behaviour capture's clock pin misses a clock bound as a default argument, so two captures of one commit differ
+
+**Found:** at the build of #861, U304, 2026-11-22.
+
+**The mechanism.** `tests/behaviour/__init__.pin` replaces `time.time` and the other clocks wherever a module holds them by name, but `acquire/isrc_cache.py` (`clock: Callable[[], float] = time.time`) and `core/provider_gate.py` (`clock=time.time`) bound the real function as a default when they were imported, which no patch of a name reaches. Measured: two captures of `c9192091` differed in `isrc_cache.json`'s `asked_at` for every scenario that asks the provider for an ISRC (a tie), and in `provider_gate.json`'s `last_call` and hour buckets for a ceiling stop. Four `sync mark` plans' digests also differed between the two captures, by an input not traced. U304 left those scenarios out of `tests/behaviour/sync_*.py` and says so in their docstrings.
+
+**Measured cost.** None to a person. A card cannot compare a tie, a ceiling stop or those four mark plans base against branch.
+
+**Closes when:** the pin also reaches a clock held as a default (for example by patching the two classes' defaults while the pins are on), the mark digest's moving input is found, and the left out scenarios are added back. The harness is U297's, now #869's or #870's to change. Ledger only.
+
+---
+
+## R-1910. A module __getattr__ makes the refactor measure over count one module's outside uses and read its import as lazy
+
+**Found:** at the review of #861, U304, round two, 2026-11-22.
+
+**The mechanism.** U304 gave `sync/playlists.py` a module `__getattr__` that imports `label.catalogue.AccountPlaylist` on first use, since organize's suite reads that name there. Round two drove `scripts/refactor_measure.py` over it: `_defined_names` answers None for a module with a `__getattr__`, so `outside` counts an attribute of any local variable named `playlists` as a use (one spurious name, `items`, from a keyword argument in `tests/test_organize_mirror.py`), and rule four reads the import inside `__getattr__` as lazy, so a top level `from cratekit.sync.playlists import AccountPlaylist` would hide a labels edge from the static verb check (0 such imports today). The fallback `raise AttributeError` kills no test.
+
+**Measured cost.** None to a person. A later card reading `outside` for that file sees one name too many.
+
+**Closes when:** the measure treats a module `__getattr__` as answering only the names it tests for, or the name moves to a module organize owns. Ledger only.
+
+---
+
+## R-1911. Ten recorded kills on sync's files read zero on the base U304 replayed, four of them noise and six lost before it
+
+**Found:** at the kill set replay of #861, U304, 2026-11-23.
+
+**The mechanism.** `killset.py rows` read 658 live rows for `src/cratekit/sync/`, each recorded as killed by its own table. Replayed on `c9192091`, before U304's first edit, ten read zero even promoted to the full suite (`docs/mutation/u304-replay-before.md`). Four were recorded as killed only by a test that has nothing to do with the row: `r1376.F15_null`, `r1411.W5_agreed_at_every_order` and `r1446.M10_kept_order_with_unread` by the inode bound test of #702 (`test_repair_rows.py`), which fails on a container's disk by itself, and `r1372.K18_let_go_on_any_record` by a set inspiration backfill test, each after promotion. Their recorded kill was the machine's, not the mutation's. Six were killed by sync's own tests when recorded and are not now: `r1372.K16_no_let_go_at_done`, `r1376.F2_first_stop_empty_id`, `r1376.F8_fold_on_first_sync`, `r1411.E3_refused_order_passes_no_expect`, `u130-a.A1_removal_beats_addition` and `u130-b.B3_account_isrc_not_first`. Some later change to those tests or that code, before `c9192091`, stopped them killing.
+
+**Measured cost.** None to a person today. The six are guards no test holds: a plan that folds on a first sync (`F8`), a removal that beats an addition (`A1`), an account ISRC read out of order (`B3`), and three narrower ones. U304 kept every kill that stood on the base, and these were not standing.
+
+**Closes when:** each of the six is read against its test as it is now, and either a test kills it again or a line says why it is equivalent; the four noise rows are marked in the kill set so `killset.py rows` stops offering them. Ledger only.

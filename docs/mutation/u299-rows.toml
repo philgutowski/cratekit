@@ -1,0 +1,148 @@
+name = "u299"
+pass_kind = "light"
+
+# The card's own table over the code U299 added or rewrote while it split the
+# foundation modules: the state inventory's two entry constructors, the
+# taxonomy build's folder readers, and the two places the config split moved a
+# guard across a module seam. The guards that only moved are held by the kill
+# set replay, u299-replay-after-*.
+
+[[rows]]
+id = "U1_installation_never_restored"
+description = "_installation: an installation entry is captured with the library, coupled to a restore"
+file = "src/cratekit/core/state_files.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_snapshot.py", "tests/test_restore.py"]
+old = '''        snapshot=SnapshotRole.NEVER_RESTORED,
+        installation_area=area,'''
+new = '''        snapshot=SnapshotRole.COUPLED,
+        installation_area=area,'''
+
+[[rows]]
+id = "U2_installation_area_passed"
+description = "_installation: the area an entry names is dropped, so config.toml resolves under the state directory"
+file = "src/cratekit/core/state_files.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_config_test_root.py"]
+old = '''        installation_area=area,
+    )'''
+new = '''        installation_area=InstallationArea.STATE,
+    )'''
+
+[[rows]]
+id = "U3_installation_medium_passed"
+description = "_installation: every installation entry reads as a file, the keychain and directory entries included"
+file = "src/cratekit/core/state_files.py"
+surface = "maintainer"
+tests = ["tests/test_config.py"]
+old = '''        root=StateRoot.INSTALLATION,
+        medium=medium,'''
+new = '''        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,'''
+
+[[rows]]
+id = "U4_library_root"
+description = "_library: a library entry is declared under the installation root"
+file = "src/cratekit/core/state_files.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_snapshot.py"]
+old = '''        root=StateRoot.LIBRARY,
+        medium=medium,'''
+new = '''        root=StateRoot.INSTALLATION,
+        medium=medium,'''
+
+[[rows]]
+id = "U5_library_snapshot_passed"
+description = "_library: the snapshot role an entry names is replaced by COUPLED for every library entry"
+file = "src/cratekit/core/state_files.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_snapshot.py", "tests/test_restore.py"]
+old = '''        why=why,
+        snapshot=snapshot,'''
+new = '''        why=why,
+        snapshot=SnapshotRole.COUPLED,'''
+
+[[rows]]
+id = "U6_library_medium_passed"
+description = "_library: every library entry reads as a file, the directories included"
+file = "src/cratekit/core/state_files.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_snapshot.py"]
+old = '''        root=StateRoot.LIBRARY,
+        medium=medium,'''
+new = '''        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,'''
+
+[[rows]]
+id = "U7_library_extras_passed"
+description = "_library: the rollback effects, decision stores and sidecars an entry declares are dropped"
+file = "src/cratekit/core/state_files.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_snapshot.py", "tests/test_review_queue.py", "tests/test_tombstones.py"]
+old = '''        snapshot=snapshot,
+        **extra,
+    )'''
+new = '''        snapshot=snapshot,
+    )'''
+
+[[rows]]
+id = "U8_optional_section_must_be_a_table"
+description = "_optional_table_node: a folder section that is not a table is read as one instead of refused"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_active_taxonomy.py"]
+old = '''    if not isinstance(raw, Mapping):
+        problems.append(f"[{key}] must be a table with an id and a display")
+        return None'''
+new = '''    if not isinstance(raw, Mapping):
+        return None'''
+
+[[rows]]
+id = "U9_optional_section_absent"
+description = "_optional_table_node: an absent section is built as an empty folder, refused for its blank id"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_active_taxonomy.py"]
+old = '''    raw = data.get(key)
+    if raw is None:
+        return None'''
+new = '''    raw = data.get(key)
+    if raw is None:
+        raw = {}'''
+
+[[rows]]
+id = "U10_node_display"
+description = "_node: a folder's display is read from its id"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_active_taxonomy.py"]
+old = '''    return Node(str(raw.get("id", "")), str(raw.get("display", "")))'''
+new = '''    return Node(str(raw.get("id", "")), str(raw.get("id", "")))'''
+
+[[rows]]
+id = "U11_catalog_read"
+description = "build_taxonomy: a declared catalog tree is ignored"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py", "tests/test_active_taxonomy.py"]
+old = '''    catalog = None if data.get("catalog") is None else _node(data["catalog"])'''
+new = '''    catalog = None'''
+
+[[rows]]
+id = "U12_pin_refusal_remedy"
+description = "Config.assert_rekordbox_pin_recorded: the refusal moved behind a local import tells a person to fix the values, not record the pin"
+file = "src/cratekit/core/config_schema.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_rb_writer_guard.py"]
+old = '''                remedy=Remedy.RECORD_REKORDBOX_PIN,'''
+new = '''                remedy=Remedy.FIX_CONFIG_VALUES,'''
+
+[[rows]]
+id = "U13_from_dict_applies_overrides"
+description = "config.from_dict: the overrides are left to validation, so the built config keeps the file's root"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_config_test_root.py"]
+old = '''    data = _apply_env_overrides(data)
+    problems = validate(data)'''
+new = '''    problems = validate(data)'''

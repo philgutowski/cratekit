@@ -1,0 +1,331 @@
+name = "u299-replay-after-1"
+pass_kind = "replay"
+
+[[rows]]
+id = "r44-a.C4_identity_not_read"
+source = { table = "r44-a.json", id = "C4_identity_not_read" }
+description = "Never read a rule's identity in, so every configured rule arrives unrecorded"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_deletion.py"]
+old = '                    volume_id=entry.get(PREFIX_VOLUME_IDENTITY_KEY),'
+new = '                    volume_id=None,'
+
+[[rows]]
+id = "u157.F2_cut_nan"
+source = { table = "u157.json", id = "F2_cut_nan" }
+description = "_validate_drift_cut: accept a cut that is not finite"
+file = "src/cratekit/core/config_validate.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/config_validate.py, was in src/cratekit/core/config.py"
+tests = ["tests/test_drift.py", "tests/test_config.py"]
+old = '''
+        or not math.isfinite(value)
+        or value <= 0'''
+new = '        or value <= 0'
+
+[[rows]]
+id = "u272.C5_eio_counts_as_unsupported"
+source = { table = "u272.json", id = "C5_eio_counts_as_unsupported" }
+description = "_FULL_FLUSH_UNSUPPORTED: count an I/O error as a filesystem without the full flush"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = 'frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL, errno.ENOTTY})'
+new = 'frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL, errno.ENOTTY, errno.EIO})'
+
+[[rows]]
+id = "u39-author-full.D3_pad_never_runs"
+source = { table = "u39-author-full.json", id = "D3_pad_never_runs" }
+description = "Padding stage disabled entirely, even for explicit camelot2 templates"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        if key_pad == "camelot2" and parse_camelot(rendered) is not None:
+'''
+new = '''
+        if False:
+'''
+
+[[rows]]
+id = "u41-naming-independent.F6_filename_prefers_the_title_body"
+source = { table = "u41-naming-independent.json", id = "F6_filename_prefers_the_title_body" }
+description = "R-168 reproduced one file over: the FILENAME is rendered from the title body when there is one, inside the engine rather than in the shell"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_apply_cli.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+        filename=head + spec.stem + spec.suffix,
+'''
+new = '''
+        filename=head + (spec.title or spec.stem) + spec.suffix,
+'''
+
+[[rows]]
+id = "r797-a.T5_the_id_is_free_in_the_holding_bucket"
+source = { table = "r797-a.json", id = "T5_the_id_is_free_in_the_holding_bucket" }
+description = "_check_former_places: accept a former place whose own identifier is a sub of the bucket that holds it, where it competes as well"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "user"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_former_place_whose_id_is_a_sub_of_the_bucket_that_holds_it_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (where a former place competes as well) (U299)"
+tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
+old = '            if former.id in live_ids:'
+new = '            if False:'
+
+[[rows]]
+id = "u118-b.A2_tag_collision"
+source = { table = "u118-b.json", id = "A2_tag_collision" }
+description = "Two buckets listing one tagging only word load, the later winning"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "maintainer"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_two_buckets_listing_one_tagging_only_word_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (is claimed by both) (U299)"
+tests = ["tests/test_taxonomy.py", "tests/test_routing_parity.py"]
+old = '            if claimer is not None and claimer != bucket.id:'
+new = '            if False:'
+
+[[rows]]
+id = "u155.T9_source_alias"
+source = { table = "u155.json", id = "T9_source_alias" }
+description = "_check_genre_subs: accept a source that is not an exact alias of the bucket"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+tests = ["tests/intake/test_collection_xml.py", "tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_active_taxonomy.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_jazz_folder.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_split_place.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py", "tests/test_analysis_workers.py", "tests/test_catalogue_searcher.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_placement.py", "tests/test_foreign_tree.py", "tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py", "tests/test_genre_retag.py", "tests/test_genre_sub.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py", "tests/test_label_genre_gate.py", "tests/test_landing_labels.py", "tests/test_metadata_policy.py", "tests/test_no_beatgrid_ever.py", "tests/test_organize.py", "tests/test_published_genre.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_report_genres.py", "tests/test_reports_cli.py", "tests/test_routing_parity.py", "tests/test_routing_workers.py", "tests/test_setbuilder_cli.py", "tests/test_skills_lint.py", "tests/test_sync_pair.py", "tests/test_tag_remap.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tagging_engine.py", "tests/test_taxonomy.py", "tests/test_taxonomy_upgrade.py", "tests/test_tree_registry.py", "tests/test_tree_writer.py", "tests/test_vocabulary.py", "tests/test_xml_splice_golden.py"]
+old = '                if source not in aliases:'
+new = '                if False:'
+
+[[rows]]
+id = "u133-a-rerun.P8_held_by_whole_copy"
+source = { table = "u133-a-rerun.json", id = "P8_held_by_whole_copy" }
+description = "Only the copy's first bucket filing a word is asked about, as the setdefault before U133 did across buckets"
+file = "src/cratekit/core/taxonomy_upgrade.py"
+surface = "user"
+tests = ["tests/test_taxonomy_upgrade.py"]
+old = '''
+            filed.setdefault(word, []).extend((bucket.id, s, w) for s, w in places)
+'''
+new = '''
+            filed.setdefault(word, list((bucket.id, s, w) for s, w in places))
+'''
+
+[[rows]]
+id = "r1184.M4_filed_now_keyword"
+source = { table = "r1184.json", id = "M4_filed_now_keyword" }
+description = "_filed_now: drop the keyword rule branch, so a keyword filed word is said to be filed by a routing alias"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''
+    if found.match is routing.Match.FUZZY:
+        return f"in {where} by the keyword rule {found.matched_on!r}"
+'''
+new = ''
+
+[[rows]]
+id = "r372-a.A9_slug_code"
+source = { table = "r372-a.json", id = "A9_slug_code" }
+description = "REASONS: the slug exits under library-unreadable rather than precondition"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py", "tests/test_metadata_cli.py", "tests/test_doctor.py"]
+old = '        "library-paths-majority-unresolved": ExitCode.PRECONDITION,'
+new = '        "library-paths-majority-unresolved": ExitCode.LIBRARY_UNREADABLE,'
+
+[[rows]]
+id = "r345.A1_colon_required"
+source = { table = "r345.json", id = "A1_colon_required" }
+description = "backup_remote_name: accept a value with no colon, so a bare folder name names a remote (the brief's row)"
+file = "src/cratekit/core/config_schema.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/config_schema.py, was in src/cratekit/core/config.py"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_backup_cli.py"]
+old = '''
+    if not colon or len(name) < 2:
+        return None'''
+new = '''
+    if len(name) < 2:
+        return None'''
+
+[[rows]]
+id = "r790-c.C1_config_floor"
+source = { table = "r790-c.json", id = "C1_config_floor" }
+description = "_validate_labels: accept zero"
+file = "src/cratekit/core/config_validate.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/config_validate.py, was in src/cratekit/core/config.py"
+tests = ["tests/test_label_offer_window.py", "tests/test_config.py"]
+old = '        not isinstance(offer, int) or isinstance(offer, bool) or offer < 1'
+new = '        not isinstance(offer, int) or isinstance(offer, bool) or offer < 0'
+
+[[rows]]
+id = "u206.M22_days_validation_dropped"
+source = { table = "u206.json", id = "M22_days_validation_dropped" }
+description = "_validate_provider: accept a negative isrc_cache_days"
+file = "src/cratekit/core/config_validate.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/config_validate.py, was in src/cratekit/core/config.py"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '    if days is not None and (not isinstance(days, int) or isinstance(days, bool) or days < 0):'
+new = '    if days is not None and (not isinstance(days, int) or isinstance(days, bool)):'
+
+[[rows]]
+id = "u298.H8_lock_within_takes_lock"
+source = { table = "u298.json", id = "H8_lock_within_takes_lock" }
+description = "lock_within: reads the lock as had without taking it, so two writers interleave"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '        had = fcntl is None'
+new = '        had = True'
+
+[[rows]]
+id = "u39-naming-independent.M1_refusal_reworded"
+source = { table = "u39-naming-independent.json", id = "M1_refusal_reworded" }
+description = "Reword the unwritable-key refusal instead of appending to it, so an `in` assertion cannot see the change"
+file = "src/cratekit/core/naming.py"
+surface = "user"
+tests = ["tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_match_states.py", "tests/test_metadata_policy.py", "tests/test_naming.py", "tests/test_naming_budget.py", "tests/test_reports_cli.py"]
+old = '''
+            f"{name}={value!r} renders as {rendered!r}, which this engine cannot "
+'''
+new = '''
+            f"{name}={value!r} is not something this template can round trip: "
+'''
+
+[[rows]]
+id = "r118-a.A5_refusal_drops_the_path"
+source = { table = "r118-a.json", id = "A5_refusal_drops_the_path" }
+description = "The unreadable refusal names the exception type and not the file it could not read"
+file = "src/cratekit/core/secrets.py"
+surface = "user"
+tests = ["tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/modules/test_labels.py", "tests/test_adapter_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_workers.py"]
+old = '''
+            f"the credential presence index at {path} is present and could not "
+            f"be read ({type(exc).__name__}), so this installation cannot say "'''
+new = '''
+            f"the credential presence index is present and could not "
+            f"be read ({type(exc).__name__}), so this installation cannot say "'''
+
+[[rows]]
+id = "r799-a.L5_a_table_nothing_reads_is_refused"
+source = { table = "r799-a.json", id = "L5_a_table_nothing_reads_is_refused" }
+description = "loader: accept a table under a name no source is read through"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+tests = ["tests/test_vocabulary.py", "tests/test_published_genre.py", "tests/test_tag_remap.py"]
+old = '        if source not in VOCABULARY_SOURCES:'
+new = '        if False:'
+
+[[rows]]
+id = "u155.T14_tagging_index"
+source = { table = "u155.json", id = "T14_tagging_index" }
+description = "_build_alias_indexes: leave a genre sub's source tagging as the bucket's name"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+tests = ["tests/intake/test_collection_xml.py", "tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_active_taxonomy.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_jazz_folder.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_split_place.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py", "tests/test_analysis_workers.py", "tests/test_catalogue_searcher.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_placement.py", "tests/test_foreign_tree.py", "tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py", "tests/test_genre_retag.py", "tests/test_genre_sub.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py", "tests/test_label_genre_gate.py", "tests/test_landing_labels.py", "tests/test_metadata_policy.py", "tests/test_no_beatgrid_ever.py", "tests/test_organize.py", "tests/test_published_genre.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_report_genres.py", "tests/test_reports_cli.py", "tests/test_routing_parity.py", "tests/test_routing_workers.py", "tests/test_setbuilder_cli.py", "tests/test_skills_lint.py", "tests/test_sync_pair.py", "tests/test_tag_remap.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tagging_engine.py", "tests/test_taxonomy.py", "tests/test_taxonomy_upgrade.py", "tests/test_tree_registry.py", "tests/test_tree_writer.py", "tests/test_vocabulary.py", "tests/test_xml_splice_golden.py"]
+old = '                tagging[source.lower().strip()] = (bucket.id, genre.id)'
+new = '                pass'
+
+[[rows]]
+id = "u88-b.X4_truthiness_not_presence"
+source = { table = "u88-b.json", id = "X4_truthiness_not_presence" }
+description = "_build_long_tracks: key on truthiness, so an empty [long_tracks] table reads as no section"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "user"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_half_declared_long_track_playlist_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal ([long_tracks] display; [long_tracks] id; [long_tracks] must be a table) (U299)"
+tests = ["tests/test_taxonomy.py", "tests/test_routing_workers.py"]
+old = '    if "long_tracks" not in data:'
+new = '    if not data.get("long_tracks"):'
+
+[[rows]]
+id = "r1184.M11_edit_own_name_flag"
+source = { table = "r1184.json", id = "M11_edit_own_name_flag" }
+description = "alias: mark the own name plan as an ordinary one, so the no change sentence claims a tagging alias"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = 'before=text, after=text, own_name=True'
+new = 'before=text, after=text, own_name=False'
+
+[[rows]]
+id = "u194.W2_decline_not_too_coarse"
+source = { table = "u194.json", id = "W2_decline_not_too_coarse" }
+description = "off_taxonomy: drop the decline branch, so a word tagging refuses by rule is called already filed"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''
+    if said.decline is not None:
+        raise Refused('''
+new = '''
+    if False:
+        raise Refused('''
+
+[[rows]]
+id = "u27-r80-write-probe-replacement.W7_swallow_guard"
+source = { table = "u27-r80-write-probe-replacement.json", id = "W7_swallow_guard" }
+description = "Narrow the guard to OSError, dropping the ValueError an unrepresentable path raises"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_metadata_policy.py", "tests/test_pacing.py", "tests/test_rb_writer_guard.py", "tests/test_review_queue.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+moved = "the same guard in _probe_writable; its comment was shortened by the prose pass (U299)"
+old = '''
+    except (OSError, ValueError):
+        # :func:`_probe_readable`'s two guards, for the same reason.
+'''
+new = '''
+    except OSError:
+        # :func:`_probe_readable`'s two guards, for the same reason.
+'''
+
+[[rows]]
+id = "r432-b.B6_lock_directory_renamed"
+source = { table = "r432-b.json", id = "B6_lock_directory_renamed" }
+description = "config: move the landing locks to another directory name under the state root"
+file = "src/cratekit/core/state_files.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py", "tests/test_config.py"]
+moved = "the same entry's relative path, now the second argument of its _installation call in state_files (U299)"
+old = '''
+        "landing_locks", "landing_locks",
+'''
+new = '''
+        "landing_locks", "landings",
+'''
+
+[[rows]]
+id = "r432-b.B5_lock_on_the_library_volume"
+source = { table = "r432-b.json", id = "B5_lock_on_the_library_volume" }
+description = "config: declare the landing locks library scoped, which puts them on the volume that is commonly exFAT"
+file = "src/cratekit/core/state_files.py"
+surface = "user"
+tests = ["tests/test_landing.py", "tests/test_intake_land.py", "tests/test_landing_labels.py", "tests/test_config.py"]
+moved = "the same entry's root: an installation entry is an _installation call now, so the mutation respells it as a never restored _library entry (U299)"
+old = '''
+    _installation(
+        "landing_locks", "landing_locks",
+'''
+new = '''
+    _library(
+        "landing_locks", "landing_locks", SnapshotRole.NEVER_RESTORED,
+'''
+
+[[rows]]
+id = "u119.T1_two_on_one_signal"
+source = { table = "u119.json", id = "T1_two_on_one_signal" }
+description = "_build_sub_classes: two additive classes on one signal load"
+file = "src/cratekit/core/taxonomy_build.py"
+surface = "user"
+tests = ["tests/test_taxonomy.py"]
+moved = "the same bound, now in taxonomy_build; its comment was shortened by the prose pass (U299)"
+old = '''
+        if len(ids) > 1:
+            # One additive class per signal (U119): a second would file each
+'''
+new = '''
+        if len(ids) > 9:
+            # One additive class per signal (U119): a second would file each
+'''

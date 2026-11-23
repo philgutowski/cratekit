@@ -1,11 +1,8 @@
 """U209 over a sync of every pair: the held plan, the made side's folder, and no change.
 
-Driven through ``crate sync pair`` with no argument on the disposable database
-and live fake account ``tests/test_sync_pair_discover.py`` builds, where a
-rekordbox playlist the author made is paired with an account playlist the
-sync makes.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+Driven through ``crate sync pair`` with no argument on the fake world
+``tests/test_sync_pair_discover.py`` builds. D1 applies, nothing here names a
+real account, person or track.
 """
 
 from __future__ import annotations
@@ -222,9 +219,7 @@ def test_a_root_folder_to_make_is_named_without_an_empty_identifier(world):
     assert "()" not in refused["cause"]["message"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Round two: a self paired playlist's whole place, read as the plan read it
-# ═══════════════════════════════════════════════════════════════════════════
+# A self paired playlist's whole place, read as the plan read it.
 
 
 def _moved_to(world, parent: str):

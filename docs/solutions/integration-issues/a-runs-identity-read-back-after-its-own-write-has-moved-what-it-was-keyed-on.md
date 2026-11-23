@@ -2,7 +2,7 @@
 title: "A run's identity read back after its own write has moved what it was keyed on"
 date: 2026-11-05
 category: integration-issues
-module: "src/cratekit/sync/pair_cli.py"
+module: "src/cratekit/sync/pair_cli.py, src/cratekit/sync/pair_check.py"
 problem_type: integration_issue
 component: tooling
 severity: high

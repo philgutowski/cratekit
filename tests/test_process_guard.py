@@ -56,8 +56,10 @@ def test_the_process_name_list_is_defined_exactly_once_in_the_tree():
 
 def test_no_module_hardcodes_a_rekordbox_process_name_outside_the_one_list():
     """The process names as literals in comparisons and collections are the list's
-    job. ``core.rb_writer``'s probe table is keyed by them, pinned below."""
-    exempt = {"core/processes.py", "core/rb_writer.py"}
+    job, and ``core.processes`` alone defines them. The writer's probe table
+    moved to ``core/rb_probes.py`` as a mapping this scan does not flag, so the
+    writer's old exemption is gone (R-1890) and every part of it is held."""
+    exempt = {"core/processes.py"}
     offenders = [
         f"{rel}:{line}"
         for rel, line, value in _scanned()[1]

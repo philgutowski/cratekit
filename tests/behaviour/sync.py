@@ -5,16 +5,23 @@ the plan as a person reads it, the gate as the envelope the two acts answer,
 the decision, and the acting drive that takes the offered row out of the
 collection through the guarded writer's shared capture. On the removal
 suite's own library, with the account a fake catalogue and no socket open.
+
+``borrowed`` is the other sync scenario files' helper (U304): it routes a
+suite's own drivers through the stage, so a test of the suite runs as written
+and every command it drives is captured.
 """
 
 from __future__ import annotations
 
+import json
 import os
+import sys
 
+from cratekit.cli import output
 from cratekit.core.exit_codes import ExitCode
 from cratekit.sync import removed_cli
+from tests import cli_drive, test_sync_removed
 from tests import test_intake_land_account_playlists_native as account_landing
-from tests import test_sync_removed
 from tests.test_sync_removed import VERB, _one_offered
 from tests.test_sync_removed import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_sync_removed import (
@@ -61,3 +68,33 @@ def test_collection_removal(stage, native_library, silence, monkeypatch, offline
     assert acted.envelope["data"]["totals"]["removed"] == 1
     # The record the write left, as restore reads it back.
     assert stage.crate("restore", "list").code == OK
+
+
+def borrowed(stage, monkeypatch) -> None:
+    """Route the suites' two drivers through ``stage``, so a suite's own test is a scenario (U304).
+
+    The sync suites drive a verb with ``tests.cli_drive``'s ``drive`` and
+    ``drive_human``, each test module holding them by name, so every binding
+    of either in a loaded test module answers through the stage instead: the
+    same dispatcher, the same envelope check, and each command kept.
+    """
+
+    def drive(argv):
+        ran = stage.json(*argv)
+        document = json.loads(ran.stdout or "{}")
+        if document:
+            assert output.envelope_problems(document) == [], document
+        return ran.code, document
+
+    def drive_human(argv):
+        ran = stage.crate(*argv)
+        return ran.code, ran.stdout or ran.stderr
+
+    for name, module in list(sys.modules.items()):
+        if module is None or not (name == "tests" or name.startswith("tests.")):
+            continue
+        for attr, value in list(vars(module).items()):
+            if value is cli_drive.drive:
+                monkeypatch.setattr(module, attr, drive)
+            elif value is cli_drive.drive_human:
+                monkeypatch.setattr(module, attr, drive_human)

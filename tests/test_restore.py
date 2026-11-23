@@ -943,8 +943,9 @@ def test_only_the_companion_the_inventory_declares_restored_is_written_back(cfg,
 
 def _restore_sources() -> str:
     """``restore.py`` and its parts (U300), so a scan of the module reads all of it."""
-    core = Path(restore.__file__).parent
-    return "\n".join(path.read_text() for path in sorted(core.glob("restore*.py")))
+    from tests._split_modules import source_of  # noqa: PLC0415
+
+    return source_of("cratekit.core.restore")
 
 
 def test_the_restore_module_spells_no_companion_suffix_of_its_own(cfg):
@@ -1534,17 +1535,19 @@ def test_a_disposition_is_not_lost_under_concurrency(cfg):
 def test_every_coupled_entry_declares_what_leaves_the_coupled_set(cfg):
     """P4: the literal is parsed, since a default makes "decided nothing" and
     "nobody decided" identical at run time."""
-    source = Path(config.__file__).read_text()
+    # The module that defines the inventory, wherever it lives (U299 moved it
+    # out of config.py), and the entry constructor it is written with.
+    source = Path(inspect.getsourcefile(config.coupled_state_files)).read_text()
     tree = ast.parse(source)
     coupled = {entry.key for entry in config.coupled_state_files()}
     declared: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if not (isinstance(node.func, ast.Name) and node.func.id == "StateFile"):
+        if not (isinstance(node.func, ast.Name) and node.func.id in ("StateFile", "_library")):
             continue
         fields = {keyword.arg: keyword.value for keyword in node.keywords}
-        key = fields.get("key")
+        key = fields.get("key") or (node.args[0] if node.args else None)
         if not isinstance(key, ast.Constant) or key.value not in coupled:
             continue
         assert "rollback_effects" in fields, (
@@ -2523,7 +2526,9 @@ def test_the_convergence_fallback_expires_the_moment_both_modules_share_a_build(
     """
     import importlib.util  # noqa: PLC0415
 
-    source = Path(inspect.getfile(restore)).read_text(encoding="utf-8")
+    # The restore and its parts: ``_hand_tree_shortness_over`` moved to
+    # ``restore_perform`` under U300, so a fallback put back there is the same one.
+    source = _restore_sources()
     try:
         landed = importlib.util.find_spec("cratekit.core.convergence") is not None
     except ModuleNotFoundError:
