@@ -854,7 +854,10 @@ def test_a_check_with_no_source_leaves_the_recorded_favorites_out_and_names_the_
 
     placed, gaps = genre_favorites.placements(cfg, db, DECLARED, tree.registry, _rows(cfg))
     assert placed == () and gaps == (genre_favorites.FAVORITES_DIMENSION,)
-    report = _check(cfg, db, tree, (), gaps)
+    # Track 1's own band, as a derivation places it: a run derives something or
+    # refuses, and a band nothing derives into is compared since R-1949.
+    band = rebuild.DeclaredPlacement(f"{cfg.library.root}/Music/track 1.flac", DEEP.id, "med")
+    report = _check(cfg, db, tree, (band,), gaps)
     assert report.unexpected == ()
     assert not any(FAVORITES.display in name for name in report.foreign)
     assert genre_favorites.FAVORITES_DIMENSION in report.not_compared

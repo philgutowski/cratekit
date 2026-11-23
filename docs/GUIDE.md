@@ -812,7 +812,8 @@ collection row and every membership, cue, history entry, analysis file row
 and mixer row naming it are deleted, and the playlists and history lists
 stay, emptier. In each playlist the track leaves, the tracks after it move
 up one place for each removed track before them, as rekordbox numbers them,
-and nothing else on their rows changes. Nothing else in the database moves, which the verb reads back
+and each one that moves is stamped as rekordbox stamps it, with the removal's
+update count and its time, and nothing else on their rows changes. Nothing else in the database moves, which the verb reads back
 from the database after its commit, and it refuses with nothing written when
 the collection or the playlists moved since the gate. A track a My Tag (the
 landing's own `vox` and `dyn` included), a sampler slot, related tracks or any
@@ -1427,10 +1428,17 @@ moving it in both. This holds for a pair one of whose folders took tracks
 over from the other (Soul and R&B): the band of the one is the track's own
 band there, never a place `adopt move` takes it out of. A track with one
 genre is filed exactly as before. A cleared second genre leaves the track in
-that folder until it is taken out there; `converge` names it as a membership
-no genre files only while that playlist holds another track filed into it.
-The one exception is a Soul track's cleared R&B: its R&B band is Soul's split
-place again, which `adopt move` takes it out of.
+that folder until it is taken out there, by hand in rekordbox: `rebuild`, the
+remedy `converge` names, adds and never removes. The one exception is a Soul
+track's cleared R&B: its R&B band is Soul's split place again, which
+`adopt move` takes it out of. Until it is out, `converge` says `differing`
+and lists it among the tree's differences as `unexpected:BUCKET/BAND:ROW`, by
+the folder's and band's stable identifiers and the track's row, whether or
+not anything else is filed into that playlist (the line shows the first 20
+differences), and `route resort` lists it as left behind. Under a folder
+renamed in rekordbox it is listed only once a `rebuild` or `route resort` has
+recorded that folder. A Candy playlist, which a person fills by hand, is
+never compared this way.
 On the account, an edit inside one of the two folders leaves the other
 (below, under Organize).
 
