@@ -59,10 +59,12 @@ def stamp_time(moment: datetime) -> str:
     return f"{utc:%Y-%m-%d %H:%M:%S}.{utc.microsecond // 1000:03d} +00:00"
 
 
-#: A time as rekordbox writes it: date and time, then an offset or ``Z``, then
-#: anything (a zone's name follows the offset in some libraries).
+#: A time as a library holds it: date and time, then an offset or ``Z``, then
+#: anything (a zone's name follows the offset in some libraries). The seconds
+#: may be missing, since the binding's ``datetime_to_str`` cuts them off a
+#: moment whose microseconds are zero (``2026-11-21 12:00 +00:00``).
 _TIME_FORM = re.compile(
-    r"\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?)\s*([+-]\d{2}:\d{2}|Z)(?:\s.*)?\s*"
+    r"\s*(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?)\s*([+-]\d{2}:\d{2}|Z)(?:\s.*)?\s*"
 )
 
 
@@ -368,7 +370,8 @@ class DatabaseReading:
     content, ``TrackNo``, liveness and a digest of the rest, the two stamp
     columns left out (R-1830, U955). ``stamps``: per membership row its
     ``rb_local_usn`` and ``updated_at`` as SQL holds them, None for a column the
-    table lacks.
+    table lacks. ``read_at``: when it was read, in the stamp's form, so a
+    renumbering's stamp can be held to a time after its plan (U955).
     """
 
     rows: Mapping[str, Mapping[str, str]]
@@ -376,6 +379,7 @@ class DatabaseReading:
     counter: int | None
     positions: Mapping[str, tuple[str, str, int | None, bool, str]] = field(default_factory=dict)
     stamps: Mapping[str, tuple[Any, Any]] = field(default_factory=dict)
+    read_at: str | None = None
 
 
 def database_reading(db: Any) -> DatabaseReading:
@@ -385,6 +389,7 @@ def database_reading(db: Any) -> DatabaseReading:
     from sqlalchemy import text
 
     session = db.session
+    read_at = stamp_time(_now())
     rows: dict[str, dict[str, str]] = {}
     named: dict[str, dict[str, str]] = {}
     positions: dict[str, tuple[str, str, int | None, bool, str]] = {}
@@ -450,7 +455,7 @@ def database_reading(db: Any) -> DatabaseReading:
         {"id": LOCAL_UPDATE_COUNT},
     ).scalar() if "agentRegistry" in rows else None
     return DatabaseReading(
-        rows, named, None if counter is None else int(counter), positions, stamps
+        rows, named, None if counter is None else int(counter), positions, stamps, read_at
     )
 
 
@@ -468,8 +473,9 @@ def collection_removal_violations(
     :data:`DELETABLE_TABLES` that named a ``removed`` row, EVERY such row gone and
     each removed row live before; no table or row added; no row changed but a
     planned renumbering to exactly :func:`renumbered_positions`'s number, every
-    planned one made (R-1830), stamped with ``stamp`` as rekordbox stamps it
-    (U955), or moving ``TrackNo`` alone when no stamp is planned; and with
+    planned one made (R-1830), stamped with ``stamp`` as rekordbox stamps it,
+    at a time no earlier than ``before`` was read (U955), or moving ``TrackNo``
+    alone when no stamp is planned; and with
     ``committed``, ``localUpdateCount`` moving forward, to ``stamp.counter``
     exactly when a row was renumbered.
     """
@@ -517,6 +523,8 @@ def collection_removal_violations(
         violations.append(
             f"{LOCAL_UPDATE_COUNT} did not move forward ({before.counter} to {after.counter})"
         )
+    if stamp is not None and planned:
+        violations.extend(_stamp_after_plan(before, stamp))
     if committed and stamp is not None and planned and after.counter != stamp.counter:
         violations.append(
             f"{LOCAL_UPDATE_COUNT} reads {after.counter} after the commit, and the renumbered "
@@ -536,8 +544,9 @@ def _renumbering_violations(
 
     With ``stamp``, exactly three columns move: ``TrackNo`` to the planned
     number, ``rb_local_usn`` to ``stamp.counter`` from something else, and
-    ``updated_at`` to ``stamp.at``, later than it read (U955). Without one,
-    ``TrackNo`` alone.
+    ``updated_at`` to ``stamp.at`` from another text (U955); that the stamp is
+    no earlier than the plan is judged once, by :func:`_stamp_after_plan`.
+    Without one, ``TrackNo`` alone.
     """
     _playlist, was, wanted = plan
     then = before.positions.get(key)
@@ -584,25 +593,34 @@ def _stamp_violations(
             f"the {MEMBERSHIP_TABLE} row {key!r} was to be stamped {USN_STAMP_COLUMN} "
             f"{stamp.counter} from {old_counter} and holds {new_counter}"
         )
-    if new_time != stamp.at:
+    if new_time != stamp.at or new_time == old_time:
         found.append(
             f"the {MEMBERSHIP_TABLE} row {key!r} was to be stamped {TIME_STAMP_COLUMN} "
-            f"{stamp.at!r} and holds {new_time!r}"
-        )
-    planned = stamp_moment(stamp.at)
-    earlier = None if old_time is None else stamp_moment(old_time)
-    if planned is None or (old_time is not None and earlier is None):
-        found.append(
-            f"the {MEMBERSHIP_TABLE} row {key!r}'s {TIME_STAMP_COLUMN} {old_time!r} or its "
-            f"stamp {stamp.at!r} cannot be read as a time, so the stamp moving it "
-            f"forward cannot be said"
-        )
-    elif earlier is not None and planned <= earlier:
-        found.append(
-            f"the {MEMBERSHIP_TABLE} row {key!r} was to be stamped {TIME_STAMP_COLUMN} "
-            f"{stamp.at!r}, which is not later than the {old_time!r} it held"
+            f"{stamp.at!r} from {old_time!r} and holds {new_time!r}"
         )
     return found
+
+
+def _stamp_after_plan(before: DatabaseReading, stamp: RenumberingStamp) -> list[str]:
+    """Refuse a stamp's time earlier than the plan's own reading, or either unreadable (U955).
+
+    The removal's clock against itself: a row's old ``updated_at`` may come from
+    another clock (another machine, the binding's whole minutes), so forward is
+    judged from the moment the plan was read, never against the row.
+    """
+    stamped, read = stamp_moment(stamp.at), stamp_moment(before.read_at)
+    if stamped is None or read is None:
+        return [
+            f"the renumbering's {TIME_STAMP_COLUMN} stamp {stamp.at!r} or the plan's reading "
+            f"time {before.read_at!r} cannot be read as a time, so the stamp moving "
+            f"forward cannot be said"
+        ]
+    if stamped < read:
+        return [
+            f"the renumbering's {TIME_STAMP_COLUMN} stamp {stamp.at!r} is earlier than the "
+            f"plan, read at {before.read_at!r}"
+        ]
+    return []
 
 
 def assert_collection_removal_confined(

@@ -20,7 +20,11 @@ STAMP = RenumberingStamp(3047665, "2026-11-23 18:40:01.250 +00:00")
 OLD = (3047562, "2026-11-20 09:00:00.000 +00:00")
 
 
-def _reading(rows, *, moved=None, stamps=None, rest=None, gone=("x",), counter=5):
+#: When the plan was read, a little before :data:`STAMP`'s time.
+PLANNED = "2026-11-23 18:40:01.000 +00:00"
+
+
+def _reading(rows, *, moved=None, stamps=None, rest=None, gone=("x",), counter=5, read_at=PLANNED):
     """One membership table: ``rows`` as ``(id, playlist, content, TrackNo)``, the ``gone`` rows out."""
     positions = {key: (playlist, content, number, True, f"rest-{key}") for key, playlist, content, number in rows}
     held = {key: OLD for key, *_ in rows}
@@ -45,6 +49,7 @@ def _reading(rows, *, moved=None, stamps=None, rest=None, gone=("x",), counter=5
         counter=counter,
         positions=positions,
         stamps=held,
+        read_at=read_at,
     )
 
 
@@ -93,38 +98,79 @@ def test_an_unplanned_row_whose_count_moves_is_refused(key):
     assert any(f"{key!r} changed" in line for line in violations), violations
 
 
-def test_a_stamp_not_later_than_the_time_the_row_held_is_refused():
-    later = "2026-11-24 00:00:00.000 +00:00"
-    before = _reading(ROWS, gone=None)
-    before = rb_writer.DatabaseReading(
-        before.rows, before.named, before.counter, before.positions, {**before.stamps, "p3": (OLD[0], later)}
-    )
-    after = _reading(ROWS, moved={"p3": 2}, stamps={"p3": (STAMP.counter, STAMP.at)})
-    violations = rb_writer.collection_removal_violations(before, after, removed=["x"], stamp=STAMP)
-    assert any("not later than" in line for line in violations), violations
+def _planned_at(read_at):
+    """BEFORE, its plan read at ``read_at``."""
+    return _reading(ROWS, gone=None, read_at=read_at)
+
+
+STAMPED = {"p3": (STAMP.counter, STAMP.at)}
+
+
+def test_a_stamp_earlier_than_the_plan_is_refused():
+    after = _reading(ROWS, moved={"p3": 2}, stamps=STAMPED)
+    later = _planned_at("2026-11-23 18:40:01.251 +00:00")
+    violations = rb_writer.collection_removal_violations(later, after, removed=["x"], stamp=STAMP)
+    assert any("is earlier than the plan" in line for line in violations), violations
+
+
+def test_a_stamp_at_the_plan_s_own_instant_is_forward():
+    """A held clock, as the behaviour scenarios hold it, reads the plan and the stamp at one instant."""
+    after = _reading(ROWS, moved={"p3": 2}, stamps=STAMPED)
+    same = _planned_at(STAMP.at)
+    assert rb_writer.collection_removal_violations(same, after, removed=["x"], stamp=STAMP) == []
 
 
 @pytest.mark.parametrize(
-    ("held", "admitted"),
-    [
-        (None, True),
-        ("2026-11-20 09:00:00.000 -05:00 (Eastern Standard Time)", True),
-        ("2026-11-20T09:00:00Z", True),
-        ("not a time", False),
-        ("2026-11-20 09:00:00", False),
-    ],
-    ids=["null", "named-zone", "zulu", "garbage", "no-offset"],
+    "held",
+    [None, "2026-11-23 18:40:01 +00:00", "2031-01-01 00:00:00.000 +00:00", "not a time", "2026-11-20 09:00"],
+    ids=["null", "the-stamp-s-moment", "a-later-clock", "garbage", "no-offset"],
 )
-def test_a_time_the_row_held_is_read_in_rekordbox_s_forms_and_an_unreadable_one_refuses(held, admitted):
+def test_the_time_a_row_held_is_never_read_against_another_clock_only_left_unmoved(held):
+    """A row's old ``updated_at`` may come from another machine; only an unmoved text refuses."""
     before = _reading(ROWS, gone=None)
     before = rb_writer.DatabaseReading(
-        before.rows, before.named, before.counter, before.positions, {**before.stamps, "p3": (OLD[0], held)}
+        before.rows, before.named, before.counter, before.positions, {**before.stamps, "p3": (OLD[0], held)}, PLANNED
     )
-    after = _reading(ROWS, moved={"p3": 2}, stamps={"p3": (STAMP.counter, STAMP.at)})
-    violations = rb_writer.collection_removal_violations(before, after, removed=["x"], stamp=STAMP)
-    assert (violations == []) is admitted, violations
-    if not admitted:
-        assert any("cannot be read as a time" in line for line in violations), violations
+    after = _reading(ROWS, moved={"p3": 2}, stamps=STAMPED)
+    assert rb_writer.collection_removal_violations(before, after, removed=["x"], stamp=STAMP) == []
+    unmoved = _reading(ROWS, moved={"p3": 2}, stamps={"p3": (STAMP.counter, STAMP.at)})
+    unmoved_before = rb_writer.DatabaseReading(
+        before.rows, before.named, before.counter, before.positions, {**before.stamps, "p3": (OLD[0], STAMP.at)}, PLANNED
+    )
+    violations = rb_writer.collection_removal_violations(unmoved_before, unmoved, removed=["x"], stamp=STAMP)
+    assert any("was to be stamped updated_at" in line for line in violations), violations
+
+
+@pytest.mark.parametrize("read_at", [None, "not a time"], ids=["unread", "garbage"])
+def test_a_plan_with_no_readable_time_cannot_say_forward_and_refuses(read_at):
+    after = _reading(ROWS, moved={"p3": 2}, stamps=STAMPED)
+    violations = rb_writer.collection_removal_violations(_planned_at(read_at), after, removed=["x"], stamp=STAMP)
+    assert any("cannot be read as a time" in line for line in violations), violations
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["2026-11-20 09:00:00.000 -05:00 (Eastern Standard Time)", "2026-11-20T14:00:00Z", "2026-11-20 14:00 +00:00"],
+    ids=["named-zone", "zulu", "whole-minute"],
+)
+def test_a_time_in_the_forms_a_library_holds_reads_as_one_moment(text):
+    assert rb_removal.stamp_moment(text) == datetime(2026, 11, 20, 14, 0, tzinfo=timezone.utc)
+
+
+def test_a_reading_carries_the_time_it_was_read(monkeypatch):
+    """``database_reading`` stamps its own time, which the stamp is held after."""
+    import sqlite3
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    monkeypatch.setattr(rb_removal, "_now", lambda: datetime(2026, 11, 23, 18, 40, 1, 7000, tzinfo=timezone.utc))
+    engine = create_engine("sqlite://", creator=lambda: sqlite3.connect(":memory:"))
+
+    class Handle:
+        session = Session(engine)
+
+    assert rb_removal.database_reading(Handle()).read_at == "2026-11-23 18:40:01.007 +00:00"
 
 
 def test_without_a_stamp_the_planned_row_moves_trackno_alone():
