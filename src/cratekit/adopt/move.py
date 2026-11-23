@@ -31,8 +31,10 @@ A GENRE A PERSON MOVED (U339) is the one move across buckets. ``tag set``
 records, in :mod:`cratekit.adopt.genre_moves`, the bucket a row's old genre
 filed it in, and that bucket is asked for that row even when the track holds
 it once: the move adds the track to its new bucket's sub when adoption has not,
-and takes it out of every sub of the old one. Nothing else is moved across
-buckets, so a track a person put in a second genre folder by hand stays.
+and takes it out of every sub of the old one, the places beside its band too
+(R-1965), ``with vox``, the genre Favorites and a genre sub, a Favorites kept
+only where another playlist of that folder still holds the track. Nothing else is moved
+across buckets, so a track a person put in a second genre folder by hand stays.
 
 Layer: modules. It performs no input. Everything it reads is handed in.
 """
@@ -48,7 +50,9 @@ from cratekit.adopt.plan import (
     AdoptionPlan,
     Placements,
     PlanEntry,
+    in_own_folder,
     kept_beside,
+    mirrored_classes,
 )
 from cratekit.adopt.scan import Disposition
 from cratekit.cli.output import canonical_json, digest_of
@@ -96,8 +100,9 @@ class Move:
 
     ``target`` is the sub the file's reading names. ``add`` is ``target`` when
     the track does not hold it yet and empty when it does. ``remove`` is every
-    competing sub of the bucket the track holds other than ``target``, and is
-    never empty. Stable identifiers throughout (R19, D5).
+    competing sub of the bucket the track holds other than ``target``, and for
+    a move across buckets every place beside the band it leaves there too
+    (R-1965); it is never empty. Stable identifiers throughout (R19, D5).
     """
 
     move_id: str
@@ -695,17 +700,26 @@ def moved_out_of(
     """What a track comes to in a bucket a person moved its genre out of (U339).
 
     EVERY COMPETING SUB IT HOLDS THERE IS LEFT, ONE MEMBERSHIP AS MUCH AS TWO,
-    for the sub its new genre's entry resolved in the bucket that entry claims,
-    added when the track is not in it yet. Listed and never moved: a playlist
-    held under another name, an entry that claims no bucket (no reading), and a
-    new bucket a person's verdict refused or that names a former or split place.
+    and every place beside the band :func:`alongside_left` names (R-1965), for the
+    sub its new genre's entry resolved in the bucket that entry claims, added
+    when the track is not in it yet. Listed and never moved: a playlist held
+    under another name, an entry that claims no bucket (no reading), and a new
+    bucket a person's verdict refused or that names a former or split place.
     """
     kind, competing = routing.competing_subs(declared, bucket)
-    held = held_in_tree(entry, bucket, placements, declared, competing)
-    if not held:
+    held, alongside = leaving_moved(entry, bucket, placements, declared, competing)
+    if not held and not alongside:
         return None
     into = entry.bucket
-    unnamed = _unnamed(placements, entry, bucket, held)
+    unnamed = tuple(
+        sorted(
+            {
+                *_unnamed(placements, entry, bucket, held),
+                *(set(placements.holds_alongside_unnamed(bucket, entry.content_id)) & set(alongside)),
+            }
+        )
+    )
+    held = tuple(sorted({*held, *alongside}))
     target = entry.sub if claims(entry, into) else ""
     if target and (
         routing.former_place(declared, into, target) is not None
@@ -737,6 +751,63 @@ def moved_out_of(
         genre=entry.genre,
         target_bucket=into,
     )
+
+
+def leaving_moved(
+    entry: PlanEntry,
+    bucket: str,
+    placements: Placements,
+    declared: taxonomy.Taxonomy,
+    competing: frozenset[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The competing subs and the places beside the band a track leaves a
+    bucket its genre was moved out of by. ONE BODY for the bucket asked and the
+    move.
+
+    A PLACE SETTLED IN THE OTHER BUCKET IS LEFT TOO, for the Favorites rule
+    alone: the bucket the entry claims decides it (:func:`standing`), and a
+    split or former place the track's new genre settles is one that bucket's
+    own move takes it out of in the same job, so it does not keep the track in
+    this folder (review round one of R-1965). Where that bucket LISTS the
+    track instead (no reading, a renamed band), the Favorites here leaves all
+    the same and the next refresh puts it back: a residual of review round two.
+    """
+    held = held_in_tree(entry, bucket, placements, declared, competing)
+    leaving = (*held, *settled_in_the_other_bucket(entry, bucket, declared))
+    return held, alongside_left(placements, declared, bucket, entry.content_id, leaving=leaving)
+
+
+def alongside_left(
+    placements: Placements,
+    declared: taxonomy.Taxonomy,
+    bucket: str,
+    content_id: str,
+    *,
+    leaving: Sequence[str],
+) -> tuple[str, ...]:
+    """The places beside the band of ``bucket`` a track leaving its subs ``leaving`` leaves too.
+
+    Every one it sits in there (R-1965), :func:`cratekit.adopt.plan.alongside_places`:
+    the vocal sub, the genre Favorites and a genre sub alike, BUT a class that
+    mirrors a playlist while something else keeps the track in the folder: a
+    sub of the folder's own it is not leaving, or any other playlist there, a
+    manual class such as Candy or one made by hand. The mirror files a
+    favourite in every folder it sits in, so the next refresh would put that
+    one back. ONE BODY for the plan, the worker's check of it and the read
+    back.
+    """
+    alongside = set(placements.holds_alongside(bucket, content_id))
+    if not alongside:
+        return ()
+    _kind, competing = routing.competing_subs(declared, bucket)
+    stays = {
+        sub
+        for sub in set(placements.holds(bucket, content_id)) & competing
+        if in_own_folder(declared, bucket, sub)
+    } - set(leaving)
+    if stays or placements.holds_others(bucket, content_id):
+        alongside -= mirrored_classes(declared)
+    return tuple(sorted(alongside))
 
 
 def buckets_asked(
@@ -779,8 +850,8 @@ def buckets_asked(
         if held_in_split_place(entry, bucket.id, placements, declared):
             asked.append(bucket.id)
             continue
-        if genre_moved_out_of(entry, bucket.id, declared, moved) and held_in_tree(
-            entry, bucket.id, placements, declared, subs
+        if genre_moved_out_of(entry, bucket.id, declared, moved) and any(
+            leaving_moved(entry, bucket.id, placements, declared, subs)
         ):
             asked.append(bucket.id)
             continue

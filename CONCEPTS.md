@@ -236,7 +236,9 @@ for. Banded like a suggestion but always written; a tie takes the artist's
 heaviest genre, then the first by name, and reports **split**. Part of the tail.
 
 ### Needs genre backlog
-Every row adoption's census reads as **needs-genre**, as `crate tag backlog`
+Every row adoption's census reads as **needs-genre**, and every row whose
+file is outside the library root that would (adoption excludes it as
+`outside-root`, and the tag verbs' walk still reads it), as `crate tag backlog`
 sorts it (`tagging/backlog.py`) into one **cause**: `row-lags-file` (the file
 carries a genre the row lacks), `no-genre`, `too-coarse`, `off-taxonomy` (one
 question per word, folded on case) or `file-unread`. The **floor** is the high
@@ -291,7 +293,9 @@ a dated backup; an entry it cannot add cleanly is **held** and names the edit.
 The `Favorites` playlist inside each genre folder: the folder's tracks that are
 also in All Favorites. A derived, additive sub class (`favorites`,
 `signal = "playlist"`). `crate favorites refresh` adds and removes it behind its
-own gate; adoption adds only.
+own gate; adoption adds only; `crate adopt move` takes a row `tag set` moved out
+of a genre folder out of that folder's Favorites too, unless another playlist
+there still holds it (R-1965).
 
 *Avoid:* reading it as a second favourites signal; All Favorites is the one.
 
@@ -1146,8 +1150,10 @@ adoption plan holds it: `add`, `present`, `under-another-name`, `no-sub`,
 ### Move
 `crate adopt move`: one track leaving the competing subs its reading does not
 name for the one it does, within one bucket, or, for a row `tag set` gave a new
-genre (U339), leaving every sub of the bucket its old genre filed it in for the
-one its new genre names in another. The addition commits before the
+genre (U339), leaving every sub of the bucket its old genre filed it in, and
+every place beside its band there, `with vox`, Favorites and a genre sub
+(R-1965, Favorites kept while another playlist of that folder holds the row),
+for the one its new genre names in another. The addition commits before the
 removal (a soft delete of the membership, the only removal the guarded writer
 admits). With no reading it is Left.
 

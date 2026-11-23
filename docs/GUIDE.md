@@ -797,8 +797,9 @@ crate sync removed
 again, and lists each track its pass recorded that the account no longer
 lists, with what it would do about the track's row in the collection. The
 database is read on a copy, so rekordbox must be closed. A run that offers
-nothing ends there, and writes nothing but Cratekit's own record of synced
-playlists the account answered not found for (below).
+nothing ends there, and writes nothing but Cratekit's own records of synced
+playlists the account answered not found for and of those it read whole
+(both below).
 
 When a track is offered, the run reads your backup acknowledgment and stops
 at the explicit gate `sync.removed.confirm`, which lists every offered track
@@ -880,20 +881,39 @@ not been measured.
   crate --calls N --calls-per-hour M sync removed --retire
   ```
 
-  It reads every synced playlist, about two calls each, so on an account with
-  hundreds of them it needs the ceilings raised as a run that finds a removal
-  does. It stops at the explicit gate
+  It reads every synced playlist the held reads (below) do not hold, two
+  calls or more each, so a first one on an account with hundreds of them stops at
+  the call ceiling as a run that finds a removal does, and is continued the
+  same way. It stops at the explicit gate
   `sync.removed.retire`, which lists each one the account no longer lists
   whose id answered not found on this read, with its id and the dates. Answer
   it with `crate run decide RUN_ID sync.removed.retire retire --actor NAME`,
   then run `crate --run RUN_ID sync removed --retire` again; then run `crate
-  sync removed` to plan without them. `abort` writes nothing. A synced
-  playlist it could not read, or whose id failed other than not found, is
+  sync removed` to plan without them. `abort` writes nothing but the held
+  reads. A synced playlist it could not read, or whose id failed other than not found, is
   named and never offered for retirement.
-- A run that finds a removal reads every synced playlist, about two calls
-  each, so on an account with hundreds of them it stops at the call ceiling
-  with nothing offered; run it again as `crate --calls N --calls-per-hour M
-  sync removed`, as a first `sync pair` plan needs.
+- **A run stopped part way continues where it stopped.** A run that finds a
+  removal reads every synced playlist, two calls or more each, so on an
+  account with hundreds of them it stops at the call ceiling (500 calls by
+  default) or at the hour's read line with nothing offered. Each synced
+  playlist it read whole is held, in the library's `sync_removed_reads.json`,
+  with the track count and the last updated stamp the account listed just
+  before the read, so running `crate sync removed` again, with or without a
+  higher ceiling, reads only what is left, and the stop says how many are
+  held. A held read is used for six hours after it was made, and only while
+  the account still lists the playlist with that count and stamp, so a
+  playlist you or Cratekit wrote since is read again. A read is held only
+  when it holds as many tracks as the account counts and the stamp is at
+  least half an hour old, since the service serves a playlist's old tracks for
+  minutes after a change; a playlist changed lately is read on every run until
+  then. A playlist the account lists with no stamp, one it does not list,
+  one that holds a track twice (its count then differs from the tracks
+  read), the hearts, and a playlist gone, unreadable, short or empty are read
+  on every run. Runs that need more than the hour's line of 1,125 calls go on in the
+  next hour, and the one after, with nothing read twice, as long as the whole
+  read and your answer at the gate come within the six hours. The plan, and
+  the gate when it asks, say how many playlists were taken from held reads.
+  Deleting the file is safe; it only costs calls.
 
 ### Follow record labels
 
@@ -1335,9 +1355,15 @@ crate inbox rotate
   before removing. After `tag set` it also takes each row that run gave a new
   genre out of the genre folder the tree filed it in under its old genre, and
   into the new genre folder's energy band when `adopt apply` has not filed it
-  there yet; a `with vox` or Favorites membership in the old folder stays. Only
-  that folder is asked, and only for rows `tag set` changed, so
-  a track you put in another genre folder by hand is otherwise left where it is.
+  there yet. It leaves the old folder's `with vox`, genre sub (Rominimal and
+  the like) and Favorites with the band; a playlist you made there (Candy
+  among them) is never touched, and a track one still holds keeps that
+  folder's Favorites, which mirrors every playlist of its folder. A `with
+  vox`, genre sub or Favorites there that the move would leave, renamed in
+  rekordbox, lists the row as held under another name and moves nothing for
+  it until the name is put back. Only
+  that folder is asked, and only for rows `tag set` changed, so a track you
+  put in another genre folder by hand is otherwise left where it is.
 - `converge` only reports. `rebuild` is the one repair for an unconverged
   tree; naming INBOX asks `rebuild.accept`.
 - Audits and reports are read only. `audit duplicates` never deletes and
@@ -1354,17 +1380,22 @@ crate inbox rotate
 
 **Adopting an existing library.** `crate adopt scan` queues a census; `crate
 adopt apply` shows the plan at `adopt.apply.approve` and files tracks and
-writes their genre tags.
+writes their genre tags. A row whose file resolves outside `library.root`,
+such as rekordbox's own sampler presets made readable by a
+`location_prefix_map` rule, is counted `outside-root`, excluded, and named
+under `outside_root` at the gate; adoption, `adopt move` and the genre moves
+leave it alone, and the tag verbs still read it. A row inside the root that
+cannot be placed still fails the whole pass.
 
 **Genres.**
 
 | Verb | Does |
 |---|---|
-| `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
+| `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre, and any such row whose file is outside the library root, by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
 | `tag campaign [--alias WORD=GENRE] [--folder WORD] [--leave-word WORD] [--catalogue] [--rehearsed DIGEST]` | Applies the backlog under one gate: `tag rows`, `tag suggest` at the floor, the answered words, then `tag rows` again; writes file and row, and names `route resort`. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
-| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply`, and `adopt move` where a row leaves a genre folder. |
+| `tag set GENRE [--row ID] [--rows-from FILE] [--playlist PATH] [--leave ID]` | Gives the rows named a genre the taxonomy declares, over the one they carry; writes file and row, and names `adopt apply`, and `adopt move` where a row leaves a genre folder, or names a row whose file is outside the library root as one neither files. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
 | `tag second GENRE \| --clear (--row ID \| --rows-file PATH \| --playlist PATH) [--leave ID]` | Sets or clears a second genre on chosen files, which files each track into that genre's folder too, in its own energy band; writes no row. |
@@ -1398,9 +1429,15 @@ take the genre keeps its row's old genre and the run ends refused under
 the rows back and each file's old genre. Then run `crate adopt apply`, which
 files each row in the new genre folder by its energy band, and, where the gate
 showed a row leaving a genre folder, `crate adopt move`, which takes it out of
-that folder's energy band; the run's answer names what applies. A `with vox`
-or Favorites membership the row holds in the old folder stays, and the answer
-says so: remove it in rekordbox.
+that folder's energy band, `with vox`, genre sub and Favorites; the run's
+answer names what applies. A row whose file is outside the library root is
+written and named as one neither verb files or moves, since adoption leaves it
+alone. Where adoption held a row back (it still sat in a
+band of the old folder that the new genre's folder also claims, as R&B's bands
+are for Soul), `adopt apply` files nothing for it and the move files its band:
+the next `crate adopt apply` then files its `with vox`, and `crate favorites
+refresh` its Favorites. A playlist you made in the old folder, Candy among
+them, keeps the row, and so does that folder's Favorites while one does.
 
 **A second genre folder.** A track can sit in a second genre folder of BY
 GENRE + ENERGY beside the one its genre names, with its energy band in each.
@@ -1412,7 +1449,7 @@ second genre off. The gate lists every chosen row with its second genre before
 and after, which is the undo, and why any is left: a second genre naming the
 folder the file's genre already names, or a file whose genre names no folder.
 The next `adopt apply` (or `organize --only adopt`) files the track into the
-second folder too, and from then on `adopt move`, `converge`, `rebuild`,
+second folder too, unless its file is outside the library root, and from then on `adopt move`, `converge`, `rebuild`,
 `route resort` and `favorites refresh` keep it in both, an energy change
 moving it in both. This holds for a pair one of whose folders took tracks
 over from the other (Soul and R&B): the band of the one is the track's own
@@ -1455,7 +1492,9 @@ Name"`, which retags without touching the taxonomy. After an alias, run `tag
 rows`, then `route resort`.
 
 **The needs genre backlog.** `tag backlog` reads every row adoption files
-nowhere for want of a genre and puts each in one cause: its file carries a
+nowhere for want of a genre, and a row with the same want whose file is
+outside the library root, which adoption excludes as `outside-root`, and puts
+each in one cause: its file carries a
 genre the row lacks (`tag rows` writes it), no genre on the row or the file
 (`tag suggest` weighs it), a word too coarse to be a genre (`tag retag`), a
 genre word no folder takes, or a file whose genre could not be read. A row

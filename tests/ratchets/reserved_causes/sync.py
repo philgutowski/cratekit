@@ -130,6 +130,12 @@ KEBAB_LITERALS = {
         'sync-removed-retire',
         'sync-removed-retired-now',
     ],
+    # 2026-11-23, R-1716: the kept reads' three warnings.
+    'sync/removed_kept.py': [
+        'sync-removed-reads-kept',
+        'sync-removed-reads-unkept',
+        'sync-removed-reads-unread',
+    ],
     'sync/run.py': ['sync-source-lookups-failed', 'utf-8'],
     # 2026-11-12, U242: the strip verb joined.
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.

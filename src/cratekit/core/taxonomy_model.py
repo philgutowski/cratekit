@@ -190,7 +190,8 @@ class GenreSub:
     """A sub of an energy bucket chosen by the track's source genre (U155).
 
     Additive beside the bands, unlike ``sub_by_source``: it never competes and
-    nothing is moved out of it. ``sources`` are exact routing aliases of the
+    nothing is moved out of it within its bucket; a track whose genre ``tag
+    set`` moved to another bucket leaves it with the band (R-1965). ``sources`` are exact routing aliases of the
     bucket; the first is the word the tagger writes for the sub.
     """
 

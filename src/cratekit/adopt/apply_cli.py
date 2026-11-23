@@ -324,6 +324,7 @@ _FACTS = (
     "placements",
     "withheld_by_placement",
     "held_elsewhere",
+    "outside_root",
     "vocals",
     "vocal",
     "vocal_memberships",
@@ -336,7 +337,8 @@ def _digested(plan: plan_engine.AdoptionPlan) -> tuple[dict, dict]:
     THE ITEMS ARE THE APPLICABLE ENTRIES, the ones the digest lists, so a
     recorded answer never stands over a screen that reads differently. The rest
     is shown as counts, beside every entry withheld over a place its track holds
-    (R-731) and every vocal membership an apply may write, present or not
+    (R-731), every track left out because its file is outside the library root
+    (U956), and every vocal membership an apply may write, present or not
     (R-788), all read off the plan's own document.
     """
     document = plan_engine.to_json(plan)
