@@ -199,10 +199,15 @@ def _imports(source: Path) -> set[str]:
 
 def test_the_night_module_reaches_no_launcher_no_decide_and_no_acknowledgment():
     """Read off the module's own imports and words, so a later edit that reaches
-    any of them fails here by name."""
+    any of them fails here by name. The library session is banned with its
+    parts (R-1890), since ``cratekit.core.session_holders`` takes the same lock
+    and does not match ``cratekit.core.session`` followed by a dot."""
+    from tests._split_modules import names_of
+
     imported = _imports(SOURCE)
-    for banned in ("subprocess", "os.system", "cratekit.core.session", "cratekit.session",
-                   "cratekit.session.cli", "cratekit.cli.verbs.runs", "cratekit.cli.prompt"):
+    for banned in ("subprocess", "os.system", *names_of("cratekit.core.session"),
+                   "cratekit.session", "cratekit.session.cli", "cratekit.cli.verbs.runs",
+                   "cratekit.cli.prompt"):
         assert not any(name == banned or name.startswith(banned + ".") for name in imported), banned
     text = SOURCE.read_text()
     for word in ("Popen", "os.system", "execv", "record_acknowledgment", "launchctl",
