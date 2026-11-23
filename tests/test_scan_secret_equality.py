@@ -1,10 +1,8 @@
 """U257: the fast secret scan of ``scripts/scan_repo.py`` finds exactly what the plain one found.
 
-The proof is equality with the function as it stood before, kept here as
-``_reference_secret_violations``, over the planted corpus of
-``tests/test_portability.py``, every tracked file, and generated texts aimed at
-each edge of each shortcut. Every credential shaped literal is ASSEMBLED at
-runtime, so the scan never flags this file.
+The proof is equality with ``_reference_secret_violations``, the function as it
+stood, over the planted corpus, every tracked file and texts aimed at each edge
+of each shortcut. Credential shaped literals are assembled, so no scan flags this file.
 """
 
 from __future__ import annotations
@@ -231,11 +229,7 @@ def test_the_fast_scan_equals_the_reference_on_the_planted_corpus():
 
 
 def test_the_fast_scan_equals_the_reference_on_every_tracked_file():
-    """File by file, and the keyword gate hands over under one file in five hundred.
-
-    No equality test sees a gate that passes every text; a gate without its value
-    check handed over 34 files of 3,672 at review.
-    """
+    """File by file, and the keyword gate, which equality cannot see, hands over few files."""
     paths = [path for path in scan.tracked_paths(REPO_ROOT) if not path.is_symlink()]
     texts = [(path.relative_to(REPO_ROOT).as_posix(), scan._read_text(path)) for path in paths]
     texts = [(relative, text) for relative, text in texts if text is not None]

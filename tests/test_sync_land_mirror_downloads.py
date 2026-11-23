@@ -1,10 +1,8 @@
 """A sync pass takes the download ``crate organize`` queued for an account edit (U227).
 
 ``mirror-downloads`` queues a job under no run; ``crate sync land`` takes it
-into the run it started and drives, lists, downloads and lands it with its
-own, rather than leaving it open outside the pass. The machine, account and
-stand ins are ``tests/test_sync_land.py``'s; the tail and landing stand in
-through the verb's one seam.
+into its own run with its own. The machine, account and stand ins are
+``tests/test_sync_land.py``'s.
 """
 
 from __future__ import annotations
@@ -144,11 +142,7 @@ def test_a_continued_pass_takes_no_mirror_download_and_names_it(machine, monkeyp
 def test_a_pass_continuing_an_earlier_one_over_nothing_new_takes_none(
     machine, monkeypatch, tail
 ):
-    """Sync all queued nothing and one earlier pass is open: that pass is continued.
-
-    The left open row names the mirror job as the next pass's, never as one to
-    drive by hand outside a pass.
-    """
+    """Sync all queued nothing and one earlier pass is open: that pass is continued."""
     cfg, script = machine
     _account(monkeypatch, script, "101")
     earlier = exited(drive(["sync", "all"]))

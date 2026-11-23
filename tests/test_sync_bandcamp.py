@@ -1,14 +1,9 @@
 """``crate sync bandcamp`` takes new Bandcamp purchases to their landing gate in one verb (U179).
 
-It plans before it fetches, so an expired session ends before anything
-downloads; fetches into one batch folder, continuing an open fetch there;
-runs the shared tail in order and never plans a landing over files the tail
-has not run on; names the batch from the files' label tags and passes
-``--label-from-tags`` only when one carries a label; rehearses with the very
-arguments the landing takes; and ends at the landing's gate with a closing
-report. The plan and the fetch run through the real dispatcher over the fake
-account; the tail, the rehearsal and the landing stand in through
-``cratekit.cli.tail.dispatch``. D1 applies; ``pulsromania`` and
+It plans before it fetches, fetches into one batch folder, runs the shared tail
+in order, names the batch from its label tags, rehearses with the landing's own
+arguments and ends at the landing's gate. The tail, rehearsal and landing stand
+in through ``cratekit.cli.tail.dispatch``. D1 applies; ``pulsromania`` and
 ``otherlabel`` are the fake account's sellers.
 """
 

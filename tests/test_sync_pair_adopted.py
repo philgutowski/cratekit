@@ -1,8 +1,7 @@
 """U216, ``crate sync pair`` never brings into rekordbox a playlist an adopted account folder already held.
 
-A playlist the folder held when adopted, and a ``DOWNLOADED `` copy of one a
-pair in the same folder holds, are named on the gate and never made; a playlist
-made on the account after the sync still comes in (U202).
+What the folder held when adopted, and ``DOWNLOADED `` copies of its pairs, are
+named on the gate and never made; one made on the account since still comes in.
 """
 
 from __future__ import annotations
@@ -38,10 +37,9 @@ def later(minutes: int) -> datetime:
 
 @pytest.fixture
 def trivia(world):
-    """``Genre Trivia!`` on both sides, the account's holding two old DOWNLOADED copies.
+    """``Genre Trivia!`` synced, its adopted account folder holding two old DOWNLOADED copies.
 
-    Synced once, so the account folder is adopted. Answers the rekordbox folder
-    and the two copies' account identifiers.
+    Answers the rekordbox folder and the two copies' account identifiers.
     """
     folder_id = world.account.create_folder(FOLDER)
     copies = {}

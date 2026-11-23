@@ -1,14 +1,9 @@
 """The suite's idle workers take queued tests from a busy one. U251.
 
-Under xdist's default distribution a worker that draws a long test keeps the
-tests queued behind it while the others sit idle, so a full run ends when the
-unluckiest queue drains. Measured 2026-11-12 on a four core container, one run
-each way: 789 seconds against 629, and a spread between the workers' summed
-test seconds of 178 against 67. ``--dist worksteal`` lets an idle worker take
-half of the busiest one's queue.
-
-These pin the option where every reader of it looks: pytest's own ``addopts``,
-the mutation driver's copy of them, and a real run in which a test had to move.
+Under the default distribution a worker that draws a long test keeps its queue
+while others idle (789 seconds against 629 on four cores); ``--dist worksteal``
+lets an idle worker take from the busiest. Pinned in ``addopts``, the mutation
+driver's copy of them, and a real run in which a test had to move.
 """
 
 from __future__ import annotations
@@ -48,11 +43,7 @@ def test_the_suite_runs_on_every_core_and_steals_queued_work():
 
 
 def test_the_mutation_driver_passes_the_distribution_on():
-    """The driver rebuilds ``addopts`` for its children, stripped of ``-q``.
-
-    Stripping and not clearing is what carries this option to every baseline
-    and row run with no edit to the driver; this pins that it still does.
-    """
+    """The driver rebuilds ``addopts`` for its children stripped of ``-q``, not cleared."""
     mutate = _load("cratekit_mutate_driver_u251", REPO_ROOT / "scripts" / "mutate.py")
     tokens = mutate.pytest_addopts(REPO_ROOT).split()
     assert _option(tokens, "-n") == "auto", tokens

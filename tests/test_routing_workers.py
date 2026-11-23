@@ -164,11 +164,9 @@ _ADOPTED: dict[bytes, tuple[bytes, str]] = {}
 
 
 def _adopted_database(path: Path, cfg: config.Config) -> str:
-    """Build the disposable database with the tree's root folder, and say its identifier.
+    """The disposable database with the tree's root folder, and its identifier.
 
-    Made through the guarded writer once per process for each base file, then
-    copied, as the base itself is (U256). A build that leaves a sidecar beside
-    the file is not copied."""
+    Built through the guarded writer once per process per base file, then copied (U256)."""
     _build_disposable_database(path)
     base = path.read_bytes()
     if base in _ADOPTED:
@@ -189,9 +187,7 @@ def _adopted_database(path: Path, cfg: config.Config) -> str:
 
 @pytest.fixture
 def native(stocked) -> str:
-    """A database with a real adopted root, and a registry that has cut over.
-
-    The root is a REAL row, since every walk goes down from its identifier."""
+    """A database with a real adopted root row, and a registry that has cut over."""
     path = Path(stocked.library.db_path)
     root_id = _adopted_database(path, stocked)
     _record_locations(

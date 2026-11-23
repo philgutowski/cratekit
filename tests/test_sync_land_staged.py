@@ -1,11 +1,8 @@
 """A sync pass does not download, or land, a track an unlanded pass staged (U212, R-1499).
 
-Those tracks are another pass's download, so a second pass leaves them off its
-list and refuses before its download, naming the first pass and the command
-that lands it (:mod:`tests.test_sync_land_beside`). The first pass runs through
-the real dispatcher to its landing gate and stays there, its downloads tagged
-with the ISRC the real downloader writes. The stand ins are
-:mod:`tests.test_sync_land`'s: the tail and the landing stand in.
+A second pass leaves them off its list and refuses before its download, naming
+the first pass and its landing. The first pass stops at its landing gate with
+ISRC tagged downloads; the stand ins are :mod:`tests.test_sync_land`'s.
 """
 
 # ruff: noqa: F811, the fixtures below are imported from the sync land suite by name
@@ -132,9 +129,7 @@ def test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_refuse
 def test_a_continued_pass_whose_own_downloads_are_staged_lists_them_again(
     machine, monkeypatch, tail
 ):
-    """The pass's own downloads are in the staging folder, tagged, and its
-    list names them, so continuing it rewrites the same list and reuses its
-    own download job rather than refusing over the list or downloading again."""
+    """Continuing a pass whose tagged downloads are staged reuses its own list and download job."""
     cfg, script = machine
     first = _first_pass(monkeypatch, script, cfg)
     listed = Path(_summary(first)["list"])
@@ -219,9 +214,7 @@ def _refusing_name(tail, cause: Cause):
 def test_a_second_pass_beside_an_unlanded_first_refuses_before_any_download_is_refused(
     machine, monkeypatch, tail
 ):
-    """With the listed track a lossy only offer and the rest staged by the first
-    pass, the second refuses before its download, so nothing is refused for
-    good and the first pass's tracks wait for their own landing."""
+    """A lossy only offer beside staged tracks: the second pass refuses before its download."""
     cfg, script = machine
     first = _first_pass(monkeypatch, script, cfg)
     script.landings["103"] = Landing(kind="lossy")

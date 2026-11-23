@@ -1,9 +1,7 @@
 """U209: answering a gate does not plan the whole sync again.
 
-The plan is held under its run and read back by the later commands, and the
-check before the write reads only the lists the plan read; the fakes count
-every listing and lookup. D1 applies, nothing here names a real account,
-person or track.
+The plan is held under its run and read back, and the check before the write
+reads only what the plan read; the fakes count every call. D1 applies.
 """
 
 from __future__ import annotations
@@ -270,11 +268,7 @@ def test_the_calls_are_on_a_no_op_answer_too(world, counted):
 
 @pytest.mark.parametrize("found", ["by its row's isrc", "by another account playlist's landing"])
 def test_a_track_found_by_another_landing_costs_the_plan_no_call(world, counted, cfg, tmp_path, found):
-    """U229. Reading every landed INBOX playlist asks the provider nothing.
-
-    The same add is planned at the same cost whether the row is found by its
-    ISRC or by another account playlist's landing.
-    """
+    """U229: reading every landed INBOX playlist asks the provider nothing."""
     from tests.test_sync_pair import _landed_for, _untagged_row, isrc
 
     w = world(account=("1",), rekordbox=("1",))

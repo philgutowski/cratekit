@@ -1,10 +1,8 @@
 """The session mints the backup acknowledgment on the five day rule, with no terminal (U138).
 
-When the run record holds the gate's answer under the actor ``session``, the
-age rule replaces the terminal check: every backup portion under five days old
-mints, anything else is refused by name. A person's answer keeps the terminal
-check, and the record says which rule minted it. Driven through the real
-dispatcher with nobody at a terminal, on temporary libraries. D1 applies.
+An answer under the actor ``session`` mints when every backup portion is under
+five days old and is refused by name otherwise; a person's answer keeps the
+terminal check, and the record says which rule minted. D1 applies.
 """
 
 from __future__ import annotations
@@ -184,9 +182,7 @@ def test_the_bound_is_five_days_as_the_author_set_it():
     assert session.SESSION_MAX_BACKUP_AGE == FIVE_DAYS
 
 
-# U184: ``crate session ack --as session``, the session's mint in one command.
-# The age rule is the only guard, so every drive below is one invocation with
-# nobody at a terminal and ends with no run left waiting on an answer.
+# U184: ``crate session ack --as session``, one command guarded by the age rule alone.
 
 #: The one command, spelled as a session types it.
 ONE_COMMAND = ["session", "ack", "--as", SESSION]

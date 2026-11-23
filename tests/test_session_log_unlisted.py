@@ -1,13 +1,8 @@
 """R-1255: a session log that is there and cannot be listed is unread, never empty.
 
-A glob over a directory the account cannot list yields nothing rather than
-raising, so a scan that globbed answered no record, every gate admitted the
-write the log may refuse and every report read clean. This file holds the scan
-and each consumer to it.
-
-THE CONTAINER RUNS AS ROOT, which no file mode bars, so each test refuses the
-two OS calls that list a directory for the one path. Each case keeps its
-readable twin beside it. D1 applies.
+A glob over an unlistable directory yields nothing, so every gate admitted a
+write the log may refuse. The container runs as root, so each test refuses the
+two OS calls that list the one path; each case keeps a readable twin. D1 applies.
 """
 
 from __future__ import annotations

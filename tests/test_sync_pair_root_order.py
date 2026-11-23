@@ -1,12 +1,8 @@
 """R-1404 and R-1416: a pair whose account order is not kept keeps rekordbox's order.
 
-Outside GIG READY the account order is never written (U231), so after a
-rekordbox reorder the snapshot holds rekordbox's new order and the account's
-old one, and letting the account lead would silently put the old order back.
-Driven through the dispatcher on the disposable database, with a hand pair at
-the rekordbox root and ``outbound.pair_order_every_pair`` off.
-
-D1 applies. Nothing here names a real account, person or track.
+Outside GIG READY the account order is never written (U231), so letting the
+account lead would put an old order back. Driven with a hand pair at the
+rekordbox root and ``outbound.pair_order_every_pair`` off. D1 applies.
 """
 
 from __future__ import annotations
@@ -132,10 +128,7 @@ def test_a_pair_whose_order_is_kept_still_follows_a_rekordbox_reorder(world, mon
 
 
 # R-1416: a hand pair's first sync outside GIG READY keeps rekordbox's order
-#
-# Outside GIG READY Tidal's order is never written (U231), so taking it on the
-# first sync would lose the DJ's arrangement for good (608-outside-order-2). A
-# later Tidal reorder still brings Tidal's whole order (608-outside-order-1).
+# (608-outside-order-2); a later Tidal reorder still leads (608-outside-order-1).
 
 
 def _paired(world, monkeypatch, *, account, rekordbox, every: bool = False):
