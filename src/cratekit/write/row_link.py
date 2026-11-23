@@ -2,44 +2,14 @@
 through the guard, to learn which column keeps a binding made row off a deck
 (A32, R-928).
 
-WHY THIS EXISTS. A row the native landing makes shows every column in
-rekordbox, analyses on request, and will not load to a deck, while a row
-rekordbox imports from the same file loads at once (R-928). The defaults were
-filled (R-923) and the file id was given its inode (U115), and at sitting 36
-of ``docs/cutover.md`` the repaired rows still would not load. On 2026-10-10
-every one of the 78 content columns was compared between the binding rows and
-the rows rekordbox made, and three binding values occur on no row rekordbox
-made: ``ContentLink``, ``ISRC`` stored NULL, and ``AnalysisUpdated`` at 1.
-The first two are :data:`cratekit.core.rb_writer.ROW_PROBE_COLUMNS`. The third
-is an analysis column the guard refuses under R17, and is tested by letting
-rekordbox analyse a row again, never by writing it.
-
-ONE PLAN, MANY TRIPLES, ONE REKORDBOX OPEN. A probe is a list of (row, column,
-value) triples, so each subset of the candidates can sit on its own row and a
-single reading of rekordbox's context menus answers every subset at once,
-rather than one candidate per sitting.
-
-WHAT IT WRITES IS THE NAMED COLUMNS ON THE NAMED ROWS AND NOTHING ELSE, through
-:func:`cratekit.core.rb_writer.write_metadata_field` under a policy
-:func:`cratekit.core.rb_writer.row_probe_policy` builds from exactly the
-columns the plan writes, registered for the commit and put back after it.
-
-A LIVE ROW ONLY, AND A VALUE MORE ROWS CARRY THAN CARRY THE ROW'S OWN. Each
-triple's row is read from SQL with ``rb_local_deleted = 0`` and an unknown or
-deleted one is refused by name. For each triple the plan counts the other live
-rows carrying the value asked for in that column and the other live rows
-carrying the value the row holds now, NULL counted as NULL, and refuses when
-the first is zero or not above the second: the probe moves a row toward the
-value the library's rows mostly carry, never away from it. A triple whose row
-already holds the value plans nothing and is shown as such.
-
-EVERY WRITTEN ROW IS READ AGAIN FROM SQL AFTER THE COMMIT. Each written column
-must read as its value, and no column outside the ones written on that row and
-the binding's bookkeeping may have moved.
-
-THE DIGEST NAMES NO COPY. The rows, columns and values, written and replaced,
-so a rehearsal on a disposable copy digests equal to the live plan when the
-rows are the same, which is what lets a session approve the live write.
+The probe columns are :data:`cratekit.core.rb_writer.ROW_PROBE_COLUMNS`. A
+probe is a list of (row, column, value) triples, so one rekordbox open answers
+several candidates; it writes the named columns on the named live rows and
+nothing else, under a policy :func:`cratekit.core.rb_writer.row_probe_policy`
+builds for this commit. A triple refuses unless more other live rows carry
+the value asked for than carry the row's own, NULL counted as NULL, so a
+probe only moves a row toward the library's majority. Every written row is
+read back from SQL after the commit, and the digest names no copy.
 
 Layer: write. It opens no database of its own and names no verb.
 """
@@ -121,9 +91,8 @@ def _invalid(spec: str, why: str):
 def parse_triple(spec: str) -> Triple:
     """Read ``ROW:COLUMN=VALUE``. Pure. An empty value is the empty text.
 
-    The column must be one of :data:`cratekit.core.rb_writer.ROW_PROBE_COLUMNS`
-    and the value is converted to the type the column is stored as, so a
-    ContentLink that is not a whole number refuses here rather than at SQL.
+    The column must be a probe column and the value is converted to its stored
+    type, so a ContentLink that is not a whole number refuses here, not at SQL.
     """
     head, sep, raw = spec.partition("=")
     content_id, colon, column = head.partition(":")
@@ -206,11 +175,8 @@ class ProbePlan:
 
     @property
     def digest(self) -> str:
-        """The fingerprint an approval is bound to.
-
-        OVER EVERY TRIPLE, the value written and the value replaced, and nothing
-        that names a copy. The counts are not in it: they are what the gate
-        shows and not what the approval is for.
+        """The fingerprint an approval is bound to: every triple, the value written
+        and the value replaced, and nothing naming a copy. The counts are left out.
         """
         return digest_of({"kind": WORKFLOW, "items": [p.to_json() for p in self.probes]})
 
@@ -227,9 +193,7 @@ class Written:
     moved: tuple[str, ...] = ()
 
 
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
+# The plan.
 
 
 def _holding(db: Any, column: str, value: Any, *, excluding: str) -> int:
@@ -261,18 +225,10 @@ class LibraryLink:
 def library_link(db: Any) -> LibraryLink:
     """The ContentLink more than half the live rows carry, or a refusal by name (U126).
 
-    WHAT A ROW THE NATIVE LANDING MAKES IS GIVEN, read from the library rather
-    than written down. The binding sets the column from a menu item's counter,
-    and rekordbox refuses such a row a deck (R-928); rekordbox writes one value
-    on nearly every row it makes, ``2950670`` on 10,312 of 10,498 live rows of
-    the library measured on 2026-10-10. That number is a measurement of one
-    library and not a constant of rekordbox, so it is read here on every plan.
-
-    MORE THAN HALF, NULL COUNTED AS ITS OWN VALUE, and the value a whole
-    number. A library with no rows, or whose rows split so that no value holds
-    a majority, or whose majority is NULL, has nothing to copy, and the landing
-    refuses before its gate rather than choose: a plurality is a guess about
-    which value rekordbox will load, and a wrong guess is a row nobody can play.
+    What a row the native landing makes is given, read from the library on every
+    plan, since rekordbox's value is one library's measurement, not a constant.
+    More than half, NULL counted as its own value, and a whole number: a
+    plurality is a guess, so with no clear majority the landing refuses.
     """
     from sqlalchemy import text
 
@@ -300,22 +256,16 @@ def library_link(db: Any) -> LibraryLink:
             "its own value; the native landing cannot choose one for this library",
         ),
         origin=_ORIGIN,
-        detail={
-            "column": LINK,
-            "value": whole,
-            "carriers": int(carriers),
-            "rows": rows,
-        },
+        detail={"column": LINK, "value": whole, "carriers": int(carriers), "rows": rows},
     )
 
 
 def plan_probes(db: Any, triples: Sequence[Triple]) -> ProbePlan:
     """Every triple planned against the live rows, or the first refusal by name.
 
-    FROM SQL AND NOT FROM THE MAPPED ROWS, so a NULL is what the table holds.
-    The refusals are the plan's and not the gate's, so a person is told before
-    being asked. A triple whose row already holds the value is planned and not
-    judged, since nothing is copied.
+    From SQL so a NULL is what the table holds. The refusals are the plan's, so a
+    person is told before being asked. A triple whose row already holds the value
+    is planned and not judged.
     """
     from sqlalchemy import text
 
@@ -411,17 +361,15 @@ def plan_probes(db: Any, triples: Sequence[Triple]) -> ProbePlan:
     return ProbePlan(probes=tuple(probes), rows=rows)
 
 
-# ---------------------------------------------------------------------------
-# The apply and the read back
-# ---------------------------------------------------------------------------
+# The apply and the read back.
 
 
 def assert_rows_as_planned(plan: ProbePlan, now: Mapping[str, Mapping[str, Any]]) -> None:
     """Refuse when a row to be written is not the row the plan read.
 
-    THE PLAN IS MADE ON A READ HANDLE AND THE WRITE ON ANOTHER, so the apply
-    asks SQL again whether each row is still live and each column still holds
-    what the plan read. Nothing is written for any row when one has moved.
+    The plan is made on another handle, so the apply asks SQL again whether each
+    row is live and each column holds what the plan read; nothing is written for
+    any row when one has moved.
     """
     moved: list[str] = []
     for probe in plan.writing:
@@ -449,8 +397,7 @@ def judge(
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """What the read back found wrong. Answers (wrong, moved). Pure.
 
-    COMPARED AS TEXT, as ``repair rows`` compares, since SQLite stores what it
-    is given by affinity and the same value can read back either way.
+    Compared as text, as ``repair rows`` compares, since SQLite stores by affinity.
     """
     wrong: list[str] = []
     moved: list[str] = []
@@ -470,18 +417,6 @@ def judge(
     return tuple(wrong), tuple(moved)
 
 
-def _record_commit(record: session.SessionRecord, rows: int, cfg: config.Config) -> None:
-    """Record this write's commit on its session record, when it wrote anything."""
-    if rows <= 0:
-        return
-    session.record_commit(
-        record,
-        CHANGE_KEY,
-        session.ChangeSummary((session.TreeChange(tree=CHANGE_KEY, updated=rows),)),
-        cfg,
-    )
-
-
 def apply_probes(
     cfg: config.Config,
     db: Any,
@@ -491,18 +426,11 @@ def apply_probes(
 ) -> Written:
     """Write every planned value, commit behind the guard, and read the rows back.
 
-    THE SESSION SPINE IS CALLED, NOT REBUILT, as ``repair rows`` calls it. The
-    rows are checked against the plan before the session is entered, so a
-    stale plan refuses with no record and no capture. The policy names exactly
-    the columns written and is registered after that check.
+    The session spine as ``repair rows`` calls it. The rows are checked against the plan before the session is entered, so a stale
+    plan refuses with no record and no capture. The policy names exactly the
+    columns written.
     """
-    watched = [Path(root) for root in analysis_roots]
-    if not watched:
-        raise ValueError(
-            "analysis_roots is empty, so the analysis-file watch would watch nothing "
-            "and this session would report itself clean whatever happened to the "
-            "library's grids; name the roots this write could touch"
-        )
+    watched = row_defaults.watched_roots(analysis_roots)
     if not plan.writes:
         raise refuse(
             "internal-error",
@@ -517,6 +445,7 @@ def apply_probes(
     mapped = row_defaults.read_mapped(db, ids)
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     policy = rb_writer.row_probe_policy(p.column for p in plan.writing)
+
     with rb_writer.field_policies_for_commit(policy):
         with (
             session.assert_gates(
@@ -524,8 +453,7 @@ def apply_probes(
             ) as gates,
             rb_writer.commit_witness(db) as witness,
         ):
-            record, capture = trees.attached_capture(gates, cfg, db)
-
+            record, _capture = trees.attached_capture(gates, cfg, db)
             before = row_defaults.read_columns(db, ids)
             written = 0
             try:
@@ -547,14 +475,12 @@ def apply_probes(
                 rb_writer.commit_guarded(db)
             except BaseException:
                 trees.rollback_quietly(db)
-                # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The witness is the
-                # engine's own answer.
+                # An exception is not proof nothing landed; the witness is.
                 if witness.landed:
-                    _record_commit(record, len(ids), cfg)
+                    row_defaults.record_commit(record, CHANGE_KEY, len(ids), cfg)
                 raise
-            _record_commit(record, len(ids), cfg)
+            row_defaults.record_commit(record, CHANGE_KEY, len(ids), cfg)
             convergence.record_fingerprint(cfg, db)
-
             after = row_defaults.read_columns(db, ids)
             session_id = record.session_id
 
@@ -572,10 +498,9 @@ def apply_probes(
 def assert_read_back(written: Written) -> None:
     """Refuse when the database does not say what the plan said it would.
 
-    A COLUMN THAT MOVED IS REPORTED AS THE GUARD'S DEFECT, because the guard
-    holds that before the commit and reaching here means it did not. Either way
-    the write is durable, so the refusal names the session whose capture undoes
-    it.
+    A moved column is the guard's defect, since the guard holds it before the
+    commit. The write is durable either way, so the refusal names the session
+    whose capture undoes it.
     """
     if not written.wrong and not written.moved:
         return
@@ -601,24 +526,8 @@ def assert_read_back(written: Written) -> None:
 
 
 __all__ = [
-    "CHANGE_KEY",
-    "ISRC",
-    "LINK",
-    "MAJORITY_UNCLEAR",
-    "PROBE_INVALID",
-    "ROW_UNKNOWN",
-    "VALUE_MINORITY",
-    "VALUE_UNHELD",
-    "WORKFLOW",
-    "LibraryLink",
-    "Probe",
-    "ProbePlan",
-    "Triple",
-    "Written",
-    "apply_probes",
-    "assert_read_back",
-    "assert_rows_as_planned",
-    "judge",
-    "parse_triple",
-    "plan_probes",
+    "CHANGE_KEY", "ISRC", "LINK", "MAJORITY_UNCLEAR", "PROBE_INVALID", "ROW_UNKNOWN",
+    "VALUE_MINORITY", "VALUE_UNHELD", "WORKFLOW", "LibraryLink", "Probe", "ProbePlan", "Triple",
+    "Written", "apply_probes", "assert_read_back", "assert_rows_as_planned", "judge",
+    "parse_triple", "plan_probes",
 ]

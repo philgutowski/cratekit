@@ -182,7 +182,8 @@ the wait counted in analysis files, the second run for rows marked `dyn`,
 the quit, `crate analyze check`, and the clear with `crate inbox analyzed`. It is the one
 procedure for the visit, and nothing it says is repeated here. Its verdict is
 this pass's: a check that ends waiting or suspect stops the pass there, and
-the report says what it named.
+the report says what it named, except the suspect for keys alone that skill
+clears.
 
 ## 5. The account's tail: every finished pass marked, then filed
 

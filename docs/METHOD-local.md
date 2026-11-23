@@ -2,7 +2,7 @@
 
 The part of the method only a session on Phillip's Mac needs, moved out of
 `CLAUDE.md` and `docs/METHOD.md` by U196 so a cloud session does not read it on
-every call. Nothing here was dropped on the way; it is the same text. A cloud
+every call. Nothing here was dropped on the way. A cloud
 session reads `docs/METHOD.md` and the `cloud-unit` skill, and comes here only
 when a card is set aside for the machine or Phillip asks for a release.
 
@@ -25,44 +25,44 @@ reads `board.py cloud` instead, which never offers an attended card.
 
     .venv/bin/python scripts/board.py start 11
 
-That refuses if the unit is blocked, if the working tree is dirty, or if you are
-not on `main`. Otherwise it branches, marks the issue In Progress, and prints the
-closing trailer to use.
+That refuses if the unit is blocked, if the working tree is dirty, or if you
+are not on `main`. Otherwise it branches, marks the issue In Progress, and
+prints the closing trailer to use.
 
-**The issue is the brief.** Each unit issue carries its full specification: goal,
-requirements, dependencies, key files, approach, test scenarios, verification.
-Read it with `board.py show 11`. If the brief is insufficient, fix the issue
-rather than working around it.
+`board.py show 11` reads the brief; CLAUDE.md's board section has the rest.
 
-`DJ_tools/docs/migration/00-SEAM-DECISIONS.md` remains authoritative over any
-brief. Part 5 is seven failure shapes learned the expensive way and applies to
-every unit.
+**Opening rekordbox** (CLAUDE.md's standing constraints): before it, no
+Cratekit job is running and `crate doctor` reads both backup ages under five
+days; after quitting it, `rekordbox` and `rekordboxAgent` are both confirmed
+gone before any verb runs. Below five days a session opens rekordbox and
+mints the acknowledgment without running `crate backup run` first; at or over
+five days, or with either age unknown, it runs the backup before anything
+else. **The backup acknowledgment** is one
+command since U184, `crate session ack --as session`, with no gate and no run
+left waiting; since U138 the verb accepts that answer with no controlling
+terminal and itself refuses unless both ages are under five days. Until the
+installed copy carries U184, use the gate; until it carries U138, run it
+under `script -q /dev/null`. Answer as `session` either way.
 
 ## The board stays true on its own
 
-End the merge commit with the trailer `board.py start` printed:
-
-    Closes #11
-
-Pushing `main` closes the issue, and `.github/workflows/board.yml` fires and flips
-every unit that was waiting on it from blocked to ready.
-
-Do not hand-edit `ready` and `blocked` labels or drag cards. Those are derived
-values. Change the dependency line in an issue body and let the sync recompute
-them.
+End the merge commit with the trailer `board.py start` printed, `Closes #11`;
+`.github/workflows/board.yml` then relabels what it released, and labels and
+cards are never edited by hand (CLAUDE.md).
 
 **Before ending a session:**
 
     .venv/bin/python scripts/board.py audit
 
-- **Exit 1, drift.** A derived value fell out of date. `board.py sync` repairs it.
-- **Exit 2, contradiction.** A unit's issue is closed while a register still owes
-  it a module, so the board says work landed that the repository says did not.
-  Two registers are read: `tests/_pending.py`, and the `planned_in` markers on
-  the verb registry. `sync` deliberately will not touch these, because repairing
-  them automatically means picking one source of truth to overwrite, which is how
-  the wrong one wins silently. Either reopen the issue or clear the register
-  entry.
+- **Exit 1, drift.** A derived value fell out of date. `board.py sync` repairs
+  it.
+- **Exit 2, contradiction.** A unit's issue is closed while a register still
+  owes it a module, so the board says work landed that the repository says did
+  not. Two registers are read: `tests/_pending.py`, and the `planned_in`
+  markers on the verb registry. `sync` deliberately will not touch these,
+  because repairing them automatically means picking one source of truth to
+  overwrite, which is how the wrong one wins silently. Either reopen the issue
+  or clear the register entry.
 
 Run the audit even when you changed nothing.
 
@@ -80,16 +80,11 @@ clone (R1) and CI answers after the push rather than before it.
 
 ## The order
 
-`board.py next` orders the queue. The list serialized here on 2026-09-07 is
-spent, every line of it landed or was closed back to the ledger by 2026-09-18,
-and its text is in git history. On 2026-09-18 a parity audit against DJ_tools
-found the product could not finish an acquisition workflow, and the board
-gained Phase G, units U67 onward, plus the residuals that meet the board bar.
-`docs/ideation/2026-09-18-parity-to-feature-complete.md` is the design those
-units were cut from, read for reasoning, never for instruction. The issue is
-the brief.
-
-**#29, U29, stays attended and is never a session's to take.** METHOD's do-not-touch section says why.
+`board.py next` orders the queue; the issue is the brief. The order of
+2026-09-07, Phase G (U67 onward, from the parity audit of 2026-09-18) and
+`docs/ideation/2026-09-18-parity-to-feature-complete.md` are history, read
+for reasoning, never for instruction. **#29, U29, stays attended and is never
+a session's to take.** METHOD's do-not-touch section says why.
 
 ## Relay, retired 2026-10-27
 

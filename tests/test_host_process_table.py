@@ -1,14 +1,10 @@
 """U232: the suite reads the same whether or not rekordbox is running on the host.
 
-The v0.13.0 cut was refused on a red Mac battery because rekordbox was open on
-the machine, and two tests read the host's real process table. ``tests/conftest.py``
-now answers both routes to that table as a machine with no rekordbox, and trips
-on psutil's own enumeration beneath them. This file proves the three halves of
-that: the stubs answer clear with rekordbox open on the host, a test that opts
-in by name still reads the real host, and a test that reaches psutil's
-enumeration without the opt in fails, even when the code it called swallowed
-the refusal. The fake host is ``tests/_host_processes.py``, installed at psutil
-itself so it is what the real scan would read.
+``tests/conftest.py`` answers both routes to the process table as a machine with
+no rekordbox and trips on psutil's enumeration beneath them. Proved here: the
+stubs read clear with rekordbox open on the fake host (``tests/_host_processes.py``,
+installed at psutil itself), an opted-in test reads the real host, and a test
+reaching the enumeration without the opt in fails even if its code swallowed it.
 """
 
 from __future__ import annotations
@@ -30,9 +26,7 @@ pytest_plugins = ("pytester",)
 REAL_WALK = pyrekordbox.utils.get_process_id
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # rekordbox open on the host, read through the stubs
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_fake_host_lists_rekordbox_and_its_agent(rekordbox_on_the_host):
@@ -92,9 +86,7 @@ def test_a_test_that_fakes_rekordbox_at_the_seam_still_sees_it(rekordbox_on_the_
     assert processes.rekordbox_processes_running() == ("rekordboxAgent",)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The opt in, by name
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.real_process_table
@@ -104,21 +96,15 @@ def test_a_test_opted_in_reads_the_real_host():
     try:
         listed = processes.running_processes()
     except processes.AbsenceUnconfirmed as exc:
-        # A host process the scan could not read is the host's own business;
-        # what it did read is still the real table.
+        # An unreadable host process is the host's business; what it read is still real.
         listed = exc.read
     assert (os.getpid(), psutil.Process().name()) in listed
 
 
 @pytest.mark.real_process_table
 def test_the_fake_host_is_what_the_real_scan_reads(rekordbox_on_the_host):
-    """The fake host models the Mac the cut was refused on, read without the stubs.
-
-    pyrekordbox answers the FIRST process of a name, so on a host where
-    rekordbox is really open that is the real one, never asserted to be a
-    faked pid (U232, review round one): what is asserted is that the walk
-    finds a rekordbox and that the faked pids are on the table it walks.
-    """
+    """Read without the stubs. pyrekordbox answers the first process of a name,
+    maybe a real one, so the faked pids are asserted on the table it walks."""
     assert processes.rekordbox_processes_running() == ("rekordbox", "rekordboxAgent")
     for found, name in (
         (pyrekordbox.utils.get_rekordbox_pid(), "rekordbox"),
@@ -127,8 +113,7 @@ def test_the_fake_host_is_what_the_real_scan_reads(rekordbox_on_the_host):
     ):
         assert found != 0
         assert psutil.Process(found).name() == name
-    # Names read for the faked pids only: a real process can be gone or denied
-    # by the time it is read, which is the host's business, not this test's.
+    # Names read for the faked pids only: a real process can be gone by then.
     walked = {proc.pid: proc for proc in psutil.process_iter()}
     assert {pid: walked[pid].name() for pid in rekordbox_on_the_host if pid in walked} == _host_processes.OPEN
     assert rb_writer.rekordbox_processes_running() == "rekordbox, rekordboxAgent"
@@ -138,9 +123,7 @@ def test_the_marker_is_registered(pytestconfig):
     assert any(line.startswith(f"{REAL_PROCESS_TABLE}:") for line in pytestconfig.getini("markers"))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The guard: a test that reaches the real table without the opt in fails
-# ═══════════════════════════════════════════════════════════════════════════
 
 INNER = '''
 import psutil
@@ -181,13 +164,8 @@ def _inner_run(pytester):
 
 @pytest.mark.real_process_table
 def test_a_test_reaching_psutils_enumeration_without_the_opt_in_fails(pytester):
-    """Over the real conftest, in an inner session of its own.
-
-    The inner session runs in this process, so this test carries the opt in
-    itself: the inner session's own fixtures are the only ones that act.
-    """
+    """Over the real conftest in an in-process inner session, so this test opts in itself."""
     result = _inner_run(pytester)
-
     result.assert_outcomes(passed=4, errors=2)
     out = result.stdout.str()
     assert "ERROR at teardown of test_reaches_process_iter_and_swallows_the_refusal" in out

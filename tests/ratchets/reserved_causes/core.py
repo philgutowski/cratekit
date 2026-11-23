@@ -358,17 +358,17 @@ KEBAB_LITERALS = {
         'upgrade-cratekit',
         'wait-for-holder',
     ],
+    # 2026-11-22, U301: the drive loop moved to core/jobs_drive.py.
     'core/jobs.py': [
         'internal-error',
         'job-driver-held',
         'job-not-retryable',
         'job-schema-mismatch',
         'job-unknown',
-        'mixed-permanent-failures',
         'no-evidence',
-        'unavailable-transient',
         'utf-8',
     ],
+    'core/jobs_drive.py': ['internal-error', 'mixed-permanent-failures', 'unavailable-transient'],
     'core/naming.py': ['utf-8'],
     # 2026-11-11, U241: the name of the thread a stream worker watches its parent with.
     # 2026-11-21, U293: the night's ledger joined.
@@ -448,12 +448,11 @@ KEBAB_LITERALS = {
     'core/restore_recovery.py': ['recovery-target-refused'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/restore_retention.py': ['internal-error'],
+    # 2026-11-22, U301: the exchange and the grouping moved to modules of their own.
     'core/review.py': [
         'awaiting-human-action',
         'fallback-source',
-        'item-unusable',
         'label-release',
-        'local-verdict-stands',
         'path-repair',
         'review-already-resolved',
         'review-file-unusable',
@@ -463,10 +462,16 @@ KEBAB_LITERALS = {
         'review-schema-mismatch',
         'review-selection-invalid',
         'utf-8',
-        'verdict-not-applied',
-        'verdict-unreadable',
         'version-match',
     ],
+    'core/review_exchange.py': [
+        'item-unusable',
+        'local-verdict-stands',
+        'review-file-unusable',
+        'verdict-not-applied',
+        'verdict-unreadable',
+    ],
+    'core/review_groups.py': ['label-release', 'review-selection-invalid'],
     'core/routing.py': ['not-judged'],
     'core/secrets.py': [
         'bandcamp-session',  # 2026-10-28, U176
@@ -656,12 +661,7 @@ NAMED_WITH_OWN = {
         'replace-file',
         'resolve-session',
     ],
-    'core/review.py': [
-        'fallback-source',
-        'label-release',
-        'path-repair',
-        'version-match',
-    ],
+    # 2026-11-22, U301: core/review.py's entry left with the surfaces table.
     'core/routing.py': ['not-judged'],
     'core/secrets.py': ['install-keychain-backend', 'repair-credential-store', 'set-credential'],
     # 2026-11-21, U293: the staging lock joined.
@@ -675,7 +675,6 @@ NAMED_WITH_INTEGER = frozenset({
     'core/exit_codes.py',
     'core/preflight.py',
     'core/reconcile.py',
-    'core/review.py',
 })
 
 LITERAL_HOLDERS = {
@@ -700,6 +699,7 @@ LITERAL_HOLDERS = {
         'unsupported-platform',
         'upgrade-cratekit',
     ],
+    # 2026-11-22, U301: the drive loop moved to core/jobs_drive.py.
     'core/jobs.py': [
         'cancelled',
         'internal-error',
@@ -707,10 +707,9 @@ LITERAL_HOLDERS = {
         'job-not-retryable',
         'job-schema-mismatch',
         'job-unknown',
-        'mixed-permanent-failures',
         'no-evidence',
-        'unavailable-transient',
     ],
+    'core/jobs_drive.py': ['internal-error', 'mixed-permanent-failures', 'unavailable-transient'],
     # 2026-11-05, U211: the scan's refusal for a process it could not read.
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
@@ -774,6 +773,9 @@ LITERAL_HOLDERS = {
         'review-schema-mismatch',
         'review-selection-invalid',
     ],
+    # 2026-11-22, U301: the exchange and the grouping moved to modules of their own.
+    'core/review_exchange.py': ['review-file-unusable'],
+    'core/review_groups.py': ['review-selection-invalid'],
     'core/secrets.py': ['credential-index-unreadable'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/session.py': ['awaiting-import', 'internal-error', 'session-committed-unverified'],

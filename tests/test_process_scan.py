@@ -1,16 +1,9 @@
 """U211: a process the rekordbox scan cannot read never ends a gated write as INTERNAL.
 
-Sitting 54 ended a live ``crate sync pair`` apply, both gates answered, as
-``INTERNAL: SystemError: <built-in function proc_cmdline> returned a result
-with an exception set``. A Pioneer daemon had leaked hundreds of zombies, and
-psutil's ``name()`` on macOS reads the command line for a long name, which
-raised out of a process as it died.
-
-Every scenario the brief names is driven here against a fake process table
-that raises exactly what psutil raises, with psutil's own exception classes:
-the scan itself, the writer's pyrekordbox probe and the binding's own probe at
-open and commit, a gated ``sync pair`` through the dispatcher that meets the
-refusal and is continued with ``--run``, and doctor's two process checks.
+psutil's ``name()`` raised ``SystemError`` out of a dying process. Driven over
+a fake process table raising what psutil raises: the scan, the writer's probe,
+the binding's probe at open and commit, a gated ``sync pair`` continued with
+``--run``, doctor's process checks and the backup's plan.
 """
 
 from __future__ import annotations
@@ -41,25 +34,20 @@ from tests.test_sync_pair import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_sync_pair import sync as sync_both
 from tests.test_sync_pair import world as world  # noqa: PLC0414
 
-#: The writer's two probes as shipped, captured before any fixture fakes them,
-#: so the end to end scenario drives their fallback rather than a stand in.
+#: The writer's two probes as shipped, captured before any fixture fakes them.
 REAL_PROBES = {
     "rekordbox_running": rb_writer.rekordbox_running,
     "rekordbox_agent_running": rb_writer.rekordbox_agent_running,
 }
 
-#: pyrekordbox's own walk as shipped, captured before ``tests/conftest.py``
-#: stubs it for every test (U232), so the tests that drive pyrekordbox over a
-#: fake ``psutil.process_iter`` put it back and read the walk they mean to.
+#: pyrekordbox's own walk as shipped, captured before ``tests/conftest.py`` stubs it (U232).
 REAL_WALK = pyrekordbox.utils.get_process_id
 
 #: The error the sitting met, word for word.
 DYING = SystemError("<built-in function proc_cmdline> returned a result with an exception set")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A process table that fails the way psutil fails
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class FakeProcess:
@@ -105,8 +93,7 @@ class FakeTable:
         if pid in self._built_raises:
             raised = self._built_raises[pid]
             if isinstance(raised, list):
-                # One answer per construction, so a process can fail as it is
-                # built and read differently the second time it is asked.
+                # One answer per construction: fail as built, read differently next time.
                 raise raised.pop(0)
             raise raised
         return self._by_pid[pid]
@@ -124,10 +111,14 @@ def finder(pid=200):
     return FakeProcess(pid, name="Finder")
 
 
+def dying(pid=300, **status):
+    """A process whose name raises what the sitting met, with its status or what that raises."""
+    return FakeProcess(pid, raises=DYING, **status)
+
+
 @pytest.fixture
 def table(monkeypatch):
     """Install a fake process table as the platform, and hand back the installer."""
-
     def install(*processes_, **kwargs) -> FakeTable:
         made = FakeTable(*processes_, **kwargs)
         monkeypatch.setattr(processes, "_platform", lambda: made)
@@ -140,20 +131,13 @@ def _scanned() -> tuple[str, ...]:
     return processes.rekordbox_processes_running()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The scan
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_readable_rekordbox_is_reported_running(table):
     table(finder(), rekordbox(), agent())
     assert _scanned() == ("rekordbox", "rekordboxAgent")
     assert processes.running_process_names() == ("rekordbox", "rekordboxAgent", "Finder")
-
-
-def test_a_machine_with_no_rekordbox_reads_clear(table):
-    table(finder(), FakeProcess(201, name="Safari"))
-    assert _scanned() == ()
 
 
 @pytest.mark.parametrize(
@@ -165,36 +149,63 @@ def test_a_process_psutil_reports_gone_denied_or_zombie_is_skipped(table, raised
     table(FakeProcess(300, raises=raised), rekordbox(), finder())
     assert _scanned() == ("rekordbox",)
     assert "Finder" in processes.running_process_names()
-
-
-@pytest.mark.parametrize(
-    "raised",
-    [psutil.NoSuchProcess(300), psutil.AccessDenied(300), psutil.ZombieProcess(300)],
-    ids=["gone", "denied", "zombie"],
-)
-def test_a_skipped_process_alone_leaves_the_machine_clear(table, raised):
+    # Alone beside nothing else of note, it leaves the machine clear.
     table(FakeProcess(300, raises=raised), finder())
     assert _scanned() == ()
 
 
-def test_a_system_error_on_a_process_whose_status_reads_zombie_is_skipped(table):
-    """The sitting's own case: the dying daemon, read as it died."""
-    table(FakeProcess(300, raises=DYING, status=psutil.STATUS_ZOMBIE), finder())
-    assert _scanned() == ()
+#: Tables the scan reads to an answer: (processes, table options), the answer.
+READ = {
+    "no-rekordbox": (lambda: ((finder(), FakeProcess(201, name="Safari")), {}), ()),
+    "system-error-then-status-zombie": (
+        lambda: ((dying(status=psutil.STATUS_ZOMBIE), finder()), {}), ()
+    ),
+    "system-error-then-gone": (
+        lambda: ((dying(status_raises=psutil.NoSuchProcess(300)), rekordbox()), {}), ("rekordbox",)
+    ),
+    "system-error-then-zombie": (
+        lambda: ((dying(status_raises=psutil.ZombieProcess(300)), rekordbox()), {}), ("rekordbox",)
+    ),
+    # Running is established, so it is the answer; unknown is only for a scan that saw none.
+    "rekordbox-read-beside-an-unreadable-process": (
+        lambda: ((dying(), agent()), {}), ("rekordboxAgent",)
+    ),
+    "fails-to-build-then-gone": (
+        lambda: ((finder(),), {"built_raises": {300: [DYING, psutil.NoSuchProcess(300)]}}), ()
+    ),
+}
 
 
-@pytest.mark.parametrize(
-    "status_raises",
-    [psutil.NoSuchProcess(300), psutil.ZombieProcess(300)],
-    ids=["gone", "zombie"],
-)
-def test_a_system_error_on_a_process_then_gone_or_zombie_is_skipped(table, status_raises):
-    table(FakeProcess(300, raises=DYING, status_raises=status_raises), rekordbox())
-    assert _scanned() == ("rekordbox",)
+@pytest.mark.parametrize("made,answer", READ.values(), ids=READ.keys())
+def test_a_process_that_is_dead_or_dying_is_skipped(table, made, answer):
+    processes_, options = made()
+    table(*processes_, **options)
+    assert _scanned() == answer
+
+
+#: Tables holding one live process 300 the scan cannot read, which refuses naming it.
+UNREADABLE = {
+    "status-unreadable-too": lambda: ((dying(status_raises=psutil.AccessDenied(300)),), {}),
+    "runtime-error": lambda: (
+        (FakeProcess(300, raises=RuntimeError("an answer this reader has never seen")),), {}
+    ),
+    "os-error": lambda: ((FakeProcess(300, raises=OSError(5, "Input/output error")),), {}),
+    # psutil builds a process before it reads one, and building can raise as well.
+    "cannot-even-be-built": lambda: ((finder(),), {"built_raises": {300: DYING}}),
+}
+
+
+@pytest.mark.parametrize("made", UNREADABLE.values(), ids=UNREADABLE.keys())
+def test_any_error_on_a_live_process_refuses_rather_than_reading_absent(table, made):
+    processes_, options = made()
+    table(*processes_, **options)
+    with pytest.raises(processes.AbsenceUnconfirmed) as caught:
+        _scanned()
+    assert caught.value.cause.detail["pids"] == [300]
 
 
 def test_a_system_error_on_a_live_process_refuses_naming_the_pid(table):
-    table(FakeProcess(300, raises=DYING), finder())
+    table(dying(), finder())
     with pytest.raises(processes.AbsenceUnconfirmed) as caught:
         _scanned()
     cause = caught.value.cause
@@ -209,37 +220,6 @@ def test_a_system_error_on_a_live_process_refuses_naming_the_pid(table):
     assert any("ps -p 300" in step for step in cause.remediation.steps)
 
 
-def test_a_live_process_whose_status_is_unreadable_too_refuses(table):
-    table(FakeProcess(300, raises=DYING, status_raises=psutil.AccessDenied(300)))
-    with pytest.raises(processes.AbsenceUnconfirmed):
-        _scanned()
-
-
-@pytest.mark.parametrize(
-    "raised",
-    [RuntimeError("an answer this reader has never seen"), OSError(5, "Input/output error")],
-    ids=["runtime", "os"],
-)
-def test_any_other_error_on_a_live_process_refuses_rather_than_reading_absent(table, raised):
-    table(FakeProcess(300, raises=raised))
-    with pytest.raises(processes.AbsenceUnconfirmed) as caught:
-        _scanned()
-    assert caught.value.cause.detail["pids"] == [300]
-
-
-def test_a_process_that_cannot_even_be_built_is_judged_the_same_way(table):
-    """psutil builds a process before it reads one, and building can raise as well."""
-    table(finder(), built_raises={300: DYING})
-    with pytest.raises(processes.AbsenceUnconfirmed) as caught:
-        _scanned()
-    assert caught.value.cause.detail["pids"] == [300]
-
-
-def test_a_process_that_fails_to_build_and_is_then_gone_is_skipped(table):
-    table(finder(), built_raises={300: [DYING, psutil.NoSuchProcess(300)]})
-    assert _scanned() == ()
-
-
 def test_a_process_list_that_cannot_be_read_refuses_with_no_pid(table):
     table(pids_raises=OSError(1, "Operation not permitted"))
     with pytest.raises(processes.AbsenceUnconfirmed) as caught:
@@ -251,10 +231,10 @@ def test_a_process_list_that_cannot_be_read_refuses_with_no_pid(table):
 
 def test_the_whole_list_is_walked_and_every_unreadable_pid_is_named(table):
     table(
-        FakeProcess(300, raises=DYING),
+        dying(),
         finder(),
-        FakeProcess(301, raises=DYING),
-        FakeProcess(302, raises=DYING, status=psutil.STATUS_ZOMBIE),
+        dying(301),
+        dying(302, status=psutil.STATUS_ZOMBIE),
     )
     with pytest.raises(processes.AbsenceUnconfirmed) as caught:
         _scanned()
@@ -263,34 +243,28 @@ def test_the_whole_list_is_walked_and_every_unreadable_pid_is_named(table):
 
 
 def test_many_unreadable_pids_are_counted_past_the_named_ones(table):
-    dying = [FakeProcess(300 + n, raises=DYING) for n in range(processes.NAMED_PIDS + 3)]
-    table(*dying)
+    unreadable = [dying(300 + n) for n in range(processes.NAMED_PIDS + 3)]
+    table(*unreadable)
     with pytest.raises(processes.AbsenceUnconfirmed) as caught:
         _scanned()
     assert "and 3 more" in caught.value.cause.message
     assert len(caught.value.cause.detail["pids"]) == processes.NAMED_PIDS + 3
 
 
-def test_a_rekordbox_the_scan_did_read_is_running_whatever_else_was_unreadable(table):
-    """Running is established, so it is the answer; unknown is only for a scan that saw none."""
-    table(FakeProcess(300, raises=DYING), agent())
-    assert _scanned() == ("rekordboxAgent",)
-
-
 def test_the_careful_pid_answers_as_pyrekordbox_does(table):
-    table(finder(), rekordbox(pid=4242), FakeProcess(300, raises=DYING, status=psutil.STATUS_ZOMBIE))
+    table(finder(), rekordbox(pid=4242), dying(status=psutil.STATUS_ZOMBIE))
     assert processes.rekordbox_pid("rekordbox") == 4242
     assert processes.rekordbox_pid("rekordboxAgent") == 0
 
 
 def test_the_careful_pid_refuses_over_an_unreadable_live_process(table):
-    table(finder(), FakeProcess(300, raises=DYING))
+    table(finder(), dying())
     with pytest.raises(processes.AbsenceUnconfirmed):
         processes.rekordbox_pid("rekordbox")
 
 
 def test_the_careful_pid_names_a_rekordbox_it_read_beside_an_unreadable_process(table):
-    table(rekordbox(pid=4242), FakeProcess(300, raises=DYING))
+    table(rekordbox(pid=4242), dying())
     assert processes.rekordbox_pid("rekordbox") == 4242
     with pytest.raises(processes.AbsenceUnconfirmed):
         processes.rekordbox_pid("rekordboxAgent")
@@ -298,7 +272,6 @@ def test_the_careful_pid_names_a_rekordbox_it_read_beside_an_unreadable_process(
 
 def test_the_scan_does_not_use_process_iter(table, monkeypatch):
     """The iterator dies with the first error it meets, which is the defect itself."""
-
     def refused(*_args, **_kwargs):
         raise AssertionError("process_iter was used")
 
@@ -309,17 +282,11 @@ def test_the_scan_does_not_use_process_iter(table, monkeypatch):
 
 @pytest.mark.real_process_table
 def test_the_seam_is_psutil_when_nothing_replaces_it():
-    """Not a read of this machine's process table, which no test may depend on.
-
-    Opted in by name, since every other test reads the seam as the empty table
-    ``tests/conftest.py`` puts there (U232).
-    """
+    """Opted in by name; every other test reads the conftest's empty table (U232)."""
     assert processes._platform() is psutil
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The writer's mechanism, through pyrekordbox
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -330,34 +297,32 @@ def real_probes(monkeypatch):
     monkeypatch.setattr(pyrekordbox.utils, "get_process_id", REAL_WALK)
 
     def dying_iter(*_args, **_kwargs):
-        # pyrekordbox's own walk, meeting the process as the sitting's did.
-        yield FakeProcess(300, raises=DYING)
+        yield dying()
 
     monkeypatch.setattr(psutil, "process_iter", dying_iter)
 
 
 def test_pyrekordbox_alone_lets_the_dying_process_escape(real_probes):
-    """The defect, measured on the binding this tree ships, so the fallback is needed."""
+    """The defect, measured on the shipped binding, so the fallback is needed."""
     from pyrekordbox.utils import get_rekordbox_pid
-
     with pytest.raises(SystemError):
         get_rekordbox_pid()
 
 
 def test_the_writer_skips_a_zombie_pyrekordbox_could_not_read(real_probes, table):
-    table(FakeProcess(300, raises=DYING, status=psutil.STATUS_ZOMBIE), finder())
+    table(dying(status=psutil.STATUS_ZOMBIE), finder())
     assert rb_writer.rekordbox_processes_running() == ""
     rb_writer.assert_rekordbox_closed("committing")
 
 
 def test_the_writer_still_sees_rekordbox_beside_the_dying_process(real_probes, table):
-    table(FakeProcess(300, raises=DYING, status=psutil.STATUS_ZOMBIE), rekordbox())
+    table(dying(status=psutil.STATUS_ZOMBIE), rekordbox())
     with pytest.raises(rb_writer.RekordboxRunning):
         rb_writer.assert_rekordbox_closed("committing")
 
 
 def test_the_writer_refuses_a_live_unreadable_process_by_name_not_as_internal(real_probes, table):
-    table(FakeProcess(300, raises=DYING), finder())
+    table(dying(), finder())
     with pytest.raises(processes.AbsenceUnconfirmed) as caught:
         rb_writer.assert_rekordbox_closed("committing")
     assert caught.value.cause.reason == processes.UNCONFIRMED
@@ -367,7 +332,6 @@ def test_the_writer_refuses_a_live_unreadable_process_by_name_not_as_internal(re
 def test_a_missing_binding_is_not_read_as_a_scan_that_failed(monkeypatch, table):
     """ImportError is the install's problem, and the scan must not paper over it."""
     import builtins
-
     monkeypatch.setattr(rb_writer, "rekordbox_running", REAL_PROBES["rekordbox_running"])
     real_import = builtins.__import__
 
@@ -382,9 +346,7 @@ def test_a_missing_binding_is_not_read_as_a_scan_that_failed(monkeypatch, table)
         rb_writer.rekordbox_running()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The binding's own probe, at open and at commit
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -400,7 +362,7 @@ def dying_binding(monkeypatch):
 
 
 def test_the_binding_probe_skips_a_zombie_at_commit(dying_binding, table):
-    table(FakeProcess(300, raises=DYING, status=psutil.STATUS_ZOMBIE))
+    table(dying(status=psutil.STATUS_ZOMBIE))
     with rb_writer._binding_probe(strict=True):
         assert dying_binding.get_rekordbox_pid() == 0
     with pytest.raises(SystemError):
@@ -408,45 +370,42 @@ def test_the_binding_probe_skips_a_zombie_at_commit(dying_binding, table):
 
 
 def test_the_binding_probe_names_rekordbox_at_commit(dying_binding, table):
-    table(FakeProcess(300, raises=DYING, status=psutil.STATUS_ZOMBIE), rekordbox(pid=4242))
+    table(dying(status=psutil.STATUS_ZOMBIE), rekordbox(pid=4242))
     with rb_writer._binding_probe(strict=True):
         assert dying_binding.get_rekordbox_pid() == 4242
 
 
 def test_the_binding_probe_refuses_a_live_unreadable_process_at_commit(dying_binding, table):
-    table(FakeProcess(300, raises=DYING))
+    table(dying())
     with rb_writer._binding_probe(strict=True), pytest.raises(processes.AbsenceUnconfirmed):
         dying_binding.get_rekordbox_pid()
 
 
 def test_the_binding_probe_at_open_only_loses_a_warning(dying_binding, table):
-    """At construction the binding only logs whether rekordbox runs; the writer's guard has asked already."""
-    table(FakeProcess(300, raises=DYING))
+    """At construction the binding only logs; the writer's guard has asked already."""
+    table(dying())
     with rb_writer._binding_probe(strict=False):
         assert dying_binding.get_rekordbox_pid() == 0
 
 
 def test_the_binding_probe_keeps_an_answer_the_binding_could_give(monkeypatch, table):
     from pyrekordbox.db6 import database as binding
-
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *a, **k: 77)
-    table(FakeProcess(300, raises=DYING))
+    table(dying())
     with rb_writer._binding_probe(strict=True):
         assert binding.get_rekordbox_pid() == 77
 
 
 def test_the_binding_probe_is_put_back_after_a_refusal(dying_binding, table):
     original = dying_binding.get_rekordbox_pid
-    table(FakeProcess(300, raises=DYING))
+    table(dying())
     with pytest.raises(processes.AbsenceUnconfirmed):
         with rb_writer._binding_probe(strict=True):
             dying_binding.get_rekordbox_pid()
     assert dying_binding.get_rekordbox_pid is original
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A gated sync pair that meets the refusal, then continues with --run
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _answered(w) -> str:
@@ -467,12 +426,9 @@ def _answered(w) -> str:
 def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
     world, cfg, monkeypatch, table, dying_binding
 ):
-    """The brief's end to end scenario, on a pair already marked as the sitting's were.
-
-    Both gates are answered by a person, the write meets the scan, the run is
+    """End to end: both gates answered, the write meets the scan, the run is
     kept with both answers, and ``--run`` writes both sides once the process
-    has finished dying, with no gate asked again.
-    """
+    has died, with no gate asked again."""
     w = world(account=("1", "2"), rekordbox=("2", "3"))
     assert sync_both(w.args())[0] == int(ExitCode.OK)
     before = pairs.PairStore(cfg).get(ACCOUNT)
@@ -486,19 +442,16 @@ def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
     drive(["--run", run_id, *w.args()])
     drive(["run", "decide", run_id, pair_cli.ACCOUNT_GATE, "apply", "--actor", "a-person"])
 
-    # The writer's probes as shipped, over a pyrekordbox walk that meets the
-    # dying process, at the write.
+    # The shipped probes, over a pyrekordbox walk that meets the dying process.
     for name, probe in REAL_PROBES.items():
         monkeypatch.setattr(rb_writer, name, probe)
 
     def pyrekordbox_meets_it(*_args, **_kwargs):
         raise DYING
 
-    import pyrekordbox.utils
-
     monkeypatch.setattr(pyrekordbox.utils, "get_rekordbox_pid", pyrekordbox_meets_it)
     monkeypatch.setattr(pyrekordbox.utils, "get_rekordbox_agent_pid", pyrekordbox_meets_it)
-    table(FakeProcess(300, raises=DYING), finder())
+    table(dying(), finder())
 
     code, refused = drive(["--run", run_id, *w.args()])
 
@@ -512,7 +465,7 @@ def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
     steps = refused["cause"]["remediation"]["steps"]
     assert command in steps[0]
     assert steps[0].startswith("wait a moment for the process to finish exiting")
-    # No step tells the person to start again, which would lose the answers.
+    # No step says start again, which would lose the answers.
     assert not any("run it again" in step for step in steps), steps
     assert "process 300" in refused["cause"]["message"]
     # Nothing was written on either side and the snapshot did not move.
@@ -523,9 +476,8 @@ def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
     kept = gates.load(run_id)
     assert set(kept.decisions) == {pair_cli.REKORDBOX_GATE, pair_cli.ACCOUNT_GATE}
 
-    # The process finished dying: a zombie now, which the writer's probes, the
-    # scan and the binding's own probe at commit all skip.
-    table(FakeProcess(300, raises=DYING, status=psutil.STATUS_ZOMBIE), finder())
+    # A zombie now, which the probes, the scan and the binding's probe all skip.
+    table(dying(status=psutil.STATUS_ZOMBIE), finder())
     code, done = drive(["--run", run_id, *w.args()])
 
     assert code == int(ExitCode.OK), done
@@ -534,19 +486,14 @@ def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
     assert pairs.PairStore(cfg).get(ACCOUNT).account != before.account
 
 
-
 def test_the_gated_sync_pair_scenario_reads_the_same_with_rekordbox_open_on_the_host(
     rekordbox_on_the_host, world, cfg, monkeypatch, table, dying_binding
 ):
-    """U232: on a Mac with rekordbox open this exited 1 where it expects 0.
-
-    The binding's own probe at commit, ``pyrekordbox.db6.database``'s bound
-    ``get_rekordbox_pid``, walked the real host and refused the commit. The
-    same scenario over a host listing rekordbox and its agent at psutil itself.
-    """
+    """U232: the binding's bound probe must not walk a host showing rekordbox."""
     test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
         world, cfg, monkeypatch, table, dying_binding
     )
+
 
 def test_a_rekordbox_running_refusal_still_ends_the_run_as_failed(world, monkeypatch):
     """The kept set is this one cause, not every refusal on rekordbox's code."""
@@ -560,21 +507,22 @@ def test_a_rekordbox_running_refusal_still_ends_the_run_as_failed(world, monkeyp
     assert refused["outcome"] == "failed"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Doctor reads it the same way
-# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _doctor(configured):
+    return doctor.run(configured, probes=probes(process_lister=processes.running_process_names))
 
 
 def test_doctor_reads_a_skipped_zombie_as_nothing(configured, table):
-    table(FakeProcess(300, raises=DYING, status=psutil.STATUS_ZOMBIE), finder())
-    report = doctor.run(configured, probes=probes(process_lister=processes.running_process_names))
-    closed = find(report, "rekordbox.closed")
+    table(dying(status=psutil.STATUS_ZOMBIE), finder())
+    closed = find(_doctor(configured), "rekordbox.closed")
     assert closed.status is doctor.Status.OK, closed
 
 
 def test_doctor_names_an_unreadable_live_process_as_a_note(configured, table):
-    table(FakeProcess(300, raises=DYING), finder())
-    report = doctor.run(configured, probes=probes(process_lister=processes.running_process_names))
+    table(dying(), finder())
+    report = _doctor(configured)
     closed = find(report, "rekordbox.closed")
     assert closed.status is doctor.Status.INFO, closed
     assert "process 300" in closed.detail
@@ -586,17 +534,13 @@ def test_doctor_names_an_unreadable_live_process_as_a_note(configured, table):
 
 
 def test_doctor_still_fails_a_running_rekordbox_beside_an_unreadable_process(configured, table):
-    table(FakeProcess(300, raises=DYING), rekordbox())
-    report = doctor.run(configured, probes=probes(process_lister=processes.running_process_names))
-    closed = find(report, "rekordbox.closed")
+    table(dying(), rekordbox())
+    closed = find(_doctor(configured), "rekordbox.closed")
     assert closed.status is doctor.Status.FAIL, closed
     assert closed.remedy is Remedy.QUIT_REKORDBOX
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Round one's fixes: one answer from both mechanisms, the backup's files
-# portion, and a continue step that does not say to start again
-# ═══════════════════════════════════════════════════════════════════════════
+# One answer from both mechanisms, and the backup's files portion
 
 
 @pytest.mark.parametrize(
@@ -606,7 +550,7 @@ def test_doctor_still_fails_a_running_rekordbox_beside_an_unreadable_process(con
 )
 def test_both_mechanisms_agree_beside_a_live_unreadable_process(real_probes, table, read):
     """The writer asks one name at a time, and still answers what the scan read."""
-    table(FakeProcess(300, raises=DYING), finder(), *read)
+    table(dying(), finder(), *read)
     try:
         from_scan = processes.rekordbox_processes_running()
     except processes.AbsenceUnconfirmed:
@@ -623,8 +567,8 @@ def test_both_mechanisms_agree_beside_a_live_unreadable_process(real_probes, tab
 
 
 def test_the_writer_refuses_a_read_agent_as_running_not_as_unconfirmed(real_probes, table):
-    """The agent settling after a quit is running; waiting for a dying process will not clear it."""
-    table(FakeProcess(300, raises=DYING), agent())
+    """A read agent is running; waiting for a dying process will not clear it."""
+    table(dying(), agent())
     with pytest.raises(rb_writer.RekordboxRunning) as caught:
         rb_writer.assert_rekordbox_closed("committing")
     assert caught.value.cause.reason == "rekordbox-running"
@@ -641,12 +585,11 @@ def test_a_backup_refuses_the_database_portion_alone_and_still_mirrors(
     database = config.state_path("rekordbox_db", contained)
     database.parent.mkdir(parents=True, exist_ok=True)
     database.write_bytes(b"SQLite format 3\x00")
-    # A library holds its music: an empty folder at the root is what an
-    # unmounted volume leaves, and the files portion refuses it (#893).
+    # An empty library root reads as unmounted, which the files portion refuses (#893).
     track = contained.library.root / "Music" / "fixture.flac"
     track.parent.mkdir(parents=True, exist_ok=True)
     track.write_bytes(b"one track")
-    table(FakeProcess(300, raises=DYING), finder())
+    table(dying(), finder())
     plan = backup.plan_backup(
         contained, process_lister=processes.running_process_names, settings_dirs=()
     )

@@ -1,0 +1,1548 @@
+name = "u302-replay-before-b"
+pass_kind = "replay"
+
+[[rows]]
+id = "r172-a.A1_nothing_collides"
+source = { table = "r172-a.json", id = "A1_nothing_collides" }
+description = "Hold nothing, which is the finding itself: two files rendering to one name are promised two renames and the apply performs one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if not found:
+            return held
+        held.update(found)'''
+new = '        return held'
+
+[[rows]]
+id = "r172-a.A2_one_round_only"
+source = { table = "r172-a.json", id = "A2_one_round_only" }
+description = "Ask once rather than to a fixpoint, so a file whose target a collider still holds reads as a chain sort order would resolve. This is the review's first finding, reintroduced"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if not found:
+            return held
+        held.update(found)'''
+new = '''
+        held.update(found)
+        return held'''
+
+[[rows]]
+id = "r172-a.A3_shared_target_ignored"
+source = { table = "r172-a.json", id = "A3_shared_target_ignored" }
+description = "Stop holding several movers that render to one target, keeping only the occupied target half, so an arbitrary winner in sort order takes the name again"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+            sharing = sorted(
+                other.name for other in holders[_key(str(target))] if other != path
+            )'''
+new = '            sharing = []'
+
+[[rows]]
+id = "r172-a.A4_occupied_target_ignored"
+source = { table = "r172-a.json", id = "A4_occupied_target_ignored" }
+description = "Stop holding a mover whose rendered name a file on disk already carries, which is the collision the U67 table drove"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '            elif _key(str(target)) not in sources and target.exists():'
+new = '            elif False:'
+
+[[rows]]
+id = "r172-a.A5_chain_held_too"
+source = { table = "r172-a.json", id = "A5_chain_held_too" }
+description = "Hold a target another mover still holds, which loses a rename that succeeds whenever sort order reaches the occupant first"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '            elif _key(str(target)) not in sources and target.exists():'
+new = '            elif target.exists():'
+
+[[rows]]
+id = "r172-a.A7_targets_compared_exactly"
+source = { table = "r172-a.json", id = "A7_targets_compared_exactly" }
+description = "Compare targets as written instead of through _key, so two names differing only in case are two names on a volume that treats them as one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        for path, target in moving:
+            holders.setdefault(_key(str(target)), []).append(path)
+        sources = {_key(str(path)) for path, _ in moving}
+        found: dict[str, str] = {}
+        for path, target in moving:
+            sharing = sorted(
+                other.name for other in holders[_key(str(target))] if other != path
+            )
+            if len(sharing) == 1:
+                found[str(path)] = (
+                    f"{sharing[0]} renders to the same name, and neither is renamed"
+                )
+            elif sharing:
+                found[str(path)] = (
+                    f"{', '.join(sharing)} render to the same name, and none of them "
+                    f"is renamed"
+                )
+            elif _key(str(target)) not in sources and target.exists():'''
+new = '''
+        for path, target in moving:
+            holders.setdefault(str(target), []).append(path)
+        sources = {str(path) for path, _ in moving}
+        found: dict[str, str] = {}
+        for path, target in moving:
+            sharing = sorted(
+                other.name for other in holders[str(target)] if other != path
+            )
+            if len(sharing) == 1:
+                found[str(path)] = (
+                    f"{sharing[0]} renders to the same name, and neither is renamed"
+                )
+            elif sharing:
+                found[str(path)] = (
+                    f"{', '.join(sharing)} render to the same name, and none of them "
+                    f"is renamed"
+                )
+            elif str(target) not in sources and target.exists():'''
+
+[[rows]]
+id = "r172-a.A9_collides_reported_as_a_rename"
+source = { table = "r172-a.json", id = "A9_collides_reported_as_a_rename" }
+description = "Mark a collision as an ordinary rename in the plan, so nothing in the report says which file is held and the apply attempts it"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '        elif str(path) in collides:'
+new = '        elif False:'
+
+[[rows]]
+id = "r172-b.B11_collision_step_always"
+source = { table = "r172-b.json", id = "B11_collision_step_always" }
+description = "Tell a person to name a file by hand whatever the reason was, which is the review's second finding reintroduced"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    if collides:
+        steps.append('''
+new = '''
+    if True:
+        steps.append('''
+
+[[rows]]
+id = "r172-b.B12_the_first_file_is_not_named"
+source = { table = "r172-b.json", id = "B12_the_first_file_is_not_named" }
+description = "Report the counts without naming the first outstanding file, which is the half of the recorded cost about nothing naming which file stayed put"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''        f"not, the first of them {incomplete[0]['from']}, {incomplete[0]['why']}",'''
+new = '        f"not",'
+
+[[rows]]
+id = "r172-b.B13_detail_carries_nothing"
+source = { table = "r172-b.json", id = "B13_detail_carries_nothing" }
+description = "Drop the outstanding items from the cause detail, so a machine consumer reads a count and no names"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '            "incomplete": incomplete[:INCOMPLETE_SHOWN],'
+new = '            "incomplete": [],'
+
+[[rows]]
+id = "r172-b.B14_diagnostic_surface"
+source = { table = "r172-b.json", id = "B14_diagnostic_surface" }
+description = "Answer on the default surface, which drops the plan and with it every rename that DID land"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        schema=ctx.entry.output_schema or output.current_schema("plan"),
+        data=plan,
+    )'''
+new = '    )'
+
+[[rows]]
+id = "r172-b.B16_referenced_recheck_dropped"
+source = { table = "r172-b.json", id = "B16_referenced_recheck_dropped" }
+description = "A sample of an EXISTING guard: trust the plan's own referenced set instead of reading the collection again after the gate, so a file rekordbox imported while a person decided is renamed out from under its row"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if _is_referenced(path, referenced):
+            _owed('''
+new = '''
+        if False:
+            _owed('''
+
+[[rows]]
+id = "r172-b.B17_claim_dropped"
+source = { table = "r172-b.json", id = "B17_claim_dropped" }
+description = "A sample of an EXISTING guard: rename without claiming the target first, which on this platform replaces the file that holds the name"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+            if not naming.claim_target(target):
+                collided += 1'''
+new = '''
+            if False:
+                collided += 1'''
+
+[[rows]]
+id = "r172-b.B1_ok_whatever_happened"
+source = { table = "r172-b.json", id = "B1_ok_whatever_happened" }
+description = "Answer ok however the sweep went, which is the finding itself: a plan carried out in part is reported as one carried out in full"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    if not incomplete:
+        return ctx.envelope(data=plan, outcome=Outcome.OK)'''
+new = '    return ctx.envelope(data=plan, outcome=Outcome.OK)'
+
+[[rows]]
+id = "r172-b.B2_missing_file_unreported"
+source = { table = "r172-b.json", id = "B2_missing_file_unreported" }
+description = "Skip a file that left while the gate waited in silence, as the shipped verb did"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if not path.is_file():
+            _owed(item, "the file is no longer there")
+            continue'''
+new = '''
+        if not path.is_file():
+            continue'''
+
+[[rows]]
+id = "r172-b.B3_new_row_unreported"
+source = { table = "r172-b.json", id = "B3_new_row_unreported" }
+description = "Hold back a file the collection began referencing after the gate without saying the approved rename did not happen"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+            _owed(
+                item,
+                "the rekordbox collection began referencing it after the plan was "
+                "approved, and renaming it would strand that row",
+            )
+            continue'''
+new = '            continue'
+
+[[rows]]
+id = "r172-b.B5_os_error_unreported"
+source = { table = "r172-b.json", id = "B5_os_error_unreported" }
+description = "Swallow a rename the filesystem refused, leaving a person a clean report over a file that did not move"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+                _owed(item, f"the filesystem refused the rename: {exc.strerror or exc}")
+                continue'''
+new = '                continue'
+
+[[rows]]
+id = "r172-b.B6_tag_write_answer_ignored"
+source = { table = "r172-b.json", id = "B6_tag_write_answer_ignored" }
+description = "Stop reading the answer write_tags returns, so a renamed file whose title never took the head is reported as a rename that happened in full"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if not tags.write_tags(path, {"title": rendered.title_tag}):
+            _owed(item, "it was renamed and its title tag could not be written", at=path)'''
+new = '        tags.write_tags(path, {"title": rendered.title_tag})'
+
+[[rows]]
+id = "r172-b.B8_tag_failure_named_where_it_was"
+source = { table = "r172-b.json", id = "B8_tag_failure_named_where_it_was" }
+description = "Name the tag write failure at the plan's own path, which is the file's name before the rename and a file nobody can go and look at"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '            _owed(item, "it was renamed and its title tag could not be written", at=path)'
+new = '            _owed(item, "it was renamed and its title tag could not be written")'
+
+[[rows]]
+id = "r172-b.B9_renamed_count_is_the_promise"
+source = { table = "r172-b.json", id = "B9_renamed_count_is_the_promise" }
+description = "Count every promised rename as performed rather than counting the ones that were, so totals.renamed is the plan's wish"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        "renamed": renamed,
+        "incomplete": len(incomplete),'''
+new = '''
+        "renamed": len(renames),
+        "incomplete": len(incomplete),'''
+
+[[rows]]
+id = "r239-b.S8_naming_key_off"
+source = { table = "r239-b.json", id = "S8_naming_key_off" }
+description = "the naming verb's collection read passes unlock=False"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py", "tests/test_adopt_apply_cli.py"]
+old = '''
+            require_closed=False,
+            cfg=cfg,
+'''
+new = '''
+            require_closed=False,
+            unlock=False,
+            cfg=cfg,
+'''
+
+[[rows]]
+id = "r500-a.G1_no_refusal"
+source = { table = "r500-a.json", id = "G1_no_refusal" }
+description = "Drop the refusal over dark rows in _referenced, so an unmapped row contributes only a key nothing matches and the file it names is renamed (R-500 as filed)"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    if dark:
+        raise _unmapped_refusal(dark)
+'''
+new = ''
+
+[[rows]]
+id = "r500-a.G2_existence_half_dropped"
+source = { table = "r500-a.json", id = "G2_existence_half_dropped" }
+description = "Drop the existence half of dark, so every unmapped row refuses, including a row whose recorded file is on this machine (the first cut the review rejected)"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):'
+new = '        elif resolved.resolution is locations.Resolution.UNMAPPED:'
+
+[[rows]]
+id = "r500-a.G3_unmapped_half_dropped"
+source = { table = "r500-a.json", id = "G3_unmapped_half_dropped" }
+description = "Drop the UNMAPPED half of dark, so any unresolved row whose text is not a file here refuses, a streaming pseudo-location included"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '        elif resolved.resolution is locations.Resolution.UNMAPPED and not os.path.exists(decoded):'
+new = '        elif not os.path.exists(decoded):'
+
+[[rows]]
+id = "r500-a.G4_lexists"
+source = { table = "r500-a.json", id = "G4_lexists" }
+description = "Ask whether the recorded NAME exists rather than whether it reaches a file, so a link to nothing reads as a row that answered"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = 'not os.path.exists(decoded):'
+new = 'not os.path.lexists(decoded):'
+
+[[rows]]
+id = "r500-a.G5_recorded_key_dropped"
+source = { table = "r500-a.json", id = "G5_recorded_key_dropped" }
+description = "Drop the as recorded key. The existence rule rests on it: an unmapped row whose file exists is excused BECAUSE this key protects the file"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        keys.add(_key(decoded))
+'''
+new = ''
+
+[[rows]]
+id = "r500-b.G9_plural_always"
+source = { table = "r500-b.json", id = "G9_plural_always" }
+description = "Move the singular wording's bound, so one row reads as rows"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '"collection row records" if count == 1 else'
+new = '"collection row records" if count == 0 else'
+
+[[rows]]
+id = "r500-c.G11_prefix_cap_halved"
+source = { table = "r500-c.json", id = "G11_prefix_cap_halved" }
+description = "Halve the cap on the detail's prefix list, a coefficient"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '            "unmapped_prefixes": prefixes[:20],'
+new = '            "unmapped_prefixes": prefixes[:10],'
+
+[[rows]]
+id = "r500-c.G12_remedy_run_doctor"
+source = { table = "r500-c.json", id = "G12_remedy_run_doctor" }
+description = "Carry the deletion pass's run-doctor token, which sends a caller to a report no check of which reads the prefix map"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '        remedy=Remedy.FIX_CONFIG_VALUES,'
+new = '        remedy=Remedy.RUN_DOCTOR,'
+
+[[rows]]
+id = "r500-c.G15_other_host_refuses"
+source = { table = "r500-c.json", id = "G15_other_host_refuses" }
+description = "Existing U67 guard, sampled: a row naming another host raises out of the verb rather than being passed over"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        except locations.LocationDecodeError:
+            continue'''
+new = '''
+        except locations.LocationDecodeError:
+            raise'''
+
+[[rows]]
+id = "r669.E1_key_from_the_head_only"
+source = { table = "r669.json", id = "E1_key_from_the_head_only" }
+description = "Ignore the initialkey tag and take the key from the head alone (U39)"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")'
+new = '    key = head.get("key")'
+
+[[rows]]
+id = "r669.E2_body_from_the_title_tag"
+source = { table = "r669.json", id = "E2_body_from_the_title_tag" }
+description = "Take the filename body from the title tag, the R-168 truncation, for every file"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    stem = naming.strip_head(path.stem, template=template)
+    unnamed = None'''
+new = '''
+    stem = naming.strip_head(title, template=template)
+    unnamed = None'''
+
+[[rows]]
+id = "r669.E3_lossy_from_the_stem_only"
+source = { table = "r669.json", id = "E3_lossy_from_the_stem_only" }
+description = "Read the lossy marker off the filename alone and miss one carried by the title"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '        lossy=marker in path.stem or marker in title,'
+new = '        lossy=marker in path.stem,'
+
+[[rows]]
+id = "r669.G10_apply_trusts_the_plan_for_the_hold"
+source = { table = "r669.json", id = "G10_apply_trusts_the_plan_for_the_hold" }
+description = "Skip the post gate re-read's hold, so a body composed from a tag that is gone is still acted on"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+        built, why = _spec_for(path, template=template, cfg=cfg)
+        if why is not None:
+            _owed(item, why)
+            continue'''
+new = '        built, why = _spec_for(path, template=template, cfg=cfg)'
+
+[[rows]]
+id = "r669.G11_gate_shows_nothing"
+source = { table = "r669.json", id = "G11_gate_shows_nothing" }
+description = "Drop the gate context, which is the R-670 defect exactly"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '    option = ctx.gate.require(spec, digest=plan["digest"], context=_shown(plan, root=root))'
+new = '    option = ctx.gate.require(spec, digest=plan["digest"])'
+
+[[rows]]
+id = "r669.G12_shown_count_is_every_item"
+source = { table = "r669.json", id = "G12_shown_count_is_every_item" }
+description = "Show the item count as the rename count, so the screen overstates what will move"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '        "renames": plan["totals"]["count"],'
+new = '        "renames": len(items),'
+
+[[rows]]
+id = "r669.G13_referenced_held_without_a_reason"
+source = { table = "r669.json", id = "G13_referenced_held_without_a_reason" }
+description = "Carry an empty reason on a referenced item"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = 'REFERENCED_WHY = "the rekordbox collection references it"'
+new = 'REFERENCED_WHY = ""'
+
+[[rows]]
+id = "r669.G17_held_file_never_referenced"
+source = { table = "r669.json", id = "G17_held_file_never_referenced" }
+description = "Mark every uncomposed file unnamed without asking the collection, the review's first finding"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    for path, why in uncomposed:
+        if _is_referenced(path, referenced):'''
+new = '''
+    for path, why in uncomposed:
+        if False:'''
+
+[[rows]]
+id = "r669.G18_drifted_name_renamed_anyway"
+source = { table = "r669.json", id = "G18_drifted_name_renamed_anyway" }
+description = "Rename to whatever the tags render after the gate, the review's second finding"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '        if rendered.filename != item["to"]:'
+new = '        if False:'
+
+[[rows]]
+id = "r669.G19_no_step_for_unnamed"
+source = { table = "r669.json", id = "G19_no_step_for_unnamed" }
+description = "Leave the unnamed step out of the report, so the remedy is to run it again"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if unnamed:
+        steps.append('''
+new = '''
+    if False:
+        steps.append('''
+
+[[rows]]
+id = "r669.G1_identifier_is_no_letters"
+source = { table = "r669.json", id = "G1_identifier_is_no_letters" }
+description = "Widen the identifier test from digits only to no letters, the first draft's rule the review sent back"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '    return stem.strip().isdigit()'
+new = '    return not any(ch.isalpha() for ch in stem)'
+
+[[rows]]
+id = "r669.G20_screen_uncapped"
+source = { table = "r669.json", id = "G20_screen_uncapped" }
+description = "List every planned rename on the gate screen with no bound"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '        "planned": planned[:PLAN_SHOWN],'
+new = '        "planned": planned,'
+
+[[rows]]
+id = "r669.G21_artist_alone_when_no_title_tag"
+source = { table = "r669.json", id = "G21_artist_alone_when_no_title_tag" }
+description = "An identifier with an artist and no title tag at all is renamed to its artist alone"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if not tagged_title:
+        return None, (
+            "its name is an identifier and it carries no title tag, so it is not "
+            "renamed to its artist alone"
+        )'''
+new = '''
+    if not tagged_title:
+        return artist, None'''
+
+[[rows]]
+id = "r669.G2_title_alone_when_no_artist"
+source = { table = "r669.json", id = "G2_title_alone_when_no_artist" }
+description = "An identifier with no artist tag is renamed to its title alone instead of held"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if not artist:
+        return None, (
+            "its name is an identifier and it carries no artist tag, so it is not "
+            "renamed to its title alone"
+        )'''
+new = '''
+    if not artist:
+        return title, None'''
+
+[[rows]]
+id = "r669.G3_artist_alone_when_title_is_a_head"
+source = { table = "r669.json", id = "G3_artist_alone_when_title_is_a_head" }
+description = "An identifier whose title is only a head is renamed to its artist alone"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if not title:
+        return None, (
+            "its name is an identifier and its title tag is only a head, empty once "
+            "the head is removed, so no name can be composed for it"
+        )'''
+new = '''
+    if not title:
+        return artist, None'''
+
+[[rows]]
+id = "r669.G4_order_swapped"
+source = { table = "r669.json", id = "G4_order_swapped" }
+description = "Compose Title - Artist, the other library grammar, instead of the declared Artist - Title"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '    return naming.compose_body(artist, title, sep=template.segment_sep), None'
+new = '    return naming.compose_body(title, artist, sep=template.segment_sep), None'
+
+[[rows]]
+id = "r669.G5_first_artist_only"
+source = { table = "r669.json", id = "G5_first_artist_only" }
+description = "Read the artist through the single value reader, so a multi valued credit names the file for the first artist alone"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    values = tags.read_tag_values(path, "artist")
+    if not values:
+        return None'''
+new = '''
+    values = [tags.read_tag(path, "artist") or ""]
+    if not values:
+        return None'''
+
+[[rows]]
+id = "r669.G6_title_head_kept_in_body"
+source = { table = "r669.json", id = "G6_title_head_kept_in_body" }
+description = "Compose from the title tag verbatim, so a head the live system wrote into the tag lands inside the body"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '    title = naming.strip_head(tagged_title, template=template).strip() if tagged_title else ""'
+new = '    title = tagged_title.strip() if tagged_title else ""'
+
+[[rows]]
+id = "r669.G7_unnamed_left_out_of_the_plan"
+source = { table = "r669.json", id = "G7_unnamed_left_out_of_the_plan" }
+description = "Drop the held identifier files from the plan's items, so the plan omits them silently"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    items.extend(unnamed)
+    return {'''
+new = '    return {'
+
+[[rows]]
+id = "r669.G8_digest_ignores_unnamed"
+source = { table = "r669.json", id = "G8_digest_ignores_unnamed" }
+description = "Compute the digest over everything but the held identifier files, so a held file is not part of what was approved"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+        "digest": digest_of({"kind": "rename", "items": items}),
+        "items": items,
+        "totals": {
+            "count": len(items) - held - len(collides) - len(unnamed),'''
+new = '''
+        "digest": digest_of(
+            {"kind": "rename", "items": [i for i in items if i["action"] != UNNAMED]}
+        ),
+        "items": items,
+        "totals": {
+            "count": len(items) - held - len(collides) - len(unnamed),'''
+
+[[rows]]
+id = "r669.G9_unnamed_not_owed_on_apply"
+source = { table = "r669.json", id = "G9_unnamed_not_owed_on_apply" }
+description = "Owe only collisions on apply, so a sweep over a held identifier file answers ok"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_naming_apply_cli.py"]
+old = '''
+        if item["action"] in (COLLIDES, UNNAMED)
+    ]'''
+new = '''
+        if item["action"] == COLLIDES
+    ]'''
+
+[[rows]]
+id = "r675.E2_key_not_casefolded"
+source = { table = "r675.json", id = "E2_key_not_casefolded" }
+description = "existing layer: the referenced key keeps case, so a row differing from the file only in case no longer protects it"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '    return locations.norm_for_compare(path).casefold()'
+new = '    return locations.norm_for_compare(path)'
+
+[[rows]]
+id = "r675.E4_tombstones_dropped_from_the_read"
+source = { table = "r675.json", id = "E4_tombstones_dropped_from_the_read" }
+description = "existing layer: _recorded reads live rows only, so a tombstone neither protects its file nor counts as dark"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '            return tuple(str(row.FolderPath or "") for row in handle.get_content())'
+new = '''
+            return tuple(
+                str(row.FolderPath or "")
+                for row in handle.get_content()
+                if not row.rb_local_deleted
+            )'''
+
+[[rows]]
+id = "r675.G11_prefixes_dropped"
+source = { table = "r675.json", id = "G11_prefixes_dropped" }
+description = "_unmapped_refusal: the grouped prefixes left out of the detail"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '            "unmapped_prefixes": prefixes[:20],'
+new = '            "unmapped_prefixes": [],'
+
+[[rows]]
+id = "r675.G12_could_name_uncapped"
+source = { table = "r675.json", id = "G12_could_name_uncapped" }
+description = "_unmapped_refusal: the pairs list uncapped, so a fresh setup's 9937 dark rows are 9937 pairs in one envelope"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '            "could_name": [{"row": decoded, "files": named} for decoded, named in dark[:20]],'
+new = '            "could_name": [{"row": decoded, "files": named} for decoded, named in dark],'
+
+[[rows]]
+id = "r675.G13_as_recorded_key_dropped"
+source = { table = "r675.json", id = "G13_as_recorded_key_dropped" }
+description = "_referenced: a row's as recorded key is not added, so a row outside every rule whose file exists no longer protects it"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '''
+        keys.add(_key(decoded))
+        if resolved.path is not None:'''
+new = '        if resolved.path is not None:'
+
+[[rows]]
+id = "r675.G14_remapped_key_dropped"
+source = { table = "r675.json", id = "G14_remapped_key_dropped" }
+description = "_referenced: a row's remapped key is not added, so a row under a mapped old volume name no longer protects its file"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '''
+        if resolved.path is not None:
+            keys.add(_key(resolved.path))
+        elif'''
+new = '''
+        if resolved.path is not None:
+            pass
+        elif'''
+
+[[rows]]
+id = "r675.G15_first_location_dropped"
+source = { table = "r675.json", id = "G15_first_location_dropped" }
+description = "_unmapped_refusal: the first dark location no longer quoted in the message"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '        f"of a file this plan would rename, the first of them {dark[0][0]}, so "'
+new = '        f"of a file this plan would rename, so "'
+
+[[rows]]
+id = "r675.G16_locations_uncapped"
+source = { table = "r675.json", id = "G16_locations_uncapped" }
+description = "_unmapped_refusal: the locations list uncapped"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '            "unmapped_locations": locations_listed[:20],'
+new = '            "unmapped_locations": locations_listed,'
+
+[[rows]]
+id = "r675.G17_prefixes_uncapped"
+source = { table = "r675.json", id = "G17_prefixes_uncapped" }
+description = "_unmapped_refusal: the prefixes list uncapped"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '            "unmapped_prefixes": prefixes[:20],'
+new = '            "unmapped_prefixes": prefixes,'
+
+[[rows]]
+id = "r675.G18_held_candidates_asked_about"
+source = { table = "r675.json", id = "G18_held_candidates_asked_about" }
+description = "_referenced: a candidate the resolved rows hold is still indexed, so a dark row under its name refuses although the file is never renamed"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '''
+        if not _is_referenced(path, referenced):
+            leaves.setdefault(_key(path.name), []).append(str(path))'''
+new = '        leaves.setdefault(_key(path.name), []).append(str(path))'
+
+[[rows]]
+id = "r675.G19_second_step_dropped"
+source = { table = "r675.json", id = "G19_second_step_dropped" }
+description = "_unmapped_refusal: the step for a row no rule can place is left out, so a person with no volume to map is told to map one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '''
+            "when no volume is missing, the row names a file that is gone and no "
+            "rule can place it: rename the file it could be naming by hand, or "
+            "remove that track in rekordbox, then run this again",
+        ),'''
+new = '        ),'
+
+[[rows]]
+id = "r675.G1_every_dark_row_refuses"
+source = { table = "r675.json", id = "G1_every_dark_row_refuses" }
+description = "_referenced: the leaf test dropped, so every dark row refuses, which is the behaviour R-675 measured at 582 rows"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '        if (named := leaves.get(_key(Path(decoded).name)))'
+new = '        if (named := leaves.get(_key(Path(decoded).name)) or [decoded])'
+
+[[rows]]
+id = "r675.G2_row_leaf_not_keyed"
+source = { table = "r675.json", id = "G2_row_leaf_not_keyed" }
+description = "_referenced: the dark row's leaf is looked up as spelled, so a case or composition variant of a candidate's name is another name"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '        if (named := leaves.get(_key(Path(decoded).name)))'
+new = '        if (named := leaves.get(Path(decoded).name))'
+
+[[rows]]
+id = "r675.G3_candidate_leaf_not_keyed"
+source = { table = "r675.json", id = "G3_candidate_leaf_not_keyed" }
+description = "_referenced: the candidates are indexed by their name as spelled, so a keyed lookup never finds one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '        leaves.setdefault(_key(path.name), []).append(str(path))'
+new = '        leaves.setdefault(path.name, []).append(str(path))'
+
+[[rows]]
+id = "r675.G4_could_name_empty"
+source = { table = "r675.json", id = "G4_could_name_empty" }
+description = "_referenced: the candidates in doubt are never collected, so the refusal names rows and no files"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '            "could_name": [{"row": decoded, "files": named} for decoded, named in dark[:20]],'
+new = '            "could_name": [{"row": decoded, "files": []} for decoded, named in dark[:20]],'
+
+[[rows]]
+id = "r675.G5_leaf_compared_as_whole_path"
+source = { table = "r675.json", id = "G5_leaf_compared_as_whole_path" }
+description = "_referenced: the dark row is looked up by its whole decoded path rather than its leaf, so no row under another volume ever matches"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '        if (named := leaves.get(_key(Path(decoded).name)))'
+new = '        if (named := leaves.get(_key(decoded)))'
+
+[[rows]]
+id = "r675.G6_plan_asks_with_no_candidates"
+source = { table = "r675.json", id = "G6_plan_asks_with_no_candidates" }
+description = "_plan_for: the plan's read hands the guard no candidates, so the plan never refuses and only the apply's read can"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '        _referenced(_recorded(cfg), cfg=cfg, renaming=[path for path, _ in candidates])'
+new = '        _referenced(_recorded(cfg), cfg=cfg, renaming=[])'
+
+[[rows]]
+id = "r675.G7_apply_asks_with_no_candidates"
+source = { table = "r675.json", id = "G7_apply_asks_with_no_candidates" }
+description = "name_apply: the read after the gate hands the guard no candidates, so a row that went dark while the gate waited is not seen"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '            _recorded(cfg), cfg=cfg, renaming=[Path(item["path"]) for item in renames]'
+new = '            _recorded(cfg), cfg=cfg, renaming=[]'
+
+[[rows]]
+id = "r675.G8_count_reworded"
+source = { table = "r675.json", id = "G8_count_reworded" }
+description = "_unmapped_refusal: the count's noun reworded, so the message no longer says what was counted"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py", "tests/intake/test_repair_apply.py"]
+old = '    rows = "collection row records" if count == 1 else "collection rows record"'
+new = '    rows = "row records" if count == 1 else "rows record"'
+
+[[rows]]
+id = "u169.N1_relative_read_against_cwd"
+source = { table = "u169.json", id = "N1_relative_read_against_cwd" }
+description = "root_path: take a relative root as it is, read under the working directory, the base's reading"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '    return named if named.is_absolute() else library / named'
+new = '    return named'
+
+[[rows]]
+id = "u169.N2_empty_root_accepted"
+source = { table = "u169.json", id = "N2_empty_root_accepted" }
+description = "root_path: read an empty root as the working directory instead of refusing it"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '    if not given.strip():'
+new = '    if False:'
+
+[[rows]]
+id = "u169.N3_missing_folder_accepted"
+source = { table = "u169.json", id = "N3_missing_folder_accepted" }
+description = "root_folder: accept a folder that is not there"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if tried.is_dir():
+        return tried'''
+new = '''
+    if True:
+        return tried'''
+
+[[rows]]
+id = "u169.N4_name_apply_bypasses"
+source = { table = "u169.json", id = "N4_name_apply_bypasses" }
+description = "name apply: read --root as the base did, bypassing the helper"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_root_option.py", "tests/test_naming_apply_cli.py"]
+old = '    root = root_folder(ctx.args.root, cfg, verb="name apply")'
+new = '    root = Path(ctx.args.root) if ctx.args.root else Path(cfg.library.root)'
+
+[[rows]]
+id = "u212.N1_second_copy_compare"
+source = { table = "u212.json", id = "N1_second_copy_compare" }
+description = "naming_cli.second_copy: two different ISRCs read as one recording"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_second_copy.py"]
+old = '    return mine if tags.isrc_token(tags.read_tag(target, "isrc")) == mine else ""'
+new = '    return mine if tags.isrc_token(tags.read_tag(target, "isrc")) != "" else ""'
+
+[[rows]]
+id = "u212.N3_taken_plain"
+source = { table = "u212.json", id = "N3_taken_plain" }
+description = "naming_cli._taken: always the plain collision, never a second copy"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_second_copy.py"]
+old = '''
+    same = second_copy(path, target)
+    if same:'''
+new = '''
+    same = second_copy(path, target)
+    if False:'''
+
+[[rows]]
+id = "u212.N4_plan_isrc"
+source = { table = "u212.json", id = "N4_plan_isrc" }
+description = "naming_cli._plan_for: the plan item carries no ISRC"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_second_copy.py"]
+old = '''
+            if str(path) in seconds:
+                item["isrc"] = seconds[str(path)]'''
+new = ''
+
+[[rows]]
+id = "u212.N5_claim_plain"
+source = { table = "u212.json", id = "N5_claim_plain" }
+description = "naming_cli.name_apply: a name taken after the plan is always the plain collision, round one's F8"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_second_copy.py", "tests/test_repair_rows.py"]
+old = '''
+                why, same = _taken(
+                    path, target, fallback=f"{rendered.filename} is already taken in the folder"
+                )'''
+new = '                why, same = f"{rendered.filename} is already taken in the folder", ""'
+
+[[rows]]
+id = "u212.N6_cause_step"
+source = { table = "u212.json", id = "N6_cause_step" }
+description = "naming_cli._incomplete_cause: the second copy step is never added"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_second_copy.py"]
+old = '    if any(item.get("isrc") for item in incomplete):'
+new = '    if False:'
+
+[[rows]]
+id = "u39-author-full.R1_filename_source_dropped"
+source = { table = "u39-author-full.json", id = "R1_filename_source_dropped" }
+description = "Head recovery loses the filename source and keeps only the title fallback"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+new = '''
+    head = (
+        naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+
+[[rows]]
+id = "u39-author-full.R2_title_fallback_dropped"
+source = { table = "u39-author-full.json", id = "R2_title_fallback_dropped" }
+description = "Head recovery loses the title fallback that heals the tag then rename crash window"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+        or {}
+    )
+'''
+new = '''
+    head = (
+        naming.parse_head(path.name, template=template)
+        or {}
+    )
+'''
+
+[[rows]]
+id = "u39-author-full.R3_bpm_dropped"
+source = { table = "u39-author-full.json", id = "R3_bpm_dropped" }
+description = "The recovered tempo is discarded, reproducing the head destroying defect"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        bpm=int(head["bpm"]) if "bpm" in head else None,
+'''
+new = '''
+        bpm=None,
+'''
+
+[[rows]]
+id = "u39-author-full.R4_head_key_overrules_tag"
+source = { table = "u39-author-full.json", id = "R4_head_key_overrules_tag" }
+description = "The stale head key wins over a corrected initialkey tag"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+'''
+new = '''
+    key = head.get("key") or tag_key
+'''
+
+[[rows]]
+id = "u39-author-full.R5_junk_tag_admitted"
+source = { table = "u39-author-full.json", id = "R5_junk_tag_admitted" }
+description = "A non Camelot initialkey tag reaches the renderer instead of being ignored"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+'''
+new = '''
+    key = tag_key if tag_key else head.get("key")
+'''
+
+[[rows]]
+id = "u39-author-full.R6_lossy_flag_dropped"
+source = { table = "u39-author-full.json", id = "R6_lossy_flag_dropped" }
+description = "The shared spec loses the lossy flag, recreating the plan and apply disagreement"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=False,
+'''
+
+[[rows]]
+id = "u39-naming-independent.R5_bpm_wrong_type"
+source = { table = "u39-naming-independent.json", id = "R5_bpm_wrong_type" }
+description = "The recovered tempo is coerced to float instead of int"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        bpm=int(head["bpm"]) if "bpm" in head else None,
+'''
+new = '''
+        bpm=float(head["bpm"]) if "bpm" in head else None,
+'''
+
+[[rows]]
+id = "u41-author-full.R1_filename_head_source_dropped"
+source = { table = "u41-author-full.json", id = "R1_filename_head_source_dropped" }
+description = "The filename is no longer a head source, leaving the title as the only one"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+'''
+new = '''
+        naming.parse_head(title, template=template)
+'''
+
+[[rows]]
+id = "u41-author-full.R6_head_key_overrules_tag"
+source = { table = "u41-author-full.json", id = "R6_head_key_overrules_tag" }
+description = "Key precedence reversed, so a corrected key tag can no longer move a file"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    key = tag_key if tag_key and naming.is_camelot(tag_key) else head.get("key")
+'''
+new = '''
+    key = head.get("key") or (tag_key if tag_key and naming.is_camelot(tag_key) else None)
+'''
+
+[[rows]]
+id = "u41-author-full.T1_title_tag_fed_the_filename_body"
+source = { table = "u41-author-full.json", id = "T1_title_tag_fed_the_filename_body" }
+description = "The title tag is rebuilt from the filename body, which stuffs the artist and the album into every tag the apply pass rewrites"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        title=naming.strip_head(title, template=template),
+'''
+new = '''
+        title=naming.strip_head(path.stem, template=template),
+'''
+
+[[rows]]
+id = "u41-author-full.T2_title_field_dropped"
+source = { table = "u41-author-full.json", id = "T2_title_field_dropped" }
+description = "The spec stops carrying a title at all, so render_all falls back to the stem for the tag surface"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        title=naming.strip_head(title, template=template),
+'''
+new = '''
+        title=None,
+'''
+
+[[rows]]
+id = "u41-naming-independent.B1_head_precedence_swapped"
+source = { table = "u41-naming-independent.json", id = "B1_head_precedence_swapped" }
+description = "The title's head is parsed before the filename's, so a stale tag head drags a correct filename backwards"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        naming.parse_head(path.name, template=template)
+        or naming.parse_head(title, template=template)
+'''
+new = '''
+        naming.parse_head(title, template=template)
+        or naming.parse_head(path.name, template=template)
+'''
+
+[[rows]]
+id = "u41-naming-independent.B2_filename_head_source_dropped"
+source = { table = "u41-naming-independent.json", id = "B2_filename_head_source_dropped" }
+description = "The filename is no longer a head source, so only a tag-carried head is recovered"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        naming.parse_head(path.name, template=template)
+'''
+new = '''
+        None
+'''
+
+[[rows]]
+id = "u41-naming-independent.B3_title_head_source_dropped"
+source = { table = "u41-naming-independent.json", id = "B3_title_head_source_dropped" }
+description = "The title is no longer a head source, so the tag-then-rename crash window stops healing"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        or naming.parse_head(title, template=template)
+'''
+new = '''
+        or None
+'''
+
+[[rows]]
+id = "u41-naming-independent.B7_lossy_filename_operand_dropped"
+source = { table = "u41-naming-independent.json", id = "B7_lossy_filename_operand_dropped" }
+description = "U39's K2: the lossy OR loses its filename operand, so a file marked only in its name is renamed to its unmarked form"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=marker in title,
+'''
+
+[[rows]]
+id = "u41-naming-independent.B8_lossy_title_operand_dropped"
+source = { table = "u41-naming-independent.json", id = "B8_lossy_title_operand_dropped" }
+description = "U39's K1: the lossy OR loses its title operand, so a marker surviving only in the tag stops being restored"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        lossy=marker in path.stem or marker in title,
+'''
+new = '''
+        lossy=marker in path.stem,
+'''
+
+[[rows]]
+id = "u41-naming-independent.C1_plan_no_op_filter_dropped"
+source = { table = "u41-naming-independent.json", id = "C1_plan_no_op_filter_dropped" }
+description = "Every audio file enters the plan, including the ones already in convention"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+            if rendered.filename != path.name:
+'''
+new = '''
+            if True:
+'''
+
+[[rows]]
+id = "u67-round-2.C1_action_filter_and_recheck"
+source = { table = "u67-round-2.json", id = "C1_action_filter_and_recheck" }
+description = "Composite: apply every plan item AND drop the re-check before the rename"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '    renames = [item for item in plan["items"] if item["action"] == RENAME]'
+new = '''
+    renames = list(plan["items"])
+    _is_referenced = lambda path, referenced: False  # noqa: E731'''
+
+[[rows]]
+id = "u67.M2_nfc"
+source = { table = "u67.json", id = "M2_nfc" }
+description = "Skip NFC normalisation of the compared path"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '    return locations.norm_for_compare(path).casefold()'
+new = '    return path.casefold()'
+
+[[rows]]
+id = "u67.M3_prefix_resolution"
+source = { table = "u67.json", id = "M3_prefix_resolution" }
+description = "Drop the prefix mapped spelling of a row"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        if resolved.path is not None:
+            keys.add(_key(resolved.path))'''
+new = '''
+        if False:
+            keys.add(_key(resolved.path))'''
+
+[[rows]]
+id = "u67.M6_remote_host_skip"
+source = { table = "u67.json", id = "M6_remote_host_skip" }
+description = "Let a row naming another host raise instead of being skipped"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+        except locations.LocationDecodeError:
+            continue'''
+new = '''
+        except ZeroDivisionError:
+            continue'''
+
+[[rows]]
+id = "u67.M7_absolute_spelling"
+source = { table = "u67.json", id = "M7_absolute_spelling" }
+description = "Ask only the resolved spelling of a candidate"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '    return _key(str(path.absolute())) in referenced or _key(str(path.resolve())) in referenced'
+new = '    return _key(str(path.resolve())) in referenced'
+
+[[rows]]
+id = "u67.M8_resolved_spelling"
+source = { table = "u67.json", id = "M8_resolved_spelling" }
+description = "Ask only the absolute spelling of a candidate"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '    return _key(str(path.absolute())) in referenced or _key(str(path.resolve())) in referenced'
+new = '    return _key(str(path.absolute())) in referenced'
+
+[[rows]]
+id = "u67.R1_refusal_to_empty"
+source = { table = "u67.json", id = "R1_refusal_to_empty" }
+description = "A classified open failure reads as an empty collection instead of refusing"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    except CratekitError as exc:
+        inner = exc.cause'''
+new = '''
+    except CratekitError as exc:
+        return ()
+        inner = exc.cause'''
+
+[[rows]]
+id = "u67.R2_generic_to_empty"
+source = { table = "u67.json", id = "R2_generic_to_empty" }
+description = "A read that fails after the open reads as an empty collection instead of refusing"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+    except Exception as exc:  # noqa: BLE001 - every failed read is one refusal
+        raise refuse('''
+new = '''
+    except Exception as exc:  # noqa: BLE001 - every failed read is one refusal
+        return ()
+        raise refuse('''
+
+[[rows]]
+id = "u67.R3_remedy_passthrough"
+source = { table = "u67.json", id = "R3_remedy_passthrough" }
+description = "Drop the inner remedy, so the refusal defaults to restore-from-snapshot"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+tests = ["tests/test_naming_apply_cli.py"]
+old = '''
+            remedy=inner.remediation.remedy or (None if steps else Remedy.REPORT_DEFECT),
+            steps=steps,'''
+new = '''
+            remedy=None,
+            steps=(),'''
+
+[[rows]]
+id = "u130-c.C5_no_renumber"
+source = { table = "u130-c.json", id = "C5_no_renumber" }
+description = "Leave rekordbox's order as the adds and removals left it"
+file = "src/cratekit/write/playlist_pair.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '            moved = renumber(db, change.playlist_id, change.order)'
+new = '            moved = 0'
+
+[[rows]]
+id = "r318.P1_withdrawn_branch_removed"
+source = { table = "r318.json", id = "P1_withdrawn_branch_removed" }
+description = "row_placement: never answer withdrawn, so a track imported then removed in rekordbox is reported as never imported and the person is sent to import it again"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+tests = ["tests/test_deferred_routing.py", "tests/test_intake_imported.py", "tests/test_rebuild.py", "tests/test_routing_workers.py"]
+old = '''
+    if removed.outcome in (trees.MatchOutcome.MATCHED, trees.MatchOutcome.AMBIGUOUS):
+        # A row exists and every one of them is a tombstone: imported once, then'''
+new = '''
+    if False:
+        # A row exists and every one of them is a tombstone: imported once, then'''
+
+[[rows]]
+id = "r318.P2_withdrawn_on_single_tombstone_only"
+source = { table = "r318.json", id = "P2_withdrawn_on_single_tombstone_only" }
+description = "row_placement: withdrawn only when exactly one tombstone claims the location, two tombstones read as not imported"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+tests = ["tests/test_deferred_routing.py", "tests/test_intake_imported.py", "tests/test_rebuild.py", "tests/test_routing_workers.py"]
+old = '''
+    if removed.outcome in (trees.MatchOutcome.MATCHED, trees.MatchOutcome.AMBIGUOUS):
+        # A row exists and every one of them is a tombstone: imported once, then'''
+new = '''
+    if removed.outcome in (trees.MatchOutcome.MATCHED,):
+        # A row exists and every one of them is a tombstone: imported once, then'''
+
+[[rows]]
+id = "r318.P3_unresolved_branch_removed"
+source = { table = "r318.json", id = "P3_unresolved_branch_removed" }
+description = "row_placement: drop the unresolved answer, so a location no prefix maps falls through to not imported, a configuration failure reported as a missing import"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+tests = ["tests/test_deferred_routing.py", "tests/test_intake_imported.py", "tests/test_rebuild.py", "tests/test_routing_workers.py"]
+old = '''
+    if alive.outcome is trees.MatchOutcome.UNRESOLVED:
+        return Placement.UNRESOLVED
+'''
+new = ''
+
+[[rows]]
+id = "r318.P4_ambiguous_reads_not_imported"
+source = { table = "r318.json", id = "P4_ambiguous_reads_not_imported" }
+description = "row_placement: two live rows claiming a location answer not imported instead of ambiguous"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+tests = ["tests/test_deferred_routing.py", "tests/test_intake_imported.py", "tests/test_rebuild.py", "tests/test_routing_workers.py"]
+old = '''
+    if alive.outcome is trees.MatchOutcome.AMBIGUOUS:
+        return Placement.AMBIGUOUS'''
+new = '''
+    if alive.outcome is trees.MatchOutcome.AMBIGUOUS:
+        return Placement.NOT_IMPORTED'''
+
+[[rows]]
+id = "u155.W2_destination"
+source = { table = "u155.json", id = "W2_destination" }
+description = "destination: resolve no genre sub, so its playlist has no name"
+file = "src/cratekit/write/routing_pass.py"
+surface = "user"
+tests = ["tests/test_adopt_former_place.py", "tests/test_adopt_jazz_folder.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_split_place.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_deferred_routing.py", "tests/test_genre_sub.py", "tests/test_intake_imported.py", "tests/test_intake_land_filing.py", "tests/test_rebuild.py", "tests/test_routing_workers.py"]
+old = '''
+    for genre in bucket.genre_subs:
+        if genre.id == sub_id:
+            return bucket.display, genre.display'''
+new = ''
+
+[[rows]]
+id = "r923.N14_verb_writes_on_abort"
+source = { table = "r923.json", id = "N14_verb_writes_on_abort" }
+description = "The verb proceeds to write whatever the gate answered"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":'
+new = '    if False:'
+
+[[rows]]
+id = "r923.N15_verb_writes_empty_plan"
+source = { table = "r923.json", id = "N15_verb_writes_empty_plan" }
+description = "An empty plan opens the database to write instead of ending as a no op"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '    if not plan.items:'
+new = '    if False:'
+
+[[rows]]
+id = "r923.N16_ack_not_read"
+source = { table = "r923.json", id = "N16_ack_not_read" }
+description = "The verb no longer reads the backup acknowledgment before the plan and the gate"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '''
+    session.assert_backup_acknowledged(cfg)
+'''
+new = ''
+
+[[rows]]
+id = "r923.N17_write_handle_not_closed"
+source = { table = "r923.json", id = "N17_write_handle_not_closed" }
+description = "The write handle no longer requires rekordbox closed at open"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "maintainer"
+tests = ["tests/test_repair_rows.py"]
+old = '    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)'
+new = '    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=False, cfg=cfg)'
+
+[[rows]]
+id = "u115.F18_undecidable_unsaid"
+source = { table = "u115.json", id = "F18_undecidable_unsaid" }
+description = "The gate and the envelope say nothing when the volume's counter has passed the binding's range"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '''
+    if plan.undecidable:
+        notes.append(_undecidable(plan))'''
+new = '''
+    if False:
+        notes.append(_undecidable(plan))'''
+
+[[rows]]
+id = "u115.F19_unrenumbered_unsaid"
+source = { table = "u115.json", id = "F19_unrenumbered_unsaid" }
+description = "The envelope says nothing about the rows left with a random id because their file could not be read"
+file = "src/cratekit/write/row_defaults_cli.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '''
+    if plan.unrenumbered:
+        notes.append(_unrenumbered(plan))'''
+new = '''
+    if False:
+        notes.append(_unrenumbered(plan))'''
+
+[[rows]]
+id = "a32.C1_ack_after_gate"
+source = { table = "a32.json", id = "C1_ack_after_gate" }
+description = "The backup acknowledgment is not read before the gate"
+file = "src/cratekit/write/row_link_cli.py"
+surface = "user"
+tests = ["tests/test_repair_link.py"]
+old = '''
+    session.assert_backup_acknowledged(cfg)
+
+    plan = _plan(cfg, ctx.args)'''
+new = '    plan = _plan(cfg, ctx.args)'
+
+[[rows]]
+id = "a32.C2_abort_writes"
+source = { table = "a32.json", id = "C2_abort_writes" }
+description = "An abort at the gate proceeds to the write"
+file = "src/cratekit/write/row_link_cli.py"
+surface = "user"
+tests = ["tests/test_repair_link.py"]
+old = '    if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":'
+new = '    if ctx.gate.require(spec, plan=data, context=_facts(plan)) not in ("apply", "abort"):'
+
+[[rows]]
+id = "a32.C3_nothing_to_write_applies"
+source = { table = "a32.json", id = "C3_nothing_to_write_applies" }
+description = "A plan that writes nothing reaches the apply"
+file = "src/cratekit/write/row_link_cli.py"
+surface = "user"
+tests = ["tests/test_repair_link.py"]
+old = '''
+    if not plan.writes:
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=[_nothing(plan)])'''
+new = '''
+    if False:
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=[_nothing(plan)])'''
+
+[[rows]]
+id = "a32.C4_read_back_unasserted"
+source = { table = "a32.json", id = "C4_read_back_unasserted" }
+description = "The verb answers OK without asserting the read back"
+file = "src/cratekit/write/row_link_cli.py"
+surface = "user"
+tests = ["tests/test_repair_link.py"]
+old = '''
+    row_link.assert_read_back(written)
+    data["totals"] = {'''
+new = '    data["totals"] = {'

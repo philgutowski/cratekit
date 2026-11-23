@@ -1,21 +1,10 @@
 """U250: a derivation reads each library file through one container open.
 
-``read_truth`` used to ask three single field readers for the genre, the
-energy and the vocal level, and each opened the file again, so every
-``crate converge``, ``crate rebuild``, preview and resort derivation opened
-every file three times, on a library that often sits on a USB drive. It now
-reads the three fields through one :func:`cratekit.core.tags.read_tags` call.
+The proof is the count of ``mutagen.File`` calls, exact on any machine, and
+every reading equals what the three single field readers it replaced give,
+since these derivations decide what the library is written to.
 
-WHAT THESE TESTS HOLD, and why the count is the assertion. The saving is an
-open count, so the proof is the number of ``mutagen.File`` calls, which is
-exact on any machine, rather than a wall clock threshold, which is not. The
-readings must not move by a single value, because these derivations decide
-what the library is written to: every case below compares ``read_truth``
-against the three single field readers it replaced, which are still the
-module's own answer to what each field reads as.
-
-D1 APPLIES TO EVERY NAME HERE. Nothing below names a real volume, a real
-person, or a real track.
+D1 applies: nothing below names a real volume, person or track.
 """
 
 from __future__ import annotations
@@ -57,11 +46,18 @@ def opens(monkeypatch) -> list[Path]:
     return seen
 
 
+#: One second of silence per container, encoded once per process and copied.
+_SILENCE: dict[str, bytes] = {}
+
+
 def _tagged(folder: Path, suffix: str, name: str, fields: dict[str, object]) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
-    probe = synth_container(folder, suffix)
     target = folder / f"{name}{suffix}"
-    probe.rename(target)
+    if suffix in _SILENCE:
+        target.write_bytes(_SILENCE[suffix])
+    else:
+        synth_container(folder, suffix).rename(target)
+        _SILENCE[suffix] = target.read_bytes()
     if fields:
         assert tags.write_tags(target, fields)
     return target
@@ -126,10 +122,8 @@ def test_a_numeric_reading_converts_the_way_the_single_readers_convert(tmp_path)
 def test_an_undecodable_field_reads_none_and_its_neighbours_still_read(tmp_path, opens):
     """An MP4 freeform atom whose bytes are not text: that field alone reads None.
 
-    The single energy reader goes through the strict body and folds the failure
-    into None; the one open goes through the lenient body, which reads None for
-    that field alone. The two must agree, and the genre beside it must survive.
-    """
+    The strict single reader and the lenient one open must agree, and the genre
+    beside it must survive."""
     from mutagen.mp4 import MP4, MP4FreeForm
 
     path = _tagged(tmp_path / "lib", ".m4a", "broken", {"genre": "House", "voxlevel": 30})
@@ -183,11 +177,7 @@ def test_an_unsupported_suffix_reads_absent_and_opens_nothing(tmp_path, opens):
 
 
 def test_a_derivation_over_n_files_makes_n_opens(tmp_path, opens):
-    """The derivation walk: one open per library file, and every reading unchanged.
-
-    This is the card's equality check over a synthetic library: each ``Truth``
-    the walk yields equals the one the three single field readers give.
-    """
+    """The derivation walk: one open per library file, and every reading unchanged."""
     music = tmp_path / "Music"
     made: list[Path] = []
     for index, suffix in enumerate(CONTAINERS):

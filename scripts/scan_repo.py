@@ -1,37 +1,16 @@
 #!/usr/bin/env python3
 """Repository-wide portability and secret scan. Runs as a test, a hook, and a CI gate.
 
-R1 says Cratekit installs on a clean machine with no reference to the author's
-paths, volumes, accounts, or machine. The source system had a guard for that, and
-the guard had three holes wide enough to walk through:
+R1: Cratekit installs on a clean machine with no reference to the author's
+paths, volumes, accounts, or machine. This scans EVERY tracked path, vendored
+trees included, for path and account shapes and for credential shapes.
+Exclusions are exact repo-relative paths, never substrings, and every pattern
+is a shape rather than a fixed string.
 
-1. **It only looked at package Python.** ``grep -rn ... src/dj_tools --include="*.py"``.
-   Tests, docs, shipped skills, shell scripts, HTML templates, and workflow files
-   were all invisible to it. Two live violations sit in exactly those blind spots:
-   a shipped skill telling the reader to work in the author's home directory, and
-   another naming the author's volume. Both pass the source guard today.
-2. **Its exclusion was a filename substring.** ``grep -v "DJ_common/config.py"``
-   exempts any path that CONTAINS that text, so a new file could inherit the
-   exemption by accident of naming. Exclusions here are exact repo-relative paths.
-3. **Its literal set was two hardcoded strings.** One home directory, one volume.
-   A second volume, a second account, or the same volume named without its
-   ``/Volumes/`` prefix all sailed through. The patterns here are derived shapes,
-   not fixed strings.
-
-This module also carries the secret scan, because it is the same question asked
-about a different literal: does a tracked file contain something that belongs to
-one person rather than to the project. It runs over EVERY tracked path, vendored
-trees included. That scope is deliberate. In the source system the artifact that
-gets vendored sits in the same directory as a live OAuth session file holding an
-access token and a refresh token, a credentials env file, and a service token. A
-scan bounded to package source would not look at any of them.
-
-A NOTE ON THIS FILE'S OWN CLEANLINESS. The guard must not be its own violation.
-Nothing here spells the author's home directory, volume, or account. Every
-pattern is a shape. Where a test needs a concrete example of a bad literal, the
-example is assembled from fragments at runtime so this source stays clean. The
-one place real identifiers enter is ``machine_identity_tokens``, which reads them
-from the running machine rather than from this file.
+The guard must not be its own violation: nothing here spells the author's home
+directory, volume, or account. A test's example of a bad literal is assembled
+from fragments at runtime, and ``machine_identity_tokens`` reads real
+identifiers from the running machine rather than from this file.
 
 Usage::
 
@@ -52,47 +31,28 @@ from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# ---------------------------------------------------------------------------
-# Exclusions. EXACT repo-relative POSIX paths, never substrings, never globs.
-#
-# A substring exclusion is how the source guard quietly stopped covering files
-# that had never been reviewed: anything whose path happened to contain the
-# excluded fragment inherited the exemption. An exact path can only ever exempt
-# the one file somebody decided to exempt.
-#
-# Empty on purpose. If an entry is ever needed, it belongs here with a comment
-# saying who decided and why, not spread across the callers.
-# ---------------------------------------------------------------------------
+# Exclusions: EXACT repo-relative POSIX paths, never substrings or globs, so an
+# entry exempts only the one file somebody decided to exempt. Empty on purpose.
 ALLOWED_EXACT: frozenset[str] = frozenset()
 
-# Compressed and packed containers. The content scan cannot read inside one, so
-# a tracked archive is REFUSED rather than skipped: skipping it reported a clean
-# tree over bytes nobody read (R-3). Third-party code is committed unpacked with
-# its provenance recorded, which is what vendor/README.md does.
-ARCHIVE_SUFFIXES = frozenset(
-    {
-        ".zip", ".tar", ".gz", ".tgz", ".bz2", ".tbz", ".tbz2", ".xz", ".txz",
-        ".7z", ".rar", ".zst", ".lz", ".lzma", ".lz4", ".z", ".whl", ".jar",
-        ".egg", ".deb", ".rpm", ".cpio", ".cab", ".ar",
-    }
-)
+# Archives are REFUSED rather than skipped, since the content scan cannot read
+# inside one (R-3); third-party code is committed unpacked with its provenance.
+ARCHIVE_SUFFIXES = frozenset({
+    ".zip", ".tar", ".gz", ".tgz", ".bz2", ".tbz", ".tbz2", ".xz", ".txz",
+    ".7z", ".rar", ".zst", ".lz", ".lzma", ".lz4", ".z", ".whl", ".jar",
+    ".egg", ".deb", ".rpm", ".cpio", ".cab", ".ar",
+})
 
-# Extensions with no text to scan. Read as bytes and skipped early, both to save
-# work and because a binary blob produces meaningless "violations" otherwise.
-# Archives are in this set for the read, and refused separately above it.
-BINARY_SUFFIXES = ARCHIVE_SUFFIXES | frozenset(
-    {
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns",
-        ".pdf",
-        ".db", ".sqlite", ".sqlite3", ".pyc", ".so", ".dylib", ".dll",
-        ".flac", ".wav", ".aiff", ".aif", ".mp3", ".m4a", ".mp4", ".mov",
-        ".woff", ".woff2", ".ttf", ".otf",
-    }
-)
+# Extensions with no text to scan; archives are in it for the read and refused separately.
+BINARY_SUFFIXES = ARCHIVE_SUFFIXES | frozenset({
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns",
+    ".pdf",
+    ".db", ".sqlite", ".sqlite3", ".pyc", ".so", ".dylib", ".dll",
+    ".flac", ".wav", ".aiff", ".aif", ".mp3", ".m4a", ".mp4", ".mov",
+    ".woff", ".woff2", ".ttf", ".otf",
+})
 
-# An archive carried under a name that does not say so is still an archive. The
-# leading bytes are what every extractor reads, so they are what this reads.
-# Offsets, then the bytes expected there.
+# An archive under a neutral name is caught by its leading bytes: offset, then bytes.
 _ARCHIVE_MAGIC: tuple[tuple[int, bytes], ...] = (
     (0, b"PK\x03\x04"),  # zip, and every format built on it (wheel, jar)
     (0, b"PK\x05\x06"),  # an empty zip
@@ -110,86 +70,50 @@ _ARCHIVE_MAGIC: tuple[tuple[int, bytes], ...] = (
     (0, b"MSCF\x00\x00\x00\x00"),  # cab
     (257, b"ustar"),  # tar, whose marker sits after the first header's name field
 )
-# Two markers are ASCII, so each is matched with the structure that follows it
-# rather than on its letters alone, which ordinary prose could start with:
-# bzip2's ``BZh`` with its block size digit and block magic, and cpio's
-# ``07070`` with its variant digit and the hex field after it.
+# bzip2 and cpio markers are ASCII, so each is matched with the structure after
+# it rather than on letters ordinary prose could start with.
 _ASCII_ARCHIVE_MAGIC: tuple[re.Pattern[bytes], ...] = (
     re.compile(rb"\ABZh[1-9]1AY&SY"),
     re.compile(rb"\A07070[127][0-9A-Fa-f]{8}"),
 )
 
-# ---------------------------------------------------------------------------
-# Portability: path and account SHAPES, not fixed strings.
-# ---------------------------------------------------------------------------
-
-# A home directory on any platform, capturing the account segment that follows.
-# The character class stops at anything that would end a path inside prose, a
-# string literal, or a shell command.
+# Portability: path and account SHAPES, not fixed strings. Each class stops at
+# anything that would end a path inside prose, a string literal, or a command.
 _HOME_DIR = re.compile(r"(?:/Users|/home|/root|\\Users)/([^/\\\s\"'`,)\]}:;*]+)")
-
-# A mounted volume on any platform, capturing the volume name.
 _MOUNT = re.compile(r"(?:/Volumes|/mnt|/media)/([^/\\\s\"'`,)\]}:;*]+)")
-
-# A drive-letter path is a machine assumption even without an account name.
 _WINDOWS_DRIVE = re.compile(r"\b[A-Z]:\\\\?(?:Users|Documents)\b")
-
-# An email address is an account identifier.
 _EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
-# Segments that are obviously stand-ins rather than a real account or volume.
-# A doc SHOULD be able to write out a path shape; what it must not do is write
-# out one particular person's path.
-PLACEHOLDER_SEGMENTS = frozenset(
-    {
-        "you", "your", "youruser", "yourname", "user", "username", "USERNAME",
-        "USER", "me", "someone", "somebody", "name", "NAME", "account",
-        "example", "EXAMPLE", "placeholder", "changeme", "CHANGEME",
-        "alice", "bob", "jane", "john", "dj",
-        "LIBRARY", "library", "Library", "VOLUME", "volume", "Volume",
-        "MyLibrary", "MusicLibrary", "MUSIC", "music", "Music",
-        "runner", "root", "ubuntu", "docker", "vscode", "ci", "build", "tmp",
-    }
-)
+# Stand-in segments: a doc may write a path shape, never one person's path.
+PLACEHOLDER_SEGMENTS = frozenset({
+    "you", "your", "youruser", "yourname", "user", "username", "USERNAME",
+    "USER", "me", "someone", "somebody", "name", "NAME", "account",
+    "example", "EXAMPLE", "placeholder", "changeme", "CHANGEME",
+    "alice", "bob", "jane", "john", "dj",
+    "LIBRARY", "library", "Library", "VOLUME", "volume", "Volume",
+    "MyLibrary", "MusicLibrary", "MUSIC", "music", "Music",
+    "runner", "root", "ubuntu", "docker", "vscode", "ci", "build", "tmp",
+})
 
-# Domains that mean "this is an illustration", per RFC 2606.
+# RFC 2606 illustration domains.
 PLACEHOLDER_EMAIL_DOMAINS = ("example.com", "example.org", "example.net", "invalid", "test")
 
-# Account-shaped tokens too generic to be anyone's identifier. Applied only to
-# the RUNTIME-DERIVED identity set below, never to the shape patterns.
-_IDENTITY_STOPWORDS = frozenset(
-    {
-        "root", "runner", "user", "admin", "ubuntu", "build", "ci", "test",
-        "docker", "vscode", "home", "none", "null", "data", "temp", "tmp",
-        "macos", "linux", "windows", "python", "github", "local", "system",
-    }
-)
+# Tokens too generic to be anyone's identifier; applied only to the runtime identity set.
+_IDENTITY_STOPWORDS = frozenset({
+    "root", "runner", "user", "admin", "ubuntu", "build", "ci", "test",
+    "docker", "vscode", "home", "none", "null", "data", "temp", "tmp",
+    "macos", "linux", "windows", "python", "github", "local", "system",
+})
 
 
 def _is_placeholder_segment(segment: str) -> bool:
-    """True when a captured path segment stands in for a real one.
-
-    Anything opening with a templating marker counts, so ``<name>``, ``{user}``,
-    ``$HOME``, and ``%USERPROFILE%`` all read as shapes rather than identities.
-    """
-    if not segment:
-        return True
-    if segment[0] in "<{$%(":
-        return True
-    return segment in PLACEHOLDER_SEGMENTS
+    """True when a captured path segment is a stand-in or opens with a template marker."""
+    return not segment or segment[0] in "<{$%(" or segment in PLACEHOLDER_SEGMENTS
 
 
-# A gitignored, per-clone list of identifiers a contributor knows are theirs:
-# volume names, account handles, machine names. One per line, "#" comments.
-#
-# It exists because the runtime tier below can only see a volume that is MOUNTED
-# RIGHT NOW. Unplug the drive and a bare volume name in a document stops being
-# detectable, which makes the guard depend on what happens to be connected. That
-# is not a guard, it is a coincidence. Declaring the names makes it deterministic.
-#
-# Gitignored on purpose: the file names one person's identifiers, so it is the
-# one thing in the repository that must never ship. `.scan-identity.example`
-# documents the format.
+# A gitignored, per-clone list of a contributor's own identifiers, one per line,
+# "#" comments. The runtime tier sees only a volume mounted now; declaring the
+# names makes the guard deterministic. `.scan-identity.example` has the format.
 IDENTITY_FILE = ".scan-identity"
 
 
@@ -198,38 +122,17 @@ def identity_file_tokens(root: Path) -> set[str]:
     path = root / IDENTITY_FILE
     if not path.is_file():
         return set()
-    tokens = set()
-    for line in path.read_text().splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            tokens.add(line)
-    return tokens
+    lines = (line.split("#", 1)[0].strip() for line in path.read_text().splitlines())
+    return {line for line in lines if line}
 
 
 def machine_identity_tokens(root: Path | None = None) -> set[str]:
     """Identifiers belonging to this machine and this contributor.
 
-    This is the tier that catches a bare volume name, an account name written
-    without its path prefix, or a hostname. Three sources, in order of
-    reliability:
-
-    1. the declared identity file, which is deterministic;
-    2. the ``CRATEKIT_SCAN_IDENTITY`` environment variable, comma separated, for
-       a runner that has no checkout-local file;
-    3. the running system: the login account, the home directory name, the short
-       hostname, and the names of currently mounted volumes.
-
-    Source 3 is a bonus, not the foundation. It reads those values from the
-    machine rather than listing them here, which is the only way to check for the
-    author's own identifiers without this file containing them, but it can only
-    see a volume while it is plugged in.
-
-    On a clean CI machine the whole set is nearly empty and the path SHAPES above
-    do the work, which is correct: a clean machine has no personal identity to
-    leak.
-
-    Short and generic tokens are dropped, because a four-letter account name that
-    is also an English word would flag half the prose in the repository.
+    From the declared identity file, the comma separated
+    ``CRATEKIT_SCAN_IDENTITY`` variable, and the running system (login account,
+    home directory name, short hostname, mounted volume names). Short and
+    generic tokens are dropped, since they would flag ordinary prose.
     """
     tokens: set[str] = set()
 
@@ -246,12 +149,8 @@ def machine_identity_tokens(root: Path | None = None) -> set[str]:
     for declared in os.environ.get("CRATEKIT_SCAN_IDENTITY", "").split(","):
         _add(declared)
 
-    # A Claude Code cloud session runs in a container whose account, hostname
-    # and mounts are the platform's, not a person's: its mount root holds
-    # directories named for the harness's own fixtures, and one of those names
-    # is an ordinary English word that appears in file names across this tree.
-    # Reading them as identity flagged every such file. The declared tiers
-    # above still apply there; only the detected tier is the machine's.
+    # A cloud session's account, hostname and mounts are the platform's, not a
+    # person's, so only the declared tiers apply there.
     if os.environ.get("CLAUDE_CODE_REMOTE"):
         return tokens
 
@@ -262,7 +161,6 @@ def machine_identity_tokens(root: Path | None = None) -> set[str]:
     _add(Path.home().name)
     _add(socket.gethostname().split(".")[0])
 
-    # Names of currently mounted volumes, read from the platform's mount root.
     for mount_root in ("/Volumes", "/media", "/mnt"):
         root = Path(mount_root)
         try:
@@ -277,13 +175,7 @@ def machine_identity_tokens(root: Path | None = None) -> set[str]:
 
 
 def portability_violations(text: str, *, identity_tokens: set[str] | None = None) -> list[str]:
-    """Return one message per portability violation found in ``text``.
-
-    Pure: it takes a string and returns strings. That is what lets the fixture
-    tests prove each rule bites without planting a file in the repository, and it
-    is the same shape the skills lint uses, so rule (d) there can simply call
-    this rather than keeping a second, drifting copy of the literal set.
-    """
+    """One message per portability violation in ``text``; pure, and the skills lint calls it."""
     problems: list[str] = []
 
     for match in _HOME_DIR.finditer(text):
@@ -313,17 +205,8 @@ def portability_violations(text: str, *, identity_tokens: set[str] | None = None
             continue
         problems.append(f"account identifier (email address) {address!r}")
 
-    # Matched case INSENSITIVELY. A volume declared as ``EP_Style_Name`` and
-    # written as ``EP_STYLE_NAME`` is the same drive to the person reading it and
-    # to the case insensitive filesystem it is mounted on, and it was a silent
-    # miss here until 2026-08-27: a test fixture carried the author's real drive
-    # name in upper case through a green suite and a passing scan.
-    #
-    # This is the opposite risk direction from ``PLACEHOLDER_SEGMENTS`` above,
-    # which enumerates its case variants by hand and should stay that way. That
-    # set PERMITS, so a variant it misses becomes a noisy false positive. This
-    # check DENIES, so a variant it misses becomes a silent pass, and a guard
-    # that fails silently is the one shape this module exists to not be.
+    # Case INSENSITIVE: an upper cased volume name is the same drive. This check
+    # denies, so a missed case variant would be a silent pass.
     for token in sorted(identity_tokens or ()):
         if re.search(
             rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])", text, re.IGNORECASE
@@ -337,21 +220,13 @@ def portability_violations(text: str, *, identity_tokens: set[str] | None = None
     return problems
 
 
-# ---------------------------------------------------------------------------
-# Secrets. Credential SHAPES over every tracked path.
-# ---------------------------------------------------------------------------
+# Secrets: credential SHAPES over every tracked path.
 
 SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "OAuth token field",
-        # The shape the source system's session cache uses: a JSON or TOML field
-        # named for a token, carrying a long opaque value.
-        # The separator between words is optional, so client_secret,
-        # clientSecret, client-secret and clientsecret are one rule rather than
-        # four. A real vendored file used the camelCase spelling and this scan
-        # walked straight past five live credential pairs, because the keyword
-        # list had been written in the one casing the author happened to think
-        # of. Naming conventions are not a security boundary.
+        # A field named for a token with a long opaque value; the word separator
+        # is optional so every casing convention is one rule.
         re.compile(
             r"""["']?(?:access[_-]?token|refresh[_-]?token|id[_-]?token"""
             r"""|client[_-]?secret|client[_-]?id|session[_-]?id"""
@@ -371,12 +246,7 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("private key block", re.compile(r"-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----")),
     (
         "credential assignment",
-        # The optional closing quote after the keyword is load-bearing, not
-        # tidiness. Without it this rule matches `secret = "..."` but NOT
-        # `"secret": "..."`, because in the quoted form a quote character sits
-        # between the keyword and the colon where the pattern expects only
-        # whitespace. Every credential in a JSON or JSON-shaped literal takes
-        # the quoted form, which is most of them.
+        # The optional quote after the keyword is what matches the JSON form `"secret": "..."`.
         re.compile(
             r"""(?:api[_-]?key|apikey|secret|password|passwd|passphrase"""
             r"""|auth[_-]?token|access[_-]?secret|access[_-]?key)["']?"""
@@ -386,8 +256,7 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
-# Values that are obviously illustrative. Checked against the whole matched span
-# so a documented example is never mistaken for a live credential.
+# Illustrative values, checked against the whole matched span.
 _PLACEHOLDER_VALUE = re.compile(
     r"(?:<[^>]*>|\$\{[^}]*\}|\{\{[^}]*\}\}|xxx+|\*{3,}|\.\.\.|"
     r"YOUR[_-]|CHANGE[_-]?ME|REPLACE[_-]?ME|PLACEHOLDER|EXAMPLE|DUMMY|FAKE[_-]|"
@@ -395,10 +264,7 @@ _PLACEHOLDER_VALUE = re.compile(
     re.IGNORECASE,
 )
 
-# Filenames that ARE a credential store regardless of what is inside them. This
-# rule exists because of the concrete adjacency the plan calls out: the artifact
-# that gets vendored sits beside a live OAuth session file. A content scan cannot
-# see inside a compressed archive, but it can always see a name.
+# Filenames that ARE a credential store regardless of what is inside them.
 CREDENTIAL_FILENAMES: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?:^|[._-])session\.json$", re.IGNORECASE),
     re.compile(r"session[._-]?(?:cache|token|state)\.json$", re.IGNORECASE),
@@ -410,19 +276,13 @@ CREDENTIAL_FILENAMES: tuple[re.Pattern[str], ...] = (
     re.compile(r"^[a-z0-9_-]*token$", re.IGNORECASE),
 )
 
-# Names that clearly ship a TEMPLATE rather than a filled-in credential.
+# Names that ship a TEMPLATE rather than a filled-in credential.
 _TEMPLATE_NAME = re.compile(r"(?:\.example$|\.sample$|\.template$|^example[._-]|^sample[._-])")
 
 
-# ---------------------------------------------------------------------------
-# Where each secret pattern is run (U257). Every pattern used to be run over
-# every character of every tracked file, which was most of the scan's time:
-# 16.8 of 20.3 seconds on the tree of 2026-11-12. The patterns are not changed
-# and every match is still made by the pattern itself; what follows only leaves
-# out positions and texts where a match is impossible, and each shortcut says
-# beside it why that is a necessary condition. ``tests/test_scan_secret_equality.py``
-# holds the plain loop as the reference and pins equality with it.
-# ---------------------------------------------------------------------------
+# Where each secret pattern is run (U257). Every match is still made by the
+# pattern itself; a shortcut only leaves out positions and texts where a match
+# is impossible. ``tests/test_scan_secret_equality.py`` pins equality with the plain loop.
 
 
 class _LiteralLead(NamedTuple):
@@ -439,11 +299,8 @@ class _KeywordGate(NamedTuple):
     value: re.Pattern[str]
 
 
-# The two case insensitive alternations, declared in the three pieces their
-# sources are written in. A pattern whose source is not exactly
-# ``opening + keywords + _KEY_CLOSE + separator and value`` gets no gate, so an
-# edit to either pattern above costs time and never a finding, and
-# ``test_every_pattern_takes_a_shortcut_on_the_shipped_table`` names it.
+# The two case insensitive alternations in the pieces their sources are written
+# in. A source that is not exactly these pieces gets no gate: time, never a finding.
 _KEY_CLOSE = r"""["']?\s*"""
 _SEPARATOR_AND_VALUE = r"""[:=]\s*["'][^"'\s]{%d,}["']"""
 _KEYWORD_PATTERNS: dict[str, tuple[str, str, int]] = {
@@ -462,22 +319,16 @@ _KEYWORD_PATTERNS: dict[str, tuple[str, str, int]] = {
     ),
 }
 
-# Python's own pattern parser and its opcodes, the ones ``re.compile`` uses, so
-# a shortcut is read off the pattern rather than written beside it. Private
-# modules, and the pre commit hook runs whatever ``python3`` is installed, so
-# their absence costs the shortcuts and never a finding: every pattern is
-# then scanned plainly.
+# Python's own pattern parser, so a shortcut is read off the pattern. Private
+# modules: their absence costs the shortcuts, never a finding.
 try:
     from re import _constants as _re_constants
     from re import _parser as _re_parser
 except ImportError:  # pragma: no cover - the supported Pythons have them
     _re_constants = _re_parser = None
 
-# Every candidate separator for either alternation: a colon or an equals sign,
-# then whitespace, then a quote. A match of either holds exactly this run, and
-# ``finditer`` over it reports every colon or equals sign that opens one,
-# because a run holds one separator and none of its later characters can be
-# one, so no run hides the start of another.
+# Every candidate separator for either alternation; a run holds one separator,
+# so no run hides the start of another.
 _SEPARATOR_RUN = re.compile(r"""[:=]\s*["']""")
 _SPACE = re.compile(r"\s")
 _QUOTES = "\"'"
@@ -494,15 +345,7 @@ def _parsed(pattern: re.Pattern[str]):
 
 
 def _literal_lead(pattern: re.Pattern[str]) -> _LiteralLead | None:
-    """The literal every match of ``pattern`` starts with, read by Python's own parser.
-
-    A case sensitive pattern whose parse opens with an optional word boundary
-    and then one or more literal characters can match only where those
-    characters start, since the boundary is zero width. The literal is read off
-    the parse rather than written beside it, so it cannot drift from the
-    pattern. Anything else, a case insensitive pattern, an opening alternation
-    or class, gets None and is scanned plainly.
-    """
+    """The literal every match of a case sensitive ``pattern`` starts with, or None."""
     parsed = _parsed(pattern)
     if parsed is None or (pattern.flags | parsed.state.flags) & re.IGNORECASE:
         return None
@@ -543,19 +386,9 @@ def _shortcut_for(label: str, pattern: re.Pattern[str]) -> _LiteralLead | _Keywo
 def _keyword_gate_passes(gate: _KeywordGate, text: str) -> bool:
     """False only when the gated pattern has no match anywhere in ``text``.
 
-    A match is: an optional quote, a keyword, an optional quote, whitespace,
-    then the separator and value. So its separator opens a ``_SEPARATOR_RUN``,
-    the value part matches there, and walking back from it over whitespace and
-    at most one quote lands where a keyword ends. The walk cannot pass into the
-    keyword, since no whitespace character is a keyword letter or a quote under
-    the engine's folding (pinned by a test over every code point). Whether a
-    keyword ends there is asked of the engine with the keyword alternation
-    itself, anchored at the window's end, so the folding that lets a dotless i,
-    a dotted capital I, a long s or a Kelvin sign spell a keyword is the
-    engine's own. Both landing points are tried when a quote sits there, which
-    can only pass more texts. A text that passes is scanned whole by the
-    pattern, so the gate decides only whether the pattern runs, never what it
-    finds.
+    A match's separator opens a ``_SEPARATOR_RUN`` where the value matches, and
+    walking back over whitespace (none folds to a keyword letter, pinned by a
+    test) and at most one quote lands where the engine finds a keyword ending.
     """
     for run in _SEPARATOR_RUN.finditer(text):
         separator = run.start()
@@ -583,13 +416,9 @@ def _matches(pattern: re.Pattern[str], shortcut, text: str):
 def _matches_at_literal(pattern: re.Pattern[str], literal: str, text: str):
     """``finditer`` with only the start positions it would have rejected left out.
 
-    ``finditer`` tries each position from the end of its last match onward and
-    keeps the first that matches. A match here starts with ``literal``, so
-    every position where it does not start is a rejection, and the positions
-    ``str.find`` reports are the only ones to try, in the same order and with
-    the same skip past each match: the next position is looked for from the
-    match's end. ``match(text, pos)`` reads the character before ``pos`` for a
-    word boundary exactly as ``finditer`` does there.
+    Every match starts with ``literal``, so only the positions ``str.find``
+    reports are tried, in order, resuming from each match's end as ``finditer``
+    does; ``match(text, pos)`` reads the word boundary before ``pos`` the same way.
     """
     position = text.find(literal)
     while position != -1:
@@ -601,9 +430,7 @@ def _matches_at_literal(pattern: re.Pattern[str], literal: str, text: str):
             position = text.find(literal, match.end())
 
 
-# One shortcut per pattern, in the table's order and paired with it by
-# position, never by label, so two patterns that shared a label could never
-# borrow each other's shortcut.
+# Paired with the table by position, never by label.
 _SECRET_SHORTCUTS: tuple[_LiteralLead | _KeywordGate | None, ...] = tuple(
     _shortcut_for(label, pattern) for label, pattern in SECRET_PATTERNS
 )
@@ -640,11 +467,9 @@ def credential_filename_violations(relative_path: str) -> list[str]:
 
 
 def archive_violations(path: Path, relative_path: str) -> list[str]:
-    """Return a message when a tracked file is a compressed or packed archive.
+    """Return a message when a tracked file is an archive, by name then leading bytes.
 
-    Judged by name first and by leading bytes second, so an archive renamed to
-    something neutral is still refused. A symlink is left to the symlink rule,
-    which owns it, rather than followed here to whatever it points at.
+    A symlink is left to the symlink rule rather than followed.
     """
     message = (
         f"tracked file is an archive the scan cannot read inside: {relative_path!r}; "
@@ -669,36 +494,18 @@ def archive_violations(path: Path, relative_path: str) -> list[str]:
 
 
 def _elide(span: str, keep: int = 12) -> str:
-    """Show enough of a finding to locate it, never enough to leak it.
-
-    A guard that prints the secret it found has copied the secret into CI logs,
-    the terminal scrollback, and any transcript of the run.
-    """
+    """Show enough of a finding to locate it, never enough to leak it into a log."""
     span = span.replace("\n", " ")
     if len(span) <= keep:
         return span
     return f"{span[:keep]}... ({len(span)} chars, elided)"
 
 
-# ---------------------------------------------------------------------------
-# Walking the tree
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# The restart state has no per unit area any more (U124). Every unit used to
-# append its paragraph to the head of RESTART-cratekit.md, so every two
-# branches cut from one base conflicted there and a lane landing waited a
-# merge round per unit. A unit's paragraph is now its own file under
-# docs/restart/, and this file keeps only the sections no unit owns. A
-# paragraph written back into it is refused here, because the hook runs this
-# on every commit that stages the file and CI runs it over the tree.
-# ---------------------------------------------------------------------------
+# The restart state keeps only the sections no unit owns (U124); a unit's
+# paragraph is its own file under docs/restart/ and is refused here.
 RESTART_FILE = "RESTART-cratekit.md"
 
-#: Everything above the first section, exactly. Editing the reader's line is
-#: editing this constant too, which is the point: a unit cannot slip a
-#: paragraph in above the sections without this guard saying so.
+#: Everything above the first section, exactly.
 RESTART_HEAD = (
     "# Restart: Cratekit\n"
     "\n"
@@ -722,23 +529,17 @@ RESTART_HEAD = (
     "\n"
 )
 
-#: The sections no unit owns. A new one is a decision about the restart state
-#: itself, made here, not a place a unit's record can open.
-RESTART_SECTIONS = frozenset(
-    {
-        "## Main, verify before trusting it",
-        "## What is open",
-        "## Do this first",
-        "## The branches",
-        "## When a relay run is cut off mid unit",
-        "## Standing decisions",
-    }
-)
+#: The sections no unit owns.
+RESTART_SECTIONS = frozenset({
+    "## Main, verify before trusting it",
+    "## What is open",
+    "## Do this first",
+    "## The branches",
+    "## When a relay run is cut off mid unit",
+    "## Standing decisions",
+})
 
-#: The openers a record carried, "**U118 built, ...", "**R-857 done, ...",
-#: "**Sitting 35, ...", "**A5 ...": a paragraph that opens on a unit, a
-#: residual, a chore or a sitting is that one's record. Refused anywhere in
-#: the file, inside a kept section too.
+#: A paragraph opening on a unit, residual, chore or sitting is its record; refused anywhere.
 _UNIT_RECORD = re.compile(r"^\*\*(?:U\d+|R-\d+|A\d+|Sitting \d+)\b", re.M)
 
 
@@ -751,7 +552,9 @@ def restart_violations(relative_path: str, text: str) -> list[str]:
     first = re.search(r"^## ", text, re.M)
     head = text[: first.start()] if first else text
     if head != RESTART_HEAD:
-        problems.append(f"the head above the first section is not the fixed reader's line; {remedy}")
+        problems.append(
+            f"the head above the first section is not the fixed reader's line; {remedy}"
+        )
     for heading in re.findall(r"^## .*$", text, re.M):
         if heading not in RESTART_SECTIONS:
             problems.append(f"section {heading[3:]!r} is not one no unit owns; {remedy}")
@@ -762,16 +565,9 @@ def restart_violations(relative_path: str, text: str) -> list[str]:
 
 
 def tracked_paths(root: Path) -> list[Path]:
-    """Every tracked file under ``root``, vendored trees included.
+    """Every tracked or untracked-but-not-ignored file under ``root``, vendored trees included.
 
-    Git is asked first because "would this ship" is the definition that matters.
-    Untracked-but-not-ignored files are included alongside tracked ones on
-    purpose: a violation that has been written but not yet committed is still a
-    violation, and catching it before the commit is the whole value of a guard.
-    Ignored files are excluded, since by definition they never ship.
-
-    Outside a git checkout, and in the fixture tests, this falls back to a
-    filesystem walk so the same checkers can be driven against a synthetic tree.
+    Outside a git checkout this falls back to a filesystem walk.
     """
     try:
         result = subprocess.run(
@@ -807,19 +603,9 @@ def _read_text(path: Path) -> str | None:
 
 
 def symlink_violations(path: Path, root: Path) -> list[str]:
-    """Return one message per portability problem in a symlink's TARGET.
+    """Return a message when a symlink's TARGET is absolute or escapes the repository.
 
-    THE HOLE THIS CLOSES. Every other checker here reads a file's CONTENT, and a
-    symlink has none: following one to a directory raises, the reader returns
-    None, and the entry is skipped before any rule sees it. So a link whose
-    target is an absolute path on the author's machine sailed through a scan that
-    reported clean, and got committed. That happened, with a ``.venv`` symlink
-    pointing at an absolute home directory, on a tree where this scan exited 0.
-
-    A symlink is a portability violation in exactly two shapes: an ABSOLUTE
-    target, which cannot resolve on anyone else's machine, and a relative target
-    that ESCAPES the repository, which resolves to whatever happens to sit beside
-    the clone. A relative link inside the tree is fine and stays fine.
+    A symlink has no content for the other checkers to read.
     """
     try:
         if not path.is_symlink():
@@ -847,9 +633,7 @@ def scan_tree(
 ) -> list[str]:
     """Scan a tree and return every finding as ``"<relative path>: <problem>"``.
 
-    ``check_identity`` exists so the fixture tests can turn off the
-    runtime-derived tier and assert the shape patterns on their own, which keeps
-    those tests deterministic across machines.
+    ``check_identity=False`` turns off the runtime-derived tier for deterministic tests.
     """
     identity = machine_identity_tokens(root) if check_identity else set()
     findings: list[str] = []
@@ -863,17 +647,14 @@ def scan_tree(
             continue
 
         findings += [f"{relative}: {p}" for p in credential_filename_violations(relative)]
-        # Before the content read, because a symlink has no content to read and
-        # is otherwise skipped entirely.
+        # Symlinks and archives before the content read, which returns None for both.
         findings += [f"{relative}: {p}" for p in symlink_violations(path, root)]
-        # Also before the content read, because the reader returns None for an
-        # archive and the loop would otherwise move on as though it were clean.
         findings += [f"{relative}: {p}" for p in archive_violations(path, relative)]
-
         text = _read_text(path)
         if text is None:
             continue
-        findings += [f"{relative}: {p}" for p in portability_violations(text, identity_tokens=identity)]
+        portable = portability_violations(text, identity_tokens=identity)
+        findings += [f"{relative}: {p}" for p in portable]
         findings += [f"{relative}: {p}" for p in secret_violations(text)]
         findings += [f"{relative}: {p}" for p in restart_violations(relative, text)]
 
@@ -882,11 +663,7 @@ def scan_tree(
 
 def main(argv: list[str]) -> int:
     root = Path(os.environ.get("CRATEKIT_SCAN_ROOT", REPO_ROOT)).resolve()
-    # absolute(), never resolve(): resolve() FOLLOWS a symlink, so the path the
-    # checkers receive is the target rather than the link, and the symlink rule
-    # below then sees nothing to judge. This is the path pre-commit uses, because
-    # it passes filenames, so getting it wrong disarms the rule exactly where it
-    # is meant to fire.
+    # absolute(), never resolve(), which would follow a symlink past the symlink rule.
     explicit = [Path(a).absolute() for a in argv[1:]] or None
     findings = scan_tree(root, explicit)
     if not findings:
