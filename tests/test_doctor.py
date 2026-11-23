@@ -149,6 +149,19 @@ def find(report: doctor.Report, key: str) -> doctor.Finding:
     return next(finding for finding in report.findings if finding.key == key)
 
 
+def report_on(where=None, **overrides) -> doctor.Report:
+    """A run on a config, a document or a library root, on ``probes(**overrides)``."""
+    if isinstance(where, Path):
+        where = document_for(where)
+    if isinstance(where, dict):
+        where = config.from_dict(where)
+    return doctor.run(where, probes=probes(**overrides))
+
+
+def finding_on(where, key: str, **overrides) -> doctor.Finding:
+    return find(report_on(where, **overrides), key)
+
+
 def drive(argv: list[str]) -> tuple[int, str, str]:
     import io
 
@@ -164,7 +177,7 @@ def test_every_run_answers_every_declared_check_in_the_declared_order(configured
     """Every key, every run, same order, so two reports diff and no check can
     quietly disappear.
     """
-    report = doctor.run(configured, probes=probes())
+    report = report_on(configured)
     assert tuple(f.key for f in report.findings) == doctor.CHECK_KEYS
     assert len(set(doctor.CHECK_KEYS)) == len(doctor.CHECK_KEYS), "a key is declared twice"
 
@@ -229,7 +242,7 @@ def test_doctor_never_raises_when_there_is_no_configuration_at_all(tmp_path, mon
     """
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "empty"))
     config.reset_cache()
-    report = doctor.run(probes=probes())
+    report = report_on()
 
     assert tuple(f.key for f in report.findings) == doctor.CHECK_KEYS
     present = find(report, "config.present")
@@ -249,7 +262,7 @@ def test_a_configuration_from_a_newer_build_keeps_its_own_remedy(tmp_path, monke
     )
     config.reset_cache()
 
-    present = find(doctor.run(probes=probes()), "config.present")
+    present = finding_on(None, "config.present")
     assert present.status is doctor.Status.FAIL
     assert present.remedy is Remedy.UPGRADE_CRATEKIT
 
@@ -322,9 +335,8 @@ def test_an_unmounted_volume_and_a_moved_volume_produce_different_messages(
     """
     absent = tmp_path / "not-mounted"
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(absent))
-    unmounted = doctor.run(
-        config.from_dict(document_for(absent)),
-        probes=probes(identity_provider=lambda _p: "0000-0000", mount_enumerator=lambda: ()),
+    unmounted = report_on(
+        absent, identity_provider=lambda _p: "0000-0000", mount_enumerator=lambda: ()
     )
 
     elsewhere_root = tmp_path / "configured"
@@ -332,12 +344,10 @@ def test_an_unmounted_volume_and_a_moved_volume_produce_different_messages(
     actually_at = tmp_path / "actually-here"
     actually_at.mkdir()
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(elsewhere_root))
-    moved = doctor.run(
-        config.from_dict(document_for(elsewhere_root)),
-        probes=probes(
-            identity_provider=lambda path: VOLUME if path == actually_at else "0000-0000",
-            mount_enumerator=lambda: (actually_at,),
-        ),
+    moved = report_on(
+        elsewhere_root,
+        identity_provider=lambda path: VOLUME if path == actually_at else "0000-0000",
+        mount_enumerator=lambda: (actually_at,),
     )
 
     first = find(unmounted, "library.mounted")
@@ -352,10 +362,7 @@ def test_a_foreign_volume_at_the_configured_root_is_its_own_answer(library):
     """A restored clone at the root is its own answer, since a directory check
     answers yes on it.
     """
-    report = doctor.run(
-        config.from_dict(document_for(library)),
-        probes=probes(identity_provider=lambda _p: "9999-9999"),
-    )
+    report = report_on(library, identity_provider=lambda _p: "9999-9999")
     identity = find(report, "library.identity")
     assert identity.status is doctor.Status.FAIL
     assert "9999-9999" in identity.detail and VOLUME in identity.detail
@@ -427,7 +434,7 @@ def test_an_unreadable_credential_index_costs_one_check_and_not_the_report(
     machine = probes(credential_recorded=secrets.exists)
 
     keys = {f.key for f in doctor.run(config.from_dict(document_for(library)), probes=machine).findings}
-    green = {f.key for f in doctor.run(config.from_dict(document_for(library)), probes=probes()).findings}
+    green = {f.key for f in report_on(library).findings}
     assert keys == green
 
 
@@ -492,9 +499,8 @@ def test_a_missing_binary_is_reported_with_where_it_comes_from(library):
     """A missing binary is reported before any spend, not part way through a
     paid download.
     """
-    report = doctor.run(
-        config.from_dict(document_for(library)),
-        probes=probes(find_binary=lambda name: None if name == "ffmpeg" else f"/bin/{name}"),
+    report = report_on(
+        library, find_binary=lambda name: None if name == "ffmpeg" else f"/bin/{name}"
     )
     finding = find(report, "binary.ffmpeg")
     assert finding.status is doctor.Status.FAIL
@@ -508,9 +514,8 @@ def test_a_missing_ffmpeg_names_the_analysis_whose_decoder_it_is(library):
     document = document_for(library)
     document["profile"] = {"name": "slim"}
     document["modules"] = {"analysis": True}
-    report = doctor.run(
-        config.from_dict(document),
-        probes=probes(find_binary=lambda name: None if name == "ffmpeg" else f"/bin/{name}"),
+    report = report_on(
+        document, find_binary=lambda name: None if name == "ffmpeg" else f"/bin/{name}"
     )
     finding = find(report, "binary.ffmpeg")
     assert finding.status is doctor.Status.FAIL
@@ -526,9 +531,8 @@ def test_a_binary_no_enabled_verb_needs_is_a_note_rather_than_a_failure(library)
     """
     document = document_for(library)
     document["profile"] = {"name": "slim"}
-    report = doctor.run(
-        config.from_dict(document),
-        probes=probes(find_binary=lambda name: None if name == "rclone" else f"/bin/{name}"),
+    report = report_on(
+        document, find_binary=lambda name: None if name == "rclone" else f"/bin/{name}"
     )
     assert find(report, "binary.rclone").status is doctor.Status.INFO
     assert "no verb this profile switches on" in find(report, "binary.rclone").detail
@@ -540,12 +544,12 @@ def test_doctor_verifies_the_configured_adapter_against_the_contract(library):
     """
     document = document_for(library)
     document["acquisition"] = {"adapter": "streamrip"}
-    ok = doctor.run(config.from_dict(document), probes=probes())
+    ok = report_on(document)
     assert find(ok, "adapter.contract").status is doctor.Status.OK
     assert "streamrip" in find(ok, "adapter.contract").detail
 
     document["acquisition"] = {"adapter": "not-a-real-adapter"}
-    unknown = doctor.run(config.from_dict(document), probes=probes())
+    unknown = report_on(document)
     finding = find(unknown, "adapter.contract")
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.CHOOSE_KNOWN_ADAPTER
@@ -556,7 +560,7 @@ def test_a_configuration_naming_the_retired_vendored_key_passes_the_adapter_chec
     check passes and names the current key."""
     document = document_for(library)
     document["acquisition"] = {"adapter": "tidal_dl_ng"}
-    finding = find(doctor.run(config.from_dict(document), probes=probes()), "adapter.contract")
+    finding = finding_on(document, "adapter.contract")
     assert finding.status is doctor.Status.OK, finding.detail
     assert "'vendored'" in finding.detail
     assert "tidal_dl_ng" not in finding.detail
@@ -574,10 +578,7 @@ def test_an_adapter_whose_name_disagrees_with_the_configuration_is_refused(
             raise NotImplementedError
 
     monkeypatch.setattr("cratekit.acquire.load", lambda _name: Impostor)
-    finding = find(
-        doctor.run(config.from_dict(document_for(library)), probes=probes()),
-        "adapter.contract",
-    )
+    finding = finding_on(library, "adapter.contract")
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.SWITCH_ADAPTER
 
@@ -587,10 +588,7 @@ def test_an_adapter_missing_a_contract_member_is_refused(library, monkeypatch):
         name = "vendored"
 
     monkeypatch.setattr("cratekit.acquire.load", lambda _name: Partial)
-    finding = find(
-        doctor.run(config.from_dict(document_for(library)), probes=probes()),
-        "adapter.contract",
-    )
+    finding = finding_on(library, "adapter.contract")
     assert finding.status is doctor.Status.FAIL
     assert "acquire" in finding.detail
 
@@ -634,17 +632,12 @@ def test_a_specifier_that_compares_nothing_is_not_a_pass():
 
 
 def test_an_unsupported_interpreter_fails_and_an_unreadable_bound_does_not(library):
-    outside = doctor.run(
-        config.from_dict(document_for(library)),
-        probes=probes(python_version=(3, 14, 0)),
-    )
+    outside = report_on(library, python_version=(3, 14, 0))
     finding = find(outside, "interpreter.version")
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.UNSUPPORTED_PLATFORM
 
-    unknown = doctor.run(
-        config.from_dict(document_for(library)), probes=probes(requires_python=None)
-    )
+    unknown = report_on(library, requires_python=None)
     assert find(unknown, "interpreter.version").status is doctor.Status.INFO
 
 
@@ -667,22 +660,14 @@ def test_an_unrecorded_application_pin_fails_and_names_the_installed_version(lib
     """S2: an unset pin refuses every database write, so doctor says so every run."""
     document = document_for(library)
     document["rekordbox"] = {}
-    finding = find(
-        doctor.run(config.from_dict(document), probes=probes()), "rekordbox.pins"
-    )
+    finding = finding_on(document, "rekordbox.pins")
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.RECORD_REKORDBOX_PIN
     assert "7.0.1" in finding.detail
 
 
 def test_a_drifted_application_pin_is_a_different_answer_from_an_unset_one(library):
-    finding = find(
-        doctor.run(
-            config.from_dict(document_for(library)),
-            probes=probes(installed_app_version=lambda _cfg: "8.0.0"),
-        ),
-        "rekordbox.pins",
-    )
+    finding = finding_on(library, "rekordbox.pins", installed_app_version=lambda _cfg: "8.0.0")
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.REVALIDATE_PINS
     assert "frozen by design" in finding.detail
@@ -691,20 +676,14 @@ def test_a_drifted_application_pin_is_a_different_answer_from_an_unset_one(libra
 def test_a_pin_that_was_never_confirmed_against_a_write_is_reported(library):
     document = document_for(library)
     document["rekordbox"] = {"pinned_app_version": "7.0.1"}
-    finding = find(
-        doctor.run(config.from_dict(document), probes=probes()), "rekordbox.pins"
-    )
+    finding = finding_on(document, "rekordbox.pins")
     assert finding.status is doctor.Status.INFO
     assert "a number somebody typed" in finding.detail
 
 
 def test_a_running_rekordbox_agent_is_reported_even_with_the_window_closed(library):
-    finding = find(
-        doctor.run(
-            config.from_dict(document_for(library)),
-            probes=probes(process_lister=lambda: ("rekordboxAgent.exe",)),
-        ),
-        "rekordbox.closed",
+    finding = finding_on(
+        library, "rekordbox.closed", process_lister=lambda: ("rekordboxAgent.exe",)
     )
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.QUIT_REKORDBOX
@@ -723,7 +702,7 @@ def test_a_committed_unverified_session_is_reported_before_the_next_write(config
     )
     session.write_record(record, configured)
 
-    finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+    finding = finding_on(configured, "session.unresolved")
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.RESTORE_FROM_SNAPSHOT
     assert "s-1" in finding.detail
@@ -743,7 +722,7 @@ def test_an_open_session_whose_process_is_gone_names_the_verb_that_ends_it(confi
     orphan = session.open_session(configured, workflow="w", session_id="s-dead", holder=gone)
     live = session.open_session(configured, workflow="w", session_id="s-live", holder=here)
 
-    finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+    finding = finding_on(configured, "session.unresolved")
     assert finding.status is doctor.Status.INFO
     assert f"{orphan.session_id} (open, its process is gone, crate session release" in (
         finding.detail
@@ -757,7 +736,7 @@ def test_an_unreadable_session_record_is_reported_rather_than_dropped(configured
     log.mkdir(parents=True, exist_ok=True)
     (log / "wrecked.json").write_text("{not json")
 
-    finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+    finding = finding_on(configured, "session.unresolved")
     assert finding.status is doctor.Status.FAIL
     assert "wrecked.json" in finding.detail
 
@@ -772,7 +751,7 @@ def test_a_backup_recorded_in_the_future_is_refused_rather_than_treated_as_fresh
         completed_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
         destination="somewhere",
     )
-    finding = find(doctor.run(configured, probes=probes()), "backup.age.files")
+    finding = finding_on(configured, "backup.age.files")
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.REPAIR_BACKUP_FACTS
 
@@ -784,7 +763,7 @@ def test_a_recorded_backup_reports_its_age_and_its_destination(configured):
         completed_at=datetime(2026, 8, 2, tzinfo=timezone.utc) - timedelta(days=9),
         destination="a-remote:bucket",
     )
-    finding = find(doctor.run(configured, probes=probes()), "backup.age.database")
+    finding = finding_on(configured, "backup.age.database")
     assert finding.status is doctor.Status.INFO
     assert "9 days ago" in finding.detail and "a-remote:bucket" in finding.detail
 
@@ -807,7 +786,7 @@ def test_doctor_shows_the_acknowledgments_expiry_beside_the_two_backup_ages(conf
     """U184: the third fact a destructive verb consults, after the two it was minted over."""
     minted = _acknowledged(configured, ACK_NOW - timedelta(hours=2, minutes=30))
 
-    report = doctor.run(configured, probes=probes(now=ACK_NOW))
+    report = report_on(configured, now=ACK_NOW)
 
     finding = find(report, "backup.acknowledgment")
     assert finding.status is doctor.Status.INFO
@@ -823,7 +802,7 @@ def test_doctor_shows_the_acknowledgments_expiry_beside_the_two_backup_ages(conf
 def test_doctor_names_when_an_acknowledgment_lapsed(configured):
     minted = _acknowledged(configured, ACK_NOW - timedelta(hours=13))
 
-    finding = find(doctor.run(configured, probes=probes(now=ACK_NOW)), "backup.acknowledgment")
+    finding = finding_on(configured, "backup.acknowledgment", now=ACK_NOW)
 
     assert finding.status is doctor.Status.INFO
     expires = minted.expires_at.replace(microsecond=0).isoformat()
@@ -832,7 +811,7 @@ def test_doctor_names_when_an_acknowledgment_lapsed(configured):
 
 
 def test_doctor_says_when_no_acknowledgment_is_on_record(configured):
-    finding = find(doctor.run(configured, probes=probes()), "backup.acknowledgment")
+    finding = finding_on(configured, "backup.acknowledgment")
 
     assert finding.status is doctor.Status.INFO
     assert finding.detail.startswith("none on record"), finding.detail
@@ -843,7 +822,7 @@ def test_an_acknowledgment_that_cannot_be_understood_is_a_failure(configured):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{ not json")
 
-    finding = find(doctor.run(configured, probes=probes()), "backup.acknowledgment")
+    finding = finding_on(configured, "backup.acknowledgment")
 
     assert finding.status is doctor.Status.FAIL
     assert "not readable as JSON" in finding.detail
@@ -855,7 +834,7 @@ def test_no_acknowledgment_is_claimed_absent_off_a_volume_nobody_read(configured
     _acknowledged(configured, ACK_NOW)
     configured.library.root.rename(tmp_path / "detached")
 
-    finding = find(doctor.run(configured, probes=probes(now=ACK_NOW)), "backup.acknowledgment")
+    finding = finding_on(configured, "backup.acknowledgment", now=ACK_NOW)
 
     assert finding.status is doctor.Status.INFO
     assert "not asserted" in finding.detail
@@ -885,9 +864,7 @@ def test_a_backup_module_with_no_destination_is_a_note_rather_than_a_failure(lib
     """The full preset turns backup on for everyone, so failing would paint a
     correct new install red (P7).
     """
-    finding = find(
-        doctor.run(config.from_dict(document_for(library)), probes=probes()), "backup.remote"
-    )
+    finding = finding_on(library, "backup.remote")
     assert finding.status is doctor.Status.INFO
 
 
@@ -911,21 +888,12 @@ def hooked_checkout(root: Path, body: str = INSTALLED_HOOK, *, config_file: bool
 
 
 def hook_finding(library, checkout) -> doctor.Finding:
-    return find(
-        doctor.run(
-            config.from_dict(document_for(library)),
-            probes=probes(checkout_root=lambda: checkout),
-        ),
-        "repo.commit_hook",
-    )
+    return finding_on(library, "repo.commit_hook", checkout_root=lambda: checkout)
 
 
 def test_the_commit_hook_check_says_nothing_on_an_installed_package(library):
     """The commit hook check is for developers, so an installed package hears nothing."""
-    installed = find(
-        doctor.run(config.from_dict(document_for(library)), probes=probes()),
-        "repo.commit_hook",
-    )
+    installed = finding_on(library, "repo.commit_hook")
     assert installed.status is doctor.Status.INFO
 
     bare = library / "checkout"
@@ -1308,7 +1276,7 @@ def test_the_wizard_on_a_clean_machine_produces_a_valid_config_and_a_green_docto
     document = json.loads(json.dumps(document_for(root)))
     document["profile"] = {"name": "slim"}
     assert config.validate(document) == []
-    assert doctor.run(config.from_dict(document), probes=probes()).ok
+    assert report_on(document).ok
 
 
 def state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
@@ -1346,7 +1314,7 @@ def test_doctor_writes_nothing_at_all(configured):
         config.config_dir(),
     )
     before = state_fingerprint(*roots)
-    report = doctor.run(configured, probes=probes(identity_provider=lambda _p: "9999"))
+    report = report_on(configured, identity_provider=lambda _p: "9999")
     assert not report.ok
     assert state_fingerprint(*roots) == before
 
@@ -2406,12 +2374,10 @@ def test_a_volume_mounted_elsewhere_is_one_problem_reported_once(tmp_path, monke
     elsewhere.mkdir()
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
 
-    report = doctor.run(
-        config.from_dict(document_for(root)),
-        probes=probes(
-            identity_provider=lambda path: VOLUME if path == elsewhere else "0000-0000",
-            mount_enumerator=lambda: (elsewhere,),
-        ),
+    report = report_on(
+        root,
+        identity_provider=lambda path: VOLUME if path == elsewhere else "0000-0000",
+        mount_enumerator=lambda: (elsewhere,),
     )
     assert find(report, "library.mounted").status is doctor.Status.FAIL
     identity = find(report, "library.identity")
@@ -2423,9 +2389,8 @@ def test_a_volume_mounted_elsewhere_is_one_problem_reported_once(tmp_path, monke
 def test_an_unmounted_volume_never_reports_a_matching_identity(tmp_path, monkeypatch):
     absent = tmp_path / "not-mounted"
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(absent))
-    report = doctor.run(
-        config.from_dict(document_for(absent)),
-        probes=probes(identity_provider=lambda _p: "0000-0000", mount_enumerator=lambda: ()),
+    report = report_on(
+        absent, identity_provider=lambda _p: "0000-0000", mount_enumerator=lambda: ()
     )
     identity = find(report, "library.identity")
     assert identity.status is not doctor.Status.OK
@@ -2691,7 +2656,7 @@ def test_an_unresolved_session_is_never_reported_clean_because_its_disk_is_gone(
         state=session.SessionState.COMMITTED_UNVERIFIED,
     )
     session.write_record(record, configured)
-    mounted = find(doctor.run(configured, probes=probes()), "session.unresolved")
+    mounted = finding_on(configured, "session.unresolved")
     assert mounted.status is doctor.Status.FAIL
     assert mounted.remedy is Remedy.RESTORE_FROM_SNAPSHOT
 
@@ -2720,7 +2685,7 @@ def test_an_unreadable_session_log_directory_is_not_an_empty_one(configured):
     (log / "s-1.json").write_text("{}")
     log.chmod(0o000)
     try:
-        finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+        finding = finding_on(configured, "session.unresolved")
     finally:
         log.chmod(0o700)
     assert finding.status is doctor.Status.FAIL
@@ -2741,7 +2706,7 @@ def test_a_session_log_this_account_cannot_list_is_failed_by_its_own_check(confi
     (log / "s-1.json").write_text("{}")
     _refuse_listing(monkeypatch, log)
 
-    finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+    finding = finding_on(configured, "session.unresolved")
 
     assert finding.status is doctor.Status.FAIL
     assert (
@@ -2753,7 +2718,7 @@ def test_a_session_log_this_account_cannot_list_is_failed_by_its_own_check(confi
 
 def test_a_library_with_no_sessions_still_reports_a_clean_log(configured):
     """The OK says what it established, not what it failed to find."""
-    finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+    finding = finding_on(configured, "session.unresolved")
     assert finding.status is doctor.Status.OK
     assert "on the recorded library volume was read" in finding.detail
     assert "0 recorded session(s), none of them open" in finding.detail
@@ -2902,9 +2867,7 @@ def test_a_configured_template_that_ships_nowhere_is_refused(configured):
     seed_taxonomy(configured)
     document = document_for(configured.library.root)
     document["taxonomy"] = {"template": "no-such-template"}
-    finding = find(
-        doctor.run(config.from_dict(document), probes=probes()), "taxonomy.active"
-    )
+    finding = finding_on(document, "taxonomy.active")
     assert finding.status is doctor.Status.FAIL
     assert "no-such-template" in finding.detail
     assert finding.remedy is Remedy.RUN_SETUP
@@ -2923,7 +2886,7 @@ def test_the_active_template_is_not_reported_at_all_when_its_disk_is_absent(conf
 
 def test_an_active_template_on_the_recorded_volume_reports_what_it_verified(configured):
     seed_taxonomy(configured)
-    finding = find(doctor.run(configured, probes=probes()), "taxonomy.active")
+    finding = finding_on(configured, "taxonomy.active")
     assert finding.status is doctor.Status.OK
     assert "on the recorded library volume" in finding.detail
     assert "'default'" in finding.detail
@@ -2944,7 +2907,7 @@ def _seed_with_origin(cfg: config.Config) -> Path:
 
 
 def _taxonomy_finding(cfg: config.Config) -> doctor.Finding:
-    return find(doctor.run(cfg, probes=probes()), "taxonomy.active")
+    return finding_on(cfg, "taxonomy.active")
 
 
 def test_setup_records_which_shipped_text_the_copy_was_made_from(configured):
@@ -3176,9 +3139,8 @@ def test_a_provider_with_a_recycle_bin_is_no_longer_green_by_default(configured,
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:"}
     cfg = config.from_dict(document)
-    finding = find(
-        doctor.run(cfg, probes=probes(rclone_remotes=lambda _r: {"archive": {"type": kind}})),
-        "backup.remote",
+    finding = finding_on(
+        cfg, "backup.remote", rclone_remotes=lambda _r: {"archive": {"type": kind}}
     )
     assert finding.status is not doctor.Status.OK, finding.detail
 
@@ -3213,10 +3175,7 @@ def test_a_onedrive_remote_where_hard_delete_does_nothing_is_a_note(
     settings = {"type": "onedrive", "hard_delete": hard_delete}
     if drive_type is not None:
         settings["drive_type"] = drive_type
-    finding = find(
-        doctor.run(cfg, probes=probes(rclone_remotes=lambda _r: {"archive": settings})),
-        "backup.remote",
-    )
+    finding = finding_on(cfg, "backup.remote", rclone_remotes=lambda _r: {"archive": settings})
     assert finding.status is doctor.Status.INFO, finding.detail
     assert f"drive_type is {drive_type or 'unset'}" in finding.detail
 
@@ -3227,12 +3186,8 @@ def test_dropbox_is_not_told_to_set_an_option_rclone_does_not_have(configured, e
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:"}
     cfg = config.from_dict(document)
-    finding = find(
-        doctor.run(
-            cfg,
-            probes=probes(rclone_remotes=lambda _r: {"archive": {"type": "dropbox", **extra}}),
-        ),
-        "backup.remote",
+    finding = finding_on(
+        cfg, "backup.remote", rclone_remotes=lambda _r: {"archive": {"type": "dropbox", **extra}}
     )
     assert finding.status is doctor.Status.INFO, finding.detail
     assert "permanent_delete" not in finding.detail
@@ -3243,11 +3198,8 @@ def test_a_remote_type_with_no_row_says_so_rather_than_passing(configured):
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:"}
     cfg = config.from_dict(document)
-    finding = find(
-        doctor.run(
-            cfg, probes=probes(rclone_remotes=lambda _r: {"archive": {"type": "s3"}})
-        ),
-        "backup.remote",
+    finding = finding_on(
+        cfg, "backup.remote", rclone_remotes=lambda _r: {"archive": {"type": "s3"}}
     )
     assert finding.status is doctor.Status.INFO
     assert "no row" in finding.detail
@@ -3257,11 +3209,8 @@ def test_a_remote_where_a_delete_is_a_delete_is_the_one_that_reports_green(confi
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:"}
     cfg = config.from_dict(document)
-    finding = find(
-        doctor.run(
-            cfg, probes=probes(rclone_remotes=lambda _r: {"archive": {"type": "local"}})
-        ),
-        "backup.remote",
+    finding = finding_on(
+        cfg, "backup.remote", rclone_remotes=lambda _r: {"archive": {"type": "local"}}
     )
     assert finding.status is doctor.Status.OK
 
@@ -3271,12 +3220,10 @@ def test_the_remote_path_form_resolves_to_the_remote_it_names(configured):
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:library/archive"}
     cfg = config.from_dict(document)
-    finding = find(
-        doctor.run(
-            cfg,
-            probes=probes(rclone_remotes=lambda _r: {"archive": {"type": "drive", "use_trash": "false"}}),
-        ),
+    finding = finding_on(
+        cfg,
         "backup.remote",
+        rclone_remotes=lambda _r: {"archive": {"type": "drive", "use_trash": "false"}},
     )
     assert finding.status is doctor.Status.OK
 
@@ -3286,9 +3233,8 @@ def test_an_unknown_remote_is_not_sent_to_a_verb_that_cannot_fix_it(configured):
     document = document_for(configured.library.root)
     document["backup"] = {"remote": "archive:"}
     cfg = config.from_dict(document)
-    finding = find(
-        doctor.run(cfg, probes=probes(rclone_remotes=lambda _r: {"other": {"type": "local"}})),
-        "backup.remote",
+    finding = finding_on(
+        cfg, "backup.remote", rclone_remotes=lambda _r: {"other": {"type": "local"}}
     )
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.FIX_CONFIG_VALUES
@@ -3323,9 +3269,7 @@ def test_a_set_but_broken_binary_override_gets_the_remedy_that_exists_for_it(
 
 
 def test_a_binary_that_is_simply_absent_still_says_install_it(configured):
-    finding = find(
-        doctor.run(configured, probes=probes(find_binary=lambda _n: None)), "binary.ffmpeg"
-    )
+    finding = finding_on(configured, "binary.ffmpeg", find_binary=lambda _n: None)
     assert finding.remedy is Remedy.INSTALL_BINARY
 
 
@@ -3351,10 +3295,7 @@ def test_a_headless_machine_that_opted_into_the_environment_fallback_is_not_red(
 
 
 def test_a_machine_with_no_keychain_and_no_fallback_is_still_red(configured):
-    finding = find(
-        doctor.run(configured, probes=probes(keychain_available=lambda: False)),
-        "keychain.reachable",
-    )
+    finding = finding_on(configured, "keychain.reachable", keychain_available=lambda: False)
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.INSTALL_KEYCHAIN_BACKEND
 
@@ -3387,9 +3328,7 @@ def test_a_database_outside_the_library_root_is_reported_on_every_run(
     document = document_for(library)
     document["library"]["db_path"] = str(tmp_path / "elsewhere" / "master.db")
     document["library"]["db_outside_root_acknowledged_on"] = "2026-08-01"
-    finding = find(
-        doctor.run(config.from_dict(document), probes=probes()), "library.db_containment"
-    )
+    finding = finding_on(document, "library.db_containment")
 
     assert finding.status is doctor.Status.INFO
     assert str(tmp_path / "elsewhere" / "master.db") in finding.detail
@@ -3399,7 +3338,7 @@ def test_a_database_outside_the_library_root_is_reported_on_every_run(
 
 
 def test_a_contained_database_says_the_snapshot_commits_with_a_rename(configured):
-    finding = find(doctor.run(configured, probes=probes()), "library.db_containment")
+    finding = finding_on(configured, "library.db_containment")
     assert finding.status is doctor.Status.OK
     assert "under library.root" in finding.detail
 
@@ -3408,7 +3347,7 @@ def test_a_contained_database_says_the_snapshot_commits_with_a_rename(configured
 
 
 def test_a_volume_whose_trash_accepts_a_move_reads_green(configured):
-    finding = find(doctor.run(configured, probes=probes()), "library.trash")
+    finding = finding_on(configured, "library.trash")
     assert finding.status is doctor.Status.OK
     assert str(configured.library.root) in finding.detail
     assert finding.remedy is None
@@ -3434,10 +3373,7 @@ def test_a_volume_with_no_trash_directory_yet_is_not_a_failure(configured):
 
     Doctor probes with ``create=False`` so its answer is not produced by asking.
     """
-    finding = find(
-        doctor.run(configured, probes=probes(trash_probe=doctor_machines._absent_trash)),
-        "library.trash",
-    )
+    finding = finding_on(configured, "library.trash", trash_probe=doctor_machines._absent_trash)
     assert finding.status is doctor.Status.OK
     assert finding.remedy is None
     assert "creates it on first use" in finding.detail
@@ -3465,10 +3401,7 @@ def test_a_broken_trash_is_informational_when_no_verb_this_profile_needs_it(libr
     document = document_for(library)
     document["profile"] = {"name": "slim"}
     cfg = config.from_dict(document)
-    finding = find(
-        doctor.run(cfg, probes=probes(trash_probe=doctor_machines._no_trash)),
-        "library.trash",
-    )
+    finding = finding_on(cfg, "library.trash", trash_probe=doctor_machines._no_trash)
     assert finding.status is doctor.Status.INFO
     assert "nothing depends on it today" in finding.detail
     assert finding.remedy is None
@@ -3513,9 +3446,7 @@ def test_a_trash_probe_the_operating_system_refuses_is_a_failure_with_the_right_
         # cannot name a path for.
         raise PermissionError(errno.EACCES, "Operation not permitted", str(path))
 
-    finding = find(
-        doctor.run(configured, probes=probes(trash_probe=refuses)), "library.trash"
-    )
+    finding = finding_on(configured, "library.trash", trash_probe=refuses)
     assert finding.status is doctor.Status.FAIL
     assert "could not be established" in finding.detail
     assert finding.remedy is not None
@@ -3530,10 +3461,7 @@ def test_an_unanswerable_trash_probe_is_informational_when_no_verb_needs_it(libr
 
     document = document_for(library)
     document["profile"] = {"name": "slim"}
-    finding = find(
-        doctor.run(config.from_dict(document), probes=probes(trash_probe=refuses)),
-        "library.trash",
-    )
+    finding = finding_on(document, "library.trash", trash_probe=refuses)
     assert finding.status is doctor.Status.INFO
     assert finding.remedy is None
     assert "could not be established" in finding.detail
@@ -3542,7 +3470,7 @@ def test_an_unanswerable_trash_probe_is_informational_when_no_verb_needs_it(libr
 def test_the_trash_check_is_unchecked_when_there_is_no_configuration(tmp_path, monkeypatch):
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "empty"))
     config.reset_cache()
-    finding = find(doctor.run(probes=probes()), "library.trash")
+    finding = finding_on(None, "library.trash")
     assert finding.status is doctor.Status.INFO
     assert "no usable configuration" in finding.detail
 
@@ -3852,9 +3780,7 @@ def test_no_ok_detail_claims_a_volume_the_run_never_identified(configured):
     from cratekit.core import preflight
 
     seed_taxonomy(configured)
-    report = doctor.run(
-        configured, probes=probes(identity_provider=preflight.null_volume_identity)
-    )
+    report = report_on(configured, identity_provider=preflight.null_volume_identity)
 
     assert find(report, "library.identity").status is doctor.Status.FAIL
     for key in ("taxonomy.active", "session.unresolved"):
@@ -3866,7 +3792,7 @@ def test_no_ok_detail_claims_a_volume_the_run_never_identified(configured):
 
 def test_the_strong_claim_survives_where_the_identity_really_was_compared(configured):
     seed_taxonomy(configured)
-    report = doctor.run(configured, probes=probes())
+    report = report_on(configured)
     for key in ("taxonomy.active", "session.unresolved"):
         assert "on the recorded library volume" in find(report, key).detail
 
@@ -4129,7 +4055,7 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(
         inside.read_text()
 
     try:
-        report = doctor.run(configured, probes=probes(process_lister=blind))
+        report = report_on(configured, process_lister=blind)
     finally:
         sealed.chmod(0o700)
 
@@ -4150,10 +4076,7 @@ def test_a_check_whose_probe_raises_becomes_a_failed_check_not_a_lost_report(
     def fell_over():
         raise RuntimeError("psutil returned a shape this reader has never seen")
 
-    ordinary = find(
-        doctor.run(configured, probes=probes(process_lister=fell_over)),
-        "rekordbox.closed",
-    )
+    ordinary = finding_on(configured, "rekordbox.closed", process_lister=fell_over)
     assert ordinary.status is doctor.Status.FAIL
     assert ordinary.remedy is Remedy.REPORT_DEFECT
 
@@ -4186,7 +4109,7 @@ def test_a_library_root_this_account_cannot_traverse_is_reported_not_raised(
 
     sealed.chmod(0o000)
     try:
-        report = doctor.run(cfg, probes=probes())
+        report = report_on(cfg)
     finally:
         sealed.chmod(0o755)
 
@@ -4217,7 +4140,7 @@ def test_a_session_log_this_account_cannot_traverse_is_not_an_empty_one(
     directory.mkdir(parents=True, exist_ok=True)
     directory.parent.chmod(0o000)
     try:
-        report = doctor.run(configured, probes=probes())
+        report = report_on(configured)
     finally:
         directory.parent.chmod(0o755)
 
@@ -4247,17 +4170,11 @@ def test_a_commit_hook_that_exists_and_cannot_be_read_is_not_a_missing_hook(
 
     hook.chmod(0o000)
     try:
-        unreadable = find(
-            doctor.run(configured, probes=probes(checkout_root=lambda: root)),
-            "repo.commit_hook",
-        )
+        unreadable = finding_on(configured, "repo.commit_hook", checkout_root=lambda: root)
     finally:
         hook.chmod(0o644)
     hook.unlink()
-    absent = find(
-        doctor.run(configured, probes=probes(checkout_root=lambda: root)),
-        "repo.commit_hook",
-    )
+    absent = finding_on(configured, "repo.commit_hook", checkout_root=lambda: root)
 
     assert unreadable.status is absent.status is doctor.Status.FAIL
     assert unreadable.detail != absent.detail, "one sentence for two conditions"
@@ -4283,11 +4200,11 @@ def test_an_active_template_that_exists_and_cannot_be_read_is_not_a_missing_one(
 
     path.chmod(0o000)
     try:
-        unreadable = find(doctor.run(configured, probes=probes()), "taxonomy.active")
+        unreadable = finding_on(configured, "taxonomy.active")
     finally:
         path.chmod(0o644)
     path.unlink()
-    absent = find(doctor.run(configured, probes=probes()), "taxonomy.active")
+    absent = finding_on(configured, "taxonomy.active")
 
     assert unreadable.status is absent.status is doctor.Status.FAIL
     assert "could not be read" in unreadable.detail
@@ -4317,7 +4234,7 @@ def test_an_unlistable_packaged_directory_is_not_a_shipped_set_of_none(
     # The parser-facing half still answers a list, so no verb dies here.
     assert taxonomy_module.shipped_template_names() == ()
 
-    finding = find(doctor.run(configured, probes=probes()), "taxonomy.active")
+    finding = finding_on(configured, "taxonomy.active")
     assert finding.status is doctor.Status.FAIL
     assert "no template ships under that name" not in finding.detail
     assert "not established" in finding.detail
@@ -4332,9 +4249,7 @@ def test_a_readable_packaged_directory_reports_no_problem_at_all(configured):
     assert problem is None
     assert "default" in names
     seed_taxonomy(configured)
-    assert find(doctor.run(configured, probes=probes()), "taxonomy.active").status is (
-        doctor.Status.OK
-    )
+    assert finding_on(configured, "taxonomy.active").status is (doctor.Status.OK)
 
 
 # ── the write leg of the reachability rule, both directions ──────────────────
@@ -4753,7 +4668,7 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
     marker.chmod(0o000)
     try:
         pointed, unreadable, remedy = doctor_model._git_dir(root)
-        report = doctor.run(configured, probes=probes(checkout_root=lambda: root))
+        report = report_on(configured, checkout_root=lambda: root)
     finally:
         marker.chmod(0o644)
 
@@ -4770,10 +4685,7 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
 
     # A marker that was read and named nothing is still INFO with no remedy.
     marker.write_text("this is not a gitdir pointer\n")
-    named_nothing = find(
-        doctor.run(configured, probes=probes(checkout_root=lambda: root)),
-        "repo.commit_hook",
-    )
+    named_nothing = finding_on(configured, "repo.commit_hook", checkout_root=lambda: root)
     assert doctor_model._git_dir(root) == (None, None, None)
 
     # A marker that is not text: ``UnicodeDecodeError`` is a ``ValueError``,
@@ -4807,10 +4719,7 @@ def test_a_commondir_that_cannot_be_read_is_reported_rather_than_swallowed(
     commondir.chmod(0o000)
     try:
         pointed, unreadable, remedy = doctor_model._git_dir(worktree)
-        finding = find(
-            doctor.run(configured, probes=probes(checkout_root=lambda: worktree)),
-            "repo.commit_hook",
-        )
+        finding = finding_on(configured, "repo.commit_hook", checkout_root=lambda: worktree)
     finally:
         commondir.chmod(0o644)
 
@@ -4837,10 +4746,7 @@ def test_a_commondir_that_is_present_and_is_not_text_is_reported_too(
     (worktree / ".git").write_text(f"gitdir: {per_tree}\n")
 
     pointed, unreadable, remedy = doctor_model._git_dir(worktree)
-    finding = find(
-        doctor.run(configured, probes=probes(checkout_root=lambda: worktree)),
-        "repo.commit_hook",
-    )
+    finding = finding_on(configured, "repo.commit_hook", checkout_root=lambda: worktree)
 
     assert pointed is None
     assert unreadable is not None and "commondir" in unreadable
@@ -4873,7 +4779,7 @@ def test_the_wizard_tells_an_unlistable_template_directory_from_an_absent_name(
     assert "shipped: " not in note.detail, "an empty set was printed as a fact"
 
     # It agrees with what doctor says about the same install.
-    doctor_finding = find(doctor.run(cfg, probes=probes()), "taxonomy.active")
+    doctor_finding = finding_on(cfg, "taxonomy.active")
     assert doctor_finding.remedy is note.remedy
 
 
@@ -5001,7 +4907,7 @@ def test_an_unstructured_break_is_still_rescued_as_a_check_that_did_not_complete
 
 def test_a_report_with_no_structured_refusal_still_exits_precondition(configured):
     """An ordinary failing report still exits PRECONDITION."""
-    report = doctor.run(configured, probes=probes(find_binary=lambda _n: None))
+    report = report_on(configured, find_binary=lambda _n: None)
     assert report.ok is False
     cause = doctor.failure_cause(report)
     assert cause.reason == "doctor-check-failed"
@@ -5187,7 +5093,7 @@ def test_doctor_still_answers_every_check_over_an_unreachable_root(
     a check that did not complete.
     """
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(sealed_ancestor))
-    report = doctor.run(config.from_dict(document_for(sealed_ancestor)), probes=probes())
+    report = report_on(sealed_ancestor)
 
     assert tuple(f.key for f in report.findings) == doctor.CHECK_KEYS
     mounted = find(report, "library.mounted")
@@ -5458,7 +5364,7 @@ def test_an_unreadable_backup_fact_file_is_a_permission_not_a_corruption(configu
 
     path.chmod(0o000)
     try:
-        report = doctor.run(configured, probes=probes())
+        report = report_on(configured)
     finally:
         path.chmod(0o644)
 
@@ -5471,7 +5377,7 @@ def test_an_unreadable_backup_fact_file_is_a_permission_not_a_corruption(configu
 
     # A real corruption still asks for a repair.
     path.write_text("this is not JSON at all")
-    damaged = find(doctor.run(configured, probes=probes()), "backup.age.files")
+    damaged = finding_on(configured, "backup.age.files")
     assert damaged.status is doctor.Status.FAIL
     assert damaged.remedy is Remedy.REPAIR_BACKUP_FACTS
 
@@ -5484,7 +5390,7 @@ def test_an_active_template_that_is_present_and_is_not_text_is_reported(configur
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"trees:\n  - name: \xff\xfe\n")
 
-    finding = find(doctor.run(configured, probes=probes()), "taxonomy.active")
+    finding = finding_on(configured, "taxonomy.active")
 
     assert finding.status is doctor.Status.FAIL
     assert "could not be read" in finding.detail
@@ -5500,10 +5406,7 @@ def test_a_commit_hook_that_is_present_and_is_not_text_is_reported(configured, t
     (root / ".pre-commit-config.yaml").write_text("repos: []\n")
     (root / ".git" / "hooks" / "pre-commit").write_bytes(b"#!/bin/sh\n\xff\xfe\n")
 
-    finding = find(
-        doctor.run(configured, probes=probes(checkout_root=lambda: root)),
-        "repo.commit_hook",
-    )
+    finding = finding_on(configured, "repo.commit_hook", checkout_root=lambda: root)
 
     assert finding.status is doctor.Status.FAIL
     assert "could not be read" in finding.detail
@@ -5961,7 +5864,7 @@ def test_doctors_configuration_check_does_not_call_an_intact_file_corrupt(tmp_pa
     document.write_text('schema_version = 1\n[library]\nroot = "/tmp/x"\n')
 
     with _sealed(document):
-        finding = find(doctor.run(probes=probes()), "config.present")
+        finding = finding_on(None, "config.present")
     config.reset_cache()
 
     assert finding.status is doctor.Status.FAIL
@@ -6066,9 +5969,7 @@ def test_the_declared_interpreter_bound_is_none_when_it_cannot_be_read(monkeypat
     monkeypatch.setattr(importlib_metadata, "metadata", lambda _name: {})
     assert doctor._declared_python_bound() is None
 
-    finding = find(
-        doctor.run(None, probes=probes(requires_python=None)), "interpreter.version"
-    )
+    finding = finding_on(None, "interpreter.version", requires_python=None)
     assert finding.status is doctor.Status.INFO
     assert "nothing was asserted about it" in finding.detail
 
@@ -6155,7 +6056,7 @@ def test_an_active_template_that_does_not_validate_is_its_own_answer(configured)
     """
     path = config.state_path("taxonomy_active", configured)
     config.atomic_write_bytes(b"schema_version = 99\n", path)
-    finding = find(doctor.run(configured, probes=probes()), "taxonomy.active")
+    finding = finding_on(configured, "taxonomy.active")
 
     assert finding.status is doctor.Status.FAIL
     assert "is not usable" in finding.detail
@@ -6170,7 +6071,7 @@ def test_a_registered_adapter_whose_tool_is_not_installed_says_so(configured, mo
         raise ImportError("No module named 'yt_dlp'")
 
     monkeypatch.setattr(acquire, "load", uninstalled)
-    finding = find(doctor.run(configured, probes=probes()), "adapter.contract")
+    finding = finding_on(configured, "adapter.contract")
 
     assert finding.status is doctor.Status.FAIL
     assert finding.remedy is Remedy.INSTALL_ADAPTER
@@ -6189,7 +6090,7 @@ def test_unreadable_backup_facts_are_reported_per_portion(configured, monkeypatc
         )
 
     monkeypatch.setattr(doctor.backup_facts, "ages", refuse)
-    report = doctor.run(configured, probes=probes())
+    report = report_on(configured)
     for portion in backup_facts.PORTIONS:
         finding = find(report, f"backup.age.{portion}")
         assert finding.status is doctor.Status.FAIL
@@ -6363,9 +6264,7 @@ def test_a_hook_config_path_that_cannot_be_resolved_is_a_refusal_not_a_crash(tmp
     assert "cannot be resolved" in problem
 
     (root / ".git" / "hooks" / "pre-commit").write_text(body)
-    finding = find(
-        doctor.run(None, probes=probes(checkout_root=lambda: root)), "repo.commit_hook"
-    )
+    finding = finding_on(None, "repo.commit_hook", checkout_root=lambda: root)
     assert finding.status is doctor.Status.FAIL
     assert "did not complete" not in finding.detail, "the blanket rescue answered"
     assert "cannot be resolved" in finding.detail
@@ -7038,7 +6937,7 @@ def test_the_driver_path_to_the_write_probe_is_driven_on_a_real_read_only_volume
 
 
 def _schema_finding(cfg: config.Config) -> doctor.Finding:
-    return find(doctor.run(cfg, probes=probes()), "taxonomy.schema")
+    return finding_on(cfg, "taxonomy.schema")
 
 
 def test_a_version_2_copy_without_favorites_is_named_with_both_versions(configured):
@@ -7069,7 +6968,7 @@ def test_a_copy_that_does_not_parse_is_left_to_taxonomy_active(configured):
     finding = _schema_finding(configured)
     assert finding.status is doctor.Status.INFO
     assert finding.detail.startswith("not compared")
-    assert find(doctor.run(configured, probes=probes()), "taxonomy.active").status is doctor.Status.FAIL
+    assert finding_on(configured, "taxonomy.active").status is doctor.Status.FAIL
 
 
 def test_the_schema_is_not_compared_when_the_library_disk_is_absent(configured):
@@ -7396,7 +7295,7 @@ def _deadca7(tmp_path, *, pushed_at: datetime | None = None, home: bool = True):
 
 
 def _push_check(configured, support) -> doctor.Finding:
-    report = doctor.run(configured, probes=probes(deadca7_home=lambda: support))
+    report = report_on(configured, deadca7_home=lambda: support)
     finding = find(report, "deadca7.push")
     assert finding.status is doctor.Status.INFO, finding
     return finding
@@ -7481,9 +7380,8 @@ def _installed_places(tmp_path, *present: str) -> tuple[Path, ...]:
 
 
 def _installed_check(configured, support, installed) -> doctor.Finding:
-    report = doctor.run(
-        configured,
-        probes=probes(deadca7_home=lambda: support, deadca7_installed=lambda: installed),
+    report = report_on(
+        configured, deadca7_home=lambda: support, deadca7_installed=lambda: installed
     )
     finding = find(report, "deadca7.push")
     assert finding.status is doctor.Status.INFO, finding
@@ -7618,7 +7516,7 @@ def test_a_probe_that_raises_reads_unread_rather_than_not_installed(configured, 
         "deadca7_installed": lambda: _installed_places(tmp_path),
         probe: broken,
     }
-    report = doctor.run(configured, probes=probes(**seams))
+    report = report_on(configured, **seams)
     finding = find(report, "deadca7.push")
     assert finding.status is doctor.Status.INFO, finding
     assert "not installed" not in finding.detail, finding.detail
@@ -7631,9 +7529,7 @@ def test_a_probe_that_raises_beside_a_present_bundle_still_reads_installed(confi
         raise OSError(5, "Input/output error")
 
     places = _installed_places(tmp_path, "system")
-    report = doctor.run(
-        configured, probes=probes(deadca7_home=broken, deadca7_installed=lambda: places)
-    )
+    report = report_on(configured, deadca7_home=broken, deadca7_installed=lambda: places)
     finding = find(report, "deadca7.push")
     assert finding.status is doctor.Status.INFO, finding
     assert finding.detail.startswith("DEADCA7 is installed here")
@@ -7689,9 +7585,8 @@ def test_with_its_support_folder_here_the_install_signals_are_not_asked(configur
         asked.append(True)
         raise OSError(5, "Input/output error")
 
-    report = doctor.run(
-        configured,
-        probes=probes(deadca7_home=lambda: _deadca7(tmp_path), deadca7_installed=installed),
+    report = report_on(
+        configured, deadca7_home=lambda: _deadca7(tmp_path), deadca7_installed=installed
     )
     finding = find(report, "deadca7.push")
     assert "installed here and has recorded no push" in finding.detail, finding.detail
