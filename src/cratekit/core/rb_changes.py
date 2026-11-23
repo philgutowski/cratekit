@@ -45,7 +45,7 @@ def guard_violations(
 
     ``removals`` (soft deletes), ``creations`` (beyond the whitelist, R-746) and
     ``deletions`` (hard deletes, U288) name the tables this one commit admits,
-    each empty for every writer but its one; a name outside
+    each empty for every writer but its few; a name outside
     :data:`REMOVABLE_TABLES`, :data:`ADMITTABLE_ROW_TABLES` or
     :data:`DELETABLE_TABLES` is itself a violation. An admitted content row is
     still judged against :data:`CONTENT_ROW_EMPTY_COLUMNS`; which rows a hard

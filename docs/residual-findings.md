@@ -4829,3 +4829,51 @@ digest and the live one stay equal.
 **Closes when:** the digest covers the outside rows by content id and recorded
 location only, if a sitting shows a rehearsal digest differing for this
 reason. Ledger only.
+
+---
+
+## R-2012. tag set reads a row on a padded or retired namesake of the genre as already carrying it, and makes a live row beside it
+
+**Found:** at the review of #1008, R-1967, round one, 2026-11-23.
+
+**The mechanism.** `plan_set` in `tagging/genre_set.py` decides `already-that-genre` by the row's genre name stripped (`collection.genre_of(row).strip()`, through the binding's association proxy, which reads a tombstone's name too), and decides the mint by `metadata.resolve_genre_id`, an exact name and an active row only. A named row linked to a lookup row named the genre with a trailing space, or to a tombstone of the genre, reads `already-that-genre` while the plan mints, and the apply makes a live row of the genre beside the one that row keeps.
+
+**Measured cost.** Driven by the reviewer on a hand built library: row 10 on an active row named "Afro House" with a trailing space, and again on a tombstone of "Afro House"; `tag set "Afro House"` over rows 10 and 11 made the row, linked row 11, left row 10 where it was, and the next plan read both `already-that-genre`. The producer is unmeasured: one candidate was driven (a native landing of a file whose genre tag carries a trailing space, which minted the name unpadded and did not produce it), rekordbox itself was not driven, and the tombstone link was built by a hand UPDATE. Reading a tombstone linked row as carrying the genre predates R-1967; what R-1967 adds is the live row made beside it.
+
+**Closes when:** the plan reads a row as carrying the genre only when it links the genre's active row, or refuses the mint while a named row links a lookup row whose stripped name is the genre, with the padded and the tombstone namesakes as its tests. Ledger only, since no producer is driven.
+
+---
+
+## R-2013. tag rows, tag backlog and tag campaign still send a word with no genre row to rekordbox, though tag set now makes the row
+
+**Found:** at the review of #1008, R-1967, round one, 2026-11-23.
+
+**The mechanism.** `tagging/rows_cli.py` (`_left`), `tagging/backlog.py` (`settle`) and `cli/verbs/tag_campaign.py` advise, for a word with no genre lookup row, to give one track that genre in rekordbox, which makes the row, and then run again. Since R-1967 `crate tag set GENRE` makes the row on the commit that links it, so the hand step is no longer the only way.
+
+**Measured cost.** Driven by the reviewer: `tag rows` left a row `genre-unknown` with that advice, and `tag set "Afro House"` on the same row then made the row and linked it. Each sentence is still true, nothing is lost and nobody is blocked; a DJ is sent to a hand step in rekordbox the product no longer needs, and a cloud session cannot take it.
+
+**Closes when:** the three advisories name `crate tag set GENRE --row CONTENT_ID` beside the rekordbox step, or those verbs make the row as `tag set` does, which would widen the creation guard again. Ledger only: a wording change.
+
+---
+
+## R-2014. The genre row tag set made is named only in its answer's sentence, not in the answer's data or the session record
+
+**Found:** at the review of #1008, R-1967, round one, 2026-11-23.
+
+**The mechanism.** After an apply that made the genre row, `data.totals` still says `genre_row: "mint"` and gains only `written` and `read_back`; the made id reaches the `set-genre-written` warning's prose and nothing else. The session record's change is `content.genre` with no creation counted, and its detail holds only each file's old genre, so `restore list` and a restore's summary say the session created nothing.
+
+**Measured cost.** Driven by the reviewer through two acts and a restore: the row does go back with the capture, so nothing is lost, and the native landing records no lookup mint either. A session reading the JSON must parse a sentence for the id, and a person reading a restore's summary is not told a lookup row goes with it.
+
+**Closes when:** the applied answer's totals carry the made id (`genre_row` the id, or a `minted` field) and the session record names the creation, with a test reading both. Ledger only.
+
+---
+
+## R-2015. Three source shapes still pass the creation guard, an alias of commit_guarded, an argument in parentheses before creations, and a keyword splat in another module
+
+**Found:** at the review of #1008, R-1967, round one, 2026-11-23.
+
+**The mechanism.** `tests/test_rb_writer_guard.py::test_every_other_writer_in_the_package_asks_for_no_creation` finds askers by the regular expression `commit_guarded\([^)]*creations=`, which stops at the first closing parenthesis, and holds `tag set` to `djmdGenre` by an AST walk that finds calls by the name `commit_guarded`. Driven by the reviewer over 19 planted variants: `commit = rb_writer.commit_guarded` then `commit(db, creations=(rb_writer.CONTENT_TABLE,))` inside `genre_set.py`; another module with a parenthesised argument before `creations=`; another module passing a `**kwargs` splat. All three pass; all three shapes placed in another module also pass the guard at `c84dc4ac`, so R-1967 did not open them.
+
+**Measured cost.** None today: no module has any of the shapes, and the runtime whitelist still refuses a creation in a table nobody asked for. A future writer could ask for a creation the source guard does not see.
+
+**Closes when:** the guard finds askers by an AST walk of every module (any call whose keywords hold `creations` or a splat, and any name bound to `commit_guarded`), which is outside the scoped exception Phillip granted for R-1967, so it needs his leave to edit that suite. Ledger only.

@@ -299,7 +299,7 @@ LATER_VERBS: tuple[Entry, ...] = (
         # files by genre.
         emits=frozenset({"plan"}), output_schema="plan/1",
         #: The file and the row, the row as ``tag.rows`` writes it; a genre with
-        #: no lookup row writes nothing, since only a landing may make one.
+        #: no lookup row gets one, made on the commit that links it (R-1967).
         writes=frozenset({"files", "db_metadata"}), destructive=True,
         taxonomy_terms=("genre_energy",),
         doctor_checks=(

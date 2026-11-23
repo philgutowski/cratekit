@@ -1,0 +1,254 @@
+name = "r1967"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_mint_with_a_row"
+description = "plan_set: drop the no row condition, so a plan mints beside an active row of the name"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''        mint=genre_row is None and any(item.row_writes for item in items),'''
+new = '''        mint=any(item.row_writes for item in items),'''
+
+[[rows]]
+id = "M02_mint_for_a_file_alone"
+description = "plan_set: mint for any written item, so a file written alone makes a row nothing links"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''        mint=genre_row is None and any(item.row_writes for item in items),'''
+new = '''        mint=genre_row is None and any(item.action == WRITE for item in items),'''
+
+[[rows]]
+id = "M03_never_mint"
+description = "plan_set: never mint, so a genre with no row is planned as written and the apply cannot link it"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''        mint=genre_row is None and any(item.row_writes for item in items),'''
+new = '''        mint=False,'''
+
+[[rows]]
+id = "M04_gate_hides_mint"
+description = "SetPlan.shown_row: show none for a mint, so the gate and the digest say no row is made"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''        return self.genre_row or (MINT if self.mint else NO_ROW)'''
+new = '''        return self.genre_row or NO_ROW'''
+
+[[rows]]
+id = "M05_stale_count_takes_the_lookup_row"
+description = "assert_plan_unchanged: count the lookup row among the named rows moved, so the refusal says a row moved that did not"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''        f"the plan taken again is not the approved plan ({rows_moved} named row(s) "'''
+new = '''        f"the plan taken again is not the approved plan ({len(moved)} named row(s) "'''
+
+[[rows]]
+id = "M06_stale_names_no_lookup_row"
+description = "assert_plan_unchanged: leave the lookup row out of what moved, so the refusal names nothing"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''    if approved.shown_row != again.shown_row:
+        moved.append'''
+new = '''    if False:
+        moved.append'''
+
+[[rows]]
+id = "M07_no_check_before_files"
+description = "apply_set: drop the check before any file, so a row made since the plan is duplicated"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''    if plan.mint:
+        _assert_none_active(db, plan.genre)
+'''
+new = ''''''
+
+[[rows]]
+id = "M08_check_passes_a_found_row"
+description = "_assert_none_active: answer as if no row were found, so a second row of the name is made"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''    if found is None:
+        return
+    raise refuse('''
+new = '''    if True:
+        return
+    raise refuse('''
+
+[[rows]]
+id = "M09_mint_always"
+description = "_write_rows: mint whatever the plan says, so a genre with an active row gets a second"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''    done["minted"] = _mint_genre(db, plan.genre) if plan.mint else ""'''
+new = '''    done["minted"] = _mint_genre(db, plan.genre)'''
+
+[[rows]]
+id = "M10_mint_never_at_the_write"
+description = "_write_rows: make no row when the plan mints, so the rows cannot be linked"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''    done["minted"] = _mint_genre(db, plan.genre) if plan.mint else ""'''
+new = '''    done["minted"] = ""'''
+
+[[rows]]
+id = "M11_creations_always"
+description = "_write_rows: ask for the genre table on every commit, made or not"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''    rb_writer.commit_guarded(db, creations=(rb_writer.GENRE_TABLE,) if done["minted"] else ())'''
+new = '''    rb_writer.commit_guarded(db, creations=(rb_writer.GENRE_TABLE,))'''
+
+[[rows]]
+id = "M12_creations_never"
+description = "_write_rows: ask for nothing when a row was made, so the guard must refuse the commit"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''    rb_writer.commit_guarded(db, creations=(rb_writer.GENRE_TABLE,) if done["minted"] else ())'''
+new = '''    rb_writer.commit_guarded(db, creations=())'''
+
+[[rows]]
+id = "M13_read_back_ignores_the_genre"
+description = "judge: never name a row whose read back genre is not the one set, so a link to the wrong row reads clean"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''        if word != genre:
+            wrong.append('''
+new = '''        if False:
+            wrong.append('''
+
+[[rows]]
+id = "M14_uuid_constant"
+description = "_mint_genre: give every minted row one UUID"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''        ID=str(db.generate_unused_id(tables.DjmdGenre)), Name=genre, UUID=str(uuid4())'''
+new = '''        ID=str(db.generate_unused_id(tables.DjmdGenre)), Name=genre, UUID="u"'''
+
+[[rows]]
+id = "M15_minted_unreported"
+description = "apply_set: leave the minted row out of what the apply answers"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''        minted=str(done["minted"]),
+'''
+new = ''''''
+
+[[rows]]
+id = "M16_minted_name_lowered"
+description = "_mint_genre: make the row under another spelling of the genre, so the rows link a word no folder files by"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''Name=genre, UUID=str(uuid4())'''
+new = '''Name=genre.lower(), UUID=str(uuid4())'''
+
+[[rows]]
+id = "C01_never_say_to_make"
+description = "_to_make: never warn, so a declined gate does not say a row would be made"
+file = "src/cratekit/tagging/genre_set_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''    if not plan.mint:
+        return []
+    return [warning(
+        GENRE_ROW_TO_MAKE,'''
+new = '''    if True:
+        return []
+    return [warning(
+        GENRE_ROW_TO_MAKE,'''
+
+[[rows]]
+id = "C02_say_to_make_after_making"
+description = "tag_set: add the would make warning to the written answer, a row already made"
+file = "src/cratekit/tagging/genre_set_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''    answered = ctx.envelope(data=data, warnings=[*_written(plan, written), *_advisories(plan)])'''
+new = '''    answered = ctx.envelope(data=data, warnings=[*_written(plan, written), *_to_make(plan), *_advisories(plan)])'''
+
+[[rows]]
+id = "C03_payload_hides_mint"
+description = "_payload: show none for a mint in the plan's totals"
+file = "src/cratekit/tagging/genre_set_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''        genre_row=plan.shown_row,
+        playlist=plan.playlist,'''
+new = '''        genre_row=plan.genre_row or gs.NO_ROW,
+        playlist=plan.playlist,'''
+
+[[rows]]
+id = "C04_written_hides_the_row_made"
+description = "_written: never name the row made, so the answer and the restore line omit it"
+file = "src/cratekit/tagging/genre_set_cli.py"
+surface = "user"
+tests = ["tests/test_tag_set.py", "tests/test_tag_set_move.py", "tests/test_rb_writer_guard.py"]
+old = '''        if written.minted
+        else ""
+    )
+    taken'''
+new = '''        if False
+        else ""
+    )
+    taken'''
+
+[[rows]]
+id = "G01_asks_for_artist"
+description = "planted: tag set asks for the artist table on its commit"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py"]
+old = '''    rb_writer.commit_guarded(db, creations=(rb_writer.GENRE_TABLE,) if done["minted"] else ())'''
+new = '''    rb_writer.commit_guarded(db, creations=(rb_writer.ARTIST_TABLE,) if done["minted"] else ())'''
+
+[[rows]]
+id = "G02_asks_for_a_string"
+description = "planted: tag set names the genre table by a string, which no allowance reads"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py"]
+old = '''    rb_writer.commit_guarded(db, creations=(rb_writer.GENRE_TABLE,) if done["minted"] else ())'''
+new = '''    rb_writer.commit_guarded(db, creations=("djmdGenre",) if done["minted"] else ())'''
+
+[[rows]]
+id = "G03_asks_for_every_lookup"
+description = "planted: tag set asks for every lookup table through a name the guard cannot read as one"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py"]
+old = '''    rb_writer.commit_guarded(db, creations=(rb_writer.GENRE_TABLE,) if done["minted"] else ())'''
+new = '''    rb_writer.commit_guarded(db, creations=rb_writer.LOOKUP_TABLES if done["minted"] else ())'''
+
+[[rows]]
+id = "G04_asks_through_kwargs"
+description = "planted: tag set passes a further keyword through a mapping the guard cannot read"
+file = "src/cratekit/tagging/genre_set.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py"]
+old = '''    rb_writer.commit_guarded(db, creations=(rb_writer.GENRE_TABLE,) if done["minted"] else ())'''
+new = '''    rb_writer.commit_guarded(db, creations=(rb_writer.GENRE_TABLE,) if done["minted"] else (), **{})'''
+
+[[rows]]
+id = "G05_another_module_asks"
+description = "planted: the row defaults writer asks for a creation, even an empty one"
+file = "src/cratekit/write/row_defaults.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py"]
+old = '''                rb_writer.commit_guarded(db)
+'''
+new = '''                rb_writer.commit_guarded(db, creations=())
+'''
