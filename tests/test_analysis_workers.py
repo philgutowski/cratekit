@@ -1,10 +1,7 @@
 """U58: the analysis workers, the vocal pass's decode, and the energy level.
 
-The queued verbs run pending to done through the real dispatcher and resume
-argv; the vocal pass scores a partial carrying only a path; energy is a level
-or an honest absence. EVERY WORKER CASE GOES THROUGH THE VERB, so an unbound
-handler key fails here. Seams are bound with ``monkeypatch`` on an unbound
-process.
+Every worker case goes through the verb and its resume argv, so an unbound
+handler key fails here; seams are bound with ``monkeypatch``.
 """
 
 from __future__ import annotations
@@ -42,8 +39,7 @@ def cfg(tmp_path, monkeypatch) -> config.Config:
     (library / "Music").mkdir(parents=True)
     (library / "db").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(library))
-    # THE FULL PROFILE, because the analysis verbs are not members of the slim
-    # one and a slim configuration builds a parser with no ``analyze`` at all.
+    # The full profile: the slim one builds a parser with no ``analyze``.
     built = config.from_dict(valid_data(library, profile={"name": "full"}))
     config.save(built)
     config.reset_cache()
@@ -128,6 +124,19 @@ def resume_argv(job_id: str) -> list[str]:
         return cli_jobs.argv_for(jobs.get(store, job_id))
 
 
+def queued(verb: str, folder: Path):
+    """Queue ``analyze <verb>`` over ``folder`` and answer the one job it made."""
+    drive(["analyze", verb, "--queue-only", str(folder)])
+    return analysis_job(f"analyze.{verb}")
+
+
+def resumed_ok(job) -> dict:
+    """Drive ``job``'s resume command, which must end OK, and answer its envelope."""
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    return resumed
+
+
 def item_states(job_id: str) -> dict[str, jobs.ItemState]:
     with jobs.open_store() as store:
         return {item.item_id: item.state for item in jobs.items(store, job_id)}
@@ -188,8 +197,7 @@ def test_an_analyze_job_runs_pending_to_done_and_the_files_carry_the_result(
     )
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.PENDING}
 
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    resumed = resumed_ok(job)
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
     assert head.seen == ["a.flac", "b.flac"]
 
@@ -223,8 +231,7 @@ def test_a_prefixed_file_is_the_resume_marker_and_is_skipped_without_a_read(
     code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
     assert code == int(ExitCode.OK), queued
     job = analysis_job("analyze.run")
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    resumed_ok(job)
 
     assert head.seen == ["fresh.flac"]
     reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
@@ -239,10 +246,8 @@ def test_a_keyless_track_is_a_terminal_skip_with_nothing_written(
     before = path.read_bytes()
     bind_scoring(monkeypatch, detect_=lambda p: None)
 
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    job = queued("run", folder)
+    resumed_ok(job)
 
     assert path.is_file() and path.read_bytes() == before
     assert tags.read_tag(path, "initialkey") is None
@@ -264,8 +269,7 @@ def test_a_file_removed_between_queueing_and_drive_is_refused_by_name(
 ):
     place(folder, silence, "gone")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     (folder / "gone.flac").unlink()
 
     code, resumed = drive(resume_argv(job.job_id))
@@ -279,21 +283,18 @@ def test_the_missing_extra_refuses_the_item_rather_than_skipping_it_as_keyless(
     """Nothing bound and no librosa, a real slim worker: refused, never keyless."""
     place(folder, silence, "track")
     monkeypatch.setattr(detect, "heavy_available", lambda: False)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
 
     code, resumed = drive(resume_argv(job.job_id))
-    # A one item job whose item failed is recorded by the engine as no-evidence
-    # with the item's cause INSIDE it, which is the common failure path of a
-    # one item job and the shape ``handlers.run_job`` documents.
+    # A failed one item job is recorded as no-evidence with the item's cause
+    # inside it, the shape ``handlers.run_job`` documents.
     assert code != int(ExitCode.OK), resumed
     assert item_causes(job.job_id) == {"track.flac": "module-extras-missing"}
     inner = resumed["cause"]["inner"]
     assert inner["reason"] == "module-extras-missing"
     assert inner["code"] == int(ExitCode.MODULE_UNAVAILABLE)
     assert inner["detail"]["install"] == extras.install_command("analysis")
-    # The same remedy token the parser stub renders for this slug, so the one
-    # absence is not a bug in the worker and an installation gap at the parser.
+    # The remedy token the parser stub renders for this slug.
     assert inner["remediation"]["remedy"] == "install-module-extra"
 
 
@@ -317,8 +318,7 @@ def test_a_failed_tag_write_fails_the_item_and_leaves_the_name_alone(
     path = place(folder, silence, "stuck")
     bind_scoring(monkeypatch)
     monkeypatch.setattr(tags, "write_tags", lambda p, fields: False)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
 
     code, _ = drive(resume_argv(job.job_id))
     assert code != int(ExitCode.OK)
@@ -332,8 +332,7 @@ def test_a_taken_target_name_fails_the_item_and_keeps_the_written_head_in_the_ti
     path = place(folder, silence, "twin")
     place(folder, silence, "08A - 124 - twin")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
 
     code, _ = drive(resume_argv(job.job_id))
     assert code != int(ExitCode.OK)
@@ -368,8 +367,7 @@ def test_the_frozen_folder_is_absolute_so_a_resume_from_elsewhere_finds_it(
     assert job.payload["folder"] == str(folder.absolute())
 
     monkeypatch.chdir(folder.parent.parent)
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    resumed_ok(job)
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
 
 
@@ -378,11 +376,7 @@ class _Killed(BaseException):
 
 
 def kill_after_the_rename(monkeypatch):
-    """Arrange for the first finalized report to die before it is staged.
-
-    A kill is not an ``Exception``, so the row stays pending under its old name
-    while the file is already under its head.
-    """
+    """The first finalized report dies before it is staged, a kill and not an ``Exception``."""
     real = artifacts.produced
     calls: list[str] = []
 
@@ -401,13 +395,11 @@ def test_an_item_renamed_before_its_row_moved_resumes_as_finished(
 ):
     """The kill window between the rename and the row flipping to done.
 
-    THE STEM IS ONE THE TEMPLATE REWRITES, so a twin guessed from the folder by
-    stripping heads would miss it.
+    The stem is one the template rewrites, so stripping heads would miss it.
     """
     place(folder, silence, "Daft Punk - Around the World - Daft Punk")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     killed = kill_after_the_rename(monkeypatch)
     with pytest.raises(_Killed):
         drive(resume_argv(job.job_id))
@@ -416,8 +408,7 @@ def test_an_item_renamed_before_its_row_moved_resumes_as_finished(
     assert finished.is_file(), sorted(p.name for p in folder.iterdir())
     assert item_states(job.job_id) != {killed[0]: jobs.ItemState.DONE}
 
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    resumed_ok(job)
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
     report = artifacts.committed(cfg, job.job_id)[0]
     assert report["status"] == "skipped-prefixed"
@@ -428,15 +419,12 @@ def test_an_item_renamed_before_its_row_moved_resumes_as_finished(
 def test_a_deleted_source_beside_an_unrelated_twin_is_refused_not_reported_analysed(
     cfg, folder, silence, monkeypatch
 ):
-    """The folder already holds a headed file of the same stem from an
-    earlier pass. The queued source is then deleted. Nothing this job did
-    produced the headed file, and the first version reported it as this
-    item, done, resumed after a rename that never happened."""
+    """A headed file of the same stem from an earlier pass, then the source deleted:
+    nothing this job did produced it, so it is not this item, done."""
     place(folder, silence, "twin")
     place(folder, silence, "08A - 124 - twin")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     (folder / "twin.flac").unlink()
 
     code, _ = drive(resume_argv(job.job_id))
@@ -496,9 +484,7 @@ def _interrupted(stopped: dict) -> list[str]:
 def test_an_interrupt_after_a_renamed_items_report_is_staged_resumes_by_the_printed_command(
     cfg, folder, silence, monkeypatch
 ):
-    """U223, through the verb a person runs and the command it prints: the resume
-    must not find the source gone and no intent.
-    """
+    """U223, through the verb and the command it prints: the resume finds the intent."""
     place(folder, silence, "a parade")
     place(folder, silence, "b untouched")
     seen = detector()
@@ -532,9 +518,7 @@ def test_an_interrupt_after_a_renamed_items_report_is_staged_resumes_by_the_prin
 def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
     cfg, folder, silence, monkeypatch
 ):
-    """The resume's own report is staged and the signal lands again before its
-    commit. The intent must outlive that attempt too, or the second resume is
-    the shipped bug one attempt later."""
+    """The signal lands again before the resume's own commit; the intent outlives it."""
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
     interrupt_once_staged(monkeypatch)
@@ -546,9 +530,8 @@ def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
     assert code == int(ExitCode.INTERRUPTED), again
     assert hits == ["a.flac"]
 
-    # THE ``--job`` PATH LEAVES ITS JOB CANCELLED, which ``crate job resume``
-    # re-arms before it drives; the arming is taken by hand here so the drive
-    # stays in this process where the scoring is bound.
+    # The ``--job`` path leaves its job cancelled; it is re-armed by hand here so
+    # the drive stays in this process where the scoring is bound.
     job = analysis_job("analyze.run")
     with jobs.open_store() as store:
         jobs.retry(store, job.job_id)
@@ -562,9 +545,7 @@ def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
 def test_a_job_the_shipped_code_left_with_no_intent_resumes_from_its_staged_report(
     cfg, folder, silence, monkeypatch
 ):
-    """The file renamed, the staged report naming it, and no intent: the report
-    is the item's own proof of the rename.
-    """
+    """No intent: the staged report naming the file is the item's proof of the rename."""
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
     interrupt_once_staged(monkeypatch)
@@ -612,8 +593,7 @@ def _stage(cfg, report: dict) -> Path:
 def test_a_staged_report_is_a_twin_only_for_this_item_renamed_in_its_own_folder(
     cfg, folder, tmp_path
 ):
-    """The fallback reads the item's own record, never the folder, and each
-    field it trusts is driven alone."""
+    """The fallback reads the item's own record, never the folder, each field alone."""
     job = _job_over(folder)
     twin = folder / "08A - 124 - a.flac"
     twin.write_bytes(b"x")
@@ -659,8 +639,7 @@ def test_a_staged_report_that_is_not_json_or_not_a_mapping_is_no_twin(cfg, folde
 
 
 def test_a_new_attempt_clears_a_stale_report_and_keeps_only_the_intent(cfg, folder):
-    """A second attempt starts from a clean staging directory: a stale report
-    never leaks into it. Only the intent, the resume's evidence, is kept."""
+    """A second attempt starts from a clean staging directory, keeping only the intent."""
     first = _stage(cfg, {"item": "a.flac", "status": "analyzed"})
     (first.parent / "scratch.tmp").write_text("x", encoding="utf-8")
     (first.parent / "nested").mkdir()
@@ -678,13 +657,11 @@ def test_a_new_attempt_clears_a_stale_report_and_keeps_only_the_intent(cfg, fold
 def test_an_attempt_whose_source_is_still_there_drops_a_stale_intent(
     cfg, folder, silence, monkeypatch
 ):
-    """An intent whose source is still a file names a rename that never landed.
-    Left behind, it would name whatever later sits at that target as this
-    item's twin once the source is deleted."""
+    """An intent whose source is still a file names a rename that never landed, so it
+    is dropped before it can name a later file as this item's twin."""
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     item = _item(job.job_id, "a.flac")
     unrelated = folder / "unrelated.flac"
     artifacts.record_rename_intent(cfg, job, item, unrelated)
@@ -700,14 +677,11 @@ def test_an_attempt_whose_source_is_still_there_drops_a_stale_intent(
 def test_a_kill_after_an_attempt_starts_leaves_no_stale_report_to_read_as_a_twin(
     cfg, folder, silence, monkeypatch
 ):
-    """Round one's residual, closed: an attempt whose source is a file drops the
-    staged report with the intent, before any work a kill can interrupt. Kept,
-    the report of an earlier attempt's rename would name whatever later sits
-    at that headed name as this item's twin once the source is deleted."""
+    """An attempt whose source is a file drops the staged report with the intent,
+    before any work a kill can interrupt, so it cannot name a later twin."""
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     item = _item(job.job_id, "a.flac")
     headed = folder / "08A - 124 - a.flac"
     staged = artifacts.write(
@@ -744,8 +718,7 @@ def test_a_linked_intent_is_cleared_rather_than_kept_and_followed(cfg, folder, t
 
 
 def test_a_linked_intent_or_report_is_never_read_as_the_twin(cfg, folder, tmp_path):
-    """Fix round two: the read path followed a planted link before the clear
-    could drop it, and named its far end's file as this item's twin."""
+    """The read path never follows a planted link to name its far end as the twin."""
     job = _job_over(folder)
     other = folder / "other.flac"
     other.write_bytes(b"x")
@@ -784,13 +757,10 @@ def test_the_discard_never_reaches_through_a_linked_staging_directory(cfg, folde
 def test_a_directory_at_the_report_name_is_cleared_and_the_attempt_finishes(
     cfg, folder, silence, monkeypatch
 ):
-    """Fix round two: the attempt start's discard unlinked the report name and
-    failed the item for good on a directory there, a shape the clear before
-    U223 healed."""
+    """A directory at the report name does not fail the item for good."""
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     item = _item(job.job_id, "a.flac")
     staged = artifacts.staged_path(cfg, job.job_id, item.ordinal)
     staged.mkdir()
@@ -805,8 +775,7 @@ def test_a_directory_at_the_report_name_is_cleared_and_the_attempt_finishes(
 def test_a_prefixed_source_drops_a_stale_intent_too(cfg, folder, silence, monkeypatch):
     place(folder, silence, "08A - 124 - a")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     item = _item(job.job_id, "08A - 124 - a.flac")
     artifacts.record_rename_intent(cfg, job, item, folder / "unrelated.flac")
 
@@ -817,13 +786,11 @@ def test_a_prefixed_source_drops_a_stale_intent_too(cfg, folder, silence, monkey
 
 
 def test_a_taken_target_name_leaves_no_intent_behind(cfg, folder, silence, monkeypatch):
-    """The rename never happened, so an intent naming the other file is false.
-    A retry after the source is deleted would read it as this item's twin."""
+    """The rename never happened, so an intent naming the other file is false."""
     place(folder, silence, "twin")
     place(folder, silence, "08A - 124 - twin")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
 
     drive(resume_argv(job.job_id))
 
@@ -835,8 +802,7 @@ def test_a_taken_target_name_leaves_no_intent_behind(cfg, folder, silence, monke
 def test_a_refused_rename_leaves_no_intent_behind(cfg, folder, silence, monkeypatch):
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
 
     def refuse_rename(self, target):
         raise PermissionError(13, "Permission denied")
@@ -857,10 +823,8 @@ def test_a_detector_shaped_like_the_batch_fakes_is_accepted(cfg, folder, silence
         monkeypatch,
         detect_=lambda p: {"path": p, "camelot": "8A", "bpm": 128, "energy": 4},
     )
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    job = queued("run", folder)
+    resumed_ok(job)
     assert (folder / "08A - 128 - a.flac").is_file()
     assert artifacts.committed(cfg, job.job_id)[0]["tempo"] == 128
 
@@ -868,13 +832,11 @@ def test_a_detector_shaped_like_the_batch_fakes_is_accepted(cfg, folder, silence
 def test_a_container_the_tag_writer_does_not_know_fails_under_the_analysis_slug(
     cfg, folder, silence, monkeypatch
 ):
-    """``AUDIO_EXTS`` is wider than the containers ``write_tags`` knows, and the
-    writer RAISES on the ones it does not, rather than returning False."""
+    """``AUDIO_EXTS`` is wider than ``write_tags`` knows, and it raises on the rest."""
     path = folder / "odd.webm"
     path.write_bytes(b"not-audio")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     code, _ = drive(resume_argv(job.job_id))
     assert code != int(ExitCode.OK)
     assert item_causes(job.job_id) == {"odd.webm": "analysis-write-failed"}
@@ -889,10 +851,8 @@ def test_an_undecodable_file_is_its_own_terminal_and_not_a_keyless_track(
         monkeypatch,
         detect_=lambda p: {"path": p, "terminal": detect.TERMINAL_UNDECODABLE},
     )
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    job = queued("run", folder)
+    resumed_ok(job)
     report = artifacts.committed(cfg, job.job_id)[0]
     assert report["status"] == "skipped-undecodable"
     assert (folder / "broken.flac").is_file()
@@ -932,19 +892,17 @@ def test_a_partial_carrying_only_a_path_scores_nonzero_through_the_fixed_path(mo
     assert scored["vocal_active"] is True
     assert scored["vocal_reason"] is None
     assert scored["voxlevel"] > 0
-    # THE GENDER IS THE MODEL'S CALL, NOT A CONSTANT. The fake model scores the
-    # male class at four times the female class on this signal, so the
-    # reduction must say M; the mutation table's one zero row was a worker
-    # that reported every track as U with a green suite.
+    # The gender is the model's call: the fake scores male four times female, so
+    # the reduction must say M, not a constant U.
     assert scored["voxgender"] == "M"
     assert scored["voxgenderconf"] == 60
 
 
 def test_the_vocal_pass_never_reads_a_wav_key_off_the_partial():
-    """The regression pin. The first version read ``result.get("wav")`` and
-    nothing in the package set it, so every track scored zero with a model
-    loaded. A partial carrying samples would also be the memory shape the
-    package exists to avoid, so the key must not come back under any name."""
+    """The partial carries a path and never samples, under any key.
+
+    Reading ``result.get("wav")`` scored every track zero with a model loaded.
+    """
     tree = ast.parse(VOCALS_SOURCE.read_text(encoding="utf-8"))
     literals = {
         node.value
@@ -977,11 +935,7 @@ def test_a_decode_that_fails_is_reported_as_inactive_and_never_as_zero(monkeypat
 
 
 def sparse(path: Path, size: int) -> Path:
-    """A file that IS ``size`` bytes long and occupies almost none of them.
-
-    ``truncate`` sets the length without writing, so the shipped cap is driven
-    at its real value without writing a quarter of a gigabyte to disk.
-    """
+    """A file ``size`` bytes long, by ``truncate``, so the real cap is driven cheaply."""
     with path.open("wb") as handle:
         handle.truncate(size)
     assert path.stat().st_size == size, "the filesystem did not take the sparse length"
@@ -989,9 +943,7 @@ def sparse(path: Path, size: int) -> Path:
 
 
 def test_the_shipped_oversize_cap_is_two_hundred_and_fifty_mebibytes():
-    """The number itself: every other test lowers the cap, which proves only that
-    the guard fires.
-    """
+    """The number itself, since every other test lowers the cap."""
     assert vocals.VOCAL_MAX_BYTES == 250 * 1024 * 1024
 
 
@@ -1010,17 +962,12 @@ def test_a_file_over_the_cap_never_reaches_the_decoder(tmp_path, monkeypatch):
     )
     assert asked == [], "the decoder was handed the file the guard exists to refuse"
     assert scored["vocal_active"] is False
-    # THE SLUG'S TEXT, NOT ONLY THE SYMBOL. The mutation table's one zero row
-    # was this reason reworded to vocal-file-oversize with every test still
-    # green, because every assertion read the constant rather than the string.
-    # The slug is a surface: it is the ``vocal_reason`` on the item artifact and
-    # the key of ``by_vocal_reason`` on the envelope, so anything reading a run
-    # would break on a rename nothing here noticed. Its two siblings are pinned
-    # as literals for the same reason, a few tests below.
+    # The slug's text, not only the symbol: it is the ``vocal_reason`` on the item
+    # artifact and a key of ``by_vocal_reason``, so a rename breaks readers. Its two
+    # siblings are pinned as literals below.
     assert scored["vocal_reason"] == "vocal-audio-too-large"
     assert scored["vocal_reason"] == vocals.REASON_AUDIO_TOO_LARGE
-    # NOT A ZERO. The source system tagged this file voxlevel 0 and this package
-    # cannot, because a zero here means the model listened and heard no singing.
+    # Not a zero, which here means the model listened and heard no singing.
     assert scored["voxlevel"] is None
     assert scored["voxgender"] is None
     assert scored["voxgenderconf"] is None
@@ -1028,9 +975,7 @@ def test_a_file_over_the_cap_never_reaches_the_decoder(tmp_path, monkeypatch):
 
 
 def test_an_oversize_file_is_refused_without_loading_the_model(tmp_path, monkeypatch):
-    """The guard sits ahead of the load: the missing model's install warning is
-    false about a file nothing would decode.
-    """
+    """The guard sits ahead of the load, so no model install warning is given."""
     loaded: list[int] = []
 
     def loader():
@@ -1045,8 +990,7 @@ def test_an_oversize_file_is_refused_without_loading_the_model(tmp_path, monkeyp
 
 
 def test_a_file_exactly_at_the_cap_is_still_decoded(tmp_path, monkeypatch):
-    """Strictly greater. The cap is the largest size allowed through, not the
-    first one refused, which is the source system's comparison too."""
+    """Strictly greater: the cap is the largest size allowed, as in the source system."""
     asked: list[object] = []
 
     def spy(path):
@@ -1065,11 +1009,7 @@ def test_a_file_exactly_at_the_cap_is_still_decoded(tmp_path, monkeypatch):
 def test_a_size_that_cannot_be_read_is_not_oversize_and_the_decode_path_reports(
     tmp_path, monkeypatch
 ):
-    """A stat failure is the decode path's to report, not this guard's.
-
-    Two reporters of one failure turn a missing file into a size refusal, which
-    names the wrong remedy.
-    """
+    """A stat failure is the decode path's to report, not this guard's wrong remedy."""
     gone = tmp_path / "gone.flac"
     assert vocals.is_oversize(gone) is False
     assert vocals.is_oversize(None) is False, "an absent path is not a size"
@@ -1081,8 +1021,7 @@ def test_a_size_that_cannot_be_read_is_not_oversize_and_the_decode_path_reports(
 def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch):
     """``unscored_warning`` counts only the reason an install would mend.
 
-    ``missing_requirement`` is stubbed for the mixed half to keep
-    ``panns_inference`` unimported.
+    ``missing_requirement`` is stubbed to keep ``panns_inference`` unimported.
     """
     summary = {"by_vocal_reason": {vocals.REASON_AUDIO_TOO_LARGE: 4}}
     assert vocals.unscored_warning(summary, verb="analysed") is None
@@ -1102,16 +1041,13 @@ def test_a_run_over_an_oversize_track_reports_it_and_writes_no_vox_tag(
 ):
     """End to end through the verb, with the cap lowered to a byte.
 
-    The light pass is faked, so this proves the vocal half only (R-583): the
-    reason reaches the report and the summary, and no vox tag is written.
+    The light pass is faked, so this proves the vocal half only (R-583).
     """
     place(folder, silence, "a", voxlevel=42, voxgender="F")
     bind_scoring(monkeypatch)
     monkeypatch.setattr(vocals, "VOCAL_MAX_BYTES", 1)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    job = queued("run", folder)
+    resumed = resumed_ok(job)
     assert resumed["data"]["progress"]["analysis"]["by_vocal_reason"] == {
         vocals.REASON_AUDIO_TOO_LARGE: 1
     }
@@ -1153,9 +1089,8 @@ def test_the_shipped_decoder_reads_at_the_models_rate_and_is_absent_without_the_
         import librosa  # noqa: F401
     except ImportError:
         assert vocal.decode("nowhere.flac") is None
-    # With the extra installed the absence cannot be driven, and a skip here
-    # would be one the pending register does not count, so the test says
-    # nothing rather than skipping.
+    # With the extra installed the absence cannot be driven, and an uncounted
+    # skip is worse, so the test says nothing.
 
 
 def test_run_batch_threads_the_decoder_through_to_the_vocal_pass(tmp_path, monkeypatch):
@@ -1189,8 +1124,7 @@ def test_an_uncalibrated_library_writes_no_energy_tag_and_routes_to_the_sink(
 ):
     place(folder, silence, "a")
     bind_scoring(monkeypatch, detect_=detector(level=None, status=energy.STATUS_UNCALIBRATED))
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
 
@@ -1210,8 +1144,7 @@ def test_a_calibrated_level_is_written_and_routes_to_a_band(
 ):
     place(folder, silence, "a")
     bind_scoring(monkeypatch, detect_=detector(level=9))
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
 
@@ -1303,8 +1236,7 @@ _LIST_WHERE_A_MAPPING_BELONGS = json.dumps(
 
 @pytest.mark.parametrize("text", ["{not json", "{}", "[]", _LIST_WHERE_A_MAPPING_BELONGS])
 def test_every_corrupt_calibration_shape_is_the_same_named_refusal(cfg, text):
-    """The fourth shape raised ``AttributeError`` through the promise the
-    loader's docstring makes, and reached the queue as a traceback."""
+    """The fourth shape is refused, not an ``AttributeError`` traceback."""
     path = energy.calibration_path(cfg)
     config.mkdir_private(path.parent)
     path.write_text(text, encoding="utf-8")
@@ -1327,16 +1259,13 @@ def test_a_corrupt_calibration_reaches_the_person_as_a_remedy_not_a_defect(
     assert refused["cause"]["reason"] == "energy-calibration-unreadable"
     assert "calibrate" in refused["cause"]["message"] or refused["cause"]["remediation"]
 
-    # THE WORKER PATH: the run refuses the same file at its queue now, so the
-    # calibration is corrupted AFTER the queue, which is a calibration written
-    # between two jobs driven by one process and the reason the default
-    # detector is rebound per item.
+    # The worker path: the calibration is corrupted after the queue, as between
+    # two jobs of one process, so the default detector is rebound per item.
     path.unlink()
     monkeypatch.setattr(vocals, "_VOCAL_LOADER", _FakeModel)
     monkeypatch.setattr(vocals, "_DECODER", voiced())
     monkeypatch.setattr(detect, "heavy_available", lambda: True)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     path.write_text("{not json", encoding="utf-8")
     code, resumed = drive(resume_argv(job.job_id))
     assert code != int(ExitCode.OK)
@@ -1412,8 +1341,7 @@ def test_a_file_whose_level_did_not_move_is_reported_unchanged_and_not_rewritten
     steady = place(folder, silence, "steady", energylevel=energy.LEVEL_MAX)
     before = steady.stat().st_mtime_ns
     bind_measuring(monkeypatch, {"steady": 19})
-    drive(["analyze", "restamp", "--queue-only", str(folder)])
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder)
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
     report = artifacts.committed(cfg, job.job_id)[0]
@@ -1462,8 +1390,7 @@ def test_a_track_that_cannot_be_measured_is_reported_and_left_alone(
     energy.save_calibration(cfg, calibration_over())
     track = place(folder, silence, "odd", energylevel=5)
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: None)
-    drive(["analyze", "restamp", "--queue-only", str(folder)])
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder)
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
     report = artifacts.committed(cfg, job.job_id)[0]
@@ -1479,8 +1406,7 @@ def test_a_restamp_worker_without_the_extra_refuses_rather_than_skipping(
     energy.save_calibration(cfg, calibration_over())
     place(folder, silence, "a")
     monkeypatch.setattr(detect, "heavy_available", lambda: False)
-    drive(["analyze", "restamp", "--queue-only", str(folder)])
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder)
     code, resumed = drive(resume_argv(job.job_id))
     assert code != int(ExitCode.OK), resumed
     assert item_causes(job.job_id) == {"a.flac": "module-extras-missing"}
@@ -1538,8 +1464,7 @@ def test_otsu_separates_a_bimodal_distribution():
 
 
 def test_a_single_cluster_is_not_cut_down_the_middle(cfg, folder, silence, monkeypatch):
-    """Twelve instrumentals scored 0 to 5. Otsu still finds a best cut; the
-    separation check is what says there is nothing on the other side of it."""
+    """Twelve instrumentals: Otsu finds a cut, and the separation check says no."""
     names = [f"t{i:02d}" for i in range(12)]
     for index, name in enumerate(names):
         place(folder, silence, name, voxlevel=index % 6)
@@ -1639,9 +1564,7 @@ def test_a_hand_cut_replaces_an_unreadable_calibration_and_says_it_could_not_be_
 
 
 def test_a_threshold_written_as_text_comes_back_from_the_one_reader_as_a_float(cfg):
-    """A hand edited file can carry "5.0". The reader checks and converts it, and
-    the record it returns carries the converted number, not the text, so the
-    calibrate report and every tagging comparison meet a float."""
+    """A hand edited "5.0" is converted, so every comparison meets a float."""
     path = calibrate.vocal_calibration_path(cfg)
     config.mkdir_private(path.parent)
     path.write_text('{"threshold": "5.0", "method": "hand"}', encoding="utf-8")
@@ -1840,8 +1763,7 @@ def test_a_corrupt_undo_log_refuses_by_name_rather_than_failing_every_item_as_a_
     config.mkdir_private(log.parent)
     log.write_text("[]", encoding="utf-8")
     bind_measuring(monkeypatch, {"a": 9})
-    drive(["analyze", "restamp", "--queue-only", str(folder)])
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder)
 
     code, resumed = drive(resume_argv(job.job_id))
     assert code != int(ExitCode.OK)
@@ -1870,18 +1792,15 @@ def test_a_model_whose_inference_raises_is_a_named_absence_with_the_head_intact(
 
 
 def test_a_run_with_no_model_loaded_warns_on_the_envelope(cfg, folder, silence, monkeypatch):
-    """The declared extra is ``analysis`` and the model is behind ``vocals``,
-    so a machine with the first and not the second finalizes every track
-    with no vocal tags. The item reports carried the absence; the envelope
-    did not."""
+    """The ``analysis`` extra without ``vocals`` finalizes with no vocal tags, and
+    the envelope says so as the item reports do."""
     place(folder, silence, "a")
 
     def no_model():
         raise ImportError("panns_inference")
 
     bind_scoring(monkeypatch, loader=no_model)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
+    job = queued("run", folder)
     code, resumed = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK), resumed
     assert [w["code"] for w in resumed["warnings"]] == [vocals.REASON_MODEL_UNAVAILABLE]
@@ -1894,26 +1813,21 @@ def test_a_run_with_no_model_loaded_warns_on_the_envelope(cfg, folder, silence, 
 def test_a_run_with_the_model_loaded_carries_no_vocal_warning(cfg, folder, silence, monkeypatch):
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
-    drive(["analyze", "run", "--queue-only", str(folder)])
-    job = analysis_job("analyze.run")
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    job = queued("run", folder)
+    resumed = resumed_ok(job)
     assert resumed["warnings"] == []
     assert resumed["data"]["progress"]["analysis"]["by_vocal_reason"] == {}
 
 
 def test_a_decodable_file_the_analyser_raises_on_is_its_own_terminal_not_keyless(monkeypatch):
-    """A stinger too short for a tempo decodes and then raises inside the
-    analyser; the first version returned None there, which the light pass
-    reported as atonal."""
+    """A stinger too short for a tempo raises inside the analyser, not atonal."""
     import types
 
     def onset_strength(**kwargs):
         raise ValueError("too short")
 
-    # The decoder reads at the file's own rate, then mixes and resamples as
-    # ``librosa.load`` does after its read (U264), so the stand in carries
-    # those two calls; a version it does not name mixes through ``to_mono``.
+    # The decoder reads at the file's rate, then mixes and resamples as
+    # ``librosa.load`` does (U264); an unnamed version mixes through ``to_mono``.
     fake = types.SimpleNamespace(
         __version__="stand-in",
         load=lambda p, sr, mono: (np.ones(64, dtype=np.float32), sr or 44100),
@@ -1937,9 +1851,7 @@ def test_the_head_decodes_at_the_energy_measure_rate():
 
 
 def test_the_feature_vector_measures_its_own_tempo_on_every_path():
-    """The head's whole track integer tempo is no longer handed down, so a
-    file scored by ``analyze run`` and by ``analyze restamp`` carries one
-    tempo reading against one calibration."""
+    """The head's integer tempo is not handed down, so run and restamp agree."""
     import inspect
 
     assert "tempo" not in inspect.signature(energy.features_from_samples).parameters
@@ -1986,9 +1898,8 @@ def test_calibrate_declares_the_mount_check_its_state_writes_need():
 
 
 def test_an_unknown_tag_field_is_a_defect_and_not_a_container_refusal(folder, silence):
-    """The writer's plain ``ValueError`` is the beat grid enforcement point,
-    R17. Folding it into the container refusal would report a defect in this
-    module as a folder of awkward files."""
+    """The writer's plain ``ValueError`` is the beat grid enforcement point (R17),
+    not a container refusal."""
     path = place(folder, silence, "a")
     with pytest.raises(ValueError, match="unknown tag fields"):
         analysis_cli._write_or_refuse(path, {"averagebpm": "124"}, untouched="untouched")
@@ -2014,14 +1925,12 @@ def test_a_stray_json_beside_the_reports_does_not_take_the_summary_down(cfg):
 
 
 def test_the_restamp_reads_the_tag_once_and_records_its_text(cfg, folder, silence, monkeypatch):
-    """A tag another tool wrote as text is recorded as that text and compared
-    as no level, from one read rather than two that could disagree."""
+    """A text tag is recorded as text and compared as no level, from one read."""
     path = place(folder, silence, "a")
     assert tags.write_tags(path, {"energylevel": "7/10"})
     energy.save_calibration(cfg, calibration_over())
     bind_measuring(monkeypatch, {"a": 9})
-    drive(["analyze", "restamp", "--queue-only", str(folder)])
-    job = analysis_job("analyze.restamp")
+    job = queued("restamp", folder)
     code, _ = drive(resume_argv(job.job_id))
     assert code == int(ExitCode.OK)
     assert energy.read_undo_log(cfg) == {str(path): "7/10"}
@@ -2031,8 +1940,7 @@ def test_the_restamp_reads_the_tag_once_and_records_its_text(cfg, folder, silenc
 
 
 def test_the_verb_module_never_imports_the_model_module_at_module_scope():
-    """``cli.jobs.argv_for`` imports the verb module by name to build a resume
-    command line, and the model module needs numpy at import time."""
+    """``cli.jobs.argv_for`` imports the verb module by name, and the model needs numpy."""
     source = (SRC_ROOT / "cratekit" / "analysis" / "cli.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     for node in tree.body:
@@ -2106,8 +2014,7 @@ def test_a_recursive_restamp_runs_every_nested_item_to_done_and_writes_the_right
 
     drive(["analyze", "restamp", "--queue-only", str(folder), "--recursive"])
     job = analysis_job("analyze.restamp")
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    resumed_ok(job)
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
     assert tags.read_energy_from_file(low) == energy.LEVEL_MIN
     assert tags.read_energy_from_file(high) == energy.LEVEL_MAX
@@ -2119,11 +2026,7 @@ def test_a_recursive_restamp_runs_every_nested_item_to_done_and_writes_the_right
 def test_two_nested_folders_holding_the_same_filename_are_two_items(
     cfg, folder, silence, monkeypatch
 ):
-    """``job_items`` is keyed ``(job_id, item_id)``, so bare names would collide.
-
-    A real library holds one track name in more than one genre folder, and
-    under bare names the second insert raises.
-    """
+    """``job_items`` is keyed ``(job_id, item_id)``; one name in two genre folders."""
     energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
     nest(folder, silence, "techno/track.flac", energylevel=7)
@@ -2199,15 +2102,12 @@ def test_a_recursive_restamp_resumes_after_a_kill_and_finishes_the_rest(
     assert done_after_kill, "the kill landed before any item settled"
     assert len(done_after_kill) < 4, "the kill did not stop the driver"
 
-    # A KILL CANCELS THE JOB, which is not FAILED (R22), and a cancelled job is
-    # re-armed before it is driven again. ``crate job resume`` does exactly this
-    # and then spawns a detached child; the arming is taken by hand here so the
-    # driving stays in this process where the bound extractor lives.
+    # A kill cancels the job (R22), which is re-armed by hand here, as ``crate job
+    # resume`` does, so the drive stays in this process with the bound extractor.
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(19))
     with jobs.open_store() as store:
         jobs.retry(store, job.job_id)
-    code, resumed = drive(resume_argv(job.job_id))
-    assert code == int(ExitCode.OK), resumed
+    resumed_ok(job)
     assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
     assert sorted(item_states(job.job_id)) == [
         "house/a.flac",
@@ -2354,9 +2254,7 @@ def test_the_restamp_resume_names_an_unreadable_folder_and_not_only_a_link(
 
 
 def genre_tree(cfg, silence, monkeypatch, per_folder: int = 8, **fields) -> tuple[Path, list[Path]]:
-    """A library root of two genre folders, and the list the recording extractor
-    appends every path it measures to.
-    """
+    """Two genre folders, and the list the extractor appends each measured path to."""
     root = Path(cfg.library.root)
     seen: list[Path] = []
     seeds: dict[str, int] = {}
@@ -2502,8 +2400,7 @@ def test_the_music_folder_walked_recursively_is_the_library_too(cfg, silence, mo
 def test_the_root_with_no_loose_tracks_and_no_flag_is_told_about_the_flag(
     cfg, silence, monkeypatch
 ):
-    """The normal layout. The first version walked one level, found nothing,
-    and answered "holds no audio files" over a library of genre folders."""
+    """The normal layout, genre folders, holds audio files."""
     root, seen = genre_tree(cfg, silence, monkeypatch)
     code, envelope = drive(["analyze", "calibrate", str(root)])
     assert code == int(ExitCode.OK), envelope
@@ -2611,8 +2508,7 @@ def test_the_default_sample_is_what_the_parser_hands_the_verb():
 
 
 def test_a_walk_that_left_a_folder_out_is_not_the_library(cfg, silence, monkeypatch, tmp_path):
-    """A genre kept as a link is declined by the walker, so the root walked
-    recursively is a library missing a genre. The first version called it ok."""
+    """A genre kept as a link is declined by the walker, so the walk is not ok."""
     root, seen = genre_tree(cfg, silence, monkeypatch)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
@@ -2721,9 +2617,7 @@ def test_the_restamp_refusal_names_the_library_wide_calibrate(cfg, folder, silen
     assert "--recursive" in steps and "representative folder" not in steps
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U192: run by hand, each verb drives the job it queues, in one command
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _attempts(job_id: str) -> int:
@@ -2837,10 +2731,8 @@ def test_queue_only_beside_job_is_refused_before_anything_is_queued(cfg, folder,
 def test_an_interrupted_restamp_names_its_job_command_and_that_command_finishes_it(
     cfg, folder, silence, monkeypatch
 ):
-    """A real SIGINT in the call that queued the job: the job comes back queued,
-    the refusal names its command, and the command finishes without measuring a
-    settled file again.
-    """
+    """A real SIGINT in the call that queued the job leaves it queued and resumable
+    without measuring a settled file again."""
     import os
     import shlex
     import signal
@@ -2882,8 +2774,7 @@ def test_an_interrupted_restamp_names_its_job_command_and_that_command_finishes_
 def test_the_shared_tail_step_queues_only_and_drives_its_job_once(
     cfg, folder, silence, monkeypatch
 ):
-    """``sync land`` and ``label sync --go`` drive each tail job themselves through
-    one shared step, so it must queue with the flag."""
+    """``sync land`` and ``label sync --go`` share one step, so it queues with the flag."""
     from cratekit.cli import sync_land, tail
 
     place(folder, silence, "a")
