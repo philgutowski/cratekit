@@ -1,0 +1,86 @@
+name = "u330"
+pass_kind = "light"
+
+# Rows on the lines U330 rewrote in scripts/board.py that no replayed kill row anchors on.
+
+[[rows]]
+id = "A1_annotated_register_unread"
+description = "pending_units: read only a plain assignment, so an annotated PENDING register owes no unit and a closing trailer passes"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''        if not isinstance(node, (ast.AnnAssign, ast.Assign)) or not isinstance(node.value, ast.Dict):'''
+new = '''        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Dict):'''
+
+[[rows]]
+id = "A2_named_constant_unfollowed"
+description = "planned_units: stop following a named constant, so a planned_in marker given by a constant owes nothing"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''            return constants.get(value.id)'''
+new = '''            return None'''
+
+[[rows]]
+id = "A3_unit_suffix_accepted"
+description = "_unit: drop the end anchor, so a key like U12b reads as U12"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''    match = re.match(r"U(\d+)$", text) if isinstance(text, str) else None'''
+new = '''    match = re.match(r"U(\d+)", text) if isinstance(text, str) else None'''
+
+[[rows]]
+id = "A4_path_keys_not_skipped"
+description = "_near_misses: stop skipping path: keys, so a filesystem key is read as a dotted module"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''    for module in (m for m in modules if not m.startswith("path:")):'''
+new = '''    for module in modules:'''
+
+[[rows]]
+id = "A5_present_package_noted"
+description = "_near_misses: drop the package directory check, so a module present as a package still gets a near miss note"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''        if not package.is_dir() or (package / f"{name}.py").exists() or (package / name).is_dir():'''
+new = '''        if not package.is_dir() or (package / f"{name}.py").exists():'''
+
+[[rows]]
+id = "A6_non_units_mapped"
+description = "units_by_issue_number: map every titled issue, not only units, so a residual titled U-like shadows a unit"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''        match = re.match(r"U(\d+)\b", node["title"]) if node["unit"] else None'''
+new = '''        match = re.match(r"U(\d+)\b", node["title"])'''
+
+[[rows]]
+id = "A7_last_entry_wins"
+description = "ledger_problems: the revision's later copy of a duplicated number wins, not the first, so --unchanged compares the wrong entry"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''        before.setdefault(number, entry)'''
+new = '''        before[number] = entry'''
+
+[[rows]]
+id = "A8_progress_refreshes_nothing"
+description = "cloud_state: age the hold from the last stated heading, so a Progress note no longer refreshes it and a live session reads as dead"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''    age = _hours_since(_when(mine[-1]))'''
+new = '''    age = _hours_since(_when(last))'''
+
+[[rows]]
+id = "A9_card_list_unspaced"
+description = "_card_lines: drop the blank line after a card list, so the queue's sections run together"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py", "tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_residual_search.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py", "tests/test_vocals_cli.py", "tests/test_adoption.py"]
+old = '''        print(f"        {node['title'][:72]}")
+    print()'''
+new = '''        print(f"        {node['title'][:72]}")'''

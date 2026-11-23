@@ -270,6 +270,8 @@ KEBAB_LITERALS = {
         'tag-second-rows-unreadable',
         'tag-second-unwritten',
         'tag-second-usage',
+        'tag-set-scope-unknown',  # 2026-11-23, U339
+        'tag-set-unwritten',  # 2026-11-23, U339
         'tag-suggest-unwritten',
         'target-lufs-out-of-range',
         'taxonomy-genre-unknown',  # 2026-11-02, U194

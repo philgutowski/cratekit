@@ -1,0 +1,1212 @@
+name = "u330-replay-after"
+pass_kind = "replay"
+
+[[rows]]
+id = "u122.H1_no_hold"
+source = { table = "u122.json", id = "H1_no_hold" }
+description = "Remove the hold: derive_status ignores a held status and derives from the graph"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '    if current in UNDERWAY:'
+new = '    if False:'
+
+[[rows]]
+id = "u122.H2_review_not_held"
+source = { table = "u122.json", id = "H2_review_not_held" }
+description = "UNDERWAY loses In review, the runner's status, so it reads as drift again"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = 'UNDERWAY = ("In Progress", "In review")'
+new = 'UNDERWAY = ("In Progress",)'
+
+[[rows]]
+id = "u122.H3_progress_not_held"
+source = { table = "u122.json", id = "H3_progress_not_held" }
+description = "UNDERWAY loses In Progress, a session's and a lane's status"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = 'UNDERWAY = ("In Progress", "In review")'
+new = 'UNDERWAY = ("In review",)'
+
+[[rows]]
+id = "u122.H4_hold_flattened"
+source = { table = "u122.json", id = "H4_hold_flattened" }
+description = "A held card derives In Progress whatever it held, so In review becomes drift"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''
+        return current
+'''
+new = '''
+        return "In Progress"
+'''
+
+[[rows]]
+id = "u122.H5_units_only"
+source = { table = "u122.json", id = "H5_units_only" }
+description = "The hold applies to units only, the behaviour before the 2026-10-09 amendment"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '    if current in UNDERWAY:'
+new = '    if current in UNDERWAY and node["unit"]:'
+
+[[rows]]
+id = "u122.H6_hold_beats_closure"
+source = { table = "u122.json", id = "H6_hold_beats_closure" }
+description = "The hold is checked before closure, so a closed held card is not Done"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''
+    if node["closed"]:
+        return "Done"
+    if current in UNDERWAY:'''
+new = '''
+    if current in UNDERWAY:
+        return current
+    if node["closed"]:
+        return "Done"
+    if False:'''
+
+[[rows]]
+id = "u122.H7_attended_beats_hold"
+source = { table = "u122.json", id = "H7_attended_beats_hold" }
+description = "Attended is checked before the hold, the order the review moved"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '    if current in UNDERWAY:'
+new = '''
+    if node["attended"]:
+        return "Attended"
+    if current in UNDERWAY:'''
+
+[[rows]]
+id = "u122.N1_next_busy_progress_only"
+source = { table = "u122.json", id = "N1_next_busy_progress_only" }
+description = "next counts only In Progress as busy, so an In review card is offered again"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '.get("status") in UNDERWAY'
+new = '.get("status") == "In Progress"'
+
+[[rows]]
+id = "u122.N2_next_offers_busy"
+source = { table = "u122.json", id = "N2_next_offers_busy" }
+description = "next lists a busy card under underway but leaves it in the ready list"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '    ready = [n for n in ready if n["number"] not in busy]'
+new = '    ready = list(ready)'
+
+[[rows]]
+id = "u122.N3_next_no_status"
+source = { table = "u122.json", id = "N3_next_no_status" }
+description = "next drops the status column, so a reader cannot tell the runner's hold from a session's"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_status.py", "tests/test_pending_units.py"]
+old = '''            print(f"  #{node['number']:<3} {status:<11} {node['title']}")'''
+new = '''            print(f"  #{node['number']:<3} {node['title']}")'''
+
+[[rows]]
+id = "u124-b19.B19_audit_reads_folder"
+source = { table = "u124-b19.json", id = "B19_audit_reads_folder" }
+description = "audit stops counting a malformed residual file as a contradiction, rerun after the audit test landed"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '        clashes = clashes + malformed'
+new = '        clashes = clashes'
+
+[[rows]]
+id = "u124.B10_validate_first"
+source = { table = "u124.json", id = "B10_validate_first" }
+description = "a malformed file is skipped instead of stopping the landing, so the good ones land"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if problems:
+        raise ValueError("; ".join(problems))
+    if not parsed:'''
+new = '    if not parsed:'
+
+[[rows]]
+id = "u124.B11_relanded_title"
+source = { table = "u124.json", id = "B11_relanded_title" }
+description = "a title the ledger already holds is numbered again"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if again:
+        raise ValueError("; ".join(again))'''
+new = ''
+
+[[rows]]
+id = "u124.B12_highest_not_count"
+source = { table = "u124.json", id = "B12_highest_not_count" }
+description = "the next number is the ledger's count plus one rather than its highest plus one"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    number = max(titles, default=0)'
+new = '    number = len(titles)'
+
+[[rows]]
+id = "u124.B13_separator"
+source = { table = "u124.json", id = "B13_separator" }
+description = "landed entries lose the separator line"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '        text = text.rstrip("\n") + "\n\n---\n\n"'
+new = '        text = text.rstrip("\n") + "\n\n"'
+
+[[rows]]
+id = "u124.B14_files_deleted"
+source = { table = "u124.json", id = "B14_files_deleted" }
+description = "a landed file is left in the folder"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    for path, _, _ in parsed:
+        path.unlink()'''
+new = '''
+    for path, _, _ in parsed:
+        pass'''
+
+[[rows]]
+id = "u124.B15_closing_reads_folder"
+source = { table = "u124.json", id = "B15_closing_reads_folder" }
+description = "closing stops reading the residual folder"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '''
+    malformed = residual_file_problems()
+    if not problems and not malformed:'''
+new = '''
+    malformed = []
+    if not problems and not malformed:'''
+
+[[rows]]
+id = "u124.B17_land_on_main_only"
+source = { table = "u124.json", id = "B17_land_on_main_only" }
+description = "residuals --land runs on any branch"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if branch != "main":
+        print(
+            f"board: residuals are numbered on main'''
+new = '''
+    if branch == "never":
+        print(
+            f"board: residuals are numbered on main'''
+
+[[rows]]
+id = "u124.B18_behind_origin"
+source = { table = "u124.json", id = "B18_behind_origin" }
+description = "residuals --land numbers on a main behind origin/main"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    if behind.returncode == 0 and behind.stdout.strip() not in ("", "0"):'
+new = '    if behind.returncode == 0 and behind.stdout.strip() not in ("", "0") and False:'
+
+[[rows]]
+id = "u124.B1_untracked_filter"
+source = { table = "u124.json", id = "B1_untracked_filter" }
+description = "residual_files returns every file, git's index ignored, so an untracked draft is judged and landed"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if listed.returncode != 0:
+        return paths
+'''
+new = '''
+    if listed.returncode == 0 or listed.returncode != 0:
+        return paths
+'''
+
+[[rows]]
+id = "u124.B2_readme_excluded"
+source = { table = "u124.json", id = "B2_readme_excluded" }
+description = "the README is read as a residual file"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    paths = sorted(p for p in folder.glob("*.md") if p.name != "README.md")'
+new = '    paths = sorted(p for p in folder.glob("*.md"))'
+
+[[rows]]
+id = "u124.B3_name_order"
+source = { table = "u124.json", id = "B3_name_order" }
+description = "files land in folder listing order rather than name order"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    paths = sorted(p for p in folder.glob("*.md") if p.name != "README.md")'
+new = '    paths = sorted((p for p in folder.glob("*.md") if p.name != "README.md"), reverse=True)'
+
+[[rows]]
+id = "u124.B4_fence_open"
+source = { table = "u124.json", id = "B4_fence_open" }
+description = "a file with no opening fence is not refused"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if not lines or lines[0] != "---":
+        raise ValueError("does not open with a frontmatter fence")'''
+new = '''
+    if not lines:
+        raise ValueError("does not open with a frontmatter fence")'''
+
+[[rows]]
+id = "u124.B5_unknown_key"
+source = { table = "u124.json", id = "B5_unknown_key" }
+description = "an unknown frontmatter key is accepted"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '        if key not in RESIDUAL_REQUIRED and key not in RESIDUAL_OPTIONAL:'
+new = '        if key not in RESIDUAL_REQUIRED and key not in RESIDUAL_OPTIONAL and False:'
+
+[[rows]]
+id = "u124.B6_required_keys"
+source = { table = "u124.json", id = "B6_required_keys" }
+description = "a missing title or found line is accepted"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+        if not meta.get(key):
+            raise ValueError(f"frontmatter has no {key}")'''
+new = '''
+        if key not in meta and False:
+            raise ValueError(f"frontmatter has no {key}")'''
+
+[[rows]]
+id = "u124.B7_issue_values"
+source = { table = "u124.json", id = "B7_issue_values" }
+description = "issue takes any value"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '        if key in meta and meta[key] not in allowed:'
+new = '        if key in meta and meta[key] not in allowed and False:'
+
+[[rows]]
+id = "u124.B8_numbered_title"
+source = { table = "u124.json", id = "B8_numbered_title" }
+description = "the number shape widened back to any leading R number"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    if re.match(r"R-\d+\.", meta["title"]):'
+new = '    if re.match(r"R-\d+", meta["title"]):'
+
+[[rows]]
+id = "u124.B9_empty_body"
+source = { table = "u124.json", id = "B9_empty_body" }
+description = "a file with frontmatter and no body is accepted"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''
+    if not body.strip():
+        raise ValueError("has frontmatter and no body")'''
+new = '''
+    if body is None:
+        raise ValueError("has frontmatter and no body")'''
+
+[[rows]]
+id = "u148.C1_one_short_allowed"
+source = { table = "u148.json", id = "C1_one_short_allowed" }
+description = "short_of_count lets a read one row short of the count through"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '    if len(rows) < total:'
+new = '    if len(rows) < total - 1:'
+
+[[rows]]
+id = "u148.C2_count_off"
+source = { table = "u148.json", id = "C2_count_off" }
+description = "short_of_count never compares rows to the count"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '    if len(rows) < total:'
+new = '    if False:'
+
+[[rows]]
+id = "u148.C3_no_count_skips"
+source = { table = "u148.json", id = "C3_no_count_skips" }
+description = "a read with no count skips the check, the shape before the review"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''
+    if not isinstance(total, int):
+        # No count means no check, and a read nobody could check is not whole.
+        raise Truncated('''
+new = '''
+    if not isinstance(total, int):
+        return
+        raise Truncated('''
+
+[[rows]]
+id = "u148.C4_only_none_refused"
+source = { table = "u148.json", id = "C4_only_none_refused" }
+description = "only a missing count is refused, a count that is not a number falls through"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '    if not isinstance(total, int):'
+new = '    if total is None:'
+
+[[rows]]
+id = "u148.C5_issue_count_dropped"
+source = { table = "u148.json", id = "C5_issue_count_dropped" }
+description = "load_issues never checks its read against the repository's count"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '    short_of_count(issues, int(total) if total.isdigit() else total, "issue")'
+new = '    pass'
+
+[[rows]]
+id = "u148.L1_old_limit"
+source = { table = "u148.json", id = "L1_old_limit" }
+description = "READ_LIMIT back to 300, the ceiling the board passed"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = 'READ_LIMIT = 5000'
+new = 'READ_LIMIT = 300'
+
+[[rows]]
+id = "u148.L2_issue_literal"
+source = { table = "u148.json", id = "L2_issue_literal" }
+description = "load_issues asks gh for a literal 300 instead of READ_LIMIT"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''
+        "all",
+        "--limit",
+        str(READ_LIMIT),'''
+new = '''
+        "all",
+        "--limit",
+        "300",'''
+
+[[rows]]
+id = "u148.N1_truncation_blamed_on_token"
+source = { table = "u148.json", id = "N1_truncation_blamed_on_token" }
+description = "next catches a truncation as a token that cannot read the board"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''
+    except Truncated:
+        # A cut short read is not a token that cannot see the board, and the
+        # queue below would offer a held card the read missed.
+        raise
+'''
+new = ''
+
+[[rows]]
+id = "u148.S1_branch_before_read"
+source = { table = "u148.json", id = "S1_branch_before_read" }
+description = "start creates the branch before it reads the board, the shape before the review"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''
+    ctx = project_context(owner)
+    items = project_items(owner)
+    item = items.get(node["number"])
+
+    subprocess.run(["git", "checkout", "-b", branch], check=True)
+'''
+new = '''
+    subprocess.run(["git", "checkout", "-b", branch], check=True)
+    ctx = project_context(owner)
+    items = project_items(owner)
+    item = items.get(node["number"])
+'''
+
+[[rows]]
+id = "u148.S2_claims_in_progress"
+source = { table = "u148.json", id = "S2_claims_in_progress" }
+description = "start says a card not on the board is In Progress"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''        print(f"Branch {branch} is checked out, but #{node['number']} is NOT on the")'''
+new = '''        print(f"Branch {branch} is checked out and #{node['number']} is In Progress.")'''
+
+[[rows]]
+id = "u148.W1_full_page_taken"
+source = { table = "u148.json", id = "W1_full_page_taken" }
+description = "whole accepts a read of exactly the limit, a full page read as complete"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '    if len(rows) >= READ_LIMIT:'
+new = '    if len(rows) > READ_LIMIT:'
+
+[[rows]]
+id = "u148.W2_whole_off"
+source = { table = "u148.json", id = "W2_whole_off" }
+description = "whole checks nothing"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '    if len(rows) >= READ_LIMIT:'
+new = '    if False:'
+
+[[rows]]
+id = "u148.W3_issue_whole_dropped"
+source = { table = "u148.json", id = "W3_issue_whole_dropped" }
+description = "load_issues no longer passes its read through whole"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_reads.py", "tests/test_board_status.py", "tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '''
+    whole(issues, "issue")
+'''
+new = '''
+    pass
+'''
+
+[[rows]]
+id = "u151.A1_archived_read"
+source = { table = "u151.json", id = "A1_archived_read" }
+description = "archived cards are read as on the board"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = 'includeArchived: false'
+new = 'includeArchived: true'
+
+[[rows]]
+id = "u151.C1_no_cursor_trusted"
+source = { table = "u151.json", id = "C1_no_cursor_trusted" }
+description = "a page that says more and gives no cursor is followed from the start again"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '''
+        if not after:
+            raise Truncated("the project membership read said there was more and gave no cursor")
+'''
+new = ''
+
+[[rows]]
+id = "u151.C2_page_bound_short"
+source = { table = "u151.json", id = "C2_page_bound_short" }
+description = "the page bound drops its last page, a read of 317 issues refused"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '    for _ in range(READ_LIMIT // 100 + 1):'
+new = '    for _ in range(READ_LIMIT // 100):'
+
+[[rows]]
+id = "u151.F1_cursor_typed"
+source = { table = "u151.json", id = "F1_cursor_typed" }
+description = "the cursor goes as -F, which gh would type"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '            args += ["-f", f"after={after}"]'
+new = '            args += ["-F", f"after={after}"]'
+
+[[rows]]
+id = "u151.M1_membership_count_dropped"
+source = { table = "u151.json", id = "M1_membership_count_dropped" }
+description = "an issue whose memberships come back short is trusted"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '''
+            short_of_count(
+                memberships["nodes"], memberships.get("totalCount"),
+                f"#{issue['number']} project membership",
+            )
+'''
+new = ''
+
+[[rows]]
+id = "u151.M2_issue_count_dropped"
+source = { table = "u151.json", id = "M2_issue_count_dropped" }
+description = "an issue read shorter than the repository count is trusted"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '''
+    short_of_count(seen, total, "project membership")
+'''
+new = ''
+
+[[rows]]
+id = "u151.N1_number_filter_dropped"
+source = { table = "u151.json", id = "N1_number_filter_dropped" }
+description = "a card on another project of the same owner counts as this board's"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '''
+                if str(project.get("number")) != PROJECT_NUMBER:
+                    continue
+'''
+new = '''
+                pass
+'''
+
+[[rows]]
+id = "u151.O1_owner_filter_dropped"
+source = { table = "u151.json", id = "O1_owner_filter_dropped" }
+description = "a card on this project number under another owner counts as this board's"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '''
+                if login.lower() != owner.lower():
+                    continue
+'''
+new = '''
+                pass
+'''
+
+[[rows]]
+id = "u151.O2_owner_case_sensitive"
+source = { table = "u151.json", id = "O2_owner_case_sensitive" }
+description = "the owner match becomes case sensitive"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '                if login.lower() != owner.lower():'
+new = '                if login != owner:'
+
+[[rows]]
+id = "u151.U1_unblocks_always_written"
+source = { table = "u151.json", id = "U1_unblocks_always_written" }
+description = "Unblocks is rewritten on every card again, the U151 cost"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = ' and apply and item.get("unblocks") != unblocks:'
+new = ' and apply:'
+
+[[rows]]
+id = "u151.U2_added_card_zero"
+source = { table = "u151.json", id = "U2_added_card_zero" }
+description = "a card sync just added reads as holding 0, so a derived 0 is never written"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '"status": None, "unblocks": None}'
+new = '"status": None, "unblocks": 0}'
+
+[[rows]]
+id = "u151.X1_next_skips_context"
+source = { table = "u151.json", id = "X1_next_skips_context" }
+description = "next trusts the card read without asking for the project first"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '''
+        project_context(owner)
+        items = project_items(owner)'''
+new = '        items = project_items(owner)'
+
+[[rows]]
+id = "u151.X2_no_org_fallback"
+source = { table = "u151.json", id = "X2_no_org_fallback" }
+description = "the context never asks for an organization project"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '    for kind in ("user", "organization"):'
+new = '    for kind in ("user",):'
+
+[[rows]]
+id = "u151.X3_status_refusal_dropped"
+source = { table = "u151.json", id = "X3_status_refusal_dropped" }
+description = "a project with no Status field is not refused"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '''
+    if not status or "options" not in status:
+        raise Fail('''
+new = '''
+    if False:
+        raise Fail('''
+
+[[rows]]
+id = "u151.X4_unseen_project_trusted"
+source = { table = "u151.json", id = "X4_unseen_project_trusted" }
+description = "a project the token cannot see is not refused"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '''
+    if not project:
+        raise Fail('''
+new = '''
+    if False:
+        raise Fail('''
+
+[[rows]]
+id = "u151.X5_field_count_dropped"
+source = { table = "u151.json", id = "X5_field_count_dropped" }
+description = "a project whose fields come back short is trusted"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cost.py", "tests/test_board_reads.py", "tests/test_board_status.py"]
+old = '''
+    short_of_count(fields["nodes"], fields.get("totalCount"), "project field")
+'''
+new = ''
+
+[[rows]]
+id = "u158.M1_card_not_judged"
+source = { table = "u158.json", id = "M1_card_not_judged" }
+description = "cmd_closing: never judge the card a pull request's head names, so an owed unit merges"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '        if card is not None:'
+new = '        if False:'
+
+[[rows]]
+id = "u158.M2_any_branch_names_a_card"
+source = { table = "u158.json", id = "M2_any_branch_names_a_card" }
+description = "pull_request_card: read a card off any owner/N-slug branch, not only a cloud one"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = 'CLOUD_BRANCH_RE = re.compile(r"^cloud/(\d+)-")'
+new = 'CLOUD_BRANCH_RE = re.compile(r"^\w+/(\d+)-")'
+
+[[rows]]
+id = "u158.M3_implied_close_not_a_reference"
+source = { table = "u158.json", id = "M3_implied_close_not_a_reference" }
+description = "cmd_closing: write the implied trailer without its hash, so it closes nothing"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '            problems += unresolved_closes(f"Closes #{card}", raw=False)'
+new = '            problems += unresolved_closes(f"Closes {card}", raw=False)'
+
+[[rows]]
+id = "u187.A1_relayed_answer_never_matches"
+source = { table = "u187.json", id = "A1_relayed_answer_never_matches" }
+description = "_relayed_answer: never match, so the relay thread's Answer from Phillip is read as a session hold and never as his reply"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '    return comment_heading(comment.get("body") or "") == HEAD_ANSWER'
+new = '    return False'
+
+[[rows]]
+id = "u187.A2_answer_counted_as_a_hold"
+source = { table = "u187.json", id = "A2_answer_counted_as_a_hold" }
+description = "cloud_state: count a relayed answer among the session's own comments, so an answer alone holds the card"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '    mine = [c for c in ordered if SESSION_MARK in (c.get("body") or "") and not _relayed_answer(c)]'
+new = '    mine = [c for c in ordered if SESSION_MARK in (c.get("body") or "")]'
+
+[[rows]]
+id = "u187.A3_answer_not_read_as_reply"
+source = { table = "u187.json", id = "A3_answer_not_read_as_reply" }
+description = "cloud_state: drop the relayed answer from the replies after a question, so the card is never offered as answered"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '        if _when(c) > since and (SESSION_MARK not in (c.get("body") or "") or _relayed_answer(c))'
+new = '        if _when(c) > since and (SESSION_MARK not in (c.get("body") or ""))'
+
+[[rows]]
+id = "u187.A4_heading_drifts"
+source = { table = "u187.json", id = "A4_heading_drifts" }
+description = "HEAD_ANSWER: a nearby heading, answer from phil, so the documented heading no longer matches"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = 'HEAD_ANSWER = "answer from phillip"'
+new = 'HEAD_ANSWER = "answer from phil"'
+
+[[rows]]
+id = "u196.S3_empty_search"
+source = { table = "u196.json", id = "S3_empty_search" }
+description = "cmd_residuals: drop the refusal of an empty search, which matches every heading"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py"]
+old = '        if args.land or not words:'
+new = '        if args.land:'
+
+[[rows]]
+id = "u196.S4_missing_ledger_no_match"
+source = { table = "u196.json", id = "S4_missing_ledger_no_match" }
+description = "search_residuals: drop the refusal of a missing ledger, so a search over a file never read says no match"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py"]
+old = '''
+    if not source.is_file():
+        # A missing'''
+new = '''
+    if False:
+        # A missing'''
+
+[[rows]]
+id = "u203.M1_no_opening_span"
+source = { table = "u203.json", id = "M1_no_opening_span" }
+description = "comment_heading: never take an opening emphasised span, so **Brainstorm.** One question waits reads as a hold"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '        span = _OPENING_EMPHASIS.match(text)'
+new = '        span = None'
+
+[[rows]]
+id = "u203.M2_span_closer_any_follower"
+source = { table = "u203.json", id = "M2_span_closer_any_follower" }
+description = "_OPENING_EMPHASIS: accept a closer followed by a letter, so **Brainstorm**s reads as a brainstorm"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '_OPENING_EMPHASIS = re.compile(r"([*_]+)(.+?)\1(?=$|[\s.,:;?!\u2026])")'
+new = '_OPENING_EMPHASIS = re.compile(r"([*_]+)(.+?)\1")'
+
+[[rows]]
+id = "u203.M3_no_sentence_cut"
+source = { table = "u203.json", id = "M3_no_sentence_cut" }
+description = "_HEADING_END: cut only at a colon or comma, so Needs the machine. The card needs rekordbox is a hold"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '_HEADING_END = re.compile(r"[:,]|[.?!;\u2026](?=\s)")'
+new = '_HEADING_END = re.compile(r"[:,]")'
+
+[[rows]]
+id = "u203.M4_sentence_cut_anywhere"
+source = { table = "u203.json", id = "M4_sentence_cut_anywhere" }
+description = "_HEADING_END: cut at any stop, whitespace after it or not, so Landed v0.6.0 today is cut inside the version"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '_HEADING_END = re.compile(r"[:,]|[.?!;\u2026](?=\s)")'
+new = '_HEADING_END = re.compile(r"[:,]|[.?!;\u2026]")'
+
+[[rows]]
+id = "u203.M5_no_trailing_strip"
+source = { table = "u203.json", id = "M5_no_trailing_strip" }
+description = "comment_heading: strip emphasis but no trailing punctuation, so ## Brainstorm. reads as a hold"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '            text = text.strip().strip("*_").rstrip(_TRAILING)'
+new = '            text = text.strip().strip("*_")'
+
+[[rows]]
+id = "u203.M6_one_pass"
+source = { table = "u203.json", id = "M6_one_pass" }
+description = "comment_heading: strip once instead of to a fixed point, so emphasis left behind a full stop survives"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '        while text != settled:'
+new = '        for _ in (1,):'
+
+[[rows]]
+id = "u203.M7_rule_line_is_a_heading"
+source = { table = "u203.json", id = "M7_rule_line_is_a_heading" }
+description = "comment_heading: read a line of emphasis markers alone as the heading, so a rule above Started reads as empty"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''
+        if not text.strip("*_").strip():
+            continue'''
+new = '''
+        if not text:
+            continue'''
+
+[[rows]]
+id = "u203.M8_ellipsis_not_trailing"
+source = { table = "u203.json", id = "M8_ellipsis_not_trailing" }
+description = "_TRAILING: leave the ellipsis character out, so Brainstorm followed by one reads as a hold"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '_TRAILING = ".?!;\u2026# \t"'
+new = '_TRAILING = ".?!;# \t"'
+
+[[rows]]
+id = "u203.M9_no_comma_cut"
+source = { table = "u203.json", id = "M9_no_comma_cut" }
+description = "_HEADING_END: drop the comma cut, so Started, 2026-10-13. reads as a hold"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '_HEADING_END = re.compile(r"[:,]|[.?!;\u2026](?=\s)")'
+new = '_HEADING_END = re.compile(r"[:]|[.?!;\u2026](?=\s)")'
+
+[[rows]]
+id = "u291.L1_lanes_back_to_five"
+source = { table = "u291.json", id = "L1_lanes_back_to_five" }
+description = "CLOUD_LANES: put the cap back at five, the count before 2026-11-21"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = 'CLOUD_LANES = 10'
+new = 'CLOUD_LANES = 5'
+
+[[rows]]
+id = "u291.L2_lanes_one_short"
+source = { table = "u291.json", id = "L2_lanes_one_short" }
+description = "CLOUD_LANES: nine lanes, one short of the cap"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = 'CLOUD_LANES = 10'
+new = 'CLOUD_LANES = 9'
+
+[[rows]]
+id = "u291.L3_lanes_one_over"
+source = { table = "u291.json", id = "L3_lanes_one_over" }
+description = "CLOUD_LANES: eleven lanes, one over the cap"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = 'CLOUD_LANES = 10'
+new = 'CLOUD_LANES = 11'
+
+[[rows]]
+id = "u291.L4_help_names_a_literal"
+source = { table = "u291.json", id = "L4_help_names_a_literal" }
+description = "--lanes help: name a literal five rather than read the constant"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '        help=f"how many cards the cloud builds at once (default {CLOUD_LANES})",'
+new = '        help="how many cards the cloud builds at once (default 5)",'
+
+[[rows]]
+id = "u291.L5_default_ignores_the_constant"
+source = { table = "u291.json", id = "L5_default_ignores_the_constant" }
+description = "cmd_cloud: with no --lanes, count four lanes rather than CLOUD_LANES"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '    lanes = max(1, getattr(args, "lanes", None) or CLOUD_LANES)'
+new = '    lanes = max(1, getattr(args, "lanes", None) or 4)'
+
+[[rows]]
+id = "u313.B2_landed_twice"
+source = { table = "u313.json", id = "B2_landed_twice" }
+description = "land_residuals: number a file whose title the ledger already holds, so a file that came back through a conflict lands twice"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_board_residual_search.py"]
+old = '        if meta["title"] in held'
+new = '        if meta["title"] in held and False'
+
+[[rows]]
+id = "u313.B3_stale_window_doubled"
+source = { table = "u313.json", id = "B3_stale_window_doubled" }
+description = "cloud_state: read a hold as dead only after twice the stale window, so a dead session's card is not offered to resume"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '    if age is not None and age > STALE_HOURS:'
+new = '    if age is not None and age > STALE_HOURS * 2:'
+
+[[rows]]
+id = "u313.B4_withdrawn_held"
+source = { table = "u313.json", id = "B4_withdrawn_held" }
+description = "cloud_state: read a Withdrawn card as held, so a released card is never offered"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '    if heading == HEAD_WITHDRAWN:'
+new = '    if heading == HEAD_WITHDRAWN and False:'
+
+[[rows]]
+id = "u313.B5_owed_unit_closes"
+source = { table = "u313.json", id = "B5_owed_unit_closes" }
+description = "unresolved_closes: pass a unit a register still owes a module, so a closing trailer closes it early"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py", "tests/test_restart_and_residual_files.py"]
+old = '        if not modules:'
+new = '        if modules or not modules:'
+
+[[rows]]
+id = "u313.B6_refusal_exit_code"
+source = { table = "u313.json", id = "B6_refusal_exit_code" }
+description = "_refuse: print the refusal and return 0, so a refused residuals command reads as done"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_board_residual_search.py"]
+old = '''
+    print(f"board: {message}", file=sys.stderr)
+    return code'''
+new = '''
+    print(f"board: {message}", file=sys.stderr)
+    return 0'''
+
+[[rows]]
+id = "u314.L10_search_names_no_file"
+source = { table = "u314.json", id = "L10_search_names_no_file" }
+description = "cmd_residuals: print a search hit without the file it is in"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py"]
+old = '            print(f"R-{number}. {title}  ({path.relative_to(LEDGER.parent.parent)})")'
+new = '            print(f"R-{number}. {title}")'
+
+[[rows]]
+id = "u314.L1_archives_unread"
+source = { table = "u314.json", id = "L1_archives_unread" }
+description = "ledger_files: read the working file alone, so search, the highest number and the title check never see an archive"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py", "tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '    return sorted((ledger.parent / "ledger").glob("*.md"), key=first) + [ledger]'
+new = '    return [ledger]'
+
+[[rows]]
+id = "u314.L2_landing_never_archives"
+source = { table = "u314.json", id = "L2_landing_never_archives" }
+description = "land_residuals: append without archiving, so the working file grows past the limit"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_board_residual_search.py"]
+old = '''
+    ledger.write_text(text)
+    archive_ledger(ledger)'''
+new = '    ledger.write_text(text)'
+
+[[rows]]
+id = "u314.L3_archive_header_undercounted"
+source = { table = "u314.json", id = "L3_archive_header_undercounted" }
+description = "archive_ledger: count a two line header where four are written, so an archive can pass the limit"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '        while last < count - 1 and 4 + len(body(first, last + 1)) <= LEDGER_LIMIT:'
+new = '        while last < count - 1 and 2 + len(body(first, last + 1)) <= LEDGER_LIMIT:'
+
+[[rows]]
+id = "u314.L5_duplicate_heading_passes"
+source = { table = "u314.json", id = "L5_duplicate_heading_passes" }
+description = "ledger_problems: never report a heading held by two files"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '            if number in where:'
+new = '            if False:'
+
+[[rows]]
+id = "u314.L6_misnamed_archive_passes"
+source = { table = "u314.json", id = "L6_misnamed_archive_passes" }
+description = "ledger_problems: never compare an archive's name with the range it holds"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '        if path != ledger and (not numbers or path.name != _archive_name(numbers[0], numbers[-1])):'
+new = '        if path != ledger and not numbers:'
+
+[[rows]]
+id = "u314.L7_removed_heading_reversed"
+source = { table = "u314.json", id = "L7_removed_heading_reversed" }
+description = "ledger_problems: look for headings added since the revision rather than removed, so a removed heading passes"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    missing = [f"R-{n}" for n in sorted(set(before) - set(now))]'
+new = '    missing = [f"R-{n}" for n in sorted(set(now) - set(before))]'
+
+[[rows]]
+id = "u314.L8_unchanged_ignored"
+source = { table = "u314.json", id = "L8_unchanged_ignored" }
+description = "ledger_problems: never report an entry that differs from the revision, so the move's byte comparison passes anything"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    if unchanged and changed:'
+new = '    if False:'
+
+[[rows]]
+id = "u314.L9_archives_at_rev_unread"
+source = { table = "u314.json", id = "L9_archives_at_rev_unread" }
+description = "_ledger_at: read only the working file at the revision, so a heading removed from an archive passes the check against it"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '    for name in [*(n for n in listed.stdout.split() if n.endswith(".md")), ledger.name]:'
+new = '    for name in [ledger.name]:'
+
+[[rows]]
+id = "u59.B1_per_message_split"
+source = { table = "u59.json", id = "B1_per_message_split" }
+description = "Concatenate the range again, manufacturing a trailer across two commits"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '            ["git", "log", "--format=%B%x00", f"{args.since}..HEAD"],'
+new = '            ["git", "log", "--format=%B", f"{args.since}..HEAD"],'
+
+[[rows]]
+id = "u59.B2_raw_true_on_range"
+source = { table = "u59.json", id = "B2_raw_true_on_range" }
+description = "Strip comments on the CI path, which can only delete a real trailer"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '                problems += unresolved_closes(message, raw=False)'
+new = '                problems += unresolved_closes(message, raw=True)'
+
+[[rows]]
+id = "u59.B3_unit_mapping_ignored"
+source = { table = "u59.json", id = "B3_unit_mapping_ignored" }
+description = "Ignore the supplied issue-to-unit map, restoring the number conflation"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '        uid = reference if units is None else units.get(reference)'
+new = '        uid = reference'
+
+[[rows]]
+id = "u59.B4_guess_caveat_dropped"
+source = { table = "u59.json", id = "B4_guess_caveat_dropped" }
+description = "Stop saying the unit number was guessed, so the reader trusts it"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '        if units is None and reference == uid:'
+new = '        if False:'
+
+[[rows]]
+id = "u59.B6_duplicate_unit_kept"
+source = { table = "u59.json", id = "B6_duplicate_unit_kept" }
+description = "Let a duplicated unit number resolve to whichever issue was seen last"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '    return {unit: number for unit, number in seen.items() if unit not in duplicated}'
+new = '    return seen'
+
+[[rows]]
+id = "u59.B8_missing_file_raises"
+source = { table = "u59.json", id = "B8_missing_file_raises" }
+description = "Let a missing message file raise instead of refusing with a sentence"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py"]
+old = '        if not path.is_file():'
+new = '        if False:'
+
+[[rows]]
+id = "u81-round-2.B5_owed_argument_ignored"
+source = { table = "u81-round-2.json", id = "B5_owed_argument_ignored" }
+description = "Ignore a supplied register and always read the live one"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '''
+    owed = owed_by_unit() if owed is None else owed
+    issues_by_unit = units_by_issue_number(graph)'''
+new = '''
+    owed = owed_by_unit()
+    issues_by_unit = units_by_issue_number(graph)'''
+
+[[rows]]
+id = "u81-round-3.B5_audit_drops_the_detector"
+source = { table = "u81-round-3.json", id = "B5_audit_drops_the_detector" }
+description = "Have the audit find no contradictions at all, keeping its drift report"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '    clashes = contradictions(graph)'
+new = '    clashes = []'
+
+[[rows]]
+id = "u81-round-3.B5_audit_exit_code"
+source = { table = "u81-round-3.json", id = "B5_audit_exit_code" }
+description = "Report a contradiction as exit 1, the code that sends a session to sync"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '    return 2 if clashes else 1'
+new = '    return 1'
+
+[[rows]]
+id = "u81-round-3.B5_owed_default_dropped"
+source = { table = "u81-round-3.json", id = "B5_owed_default_dropped" }
+description = "Collapse the no-register default into a falsy test, so an empty register reads as none"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '''
+    owed = owed_by_unit() if owed is None else owed
+    issues_by_unit = units_by_issue_number(graph)'''
+new = '''
+    owed = owed or {}
+    issues_by_unit = units_by_issue_number(graph)'''
+
+[[rows]]
+id = "u81.B5_composite"
+source = { table = "u81.json", id = "B5_composite" }
+description = "What B5 does hold: report a contradiction over an OPEN issue as well"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_pending_units.py", "tests/test_adoption.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_mutation_driver.py", "tests/test_pool_sizing.py", "tests/test_restore.py"]
+old = '        if node and node["unit"] and node["closed"]:'
+new = '        if node and node["unit"]:'
+
+[[rows]]
+id = "u81.B5_contradictions_by_number"
+source = { table = "u81.json", id = "B5_contradictions_by_number" }
+description = "Index the graph by unit number again in contradictions()"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '''
+        number = issues_by_unit.get(uid)
+        node = graph.get(number) if number is not None else None'''
+new = '        node = graph.get(uid)'
+
+[[rows]]
+id = "u81.B5_residual_repoint_dropped"
+source = { table = "u81.json", id = "B5_residual_repoint_dropped" }
+description = "Return only the register contradictions, dropping the repointed residuals"
+file = "scripts/board.py"
+surface = "user"
+tests = ["tests/test_pending_units.py"]
+old = '    return found + repointed_residuals(graph)'
+new = '    return found'
