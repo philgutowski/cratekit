@@ -468,8 +468,9 @@ def analyse_file(
 
     warm.kernels()
     try:
-        # AT THE ENERGY MEASURE RATE, so the restamp path's calibration scores
-        # these samples, and THROUGH THE ONE DECODER (U263).
+        # AT THE ENERGY MEASURE RATE, the rate the head's tempo and key are
+        # read at, and THROUGH THE ONE DECODER (U263). The energy is measured
+        # from the file, as the restamp measures it (U344).
         with timed(timings, "decode"):
             y, sr = decode.load(path, MEASURE_RATE)
         if y.size == 0:

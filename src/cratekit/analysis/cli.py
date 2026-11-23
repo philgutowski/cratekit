@@ -36,7 +36,7 @@ import functools
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
-from cratekit.analysis import ahead, artifacts, detect, energy, light, vocals
+from cratekit.analysis import ahead, artifacts, decode, detect, energy, light, vocals
 from cratekit.cli.output import Envelope, load_config, no_job
 from cratekit.core import config, discovery, jobs, naming, pool, tags
 from cratekit.core import drift as drift_words
@@ -61,6 +61,13 @@ RUN_HANDLER_KEY = "analyze.run"
 
 #: The run report's key naming the calibration its level was scored under (U344).
 SCORED_UNDER = "calibration"
+#: The run report's key saying the energy's slice did not move with the run's
+#: own tag write (U344), and what :func:`slice_length` answers for a file
+#: decoded whole, whose length no tag moves.
+SLICE_HELD = "slice_held"
+DECODED_WHOLE = "decoded-whole"
+#: The payload key recording why a restamp told a run's job left nothing out.
+PAYLOAD_LEFT_OUT_NOTHING = "left_out_nothing"
 #: ``analyze restamp``'s flag naming the ``analyze run`` job of this pass, whose
 #: scored files it leaves out (U344), and the payload keys that record them.
 SCORED_BY_FLAG = "--scored-by"
@@ -429,6 +436,9 @@ def _resume(ctx, cfg: config.Config, job_id: str) -> Envelope:
             warnings = (*warnings, DB_NOT_WRITTEN)
             # What a tail's restamp left out because the run scored it (U344).
             summary.update(left_out_of(job.payload))
+            why = (job.payload or {}).get(PAYLOAD_LEFT_OUT_NOTHING)
+            if isinstance(why, str):
+                warnings = (*warnings, left_out_nothing(why))
         else:
             # THE HEAD IS A MEASUREMENT WITH A KNOWN ERROR (R-744): rekordbox
             # will not always agree, so the answer carries the measured rate.
@@ -770,7 +780,13 @@ def handle_run(job, item, cfg) -> jobs.Produced:
             cfg, job, item, {"item": item.item_id, "path": str(path), "status": partial["terminal"]}
         )
     scored = vocals.analyse(partial)
+    # THE SLICE THE ENERGY WAS MEASURED OVER IS CENTRED ON THE FILE'S LENGTH,
+    # which libsndfile estimates from the size of an MP3 with no Xing header,
+    # so the tag write below can move it (U344 review): read before and after.
+    measured = scored.get("energy") is not None
+    before = slice_length(path) if measured else None
     final = _finalize(cfg, job, item, path, scored)
+    held = measured and before is not None and slice_length(final) == before
     return artifacts.produced(
         cfg,
         job,
@@ -793,8 +809,26 @@ def handle_run(job, item, cfg) -> jobs.Produced:
             # WHICH CALIBRATION THE LEVEL IS UNDER, so the tail's restamp leaves
             # this file out only while that calibration is still the one (U344).
             SCORED_UNDER: _scored_under(cfg, settings),
+            SLICE_HELD: held,
         },
     )
+
+
+def slice_length(path: Path) -> float | str | None:
+    """The length the energy measure centres its slice on, or None when unread.
+
+    A file libsndfile opens answers its header's length, a read of the header
+    alone. Any other is decoded whole through ffmpeg, whose length is the
+    decoded samples' and no tag can move, so it answers that it is decoded,
+    with no decode here. None when the analysis stack is absent or the header
+    cannot be read: a length not read is not a length that held.
+    """
+    try:
+        if not decode.libsndfile_opens(path):
+            return DECODED_WHOLE
+        return decode.duration(path)
+    except Exception:  # noqa: BLE001 - an unread length leaves the file to the restamp
+        return None
 
 
 def _scored_under(cfg: config.Config, settings: ahead.Settings | None) -> str | None:
@@ -858,7 +892,9 @@ def analyze_restamp(ctx) -> Envelope:
             PAYLOAD_LEFT_OUT: sorted(left_out),
         }
         if why is not None:
-            extra = (*extra, {"code": "restamp-left-out-nothing", "message": why})
+            # ON THE PAYLOAD as well, since the foreground answer is the resume's.
+            scored_by[PAYLOAD_LEFT_OUT_NOTHING] = why
+            extra = (*extra, left_out_nothing(why))
         if not items:
             return ctx.envelope(
                 data=no_job(ALL_SCORED, left_out=len(left_out), scored_by=ctx.args.scored_by),
@@ -934,6 +970,7 @@ def scored_in_pass(
             and isinstance(level, int)
             and not isinstance(level, bool)
             and report.get(SCORED_UNDER) == active
+            and report.get(SLICE_HELD) is True
             and isinstance(report.get("path"), str)
         ):
             scored[Path(report["path"])] = level
@@ -944,6 +981,11 @@ def scored_in_pass(
         if level is not None and as_level(tags.read_tag(path, "energylevel")) == level:
             left_out.add(item)
     return left_out, None
+
+
+def left_out_nothing(why: str) -> dict[str, str]:
+    """The warning a restamp told a run's job carries when it could leave nothing out."""
+    return {"code": "restamp-left-out-nothing", "message": why}
 
 
 def left_out_of(payload: Mapping[str, Any] | None) -> dict[str, Any]:

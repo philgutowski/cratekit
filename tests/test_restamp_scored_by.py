@@ -37,6 +37,8 @@ from tests.test_analysis_workers import (  # noqa: F401 - fixtures, used by name
 )
 
 RUN = ("analyze", "run")
+#: The shipped reading, kept before the autouse stand in replaces it.
+SHIPPED_SLICE_LENGTH = analysis_cli.slice_length
 RESTAMP = ("analyze", "restamp")
 
 
@@ -57,6 +59,26 @@ def measuring(monkeypatch) -> Measuring:
     extractor = Measuring()
     monkeypatch.setattr(energy, "_EXTRACTOR", extractor)
     return extractor
+
+
+class Lengths:
+    """The length the energy's slice is centred on, by call: steady unless told to move."""
+
+    def __init__(self) -> None:
+        self.answers: list[float | str | None] = []
+        self.asked: list[str] = []
+
+    def __call__(self, path: Path) -> float | str | None:
+        self.asked.append(Path(path).name)
+        return self.answers.pop(0) if self.answers else 185.25
+
+
+@pytest.fixture(autouse=True)
+def lengths(monkeypatch) -> Lengths:
+    """No soundfile on this machine, so the header's length stands in, holding by default."""
+    stand_in = Lengths()
+    monkeypatch.setattr(analysis_cli, "slice_length", stand_in)
+    return stand_in
 
 
 @pytest.fixture
@@ -120,6 +142,110 @@ def test_the_shipped_detector_records_the_calibration_its_settings_carry(
     assert analysis_cli._scored_under(cfg, unscored) is None
 
 
+def test_the_run_reads_the_slices_length_before_and_after_its_own_write(
+    cfg, folder, silence, monkeypatch, calibrated, lengths  # noqa: F811
+):
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch, detect_=detector(level=6))
+    run = run_over(folder)
+    (report,) = artifacts.committed(cfg, run.job_id)
+    assert report[analysis_cli.SLICE_HELD] is True
+    assert lengths.asked == ["a.flac", "08A - 124 - a.flac"]
+
+
+def test_a_run_that_scored_no_energy_reads_no_length(
+    cfg, folder, silence, monkeypatch, calibrated, lengths  # noqa: F811
+):
+    place(folder, silence, "a")
+    bind_scoring(
+        monkeypatch, detect_=detector(level=None, status=energy.STATUS_FEATURES_UNAVAILABLE)
+    )
+    run = run_over(folder)
+    (report,) = artifacts.committed(cfg, run.job_id)
+    assert report[analysis_cli.SLICE_HELD] is False and lengths.asked == []
+
+
+@pytest.mark.parametrize(
+    "answers",
+    [[185.329, 185.567], [None, None], [185.25, None], [None, 185.25]],
+    ids=["moved", "unread", "unread-after", "unread-before"],
+)
+def test_a_file_whose_slice_moved_or_went_unread_with_the_runs_write_is_restamped(
+    cfg, folder, silence, monkeypatch, calibrated, measuring, lengths, answers  # noqa: F811
+):
+    """The review's MP3 with no Xing header: its length is read off its size, which the
+    run's tag write grows, so the restamp's slice is not the one the run measured."""
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch, detect_=detector(level=6))
+    lengths.answers = list(answers)
+    run = run_over(folder)
+    (report,) = artifacts.committed(cfg, run.job_id)
+    assert report[analysis_cli.SLICE_HELD] is False
+
+    queue_restamp(folder, "--scored-by", run.job_id)
+
+    (job,) = restamp_jobs()
+    assert list(item_states(job.job_id)) == ["08A - 124 - a.flac"]
+    assert job.payload["left_out"] == []
+
+
+def test_the_slices_length_is_the_headers_or_says_the_file_is_decoded_whole(
+    monkeypatch, tmp_path
+):
+    from cratekit.analysis import decode
+
+    shipped = SHIPPED_SLICE_LENGTH
+    track = tmp_path / "track.mp3"
+    monkeypatch.setattr(decode, "libsndfile_opens", lambda _path: True)
+    monkeypatch.setattr(decode, "duration", lambda _path: 185.329)
+    assert shipped(track) == 185.329
+    monkeypatch.setattr(decode, "libsndfile_opens", lambda _path: False)
+    assert shipped(track) == analysis_cli.DECODED_WHOLE
+
+    def unreadable(_path):
+        raise RuntimeError("no header")
+
+    monkeypatch.setattr(decode, "libsndfile_opens", unreadable)
+    assert shipped(track) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("status", "skipped-prefixed"),
+        ("energy_status", energy.STATUS_FEATURES_UNAVAILABLE),
+        ("energy", "6"),
+        ("energy", True),
+        ("path", None),
+        (analysis_cli.SLICE_HELD, None),
+    ],
+)
+def test_a_run_report_short_of_a_scored_level_leaves_its_file_to_the_restamp(
+    cfg, folder, silence, monkeypatch, calibrated, measuring, field, value  # noqa: F811
+):
+    """Each condition of a left out file, broken alone on the run's own committed report."""
+    import json
+
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch, detect_=detector(level=1 if value is True else 6))
+    run = run_over(folder)
+    scored = folder / "08A - 124 - a.flac"
+    if value is True:
+        # True reads as 1, so the tag carries 1, and only the type tells them apart.
+        assert energy_of(scored) == "1"
+    with jobs.open_store() as store:
+        (item,) = jobs.items(store, run.job_id)
+    report_path = artifacts.final_path(cfg, run.job_id, item.ordinal)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report[field] = value
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    queue_restamp(folder, "--scored-by", run.job_id)
+
+    (job,) = restamp_jobs()
+    assert list(item_states(job.job_id)) == [scored.name]
+
+
 def test_a_calibration_fingerprint_is_one_per_calibration_and_moves_with_a_refit(
     cfg, calibrated  # noqa: F811
 ):
@@ -128,6 +254,16 @@ def test_a_calibration_fingerprint_is_one_per_calibration_and_moves_with_a_refit
     assert energy.fingerprint(calibrated.to_json()) == energy.fingerprint(calibrated)
     refit = calibration_over(count=21)
     assert energy.fingerprint(refit) != energy.fingerprint(calibrated)
+    import dataclasses
+
+    cuts_alone = dataclasses.replace(
+        calibrated, thresholds=tuple(cut + 0.01 for cut in calibrated.thresholds)
+    )
+    assert energy.fingerprint(cuts_alone) != energy.fingerprint(calibrated), (
+        "the cuts decide the level, so they are part of which calibration it is"
+    )
+    floor_alone = dataclasses.replace(calibrated, onset_floor=(calibrated.onset_floor or 0) + 1)
+    assert energy.fingerprint(floor_alone) != energy.fingerprint(calibrated)
 
 
 def test_a_run_with_no_calibration_records_none_and_the_restamp_still_refuses(
@@ -290,6 +426,20 @@ def test_a_job_that_is_not_this_folders_finished_run_leaves_nothing_out_and_says
     assert envelope["data"]["progress"]["left_out"] == 0
     (said,) = [w for w in envelope["warnings"] if w["code"] == "restamp-left-out-nothing"]
     assert named in said["message"] and "every file is restamped" in said["message"]
+
+
+def test_a_restamp_driven_in_the_foreground_still_says_it_left_nothing_out(
+    cfg, folder, silence, monkeypatch, calibrated, measuring  # noqa: F811
+):
+    """The review's mistyped job: the foreground answer is the resume's, so it reads the payload."""
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch, detect_=detector(level=6))
+    run_over(folder)
+    code, envelope = drive([*RESTAMP, "--scored-by", "no-such-job", str(folder)])
+    assert code == int(ExitCode.OK), envelope
+    (said,) = [w for w in envelope["warnings"] if w["code"] == "restamp-left-out-nothing"]
+    assert "no-such-job" in said["message"]
+    assert envelope["data"]["progress"]["analysis"]["left_out"] == 0
 
 
 def test_a_hand_run_of_restamp_is_what_it_always_was(
