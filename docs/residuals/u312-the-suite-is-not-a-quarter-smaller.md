@@ -9,10 +9,10 @@ under 332,177. The thirteen area cards brought it to 300,722; U312 then cut
 nine disjoint slices by the card's own rules (prose to rule and reason, near
 identical tests folded into tables with every case kept, repeated setup
 shared, slow setup built once, nothing reformatted to win lines) and ended at
-about 287,400. Every slice measured why it stopped: test docstrings were
+289,090 lines with later cards merged, 13,296 fewer than `main` beside it. Every slice measured why it stopped: test docstrings were
 already one line, near duplicate scans (same tree but constants, then names
 normalized) found a few dozen lines of foldable tests per slice, and the
-helper copies across files were short. The support files reached 20,045
+helper copies across files were short. The support files reached 20,110
 lines against the card's 17,650.
 
 **Measured cost.** None to a person using the verbs. Point 5 of #847's
