@@ -197,12 +197,15 @@ the two commands that answer and apply it and the rekordbox visit after.
   files the tail did not run on.
 - The tail's `analyze restamp` is passed `--scored-by` with the pass's
   `analyze run` job, so it does not measure energy again on a file that run
-  just scored: the run measures energy the way the restamp does, so the
-  restamp would give the same level. It still restamps a file the run skipped
-  (a name already carrying the head), could not key or score, or scored under
-  a calibration that is no longer the active one, and a file whose energy tag
-  changed since. Its `restamp` row says how many it left out, and when the
-  run scored every staged file it queues nothing and says so.
+  just scored: the run measures energy the way the restamp does, over the
+  same two minutes of the same audio. It still restamps a file the run
+  skipped (a name already carrying the head), could not key or score, or
+  scored under a calibration that is no longer the active one, a file whose
+  energy tag changed since, and a file whose length moved when the run wrote
+  its tags (an MP3 with no Xing header, whose length is read off its size,
+  so the two minutes measured are not the same ones). Its `restamp` row says
+  how many it left out, and when the run scored every staged file it queues
+  nothing and says so.
 - When every genre catalogue but Discogs refuses this machine (Beatport's 403,
   a bot wall), a pass with a `discogs-token` recorded carries on: a file
   Discogs searched and could not tag is left with no genre, never recorded
@@ -1473,15 +1476,18 @@ crate metadata mytags-vocals [--apply]
   row says when vocals cannot score.
 - `analyze run` measures a track's energy exactly as `analyze restamp` does,
   over the central two minutes decoded on their own, so one file under one
-  calibration gets one level from either verb. Until U344 the run read the
-  energy from the whole track it decoded for the key, which gave a level one
-  step apart on a track sitting on a level's edge. `analyze restamp
-  --scored-by RUN_JOB_ID` leaves out each file that `analyze run` job scored
-  at its present name under the calibration active now, whose `energylevel`
-  tag still reads that level, says how many it left out, and restamps the
-  rest; a job that is not a finished run over that folder leaves nothing out,
-  with a `restamp-left-out-nothing` warning. The tail passes it; by hand, a
-  restamp without it restamps every file as it always has.
+  calibration, measured over the same audio, gets one level from either verb.
+  Until U344 the run read the energy from the whole track it decoded for the
+  key, which gave a level one step apart on a track sitting on a level's
+  edge. `analyze restamp --scored-by RUN_JOB_ID` leaves out each file that
+  `analyze run` job scored at its present name under the calibration active
+  now, whose `energylevel` tag still reads that level and whose length did
+  not move with the run's own tag write, and restamps the rest. Its JSON
+  answer counts what it left out (`progress.left_out` when queued,
+  `progress.analysis.left_out` when driven); a job that is not a finished
+  run over that folder leaves nothing out, with a `restamp-left-out-nothing`
+  warning. The tail passes it; by hand, a restamp without it restamps every
+  file as it always has.
 - `analyze run` measures key, tempo, drift and energy in worker processes
   ahead of the one process that scores vocals and writes, as many as the
   machine's memory affords up to its cores less two. The answer's

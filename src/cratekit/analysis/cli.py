@@ -235,7 +235,8 @@ def build_restamp(parser, entry) -> None:
         help=(
             "leave out each file the analyze run job JOB_ID scored at its present "
             "name under the calibration active now, whose energy tag still reads "
-            "that level, since a restamp would give it the same level; the tail "
+            "that level and whose length did not move with the run's own tag "
+            "write, since the run measured it as a restamp would; the tail "
             "passes it"
         ),
     )
@@ -935,9 +936,11 @@ def scored_in_pass(
 
     An item is left out only when the run's committed report says it was
     analysed at exactly this path with a level under the calibration active
-    now, and the file's energy tag still reads that level: the run measures
-    through the restamp's own :func:`energy.measure` (U344), so the restamp
-    would answer the same level and write nothing. Anything else, a job that
+    now, the slice its energy was measured over did not move with the run's
+    own tag write, and the file's energy tag still reads that level: the run
+    measures through the restamp's own :func:`energy.measure` (U344), over
+    the same samples, so the restamp would answer the same level and write
+    nothing. Anything else, a job that
     is not a finished run over this folder included, is restamped as it
     always was; the second answer says why nothing was left out, when so.
     """
