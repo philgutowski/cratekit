@@ -1,8 +1,7 @@
 """U10: the job engine's properties, each named for the failure it prevents.
 
-The subprocess tests are not slow versions of the in-process ones: only a
-killed process leaves a claimed item whose driver is gone and a lock the
-kernel released, and the kernel is the half doing the work.
+Only a killed process leaves a claimed item with no driver and a lock the
+kernel released, so the subprocess tests are not slow copies of the others.
 """
 
 from __future__ import annotations
@@ -171,8 +170,7 @@ def test_a_job_records_the_library_it_targets(queue, cfg):
 
 
 def test_a_config_that_changed_while_queued_names_what_drifted(queue, cfg, tmp_path):
-    """KTD9's second half: the job runs against its frozen copy and names the keys
-    that moved, so an edit with no effect is explained."""
+    """KTD9: the job runs on its frozen copy and names the keys that moved."""
     store, _ = queue
     job = _job(store, cfg)
     assert jobs.drift(job, cfg) == ()
@@ -184,8 +182,7 @@ def test_a_config_that_changed_while_queued_names_what_drifted(queue, cfg, tmp_p
 
 
 def test_a_job_frozen_under_the_retired_adapter_key_reports_no_drift(queue, cfg):
-    """U197. The old adapter key reads as ``vendored``, so it is no drift, while a
-    real move of the adapter is still named."""
+    """U197: the old adapter key is no drift, while a real move is still named."""
     store, _ = queue
     job = _job(store, cfg)
     assert cfg.acquisition.adapter == "vendored"
@@ -252,8 +249,7 @@ def test_an_unknown_job_refuses_with_a_code_from_the_vocabulary(queue):
 
 
 def test_states_of_answers_for_the_names_it_knows_and_omits_the_rest(queue, cfg):
-    """An identifier with no row is ABSENT, never mapped to a state: the staging
-    sweep leaves another installation's directory where it is."""
+    """An identifier with no row is absent, never mapped to a state."""
     store, _ = queue
     open_job = _job(store, cfg)
     done = _job(store, cfg)
@@ -264,8 +260,7 @@ def test_states_of_answers_for_the_names_it_knows_and_omits_the_rest(queue, cfg)
 
 
 def test_states_of_answers_past_the_parameter_limit_of_one_statement(queue, cfg):
-    """More names than fit one ``IN`` clause (R-289), as a never swept staging tree
-    asks. The rows are copies of one enqueued row, written in one transaction."""
+    """More names than fit one ``IN`` clause (R-289), copied from one enqueued row."""
     store, _ = queue
     made = [f"job-{n:05d}" for n in range(jobs._ID_CHUNK + 7)]
     _job(store, cfg, job_id=made[0])
@@ -293,8 +288,7 @@ def test_a_stored_cause_that_cannot_be_read_back_is_not_read_as_success(queue, c
 
 
 def test_everything_the_queue_writes_is_owner_only_under_any_umask(tmp_path, cfg):
-    """Audited by WALKING the directory, so SQLite's own sidecars are caught, and
-    directories too: a 0600 file in a world writable directory is not private."""
+    """Audited by walking the directory, so SQLite's sidecars and directories count."""
     previous = os.umask(0o000)
     try:
         root = tmp_path / "queue-root"
@@ -477,8 +471,7 @@ def _failing(permanent=(), transient=(), broken=()):
 
 @pytest.mark.parametrize("ids", [("a", "b"), ("a", "b", "c")], ids=["two-items", "three-items"])
 def test_a_job_whose_every_item_failed_permanently_reports_itself_non_retryable(queue, cfg, ids):
-    """R-380 (and R-266's engine half): the job no longer wraps permanent items as
-    retryable resume-job. R-391 keeps one shared reason as the job's reason."""
+    """R-380 and R-266: permanent items are not retryable; R-391 keeps one shared reason."""
     store, root = queue
     job = _job(store, cfg, *ids)
     envelope = _refused(lambda: jobs.drive(store, job.job_id, _failing(permanent=ids), root=root))
@@ -499,8 +492,7 @@ def test_a_job_whose_every_item_failed_permanently_reports_itself_non_retryable(
 
 
 def test_a_partial_failure_whose_failures_are_permanent_is_not_resumable(queue, cfg):
-    """Some items done, every failure permanent: telling the person that resume
-    can help is the lie."""
+    """Some items done, every failure permanent: resume cannot help."""
     store, root = queue
     job = _job(store, cfg, "good", "bad")
     result = jobs.drive(store, job.job_id, _failing(permanent=("bad",)), root=root)
@@ -532,8 +524,7 @@ def test_a_partial_failure_whose_failures_are_permanent_is_not_resumable(queue, 
 
 
 def test_a_failed_job_with_no_recorded_cause_still_re_arms(queue, cfg):
-    """R-390's edge: a missing verdict, as a build before R-380 left, is not a
-    permanent one."""
+    """R-390: a missing verdict, as a build before R-380 left, is not a permanent one."""
     store, _root = queue
     job = _job(store, cfg, "a", "b")
     jobs.fail_item(
@@ -557,8 +548,7 @@ def test_a_failed_job_with_no_recorded_cause_still_re_arms(queue, cfg):
 
 
 def test_resuming_a_job_of_permanent_failures_through_the_verb_refuses(cfg, default_queue):
-    """R-390 at the shell: refused in the foreground, the item's reason nested,
-    the items left as the failure left them."""
+    """R-390 at the shell: refused in the foreground, the items left as they were."""
     root = jobs.store_dir()
     job = _job(default_queue, cfg, "good", "bad", job_id="job-permanent")
     jobs.drive(default_queue, job.job_id, _failing(permanent=("bad",)), root=root)
@@ -576,8 +566,7 @@ def test_resuming_a_job_of_permanent_failures_through_the_verb_refuses(cfg, defa
 
 
 def test_two_distinct_permanent_reasons_name_both_whichever_failed_last(queue, cfg):
-    """R-391: the job cause once took ``failed[-1].reason``. Driven in both item
-    orders, so the verdict depends on the set of reasons, not the sequence."""
+    """R-391: in both item orders, the verdict is the set of reasons, not the last."""
     store, root = queue
     mixed_permanent = _failing(permanent=("lookup",), broken=("broken",))
     both = ("internal-error", "sync-source-lookups-failed")
@@ -652,8 +641,7 @@ def test_cancelling_reports_cancelled_rather_than_failed(queue, cfg):
 
 
 def test_an_interrupt_between_the_work_and_the_commit_leaves_no_artifact(queue, cfg, tmp_path):
-    """The abort point is BEFORE the commit. The handler signals its own process,
-    as close to a real SIGINT as a test gets."""
+    """The abort point is before the commit; the handler signals its own process."""
     store, root = queue
     job = _job(store, cfg, "a", "b")
     staged = tmp_path / "staged-a.txt"
@@ -682,8 +670,7 @@ def test_the_signal_handler_is_restored_afterwards(queue):
 
 
 def test_a_cancelled_job_can_be_resumed_and_a_succeeded_one_cannot(queue, cfg):
-    """Cancelled is terminal AND retryable (R-390: ``cancel`` writes a retryable
-    cause); succeeded is terminal and finished."""
+    """Cancelled is terminal and retryable (R-390); succeeded is finished."""
     store, root = queue
     job = _job(store, cfg, "a")
     jobs.cancel(store, job.job_id)
@@ -711,8 +698,7 @@ def test_a_second_driver_refuses_while_a_live_holder_has_the_lock(queue, cfg):
 
 
 def test_a_dead_holders_lock_is_reclaimed_without_any_timeout(queue, cfg):
-    """The kernel releasing an advisory lock when its holder dies IS the
-    staleness rule; a timeout cannot tell a crash from a slow run."""
+    """The kernel releasing a dead holder's lock is the staleness rule."""
     store, root = queue
     job = _job(store, cfg)
     with _held(job.job_id, root):
@@ -756,8 +742,7 @@ def test_reconcile_leaves_a_genuinely_running_job_alone(queue, cfg):
 
 # Part 7: two processes writing job state
 def test_two_processes_claiming_the_same_job_never_claim_one_item_twice(queue, cfg, tmp_path):
-    """The claim is one immediate transaction; a deferred one lets both read the
-    same lowest pending ordinal before either writes."""
+    """The claim is one immediate transaction, never a deferred one."""
     store, root = queue
     item_ids = [f"item-{index:03d}" for index in range(60)]
     job = _job(store, cfg, *item_ids)
@@ -828,8 +813,7 @@ def test_every_landed_long_running_verb_actually_exposes_the_builder_it_declares
     assert not missing, f"declared argv builders that do not exist: {missing}"
 
 
-# The handler key import property lives in tests/test_cli_contract.py (U42),
-# which needs a clean interpreter. This file owes the supervisor's path: an
+# The handler key import property is in tests/test_cli_contract.py (U42); here an
 # unknown handler and an unlanded verb both refuse before anything is imported.
 
 
@@ -845,8 +829,7 @@ def test_a_job_queued_for_a_handler_this_build_does_not_register_refuses(queue, 
 def test_a_job_queued_for_a_verb_that_has_not_landed_refuses_rather_than_importing(
     queue, cfg, monkeypatch
 ):
-    """The landed check in argv_for, on a synthetic planned entry since U25 left
-    the registry with none."""
+    """On a synthetic planned entry, since U25 left the registry with none."""
     from cratekit.cli import jobs as jobs_cli  # noqa: PLC0415
     from cratekit.cli import registry  # noqa: PLC0415
 
@@ -979,8 +962,7 @@ def _parking(park: set[str], seen: list[str] | None = None):
 
 
 def test_a_parked_item_blocks_the_job_and_claims_nothing_further(queue, cfg):
-    """A block is about the client, so the next claim would be the second request
-    into it. The engine stops at the first."""
+    """A block is about the client, so the engine claims nothing after it."""
     store, root = queue
     job = _job(store, cfg, "a", "b", "c")
     seen: list[str] = []
@@ -995,8 +977,7 @@ def test_a_parked_item_blocks_the_job_and_claims_nothing_further(queue, cfg):
 
 
 def test_the_parked_item_is_released_rather_than_failed(queue, cfg):
-    """Failing it would strand it: ``retry`` re-arms failed items only for a
-    terminal job, and a blocked job is open."""
+    """Failing it would strand it, since a blocked job is open and not retried."""
     store, root = queue
     job = _job(store, cfg, "a", "b")
     jobs.drive(store, job.job_id, _parking({"a"}), root=root)
@@ -1020,8 +1001,7 @@ def test_a_blocked_job_is_re_driven_from_the_parked_item_on_the_next_drive(queue
 
 
 def test_parked_is_not_the_item_boundary(queue, cfg):
-    """A plain refusal fails the item and moves on; only a park stops the run.
-    Both in one job, so the difference is measured."""
+    """A plain refusal fails the item and moves on; only a park stops the run."""
     store, root = queue
     job = _job(store, cfg, "a", "b", "c")
 
