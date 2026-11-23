@@ -1,10 +1,10 @@
 # Mutation table: u309-replay-after-f
 
-Measured by `scripts/mutate.py` on 2026-11-22 23:14 UTC, branch `HEAD` at `feafce67`. Pass kind: replay.
+Measured by `scripts/mutate.py` on 2026-11-23 00:06 UTC, branch `HEAD` at `f24d51ce`. Pass kind: replay.
 
 A replay pass measures again rows a table under `docs/mutation/` already recorded, so it has no row cap and chooses no rows: every row below names the table and the id it came from. One full baseline and one null control serve the batch, and each row ran on its own subset (U297).
 
-Baseline: green, 22910 collected. pytest invocations for this batch: 162.
+Baseline: green, 22894 collected. pytest invocations for this batch: 161.
 
 Full baseline: measured by this driver (the battery's verdict was not read: it was read against another known failures file).
 
@@ -18,7 +18,7 @@ Environment: inherited from the calling shell, then added to. Added: PYTHONDONTW
 
 Installation state: the watched roots are unchanged. Fingerprinted before the first child this run started and after every one of them: ~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries). A change would have stopped the batch at the child that was running. Every child ran with its own throwaway installation state, so a test that undoes the suite's isolation lands there rather than on this machine (R-343). Only those roots are watched; the sandbox also redirects HOME and the data root, and a child reaching one of those is not seen by this guard.
 
-Null control `NULL_CONTROL`: killed 0, collected 22910 against 22910. The control is a semantically empty change, so a zero here is what makes every other number in this table believable.
+Null control `NULL_CONTROL`: killed 0, collected 22894 against 22894. The control is a semantically empty change, so a zero here is what makes every other number in this table believable.
 
 ## Summary
 
@@ -28,47 +28,47 @@ Null control `NULL_CONTROL`: killed 0, collected 22910 against 22910. The contro
 | `r229.L14_a_recorded_crate_is_a_claimant` | `src/cratekit/modules/outbound/ledger_reserve.py` | user | 3 file(s) | 300 | 1 | killed |
 | `r229.L16_a_moved_record_is_not_followed` | `src/cratekit/modules/outbound/ledger_reserve.py` | user | 3 file(s) | 300 | 3 | killed |
 | `r356-b.B7_heart_back_hands_on_no_title` | `src/cratekit/modules/outbound/hearts.py` | user | 1 file(s) | 64 | 1 | killed |
-| `r1411.E4_membership_always_agrees` | `src/cratekit/modules/outbound/tidal_account.py` | user | 24 file(s) | 1305 | 2 | killed |
-| `r1411.S1_settled_ignores_agreed` | `src/cratekit/modules/outbound/tidal_account.py` | user | 24 file(s) | 1305 | 2 | killed |
-| `r1411.S2_agreed_stands_in_for_membership` | `src/cratekit/modules/outbound/tidal_account.py` | user | 24 file(s) | 1305 | 1 | killed |
+| `r1411.E4_membership_always_agrees` | `src/cratekit/modules/outbound/tidal_account.py` | user | 24 file(s) | 1308 | 2 | killed |
+| `r1411.S1_settled_ignores_agreed` | `src/cratekit/modules/outbound/tidal_account.py` | user | 24 file(s) | 1308 | 2 | killed |
+| `r1411.S2_agreed_stands_in_for_membership` | `src/cratekit/modules/outbound/tidal_account.py` | user | 24 file(s) | 1308 | 1 | killed |
 | `u246.S16_inspiration_held_per_element` | `src/cratekit/organize/inspiration.py` | maintainer | 2 file(s) | 71 | 1 | killed |
-| `u142.S3_adopt_by_year_too` | `src/cratekit/modules/outbound/sets.py` | user | 3 file(s) | 228 | 1 | killed |
-| `r879-b.S8_several_needs_three` | `src/cratekit/export/set_match.py` | user | 1 file(s) | 60 | 2 | killed |
-| `r837-b.B3_accepted_in_review` | `src/cratekit/export/set_match.py` | user | 1 file(s) | 60 | 2 | killed |
-| `r837-b.A3r_held_not_added` | `src/cratekit/modules/outbound/sets.py` | user | 1 file(s) | 60 | 1 | killed |
-| `r837-a.A11_year_folder_adopted` | `src/cratekit/modules/outbound/sets.py` | user | 1 file(s) | 60 | 2 | killed |
+| `u142.S3_adopt_by_year_too` | `src/cratekit/modules/outbound/sets.py` | user | 3 file(s) | 233 | 1 | killed |
+| `r879-b.S8_several_needs_three` | `src/cratekit/export/set_match.py` | user | 1 file(s) | 63 | 2 | killed |
+| `r837-b.B3_accepted_in_review` | `src/cratekit/export/set_match.py` | user | 1 file(s) | 63 | 2 | killed |
+| `r837-b.A3r_held_not_added` | `src/cratekit/modules/outbound/sets.py` | user | 1 file(s) | 63 | 1 | killed |
+| `r837-a.A11_year_folder_adopted` | `src/cratekit/modules/outbound/sets.py` | user | 1 file(s) | 63 | 2 | killed |
 | `r1017.M12_twin_message_names_to` | `src/cratekit/export/set_rename.py` | user | 4 file(s) | 195 | 1 | killed |
 | `u140.B8_flag_conflict_dropped` | `src/cratekit/export/set_rename.py` | user | 1 file(s) | 29 | 1 | killed |
 | `u140.A5_ledger_never_rekeyed` | `src/cratekit/modules/outbound/sets.py` | user | 1 file(s) | 29 | 9 | killed |
 | `u214.M9_inbox_unmirrored` | `src/cratekit/organize/account_mirror.py` | user | 6 file(s) | 199 | 2 | killed |
 | `u206.M14_account_keeps_invalid_isrc` | `src/cratekit/modules/outbound/tidal_reads.py` | user | 9 file(s) | 1137 | 2 | killed |
-| `u137.A2_sets_gate` | `src/cratekit/organize/account.py` | user | 2 file(s) | 117 | 10 | killed |
+| `u137.A2_sets_gate` | `src/cratekit/organize/account.py` | user | 2 file(s) | 119 | 10 | killed |
 | `u123.L1_dated_vouched` | `src/cratekit/modules/outbound/ledger.py` | user | 3 file(s) | 108 | 20 | killed |
-| `u143-d.A7_folder_empty` | `src/cratekit/modules/outbound/tidal_account.py` | user | 7 file(s) | 446 | 1 | killed |
+| `u143-d.A7_folder_empty` | `src/cratekit/modules/outbound/tidal_account.py` | user | 7 file(s) | 447 | 1 | killed |
 | `r835-a.F4_recorded_and_refused_not_asked_again` | `src/cratekit/modules/outbound/folders.py` | user | 1 file(s) | 56 | 5 | killed |
 | `u243.L10_empties_never_said` | `src/cratekit/modules/outbound/prune.py` | user | 2 file(s) | 78 | 1 | killed |
-| `u230.M19_every_title` | `src/cratekit/organize/account_mirror.py` | user | 11 file(s) | 209 | 1 | killed |
-| `u230.M8_rekordbox_dropped` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 11 file(s) | 209 | 1 | killed |
-| `u230.M18_titles_not_recorded` | `src/cratekit/organize/account_mirror.py` | user | 11 file(s) | 209 | 3 | killed |
-| `u227.R9_before_queue` | `src/cratekit/organize/mirror_downloads.py` | user | 7 file(s) | 184 | 1 | killed |
-| `u236.M5_mine_not_left` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 8 file(s) | 223 | 3 | killed |
-| `u236.M23_frozen_reads_malformed` | `src/cratekit/organize/mirror_frozen.py` | user | 8 file(s) | 223 | 1 | killed |
-| `u236.M15_settle_month_title` | `src/cratekit/organize/mirror_edits.py` | user | 8 file(s) | 223 | 8 | killed |
-| `u201.O1_latch` | `src/cratekit/organize/mirror_edits.py` | user | 5 file(s) | 185 | 1 | killed |
-| `u201.S1_short_undeclared` | `src/cratekit/modules/outbound/service.py` | user | 5 file(s) | 185 | 1 | killed |
-| `u201.E7_addition_beats_removal` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 5 file(s) | 185 | 1 | killed |
-| `u204.A1_adopt_landed` | `src/cratekit/organize/account_mirror.py` | user | 6 file(s) | 222 | 1 | killed |
-| `u204.P3_off_and_into_month_held` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 6 file(s) | 222 | 1 | killed |
-| `u204.P4_two_months_held` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 6 file(s) | 222 | 1 | killed |
-| `u143-b.F4_legacy_record_stale` | `src/cratekit/organize/filing.py` | user | 3 file(s) | 164 | 1 | killed |
-| `u142.S20_retitled_detail_called_marked` | `src/cratekit/organize/account.py` | user | 1 file(s) | 95 | 1 | killed |
-| `u112.R7_every_batch_suggested` | `src/cratekit/organize/rekordbox.py` | user | 1 file(s) | 95 | 1 | killed |
-| `u112.A7_no_proof_read` | `src/cratekit/organize/account.py` | user | 1 file(s) | 95 | 8 | killed |
-| `u137.C2_only_dropped` | `src/cratekit/organize/cli.py` | user | 1 file(s) | 95 | 23 | killed |
-| `u137.R3_refused_rotation_shown` | `src/cratekit/organize/rekordbox.py` | user | 1 file(s) | 95 | 1 | killed |
-| `u142.S15_second_proof_ignored` | `src/cratekit/organize/account.py` | user | 1 file(s) | 95 | 6 | killed |
-| `u116.M6_no_adopt` | `src/cratekit/organize/filing.py` | user | 1 file(s) | 95 | 2 | killed |
-| `u185.R2_organize_fact` | `src/cratekit/organize/rekordbox.py` | user | 1 file(s) | 95 | 2 | killed |
+| `u230.M19_every_title` | `src/cratekit/organize/account_mirror.py` | user | 11 file(s) | 212 | 1 | killed |
+| `u230.M8_rekordbox_dropped` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 11 file(s) | 212 | 1 | killed |
+| `u230.M18_titles_not_recorded` | `src/cratekit/organize/account_mirror.py` | user | 11 file(s) | 212 | 3 | killed |
+| `u227.R9_before_queue` | `src/cratekit/organize/mirror_downloads.py` | user | 7 file(s) | 187 | 1 | killed |
+| `u236.M5_mine_not_left` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 8 file(s) | 225 | 3 | killed |
+| `u236.M23_frozen_reads_malformed` | `src/cratekit/organize/mirror_frozen.py` | user | 8 file(s) | 225 | 1 | killed |
+| `u236.M15_settle_month_title` | `src/cratekit/organize/mirror_edits.py` | user | 8 file(s) | 225 | 8 | killed |
+| `u201.O1_latch` | `src/cratekit/organize/mirror_edits.py` | user | 5 file(s) | 187 | 1 | killed |
+| `u201.S1_short_undeclared` | `src/cratekit/modules/outbound/service.py` | user | 5 file(s) | 187 | 1 | killed |
+| `u201.E7_addition_beats_removal` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 5 file(s) | 187 | 1 | killed |
+| `u204.A1_adopt_landed` | `src/cratekit/organize/account_mirror.py` | user | 6 file(s) | 224 | 1 | killed |
+| `u204.P3_off_and_into_month_held` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 6 file(s) | 224 | 1 | killed |
+| `u204.P4_two_months_held` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 6 file(s) | 224 | 1 | killed |
+| `u143-b.F4_legacy_record_stale` | `src/cratekit/organize/filing.py` | user | 3 file(s) | 166 | 1 | killed |
+| `u142.S20_retitled_detail_called_marked` | `src/cratekit/organize/account.py` | user | 1 file(s) | 97 | 1 | killed |
+| `u112.R7_every_batch_suggested` | `src/cratekit/organize/rekordbox.py` | user | 1 file(s) | 97 | 1 | killed |
+| `u112.A7_no_proof_read` | `src/cratekit/organize/account.py` | user | 1 file(s) | 97 | 8 | killed |
+| `u137.C2_only_dropped` | `src/cratekit/organize/cli.py` | user | 1 file(s) | 97 | 23 | killed |
+| `u137.R3_refused_rotation_shown` | `src/cratekit/organize/rekordbox.py` | user | 1 file(s) | 97 | 1 | killed |
+| `u142.S15_second_proof_ignored` | `src/cratekit/organize/account.py` | user | 1 file(s) | 97 | 6 | killed |
+| `u116.M6_no_adopt` | `src/cratekit/organize/filing.py` | user | 1 file(s) | 97 | 2 | killed |
+| `u185.R2_organize_fact` | `src/cratekit/organize/rekordbox.py` | user | 1 file(s) | 97 | 2 | killed |
 | `r1295.M15_plan_passes_no_unread` | `src/cratekit/organize/inspiration.py` | user | 1 file(s) | 38 | 4 | killed |
 | `u144-b.B1_unnamed_membership` | `src/cratekit/organize/inspiration.py` | user | 1 file(s) | 38 | 1 | killed |
 | `r1295.M13_unread_miss_no_id` | `src/cratekit/organize/inspiration.py` | user | 1 file(s) | 38 | 4 | killed |
@@ -80,14 +80,14 @@ Null control `NULL_CONTROL`: killed 0, collected 22910 against 22910. The contro
 | `u267.M13_downloads_owned_opens_its_own` | `src/cratekit/organize/mirror_downloads.py` | user | 2 file(s) | 51 | 1 | killed |
 | `r1031.M13_miss_written_over_a_link` | `src/cratekit/modules/outbound/ledger_settle.py` | maintainer | 2 file(s) | 71 | 1 | killed |
 | `r1031.M2_rematch_ignored` | `src/cratekit/modules/outbound/mirror.py` | user | 2 file(s) | 71 | 2 | killed |
-| `u222.M10_shown_flag_check` | `src/cratekit/organize/mirror_frozen.py` | maintainer | 6 file(s) | 251 | 1 | killed |
-| `u222.M22_cli_detail_unchanged` | `src/cratekit/organize/cli.py` | user | 6 file(s) | 251 | 1 | killed |
-| `u222.M12_unshown_not_said` | `src/cratekit/organize/account_mirror.py` | user | 6 file(s) | 251 | 1 | killed |
-| `u222.M6_load_drops_agreed` | `src/cratekit/organize/mirror_frozen.py` | user | 6 file(s) | 251 | 6 | killed |
+| `u222.M10_shown_flag_check` | `src/cratekit/organize/mirror_frozen.py` | maintainer | 6 file(s) | 255 | 1 | killed |
+| `u222.M22_cli_detail_unchanged` | `src/cratekit/organize/cli.py` | user | 6 file(s) | 255 | 1 | killed |
+| `u222.M12_unshown_not_said` | `src/cratekit/organize/account_mirror.py` | user | 6 file(s) | 255 | 1 | killed |
+| `u222.M6_load_drops_agreed` | `src/cratekit/organize/mirror_frozen.py` | user | 6 file(s) | 255 | 6 | killed |
 | `u150.M4_retire_in_digest` | `src/cratekit/modules/outbound/mirror.py` | user | 3 file(s) | 103 | 1 | killed |
 | `u150.M11_unmade_folder` | `src/cratekit/modules/outbound/mirror.py` | user | 3 file(s) | 103 | 2 | killed |
 | `u150.Z2_frozen_flag_checked` | `src/cratekit/organize/mirror_frozen.py` | maintainer | 2 file(s) | 69 | 1 | killed |
-| `u267.M3_report_never_closes` | `src/cratekit/organize/cli.py` | user | 2 file(s) | 109 | 4 | killed |
+| `u267.M3_report_never_closes` | `src/cratekit/organize/cli.py` | user | 2 file(s) | 111 | 4 | killed |
 | `u143-a.R1_missing_tracks` | `src/cratekit/organize/root.py` | user | 1 file(s) | 55 | 1 | killed |
 | `u255.C8_no_open_before_and_retry_opens_raw` | `src/cratekit/modules/outbound/tidal_account.py` | user | 5 file(s) | 338 | 3 | killed |
 | `u255.M10_failed_attempt_keeps_the_hold` | `src/cratekit/modules/outbound/tidal_account.py` | user | 5 file(s) | 338 | 5 | killed |
@@ -110,13 +110,13 @@ Null control `NULL_CONTROL`: killed 0, collected 22910 against 22910. The contro
 | `r856-a.S2_tally_bool` | `src/cratekit/modules/outbound/shell.py` | user | 2 file(s) | 178 | 3 | killed |
 | `u51-item-derivation.S3_empty_job_driven` | `src/cratekit/modules/outbound/shell.py` | user | 1 file(s) | 123 | 1 | killed |
 | `u131.K9_export_refusal_kept` | `src/cratekit/modules/outbound/export.py` | user | 3 file(s) | 234 | 1 | killed |
-| `u131.K2_exports_rule` | `src/cratekit/organize/filing.py` | user | 2 file(s) | 109 | 2 | killed |
+| `u131.K2_exports_rule` | `src/cratekit/organize/filing.py` | user | 2 file(s) | 111 | 2 | killed |
 | `r1305.A2_account_status_declared_only` | `src/cratekit/modules/outbound/account.py` | user | 3 file(s) | 197 | 6 | killed |
 | `r836-a.A1_product_made_asked_first` | `src/cratekit/modules/outbound/tidal_account.py` | user | 3 file(s) | 112 | 3 | killed |
 | `r836-c.L6_date_on_the_confirmed_record` | `src/cratekit/modules/outbound/ledger_reserve.py` | user | 5 file(s) | 404 | 2 | killed |
 | `r836-e.P5_apply_asks_the_ledger_again` | `src/cratekit/modules/outbound/prune.py` | user | 5 file(s) | 404 | 1 | killed |
-| `u227.R4_folder_compare` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 1 file(s) | 22910 | 0 (promoted) | zero |
-| `u174.O3_no_pass_counted` | `src/cratekit/organize/account.py` | user | 2 file(s) | 164 | 1 | killed |
+| `u227.R4_folder_compare` | `src/cratekit/modules/outbound/mirror_edits.py` | user | 1 file(s) | 8 | 1 | killed |
+| `u174.O3_no_pass_counted` | `src/cratekit/organize/account.py` | user | 2 file(s) | 166 | 1 | killed |
 | `u130-c.C6_pair_not_vouched` | `src/cratekit/modules/outbound/tidal_account.py` | user | 2 file(s) | 67 | 5 | killed |
 | `u221.R14_hold_unvalidated` | `src/cratekit/modules/outbound/pairs.py` | maintainer | 3 file(s) | 153 | 4 | killed |
 | `u129-author.A17_empty_add_still_writes` | `src/cratekit/modules/outbound/sets.py` | user | 1 file(s) | 24 | 3 | killed |
@@ -127,10 +127,6 @@ Null control `NULL_CONTROL`: killed 0, collected 22910 against 22910. The contro
 | `r1032.S1_protocol_default_on` | `src/cratekit/modules/outbound/tidal_reads.py` | user | 1 file(s) | 113 | 15 | killed |
 | `r879-b.T1_one_track_never_asked_to_agree` | `src/cratekit/modules/outbound/tidal_reads.py` | user | 1 file(s) | 113 | 1 | killed |
 | `r227.S6_no_stale_sentence` | `src/cratekit/modules/outbound/shell.py` | user | 1 file(s) | 123 | 8 | killed |
-
-## Zero rows and what they owe
-
-- `u227.R4_folder_compare` (user facing): USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it
 
 ## Row definitions
 
@@ -254,7 +250,7 @@ existing guard, U220: a reading after this command's own writes is taken whateve
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_adapter_listing.py`, `tests/test_catalogue_app.py`, `tests/test_isrc_cache.py`, `tests/test_isrc_screen.py`, `tests/test_label_heard.py`, `tests/test_label_playlists.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_tie.py`, `tests/test_organize_root.py`, `tests/test_outbound_order.py`, `tests/test_outbound_remove_lag.py`, `tests/test_outbound_tidal_account.py`, `tests/test_outbound_window_lag.py`, `tests/test_provider_gate.py`, `tests/test_provider_not_found_bodies.py`, `tests/test_prune.py`, `tests/test_sync_pair.py`, `tests/test_sync_pair_account.py`, `tests/test_sync_pair_adopted.py`, `tests/test_sync_pair_calls.py`, `tests/test_sync_pair_settle.py`, `tests/test_sync_pair_stopped.py`, `tests/test_sync_pair_stopped_order.py`, `tests/test_sync_pair_tie.py`
-- Collected: 1305 against a baseline of 1305
+- Collected: 1308 against a baseline of 1308
 - Kills: 2 (killed)
 - Killed:
   - `tests/test_outbound_order.py::test_the_agreed_order_does_not_stand_in_for_what_the_write_left`
@@ -281,7 +277,7 @@ the judged reading never asks the agreed order, so only what it holds is checked
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_adapter_listing.py`, `tests/test_catalogue_app.py`, `tests/test_isrc_cache.py`, `tests/test_isrc_screen.py`, `tests/test_label_heard.py`, `tests/test_label_playlists.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_tie.py`, `tests/test_organize_root.py`, `tests/test_outbound_order.py`, `tests/test_outbound_remove_lag.py`, `tests/test_outbound_tidal_account.py`, `tests/test_outbound_window_lag.py`, `tests/test_provider_gate.py`, `tests/test_provider_not_found_bodies.py`, `tests/test_prune.py`, `tests/test_sync_pair.py`, `tests/test_sync_pair_account.py`, `tests/test_sync_pair_adopted.py`, `tests/test_sync_pair_calls.py`, `tests/test_sync_pair_settle.py`, `tests/test_sync_pair_stopped.py`, `tests/test_sync_pair_stopped_order.py`, `tests/test_sync_pair_tie.py`
-- Collected: 1305 against a baseline of 1305
+- Collected: 1308 against a baseline of 1308
 - Kills: 2 (killed)
 - Killed:
   - `tests/test_outbound_order.py::test_a_reading_that_lags_the_agreed_order_after_an_add_refuses_with_nothing_moved`
@@ -310,7 +306,7 @@ a reading in the agreed order is taken without the check of what it holds
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_adapter_listing.py`, `tests/test_catalogue_app.py`, `tests/test_isrc_cache.py`, `tests/test_isrc_screen.py`, `tests/test_label_heard.py`, `tests/test_label_playlists.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_tie.py`, `tests/test_organize_root.py`, `tests/test_outbound_order.py`, `tests/test_outbound_remove_lag.py`, `tests/test_outbound_tidal_account.py`, `tests/test_outbound_window_lag.py`, `tests/test_provider_gate.py`, `tests/test_provider_not_found_bodies.py`, `tests/test_prune.py`, `tests/test_sync_pair.py`, `tests/test_sync_pair_account.py`, `tests/test_sync_pair_adopted.py`, `tests/test_sync_pair_calls.py`, `tests/test_sync_pair_settle.py`, `tests/test_sync_pair_stopped.py`, `tests/test_sync_pair_stopped_order.py`, `tests/test_sync_pair_tie.py`
-- Collected: 1305 against a baseline of 1305
+- Collected: 1308 against a baseline of 1308
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_outbound_order.py::test_the_agreed_order_does_not_stand_in_for_what_the_write_left`
@@ -364,7 +360,7 @@ plan_archive: adopt a root folder named as the plain year as well, so the year f
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_export_set.py`, `tests/test_organize.py`, `tests/test_set_inspiration_playlist.py`
-- Collected: 228 against a baseline of 228
+- Collected: 233 against a baseline of 233
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize.py::test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_its_year`
@@ -391,7 +387,7 @@ _not_chosen: say several only from three distinct exact matches
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_export_set.py`
-- Collected: 60 against a baseline of 60
+- Collected: 63 against a baseline of 63
 - Kills: 2 (killed)
 - Killed:
   - `tests/test_export_set.py::test_a_second_distinct_exact_match_on_the_next_page_leaves_it_out_as_several`
@@ -419,7 +415,7 @@ set_cli.match_rows: a candidate accepted in review is not used, so the row is le
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_export_set.py`
-- Collected: 60 against a baseline of 60
+- Collected: 63 against a baseline of 63
 - Kills: 2 (killed)
 - Killed:
   - `tests/test_export_set.py::test_a_candidate_accepted_in_review_is_used_and_not_searched_for_again`
@@ -446,7 +442,7 @@ batch a's A3 again: sets.plan_set adds a track already on the playlist and never
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_export_set.py`
-- Collected: 60 against a baseline of 60
+- Collected: 63 against a baseline of 63
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_export_set.py::test_a_track_already_on_the_playlist_and_never_recorded_is_not_asked_for`
@@ -472,7 +468,7 @@ sets.plan_archive: a root folder already named as the year is never adopted, so 
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_export_set.py`
-- Collected: 60 against a baseline of 60
+- Collected: 63 against a baseline of 63
 - Kills: 2 (killed)
 - Killed:
   - `tests/test_export_set.py::test_a_folder_named_as_the_year_by_hand_is_adopted_not_doubled`
@@ -650,7 +646,7 @@ Plan the set archives whatever the selection
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_label_dated.py`, `tests/test_organize.py`
-- Collected: 117 against a baseline of 117
+- Collected: 119 against a baseline of 119
 - Kills: 10 (killed)
 - Killed:
   - `tests/test_organize.py::test_a_mixed_selection_plans_the_named_kinds_on_each_side_and_no_other`
@@ -728,7 +724,7 @@ Adapter: remove a legacy folder that still holds playlists
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_label_heard.py`, `tests/test_label_playlists.py`, `tests/test_organize_root.py`, `tests/test_outbound_tidal_account.py`, `tests/test_provider_gate.py`, `tests/test_prune.py`, `tests/test_sync_pair_account.py`
-- Collected: 446 against a baseline of 446
+- Collected: 447 against a baseline of 447
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize_root.py::test_a_folder_not_legacy_or_not_empty_is_refused_before_any_removal[2026 Custom Playlists-2-not-empty]`
@@ -810,7 +806,7 @@ _read_edits: name every recorded playlist as the one that queued each track
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_mirror_edits_u227.py`, `tests/test_mirror_edits_u230.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits_u227.py`, `tests/test_organize_mirror_edits_u230.py`, `tests/test_mirror_downloads_queued_from_u230.py`, `tests/test_mirror_downloads_filed_u227.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize_mirror_frozen_u222.py`
-- Collected: 209 against a baseline of 209
+- Collected: 212 against a baseline of 212
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize_mirror_edits_u230.py::test_a_job_queued_from_another_playlist_does_not_lift_the_edited_ones_base`
@@ -836,7 +832,7 @@ _as_queued: lift though rekordbox already holds it where the account put it
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_mirror_edits_u227.py`, `tests/test_mirror_edits_u230.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits_u227.py`, `tests/test_organize_mirror_edits_u230.py`, `tests/test_mirror_downloads_queued_from_u230.py`, `tests/test_mirror_downloads_filed_u227.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize_mirror_frozen_u222.py`
-- Collected: 209 against a baseline of 209
+- Collected: 212 against a baseline of 212
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_mirror_edits_u230.py::test_a_landing_filed_where_the_account_asked_is_no_edit`
@@ -864,7 +860,7 @@ _read_edits: record no titles for the queue's remote playlists
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_mirror_edits_u227.py`, `tests/test_mirror_edits_u230.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits_u227.py`, `tests/test_organize_mirror_edits_u230.py`, `tests/test_mirror_downloads_queued_from_u230.py`, `tests/test_mirror_downloads_filed_u227.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize_mirror_frozen_u222.py`
-- Collected: 209 against a baseline of 209
+- Collected: 212 against a baseline of 212
 - Kills: 3 (killed)
 - Killed:
   - `tests/test_organize_mirror_edits_u230.py::test_a_drag_back_into_the_landings_band_after_the_batch_left_inbox_stands`
@@ -892,7 +888,7 @@ filed: an entry applied before the track was queued is read as the landing's
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_mirror_edits_u227.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits_u227.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize_mirror_frozen_u222.py`
-- Collected: 184 against a baseline of 184
+- Collected: 187 against a baseline of 187
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize_mirror_edits_u227.py::test_a_filing_recorded_before_the_download_was_queued_is_not_the_landings`
@@ -918,7 +914,7 @@ decide favorites: a favourite put in another month keeps the placed month
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_mirror_edits_u236.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits_u236.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize_mirror_frozen_u222.py`, `tests/test_inbox_unmirrored.py`
-- Collected: 223 against a baseline of 223
+- Collected: 225 against a baseline of 225
 - Kills: 3 (killed)
 - Killed:
   - `tests/test_mirror_edits_u236.py::test_a_favourite_both_sides_put_in_another_month_leaves_the_placed_one`
@@ -946,7 +942,7 @@ load: accept placements that are not tracks to times
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_mirror_edits_u236.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits_u236.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize_mirror_frozen_u222.py`, `tests/test_inbox_unmirrored.py`
-- Collected: 223 against a baseline of 223
+- Collected: 225 against a baseline of 225
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize_mirror_frozen_u222.py::test_an_older_record_or_an_unreadable_snapshot_or_step_is_planned_afresh`
@@ -974,7 +970,7 @@ settle: record the placement under the month's bare name, not its account title
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_mirror_edits_u236.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits_u236.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize_mirror_frozen_u222.py`, `tests/test_inbox_unmirrored.py`
-- Collected: 223 against a baseline of 223
+- Collected: 225 against a baseline of 225
 - Kills: 8 (killed)
 - Killed:
   - `tests/test_organize_mirror_edits_u236.py::test_a_favourite_put_in_another_month_on_the_account_leaves_the_placed_month`
@@ -1007,7 +1003,7 @@ write: the tree's convergence latch is not asked
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror.py`, `tests/test_organize_mirror_inbox.py`, `tests/test_organize_mirror_frozen.py`
-- Collected: 185 against a baseline of 185
+- Collected: 187 against a baseline of 187
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize_mirror_edits.py::test_a_tree_the_product_latched_refuses_the_write_before_any_file_is_tagged`
@@ -1033,7 +1029,7 @@ PlaylistListing.short: a listing that declares no count is whole
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror.py`, `tests/test_organize_mirror_inbox.py`, `tests/test_organize_mirror_frozen.py`
-- Collected: 185 against a baseline of 185
+- Collected: 187 against a baseline of 187
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize_mirror_edits.py::test_a_listing_with_no_declared_count_is_short`
@@ -1059,7 +1055,7 @@ decide: an unfile on the account against rekordbox placing the track is carried,
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror.py`, `tests/test_organize_mirror_inbox.py`, `tests/test_organize_mirror_frozen.py`
-- Collected: 185 against a baseline of 185
+- Collected: 187 against a baseline of 187
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_mirror_edits.py::test_an_unfile_on_the_account_against_a_move_in_rekordbox_keeps_rekordboxs`
@@ -1085,7 +1081,7 @@ _read_edits: a landed row tied by its ISRC is not answered as the track the acco
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror.py`, `tests/test_organize_mirror_inbox.py`, `tests/test_organize_mirror_frozen.py`
-- Collected: 222 against a baseline of 222
+- Collected: 224 against a baseline of 224
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize_mirror_edits_u204.py::test_a_landed_track_the_provider_ties_to_another_release_is_still_filed`
@@ -1111,7 +1107,7 @@ _decide_favorites: a track taken off All Favorites and put in a month at once is
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror.py`, `tests/test_organize_mirror_inbox.py`, `tests/test_organize_mirror_frozen.py`
-- Collected: 222 against a baseline of 222
+- Collected: 224 against a baseline of 224
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_mirror_edits.py::test_a_favorites_edit_the_account_does_not_decide_is_held[af2-oct_2-nov2-at once]`
@@ -1137,7 +1133,7 @@ _decide_favorites: a track added to two months at once is favourited into one of
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_mirror_edits.py`, `tests/test_organize_mirror_edits.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror.py`, `tests/test_organize_mirror_inbox.py`, `tests/test_organize_mirror_frozen.py`
-- Collected: 222 against a baseline of 222
+- Collected: 224 against a baseline of 224
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_mirror_edits.py::test_a_favorites_edit_the_account_does_not_decide_is_held[af1-oct_1-nov1-2 month playlists]`
@@ -1163,7 +1159,7 @@ Year folder: reuse a recorded folder now named as a legacy year folder
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize.py`, `tests/test_organize_root.py`, `tests/test_playlist_kinds.py`
-- Collected: 164 against a baseline of 164
+- Collected: 166 against a baseline of 166
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize_root.py::test_a_year_record_whose_folder_now_carries_a_legacy_name_is_not_reused`
@@ -1190,7 +1186,7 @@ organize set step: call a set a person retitled in its folder marked
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize.py`
-- Collected: 95 against a baseline of 95
+- Collected: 97 against a baseline of 97
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize.py::test_a_set_already_prefixed_in_its_downloaded_sets_folder_plans_nothing`
@@ -1216,7 +1212,7 @@ Every batch is suggested a rename, a readably named one included
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize.py`
-- Collected: 95 against a baseline of 95
+- Collected: 97 against a baseline of 97
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize.py::test_what_the_author_made_is_listed_with_a_home_and_never_a_write`
@@ -1242,7 +1238,7 @@ No intake file is read as a set's proof, so no downloaded set is ever archived
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize.py`
-- Collected: 95 against a baseline of 95
+- Collected: 97 against a baseline of 97
 - Kills: 8 (killed)
 - Killed:
   - `tests/test_organize.py::test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_its_year`
@@ -1275,7 +1271,7 @@ Read --only and then plan as if it were absent
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize.py`
-- Collected: 95 against a baseline of 95
+- Collected: 97 against a baseline of 97
 - Kills: 23 (killed)
 - Killed:
   - `tests/test_organize.py::test_a_library_write_between_the_mirrors_two_acts_applies_the_approved_plan`
@@ -1316,7 +1312,7 @@ Hide a rotation that refused when it was planned only for yours
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize.py`
-- Collected: 95 against a baseline of 95
+- Collected: 97 against a baseline of 97
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize.py::test_only_yours_shows_a_refused_rotation_since_it_is_why_the_listing_is_short`
@@ -1342,7 +1338,7 @@ organize set step: list a set with an INSPIRATION playlist of its name as waitin
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize.py`
-- Collected: 95 against a baseline of 95
+- Collected: 97 against a baseline of 97
 - Kills: 6 (killed)
 - Killed:
   - `tests/test_organize.py::test_a_set_already_prefixed_in_its_downloaded_sets_folder_plans_nothing`
@@ -1373,7 +1369,7 @@ _year_folder: a root folder named as the year is ignored and a second made
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize.py`
-- Collected: 95 against a baseline of 95
+- Collected: 97 against a baseline of 97
 - Kills: 2 (killed)
 - Killed:
   - `tests/test_organize.py::test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it`
@@ -1402,7 +1398,7 @@ organize: name the folder nowhere, so the report is silent about it
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize.py`
-- Collected: 95 against a baseline of 95
+- Collected: 97 against a baseline of 97
 - Kills: 2 (killed)
 - Killed:
   - `tests/test_organize.py::test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc`
@@ -1739,7 +1735,7 @@ load: accept a shown flag that is not true or false
 - Surface: maintainer
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize_mirror_frozen_u222.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize.py`, `tests/test_inbox_unmirrored.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits.py`
-- Collected: 251 against a baseline of 251
+- Collected: 255 against a baseline of 255
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize_mirror_frozen_u222.py::test_an_older_record_or_an_unreadable_snapshot_or_step_is_planned_afresh`
@@ -1765,7 +1761,7 @@ _ask: carry no stale lines in the refusal's detail
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize_mirror_frozen_u222.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize.py`, `tests/test_inbox_unmirrored.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits.py`
-- Collected: 251 against a baseline of 251
+- Collected: 255 against a baseline of 255
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize.py::test_an_account_change_between_the_mirrors_acts_is_stale_and_says_what_moved`
@@ -1791,7 +1787,7 @@ _stale: read a record no gate showed as one it did
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize_mirror_frozen_u222.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize.py`, `tests/test_inbox_unmirrored.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits.py`
-- Collected: 251 against a baseline of 251
+- Collected: 255 against a baseline of 255
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_organize_mirror_frozen_u222.py::test_a_plan_made_afresh_by_a_decided_run_is_never_read_as_what_the_gate_showed`
@@ -1817,7 +1813,7 @@ load: read no frozen snapshot, so the overlay has nothing to take
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize_mirror_frozen_u222.py`, `tests/test_organize_mirror_frozen.py`, `tests/test_organize.py`, `tests/test_inbox_unmirrored.py`, `tests/test_organize_mirror_edits_u204.py`, `tests/test_organize_mirror_edits.py`
-- Collected: 251 against a baseline of 251
+- Collected: 255 against a baseline of 255
 - Kills: 6 (killed)
 - Killed:
   - `tests/test_organize_mirror_frozen_u222.py::test_a_genre_edit_the_library_took_between_the_acts_applies_the_approved_plan`
@@ -1929,7 +1925,7 @@ organize: the finally closes no shared read, so the report leaves its handle and
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_organize_one_read.py`, `tests/test_organize.py`
-- Collected: 109 against a baseline of 109
+- Collected: 111 against a baseline of 111
 - Kills: 4 (killed)
 - Killed:
   - `tests/test_organize_one_read.py::test_a_failure_nobody_expected_still_closes_the_handle`
@@ -2619,7 +2615,7 @@ filing.plan: drop the Exports rule, so an exported playlist is read as product m
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_playlist_kinds.py`, `tests/test_organize.py`
-- Collected: 109 against a baseline of 109
+- Collected: 111 against a baseline of 111
 - Kills: 2 (killed)
 - Killed:
   - `tests/test_organize.py::test_an_exported_playlist_the_product_made_is_not_listed_as_yours`
@@ -2759,11 +2755,11 @@ _landed_there: compare the playlist alone, so another genre's band of the same n
 - Source: `u227.json`, row `R4_folder_compare`
 - Surface: user
 - Subset: explicit subset from the row
-- Ran: `tests/test_repair_rows.py`
-- Collected: 22910 against a baseline of 22910
-- Kills: 0 (zero)
-- Promoted: subset killed 0, full suite killed 0
-- Note: confirmed on the full suite
+- Ran: `tests/test_mirror_edits_u227.py`
+- Collected: 8 against a baseline of 8
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mirror_edits_u227.py::test_another_genres_band_of_the_landings_name_is_not_the_landings`
 
 Old text:
 
@@ -2786,7 +2782,7 @@ _mark_steps: drop the fact counting native landings of no sync pass
 - Surface: user
 - Subset: explicit subset from the row
 - Ran: `tests/test_sync_mark.py`, `tests/test_organize.py`
-- Collected: 164 against a baseline of 164
+- Collected: 166 against a baseline of 166
 - Kills: 1 (killed)
 - Killed:
   - `tests/test_sync_mark.py::test_a_native_landing_of_no_sync_pass_is_counted_and_is_no_step`
