@@ -753,3 +753,30 @@ def test_a_genre_move_is_spent_only_when_every_move_of_its_track_finished(
 
     assert _in_tree(machine, "mover") == {_place("soul", HIGH)}
     assert dict(genre_moves.read(machine)) == {}
+
+
+def test_a_folder_holding_the_track_only_beside_the_band_still_reads_its_other_playlists():
+    """No band of the folder holds the track, so the folder is known only from
+    its Favorites, and Candy there still keeps that Favorites (mutation R08)."""
+    from cratekit.adopt import placements as adopt_placements
+
+    nodes = [
+        _node(OLD_BUCKET, FAVORITES, "t", playlist_id="p1"),
+        _node(OLD_BUCKET, CANDY, "t", playlist_id="p2"),
+    ]
+    found = adopt_placements.placements_from(DECLARED, nodes, None)
+    assert found.holds_others(OLD_BUCKET, "t") == (_place(OLD_BUCKET, CANDY)[1],)
+    assert adopt_move.alongside_left(found, DECLARED, OLD_BUCKET, "t", leaving=()) == ()
+
+
+def test_a_band_of_another_folder_does_not_keep_this_folders_favorites():
+    """A Soul row in R&B High holds Soul's split place, which is R&B's
+    playlist, so it does not keep Soul's own Favorites (mutation R11)."""
+    from cratekit.adopt.plan import Placements
+
+    held = Placements(
+        read=True, held={"soul": {"t": ("rnb_high",)}}, alongside={"soul": {"t": (FAVORITES,)}}
+    )
+    assert adopt_move.alongside_left(held, DECLARED, "soul", "t", leaving=()) == (FAVORITES,)
+    own = Placements(read=True, held={"soul": {"t": (HIGH,)}}, alongside={"soul": {"t": (FAVORITES,)}})
+    assert adopt_move.alongside_left(own, DECLARED, "soul", "t", leaving=()) == ()
