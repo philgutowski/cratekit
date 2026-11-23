@@ -2871,6 +2871,30 @@ given rekordbox's key and tempo by U327's verb; a genre on the 47; the night
 pass's files landed.
 
 
+## Sitting 104, 2026-11-23, driven by the attended-orchestrator skill, on v0.18.0 and the development checkout at `d289f61d`, beside a second session holding the live library
+
+Started by Phillip with "run the attended orchestrator" and run under his
+standing instruction of 2026-11-21. A second Claude session in the same
+checkout held the live library for its own work (a new genre folder, its
+label registry and a Tidal mirror), so this sitting took no live verb, no
+backup, no acknowledgment and no Tidal call until it said done, and lent it
+desktop control once for its one rekordbox edit. Every live card here runs on
+the development checkout's `crate`, since installed 0.18.0 carries none of
+their units but U243 and U260. Two worker tabs, W1 and W2.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| The macOS battery, W1 | `ruff`, `pytest`, `scan_repo.py` on `d289f61d`, then 40 named test files alone, then `behaviour_compare.py` capture twice and compare | **Green**: ruff clean, **22,795 passed and 1 skipped**, 0 failures, **385.86 s**; the scan clean. The named files, every one A192 to A216, A141 and A183 name, read **4,011 passed**, `tests/test_attended_orchestrator_skill.py` 21 of them. A210's behaviour compare read **no difference** over 220 scenarios, 1,433 commands, 7,453 files and 336 databases. The config file's hash was the same before and after, and the tree stayed clean | met |
+| A204, the run's time | pytest's own summary seconds against the last Mac run before U326 (`391cf9f3`), sitting 102's on `afbf92ca` | **385.86 s for 22,796 tests here against 291.06 s for 21,683 there.** Not like for like: 1,113 more tests, a load average about 4.2 at the start with the other session working, and one test, the behaviour compare's two captures of one commit, taking 125 s on its own and setting a floor under work stealing. The Mac does not show U326's 15.7 percent; U336 (#985) owns the suite's time | recorded |
+| A203, the local board commands | `board.py next`, `board.py audit`, `board.py sync` against the project | Each in its old shape: `next` ranked seven ready units and named #978, `audit` read "342 units: 326 done, 7 ready, 9 blocked. The board matches the repository.", `sync` read "The board already matched the repository. Nothing changed." `release.py cut` waits for the next release Phillip asks for | step 3 waits |
+| A205, the archived ledger | `board.py residuals`, `residuals --search commit hook fresh clone`, `residuals --check`, `audit` | **The ledger's highest is R-1942**, 0 waiting; the search printed R-1 from `docs/ledger/R-0001-R-0067.md`; `--check` passed; the audit names no residual issue whose title differs from its heading | met |
+| U29 and A5, W2 | read only: `tests/test_cutover_parity.py`'s Feature Inventory (37 rows), sitting 101's per workflow lines, sittings 102 and 103, A5 (#178) | **One row newly proven live**, row 37, track deletion and tombstones, at sitting 102 (A197). **20 proven live, 6 in part, 8 never, 3 cut or deferred.** The genre campaign, the quick backup and `sync removed` that sitting 102 named move no inventory row, since none of their verbs cites one. Row 25's night pass is proven by an attended `sync land` but its first unattended night died mid run (sitting 103). A5's line 6 tick is for the set and the typed tracklist; no `acquire fallback` ran there, so row 7 stays never | read |
+
+| Inventory row | Workflow | Covering verb | Proven live at | State |
+|---|---|---|---|---|
+| 37 | track deletion and tombstones | `delete review`, `tombstone list` | sitting 102, A197: after a live `sync removed` on an equal digest, one file offered and trashed from the session, one tombstone, the collection read back in rekordbox | proven live |
+
+
 ## Next sitting
 
 **Later the same night, on `d6e7597f`, after U320, R-1037 and U324 landed.** **Met and closed:** A201 (#924), A194 (#906), A179 (#842), A197 (#912), A200 (#922). **Filed:** R-1830's card (#925), R-1844's card (#926). **Progress only, left open:** A190 (#897), Auto Analysis on, the visit waiting for a landing; A129 (#711), a removal of a track landed after `f3dc078`, so the next landing's; A183 (#879), the night. **Decided by the session under Phillip's instruction of 2026-11-21**, each on its card: `--retire` answered at its gate rather than waiting a day for the second sighting, since it writes only Cratekit's record; the first offer of two tracks aborted so A197 takes one; the budget's hour waited out rather than raised; `delete review` run from the session and its offered set read through the planner before `trash`; Cotonete, Parribean Disco left in the Trash and off its TIDAL playlist, since trashing it was the card's proof (put back from the volume's Trash and re-added on TIDAL if wanted); Auto Analysis turned on at this visit, last, so the throwaways were not analysed.
