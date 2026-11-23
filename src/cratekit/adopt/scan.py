@@ -24,6 +24,7 @@ Layer: modules. It reads configuration and the disk and names no verb.
 from __future__ import annotations
 
 import os
+import posixpath
 import stat as stat_module
 from dataclasses import dataclass
 from enum import StrEnum
@@ -72,6 +73,12 @@ class Readability(StrEnum):
     #: device-relative one, one naming another host, or a string no file can have.
     #: Folded together because they share a remedy: nothing local can be done.
     NOT_A_PATH = "not-a-path"
+
+    #: A path here, outside the library root: rekordbox's own sampler presets,
+    #: which a prefix rule makes readable for other verbs (U956). Adoption files
+    #: the library and nothing else, so the row is named and left out, never
+    #: probed. The remedy is none: the file is not the library's.
+    OUTSIDE_ROOT = "outside-root"
 
 
 #: The categories a track can be adopted FROM, as a set, so a new category is
@@ -257,6 +264,29 @@ def _resolved_path(
     return (None, refused) if refused is not None else (resolution.path, None)
 
 
+def within_root(path: str, root: Path | str) -> bool:
+    """True when a resolved path lies under ``root``, the root itself included.
+
+    BY NAME FIRST, on whole components, both sides NFC normalised and their dots
+    read, so ``/x/lib/../home`` is not under ``/x/lib`` and ``/x/libArchive`` is
+    not either (U956). Only when the names disagree is each directory above the
+    path asked whether it IS the root, for a volume that folds case or a name
+    that links to it; a directory that cannot be asked is no evidence. A link
+    below the root is not followed out of it.
+    """
+    wanted = posixpath.normpath(locations.norm_for_compare(str(path)))
+    anchor = posixpath.normpath(locations.norm_for_compare(str(root)))
+    if anchor == "/" or wanted == anchor or wanted.startswith(anchor + "/"):
+        return True
+    for parent in Path(wanted).parents:
+        try:
+            if os.path.samefile(parent, anchor):
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
 def classify_genre(declared: taxonomy.Taxonomy, genre: str) -> tuple[Disposition, str, str]:
     """Decide what a track's own genre entitles adoption to do with it.
 
@@ -282,6 +312,7 @@ def scan_rows(
     probe: Callable[[Path], Readability] = probe_readability,
     energy_reader: Callable[[Path], int | None] = tags.read_energy_checked,
     second_reader: Callable[[Path], str | None] | None = None,
+    confine_to_root: bool = True,
 ) -> Iterator[ScannedTrack]:
     """Classify every row, once, in one walk.
 
@@ -293,11 +324,18 @@ def scan_rows(
     rather than read as absence. The second genre (U340) is read the same way
     for a routed track, by :func:`read_second_genre` unless another reader is
     handed in; :data:`NO_SECOND_GENRE` reads none, for a walk that files nothing.
+
+    A ROW WHOSE PATH IS OUTSIDE THE ROOT IS EXCLUDED, ``outside-root``, unprobed
+    and with its path kept so a gate can name it (U956): the root is what
+    adoption files. ``confine_to_root`` is False only for a walk that files
+    nothing, the tag verbs', which read such a row as they always have.
     """
     for row in rows:
         if row.deleted:
             continue
         path, readability = _resolved_path(row.recorded, root=root, prefix_map=prefix_map)
+        if readability is None and confine_to_root and not within_root(path or "", root):
+            readability = Readability.OUTSIDE_ROOT
         if readability is None:
             try:
                 readability = probe(Path(path or ""))

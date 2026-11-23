@@ -58,7 +58,8 @@ KEBAB_LITERALS = {
         'dev-ino',
         'utf-8',
     ],
-    'adopt/scan.py': ['needs-genre', 'not-a-path', 'online-only'],
+    # 2026-11-23, U956: the census names a row outside the library root.
+    'adopt/scan.py': ['needs-genre', 'not-a-path', 'online-only', 'outside-root'],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'adopt/scan_cli.py': [
         'adopt-item-absent',
@@ -71,7 +72,8 @@ KEBAB_LITERALS = {
 NAMED_WITH_OWN = {
     # 2026-11-22, U310: revert.py split into revert_record.py and revert_changed.py.
     'adopt/revert_changed.py': ['a-different-size', 'not-a-regular-file', 'took-too-long'],
-    'adopt/scan.py': ['needs-genre', 'not-a-path', 'online-only'],
+    # 2026-11-23, U956: the census names a row outside the library root.
+    'adopt/scan.py': ['needs-genre', 'not-a-path', 'online-only', 'outside-root'],
 }
 
 NAMED_WITH_INTEGER = frozenset({

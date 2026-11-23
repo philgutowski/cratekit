@@ -395,6 +395,13 @@ class AdoptionPlan:
         """Every entry withheld over a place its track holds, unbounded, in order."""
         return tuple(entry for entry in self.entries if entry.held_elsewhere)
 
+    def outside_root(self) -> tuple[PlanEntry, ...]:
+        """Every track left out because its file is outside the library root
+        (U956), unbounded, in plan order: what the gate names."""
+        return tuple(
+            entry for entry in self.firsts() if entry.category is Readability.OUTSIDE_ROOT
+        )
+
     def vocal_counts(self) -> dict[str, int]:
         """How many vox tagged tracks are in each vocal state, zeroes included."""
         found = {state: 0 for state in VOCAL_STATES}
@@ -440,8 +447,16 @@ class AdoptionPlan:
                     {"id": entry.entry_id, **review_row(entry)} for entry in self.held_elsewhere()
                 ],
                 "collisions": sorted(f"{item.bucket}:{item.node_id}" for item in self.collisions),
+                # NAMED, NOT ONLY COUNTED (U956): the gate lists them, so the same
+                # count over other rows is another screen.
+                "outside_root": [outside_row(entry) for entry in self.outside_root()],
             }
         )
+
+
+def outside_row(entry: PlanEntry) -> dict[str, Any]:
+    """One track the plan leaves outside the root, as the gate names it."""
+    return {"content_id": entry.content_id, "location": entry.recorded, "path": entry.path}
 
 
 def covers(plan: AdoptionPlan, scanned: Sequence[ScannedTrack]) -> frozenset[str]:
@@ -953,6 +968,7 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
         "placements": plan.placements.state,
         "withheld_by_placement": plan.withheld_by_placement(),
         "held_elsewhere": [review_row(entry) for entry in plan.held_elsewhere()],
+        "outside_root": [outside_row(entry) for entry in plan.outside_root()],
         "vocals": plan.vocals.state,
         "vocal": plan.vocal_counts(),
         "vocal_memberships": [vocal_row(entry) for entry in plan.vocal_memberships()],
