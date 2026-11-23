@@ -30,13 +30,9 @@ def _writer():
     return rb_writer
 
 
-def _is_folder(playlist: Any) -> bool:
-    return int(getattr(playlist, "Attribute", -1)) == 1
-
-
 def is_folder(playlist: Any) -> bool:
     """Whether a playlist row is a FOLDER. The one spelling of that question."""
-    return _is_folder(playlist)
+    return int(getattr(playlist, "Attribute", -1)) == 1
 
 
 def ensure_folder(db: Any, name: str, parent: Any = None) -> Any:
@@ -48,13 +44,13 @@ def ensure_folder(db: Any, name: str, parent: Any = None) -> Any:
     """
     if parent is None:
         for playlist in db.get_playlist(Name=name):
-            if _is_folder(playlist):
+            if is_folder(playlist):
                 return playlist
         return db.create_playlist_folder(name)
 
     parent_id = str(parent.ID)
     for playlist in db.get_playlist(Name=name):
-        if _is_folder(playlist) and str(getattr(playlist, "ParentID", "")) == parent_id:
+        if is_folder(playlist) and str(getattr(playlist, "ParentID", "")) == parent_id:
             return playlist
     return db.create_playlist_folder(name, parent=parent)
 
@@ -69,7 +65,7 @@ def top_level_folders(db: Any, name: str) -> tuple[Any, ...]:
     return tuple(
         playlist
         for playlist in list(db.get_playlist(Name=name))
-        if _is_folder(playlist)
+        if is_folder(playlist)
         and str(getattr(playlist, "ParentID", "")) in ROOT_PARENT_SENTINELS
     )
 
@@ -78,7 +74,7 @@ def ensure_playlist(db: Any, name: str, parent: Any) -> Any:
     """Find or create a playlist under a specific parent, never global by name."""
     parent_id = str(parent.ID)
     for playlist in db.get_playlist(Name=name):
-        if not _is_folder(playlist) and str(getattr(playlist, "ParentID", "")) == parent_id:
+        if not is_folder(playlist) and str(getattr(playlist, "ParentID", "")) == parent_id:
             return playlist
     return db.create_playlist(name, parent=parent)
 
@@ -128,7 +124,6 @@ def remove_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> li
     ROW FOR THE PAIR IS MARKED; unheld ids are skipped. DOES NOT COMMIT: the
     caller commits through :func:`commit_guarded` naming this table in ``removals``.
     """
-    rb_writer = _writer()
     from datetime import datetime
 
     wanted = {str(content_id) for content_id in content_ids}
@@ -138,7 +133,7 @@ def remove_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> li
         key = str(song.ContentID)
         if key not in wanted or _writer().membership_removed(song):
             continue
-        setattr(song, rb_writer.SOFT_DELETE_COLUMN, 1)
+        setattr(song, _writer().SOFT_DELETE_COLUMN, 1)
         song.updated_at = now
         removed.append(key)
     return removed
@@ -182,7 +177,7 @@ def move_playlist_node(db: Any, playlist: Any, parent: Any) -> None:
     smart playlist, a removed node, a parent not a live folder. DOES NOT COMMIT.
     """
     _plain_playlist(playlist, "asked to move")
-    if not _is_folder(parent) or _writer().node_removed(parent):
+    if not is_folder(parent) or _writer().node_removed(parent):
         raise _node_refusal(
             "whitelist-violation",
             f"asked to move a playlist into {getattr(parent, 'ID', '?')!r}, which "
@@ -200,7 +195,6 @@ def remove_playlist_node(db: Any, playlist: Any) -> list[str]:
     REFUSED: a folder (carries a tree), a smart playlist (no rows), a removed node.
     DOES NOT COMMIT: ``removals`` must name this and the membership table.
     """
-    rb_writer = _writer()
     from datetime import datetime
 
     _plain_playlist(playlist, "asked to remove")
@@ -210,7 +204,7 @@ def remove_playlist_node(db: Any, playlist: Any) -> list[str]:
         if not _writer().membership_removed(song)
     ]
     marked = _writer().remove_memberships(db, playlist, held)
-    setattr(playlist, rb_writer.SOFT_DELETE_COLUMN, 1)
+    setattr(playlist, _writer().SOFT_DELETE_COLUMN, 1)
     playlist.updated_at = datetime.now()
     return marked
 
@@ -241,14 +235,8 @@ def _rows_by_id(session: Any, table: str) -> tuple[dict[str, tuple], tuple[str, 
 def _row_digests(session: Any, table: str) -> dict[str, str]:
     import hashlib
 
-    from sqlalchemy import text
-
-    result = session.execute(text(f"SELECT * FROM {table}"))
-    at = tuple(result.keys()).index("ID")
-    return {
-        str(row[at]): hashlib.sha256(repr(tuple(row)).encode("utf-8")).hexdigest()
-        for row in result
-    }
+    rows, _columns = _rows_by_id(session, table)
+    return {key: hashlib.sha256(repr(row).encode("utf-8")).hexdigest() for key, row in rows.items()}
 
 
 def node_tables(db: Any) -> NodeTables:
@@ -347,8 +335,7 @@ def node_change_violations(
     for key in sorted(set(before.memberships) ^ set(after.memberships)):
         violations.append(f"the {MEMBERSHIP_TABLE} row {key!r} was added or disappeared")
     # A REMOVED NODE KEEPS NO LIVE MEMBERSHIP, asked of every row it owns.
-    for key in sorted(set(after.memberships)):
-        row = after.memberships[key]
+    for key, row in sorted(after.memberships.items()):
         if str(row[owner_at]) in gone and not row[m_marker]:
             violations.append(
                 f"the {MEMBERSHIP_TABLE} row {key!r} of the removed playlist "
@@ -426,17 +413,21 @@ def ensure_my_tag_value(db: Any, category_name: str, value_name: str) -> Any:
 
     root_parent, category_attr, value_attr = _writer()._mytag_templates(db)
 
-    category = next((tag for tag in db.get_my_tag(Name=category_name)), None)
-    if category is None:
-        category = tables.DjmdMyTag.create(
+    def created(name: str, attribute: Any, parent: Any) -> Any:
+        row = tables.DjmdMyTag.create(
             ID=db.generate_unused_id(tables.DjmdMyTag, is_28_bit=True),
             UUID=str(uuid4()),
-            Name=category_name,
-            Attribute=category_attr,
-            ParentID=root_parent,
+            Name=name,
+            Attribute=attribute,
+            ParentID=parent,
             Seq=0,
         )
-        db.add(category)
+        db.add(row)
+        return row
+
+    category = next((tag for tag in db.get_my_tag(Name=category_name)), None)
+    if category is None:
+        category = created(category_name, category_attr, root_parent)
 
     value = next(
         (
@@ -447,15 +438,7 @@ def ensure_my_tag_value(db: Any, category_name: str, value_name: str) -> Any:
         None,
     )
     if value is None:
-        value = tables.DjmdMyTag.create(
-            ID=db.generate_unused_id(tables.DjmdMyTag, is_28_bit=True),
-            UUID=str(uuid4()),
-            Name=value_name,
-            Attribute=value_attr,
-            ParentID=str(category.ID),
-            Seq=0,
-        )
-        db.add(value)
+        value = created(value_name, value_attr, str(category.ID))
     return value
 
 
