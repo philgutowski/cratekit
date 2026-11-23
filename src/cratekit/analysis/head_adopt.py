@@ -605,18 +605,19 @@ def apply_adopt(
         changes = row_changes(rowed)
         ids = [item.content_id for item in rowed]
         before = row_defaults.read_columns(db, ids)
-        written = 0
+        written, committed = 0, False
         try:
-            report = metadata.write_plan(changes, mapped)
-            written = len(report.written)
+            written = len(metadata.write_plan(changes, mapped).written)
             rb_writer.commit_guarded(db)
+            committed = True
         except BaseException:
             trees.rollback_quietly(db)
-            # AN EXCEPTION IS NOT PROOF NOTHING LANDED: the witness is the engine's answer.
-            if witness.landed:
-                row_defaults.record_commit(record, CHANGE_KEY, written, cfg)
             raise
-        row_defaults.record_commit(record, CHANGE_KEY, written, cfg)
+        finally:
+            # RECORDED THE INSTANT THE COMMIT RETURNS, and after a failure only when
+            # the witness says it landed: an exception is not proof nothing did.
+            if committed or witness.landed:
+                row_defaults.record_commit(record, CHANGE_KEY, written, cfg)
         convergence.record_fingerprint(cfg, db)
         after = row_defaults.read_columns(db, ids)
         session_id = record.session_id
@@ -633,28 +634,33 @@ def apply_adopt(
 
 def assert_read_back(written: Written) -> None:
     """Refuse when the database does not say what the plan said it would, naming
-    the session that undoes the durable write."""
-    if not written.wrong and not written.moved:
-        return
-    undo = (f"the write is durable; restore session {written.session_id} to undo it",)
+    the session that undoes the durable write. A moved column outranks a title
+    not carried: the guard should have refused it before the commit."""
     if written.moved:
-        raise refuse(
+        reason, said, offenders, remedy_key = (
             "whitelist-violation",
             "a row written for its title has another column changed after the commit, "
-            "which the guard should have refused before it: " + row_defaults.named(written.moved),
-            remedy=Remedy.REPORT_DEFECT,
-            steps=undo,
-            origin=_ORIGIN,
-            detail={"moved": list(written.moved), "session": written.session_id},
+            "which the guard should have refused before it",
+            written.moved,
+            "moved",
         )
+    elif written.wrong:
+        reason, said, offenders, remedy_key = (
+            "internal-error",
+            f"{len(written.wrong)} of {written.written} row(s) written do not read back "
+            f"with their new title",
+            written.wrong,
+            "wrong",
+        )
+    else:
+        return
     raise refuse(
-        "internal-error",
-        f"{len(written.wrong)} of {written.written} row(s) written do not read back with "
-        f"their new title: " + row_defaults.named(written.wrong),
+        reason,
+        f"{said}: {row_defaults.named(offenders)}",
         remedy=Remedy.REPORT_DEFECT,
-        steps=undo,
+        steps=(f"the write is durable; restore session {written.session_id} to undo it",),
         origin=_ORIGIN,
-        detail={"wrong": list(written.wrong), "session": written.session_id},
+        detail={remedy_key: list(offenders), "session": written.session_id},
     )
 
 

@@ -2253,6 +2253,8 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         "intake/refill.py::apply_refill",
         # U166, the INBOX / Analyze clear.
         "intake/analyzed.py::apply_clear",
+        # U327, a landed title given rekordbox's key and tempo.
+        "analysis/head_adopt.py::apply_adopt",
         # U121, a landed set's permanent playlist.
         "intake/set_playlist.py::apply_alone",
         # U154, the shelve.
