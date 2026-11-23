@@ -4,6 +4,7 @@ pass_kind = "replay"
 [[rows]]
 id = "r647-a.B4_infinite_boot_accepted"
 source = { table = "r647-a.json", id = "B4_infinite_boot_accepted" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "_gone_since_an_earlier_boot: drop the finiteness check, so a boot recorded as minus infinity reads as infinitely earlier"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -14,6 +15,7 @@ new = '    if earlier_by <= BOOT_DRIFT_SECONDS:'
 [[rows]]
 id = "r647-a.B5_drift_margin_halved"
 source = { table = "r647-a.json", id = "B5_drift_margin_halved" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "BOOT_DRIFT_SECONDS: 60 to 30, a realistic nearby value, so a clock adjustment of forty seconds reads as a restart"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -24,6 +26,7 @@ new = 'BOOT_DRIFT_SECONDS = 30.0'
 [[rows]]
 id = "r647-a.B6_drift_margin_doubled"
 source = { table = "r647-a.json", id = "B6_drift_margin_doubled" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "BOOT_DRIFT_SECONDS: 60 to 120, so a restart a minute and a half apart is kept for no reason"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -34,6 +37,7 @@ new = 'BOOT_DRIFT_SECONDS = 120.0'
 [[rows]]
 id = "r647-a.B7_margin_boundary_exclusive"
 source = { table = "r647-a.json", id = "B7_margin_boundary_exclusive" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "_gone_since_an_earlier_boot: less than instead of less than or equal, so a boot exactly at the margin is judged earlier"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -44,6 +48,7 @@ new = 'earlier_by < BOOT_DRIFT_SECONDS:'
 [[rows]]
 id = "r647-a.B8_direction_ignored"
 source = { table = "r647-a.json", id = "B8_direction_ignored" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "_gone_since_an_earlier_boot: take the distance between the boots rather than which came first, so a LATER boot reading reads as an earlier boot"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -54,6 +59,7 @@ new = '        earlier_by = abs(float(reference.boot) - float(holder.boot))'
 [[rows]]
 id = "r647-a.B9_platform_silence_read_as_gone"
 source = { table = "r647-a.json", id = "B9_platform_silence_read_as_gone" }
+moved = "moved by U300's split from src/cratekit/core/session.py to session_holders.py, the same return in _gone_since_an_earlier_boot, its probe read through the module"
 description = "_gone_since_an_earlier_boot: read a platform declining to say whether the process exists as gone"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -74,6 +80,7 @@ new = '    return process_exists(holder.pid) is False'
 [[rows]]
 id = "u49-author.L4_a_malformed_holder_raises_again"
 source = { table = "u49-author.json", id = "L4_a_malformed_holder_raises_again" }
+moved = "U953 merged read_lock_holder's JSON parse and holder coercion under one try, so narrowing its except to the parse error alone is the same removed coercion guard, the parse still answering None"
 description = "Remove the coercion guard from read_lock_holder, so a lock record with a non numeric pid escapes as a traceback rather than a typed refusal"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -84,6 +91,7 @@ new = '    except json.JSONDecodeError:'
 [[rows]]
 id = "r44-a.S10_default_slug"
 source = { table = "r44-a.json", id = "S10_default_slug" }
+moved = "moved by U300's split from src/cratekit/core/session.py to session_volumes.py, the same lookup read through the module as every name of it in a part is"
 description = "Look the slug up with a default, so a verdict in neither table wears the mismatch slug"
 file = "src/cratekit/core/session_volumes.py"
 surface = "maintainer"
@@ -94,6 +102,7 @@ new = '            reason = _session()._MAPPED_REASONS.get(status.state, "mapped
 [[rows]]
 id = "r44-a.S1_empty_slot"
 source = { table = "r44-a.json", id = "S1_empty_slot" }
+moved = "the same text, now in src/cratekit/core/session_volumes.py, was in src/cratekit/core/session.py"
 description = "Never refuse an empty mount slot, so an identity read through an ejected drive's leftover directory is compared and can match"
 file = "src/cratekit/core/session_volumes.py"
 surface = "user"
@@ -108,6 +117,7 @@ new = '''
 [[rows]]
 id = "r44-a.S2_proved_widened"
 source = { table = "r44-a.json", id = "S2_proved_widened" }
+moved = "the same text, now in src/cratekit/core/session_volumes.py, was in src/cratekit/core/session.py"
 description = "Let NOT_MOUNTED count as a proved identity, which is the pass set widening by one verdict"
 file = "src/cratekit/core/session_volumes.py"
 surface = "user"
@@ -126,6 +136,7 @@ new = '''
 [[rows]]
 id = "r44-a.S3_default_to_library"
 source = { table = "r44-a.json", id = "S3_default_to_library" }
+moved = "the same text, now in src/cratekit/core/session_volumes.py, was in src/cratekit/core/session.py"
 description = "Hold a rule outside the library root with nothing recorded to the LIBRARY'S identity instead of refusing it"
 file = "src/cratekit/core/session_volumes.py"
 surface = "user"
@@ -142,6 +153,7 @@ new = '''
 [[rows]]
 id = "r44-a.S4_inside_root_unheld"
 source = { table = "r44-a.json", id = "S4_inside_root_unheld" }
+moved = "the same text, now in src/cratekit/core/session_volumes.py, was in src/cratekit/core/session.py"
 description = "Hold a rule inside the library root to nothing of the library's, so a nested foreign volume is judged as unrecorded rather than foreign"
 file = "src/cratekit/core/session_volumes.py"
 surface = "user"
@@ -155,6 +167,7 @@ new = '    return None'
 [[rows]]
 id = "r44-a.S5_not_destructive"
 source = { table = "r44-a.json", id = "S5_not_destructive" }
+moved = "the same text, now in src/cratekit/core/session_volumes.py, was in src/cratekit/core/session.py"
 description = "Assert a rule target at read strength, where an unreadable or unrecorded identity is tolerated"
 file = "src/cratekit/core/session_volumes.py"
 surface = "user"
@@ -169,6 +182,7 @@ new = '''
 [[rows]]
 id = "r44-a.S6_oserror_escapes"
 source = { table = "r44-a.json", id = "S6_oserror_escapes" }
+moved = "moved by U300's split from src/cratekit/core/session.py to session_volumes.py, the same handler with its comment cut to its rule and reason by the prose pass"
 description = "Let an OSError from the walk or the identity read escape the gate instead of becoming a refusal"
 file = "src/cratekit/core/session_volumes.py"
 surface = "user"
@@ -183,6 +197,7 @@ new = '''
 [[rows]]
 id = "r44-a.S7_probe_the_target"
 source = { table = "r44-a.json", id = "S7_probe_the_target" }
+moved = "the same text, now in src/cratekit/core/session_volumes.py, was in src/cratekit/core/session.py"
 description = "Probe the rule's target for a file instead of the file's own directory, so a volume nested under the target is never seen"
 file = "src/cratekit/core/session_volumes.py"
 surface = "user"
@@ -197,6 +212,7 @@ new = '''
 [[rows]]
 id = "r44-a.S8_wording_held_to"
 source = { table = "r44-a.json", id = "S8_wording_held_to" }
+moved = "the same text, now in src/cratekit/core/session_volumes.py, was in src/cratekit/core/session.py"
 description = "Say the volume was recorded on the rule when the identity compared was the library's"
 file = "src/cratekit/core/session_volumes.py"
 surface = "user"
@@ -207,6 +223,7 @@ new = '    return "the volume recorded on that rule"'
 [[rows]]
 id = "r44-a.S9_offer_to_record_nested"
 source = { table = "r44-a.json", id = "S9_offer_to_record_nested" }
+moved = "the same text, now in src/cratekit/core/session_volumes.py, was in src/cratekit/core/session.py"
 description = "Offer to record the foreign volume's identity on a rule that recorded none"
 file = "src/cratekit/core/session_volumes.py"
 surface = "user"

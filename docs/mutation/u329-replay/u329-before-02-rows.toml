@@ -4,6 +4,7 @@ pass_kind = "replay"
 [[rows]]
 id = "u111-a.A4_memberships_unmarked"
 source = { table = "u111-a.json", id = "A4_memberships_unmarked" }
+moved = "U953 replaced the local rb_writer name with a _writer() call on the marking line that follows, so skipping the membership marking is the same defect at the same call"
 description = "remove_playlist_node marks the node and leaves its own memberships live"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -18,6 +19,7 @@ new = '''
 [[rows]]
 id = "u111-a.A5_node_unmarked"
 source = { table = "u111-a.json", id = "A5_node_unmarked" }
+moved = "U953 replaced the local rb_writer name with a _writer() call, so deleting this setattr is the same node left unmarked"
 description = "remove_playlist_node marks the memberships and never the node itself"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -33,6 +35,7 @@ new = '''
 [[rows]]
 id = "u111-a.A7_content_compared"
 source = { table = "u111-a.json", id = "A7_content_compared" }
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
 description = "The node judge no longer compares the content table"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -47,6 +50,7 @@ new = '''
 [[rows]]
 id = "u111-b.A10_renumber_scoped"
 source = { table = "u111-b.json", id = "A10_renumber_scoped" }
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
 description = "The node judge admits a position change in any parent, not only one a node left or joined"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -63,6 +67,7 @@ new = '''
 [[rows]]
 id = "u111-b.A12_removed_keeps_no_live"
 source = { table = "u111-b.json", id = "A12_removed_keeps_no_live" }
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
 description = "The node judge no longer asks that a removed node keeps no live membership"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -73,6 +78,7 @@ new = '        if False:'
 [[rows]]
 id = "u111-b.A13_confinement_raises"
 source = { table = "u111-b.json", id = "A13_confinement_raises" }
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
 description = "assert_node_changes_confined computes the violations and never raises"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -93,6 +99,7 @@ new = '''
 [[rows]]
 id = "u111-b.A8_membership_owner"
 source = { table = "u111-b.json", id = "A8_membership_owner" }
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
 description = "The node judge admits a changed membership in any playlist, not only a removed one"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -107,6 +114,7 @@ new = '''
 [[rows]]
 id = "u111-b.A9_planned_move_made"
 source = { table = "u111-b.json", id = "A9_planned_move_made" }
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
 description = "The node judge no longer asks whether each planned move sits live under its folder"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -117,6 +125,7 @@ new = '        if new is None:'
 [[rows]]
 id = "u127.W1_writable_always"
 source = { table = "u127.json", id = "W1_writable_always" }
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
 description = "The writer's question always answers writable"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -133,6 +142,7 @@ new = '''
 [[rows]]
 id = "u127.W2_writable_reason_drift"
 source = { table = "u127.json", id = "W2_writable_reason_drift" }
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
 description = "The writer's question reads another reason than the writer raises"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -143,6 +153,7 @@ new = '        if exc.cause.reason != "mytag-category-missing":'
 [[rows]]
 id = "u288.M15_append_past_highest"
 source = { table = "u288.json", id = "M15_append_past_highest" }
+moved = "the same text, now in src/cratekit/core/rb_nodes.py, was in src/cratekit/core/rb_writer.py"
 description = "add_memberships: keep the binding's count plus one, so an append after a removal lands on a live row's position"
 file = "src/cratekit/core/rb_nodes.py"
 surface = "user"
@@ -178,6 +189,7 @@ new = '''
 [[rows]]
 id = "u211.W1_writer_falls_back"
 source = { table = "u211.json", id = "W1_writer_falls_back" }
+moved = "the same text, now in src/cratekit/core/rb_probes.py, was in src/cratekit/core/rb_writer.py"
 description = "_asked_or_scanned: re-raise pyrekordbox's error instead of asking the careful scan, the defect itself"
 file = "src/cratekit/core/rb_probes.py"
 surface = "user"
@@ -188,6 +200,7 @@ new = '        raise'
 [[rows]]
 id = "u211.W3_strict_at_commit"
 source = { table = "u211.json", id = "W3_strict_at_commit" }
+moved = "the same text, now in src/cratekit/core/rb_probes.py, was in src/cratekit/core/rb_writer.py"
 description = "_binding_probe: answer zero at commit too when the scan cannot confirm, so the binding commits over an unreadable live process"
 file = "src/cratekit/core/rb_probes.py"
 surface = "user"
@@ -204,6 +217,7 @@ new = '''
 [[rows]]
 id = "u211.W7_writer_unconfirmed_with_nothing_read"
 source = { table = "u211.json", id = "W7_writer_unconfirmed_with_nothing_read" }
+moved = "the same text, now in src/cratekit/core/rb_probes.py, was in src/cratekit/core/rb_writer.py"
 description = "rekordbox_processes_running in the writer: a probe that could not confirm, with no rekordbox process read at all, answers clear instead of refusing"
 file = "src/cratekit/core/rb_probes.py"
 surface = "user"
@@ -238,6 +252,7 @@ new = '            if globals()[probe_name]():'
 [[rows]]
 id = "r1830.M10_planned_number_not_asked"
 source = { table = "r1830.json", id = "M10_planned_number_not_asked" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "renumber_memberships: write the new number whatever the row holds now"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -248,6 +263,7 @@ new = "        f'WHERE \"ID\" = :key AND :before = :before'"
 [[rows]]
 id = "r1830.M11_held_object_left_stale"
 source = { table = "r1830.json", id = "M11_held_object_left_stale" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "renumber_memberships: leave the session's mapped rows holding the old number"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -258,6 +274,7 @@ new = '            pass'
 [[rows]]
 id = "r1830.M13_planned_rows_admitted_unjudged"
 source = { table = "r1830.json", id = "M13_planned_rows_admitted_unjudged" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "collection_removal_violations: admit any change to a row the rule renumbers"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -268,6 +285,7 @@ new = '                pass'
 [[rows]]
 id = "r1830.M14_other_columns_not_compared"
 source = { table = "r1830.json", id = "M14_other_columns_not_compared" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "_renumbering_violations: a renumbered row may change any other column"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -278,6 +296,7 @@ new = '    if False:'
 [[rows]]
 id = "r1830.M15_number_not_compared"
 source = { table = "r1830.json", id = "M15_number_not_compared" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "_renumbering_violations: a renumbered row may hold any number"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -288,6 +307,7 @@ new = '    if False:'
 [[rows]]
 id = "r1830.M16_marker_change_not_compared"
 source = { table = "r1830.json", id = "M16_marker_change_not_compared" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "_renumbering_violations: a renumbered row's marker may move"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -298,6 +318,7 @@ new = '    if (now[0], now[1], now[3]) != (then[0], then[1], then[3]):'
 [[rows]]
 id = "r1830.M17_positions_never_read"
 source = { table = "r1830.json", id = "M17_positions_never_read" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "database_reading: read no membership positions, so the confinement plans nothing"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -308,6 +329,7 @@ new = '            if False:'
 [[rows]]
 id = "r1830.M1_tie_counted_as_below"
 source = { table = "r1830.json", id = "M1_tie_counted_as_below" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "renumbered_positions: a removed row tying a survivor lowers it too"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -318,6 +340,7 @@ new = '        below = sum(1 for one in deleted.get(playlist, ()) if one <= int(
 [[rows]]
 id = "r1830.M23_unreadable_marker_passed_over"
 source = { table = "r1830.json", id = "M23_unreadable_marker_passed_over" }
+moved = "moved by U300's split from src/cratekit/core/rb_writer.py to rb_removal.py, the same refusal of an unreadable marker in the removal's renumbering"
 description = "removal_renumbering: plan around a NULL marker rather than refusing it, review round two's X1"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -328,6 +351,7 @@ new = '    if False:'
 [[rows]]
 id = "r1830.M2_marked_removed_row_counted"
 source = { table = "r1830.json", id = "M2_marked_removed_row_counted" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "renumbered_positions: a removed row marked removed counts, review round one's B1"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -338,6 +362,7 @@ new = '        if content in gone and number is not None:'
 [[rows]]
 id = "r1830.M3_marked_survivor_moved"
 source = { table = "r1830.json", id = "M3_marked_survivor_moved" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "renumbered_positions: a marked surviving row is lowered too"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -348,6 +373,7 @@ new = '        if content in gone or number is None:'
 [[rows]]
 id = "r1830.M4_one_place_whatever_removed"
 source = { table = "r1830.json", id = "M4_one_place_whatever_removed" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "renumbered_positions: a row moves one place however many removed rows sit below it"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -358,6 +384,7 @@ new = '            moved[key] = (playlist, int(number), int(number) - 1)'
 [[rows]]
 id = "r1830.M5_any_playlist_counts"
 source = { table = "r1830.json", id = "M5_any_playlist_counts" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "renumbered_positions: a removed row in any playlist lowers rows in every playlist"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -368,6 +395,7 @@ new = '        below = sum(1 for numbers in deleted.values() for one in numbers 
 [[rows]]
 id = "r1830.M8_renumbering_stamps_updated_at"
 source = { table = "r1830.json", id = "M8_renumbering_stamps_updated_at" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "renumber_memberships: write updated_at beside TrackNo, a byte rekordbox did not write"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -378,6 +406,7 @@ new = "        f'UPDATE \"{MEMBERSHIP_TABLE}\" SET \"{TRACK_NUMBER_COLUMN}\" = :
 [[rows]]
 id = "r1830.M9_moved_row_not_refused"
 source = { table = "r1830.json", id = "M9_moved_row_not_refused" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "renumber_memberships: a row that moved since the prepare is passed over silently"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -403,6 +432,7 @@ new = '''
 [[rows]]
 id = "u288.M10_changed_rows"
 source = { table = "u288.json", id = "M10_changed_rows" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "collection_removal_violations: read a changed row as unchanged"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -417,6 +447,7 @@ new = '''
 [[rows]]
 id = "u288.M11_added_rows"
 source = { table = "u288.json", id = "M11_added_rows" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "collection_removal_violations: read an added row as nothing"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -431,6 +462,7 @@ new = '''
 [[rows]]
 id = "u288.M12_still_names"
 source = { table = "u288.json", id = "M12_still_names" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "collection_removal_violations: drop the check that every row naming a removed track is gone"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -441,6 +473,7 @@ new = '            if False:'
 [[rows]]
 id = "u288.M13_counter_forward"
 source = { table = "u288.json", id = "M13_counter_forward" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "collection_removal_violations: accept a read back whose update count did not move"
 file = "src/cratekit/core/rb_removal.py"
 surface = "maintainer"
@@ -451,6 +484,7 @@ new = '        before.counter is None or after.counter is None or after.counter 
 [[rows]]
 id = "u288.M3_unmeasured_tables_skipped"
 source = { table = "u288.json", id = "M3_unmeasured_tables_skipped" }
+moved = "U953 turned content_references' asked list into a loop over both reference columns, so leaving ContentID out of the loop is the same column never asked"
 description = "content_references: ask no table, so a My Tag, sampler or unknown table naming the row is never refused nor kept"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -461,6 +495,7 @@ new = '        for column in (TARGET_REFERENCE_COLUMN,):'
 [[rows]]
 id = "u288.M4_target_id_not_asked"
 source = { table = "u288.json", id = "M4_target_id_not_asked" }
+moved = "U953 turned content_references' asked list into a loop over both reference columns, so leaving TargetID out of the loop is the same column never asked"
 description = "content_references: drop the TargetID column, so an image row naming the track is left naming a row that is gone"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -471,6 +506,7 @@ new = '        for column in (CONTENT_REFERENCE_COLUMN,):'
 [[rows]]
 id = "u288.M8_memberships_kept"
 source = { table = "u288.json", id = "M8_memberships_kept" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "remove_from_collection: delete from the five tables after the membership table only, so the track's memberships stay naming a row that is gone"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -481,6 +517,7 @@ new = '    for table in COLLECTION_REMOVAL_TABLES[2:]:'
 [[rows]]
 id = "u288.M9_whose_row_disappeared"
 source = { table = "u288.json", id = "M9_whose_row_disappeared" }
+moved = "the same text, now in src/cratekit/core/rb_removal.py, was in src/cratekit/core/rb_writer.py"
 description = "collection_removal_violations: let any row of any table disappear"
 file = "src/cratekit/core/rb_removal.py"
 surface = "user"
@@ -491,6 +528,7 @@ new = '            if False:'
 [[rows]]
 id = "u138-rerun.S5_bound_exclusive"
 source = { table = "u138-rerun.json", id = "S5_bound_exclusive" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "A portion exactly five days old is under the bound"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -505,6 +543,7 @@ new = '''
 [[rows]]
 id = "u138.E1_terminal_check"
 source = { table = "u138.json", id = "E1_terminal_check" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "Existing guard sample: the terminal check on a person's answer"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -519,6 +558,7 @@ new = '''
 [[rows]]
 id = "u138.S10_older_record_reads_as_session"
 source = { table = "u138.json", id = "S10_older_record_reads_as_session" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "A record from before U138 reads as minted by the session's rule"
 file = "src/cratekit/core/session_ack.py"
 surface = "maintainer"
@@ -533,6 +573,7 @@ new = '''
 [[rows]]
 id = "u138.S11_rule_not_written"
 source = { table = "u138.json", id = "S11_rule_not_written" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "The record's rule key is not written to the file"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -545,6 +586,7 @@ new = ''
 [[rows]]
 id = "u138.S12_message_names_the_portion"
 source = { table = "u138.json", id = "S12_message_names_the_portion" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "Reword the refusal so it no longer names the portion's age"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -559,6 +601,7 @@ new = '''
 [[rows]]
 id = "u138.S13_remedy_points_back_at_ack"
 source = { table = "u138.json", id = "S13_remedy_points_back_at_ack" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "The too old refusal tells a person to acknowledge again rather than to run a backup"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -573,6 +616,7 @@ new = '''
 [[rows]]
 id = "u138.S1_session_rule_gone"
 source = { table = "u138.json", id = "S1_session_rule_gone" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "A session's answer falls to the terminal check, as before U138"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -587,6 +631,7 @@ new = '''
 [[rows]]
 id = "u138.S2_any_answer_gets_the_age_rule"
 source = { table = "u138.json", id = "S2_any_answer_gets_the_age_rule" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "Any recorded answer, a person's included, mints without a terminal on young backups"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -601,6 +646,7 @@ new = '''
 [[rows]]
 id = "u138.S3_stale_not_refused"
 source = { table = "u138.json", id = "S3_stale_not_refused" }
+moved = "moved by U300's split from src/cratekit/core/session.py to session_ack.py, the same refusal of a stale portion in the acknowledgment"
 description = "The session mints over a portion five days old or of unknown age"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -611,6 +657,7 @@ new = '        if False:'
 [[rows]]
 id = "u138.S6_bound_six_days"
 source = { table = "u138.json", id = "S6_bound_six_days" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "The bound is six days rather than five"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -625,6 +672,7 @@ SESSION_MAX_BACKUP_AGE = timedelta(days=6)
 [[rows]]
 id = "u138.S8_rule_not_recorded"
 source = { table = "u138.json", id = "S8_rule_not_recorded" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "The record always says the terminal rule minted it"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -641,6 +689,7 @@ new = '''
 [[rows]]
 id = "u138.S9_answer_not_recorded"
 source = { table = "u138.json", id = "S9_answer_not_recorded" }
+moved = "the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 description = "The record never says who answered the gate"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -677,6 +726,7 @@ new = '        actor=derive_actor(),'
 [[rows]]
 id = "u48-author.S1_remedy_fixed_at_repair"
 source = { table = "u48-author.json", id = "S1_remedy_fixed_at_repair" }
+moved = "moved by U300's split from src/cratekit/core/session.py to session_ack.py, the same remedy carried from the backup facts refusal"
 description = "The session names the repair token again, which is the defect this unit closed"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -687,6 +737,7 @@ new = '            remedy=Remedy.REPAIR_BACKUP_FACTS,'
 [[rows]]
 id = "u48-author.S2_remedy_fixed_at_grant"
 source = { table = "u48-author.json", id = "S2_remedy_fixed_at_grant" }
+moved = "moved by U300's split from src/cratekit/core/session.py to session_ack.py, the same remedy carried from the backup facts refusal"
 description = "The same defect mirrored: hard code the permission token over every condition"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
@@ -697,6 +748,7 @@ new = '            remedy=Remedy.GRANT_PATH_ACCESS,'
 [[rows]]
 id = "r598-a.A1_state_check_widened_to_non_terminal"
 source = { table = "r598-a.json", id = "A1_state_check_widened_to_non_terminal" }
+moved = "moved by U300's split from src/cratekit/core/session.py to session_holders.py, the same check in orphaned, its names read through the module"
 description = "orphaned: accept any non terminal record rather than only open, so awaiting-import and committed-unverified records with a dead holder are abandoned and their own remedies hidden"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -713,6 +765,7 @@ new = '''
 [[rows]]
 id = "r598-a.A2_no_holder_read_as_gone"
 source = { table = "r598-a.json", id = "A2_no_holder_read_as_gone" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "orphaned: read a record with no recorded holder as orphaned, so every intake landing left open for a deferred placement is abandoned"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -727,6 +780,7 @@ new = '''
 [[rows]]
 id = "r598-a.A3_liveness_not_consulted"
 source = { table = "r598-a.json", id = "A3_liveness_not_consulted" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "orphaned: skip holder_alive and judge every open record with a holder orphaned, so a running write's record is ended behind it"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -737,6 +791,7 @@ new = '    return True'
 [[rows]]
 id = "r598-a.A4_unreadable_holder_read_as_gone"
 source = { table = "r598-a.json", id = "A4_unreadable_holder_read_as_gone" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "orphaned: judge a holder this build cannot parse as gone rather than alive"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -753,6 +808,7 @@ new = '''
 [[rows]]
 id = "r598-a.A7_sweep_ignores_the_shown_list"
 source = { table = "r598-a.json", id = "A7_sweep_ignores_the_shown_list" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "abandon_orphaned_sessions: end every orphan rather than only those shown, so one answer ends records the question never listed"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -763,6 +819,7 @@ new = '        if orphaned(record, here=here)'
 [[rows]]
 id = "r598-b.B7_sample_live_holder_released"
 source = { table = "r598-b.json", id = "B7_sample_live_holder_released" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "release_stale_lock: skip the live holder refusal (existing guard, sampled because the sweep now sits behind it)"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -777,6 +834,7 @@ new = '''
 [[rows]]
 id = "r647-a.B10_live_identifier_not_asked"
 source = { table = "r647-a.json", id = "B10_live_identifier_not_asked" }
+moved = "moved by U300's split from src/cratekit/core/session.py to session_holders.py, the same return in _gone_since_an_earlier_boot, its probe read through the module"
 description = "_gone_since_an_earlier_boot: skip the live process check, so a live holder read through a moved clock has its claim cleared mid write"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -787,6 +845,7 @@ new = '    return True'
 [[rows]]
 id = "r647-a.B11_start_time_compared_again"
 source = { table = "r647-a.json", id = "B11_start_time_compared_again" }
+moved = "moved by U300's split from src/cratekit/core/session.py to session_holders.py, the same return in _gone_since_an_earlier_boot, its probes read through the module"
 description = "_gone_since_an_earlier_boot: the review's defect restored, a live identifier keeps the claim only when its start time matches, so the Linux shape of a stepped clock clears a live claim"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -801,6 +860,7 @@ new = '''
 [[rows]]
 id = "r647-a.B12_cross_boot_never_judged"
 source = { table = "r647-a.json", id = "B12_cross_boot_never_judged" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "holder_alive: every other boot judged alive again, the state before this unit, so a power loss stays a dead end"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -815,6 +875,7 @@ new = '''
 [[rows]]
 id = "r647-a.B13_current_holder_names_no_machine"
 source = { table = "r647-a.json", id = "B13_current_holder_names_no_machine" }
+moved = "moved by U300's split from src/cratekit/core/session.py to session_holders.py, the same field in current_holder, its probe read through the module"
 description = "current_holder: record the declared unknown instead of the machine identity, so no holder is ever provably this machine's"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -825,6 +886,7 @@ new = '        machine=UNKNOWN_IDENTITY,'
 [[rows]]
 id = "r647-a.B14_machine_not_read_back"
 source = { table = "r647-a.json", id = "B14_machine_not_read_back" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "Holder.from_json: ignore the recorded machine, so a record or lock read from disk never names one"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -835,6 +897,7 @@ new = '            machine=UNKNOWN_IDENTITY,'
 [[rows]]
 id = "r647-a.B15_machine_not_written"
 source = { table = "r647-a.json", id = "B15_machine_not_written" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "Holder.to_json: omit the machine, so nothing on disk carries it"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -847,6 +910,7 @@ new = ''
 [[rows]]
 id = "r647-a.B1_unknown_machine_not_refused"
 source = { table = "r647-a.json", id = "B1_unknown_machine_not_refused" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "_gone_since_an_earlier_boot: drop the unknown machine check, so two holders that both name no machine compare equal as text and a holder recorded before the field existed is cleared on a machine that cannot name itself"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -860,6 +924,7 @@ new = '    if holder.machine != reference.machine:'
 [[rows]]
 id = "r647-a.B2_machine_equality_dropped"
 source = { table = "r647-a.json", id = "B2_machine_equality_dropped" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "_gone_since_an_earlier_boot: stop comparing machine identities, so another machine sharing the host name and the library drive has its claim cleared on the host name alone"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
@@ -874,6 +939,7 @@ new = '''
 [[rows]]
 id = "r647-a.B3_unparsable_boot_read_as_gone"
 source = { table = "r647-a.json", id = "B3_unparsable_boot_read_as_gone" }
+moved = "the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 description = "_gone_since_an_earlier_boot: judge a boot that is not a number as proof of an earlier boot rather than as no proof"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
