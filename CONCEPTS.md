@@ -28,7 +28,7 @@ the reader obeys the warning, re-measures the fact it rests on, and deletes the
 note once its merge is done. Each side of a collision may carry one.
 
 ### Held plan
-The plan a verb's first command made, kept under its run (`core/held_plan.py`)
+The plan a verb's first command made, kept under its run (`sync/held_plan.py`)
 so the commands that answer its explicit gates use the plan the person saw. It
 is used only when it digests to every offer the run recorded; otherwise the verb
 plans again. Before writing, it checks the lists it read have not moved and
@@ -711,16 +711,17 @@ together can form a window that was never there, which is a new copy.
 ### Allowance
 A file of lines, one per place a package may still hold something a rule
 forbids, under `tests/ratchets/`: one file per package for copied blocks and one
-for seam crossings. Lines are only ever removed. The copied block allowances
-are all empty since U329 and any line in one fails. An import allowance line
-whose finding is gone fails nothing, so a card that removes a copy or a crossing cannot fail another
-card's package by removing it, and `scripts/refactor_measure.py prune` removes
-such lines and can add none.
+for seam crossings. Every one is empty, the copied block allowances since
+U329 and the seam crossing ones since U331, and any line in one fails.
+`scripts/refactor_measure.py prune` removes lines and can add none.
 
 ### Named interface
 The core modules a feature package may import, `CORE_INTERFACE` in
 `tests/test_import_rules.py`, at most 25. A reach into any other core module is
-a seam crossing.
+a seam crossing. A listed module may re-export names of a core module off the
+list, each a counted core name, and never hands over a module: a module reached
+as an attribute of another, or imported from it, is a reach of that module
+itself (U331).
 
 ### Seam crossing
 One of four things the import rules forbid: a private name used from another
@@ -731,8 +732,10 @@ package, one line per crossing however many files hold it.
 
 ### Toggle home
 The packages and modules a toggle of `core.profiles.MODULES` owns, `TOGGLE_HOMES`
-in `tests/test_import_rules.py`: what cannot be imported once it is off. A
-package holding one is toggleable; every other package is always on.
+in `tests/test_import_rules.py`: what cannot be imported once it is off. A home
+is what the registry gates with the toggle, a package or the one module of a
+package that also builds verbs no toggle gates (U331). A package holding one is
+toggleable; every other package is always on.
 
 ### Dangling verb
 A verb that no longer builds when a toggle that does not gate it is off, because

@@ -106,14 +106,28 @@ interface, seam crossing, toggle home and dangling verb.
   U329. It also fails on a function body of three lines or more, its arguments
   and statements compared as syntax trees with the docstring dropped, defined
   identically in two files under `src/cratekit`, which has no allowance.
-- `tests/test_import_rules.py` fails on a new seam crossing beyond
-  `tests/ratchets/imports/<package>.txt`, and when feature packages use more
-  distinct core names than `CORE_NAMES_CEILING`. `CORE_INTERFACE` and
-  `TOGGLE_HOMES` live in that file; a toggle added to `core.profiles.MODULES`
-  must be given its homes there.
-- An allowance line is removed by the card that removes its finding, by hand
-  or with `prune`. A stale import allowance line fails nothing; a duplication
-  allowance line of any kind fails, since every one is empty (U329).
+- `tests/test_import_rules.py` fails on any seam crossing, and when feature
+  packages use more distinct core names than `CORE_NAMES_CEILING`.
+  `CORE_INTERFACE` and `TOGGLE_HOMES` live in that file; a toggle added to
+  `core.profiles.MODULES` must be given its homes there, and a home is what the
+  registry gates with the toggle, never a whole package because of its name.
+- Every allowance, of either kind, is empty (U329, U331), and a line in one
+  fails. `prune` remains for a branch built before that.
+- A feature package reaches a core module in one of three ways (U331): the
+  module is on `CORE_INTERFACE` and is imported itself; a listed module
+  re-exports the names, which is how a module leaves the list or stays off it;
+  or the module is the feature's own and lives in its package, as
+  `sync/held_plan.py`, `intake/rehearsal.py` and `intake/drift.py` do. A
+  re-export is never free: the listed module imports the other with every
+  command that imports it, a guard that follows imports follows it there (the
+  reports audit, the lazy shell's ceiling in `tests/test_cli_lazy.py`), and a
+  test that patches the name patches it where the caller reads it. So it is
+  given only where the listed module imported the other already or the cost
+  was measured, and a heavy module, or one a guard is keyed on, takes a place
+  on the list instead (`pool`, `taxonomy_word`). Loading a module on demand
+  behind `__getattr__` hides it from those guards and is not done. A listed
+  module never hands over a module: `tags.art.read` and `from
+  cratekit.core.tags import art` are read as reaches of `core.art`.
 - When a module is split or added, three registers are per package or per
   line, so no other package's card edits the same lines: the reserved cause
   pins in `tests/ratchets/reserved_causes/<package>.py` (read by
@@ -205,7 +219,15 @@ already had, through the config and writer suites that drove them before.
 | a lock file opened owner only, hardened by the caller, then taken | `core.config.flock_exclusive(target, harden)` |
 | a state document read as JSON, refused rather than read as empty | `core.config.read_json`, `read_json_map`, `read_bytes_if_present`, and `read_json_as_text` for the two stores that read in the platform's encoding |
 | whether one path is inside another | `core.config.is_inside(child, parent)` |
-| the device a path is on, read off its nearest ancestor that exists | `core.preflight.device_of` |
+| the device a path is on, read off its nearest ancestor that exists | `core.preflight.device_of`, which a feature package reads as `core.session.device_of` (U331) |
+| which volume this is, what is mounted, and whether two spellings name one path | `core.session.IdentityProvider`, `MountEnumerator`, `normalize_identity`, `names_one_path`, re-exported from `core.preflight` (U331) |
+| whether rekordbox is gone, asked without the rekordbox extra | `core.session.rekordbox_processes_running`, `running_process_names`, `REKORDBOX_PROCESSES`, `ProcessLister`, `AbsenceUnconfirmed`, re-exported from `core.processes` (U331) |
+| the room a check's copy needs | `core.session.assert_room_for_check`, `check_had_no_room`, re-exported from `core.snapshot` (U331) |
+| the folder a queued verb walks, its item ids and where an item's file is | `core.jobs.scan_audio`, `frozen_walk`, `item_path`, `walk_warnings`, `warnings_of`, `Scan`, re-exported from `core.discovery` (U331) |
+| the ceiling a pool takes from the cores | `core.jobs.worker_ceiling`, re-exported from `core.cores` (U331); the pool is `core.pool`, imported itself |
+| another app's nodes, told from the tree's own | `core.tree_registry.outside_foreign`, `foreign_roots_in`, `FOREIGN_OWNER`, `FOREIGN_LEFT_AS_IT_IS`, re-exported from `core.foreign_tree` (U331) |
+| the membership a configuration resolves to, and the extras group a module installs with | `cfg.membership()`, `core.config.Membership`, `core.config.install_command`, from `core.profiles` (U331) |
+| a missing `yt-dlp` as the calling verb's refusal | `core.binaries.yt_dlp_missing` (U331) |
 | the lossy name template and the name budget from configuration | `core.naming.NameTemplate.lossy`, `.lossy_if_marked`, `core.naming.NameBudget.of` |
 | the capture a guarded database write opens with | `write.trees.attached_capture(gates, cfg, db)` |
 | undo pending work on a handle after a failed write, never masking its cause | `write.trees.rollback_quietly(db)` |
