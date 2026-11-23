@@ -51,62 +51,52 @@ from cratekit.core.cause import (
     widest_scope,
 )
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.session_ack import (
-    ACK_KEY,
-    ACK_SCHEMA_VERSION,
-    DEFAULT_ACK_VALIDITY,
-    Acknowledgment,
-    ShownAge,
-    ack_path,
-    assert_backup_acknowledged,
-    derive_actor,
-    has_controlling_terminal,
-    read_acknowledgment,
-    record_acknowledgment,
-)
+from cratekit.core.session_ack import ACK_SCHEMA_VERSION as ACK_SCHEMA_VERSION
 from cratekit.core.session_ack import RULE_SESSION_AGES as RULE_SESSION_AGES
 from cratekit.core.session_ack import SESSION_ACTOR as SESSION_ACTOR
 from cratekit.core.session_ack import SESSION_MAX_BACKUP_AGE as SESSION_MAX_BACKUP_AGE
+from cratekit.core.session_ack import Acknowledgment, assert_backup_acknowledged
 from cratekit.core.session_ack import _shown_ages as _shown_ages
-from cratekit.core.session_analysis import (
-    ANLZ_NAME_PATTERN,
-    analysis_drift,
-    analysis_files_under,
-    analysis_files_unmoved,
-    fingerprint_analysis_files,
-    is_analysis_file,
-)
+from cratekit.core.session_ack import ack_path as ack_path
+from cratekit.core.session_ack import derive_actor as derive_actor
+from cratekit.core.session_ack import has_controlling_terminal as has_controlling_terminal
+from cratekit.core.session_ack import read_acknowledgment as read_acknowledgment
+from cratekit.core.session_ack import record_acknowledgment as record_acknowledgment
+from cratekit.core.session_analysis import analysis_files_under as analysis_files_under
+from cratekit.core.session_analysis import analysis_files_unmoved
+from cratekit.core.session_analysis import is_analysis_file as is_analysis_file
 from cratekit.core.session_holders import _HELD as _HELD
-from cratekit.core.session_holders import (
-    BOOT_DRIFT_SECONDS,
-    UNKNOWN_IDENTITY,
-    Holder,
-    SessionComposition,
-    abandon_orphaned_sessions,
-    boot_identity,
-    current_holder,
-    holder_alive,
-    lock_path,
-    machine_identity,
-    orphaned,
-    process_exists,
-    process_started,
-    read_lock_holder,
-    release_stale_lock,
-    session_lock,
-)
+from cratekit.core.session_holders import BOOT_DRIFT_SECONDS as BOOT_DRIFT_SECONDS
+from cratekit.core.session_holders import UNKNOWN_IDENTITY as UNKNOWN_IDENTITY
+from cratekit.core.session_holders import Holder, current_holder, session_lock
+from cratekit.core.session_holders import SessionComposition as SessionComposition
 from cratekit.core.session_holders import _open_lock_file as _open_lock_file
+from cratekit.core.session_holders import abandon_orphaned_sessions as abandon_orphaned_sessions
+from cratekit.core.session_holders import boot_identity as boot_identity
+from cratekit.core.session_holders import holder_alive as holder_alive
+from cratekit.core.session_holders import lock_path as lock_path
+from cratekit.core.session_holders import machine_identity as machine_identity
+from cratekit.core.session_holders import orphaned as orphaned
+from cratekit.core.session_holders import process_exists as process_exists
+from cratekit.core.session_holders import process_started as process_started
+from cratekit.core.session_holders import read_lock_holder as read_lock_holder
+from cratekit.core.session_holders import release_stale_lock as release_stale_lock
 from cratekit.core.session_volumes import _MAPPED_PROVED as _MAPPED_PROVED
 from cratekit.core.session_volumes import _MAPPED_REASONS as _MAPPED_REASONS
 from cratekit.core.session_volumes import _MOUNT_REASONS as _MOUNT_REASONS
+from cratekit.core.session_volumes import assert_mapped_file_volume as assert_mapped_file_volume
 from cratekit.core.session_volumes import (
-    assert_mapped_file_volume,
-    assert_mapped_volume_identities,
-    assert_volume_identity,
-    expected_rule_identity,
+    assert_mapped_volume_identities as assert_mapped_volume_identities,
 )
+from cratekit.core.session_volumes import assert_volume_identity
+from cratekit.core.session_volumes import expected_rule_identity as expected_rule_identity
 
 logger = logging.getLogger(__name__)
+
+
+def _defect(message: str, **refusal: Any) -> CratekitError:
+    """An ``internal-error`` refusal, whose remedy is to report the defect."""
+    return refuse("internal-error", message, remedy=Remedy.REPORT_DEFECT, **refusal)
 
 
 # ---------------------------------------------------------------------------
@@ -219,16 +209,13 @@ class ChangeSummary:
         the recorded bytes do not depend on source order."""
         totals: dict[str, TreeChange] = {entry.tree: entry for entry in self.trees}
         for entry in other.trees:
-            seen = totals.get(entry.tree)
-            totals[entry.tree] = (
-                entry
-                if seen is None
-                else TreeChange(
-                    tree=entry.tree,
-                    created=seen.created + entry.created,
-                    updated=seen.updated + entry.updated,
-                    removed=seen.removed + entry.removed,
-                )
+            # A tree only ``other`` names adds to zeros, so it reads back as itself.
+            seen = totals.get(entry.tree, TreeChange(tree=entry.tree))
+            totals[entry.tree] = TreeChange(
+                tree=entry.tree,
+                created=seen.created + entry.created,
+                updated=seen.updated + entry.updated,
+                removed=seen.removed + entry.removed,
             )
         return ChangeSummary(tuple(sorted(totals.values(), key=lambda e: e.tree)))
 
@@ -306,12 +293,10 @@ class SessionRecord:
     def from_json(cls, data: Mapping[str, Any]) -> SessionRecord:
         version = data.get("schema_version")
         if version != LOG_SCHEMA_VERSION:
-            raise refuse(
-                "internal-error",
+            raise _defect(
                 f"the session log entry declares schema {version!r} and this "
                 f"build understands {LOG_SCHEMA_VERSION}; refusing to guess what "
                 f"wrote it",
-                remedy=Remedy.REPORT_DEFECT,
                 detail={"schema_version": version},
             )
         pending = data.get("pending_human_action")
@@ -376,18 +361,14 @@ def read_record(session_id: str, cfg: config.Config) -> SessionRecord:
     try:
         raw = path.read_bytes()
     except FileNotFoundError as exc:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"no session is recorded with the identifier {session_id!r}: {exc}",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": session_id, "path": str(path)},
         ) from exc
     except OSError as exc:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"the session record at {path} could not be read, so whether a "
             f"session is recorded under {session_id!r} was not established: {exc}",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": session_id, "path": str(path)},
         ) from exc
     return SessionRecord.from_json(json.loads(raw.decode("utf-8")))
@@ -462,11 +443,9 @@ def records(cfg: config.Config) -> tuple[SessionRecord, ...]:
     """
     parsed, unreadable = scan_log(cfg)
     if log_unlisted(unreadable, cfg):
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"{unread_clause(unreadable, cfg)}, so no session recorded in it can be "
             "read; refusing rather than answering that none is recorded",
-            remedy=Remedy.REPORT_DEFECT,
             scope=Scope.RUN,
             detail={"log": str(log_dir(cfg)), "unlisted": True},
         )
@@ -541,12 +520,10 @@ def assert_no_unresolved_session(cfg: config.Config) -> None:
             },
         )
     if unreadable:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"{unread_clause(unreadable, cfg)}, so this gate cannot vouch that no "
             "session ended unresolved; refusing rather than writing against a log "
             "it cannot read",
-            remedy=Remedy.REPORT_DEFECT,
             scope=Scope.RUN,
             detail={
                 "unreadable": [str(path) for path in unreadable],
@@ -565,12 +542,10 @@ def resolve_unverified_session(
     """
     record = read_record(session_id, cfg)
     if record.state is not SessionState.COMMITTED_UNVERIFIED:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"session {session_id} is {str(record.state)!r}, not "
             f"{str(SessionState.COMMITTED_UNVERIFIED)!r}; only a session that "
             f"committed behind a read-back that disagreed is resolved this way",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": session_id, "state": str(record.state)},
         )
     return close_session(record, cfg, state=SessionState.ABANDONED, now=now)
@@ -620,21 +595,23 @@ def assert_gates(
     # One claimant, so the record names the process the lock names.
     claimant = holder or current_holder()
     with session_lock(resolved, path=lock, holder=claimant) as held:
-        keeping = (
-            _recorded(
+        # The record a gated session keeps (R-12, R-375) ENDS TERMINAL ON EVERY
+        # PATH THAT CAN STILL WRITE THE LOG: a raise or a refused close abandons
+        # it, a kill is left to :func:`abandon_orphaned_sessions` (R-598).
+        # Abandoning is an attempt that never replaces the session's own error.
+        record = (
+            open_session(
                 resolved,
                 workflow=workflow,
-                acknowledgment=acknowledgment,
+                actor=acknowledgment.actor,
+                acknowledged_at=acknowledgment.recorded_at.isoformat(),
                 holder=claimant,
-                intent=intent,
-                identity_provider=identity_provider,
-                mount_enumerator=mount_enumerator,
                 now=now,
             )
             if keep is Keep.RECORD
-            else nullcontext()
+            else None
         )
-        with keeping as record:
+        try:
             with analysis_files_unmoved(watched) if watched else nullcontext():
                 yield Gates(
                     workflow=workflow,
@@ -644,6 +621,27 @@ def assert_gates(
                     intent=intent,
                     record=record,
                 )
+            if record is not None:
+                close_session(
+                    record,
+                    resolved,
+                    state=SessionState.CLOSED,
+                    intent=intent,
+                    identity_provider=identity_provider,
+                    mount_enumerator=mount_enumerator,
+                    now=now,
+                )
+        except BaseException:
+            if record is not None:
+                try:
+                    close_session(record, resolved, state=SessionState.ABANDONED, now=now)
+                except Exception:  # noqa: BLE001 - the session's own error is the one to surface
+                    logger.warning(
+                        "session %s could not be recorded as abandoned",
+                        record.session_id,
+                        exc_info=True,
+                    )
+            raise
 
 
 # ---------------------------------------------------------------------------
@@ -714,16 +712,15 @@ def commit_sources(
         except CratekitError as exc:
             record.sources[source] = str(SourceState.REFUSED)
             write_record(record, cfg)
+            # The reason, remediation and retryability carried over from the source's cause.
             raise CratekitError(
-                Cause(
-                    reason=exc.cause.reason,
+                replace(
+                    exc.cause,
                     message=(
                         f"session {record.session_id} refused at source {source!r}; "
                         f"sources already committed are untouched"
                     ),
-                    remediation=exc.cause.remediation,
                     scope=widest_scope(exc.cause.scope, Scope.SOURCE),
-                    retryable=exc.cause.retryable,
                     origin=(*exc.cause.origin, "session"),
                     detail={
                         "session_id": record.session_id,
@@ -765,71 +762,15 @@ def close_session(
         )
         reconcile.assert_converged(cfg)
     if state not in TERMINAL_STATES:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"{state!r} is not a terminal session state, so closing into it would "
             f"release a capture the session still references",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"state": str(state), "session_id": record.session_id},
         )
     record.state = state
     record.ended = output.timestamp(now)
     write_record(record, cfg)
     return record
-
-
-# ---------------------------------------------------------------------------
-# The record a gated session keeps (R-12, R-375)
-# ---------------------------------------------------------------------------
-
-
-@contextmanager
-def _recorded(
-    cfg: config.Config,
-    *,
-    workflow: str,
-    acknowledgment: Acknowledgment,
-    holder: Holder,
-    intent: Intent,
-    identity_provider: preflight.IdentityProvider | None,
-    mount_enumerator: preflight.MountEnumerator | None,
-    now: datetime | None,
-) -> Iterator[SessionRecord]:
-    """Hold an open session record for the body of one gated session.
-
-    Private, reached only through ``assert_gates(keep=Keep.RECORD)``, so it
-    records what the gates passed. IT ENDS TERMINAL ON EVERY PATH THAT CAN STILL
-    WRITE THE LOG: a raise or a refused close abandons it, a kill is left to
-    :func:`abandon_orphaned_sessions` (R-598). Abandoning is an attempt that
-    never replaces the session's own error.
-    """
-    record = open_session(
-        cfg,
-        workflow=workflow,
-        actor=acknowledgment.actor,
-        acknowledged_at=acknowledgment.recorded_at.isoformat(),
-        holder=holder,
-        now=now,
-    )
-    try:
-        yield record
-        close_session(
-            record,
-            cfg,
-            state=SessionState.CLOSED,
-            intent=intent,
-            identity_provider=identity_provider,
-            mount_enumerator=mount_enumerator,
-            now=now,
-        )
-    except BaseException:
-        try:
-            close_session(record, cfg, state=SessionState.ABANDONED, now=now)
-        except Exception:  # noqa: BLE001 - the session's own error is the one to surface
-            logger.warning(
-                "session %s could not be recorded as abandoned", record.session_id, exc_info=True
-            )
-        raise
 
 
 def record_commit(
@@ -906,12 +847,10 @@ def mark_import_verified(
     any other state.
     """
     if record.state is not SessionState.AWAITING_IMPORT:
-        raise refuse(
-            "internal-error",
+        raise _defect(
             f"session {record.session_id} is {str(record.state)!r}, not "
             f"{str(SessionState.AWAITING_IMPORT)!r}; only a session waiting on an "
             f"import has one to verify",
-            remedy=Remedy.REPORT_DEFECT,
             detail={"session_id": record.session_id, "state": str(record.state)},
         )
     pending = record.pending
@@ -1000,13 +939,10 @@ def verify_commit(
     try:
         handle = open_fresh()
         agreed = bool(expect(handle))
-    except CratekitError as exc:
-        # Kept, since a typed failure says what to do (KTD25).
-        logger.warning("the post-commit read-back could not run: %s", exc)
-        failure = exc.cause
     except Exception as exc:  # noqa: BLE001 - a read-back that cannot run has not agreed
         logger.warning("the post-commit read-back could not run: %s", exc)
-        failure = Cause(
+        # A typed failure is kept, since it says what to do (KTD25).
+        failure = exc.cause if isinstance(exc, CratekitError) else Cause(
             reason="internal-error",
             message=f"the post-commit read-back could not run: {exc}",
             remediation=Remediation(remedy=Remedy.REPORT_DEFECT),
@@ -1045,24 +981,3 @@ def verify_commit(
         },
         inner=inner,
     )
-
-
-__all__ = [
-    "ACK_KEY", "ACK_SCHEMA_VERSION", "ANLZ_NAME_PATTERN", "BOOT_DRIFT_SECONDS",
-    "DEFAULT_ACK_VALIDITY", "HOLDER_KEY", "IMPORT_VERIFIED_KEY", "LOG_SCHEMA_VERSION",
-    "RUN_STATE_VOCABULARY", "SNAPSHOT_KEY", "STATE_KEY", "TERMINAL_STATES", "UNKNOWN_IDENTITY",
-    "Acknowledgment", "ChangeSummary", "Gates", "Holder", "Intent", "Keep", "SessionComposition",
-    "SessionRecord", "SessionState", "ShownAge", "SourceState", "TreeChange",
-    "abandon_orphaned_sessions", "ack_path", "analysis_drift", "analysis_files_under",
-    "analysis_files_unmoved", "assert_backup_acknowledged", "assert_database_surface_allowed",
-    "assert_gates", "assert_mapped_file_volume", "assert_mapped_volume_identities",
-    "assert_no_unresolved_session", "assert_volume_identity", "attach_capture", "boot_identity",
-    "close_session", "commit_sources", "current_holder", "derive_actor", "expected_rule_identity",
-    "fingerprint_analysis_files", "has_controlling_terminal", "holder_alive", "is_analysis_file",
-    "lock_path", "log_dir", "log_unlisted", "log_path", "machine_identity", "mark_awaiting_import",
-    "mark_import_verified", "new_session_id", "open_session", "orphaned",
-    "owes_only_deferred_routing", "pending_import", "process_exists", "process_started",
-    "read_acknowledgment", "read_lock_holder", "read_record", "record_acknowledgment",
-    "record_commit", "records", "release_stale_lock", "resolve_unverified_session", "scan_log",
-    "session_lock", "unread_clause", "verify_commit", "write_record",
-]
