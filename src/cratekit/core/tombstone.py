@@ -293,22 +293,3 @@ def describe(identity: Mapping[str, Any]) -> str:
         return f"{artist} - {title}" if artist and title else (artist or title)
     return str(identity.get("recorded") or identity.get("content_id") or "")
 
-
-__all__ = [
-    "DECLINE_STORE_KEY",
-    "KIND_REMOVED_FILE",
-    "KIND_VERSION",
-    "KIND_VERSION_UNCREDITED",
-    "REMIX_DESIGNATION",
-    "STORE_KEY",
-    "VERSION_WORDS",
-    "already_spelled_as_a_remix",
-    "describe",
-    "fold",
-    "reads_as_version",
-    "remixer_title",
-    "removed_file_identity",
-    "uncredited_title",
-    "version_identity",
-    "version_title",
-]

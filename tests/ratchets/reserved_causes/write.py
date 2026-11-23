@@ -23,7 +23,9 @@ KEBAB_LITERALS = {
         'genre-favorites',
         'session-committed-unverified',
     ],
+    # 2026-11-23, U327: the operation that writes rekordbox's key and tempo into a title.
     'write/metadata.py': [
+        'adopt-rekordbox-head',
         'genre-unknown',
         'level-uncut',
         'level-unrated',

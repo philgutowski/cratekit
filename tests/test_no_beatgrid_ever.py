@@ -622,3 +622,63 @@ def test_reading_and_saving_nothing_is_still_allowed():
         "    return {p: f.get_tag('PQTZ') for p, f in files.items()}\n"
     )
     assert anlz_write_violations(source, "cratekit.probe") == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U327: the verb that writes rekordbox's tempo into a title, as text only.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_adopt_verb_s_modules_are_in_the_scan_and_emit_no_grid():
+    """``analyze adopt`` writes a tempo's digits into a head and nowhere else.
+    Its two modules are walked by the scan above; named here so a move that
+    took them out of ``src`` would fail rather than pass by omission."""
+    scanned = dict(_package_modules())
+    for module in ("cratekit.analysis.head_adopt", "cratekit.analysis.head_adopt_cli"):
+        assert module in scanned, module
+        assert beatgrid_emission_violations(scanned[module], module) == []
+        assert anlz_write_violations(scanned[module], module) == []
+
+
+def _supported_suffixes() -> tuple[str, ...]:
+    from cratekit.core import tags
+
+    return tags.SUPPORTED_SUFFIXES
+
+
+@pytest.mark.parametrize("suffix", _supported_suffixes())
+def test_the_adopt_writer_puts_the_tempo_in_the_title_and_no_tempo_tag_in_any_container(
+    tmp_path, suffix
+):
+    """Surface 3 driven: the adopt writer over every container the tag module
+    supports, read from its own table, then every key the container holds read
+    raw. The title carries 128 as text; no tempo key exists."""
+    import mutagen
+
+    from cratekit.analysis import head_adopt
+    from cratekit.core import tags
+    from tests._containers import synth_container
+
+    path = synth_container(tmp_path, suffix)
+    assert tags.write_tags(path, {"title": "08A - 85 - The Curse"})
+    item = head_adopt.Item(
+        content_id="1",
+        action=head_adopt.ADOPT,
+        path=str(path),
+        title="08A - 85 - The Curse",
+        new_title="08A - 128 - The Curse",
+        tag_title="08A - 85 - The Curse",
+        new_tag_title="08A - 128 - The Curse",
+        new_initialkey="08A",
+        tempo=128,
+    )
+
+    written = head_adopt.write_files([item])
+
+    assert written.read_back == ("1",), written
+    assert tags.read_tag(path, "title") == "08A - 128 - The Curse"
+    handle = mutagen.File(path)
+    held = {str(key) for key in (handle.tags or {}).keys()}
+    spelled = {key.lower() for key in held} | {key.split(":", 1)[-1].lower() for key in held}
+    tempo_keys = {key.lower() for key in FORBIDDEN_TAG_KEYS}
+    assert not spelled & tempo_keys, (suffix, sorted(held))

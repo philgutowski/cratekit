@@ -1,6 +1,6 @@
 """rekordbox's analysis files under a root, fingerprinted so a session can tell they did not move.
 
-Part of :mod:`cratekit.core.session`, which re-exports every name here; read them there. A
+Part of :mod:`cratekit.core.session`, which re-exports every name its callers read; read them there. A
 name of the session outside this file, and every seam a test patches, is read through
 ``session`` at call time so a patch on the session bites here too (U300).
 """

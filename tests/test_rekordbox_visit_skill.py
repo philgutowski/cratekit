@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.analysis import check_cli
+from cratekit.analysis import check_cli, head_adopt_cli
 from cratekit.analysis import rekordbox_check as rc
 from cratekit.cli import doctor, registry, sync_land
 from cratekit.core import analysis_store, cause, processes
@@ -166,17 +166,36 @@ def test_the_json_fields_it_reads_are_the_check_s(flat):
     assert "whose `dyn` is true" in flat
 
 
-def test_the_clear_s_gate_is_answered_by_its_own_name_and_option(text):
-    spec = next(
-        gate for entry in registry.ENTRIES for gate in entry.gates
-        if gate.name == analyzed_cli.APPROVE_GATE
-    )
+def test_each_gate_is_answered_by_its_own_name_and_option_the_adopt_before_the_clear(text):
+    """U327 put ``analyze adopt``'s gate ahead of the clear's: the titles take
+    rekordbox's answer while their rows are still in INBOX / Analyze."""
+    gates = (head_adopt_cli.CONFIRM_GATE, analyzed_cli.APPROVE_GATE)
+    specs = {
+        gate.name: gate for entry in registry.ENTRIES for gate in entry.gates if gate.name in gates
+    }
     decide = [line for line in _commands(text) if line.startswith("crate run decide")]
-    assert len(decide) == 1
-    words = decide[0].split()
-    assert words[-2] == analyzed_cli.APPROVE_GATE
-    assert words[-1] in spec.options and words[-1] != "abort"
-    assert "--actor session" in decide[0]
+    assert [line.split()[-2] for line in decide] == list(gates)
+    for line in decide:
+        words = line.split()
+        assert words[-1] in specs[words[-2]].options and words[-1] != "abort"
+        assert "--actor session" in line
+
+
+def test_the_adopt_runs_after_the_check_and_before_the_clear(text, flat):
+    """The brief's order (U327), and the summary field the skill reads to know
+    whether any title differs is one the check writes."""
+    commands = _commands(text)
+    for command in ("crate --output json analyze adopt", "crate inbox analyzed"):
+        assert command in commands, command
+    # In the order the text gives them, the last check first.
+    last_check = text.rindex("    crate --output json analyze check")
+    adopt = text.index("    crate --output json analyze adopt")
+    clear = text.index("    crate inbox analyzed")
+    assert last_check < adopt < clear
+    assert "`data.summary.differs`" in flat
+    assert "differs" in rc.Check(scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name="x", content_ids=()),
+                                 rows=()).summary()
+    assert "the rehearsal stops at the gate and never goes past it" in flat
 
 
 def test_every_repository_file_it_cites_exists(flat):

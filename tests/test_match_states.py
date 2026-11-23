@@ -1261,19 +1261,27 @@ def test_a_head_found_only_in_the_tag_carries_the_key_when_the_stem_has_none(mus
     assert [(row.title, row.key) for row in held] == [("Sun Path", "06A")]
 
 
-def test_the_stem_head_outranks_the_tag_head_and_both_outrank_the_initialkey_tag(music, tmp_path):
+def test_the_tag_head_outranks_the_stem_head_and_both_outrank_the_initialkey_tag(music, tmp_path):
+    """U327 reversed the first two: ``analyze adopt`` corrects the title tag's head to
+    rekordbox's key and leaves the filename's older head, so the tag's is the answer."""
     tagged_container(
         tmp_path, music / "03B - 120 - Aurora Bloom - Sun Path.flac",
         artist="Aurora Bloom", title="06A - 126 - Sun Path", initialkey="09A",
     )
     held = index_of(music).versions(match.recording_token("Aurora Bloom", "Sun Path"))
+    assert [row.key for row in held] == ["06A"]
+    tagged_container(
+        tmp_path, music / "03B - 120 - Aurora Bloom - Moon Path.flac",
+        artist="Aurora Bloom", title="Moon Path", initialkey="09A",
+    )
+    held = index_of(music).versions(match.recording_token("Aurora Bloom", "Moon Path"))
     assert [row.key for row in held] == ["03B"]
     tagged_container(
         tmp_path, music / "Aurora Bloom - Sun Path (Live).flac",
         artist="Aurora Bloom", title="06A - 126 - Sun Path (Live)", initialkey="09A",
     )
     held = index_of(music).versions(match.recording_token("Aurora Bloom", "Sun Path"))
-    assert sorted(row.key for row in held) == ["03B", "06A"]
+    assert sorted(row.key for row in held) == ["06A", "06A"]
 
 
 def test_a_title_that_genuinely_ends_with_a_camelot_code_and_a_number_loses_that_tail(

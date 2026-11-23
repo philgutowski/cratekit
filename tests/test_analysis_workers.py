@@ -2776,3 +2776,29 @@ def test_the_shared_tail_step_queues_only_and_drives_its_job_once(
         ["crate", "analyze", "run", "--queue-only", str(folder)],
         ["crate", *resume_argv(job.job_id)],
     ]
+
+
+def test_a_restamp_over_a_title_analyze_adopt_corrected_brings_no_head_or_key_back(
+    cfg, folder, silence, monkeypatch
+):
+    """U327: the restamp writes the energy tag alone, so a title and key tag that took
+    rekordbox's answer keep it, and the file name keeps its older head."""
+    energy.save_calibration(cfg, calibration_over(count=20))
+    corrected = folder / "01A - 124 - Golf.flac"
+    shutil.copy2(silence, corrected)
+    assert tags.write_tags(
+        corrected, {"title": "09A - 98 - Golf", "initialkey": "09A", "energylevel": 7}
+    )
+    bind_measuring(monkeypatch, {"01A - 124 - Golf": 0})
+
+    drive(["analyze", "restamp", "--queue-only", str(folder)])
+    job = analysis_job("analyze.restamp")
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_energy_from_file(corrected) == energy.LEVEL_MIN
+    assert tags.read_tags(corrected, ("title", "initialkey")) == {
+        "title": "09A - 98 - Golf",
+        "initialkey": "09A",
+    }
+    assert [path.name for path in folder.iterdir()] == ["01A - 124 - Golf.flac"]

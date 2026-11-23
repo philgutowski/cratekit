@@ -32,6 +32,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'analysis-check-landing-unknown',  # 2026-10-31, U167: analyze check's unknown landing.
     'analysis-suspect',  # 2026-10-31, U167: analyze check's suspect verdict.
     'analysis-write-failed',
+    'analyze-adopt-unwritten',  # 2026-11-23, U327: a file analyze adopt could not write.
     'anlz-modified',
     'app-version-pin-drift',
     'app-version-pin-unrecorded',

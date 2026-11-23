@@ -1,7 +1,7 @@
 """What the machine says: the installed application's version, the running processes, and the
 settings file Cloud Library Sync is read from.
 
-Part of :mod:`cratekit.core.rb_writer`, which re-exports every name here and raises the
+Part of :mod:`cratekit.core.rb_writer`, which re-exports every name its callers read and raises the
 refusals these readings feed; read them there. A name of the writer outside this file,
 and every seam a test patches, is read through ``rb_writer`` at call time so a patch on
 the writer bites here too (U300).
@@ -51,16 +51,10 @@ def _macos_app_version(app_path: Path) -> str | None:
     return str(value) if value else None
 
 
-def _windows_app_version(app_path: Path) -> str | None:  # pragma: no cover - needs Windows
-    """Placeholder probe for Windows: None degrades like an uninstalled application."""
-    return None
-
-
 def _default_app_probe() -> Callable[[Path], str | None]:
     if sys.platform == "darwin":
         return _macos_app_version
-    if sys.platform.startswith("win"):
-        return _windows_app_version
+    # No probe elsewhere, Windows included: None degrades like an uninstalled application.
     return lambda _path: None
 
 

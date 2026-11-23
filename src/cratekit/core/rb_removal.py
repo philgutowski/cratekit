@@ -71,10 +71,9 @@ def content_references(db: Any, content_ids: Iterable[str]) -> dict[str, dict[st
         if table in DELETABLE_TABLES:
             continue
         names = {name for name, _pk in _columns(session, table)}
-        asked = [CONTENT_REFERENCE_COLUMN] if CONTENT_REFERENCE_COLUMN in names else []
-        if TARGET_REFERENCE_COLUMN in names:
-            asked.append(TARGET_REFERENCE_COLUMN)
-        for column in asked:
+        for column in (CONTENT_REFERENCE_COLUMN, TARGET_REFERENCE_COLUMN):
+            if column not in names:
+                continue
             statement = text(
                 f'SELECT {column}, COUNT(*) FROM "{table}" '
                 f"WHERE {column} IN :ids GROUP BY {column}"
@@ -129,23 +128,7 @@ def remove_from_collection(db: Any, content_id: str) -> dict[str, tuple[str, ...
     ``deletions`` after :func:`assert_collection_removal_confined`.
     """
     key = str(content_id)
-    content_class = _mapped(CONTENT_TABLE)
-    row = db.session.get(content_class, key)
-    if row is None or _writer().soft_deleted(
-        row,
-        message=(
-            f"the collection row {key!r} cannot say whether rekordbox removed it, and "
-            f"deleting it as live could take a track out twice"
-        ),
-        origin=("rb_writer",),
-        detail={"content_id": key},
-    ):
-        raise _writer()._unavailable(
-            "whitelist-violation",
-            f"asked to take the collection row {key!r} out of the collection, and the "
-            f"database holds no live row of that id; nothing was written",
-            detail={"content_id": key},
-        )
+    row = _writer()._live_collection_row(db, _mapped(CONTENT_TABLE), key)
     held = content_references(db, (key,)).get(key, {})
     if held:
         named = ", ".join(f"{table} ({count})" for table, count in sorted(held.items()))
@@ -294,7 +277,6 @@ class DatabaseReading:
 
 def database_reading(db: Any) -> DatabaseReading:
     """Read every table from SQL. Flushes nothing itself, as :func:`node_tables` does not."""
-    rb_writer = _writer()
     import hashlib
 
     from sqlalchemy import text
@@ -303,37 +285,30 @@ def database_reading(db: Any) -> DatabaseReading:
     rows: dict[str, dict[str, str]] = {}
     named: dict[str, dict[str, str]] = {}
     positions: dict[str, tuple[str, str, int | None, bool, str]] = {}
+    # A membership row's playlist, content, ``TrackNo`` and marker, in that order.
+    placing = (
+        PLAYLIST_REFERENCE_COLUMN,
+        CONTENT_REFERENCE_COLUMN,
+        TRACK_NUMBER_COLUMN,
+        _writer().SOFT_DELETE_COLUMN,
+    )
     for table in _tables(session):
         columns = _columns(session, table)
         keys = [name for name, place in sorted(columns, key=lambda one: one[1]) if place]
         names = [name for name, _place in columns]
         selected = ", ".join(f'"{name}"' for name in names)
-        if keys:
-            keyed = [names.index(name) for name in keys]
-            result = session.execute(text(f'SELECT {selected} FROM "{table}"'))
-        else:
-            keyed = [len(names)]
-            result = session.execute(text(f'SELECT {selected}, rowid FROM "{table}"'))
+        keyed = [names.index(name) for name in keys] if keys else [len(names)]
+        result = session.execute(
+            text(f'SELECT {selected}{"" if keys else ", rowid"} FROM "{table}"')
+        )
         reference = (
             names.index("ID")
             if table == CONTENT_TABLE
             else (names.index(CONTENT_REFERENCE_COLUMN) if CONTENT_REFERENCE_COLUMN in names else None)
         )
         placed = (
-            (
-                names.index(PLAYLIST_REFERENCE_COLUMN),
-                names.index(CONTENT_REFERENCE_COLUMN),
-                names.index(TRACK_NUMBER_COLUMN),
-                names.index(rb_writer.SOFT_DELETE_COLUMN),
-            )
-            if table == MEMBERSHIP_TABLE
-            and {
-                PLAYLIST_REFERENCE_COLUMN,
-                CONTENT_REFERENCE_COLUMN,
-                TRACK_NUMBER_COLUMN,
-                rb_writer.SOFT_DELETE_COLUMN,
-            }
-            <= set(names)
+            tuple(names.index(name) for name in placing)
+            if table == MEMBERSHIP_TABLE and set(placing) <= set(names)
             else None
         )
         found: dict[str, str] = {}

@@ -1,14 +1,14 @@
 """Which stored captures to keep, and the prune that deletes the rest (R30).
 
-Part of :mod:`cratekit.core.restore`, which re-exports every name here; read them there. A
-name of restore outside this file, every seam a test patches, and ``os`` and ``shutil``,
-which a test patches on restore to sample the disk, are read through ``restore`` at call
-time so a patch on restore bites here too (U300).
+Part of :mod:`cratekit.core.restore`, which re-exports every name its callers read; read
+them there. A name of restore outside this file, every seam a test patches, and ``os`` and
+``shutil``, which a test patches on restore to sample the disk, are read through ``restore``
+at call time, by the accessor ``restore_perform`` holds, so a patch on restore bites here
+too (U300).
 """
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,17 +23,7 @@ from cratekit.core import (
 )
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
-
-#: The restore logger, so a record reads as it did before the split.
-logger = logging.getLogger("cratekit.core.restore")
-
-
-def _restore():
-    """``restore`` at call time: its seams are patched there, and it imports this module."""
-    from cratekit.core import restore
-
-    return restore
-
+from cratekit.core.restore_perform import _restore, logger
 
 #: How many captures survive on count alone, the guarded writer's default.
 DEFAULT_KEEP = 5

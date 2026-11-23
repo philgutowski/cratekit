@@ -17,8 +17,8 @@ import pytest
 
 from cratekit.core import config, snapshot
 from cratekit.core import rb_writer as W
-from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
+from tests.test_restore import _refusal
 from tests.test_snapshot_wal_r1665 import (  # noqa: F401 - fixtures, used by name
     _cloud_sync_off,
     _nothing_is_running,
@@ -88,10 +88,8 @@ def test_a_temporary_volume_too_small_for_the_check_refuses_before_anything_is_w
     _separate_volumes(monkeypatch)
     _free_on(monkeypatch, scratch, 1000)
 
-    with pytest.raises(CratekitError) as refused:
-        snapshot.capture(cfg)
+    cause = _refusal(snapshot.capture, cfg)
 
-    cause = refused.value.cause
     assert cause.reason == ROOM
     assert str(scratch) in cause.message
     assert "1000 bytes free" in cause.message
@@ -107,23 +105,21 @@ def test_the_room_refusal_is_a_precondition_not_a_defect(cfg, scratch, monkeypat
     _separate_volumes(monkeypatch)
     _free_on(monkeypatch, scratch, 0)
 
-    with pytest.raises(CratekitError) as refused:
-        snapshot.capture(cfg)
+    refused = _refusal(snapshot.capture, cfg)
 
-    assert refused.value.cause.code == ExitCode.PRECONDITION
-    assert refused.value.cause.remediation.remedy != Remedy.REPORT_DEFECT
-    assert "TMPDIR" in " ".join(refused.value.cause.remediation.steps)
+    assert refused.code == ExitCode.PRECONDITION
+    assert refused.remediation.remedy != Remedy.REPORT_DEFECT
+    assert "TMPDIR" in " ".join(refused.remediation.steps)
 
 
 def test_a_temporary_volume_that_will_not_report_its_room_refuses(cfg, scratch, monkeypatch):
     _separate_volumes(monkeypatch)
     _free_on(monkeypatch, scratch, None)
 
-    with pytest.raises(CratekitError) as refused:
-        snapshot.capture(cfg)
+    refused = _refusal(snapshot.capture, cfg)
 
-    assert refused.value.cause.reason == ROOM
-    assert str(scratch) in refused.value.cause.message
+    assert refused.reason == ROOM
+    assert str(scratch) in refused.message
     assert _stores(cfg) == []
 
 
@@ -140,10 +136,9 @@ def test_one_byte_short_on_the_temporary_volume_refuses(cfg, scratch, monkeypatc
     _separate_volumes(monkeypatch)
     _free_on(monkeypatch, scratch, int(_check_needs(cfg) * snapshot.CAPACITY_HEADROOM) - 1)
 
-    with pytest.raises(CratekitError) as refused:
-        snapshot.capture(cfg)
+    refused = _refusal(snapshot.capture, cfg)
 
-    assert refused.value.cause.reason == ROOM
+    assert refused.reason == ROOM
 
 
 def test_the_measure_counts_every_file_the_check_copies_not_the_database_alone(
@@ -158,11 +153,10 @@ def test_the_measure_counts_every_file_the_check_copies_not_the_database_alone(
     _separate_volumes(monkeypatch)
     _free_on(monkeypatch, scratch, whole - 1)
 
-    with pytest.raises(CratekitError) as refused:
-        snapshot.capture(cfg)
+    refused = _refusal(snapshot.capture, cfg)
 
-    assert refused.value.cause.reason == ROOM
-    assert refused.value.cause.detail["estimated_bytes"] == _check_needs(cfg)
+    assert refused.reason == ROOM
+    assert refused.detail["estimated_bytes"] == _check_needs(cfg)
 
 
 def test_a_temporary_volume_with_room_captures_verified_and_leaves_nothing(cfg, scratch):
@@ -181,13 +175,12 @@ def test_a_temporary_volume_shared_with_the_store_must_hold_both(cfg, scratch, m
     monkeypatch.setattr(snapshot, "_same_volume", lambda _a, _b: True)
     monkeypatch.setattr(snapshot, "_free_bytes", lambda _root: both - 1)
 
-    with pytest.raises(CratekitError) as refused:
-        snapshot.capture(cfg)
+    refused = _refusal(snapshot.capture, cfg)
 
-    assert refused.value.cause.reason == ROOM
-    assert refused.value.cause.detail["required_bytes"] == both
-    assert refused.value.cause.detail["shares_volume_with"] == str(snapshot.store_root(cfg))
-    assert "also holds the capture store" in refused.value.cause.message
+    assert refused.reason == ROOM
+    assert refused.detail["required_bytes"] == both
+    assert refused.detail["shares_volume_with"] == str(snapshot.store_root(cfg))
+    assert "also holds the capture store" in refused.message
     assert _stores(cfg) == []
 
 
@@ -236,11 +229,10 @@ def test_no_temporary_directory_at_all_refuses_before_anything_is_written(cfg, m
 
     monkeypatch.setattr(W, "disposable_root", none_usable)
 
-    with pytest.raises(CratekitError) as refused:
-        snapshot.capture(cfg)
+    refused = _refusal(snapshot.capture, cfg)
 
-    assert refused.value.cause.reason == ROOM
-    assert "no temporary directory could be found" in refused.value.cause.message
+    assert refused.reason == ROOM
+    assert "no temporary directory could be found" in refused.message
     assert _stores(cfg) == []
 
 
@@ -308,10 +300,8 @@ def test_a_check_whose_copy_runs_out_of_room_is_refused_and_recorded_unverified(
     """The measure passed and the volume filled anyway: the room slug, never verified."""
     _no_room_in(scratch, monkeypatch, code)
 
-    with pytest.raises(CratekitError) as refused:
-        snapshot.capture(cfg)
+    cause = _refusal(snapshot.capture, cfg)
 
-    cause = refused.value.cause
     assert cause.reason == ROOM
     assert str(scratch) in cause.message
     assert cause.detail["errno"] == code
@@ -329,9 +319,8 @@ def test_a_check_whose_copy_fails_for_another_reason_is_unverified_not_a_room_me
     captured = snapshot.capture(cfg)
 
     assert not captured.verified
-    with pytest.raises(CratekitError) as refused:
-        snapshot.assert_verified(captured)
-    assert refused.value.cause.reason == "snapshot-integrity-failed"
+    refused = _refusal(snapshot.assert_verified, captured)
+    assert refused.reason == "snapshot-integrity-failed"
 
 
 def test_a_capture_that_fails_its_real_check_is_never_told_as_a_room_message(
@@ -347,9 +336,8 @@ def test_a_capture_that_fails_its_real_check_is_never_told_as_a_room_message(
     captured = snapshot.capture(cfg)
 
     assert not captured.verified
-    with pytest.raises(CratekitError) as refused:
-        snapshot.assert_verified(captured)
-    assert refused.value.cause.reason == "snapshot-integrity-failed"
+    refused = _refusal(snapshot.assert_verified, captured)
+    assert refused.reason == "snapshot-integrity-failed"
     assert list(scratch.iterdir()) == []
 
 
@@ -357,10 +345,9 @@ def test_a_stand_in_verifier_raising_the_copy_failure_is_refused_under_the_room_
     def full(path):
         raise W.IntegrityCheckCopyFailed(Path(path), OSError(errno.ENOSPC, "full"))
 
-    with pytest.raises(CratekitError) as refused:
-        snapshot.capture(cfg, verifier=full)
+    refused = _refusal(snapshot.capture, cfg, verifier=full)
 
-    assert refused.value.cause.reason == ROOM
+    assert refused.reason == ROOM
 
 
 def test_the_check_raises_the_copy_failure_only_when_asked(cfg, tmp_path, scratch, monkeypatch):

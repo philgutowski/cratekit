@@ -1,0 +1,1085 @@
+name = "u953-replay-after-b"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1830.M11_held_object_left_stale"
+source = { table = "r1830.json", id = "M11_held_object_left_stale" }
+description = "renumber_memberships: leave the session's mapped rows holding the old number"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_sync_removed.py"]
+old = '            session.expire(held)'
+new = '            pass'
+
+[[rows]]
+id = "r1830.M13_planned_rows_admitted_unjudged"
+source = { table = "r1830.json", id = "M13_planned_rows_admitted_unjudged" }
+description = "collection_removal_violations: admit any change to a row the rule renumbers"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '                violations.extend(_renumbering_violations(key, planned[key], before, after))'
+new = '                pass'
+
+[[rows]]
+id = "r1830.M14_other_columns_not_compared"
+source = { table = "r1830.json", id = "M14_other_columns_not_compared" }
+description = "_renumbering_violations: a renumbered row may change any other column"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '    if (now[0], now[1], now[3], now[4]) != (then[0], then[1], then[3], then[4]):'
+new = '    if False:'
+
+[[rows]]
+id = "r1830.M15_number_not_compared"
+source = { table = "r1830.json", id = "M15_number_not_compared" }
+description = "_renumbering_violations: a renumbered row may hold any number"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '    if now[2] != wanted:'
+new = '    if False:'
+
+[[rows]]
+id = "r1830.M16_marker_change_not_compared"
+source = { table = "r1830.json", id = "M16_marker_change_not_compared" }
+description = "_renumbering_violations: a renumbered row's marker may move"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '    if (now[0], now[1], now[3], now[4]) != (then[0], then[1], then[3], then[4]):'
+new = '    if (now[0], now[1], now[3]) != (then[0], then[1], then[3]):'
+
+[[rows]]
+id = "r1830.M17_positions_never_read"
+source = { table = "r1830.json", id = "M17_positions_never_read" }
+description = "database_reading: read no membership positions, so the confinement plans nothing"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_sync_removed.py"]
+old = '            if placed is not None:'
+new = '            if False:'
+
+[[rows]]
+id = "r1830.M1_tie_counted_as_below"
+source = { table = "r1830.json", id = "M1_tie_counted_as_below" }
+description = "renumbered_positions: a removed row tying a survivor lowers it too"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py"]
+old = '        below = sum(1 for one in deleted.get(playlist, ()) if one < int(number))'
+new = '        below = sum(1 for one in deleted.get(playlist, ()) if one <= int(number))'
+
+[[rows]]
+id = "r1830.M23_unreadable_marker_passed_over"
+source = { table = "r1830.json", id = "M23_unreadable_marker_passed_over" }
+description = "removal_renumbering: plan around a NULL marker rather than refusing it, review round two's X1"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_sync_removed.py"]
+old = '    if unreadable:'
+new = '    if False:'
+
+[[rows]]
+id = "r1830.M2_marked_removed_row_counted"
+source = { table = "r1830.json", id = "M2_marked_removed_row_counted" }
+description = "renumbered_positions: a removed row marked removed counts, review round one's B1"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '        if content in gone and live and number is not None:'
+new = '        if content in gone and number is not None:'
+
+[[rows]]
+id = "r1830.M3_marked_survivor_moved"
+source = { table = "r1830.json", id = "M3_marked_survivor_moved" }
+description = "renumbered_positions: a marked surviving row is lowered too"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '        if content in gone or not live or number is None:'
+new = '        if content in gone or number is None:'
+
+[[rows]]
+id = "r1830.M4_one_place_whatever_removed"
+source = { table = "r1830.json", id = "M4_one_place_whatever_removed" }
+description = "renumbered_positions: a row moves one place however many removed rows sit below it"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '            moved[key] = (playlist, int(number), int(number) - below)'
+new = '            moved[key] = (playlist, int(number), int(number) - 1)'
+
+[[rows]]
+id = "r1830.M5_any_playlist_counts"
+source = { table = "r1830.json", id = "M5_any_playlist_counts" }
+description = "renumbered_positions: a removed row in any playlist lowers rows in every playlist"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '        below = sum(1 for one in deleted.get(playlist, ()) if one < int(number))'
+new = '        below = sum(1 for numbers in deleted.values() for one in numbers if one < int(number))'
+
+[[rows]]
+id = "r1830.M8_renumbering_stamps_updated_at"
+source = { table = "r1830.json", id = "M8_renumbering_stamps_updated_at" }
+description = "renumber_memberships: write updated_at beside TrackNo, a byte rekordbox did not write"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_sync_removed.py"]
+old = "        f'UPDATE \"{MEMBERSHIP_TABLE}\" SET \"{TRACK_NUMBER_COLUMN}\" = :after '"
+new = "        f'UPDATE \"{MEMBERSHIP_TABLE}\" SET \"{TRACK_NUMBER_COLUMN}\" = :after, \"updated_at\" = CURRENT_TIMESTAMP '"
+
+[[rows]]
+id = "r1830.M9_moved_row_not_refused"
+source = { table = "r1830.json", id = "M9_moved_row_not_refused" }
+description = "renumber_memberships: a row that moved since the prepare is passed over silently"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_sync_removed.py"]
+old = '        if result.rowcount != 1:'
+new = '        if False:'
+
+[[rows]]
+id = "r1890.P1_bare_runtime_error_in_rb_removal"
+source = { table = "r1890.json", id = "P1_bare_runtime_error_in_rb_removal" }
+description = "rb_removal, a part, raises a bare RuntimeError where the binding maps no class, so the refusal has no code downstream"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+tests = ["tests/test_rb_writer_parts_guard.py", "tests/test_rb_writer_guard.py"]
+old = '''
+    raise _writer()._unavailable(
+        "whitelist-violation",
+        f"the binding maps no class for {table!r}'''
+new = '''
+    raise RuntimeError(
+        f"the binding maps no class for {table!r}'''
+
+[[rows]]
+id = "u288.M10_changed_rows"
+source = { table = "u288.json", id = "M10_changed_rows" }
+description = "collection_removal_violations: read a changed row as unchanged"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''
+            if old[key] == new[key]:
+                continue'''
+new = '''
+            if True:
+                continue'''
+
+[[rows]]
+id = "u288.M11_added_rows"
+source = { table = "u288.json", id = "M11_added_rows" }
+description = "collection_removal_violations: read an added row as nothing"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''
+        for key in sorted(set(new) - set(old)):
+            violations.append(f"an unplanned {table} row {key!r} was added")'''
+new = '''
+        for key in sorted(set(new) - set(old)):
+            pass'''
+
+[[rows]]
+id = "u288.M12_still_names"
+source = { table = "u288.json", id = "M12_still_names" }
+description = "collection_removal_violations: drop the check that every row naming a removed track is gone"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '            if names in gone and key in new:'
+new = '            if False:'
+
+[[rows]]
+id = "u288.M13_counter_forward"
+source = { table = "u288.json", id = "M13_counter_forward" }
+description = "collection_removal_violations: accept a read back whose update count did not move"
+file = "src/cratekit/core/rb_removal.py"
+surface = "maintainer"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '        before.counter is None or after.counter is None or after.counter <= before.counter'
+new = '        before.counter is None or after.counter is None or after.counter < before.counter'
+
+[[rows]]
+id = "u288.M3_unmeasured_tables_skipped"
+source = { table = "u288.json", id = "M3_unmeasured_tables_skipped" }
+description = "content_references: ask no table, so a My Tag, sampler or unknown table naming the row is never refused nor kept"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "U953 turned content_references' asked list into a loop over both reference columns, so leaving ContentID out of the loop is the same column never asked"
+tests = ["tests/test_sync_removed.py"]
+old = '        for column in (CONTENT_REFERENCE_COLUMN, TARGET_REFERENCE_COLUMN):'
+new = '        for column in (TARGET_REFERENCE_COLUMN,):'
+
+[[rows]]
+id = "u288.M4_target_id_not_asked"
+source = { table = "u288.json", id = "M4_target_id_not_asked" }
+description = "content_references: drop the TargetID column, so an image row naming the track is left naming a row that is gone"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "U953 turned content_references' asked list into a loop over both reference columns, so leaving TargetID out of the loop is the same column never asked"
+tests = ["tests/test_sync_removed.py"]
+old = '        for column in (CONTENT_REFERENCE_COLUMN, TARGET_REFERENCE_COLUMN):'
+new = '        for column in (CONTENT_REFERENCE_COLUMN,):'
+
+[[rows]]
+id = "u288.M8_memberships_kept"
+source = { table = "u288.json", id = "M8_memberships_kept" }
+description = "remove_from_collection: delete from the five tables after the membership table only, so the track's memberships stay naming a row that is gone"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_sync_removed.py"]
+old = '    for table in COLLECTION_REMOVAL_TABLES[1:]:'
+new = '    for table in COLLECTION_REMOVAL_TABLES[2:]:'
+
+[[rows]]
+id = "u288.M9_whose_row_disappeared"
+source = { table = "u288.json", id = "M9_whose_row_disappeared" }
+description = "collection_removal_violations: let any row of any table disappear"
+file = "src/cratekit/core/rb_removal.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_removal.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '            if table not in DELETABLE_TABLES or naming.get(key) not in gone:'
+new = '            if False:'
+
+[[rows]]
+id = "a32.A6_policy_left_behind"
+source = { table = "a32.json", id = "A6_policy_left_behind" }
+description = "The commit's policies are left registered after the body, in the shared context manager"
+file = "src/cratekit/core/rb_tables.py"
+surface = "maintainer"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_repair_link.py", "tests/test_repair_rows.py"]
+old = '''
+    finally:
+        reset_field_policies()
+        for policy in was.values():
+            register_field_policy(policy)'''
+new = '''
+    finally:
+        for policy in was.values():
+            register_field_policy(policy)'''
+
+[[rows]]
+id = "a32.V4_policy_unrestricted"
+source = { table = "a32.json", id = "V4_policy_unrestricted" }
+description = "The probe policy builder admits a column outside the probe set"
+file = "src/cratekit/core/rb_tables.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_repair_link.py"]
+old = '''
+    outside = wanted - set(ROW_PROBE_COLUMNS)
+    if outside:'''
+new = '''
+    outside = wanted - set(ROW_PROBE_COLUMNS)
+    if False:'''
+
+[[rows]]
+id = "r746-a.G8_key_dropped_from_the_content_policy"
+source = { table = "r746-a.json", id = "G8_key_dropped_from_the_content_policy" }
+description = "CONTENT_ROW_EMPTY_COLUMNS: KeyID is no longer a column a new content row must leave empty"
+file = "src/cratekit/core/rb_tables.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_write_guard_completeness.py"]
+old = '''
+        "KeyID",
+        "SampleRate",'''
+new = '        "SampleRate",'
+
+[[rows]]
+id = "r923.N18_policy_owns_the_fields"
+source = { table = "r923.json", id = "N18_policy_owns_the_fields" }
+description = "The defaults policy owns its fields outright instead of filling only an empty one"
+file = "src/cratekit/core/rb_tables.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_export_collection.py", "tests/test_genre_retag.py", "tests/test_head_agreement.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_metadata_policy.py", "tests/test_naming_apply_cli.py", "tests/test_organize.py", "tests/test_outbound_workers.py", "tests/test_paths_resolved.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_snapshot.py", "tests/test_tag_rows.py", "tests/test_tree_writer.py", "tests/test_whitelist_membership.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = '    fields=MappingProxyType(dict.fromkeys(CONTENT_ROW_DEFAULTS, Ownership.FILL_IF_EMPTY)),'
+new = '    fields=MappingProxyType(dict.fromkeys(CONTENT_ROW_DEFAULTS, Ownership.OWNED)),'
+
+[[rows]]
+id = "r923.N19_default_is_an_analysis_column"
+source = { table = "r923.json", id = "N19_default_is_an_analysis_column" }
+description = "A tempo joins the defaults table, so the landing would declare an analysis column"
+file = "src/cratekit/core/rb_tables.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_export_collection.py", "tests/test_genre_retag.py", "tests/test_head_agreement.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_metadata_policy.py", "tests/test_naming_apply_cli.py", "tests/test_organize.py", "tests/test_outbound_workers.py", "tests/test_paths_resolved.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_snapshot.py", "tests/test_tag_rows.py", "tests/test_tree_writer.py", "tests/test_whitelist_membership.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = '''
+        "Rating": 0,
+        "ColorID": "0",'''
+new = '''
+        "Rating": 0,
+        "BPM": 0,
+        "ColorID": "0",'''
+
+[[rows]]
+id = "u111-a.A6_playlist_not_removable"
+source = { table = "u111-a.json", id = "A6_playlist_not_removable" }
+description = "REMOVABLE_TABLES loses the playlist table, so the rotation's commit cannot carry a removed node"
+file = "src/cratekit/core/rb_tables.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_inbox_rotate.py", "tests/test_rb_writer_guard.py"]
+old = 'REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE, PLAYLIST_TABLE})'
+new = 'REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE})'
+
+[[rows]]
+id = "u115.F3_file_id_policy_fill_if_empty"
+source = { table = "u115.json", id = "F3_file_id_policy_fill_if_empty" }
+description = "The file id policy fills only an empty column, so a random id present on the row is never replaced"
+file = "src/cratekit/core/rb_tables.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_export_collection.py", "tests/test_genre_retag.py", "tests/test_head_agreement.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_metadata_policy.py", "tests/test_naming_apply_cli.py", "tests/test_organize.py", "tests/test_outbound_workers.py", "tests/test_paths_resolved.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_snapshot.py", "tests/test_tag_rows.py", "tests/test_tree_writer.py", "tests/test_whitelist_membership.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = '    fields=MappingProxyType({FILE_ID_COLUMN: Ownership.OWNED}),'
+new = '    fields=MappingProxyType({FILE_ID_COLUMN: Ownership.FILL_IF_EMPTY}),'
+
+[[rows]]
+id = "u115.F4_binding_limit_coefficient"
+source = { table = "u115.json", id = "F4_binding_limit_coefficient" }
+description = "The binding's id limit is taken as 32 bits rather than 28"
+file = "src/cratekit/core/rb_tables.py"
+surface = "maintainer"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/intake/test_repair_apply.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_former_place.py", "tests/test_adopt_move.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_export_collection.py", "tests/test_genre_retag.py", "tests/test_head_agreement.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_metadata_policy.py", "tests/test_naming_apply_cli.py", "tests/test_organize.py", "tests/test_outbound_workers.py", "tests/test_paths_resolved.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_snapshot.py", "tests/test_tag_rows.py", "tests/test_tree_writer.py", "tests/test_whitelist_membership.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = 'BINDING_ID_LIMIT = 1 << 28'
+new = 'BINDING_ID_LIMIT = 1 << 32'
+
+[[rows]]
+id = "u163.W16_admittable_key"
+source = { table = "u163.json", id = "W16_admittable_key" }
+description = "ADMITTABLE_ROW_TABLES: admit djmdKey beside the lookups"
+file = "src/cratekit/core/rb_tables.py"
+surface = "user"
+moved = "Moved from src/cratekit/core/rb_writer.py to src/cratekit/core/rb_tables.py by U300, which replayed this text there and kept the kill in u300-replay-after-a.json"
+tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
+old = 'ADMITTABLE_ROW_TABLES = frozenset({CONTENT_TABLE, *LOOKUP_TABLES})'
+new = 'ADMITTABLE_ROW_TABLES = frozenset({CONTENT_TABLE, *LOOKUP_TABLES, "djmdKey"})'
+
+[[rows]]
+id = "r1830.M21_record_omits_the_rows"
+source = { table = "r1830.json", id = "M21_record_omits_the_rows" }
+description = "write_into: name no renumbered row in the session record"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '        if self.renumbered:'
+new = '        if False:'
+
+[[rows]]
+id = "r1830.M6_prepare_plans_no_renumbering"
+source = { table = "r1830.json", id = "M6_prepare_plans_no_renumbering" }
+description = "CollectionRemoval.prepare: plan no renumbering, so the gap stays"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '        return cls(db, ids, identity, columns, database_reading(db), removal_renumbering(db, ids))'
+new = '        return cls(db, ids, identity, columns, database_reading(db), {})'
+
+[[rows]]
+id = "r1830.M7_commit_skips_the_renumbering"
+source = { table = "r1830.json", id = "M7_commit_skips_the_renumbering" }
+description = "CollectionRemoval.commit: delete and never write the renumbering"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''
+        renumber_memberships(self.db, self.renumbered)
+'''
+new = ''
+
+[[rows]]
+id = "r1890.P11_process_name_typed_in_the_writer"
+source = { table = "r1890.json", id = "P11_process_name_typed_in_the_writer" }
+description = "rb_writer, no longer exempt, compares the running list against a typed process name instead of the shared list"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_process_guard.py"]
+old = '''
+    running = rekordbox_processes_running()
+    if running:
+'''
+new = '''
+    running = rekordbox_processes_running()
+    if running in ("rekordbox", "rekordboxAgent") or running:
+'''
+
+[[rows]]
+id = "r239-a.A1_probe_to_true"
+source = { table = "r239-a.json", id = "A1_probe_to_true" }
+description = "open_db answers every unnamed open with the key on, the old default, instead of asking the file"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if unlock is None:
+        unlock = unlock_needed(target)
+'''
+new = '''
+    if unlock is None:
+        unlock = True
+'''
+
+[[rows]]
+id = "r239-a.A2_probe_to_false"
+source = { table = "r239-a.json", id = "A2_probe_to_false" }
+description = "open_db answers every unnamed open with the key off, the constant the five verb sites used to pass"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if unlock is None:
+        unlock = unlock_needed(target)
+'''
+new = '''
+    if unlock is None:
+        unlock = False
+'''
+
+[[rows]]
+id = "r239-a.A3_probe_removed"
+source = { table = "r239-a.json", id = "A3_probe_removed" }
+description = "Delete the probe block, so None reaches the binding, which reads it as no key"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    if unlock is None:
+        unlock = unlock_needed(target)
+'''
+new = ''
+
+[[rows]]
+id = "r239-a.A4_open_default_true"
+source = { table = "r239-a.json", id = "A4_open_default_true" }
+description = "open_db's unlock default back to True, so the probe branch never fires for an unnamed open"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '''
+    force_cloud_canary: bool = False,
+    unlock: bool | None = None,
+'''
+new = '''
+    force_cloud_canary: bool = False,
+    unlock: bool | None = True,
+'''
+
+[[rows]]
+id = "r239-a.A7_needed_always_true"
+source = { table = "r239-a.json", id = "A7_needed_always_true" }
+description = "unlock_needed answers encrypted for every readable file, the U55 row that read zero with no encrypted input"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '            return not handle.read(len(SQLITE_HEADER)).startswith(SQLITE_HEADER)'
+new = '            return True'
+
+[[rows]]
+id = "r239-a.A8_needed_always_false"
+source = { table = "r239-a.json", id = "A8_needed_always_false" }
+description = "unlock_needed answers plain for every readable file, the other U55 zero row, now with an encrypted input to fail on"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = '            return not handle.read(len(SQLITE_HEADER)).startswith(SQLITE_HEADER)'
+new = '            return False'
+
+[[rows]]
+id = "r239-a.A9_header_nearby_value"
+source = { table = "r239-a.json", id = "A9_header_nearby_value" }
+description = "The plain header constant to a realistic nearby value, SQLite format 4, so no plain file matches it"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_db.py", "tests/test_routing_workers.py", "tests/test_adopt_collection.py", "tests/test_deletion.py", "tests/test_metadata_cli.py", "tests/test_naming_apply_cli.py"]
+old = 'SQLITE_HEADER = b"SQLite format 3"'
+new = 'SQLITE_HEADER = b"SQLite format 4"'
+
+[[rows]]
+id = "r375-c.W1_listener_left_on_the_handle"
+source = { table = "r375-c.json", id = "W1_listener_left_on_the_handle" }
+description = "commit_witness: never remove the listener, so a handle that outlives the write keeps marking a witness nobody reads"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_tree_writer.py", "tests/test_metadata_cli.py"]
+old = '        event.remove(target, "after_commit", witness._mark)'
+new = '        pass'
+
+[[rows]]
+id = "r375-c.W2_witness_listens_one_event_early"
+source = { table = "r375-c.json", id = "W2_witness_listens_one_event_early" }
+description = "commit_witness: listen for before_commit, so a transaction refused on its way in is witnessed as landed"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_metadata_cli.py"]
+old = '''
+    event.listen(target, "after_commit", witness._mark)
+    try:
+        yield witness
+    finally:
+        event.remove(target, "after_commit", witness._mark)'''
+new = '''
+    event.listen(target, "before_commit", witness._mark)
+    try:
+        yield witness
+    finally:
+        event.remove(target, "before_commit", witness._mark)'''
+
+[[rows]]
+id = "r663-a.M10_detail_size_pinned"
+source = { table = "r663-a.json", id = "M10_detail_size_pinned" }
+description = "the detail's size is written as zero whatever the copy measured"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_paths_resolved.py"]
+old = '        detail={"path": str(source), "size": size, "tables_read": list(CANARY_TABLES)},'
+new = '        detail={"path": str(source), "size": 0, "tables_read": list(CANARY_TABLES)},'
+
+[[rows]]
+id = "r663-a.M3_unlistable_read_as_empty"
+source = { table = "r663-a.json", id = "M3_unlistable_read_as_empty" }
+description = "a copy whose tables could not be listed is no longer kept apart from one with none, so the None check is dropped"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '        if tables is None or tables.intersection(CANARY_TABLES):'
+new = '        if tables and tables.intersection(CANARY_TABLES):'
+
+[[rows]]
+id = "r663-a.M4_one_canary_table_not_enough"
+source = { table = "r663-a.json", id = "M4_one_canary_table_not_enough" }
+description = "a copy holding one of the two canary tables is classified as not a library, so schema drift is sent to setup"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '        if tables is None or tables.intersection(CANARY_TABLES):'
+new = '        if tables is None or tables.issuperset(CANARY_TABLES):'
+
+[[rows]]
+id = "r663-a.M7_message_drops_the_size"
+source = { table = "r663-a.json", id = "M7_message_drops_the_size" }
+description = "the empty file's message no longer names the size"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '        what = "is empty, 0 bytes"'
+new = '        what = "is not a database"'
+
+[[rows]]
+id = "r663-a.M8_message_names_the_copy"
+source = { table = "r663-a.json", id = "M8_message_names_the_copy" }
+description = "the message names the temporary copy rather than the configured path"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '        f"the file configured as the rekordbox database, {source}, {what}, so it "'
+new = '        f"the file configured as the rekordbox database, {copied}, {what}, so it "'
+
+[[rows]]
+id = "r663-a.M9_remedy_restore"
+source = { table = "r663-a.json", id = "M9_remedy_restore" }
+description = "the refusal carries the snapshot restore remedy instead of setup"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_paths_resolved.py"]
+old = '        remedy=Remedy.RUN_SETUP,'
+new = '        remedy=Remedy.RESTORE_FROM_SNAPSHOT,'
+
+[[rows]]
+id = "r746-a.G4_read_back_walks_session_new_only"
+source = { table = "r746-a.json", id = "G4_read_back_walks_session_new_only" }
+description = "assert_created_rows_are_gridless: the R-760 blind spot put back, a flushed creation is never read from SQL"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_write_guard_completeness.py", "tests/test_intake_land_native.py"]
+old = '    instances = {**_registry_created_instances(db), **pending}'
+new = '    instances = {**pending}'
+
+[[rows]]
+id = "r746-a.G6_analysis_tables_not_checked"
+source = { table = "r746-a.json", id = "G6_analysis_tables_not_checked" }
+description = "assert_created_rows_are_gridless: no cue, mixer or file row is looked for on the new content row"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_intake_land_native.py", "tests/test_write_guard_completeness.py"]
+old = '        if table == CONTENT_TABLE and len(keys) == 1:'
+new = '        if False:'
+
+[[rows]]
+id = "u185.G1_commit_guard_called"
+source = { table = "u185.json", id = "G1_commit_guard_called" }
+description = "commit_guarded: drop the foreign folder guard from the commit"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py"]
+old = '''
+            assert_created_rows_are_gridless(db)
+            assert_foreign_untouched(db)'''
+new = '            assert_created_rows_are_gridless(db)'
+
+[[rows]]
+id = "u185.G2_unread_refuses"
+source = { table = "u185.json", id = "G2_unread_refuses" }
+description = "assert_foreign_untouched: a handle with no reading at open reads the subtree now and goes on"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '''
+    before = foreign_tree.reading_at_open(db)
+    if before is None:'''
+new = '''
+    before = foreign_tree.reading_at_open(db) or foreign_tree.read(db.session)
+    if before is None:'''
+
+[[rows]]
+id = "u185.G3_pending_leg"
+source = { table = "u185.json", id = "G3_pending_leg" }
+description = "assert_foreign_untouched: drop the pending object leg, keep the second reading"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '    violations = foreign_tree.pending_touches(pending_objects(session, db), before)'
+new = '    violations = []'
+
+[[rows]]
+id = "u185.G4_second_reading_leg"
+source = { table = "u185.json", id = "G4_second_reading_leg" }
+description = "assert_foreign_untouched: drop the second reading from SQL, keep the pending objects"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py"]
+old = '    violations += foreign_tree.differences(before, foreign_tree.read(session))'
+new = '    violations += []'
+
+[[rows]]
+id = "u185.G5_reading_at_open"
+source = { table = "u185.json", id = "G5_reading_at_open" }
+description = "open_db: keep no reading of the subtree as the handle opens"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_foreign_tree.py", "tests/test_rb_writer_db.py"]
+old = '''
+    foreign_tree.remember(db)
+    return db'''
+new = '    return db'
+
+[[rows]]
+id = "u211.W4_probe_wrapped_at_commit"
+source = { table = "u211.json", id = "W4_probe_wrapped_at_commit" }
+description = "commit: run the binding's commit without the careful probe, so its own walk meets the dying process"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_process_scan.py", "tests/test_rb_writer_guard.py", "tests/test_sync_pair.py"]
+old = '''
+        with _binding_probe(strict=True):
+            db.commit()'''
+new = '''
+        with nullcontext():
+            db.commit()'''
+
+[[rows]]
+id = "u211.W5_probe_wrapped_at_open"
+source = { table = "u211.json", id = "W5_probe_wrapped_at_open" }
+description = "open_db: construct the binding without the careful probe, so the dying process reads as a damaged library"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_process_scan.py", "tests/test_rb_writer_guard.py", "tests/test_sync_pair.py"]
+old = '''
+        with _binding_probe(strict=False):
+            db = Rekordbox6Database(path=str(target), unlock=unlock)'''
+new = '''
+        with nullcontext():
+            db = Rekordbox6Database(path=str(target), unlock=unlock)'''
+
+[[rows]]
+id = "u267.M10_done_reading_leaks_own"
+source = { table = "u267.json", id = "M10_done_reading_leaks_own" }
+description = "done_reading: never close a reader's own handle, so every reader of the run that answers a gate leaks one"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py"]
+old = '''
+    if shared is None:
+        close_db(db)'''
+new = '''
+    if shared is None:
+        pass'''
+
+[[rows]]
+id = "u267.M4_handle_opens_every_time"
+source = { table = "u267.json", id = "M4_handle_opens_every_time" }
+description = "SharedRead.handle: open again on every call, keeping the last, so the report pays an open per reader and leaks the rest"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize_inspiration.py", "tests/test_organize_mirror_edits_u204.py"]
+old = '''
+        if self._db is None:
+            self._db = open_db('''
+new = '''
+        if True:
+            self._db = open_db('''
+
+[[rows]]
+id = "u267.M5_handle_after_close"
+source = { table = "u267.json", id = "M5_handle_after_close" }
+description = "SharedRead.handle: drop the refusal after close, so a closed shared read reopens silently"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_organize_one_read.py"]
+old = '''
+        if self._closed:
+            raise _defect("a read handle was asked of a shared read that was already closed")'''
+new = '''
+        if False:
+            raise _defect("a read handle was asked of a shared read that was already closed")'''
+
+[[rows]]
+id = "u267.M6_release_keeps_rows"
+source = { table = "u267.json", id = "M6_release_keeps_rows" }
+description = "SharedRead.release: keep the identity map, so the next reader takes a row an earlier reader loaded as the row the database holds now"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py", "tests/test_organize_inspiration.py"]
+old = '        db.session.expunge_all()'
+new = '        db.session.flush()'
+
+[[rows]]
+id = "u267.M7_release_any_handle"
+source = { table = "u267.json", id = "M7_release_any_handle" }
+description = "SharedRead.release: drop the refusal of a handle that is not its own"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_organize_one_read.py"]
+old = '''
+        if db is not self._db:
+            raise _defect("a handle that is not the shared read's own was released through it")'''
+new = '''
+        if False:
+            raise _defect("a handle that is not the shared read's own was released through it")'''
+
+[[rows]]
+id = "u267.M8_close_closes_nothing"
+source = { table = "u267.json", id = "M8_close_closes_nothing" }
+description = "SharedRead.close: forget the handle without close_db, so its engine and pooled connection stay open"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py"]
+old = '''
+        if db is not None:
+            close_db(db)'''
+new = '''
+        if db is not None:
+            pass'''
+
+[[rows]]
+id = "u267.M9_done_reading_closes_shared"
+source = { table = "u267.json", id = "M9_done_reading_closes_shared" }
+description = "done_reading: close the handle whatever its owner, so the first reader closes the shared handle under the rest"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py", "tests/test_organize_inspiration.py"]
+old = '''
+    if shared is None:
+        close_db(db)
+    else:
+        shared.release(db)'''
+new = '    close_db(db)'
+
+[[rows]]
+id = "u285.M1_seam_installs"
+source = { table = "u285.json", id = "M1_seam_installs" }
+description = "open_db: drop the install, so a handle reads with the binding's own conversion and a zero dated push fails its row west of UTC"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''
+    rb_dates.install()
+'''
+new = '''
+    pass
+'''
+
+[[rows]]
+id = "u288.M14_confinement_not_called"
+source = { table = "u288.json", id = "M14_confinement_not_called" }
+description = "CollectionRemoval.commit: skip the SQL confinement before the commit"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''
+        assert_collection_removal_confined(self.db, self.before, removed=self.content_ids)
+        commit_guarded('''
+new = '        commit_guarded('
+
+[[rows]]
+id = "u288.M5_prepare_liveness"
+source = { table = "u288.json", id = "M5_prepare_liveness" }
+description = "CollectionRemoval.prepare: drop the soft delete check, so a row rekordbox already removed is taken out as live"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+moved = "U953 moved prepare's liveness check into the shared _live_collection_row helper that prepare calls, so dropping the soft delete check there is the same row taken out as live"
+tests = ["tests/test_sync_removed.py"]
+old = '''
+    if row is None or soft_deleted(
+        row,
+        message=(
+            f"the collection row {key!r} cannot say whether rekordbox removed it, "'''
+new = '''
+    if row is None or False and soft_deleted(
+        row,
+        message=(
+            f"the collection row {key!r} cannot say whether rekordbox removed it, "'''
+
+[[rows]]
+id = "u288.M6_prepare_unmeasured_refusal"
+source = { table = "u288.json", id = "M6_prepare_unmeasured_refusal" }
+description = "CollectionRemoval.prepare: drop the refusal of a row an unmeasured table names"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''
+        held = content_references(db, ids)
+        if held:'''
+new = '''
+        held = content_references(db, ids)
+        if False:'''
+
+[[rows]]
+id = "u288.M7_prepare_identity"
+source = { table = "u288.json", id = "M7_prepare_identity" }
+description = "CollectionRemoval.prepare: drop the refusal of a database with no identity, so the record is bound to nothing"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''
+        identity = database_id(db)
+        if not identity:'''
+new = '''
+        identity = database_id(db)
+        if False:'''
+
+[[rows]]
+id = "u59.M9_column_repointed"
+source = { table = "u59.json", id = "M9_column_repointed" }
+description = "Point SOFT_DELETE_COLUMN at a neighbouring bookkeeping column"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_collection.py", "tests/test_adopt_workers.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_genre_retag.py", "tests/test_metadata_policy.py", "tests/test_process_guard.py", "tests/test_queued_resume_contract.py", "tests/test_rb_snapshot.py", "tests/test_rb_writer_db.py", "tests/test_rb_writer_guard.py", "tests/test_rebuild.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_cli.py", "tests/test_snapshot.py", "tests/test_tree_writer.py", "tests/test_write_guard_completeness.py", "tests/test_write_session.py"]
+old = 'SOFT_DELETE_COLUMN = "rb_local_deleted"'
+new = 'SOFT_DELETE_COLUMN = "rb_local_synced"'
+
+[[rows]]
+id = "u162.R10_latest_verb"
+source = { table = "u162.json", id = "R10_latest_verb" }
+description = "latest: match a record by key alone, so another verb's rehearsal is compared"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''
+            and body.get("verb") == verb
+'''
+new = ''
+
+[[rows]]
+id = "u162.R1_area_exists"
+source = { table = "u162.json", id = "R1_area_exists" }
+description = "open_area: drop the refusal of an area that already exists, so one area is shared"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '        if path.exists():'
+new = '        if False:'
+
+[[rows]]
+id = "u162.R2_rekordbox_closed"
+source = { table = "u162.json", id = "R2_rekordbox_closed" }
+description = "open_area: drop the closed rekordbox check before the copy"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''
+    rb_writer.assert_rekordbox_closed("copying the database for a rehearsal")
+'''
+new = ''
+
+[[rows]]
+id = "u162.R3_clone_is_a_link"
+source = { table = "u162.json", id = "R3_clone_is_a_link" }
+description = "clone: a hard link where the volume does not clone"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '    shutil.copy2(source, destination)'
+new = '    os.link(source, destination)'
+
+[[rows]]
+id = "u162.R4_snapshots_copied"
+source = { table = "u162.json", id = "R4_snapshots_copied" }
+description = "_NOT_COPIED: copy the snapshots directory into the area"
+file = "src/cratekit/core/rehearsal.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''
+        "snapshots",
+'''
+new = ''
+
+[[rows]]
+id = "u162.R5_locks_copied"
+source = { table = "u162.json", id = "R5_locks_copied" }
+description = "_copy_library_state: copy lock files into the area"
+file = "src/cratekit/core/rehearsal.py"
+surface = "maintainer"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '        if entry.key in _NOT_COPIED or entry.key.endswith("_lock"):'
+new = '        if entry.key in _NOT_COPIED:'
+
+[[rows]]
+id = "u162.R7_witness_database"
+source = { table = "u162.json", id = "R7_witness_database" }
+description = "assert_untouched: drop the live database hash comparison"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '    if _hashes(before.database) != before.hashes:'
+new = '    if False:'
+
+[[rows]]
+id = "u162.R8_witness_folders"
+source = { table = "u162.json", id = "R8_witness_folders" }
+description = "assert_untouched: drop the live folder listing comparison"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '        if _listed(Path(folder)) != listing:'
+new = '        if False:'
+
+[[rows]]
+id = "u162.R9_latest_key"
+source = { table = "u162.json", id = "R9_latest_key" }
+description = "latest: match a record by verb alone, so another batch's rehearsal is compared"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''
+            and body.get("key") == dict(key)
+'''
+new = ''
+
+[[rows]]
+id = "u188.M14_mapped_in_given_order"
+source = { table = "u188.json", id = "M14_mapped_in_given_order" }
+description = "rehearsal.mapped: apply the pairs in the order given, so a scratch spelling holding another's is half mapped"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+            key=lambda pair: len(pair[0]),
+            reverse=True,'''
+new = '''
+            key=lambda pair: 0,
+            reverse=True,'''
+
+[[rows]]
+id = "u188.M15_mapped_shortest_first"
+source = { table = "u188.json", id = "M15_mapped_shortest_first" }
+description = "rehearsal.mapped: shortest scratch spelling first"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '''
+            key=lambda pair: len(pair[0]),
+            reverse=True,'''
+new = '''
+            key=lambda pair: len(pair[0]),
+            reverse=False,'''
+
+[[rows]]
+id = "u188.M16_mapped_by_live_length"
+source = { table = "u188.json", id = "M16_mapped_by_live_length" }
+description = "rehearsal.mapped: order by the live spelling's length rather than the scratch one's"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '            key=lambda pair: len(pair[0]),'
+new = '            key=lambda pair: len(pair[1]),'
+
+[[rows]]
+id = "u188.M17_empty_scratch_kept"
+source = { table = "u188.json", id = "M17_empty_scratch_kept" }
+description = "rehearsal.mapped: keep an empty scratch spelling, which inserts the live one between every character"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py"]
+old = '            ((scratch, live) for scratch, live in replacements if scratch),'
+new = '            ((scratch, live) for scratch, live in replacements),'
+
+[[rows]]
+id = "u206.M20_rehearsal_cache_not_kept_live"
+source = { table = "u206.json", id = "M20_rehearsal_cache_not_kept_live" }
+description = "rehearsal.redirected: do not point the ISRC cache at the live directory, so a rehearsal's answers are thrown away"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''
+    os.environ[config.ENV_ISRC_CACHE_DIR] = saved[config.ENV_ISRC_CACHE_DIR] or str(
+        config.state_path("isrc_cache").parent
+    )'''
+new = '    os.environ.pop(config.ENV_ISRC_CACHE_DIR, None)'
+
+[[rows]]
+id = "r1665.R1_log_not_restored"
+source = { table = "r1665.json", id = "R1_log_not_restored" }
+description = "restore._file_steps: never write back a restored companion, so the log's rows are lost"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+        if entry.source in restored_companions:
+            if entry.captured is not None:'''
+new = '''
+        if entry.source in restored_companions:
+            if False:'''
+
+[[rows]]
+id = "u27-restore-cli-independent.X6_the_rekordbox_guard_itself_is_neutered"
+source = { table = "u27-restore-cli-independent.json", id = "X6_the_rekordbox_guard_itself_is_neutered" }
+description = "What the process-lister zeros DO leave held: make the restore engine's rekordbox-closed assertion return without asking. Paired with I_A6 and I_A7, which stopped threading that guard's injected seam and killed nothing"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    running = processes.rekordbox_processes_running(lister=process_lister)
+    if not running:
+        return'''
+new = '''
+    running = processes.rekordbox_processes_running(lister=process_lister)
+    if running or not running:
+        return'''

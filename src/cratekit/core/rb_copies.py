@@ -1,6 +1,6 @@
 """Copies of the database: the snapshot, the disposable and read-only copies, their integrity check.
 
-Part of :mod:`cratekit.core.rb_writer`, which re-exports every name here; read them there. A
+Part of :mod:`cratekit.core.rb_writer`, which re-exports every name its callers read; read them there. A
 name of the writer outside this file, and every seam a test patches, is read through
 ``rb_writer`` at call time so a patch on the writer bites here too (U300).
 """
@@ -353,10 +353,7 @@ def default_protected_snapshot_paths(
 
 def snapshot_database_in(directory: Path) -> Path | None:
     """The database file inside a snapshot directory, by shape since its name is the user's, or None."""
-    for candidate in sorted(directory.glob("*.db")):
-        if candidate.is_file():
-            return candidate
-    return None
+    return next((found for found in sorted(directory.glob("*.db")) if found.is_file()), None)
 
 
 def prune_snapshots(

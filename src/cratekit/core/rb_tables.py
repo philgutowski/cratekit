@@ -1,6 +1,6 @@
 """The additive whitelist's tables and the writable-column registry, part of :mod:`cratekit.core.rb_writer`.
 
-Read them through ``rb_writer``, which re-exports every name here. Data, not logic: the
+Read them through ``rb_writer``, which re-exports every name its callers read. Data, not logic: the
 tables are value for value what the writer judged against before the split (U300).
 """
 
@@ -271,10 +271,7 @@ def registered_field_policies() -> Mapping[str, FieldPolicy]:
 
 def content_writable_columns() -> frozenset[str]:
     """The union of every registered operation's declared fields, walked, never listed (P3)."""
-    columns: set[str] = set()
-    for policy in _REGISTERED.values():
-        columns.update(policy.fields)
-    return frozenset(columns)
+    return frozenset(column for policy in _REGISTERED.values() for column in policy.fields)
 
 
 reset_field_policies()

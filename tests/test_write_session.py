@@ -8,6 +8,8 @@ liveness and the database handle are injected.
 
 from __future__ import annotations
 
+import ast
+import contextlib
 import inspect
 import json
 import os
@@ -21,12 +23,13 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import config, locations, preflight, rb_writer, session, snapshot
-from cratekit.core.cause import CratekitError, refuse
+from cratekit.core import backup_facts, config, locations, preflight, rb_writer, session, snapshot
+from cratekit.core.cause import REASONS, CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
 from tests import _mounts
 from tests.test_config import valid_data
+from tests.test_restore import _refusal, _refusal_entering
 
 UTC = timezone.utc
 
@@ -93,6 +96,40 @@ def acknowledge(cfg, **kwargs):
     return session.record_acknowledgment(cfg, terminal=lambda: True, **kwargs)
 
 
+def _gates_refusal(cfg, **arguments):
+    """The cause the real gates refuse with, by default for a destructive workflow
+    through the open seams, failing when they admit the session instead."""
+    arguments = {"workflow": "a-destructive-workflow", **open_gates(cfg), **arguments}
+    return _refusal_entering(session.assert_gates, cfg, **arguments)
+
+
+@contextlib.contextmanager
+def _umask(mask: int):
+    """Run the body under ``mask``, since 022 hides a missing explicit mode."""
+    previous = os.umask(mask)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
+
+def _handle_recording(disposed: list[str]):
+    """A database handle whose close and engine disposal are recorded in order."""
+
+    class Engine:
+        def dispose(self):
+            disposed.append("engine")
+
+    class Handle:
+        session = object()
+        engine = Engine()
+
+        def close(self):
+            disposed.append("session")
+
+    return Handle
+
+
 def state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
     """Size and modification time of every file under each root."""
     found: dict[str, tuple[int, int]] = {}
@@ -111,9 +148,7 @@ def state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
     return found
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The three gates: three codes, and nothing written on any refused path
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_three_refusals_carry_three_distinct_codes_and_write_nothing(cfg):
@@ -122,11 +157,9 @@ def test_the_three_refusals_carry_three_distinct_codes_and_write_nothing(cfg):
 
     def refuse_with(**arguments):
         before = state_fingerprint(*roots)
-        with pytest.raises(CratekitError) as excinfo:
-            with session.assert_gates(cfg, workflow="a-destructive-workflow", **arguments):
-                raise AssertionError("the gates admitted a session they should have refused")
+        cause = _gates_refusal(cfg, **arguments)
         assert state_fingerprint(*roots) == before, "a refused session left a trace"
-        return excinfo.value.cause
+        return cause
 
     wrong_volume = refuse_with(
         identity_provider=foreign_identity, mount_enumerator=lambda: ()
@@ -162,23 +195,20 @@ def test_the_gates_admit_a_session_once_all_three_pass(cfg):
 def test_the_volume_is_judged_before_any_library_path_is_resolved(cfg):
     """The volume is judged first, or the lock is read off somebody else's disk."""
     acknowledge(cfg)
-    with pytest.raises(CratekitError) as excinfo:
-        with session.assert_gates(
-            cfg,
-            workflow="a-destructive-workflow",
-            identity_provider=foreign_identity,
-            mount_enumerator=lambda: (),
-        ):
-            pass
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    cause = _refusal_entering(
+        session.assert_gates,
+        cfg,
+        workflow="a-destructive-workflow",
+        identity_provider=foreign_identity,
+        mount_enumerator=lambda: (),
+    )
+    assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
     assert not session.lock_path(cfg).exists(), "the lock was created before the volume check"
 
 
 @pytest.mark.parametrize("state", sorted(preflight.MountState, key=str))
 def test_every_mount_verdict_has_a_declared_refusal_slug(state):
     """P3: a new mount verdict with no slug fails here, not under a default code."""
-    from cratekit.core.cause import REASONS
-
     if state is preflight.MountState.OK:
         assert state not in session._MOUNT_REASONS
         return
@@ -186,9 +216,7 @@ def test_every_mount_verdict_has_a_declared_refusal_slug(state):
     assert REASONS[slug] is ExitCode.LIBRARY_UNAVAILABLE
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The volume gate, for every volume a prefix rule points at
-# ═══════════════════════════════════════════════════════════════════════════
 
 _RECORDED_ELSEWHERE = "/recorded/on/another/machine"
 _ARCHIVE = "AAAA-1111-the-archive"
@@ -197,8 +225,6 @@ _ARCHIVE = "AAAA-1111-the-archive"
 @pytest.mark.parametrize("state", sorted(preflight.MountState, key=str))
 def test_every_mount_verdict_about_a_rule_target_was_decided_exactly_once(state):
     """A verdict is in exactly one of the pass and refusal tables."""
-    from cratekit.core.cause import REASONS
-
     proved = state in session._MAPPED_PROVED
     refused = state in session._MAPPED_REASONS
     assert proved != refused
@@ -219,11 +245,11 @@ def test_a_rule_is_held_to_its_own_identity_then_the_librarys_then_to_nothing(cf
     """The third answer is None, since an empty mount-point directory sits on the
     library's boot disk and would match its identity."""
     root = Path(cfg.library.root)
-    own = locations.PrefixRule(_RECORDED_ELSEWHERE, str(root / "Old"), _ARCHIVE)
-    inside = locations.PrefixRule(_RECORDED_ELSEWHERE, str(root / "Old"))
-    the_root_itself = locations.PrefixRule(_RECORDED_ELSEWHERE, str(root))
+    own = _rule(root / "Old", _ARCHIVE)
+    inside = _rule(root / "Old")
+    the_root_itself = _rule(root)
     beside = locations.PrefixRule(_RECORDED_ELSEWHERE, str(root) + "-archive")
-    outside = locations.PrefixRule(_RECORDED_ELSEWHERE, str(tmp_path / "archive"))
+    outside = _rule(tmp_path / "archive")
 
     assert session.expected_rule_identity(cfg, own) == _ARCHIVE
     assert session.expected_rule_identity(cfg, inside) == cfg.library.volume_id
@@ -238,12 +264,22 @@ def _mapped(cfg, rules, **seams):
     return session.assert_mapped_volume_identities(cfg, rules, **seams)
 
 
-def test_a_rule_onto_the_volume_it_recorded_passes(cfg, tmp_path, monkeypatch):
-    archive = tmp_path / "Volumes" / "ARCHIVE"
-    archive.mkdir(parents=True)
-    _mounts.stand_in(monkeypatch, {archive: _ARCHIVE}, otherwise=cfg.library.volume_id)
+def _rule(target, volume_id=None) -> locations.PrefixRule:
+    """A rule recorded on another machine pointing at ``target``."""
+    return locations.PrefixRule(_RECORDED_ELSEWHERE, str(target), volume_id)
 
-    proved = _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE)])
+
+def _mounted(monkeypatch, cfg, path: Path, identity) -> Path:
+    """``path``, made and standing in as the mount of a disk reporting ``identity``."""
+    path.mkdir(parents=True)
+    _mounts.stand_in(monkeypatch, {path: identity}, otherwise=cfg.library.volume_id)
+    return path
+
+
+def test_a_rule_onto_the_volume_it_recorded_passes(cfg, tmp_path, monkeypatch):
+    archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", _ARCHIVE)
+
+    proved = _mapped(cfg, [_rule(archive, _ARCHIVE)])
 
     assert [status.state for status in proved] == [preflight.MountState.OK]
     assert proved[0].observed_identity == _ARCHIVE
@@ -253,18 +289,14 @@ def test_a_different_disk_at_a_rules_target_refuses_and_names_the_rule(
     cfg, tmp_path, monkeypatch
 ):
     """R-44 Open 1: a decoy at the second rule refuses with its index."""
-    archive = tmp_path / "Volumes" / "ARCHIVE"
-    archive.mkdir(parents=True)
-    _mounts.stand_in(monkeypatch, {archive: "BBBB-a-decoy"}, otherwise=cfg.library.volume_id)
+    archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", "BBBB-a-decoy")
     rules = [
         locations.PrefixRule("/an/older/root", str(Path(cfg.library.root) / "Music")),
-        locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE),
+        _rule(archive, _ARCHIVE),
     ]
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, rules)
+    cause = _refusal(_mapped, cfg, rules)
 
-    cause = excinfo.value.cause
     assert cause.reason == "mapped-volume-mismatch"
     assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
     assert cause.detail["rule"] == 1 and cause.detail["target"] == str(archive)
@@ -282,11 +314,10 @@ def test_an_empty_directory_where_a_volume_mounts_is_not_that_volume(cfg, tmp_pa
     stale.mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id)
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(stale), _ARCHIVE)])
+    cause = _refusal(_mapped, cfg, [_rule(stale, _ARCHIVE)])
 
-    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
-    assert excinfo.value.cause.detail["state"] == str(preflight.MountState.FOREIGN_VOLUME)
+    assert cause.reason == "mapped-volume-mismatch"
+    assert cause.detail["state"] == str(preflight.MountState.FOREIGN_VOLUME)
 
 
 def test_a_recorded_volume_that_is_not_mounted_anywhere_has_its_own_slug(
@@ -295,11 +326,10 @@ def test_a_recorded_volume_that_is_not_mounted_anywhere_has_its_own_slug(
     _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id)
     absent = tmp_path / "Volumes" / "ARCHIVE"
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(absent), _ARCHIVE)])
+    cause = _refusal(_mapped, cfg, [_rule(absent, _ARCHIVE)])
 
-    assert excinfo.value.cause.reason == "mapped-volume-unmounted"
-    assert str(absent) in excinfo.value.cause.remediation.steps[0]
+    assert cause.reason == "mapped-volume-unmounted"
+    assert str(absent) in cause.remediation.steps[0]
 
 
 def test_a_recorded_volume_mounted_somewhere_else_says_where(cfg, tmp_path, monkeypatch):
@@ -308,11 +338,10 @@ def test_a_recorded_volume_mounted_somewhere_else_says_where(cfg, tmp_path, monk
     _mounts.stand_in(monkeypatch, {actually: _ARCHIVE}, otherwise=cfg.library.volume_id)
     configured = tmp_path / "Volumes" / "ARCHIVE"
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(configured), _ARCHIVE)])
+    cause = _refusal(_mapped, cfg, [_rule(configured, _ARCHIVE)])
 
-    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
-    assert str(actually.resolve()) in excinfo.value.cause.remediation.steps[0]
+    assert cause.reason == "mapped-volume-mismatch"
+    assert str(actually.resolve()) in cause.remediation.steps[0]
 
 
 def test_a_target_outside_the_root_with_nothing_recorded_refuses_and_hands_over_the_identity(
@@ -320,14 +349,10 @@ def test_a_target_outside_the_root_with_nothing_recorded_refuses_and_hands_over_
 ):
     """With nothing recorded, the refusal names the rule's config key and the
     identity the disk shows now, so the fix is one edit."""
-    archive = tmp_path / "Volumes" / "ARCHIVE"
-    archive.mkdir(parents=True)
-    _mounts.stand_in(monkeypatch, {archive: _ARCHIVE}, otherwise=cfg.library.volume_id)
+    archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", _ARCHIVE)
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive))])
+    cause = _refusal(_mapped, cfg, [_rule(archive)])
 
-    cause = excinfo.value.cause
     assert cause.reason == "mapped-volume-mismatch"
     assert cause.detail["state"] == str(preflight.MountState.IDENTITY_NOT_RECORDED)
     assert cause.detail["observed_identity"] == _ARCHIVE
@@ -337,37 +362,29 @@ def test_a_target_outside_the_root_with_nothing_recorded_refuses_and_hands_over_
 
 def test_a_volume_nested_under_the_library_root_is_not_the_library(cfg, monkeypatch):
     """Inside the root, the library's identity is asserted, not passed."""
-    nested = Path(cfg.library.root) / "Archive"
-    nested.mkdir()
-    _mounts.stand_in(monkeypatch, {nested: "BBBB-nested"}, otherwise=cfg.library.volume_id)
+    nested = _mounted(monkeypatch, cfg, Path(cfg.library.root) / "Archive", "BBBB-nested")
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(nested))])
+    cause = _refusal(_mapped, cfg, [_rule(nested)])
 
-    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
-    assert excinfo.value.cause.detail["recorded_identity"] == cfg.library.volume_id
+    assert cause.reason == "mapped-volume-mismatch"
+    assert cause.detail["recorded_identity"] == cfg.library.volume_id
 
 
 def test_a_rule_target_whose_identity_cannot_be_read_refuses(cfg, tmp_path, monkeypatch):
     """Destructive strength. "I could not look" is not "it is the right disk"."""
-    archive = tmp_path / "Volumes" / "ARCHIVE"
-    archive.mkdir(parents=True)
-    _mounts.stand_in(monkeypatch, {archive: None}, otherwise=cfg.library.volume_id)
+    archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", None)
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE)])
+    cause = _refusal(_mapped, cfg, [_rule(archive, _ARCHIVE)])
 
-    assert excinfo.value.cause.detail["state"] == str(preflight.MountState.IDENTITY_UNAVAILABLE)
+    assert cause.detail["state"] == str(preflight.MountState.IDENTITY_UNAVAILABLE)
 
 
 def test_a_matched_volume_with_the_directory_absent_is_left_to_the_pass_that_follows_the_rule(
     cfg, tmp_path, monkeypatch
 ):
     """The one non-OK pass, and the reason is that the identity question was answered."""
-    archive = tmp_path / "Volumes" / "ARCHIVE"
-    archive.mkdir(parents=True)
-    _mounts.stand_in(monkeypatch, {archive: _ARCHIVE}, otherwise=cfg.library.volume_id)
-    rule = locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive / "never-made"), _ARCHIVE)
+    archive = _mounted(monkeypatch, cfg, tmp_path / "Volumes" / "ARCHIVE", _ARCHIVE)
+    rule = _rule(archive / "never-made", _ARCHIVE)
 
     proved = _mapped(cfg, [rule])
 
@@ -383,13 +400,12 @@ def test_an_empty_mount_slot_refuses_even_when_the_recorded_identity_matches_it(
     leftover = volumes / "ARCHIVE"
     leftover.mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id, slots_under=volumes)
-    rule = locations.PrefixRule(_RECORDED_ELSEWHERE, str(leftover), cfg.library.volume_id)
+    rule = _rule(leftover, cfg.library.volume_id)
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, [rule])
+    cause = _refusal(_mapped, cfg, [rule])
 
-    assert excinfo.value.cause.reason == "mapped-volume-unmounted"
-    assert excinfo.value.cause.detail["state"] == "mount_slot_empty"
+    assert cause.reason == "mapped-volume-unmounted"
+    assert cause.detail["state"] == "mount_slot_empty"
 
 
 def test_an_ejected_drive_is_never_offered_the_boot_disks_identity_to_record(
@@ -400,12 +416,10 @@ def test_an_ejected_drive_is_never_offered_the_boot_disks_identity_to_record(
     volumes = tmp_path / "Volumes"
     (volumes / "ARCHIVE").mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {}, otherwise="CCCC-the-boot-disk", slots_under=volumes)
-    rule = locations.PrefixRule(_RECORDED_ELSEWHERE, str(volumes / "ARCHIVE"))
+    rule = _rule(volumes / "ARCHIVE")
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, [rule])
+    cause = _refusal(_mapped, cfg, [rule])
 
-    cause = excinfo.value.cause
     assert cause.reason == "mapped-volume-unmounted"
     said = cause.message + " ".join(cause.remediation.steps) + json.dumps(cause.detail)
     assert "CCCC-the-boot-disk" not in said
@@ -416,14 +430,10 @@ def test_a_foreign_volume_under_a_rule_that_recorded_nothing_offers_nothing_to_r
 ):
     """Inside the root the identity compared was the library's, and the wording
     says so and offers no ``volume_id`` to record."""
-    nested = Path(cfg.library.root) / "Archive"
-    nested.mkdir()
-    _mounts.stand_in(monkeypatch, {nested: "BBBB-nested"}, otherwise=cfg.library.volume_id)
+    nested = _mounted(monkeypatch, cfg, Path(cfg.library.root) / "Archive", "BBBB-nested")
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(nested))])
+    cause = _refusal(_mapped, cfg, [_rule(nested)])
 
-    cause = excinfo.value.cause
     assert "the library's volume" in cause.message
     assert "recorded on that rule" not in cause.message
     assert "volume_id" not in cause.remediation.steps[0]
@@ -441,12 +451,11 @@ def test_a_way_to_the_target_this_account_cannot_walk_is_a_refusal_and_not_a_tra
 
     monkeypatch.setattr(preflight, "identity_source", cannot_walk)
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(cfg, [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE)])
+    cause = _refusal(_mapped, cfg, [_rule(archive, _ARCHIVE)])
 
-    assert excinfo.value.cause.reason == "mapped-volume-mismatch"
-    assert excinfo.value.cause.detail["state"] == "unreachable"
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    assert cause.reason == "mapped-volume-mismatch"
+    assert cause.detail["state"] == "unreachable"
+    assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
 
 
 def test_a_provider_that_cannot_read_the_identity_to_hand_over_is_a_refusal_too(cfg, tmp_path):
@@ -457,14 +466,14 @@ def test_a_provider_that_cannot_read_the_identity_to_hand_over_is_a_refusal_too(
     def provider(_path):
         raise PermissionError(13, "Permission denied")
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(
-            cfg,
-            [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive))],
-            identity_provider=provider,
-            mount_enumerator=lambda: (),
-        )
-    assert excinfo.value.cause.detail["state"] == "unreachable"
+    cause = _refusal(
+        _mapped,
+        cfg,
+        [_rule(archive)],
+        identity_provider=provider,
+        mount_enumerator=lambda: (),
+    )
+    assert cause.detail["state"] == "unreachable"
 
 
 def test_the_file_is_proved_where_the_file_is_and_not_where_the_rule_points(
@@ -481,7 +490,7 @@ def test_the_file_is_proved_where_the_file_is_and_not_where_the_rule_points(
     )
     rules = [
         locations.PrefixRule("/an/older/root", str(Path(cfg.library.root) / "Music")),
-        locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE),
+        _rule(archive, _ARCHIVE),
     ]
     assert len(_mapped(cfg, rules)) == 2
 
@@ -490,10 +499,8 @@ def test_the_file_is_proved_where_the_file_is_and_not_where_the_rule_points(
     )
     assert held.ok and held.observed_identity == _ARCHIVE
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.assert_mapped_file_volume(cfg, rules, 1, inner / "a.flac")
+    cause = _refusal(session.assert_mapped_file_volume, cfg, rules, 1, inner / "a.flac")
 
-    cause = excinfo.value.cause
     assert cause.reason == "mapped-volume-mismatch"
     assert cause.detail["rule"] == 1 and cause.detail["probed"] == str(inner)
     assert cause.detail["observed_identity"] == "BBBB-inner"
@@ -515,7 +522,7 @@ def test_a_verdict_in_neither_table_fails_rather_than_wearing_the_mismatch_slug(
     with pytest.raises(KeyError):
         _mapped(
             cfg,
-            [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive), _ARCHIVE)],
+            [_rule(archive, _ARCHIVE)],
             identity_provider=lambda _path: "BBBB-a-decoy",
             mount_enumerator=lambda: (),
         )
@@ -531,20 +538,18 @@ def test_the_seams_handed_in_are_the_seams_used(cfg, tmp_path):
         seen.append(Path(path))
         return _ARCHIVE
 
-    with pytest.raises(CratekitError) as excinfo:
-        _mapped(
-            cfg,
-            [locations.PrefixRule(_RECORDED_ELSEWHERE, str(archive))],
-            identity_provider=provider,
-            mount_enumerator=lambda: (),
-        )
-    assert excinfo.value.cause.detail["observed_identity"] == _ARCHIVE
+    cause = _refusal(
+        _mapped,
+        cfg,
+        [_rule(archive)],
+        identity_provider=provider,
+        mount_enumerator=lambda: (),
+    )
+    assert cause.detail["observed_identity"] == _ARCHIVE
     assert seen, "the refusal read the identity through some other provider"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The lock
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_second_process_refuses_and_names_the_holder(cfg):
@@ -557,10 +562,7 @@ def test_a_second_process_refuses_and_names_the_holder(cfg):
 
         # A separate handle is a second process to the kernel.
         session._HELD.discard(str(session.lock_path(cfg).absolute()))
-        with pytest.raises(CratekitError) as excinfo:
-            with session.session_lock(cfg):
-                pass
-    cause = excinfo.value.cause
+        cause = _refusal_entering(session.session_lock, cfg)
     assert cause.code is ExitCode.LIBRARY_BUSY
     assert str(os.getpid()) in cause.message
 
@@ -579,8 +581,7 @@ def test_a_nested_session_is_a_programming_error_not_a_foreign_holder(cfg):
 
 def test_the_lock_file_is_never_unlinked_and_is_private_under_any_umask(cfg):
     """Unlinking a lock lets a second process lock a fresh inode at the same name."""
-    previous = os.umask(0)
-    try:
+    with _umask(0):
         with session.session_lock(cfg) as held:
             assert held.exists()
             assert stat.S_IMODE(held.stat().st_mode) == config.PRIVATE_FILE_MODE
@@ -588,8 +589,6 @@ def test_the_lock_file_is_never_unlinked_and_is_private_under_any_umask(cfg):
                 stat.S_IMODE(held.parent.stat().st_mode) == config.PRIVATE_DIR_MODE
             )
         assert held.exists(), "the lock file was unlinked on release"
-    finally:
-        os.umask(previous)
 
 
 def test_releasing_the_lock_clears_the_holder_so_the_next_run_is_not_told_to_wait(cfg):
@@ -618,9 +617,8 @@ def test_releasing_a_dead_holders_lock_is_an_explicit_verb(cfg):
 
 def test_releasing_a_live_holders_lock_refuses(cfg):
     with session.session_lock(cfg):
-        with pytest.raises(CratekitError) as excinfo:
-            session.release_stale_lock(cfg)
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_BUSY
+        cause = _refusal(session.release_stale_lock, cfg)
+    assert cause.code is ExitCode.LIBRARY_BUSY
 
 
 def test_a_holder_on_another_machine_or_another_boot_is_assumed_alive(cfg):
@@ -771,9 +769,7 @@ def test_the_lock_left_by_this_machines_earlier_boot_is_releasable(cfg, monkeypa
     monkeypatch.setattr(session, "machine_identity", lambda: THIS_MACHINE)
     live = session.current_holder()
     dead = _before_a_power_loss(live)
-    lock = session.lock_path(cfg)
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    lock.write_text(json.dumps({"holder": dead.to_json()}))
+    lock = _lock_recording(cfg, dead)
 
     assert session.release_stale_lock(cfg) == dead
     assert session.read_lock_holder(lock) is None
@@ -786,27 +782,20 @@ def test_the_lock_left_by_another_machine_with_this_host_name_is_not_releasable(
     monkeypatch.setattr(session, "machine_identity", lambda: THIS_MACHINE)
     live = session.current_holder()
     theirs = _before_a_power_loss(live, machine="f" * 32)
-    lock = session.lock_path(cfg)
-    lock.parent.mkdir(parents=True, exist_ok=True)
-    lock.write_text(json.dumps({"holder": theirs.to_json()}))
+    lock = _lock_recording(cfg, theirs)
     before = lock.read_bytes()
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.release_stale_lock(cfg)
-    assert excinfo.value.cause.reason == "session-lock-held"
+    cause = _refusal(session.release_stale_lock, cfg)
+    assert cause.reason == "session-lock-held"
     assert lock.read_bytes() == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The acknowledgment (KTD18, R34)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_agent_shaped_invocation_cannot_mint_the_acknowledgment(cfg):
     """The gate protecting the operation that removes files is not self-servable."""
-    with pytest.raises(CratekitError) as excinfo:
-        session.record_acknowledgment(cfg, terminal=lambda: False)
-    cause = excinfo.value.cause
+    cause = _refusal(session.record_acknowledgment, cfg, terminal=lambda: False)
     assert cause.code is ExitCode.ACK_REQUIRED
     assert cause.reason == "backup-acknowledgment-no-terminal"
     assert session.read_acknowledgment(cfg) is None
@@ -814,8 +803,6 @@ def test_an_agent_shaped_invocation_cannot_mint_the_acknowledgment(cfg):
 
 def test_the_terminal_check_is_a_terminal_check_and_not_a_standard_input_read():
     """R33: the terminal check reads no input, asserted structurally."""
-    import ast
-
     from tests._split_modules import source_of
 
     # The session and its parts (U300): the terminal check lives in ``session_ack``.
@@ -836,8 +823,6 @@ def test_the_recorded_actor_is_derived_from_the_invocation_and_never_supplied():
 
 def test_the_acknowledgment_records_the_backup_age_that_was_shown(cfg):
     """KTD18: the backup age shown is recorded for every declared portion."""
-    from cratekit.core import backup_facts
-
     now = datetime(2026, 8, 1, 12, 0, tzinfo=UTC)
     backup_facts.record(
         cfg,
@@ -860,18 +845,14 @@ def test_an_expired_acknowledgment_refuses_exactly_as_an_absent_one_does(cfg):
     acknowledge(cfg, now=now, validity=timedelta(hours=1))
 
     session.assert_backup_acknowledged(cfg, now=now + timedelta(minutes=30))
-    with pytest.raises(CratekitError) as excinfo:
-        session.assert_backup_acknowledged(cfg, now=now + timedelta(hours=2))
-    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
-    assert excinfo.value.cause.detail["expired"] is True
+    cause = _refusal(session.assert_backup_acknowledged, cfg, now=now + timedelta(hours=2))
+    assert cause.code is ExitCode.ACK_REQUIRED
+    assert cause.detail["expired"] is True
 
 
 def test_the_acknowledgment_file_is_private_under_any_umask(cfg):
-    previous = os.umask(0)
-    try:
+    with _umask(0):
         acknowledge(cfg)
-    finally:
-        os.umask(previous)
     mode = stat.S_IMODE(session.ack_path(cfg).stat().st_mode)
     assert mode == config.PRIVATE_FILE_MODE
 
@@ -898,10 +879,7 @@ def test_no_blanket_affirmative_satisfies_the_acknowledgment(cfg):
     assert toggles, "no module toggle was found, so the walk is broken"
     object.__setattr__(cfg.modules, "explicit", toggles)
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.assert_gates(cfg, workflow="a-destructive-workflow", **open_gates(cfg)):
-            pass
-    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+    assert _gates_refusal(cfg).code is ExitCode.ACK_REQUIRED
 
     reads_environment = [
         function.__name__
@@ -922,9 +900,7 @@ def test_no_blanket_affirmative_satisfies_the_acknowledgment(cfg):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The session log
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_log_records_everything_a_restore_has_to_judge(cfg):
@@ -965,11 +941,8 @@ def test_the_log_records_everything_a_restore_has_to_judge(cfg):
 
 
 def test_a_session_record_is_private_under_any_umask(cfg):
-    previous = os.umask(0)
-    try:
+    with _umask(0):
         record = session.open_session(cfg, workflow="a-destructive-workflow")
-    finally:
-        os.umask(previous)
     path = session.log_path(record.session_id, cfg)
     assert stat.S_IMODE(path.stat().st_mode) == config.PRIVATE_FILE_MODE
     assert stat.S_IMODE(path.parent.stat().st_mode) == config.PRIVATE_DIR_MODE
@@ -986,8 +959,7 @@ def test_a_session_record_round_trips(cfg):
 def test_closing_into_a_non_terminal_state_refuses(cfg):
     """A terminal state RELEASES the capture, so closing into a live one lies."""
     record = session.open_session(cfg, workflow="a-destructive-workflow")
-    with pytest.raises(CratekitError):
-        session.close_session(record, cfg, state=session.SessionState.AWAITING_IMPORT)
+    _refusal(session.close_session, record, cfg, state=session.SessionState.AWAITING_IMPORT)
 
 
 def test_an_unreadable_record_does_not_stop_the_log_being_read(cfg):
@@ -996,9 +968,7 @@ def test_an_unreadable_record_does_not_stop_the_log_being_read(cfg):
     assert [r.session_id for r in session.records(cfg)] == [good.session_id]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # One source per run (R29)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_refusal_at_source_two_leaves_source_one_committed_and_names_both(cfg):
@@ -1011,10 +981,8 @@ def test_a_refusal_at_source_two_leaves_source_one_committed_and_names_both(cfg)
             raise refuse("refused-by-policy", "source two is not acceptable")
         return session.ChangeSummary((session.TreeChange(tree=f"tree-{source}", created=1),))
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.commit_sources(record, ("one", "two", "three"), run_one, cfg=cfg)
+    cause = _refusal(session.commit_sources, record, ("one", "two", "three"), run_one, cfg=cfg)
 
-    cause = excinfo.value.cause
     assert cause.detail["committed"] == ["one"]
     assert cause.detail["refused_source"] == "two"
     assert set(cause.detail["remaining"]) == {"two", "three"}
@@ -1039,8 +1007,7 @@ def test_a_resume_skips_a_committed_source_and_finishes_the_rest(cfg):
             raise refuse("refused-by-policy", "not this time")
         return session.ChangeSummary((session.TreeChange(tree=f"tree-{source}", created=1),))
 
-    with pytest.raises(CratekitError):
-        session.commit_sources(record, ("one", "two"), run_one, cfg=cfg)
+    _refusal(session.commit_sources, record, ("one", "two"), run_one, cfg=cfg)
     assert attempted == ["one", "two"]
 
     resumed = session.read_record(record.session_id, cfg)
@@ -1050,16 +1017,13 @@ def test_a_resume_skips_a_committed_source_and_finishes_the_rest(cfg):
     assert {entry.tree for entry in resumed.change.trees} == {"tree-one", "tree-two"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The capture gate, and the post-commit read-back (AE13)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_capture_that_failed_its_check_blocks_the_commit_behind_it(cfg):
     record = snapshot.capture(cfg, verifier=lambda _path: False)
-    with pytest.raises(CratekitError) as excinfo:
-        snapshot.assert_verified(record)
-    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
+    cause = _refusal(snapshot.assert_verified, record)
+    assert cause.reason == "snapshot-integrity-failed"
 
 
 def test_a_read_back_that_disagrees_ends_committed_unverified_and_advances_nothing(cfg):
@@ -1072,26 +1036,13 @@ def test_a_read_back_that_disagrees_ends_committed_unverified_and_advances_nothi
     session.write_record(record, cfg)
 
     disposed: list[str] = []
-
-    class Engine:
-        def dispose(self):
-            disposed.append("engine")
-
-    class Handle:
-        session = object()
-        engine = Engine()
-
-        def close(self):
-            disposed.append("session")
-
-    with pytest.raises(CratekitError) as excinfo:
-        session.verify_commit(
-            record,
-            cfg,
-            expect=lambda _db: False,
-            reopen=Handle,
-        )
-    cause = excinfo.value.cause
+    cause = _refusal(
+        session.verify_commit,
+        record,
+        cfg,
+        expect=lambda _db: False,
+        reopen=_handle_recording(disposed),
+    )
     assert cause.code is ExitCode.LIBRARY_UNREADABLE
     assert cause.reason == "session-committed-unverified"
     assert cause.detail["snapshot_path"] == "/captures/one/master.db"
@@ -1113,20 +1064,9 @@ def test_the_read_back_releases_the_database_completely(cfg):
     """The read-back disposes the engine too, since a pooled connection held open
     makes a restore over the file fail as if corrupt."""
     disposed: list[str] = []
-
-    class Engine:
-        def dispose(self):
-            disposed.append("engine")
-
-    class Handle:
-        session = object()
-        engine = Engine()
-
-        def close(self):
-            disposed.append("session")
-
     record = session.open_session(cfg, workflow="a-destructive-workflow")
-    assert session.verify_commit(record, cfg, expect=lambda _db: True, reopen=Handle) is True
+    handle = _handle_recording(disposed)
+    assert session.verify_commit(record, cfg, expect=lambda _db: True, reopen=handle) is True
     assert disposed == ["session", "engine"]
 
 
@@ -1136,10 +1076,9 @@ def test_a_disagreement_reports_a_live_rekordbox_separately(cfg, monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
 
     record = session.open_session(cfg, workflow="a-destructive-workflow")
-    with pytest.raises(CratekitError) as excinfo:
-        session.verify_commit(record, cfg, expect=lambda _db: False, reopen=object)
-
-    cause = excinfo.value.cause
+    cause = _refusal(
+        session.verify_commit, record, cfg, expect=lambda _db: False, reopen=object
+    )
     assert cause.reason == "session-committed-unverified"
     assert cause.inner is not None
     assert cause.inner.reason == "rekordbox-running"
@@ -1150,14 +1089,11 @@ def test_an_unresolved_session_refuses_every_further_write(cfg):
     """Post-commit rollback does not exist, so the next write waits for a person."""
     acknowledge(cfg)
     record = session.open_session(cfg, workflow="a-destructive-workflow")
-    with pytest.raises(CratekitError):
-        session.verify_commit(record, cfg, expect=lambda _db: False, reopen=object)
+    _refusal(session.verify_commit, record, cfg, expect=lambda _db: False, reopen=object)
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.assert_gates(cfg, workflow="a-destructive-workflow", **open_gates(cfg)):
-            pass
-    assert excinfo.value.cause.reason == "session-committed-unverified"
-    assert excinfo.value.cause.code is ExitCode.LIBRARY_UNREADABLE
+    cause = _gates_refusal(cfg)
+    assert cause.reason == "session-committed-unverified"
+    assert cause.code is ExitCode.LIBRARY_UNREADABLE
 
 
 def test_an_unresolved_session_keeps_its_capture_out_of_the_pruner(cfg):
@@ -1165,15 +1101,12 @@ def test_an_unresolved_session_keeps_its_capture_out_of_the_pruner(cfg):
     capture_path = cfg.library.root / "captures" / "one" / "master.db"
     record = session.open_session(cfg, workflow="a-destructive-workflow")
     session.attach_capture(record, capture_path, cfg)
-    with pytest.raises(CratekitError):
-        session.verify_commit(record, cfg, expect=lambda _db: False, reopen=object)
+    _refusal(session.verify_commit, record, cfg, expect=lambda _db: False, reopen=object)
 
     assert rb_writer.default_protected_snapshot_paths(cfg) == {capture_path.resolve()}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The un-imported XML output as a first-class state
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_run_holding_an_unimported_output_refuses_a_database_surface(cfg):
@@ -1192,9 +1125,7 @@ def test_a_run_holding_an_unimported_output_refuses_a_database_surface(cfg):
     )
     session.mark_awaiting_import(record, pending, cfg)
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.assert_database_surface_allowed(record)
-    cause = excinfo.value.cause
+    cause = _refusal(session.assert_database_surface_allowed, record)
     assert cause.code is ExitCode.PENDING_HUMAN
     assert cause.reason == "awaiting-import"
     assert cause.detail["verify_verb"] == "run.show"
@@ -1226,9 +1157,7 @@ def test_the_pending_action_is_the_one_the_command_line_layer_already_enforces(c
     assert gates.blocked_by(run, "profile.show") is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The runtime half of R17's fifth surface
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _analysis_tree(root: Path) -> list[Path]:
@@ -1242,18 +1171,33 @@ def _analysis_tree(root: Path) -> list[Path]:
     return written
 
 
+def _rewrite(path: Path, content: bytes, *, mtime_ns: int | None = None) -> None:
+    """Rewrite ``path``, then set its mtime to ``mtime_ns``, or a second past the write's."""
+    path.write_bytes(content)
+    written = path.stat()
+    moved = written.st_mtime_ns + 10**9 if mtime_ns is None else mtime_ns
+    os.utime(path, ns=(written.st_atime_ns, moved))
+
+
+def _smoke_test_fails():
+    raise refuse("refused-by-policy", "the smoke test failed")
+
+
+def _drift_refusal(tmp_path: Path, body):
+    """The cause the analysis watch over the library refuses with once ``body`` ran."""
+    with pytest.raises(CratekitError) as excinfo:
+        with session.analysis_files_unmoved([tmp_path / "library"]):
+            body()
+    return excinfo.value.cause
+
+
 def test_a_moved_analysis_file_refuses_the_session(cfg, tmp_path):
     """A real rewritten file refuses, the half the source scan cannot see."""
     written = _analysis_tree(tmp_path / "library")
     victim = written[1]
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            victim.write_bytes(b"a rewritten grid")
-            stat_result = victim.stat()
-            os.utime(victim, ns=(stat_result.st_atime_ns, stat_result.st_mtime_ns + 10**9))
+    cause = _drift_refusal(tmp_path, lambda: _rewrite(victim, b"a rewritten grid"))
 
-    cause = excinfo.value.cause
     assert cause.reason == "anlz-modified"
     assert cause.code is ExitCode.REFUSED_BY_POLICY
     assert any(str(victim) in line for line in cause.detail["changed"])
@@ -1262,10 +1206,7 @@ def test_a_moved_analysis_file_refuses_the_session(cfg, tmp_path):
 def test_a_removed_analysis_file_refuses_too(cfg, tmp_path):
     """A destroyed grid is not a smaller problem than a rewritten one."""
     written = _analysis_tree(tmp_path / "library")
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            written[0].unlink()
-    assert "was removed" in excinfo.value.cause.detail["changed"][0]
+    assert "was removed" in _drift_refusal(tmp_path, written[0].unlink).detail["changed"][0]
 
 
 def test_a_session_that_touches_nothing_passes(cfg, tmp_path):
@@ -1291,9 +1232,7 @@ def test_the_gates_can_arm_the_analysis_watch_for_the_body_of_a_session(cfg, tmp
             analysis_roots=[tmp_path / "library"],
             **open_gates(cfg),
         ):
-            written[2].write_bytes(b"a rewritten grid, mid session")
-            moved = written[2].stat()
-            os.utime(written[2], ns=(moved.st_atime_ns, moved.st_mtime_ns + 10**9))
+            _rewrite(written[2], b"a rewritten grid, mid session")
     assert excinfo.value.cause.reason == "anlz-modified"
 
 
@@ -1304,22 +1243,17 @@ def test_the_tree_writers_reach_for_the_session_spine(cfg):
     Checked on the syntax tree, since a substring search passes on the module's
     own docstring explaining the calls.
     """
-    import ast
     import importlib
+
+    from tests.test_tree_registry import _called_names
 
     trees = importlib.import_module("cratekit.write.trees")
     module = ast.parse(Path(trees.__file__).read_text(encoding="utf-8"))
 
-    called: set[str] = set()
-    keywords: set[str] = set()
-    for node in ast.walk(module):
-        if not isinstance(node, ast.Call):
-            continue
-        if isinstance(node.func, ast.Attribute):
-            called.add(node.func.attr)
-        elif isinstance(node.func, ast.Name):
-            called.add(node.func.id)
-        keywords.update(kw.arg for kw in node.keywords if kw.arg)
+    called = _called_names(module)
+    keywords = {
+        kw.arg for node in ast.walk(module) if isinstance(node, ast.Call) for kw in node.keywords
+    }
 
     for obligation in ("assert_gates", "assert_verified"):
         assert obligation in called, (
@@ -1355,10 +1289,8 @@ def test_the_watched_set_covers_every_file_surface_five_declares():
     assert not session.is_analysis_file("something.DAT")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The residual finding "The backup restore is not yet bound to the
 # destructive-session gates": the backup restore passes the same gates
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_backup_restore_passes_the_destructive_session_gates(volume_matches, cfg, tmp_path):
@@ -1366,16 +1298,16 @@ def test_the_backup_restore_passes_the_destructive_session_gates(volume_matches,
     target = tmp_path / "scratch"
     target.mkdir()
 
-    with pytest.raises(CratekitError) as excinfo:
-        backup.plan_restore(
-            cfg,
-            target=target,
-            confirmed=True,
-            snapshot="2026-08-01T000000Z",
-            runner=lambda command: backup.CommandResult(returncode=0),
-            process_lister=lambda: (),
-        )
-    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+    cause = _refusal(
+        backup.plan_restore,
+        cfg,
+        target=target,
+        confirmed=True,
+        snapshot="2026-08-01T000000Z",
+        runner=lambda command: backup.CommandResult(returncode=0),
+        process_lister=lambda: (),
+    )
+    assert cause.code is ExitCode.ACK_REQUIRED
 
 
 def test_the_restores_own_refusals_survive_the_gates_being_added(cfg, tmp_path):
@@ -1406,11 +1338,11 @@ def test_a_rehearsed_restore_is_not_exempt_from_the_gates(volume_matches, cfg, t
         clears=(),
         commands=(backup.Command(label=backup.RESTORE_DATABASE, argv=("rclone", "copy")),),
     )
-    with pytest.raises(CratekitError) as excinfo:
-        backup.run_restore(
-            plan, cfg, runner=lambda command: backup.CommandResult(returncode=0), dry_run=True
-        )
-    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+    cause = _refusal(
+        backup.run_restore,
+        plan, cfg, runner=lambda command: backup.CommandResult(returncode=0), dry_run=True
+    )
+    assert cause.code is ExitCode.ACK_REQUIRED
 
 
 def test_the_destructive_half_of_a_restore_has_no_ungated_call_shape():
@@ -1427,7 +1359,6 @@ def test_every_backup_refusal_carries_one_code_in_both_cause_tables():
     since disagreeing tables describe different failures.
     """
     from cratekit.cli import exit_codes as reservations  # noqa: PLC0415
-    from cratekit.core.cause import REASONS  # noqa: PLC0415
 
     assert backup.REFUSALS, "the refusal enum is empty, so nothing below is measured"
     disagreements = {
@@ -1441,18 +1372,15 @@ def test_every_backup_refusal_carries_one_code_in_both_cause_tables():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The latch has an exit, the log fails CLOSED, and the guards run on both paths.
 # Found by an adversarial read: the other half of properties tested above.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _condemn(cfg):
     """Leave this library with one unresolved ``committed-unverified`` session."""
     record = session.open_session(cfg, workflow="a-destructive-workflow")
     session.attach_capture(record, "/captures/one/master.db", cfg)
-    with pytest.raises(CratekitError):
-        session.verify_commit(record, cfg, expect=lambda _db: False, reopen=object)
+    _refusal(session.verify_commit, record, cfg, expect=lambda _db: False, reopen=object)
     return record
 
 
@@ -1461,10 +1389,7 @@ def test_a_condemned_library_still_admits_the_recovery_its_remedy_names(cfg):
     acknowledge(cfg)
     condemned = _condemn(cfg)
 
-    with pytest.raises(CratekitError) as refused:
-        with session.assert_gates(cfg, workflow="a-destructive-workflow", **open_gates(cfg)):
-            pass
-    assert refused.value.cause.reason == "session-committed-unverified"
+    assert _gates_refusal(cfg).reason == "session-committed-unverified"
 
     with session.assert_gates(
         cfg,
@@ -1484,28 +1409,21 @@ def test_a_recovery_session_is_exempt_from_the_latch_and_from_nothing_else(cfg):
         "intent": session.Intent.RECOVERY,
     }
 
-    with pytest.raises(CratekitError) as no_ack:
-        with session.assert_gates(cfg, **recovery, **open_gates(cfg)):
-            pass
-    assert no_ack.value.cause.code is ExitCode.ACK_REQUIRED
+    assert _gates_refusal(cfg, **recovery).code is ExitCode.ACK_REQUIRED
 
     acknowledge(cfg)
-    with pytest.raises(CratekitError) as wrong_disk:
-        with session.assert_gates(
-            cfg, **recovery, identity_provider=foreign_identity, mount_enumerator=lambda: ()
-        ):
-            pass
-    assert wrong_disk.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
+    wrong_disk = _gates_refusal(
+        cfg, **recovery, identity_provider=foreign_identity, mount_enumerator=lambda: ()
+    )
+    assert wrong_disk.code is ExitCode.LIBRARY_UNAVAILABLE
 
     contender = open(session.lock_path(cfg), "a+")
     try:
         rb_writer._acquire_exclusive(contender)
-        with pytest.raises(CratekitError) as busy:
-            with session.assert_gates(cfg, **recovery, **open_gates(cfg)):
-                pass
+        busy = _gates_refusal(cfg, **recovery)
     finally:
         contender.close()
-    assert busy.value.cause.code is ExitCode.LIBRARY_BUSY
+    assert busy.code is ExitCode.LIBRARY_BUSY
 
 
 def test_the_restore_is_the_recovery_and_reaches_its_own_refusals(volume_matches, cfg, tmp_path):
@@ -1539,9 +1457,8 @@ def test_resolving_the_record_is_what_clears_the_latch_not_the_restore(cfg):
 def test_resolving_refuses_any_state_but_the_one_it_is_for(cfg):
     """Ending somebody else's OPEN session releases a capture a live run needs."""
     record = session.open_session(cfg, workflow="a-destructive-workflow")
-    with pytest.raises(CratekitError) as excinfo:
-        session.resolve_unverified_session(record.session_id, cfg)
-    assert excinfo.value.cause.remediation.remedy is Remedy.REPORT_DEFECT
+    cause = _refusal(session.resolve_unverified_session, record.session_id, cfg)
+    assert cause.remediation.remedy is Remedy.REPORT_DEFECT
     assert session.read_record(record.session_id, cfg).state is session.SessionState.OPEN
 
 
@@ -1558,12 +1475,7 @@ def test_the_latch_refuses_a_record_this_build_cannot_read(cfg):
         path.write_text(json.dumps(written))
 
         assert session.records(cfg) == (), "the tolerant reader should still skip it"
-        with pytest.raises(CratekitError) as excinfo:
-            with session.assert_gates(
-                cfg, workflow="a-destructive-workflow", **open_gates(cfg)
-            ):
-                raise AssertionError("the gates admitted a session against an unreadable log")
-        assert excinfo.value.cause.detail["unreadable"] == [str(path)], damage
+        assert _gates_refusal(cfg).detail["unreadable"] == [str(path)], damage
 
 
 def test_the_session_log_filename_is_legal_on_a_library_volume(cfg):
@@ -1607,9 +1519,8 @@ def test_a_per_source_refusal_widens_the_scope_and_never_narrows_it(cfg):
         def run_one(_source):
             raise refuse("refused-by-policy", "not this time", scope=scope)
 
-        with pytest.raises(CratekitError) as excinfo:
-            session.commit_sources(record, ("one",), run_one, cfg=cfg)
-        return excinfo.value.cause
+        cause = _refusal(session.commit_sources, record, ("one",), run_one, cfg=cfg)
+        return cause
 
     assert refusing_at(Scope.RUN).scope is Scope.RUN
     assert refusing_at(Scope.SESSION).scope is Scope.SESSION
@@ -1625,10 +1536,9 @@ def test_a_read_back_that_could_not_run_says_so_rather_than_saying_it_disagreed(
     def cannot_open():
         raise refuse("library-directory-missing", "the volume went away")
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.verify_commit(record, cfg, expect=lambda _db: True, reopen=cannot_open)
-
-    cause = excinfo.value.cause
+    cause = _refusal(
+        session.verify_commit, record, cfg, expect=lambda _db: True, reopen=cannot_open
+    )
     assert cause.reason == "session-committed-unverified"
     assert cause.inner is not None
     assert cause.inner.reason == "library-directory-missing", (
@@ -1648,11 +1558,10 @@ def test_both_the_read_back_failure_and_a_live_rekordbox_travel_together(cfg, mo
     def cannot_open():
         raise refuse("database-open-failed", "held by something")
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.verify_commit(record, cfg, expect=lambda _db: True, reopen=cannot_open)
-
+    cause = _refusal(
+        session.verify_commit, record, cfg, expect=lambda _db: True, reopen=cannot_open
+    )
     chain = []
-    cause = excinfo.value.cause
     while cause is not None:
         chain.append(cause.reason)
         cause = cause.inner
@@ -1665,14 +1574,10 @@ def test_both_the_read_back_failure_and_a_live_rekordbox_travel_together(cfg, mo
 
 def test_an_unreadable_backup_fact_file_refuses_the_mint(cfg):
     """"Could not read" is never recorded as "nothing to show" (KTD18)."""
-    from cratekit.core import backup_facts
-
     damaged = backup_facts.path_for(cfg)
     damaged.parent.mkdir(parents=True, exist_ok=True)
     damaged.write_text("{ this is not json")
-    with pytest.raises(CratekitError) as excinfo:
-        acknowledge(cfg)
-    cause = excinfo.value.cause
+    cause = _refusal(acknowledge, cfg)
     assert cause.reason == "backup-facts-unreadable"
     assert cause.code is ExitCode.ACK_REQUIRED
     assert cause.remediation.remedy is Remedy.REPAIR_BACKUP_FACTS
@@ -1686,8 +1591,6 @@ def test_an_unreadable_backup_fact_file_refuses_the_mint(cfg):
 def test_a_fact_file_this_account_may_not_open_asks_for_access_not_for_repair(cfg):
     """A permission failure asks for access, not repair, driven through
     ``read_facts`` with the precondition asserted, not assumed."""
-    from cratekit.core import backup_facts
-
     locked = backup_facts.path_for(cfg)
     locked.parent.mkdir(parents=True, exist_ok=True)
     locked.write_text("{}")
@@ -1696,12 +1599,10 @@ def test_a_fact_file_this_account_may_not_open_asks_for_access_not_for_repair(cf
         with pytest.raises(PermissionError):
             locked.read_bytes()
 
-        with pytest.raises(CratekitError) as excinfo:
-            acknowledge(cfg)
+        cause = _refusal(acknowledge, cfg)
     finally:
         locked.chmod(0o600)
 
-    cause = excinfo.value.cause
     assert cause.reason == "backup-facts-unreadable"
     assert cause.code is ExitCode.ACK_REQUIRED
     assert cause.remediation.remedy is Remedy.GRANT_PATH_ACCESS, (
@@ -1713,17 +1614,13 @@ def test_a_fact_file_this_account_may_not_open_asks_for_access_not_for_repair(cf
 
 def test_a_fact_file_from_a_newer_build_asks_for_an_upgrade(cfg):
     """The third remedy ``read_facts`` raises travels the same way."""
-    from cratekit.core import backup_facts
-
     newer = backup_facts.path_for(cfg)
     newer.parent.mkdir(parents=True, exist_ok=True)
     newer.write_text(
         json.dumps({"schema_version": backup_facts.SCHEMA_VERSION + 1, "portions": {}})
     )
-    with pytest.raises(CratekitError) as excinfo:
-        acknowledge(cfg)
+    cause = _refusal(acknowledge, cfg)
 
-    cause = excinfo.value.cause
     assert cause.reason == "backup-facts-unreadable"
     assert cause.remediation.remedy is Remedy.UPGRADE_CRATEKIT
 
@@ -1734,14 +1631,11 @@ def test_the_analysis_watch_runs_even_when_the_session_body_refuses(cfg, tmp_pat
     written = _analysis_tree(tmp_path / "library")
     victim = written[0]
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            victim.write_bytes(b"a rewritten grid")
-            moved = victim.stat()
-            os.utime(victim, ns=(moved.st_atime_ns, moved.st_mtime_ns + 10**9))
-            raise refuse("refused-by-policy", "the smoke test failed")
+    def rewrite_then_refuse():
+        _rewrite(victim, b"a rewritten grid")
+        _smoke_test_fails()
 
-    cause = excinfo.value.cause
+    cause = _drift_refusal(tmp_path, rewrite_then_refuse)
     assert cause.reason == "anlz-modified", (
         "the body's refusal hid a moved beat grid, which is the one rule the "
         "project calls inviolable"
@@ -1754,20 +1648,15 @@ def test_the_analysis_watch_runs_even_when_the_session_body_refuses(cfg, tmp_pat
 def test_a_body_that_refuses_with_no_drift_keeps_its_own_refusal(cfg, tmp_path):
     """P7. The watch must not rewrite a refusal it has nothing to say about."""
     _analysis_tree(tmp_path / "library")
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            raise refuse("refused-by-policy", "the smoke test failed")
-    assert excinfo.value.cause.reason == "refused-by-policy"
+    assert _drift_refusal(tmp_path, _smoke_test_fails).reason == "refused-by-policy"
 
 
 def test_an_appearing_analysis_file_refuses_too(cfg, tmp_path):
     """An appearing analysis file is the third kind of drift."""
     _analysis_tree(tmp_path / "library")
     fresh = tmp_path / "library" / "PIONEER" / "USBANLZ" / "one" / "ANLZ0002.DAT"
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            fresh.write_bytes(b"analysed mid session")
-    assert excinfo.value.cause.detail["changed"] == [f"{fresh} appeared"]
+    cause = _drift_refusal(tmp_path, lambda: fresh.write_bytes(b"analysed mid session"))
+    assert cause.detail["changed"] == [f"{fresh} appeared"]
 
 
 def test_a_rewrite_inside_one_tick_of_the_clock_is_caught_by_the_size(cfg, tmp_path):
@@ -1776,11 +1665,13 @@ def test_a_rewrite_inside_one_tick_of_the_clock_is_caught_by_the_size(cfg, tmp_p
     victim = written[3]
     original = victim.stat()
 
-    with pytest.raises(CratekitError) as excinfo:
-        with session.analysis_files_unmoved([tmp_path / "library"]):
-            victim.write_bytes(b"a rewritten grid, longer than what was there")
-            os.utime(victim, ns=(original.st_atime_ns, original.st_mtime_ns))
-    assert excinfo.value.cause.reason == "anlz-modified"
+    cause = _drift_refusal(
+        tmp_path,
+        lambda: _rewrite(
+            victim, b"a rewritten grid, longer than what was there", mtime_ns=original.st_mtime_ns
+        ),
+    )
+    assert cause.reason == "anlz-modified"
     assert victim.stat().st_mtime_ns == original.st_mtime_ns, "the mtime moved after all"
 
 
@@ -1791,16 +1682,13 @@ def test_a_live_holder_this_platform_will_not_describe_is_assumed_alive(cfg, mon
     monkeypatch.setattr(session, "process_started", lambda _pid: session.UNKNOWN_IDENTITY)
     assert session.holder_alive(here) is True
 
-    with pytest.raises(CratekitError) as excinfo:
-        session.release_stale_lock(cfg, path=_lock_recording(cfg, here))
-    assert excinfo.value.cause.remediation.remedy is Remedy.WAIT_FOR_HOLDER
+    cause = _refusal(session.release_stale_lock, cfg, path=_lock_recording(cfg, here))
+    assert cause.remediation.remedy is Remedy.WAIT_FOR_HOLDER
 
 
 def test_a_holder_whose_process_is_gone_is_still_judged_dead(cfg):
     """A genuinely finished process is still judged dead, since only "no such
     process", not "will not say", clears a claim. Real probes, no stub."""
-    import subprocess
-
     finished = subprocess.Popen([sys.executable, "-c", "pass"])
     finished.wait()
     assert session.process_exists(finished.pid) is False
@@ -1844,10 +1732,9 @@ def test_the_terminal_probe_the_mint_uses_by_default_is_the_real_one(cfg, monkey
         return False
 
     monkeypatch.setattr(session, "has_controlling_terminal", probe)
-    with pytest.raises(CratekitError) as excinfo:
-        session.record_acknowledgment(cfg)
+    cause = _refusal(session.record_acknowledgment, cfg)
     assert asked, "the mint did not consult the real probe"
-    assert excinfo.value.cause.reason == "backup-acknowledgment-no-terminal"
+    assert cause.reason == "backup-acknowledgment-no-terminal"
 
 
 def test_the_real_terminal_probe_answers_no_when_there_is_no_terminal(monkeypatch):
@@ -1859,23 +1746,22 @@ def test_the_real_terminal_probe_answers_no_when_there_is_no_terminal(monkeypatc
 def test_the_volume_is_judged_before_a_restore_resolves_its_target(cfg, tmp_path):
     """``plan_restore`` judges the volume first, since resolving a path against the
     wrong volume is already the damage."""
-    with pytest.raises(CratekitError) as excinfo:
-        backup.plan_restore(
+    cause = _refusal(
+        backup.plan_restore,
+        cfg,
+        target=tmp_path / "a-target-that-does-not-exist",
+        confirmed=True,
+        snapshot="2026-08-01T000000Z",
+        runner=lambda command: (_ for _ in ()).throw(AssertionError("the remote was read")),
+        process_lister=lambda: (),
+        gates=lambda: session.assert_gates(
             cfg,
-            target=tmp_path / "a-target-that-does-not-exist",
-            confirmed=True,
-            snapshot="2026-08-01T000000Z",
-            runner=lambda command: (_ for _ in ()).throw(AssertionError("the remote was read")),
-            process_lister=lambda: (),
-            gates=lambda: session.assert_gates(
-                cfg,
-                workflow=backup.RESTORE_WORKFLOW,
-                intent=session.Intent.RECOVERY,
-                identity_provider=foreign_identity,
-                mount_enumerator=lambda: (),
-            ),
-        )
-    cause = excinfo.value.cause
+            workflow=backup.RESTORE_WORKFLOW,
+            intent=session.Intent.RECOVERY,
+            identity_provider=foreign_identity,
+            mount_enumerator=lambda: (),
+        ),
+    )
     assert cause.code is ExitCode.LIBRARY_UNAVAILABLE
     assert cause.reason == "library-volume-mismatch", (
         "a restore reached its own target check before the volume gate"
@@ -1909,19 +1795,16 @@ def test_a_gate_refused_restore_deletes_nothing_and_transfers_nothing(
         invoked.append(command)
         return backup.CommandResult(returncode=0)
 
-    with pytest.raises(CratekitError) as excinfo:
-        backup.run_restore(plan, cfg, runner=recorder, dry_run=False)
+    cause = _refusal(backup.run_restore, plan, cfg, runner=recorder, dry_run=False)
 
-    assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
+    assert cause.code is ExitCode.ACK_REQUIRED
     assert invoked == [], "a refused restore ran a transfer"
     for sidecar in sidecars:
         assert sidecar.exists(), f"a refused restore unlinked {sidecar.name}"
         assert sidecar.read_bytes() == b"the live write-ahead log"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The record a gated session keeps (R-12, R-375)
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def recording_gates(cfg, **overrides):
@@ -2047,9 +1930,7 @@ def test_the_sweep_ends_only_the_orphans_it_was_shown(cfg):
 
 def test_a_refused_gate_keeps_no_record(cfg):
     """No acknowledgment is minted, so the gates refuse, and a refusal writes nothing."""
-    with pytest.raises(CratekitError):
-        with recording_gates(cfg):
-            raise AssertionError("the gates admitted a session they should have refused")
+    _refusal_entering(recording_gates, cfg)
     assert session.records(cfg) == ()
 
 
@@ -2162,8 +2043,6 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
     Unattributable spellings are returned, not passed. The shared function's own
     body is not a taker.
     """
-    import ast
-
     takers: dict[str, set[str]] = {}
     unreadable: list[str] = []
     for path in sorted(src.rglob("*.py")):
@@ -2253,6 +2132,8 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         "intake/refill.py::apply_refill",
         # U166, the INBOX / Analyze clear.
         "intake/analyzed.py::apply_clear",
+        # U327, a landed title given rekordbox's key and tempo.
+        "analysis/head_adopt.py::apply_adopt",
         # U121, a landed set's permanent playlist.
         "intake/set_playlist.py::apply_alone",
         # U154, the shelve.
@@ -2359,7 +2240,6 @@ def test_the_capture_guard_reads_a_writer_that_takes_its_capture_through_the_sha
 
 def test_the_shared_capture_attaches_before_it_judges(cfg, monkeypatch):
     """The shared capture attaches before it judges and is ``src``'s only capture."""
-    import ast
     from types import SimpleNamespace
 
     from cratekit.write import trees
@@ -2413,8 +2293,6 @@ def test_the_shared_capture_attaches_before_it_judges(cfg, monkeypatch):
 
 def test_each_commit_helper_records_the_commit():
     """The helpers the guard accepts by name really do make the call."""
-    import ast
-
     src = Path(session.__file__).resolve().parents[1]
     for relative, helper in (
         ("write/trees.py", "_record_membership_commit"),

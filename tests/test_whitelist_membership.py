@@ -62,6 +62,7 @@ def test_every_metadata_operation_declares_exactly_its_field_and_mode():
         "pad-camelot": {"Title": OWNED},
         "retag-genre": {"GenreID": OWNED},
         "rating-backfill": {"Rating": FILL_IF_EMPTY},
+        "adopt-rekordbox-head": {"Title": OWNED},
     }
 
 

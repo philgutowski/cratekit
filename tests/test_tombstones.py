@@ -11,9 +11,9 @@ import unicodedata
 import pytest
 
 from cratekit.core import config, review, tombstone
-from cratekit.core.cause import CratekitError
 from cratekit.deletion import library, stores
 from tests.test_config import valid_data
+from tests.test_restore import _refusal
 
 ARTIST = "A Synthesized Artist"
 ORIGINAL = "A Synthesized Title"
@@ -88,9 +88,8 @@ def test_punctuation_is_not_folded():
 
 def test_an_identity_with_neither_field_refuses():
     """An empty identity hashes to one value, so one deletion would suppress all."""
-    with pytest.raises(CratekitError) as excinfo:
-        tombstone.version_identity(artist="", title="   ")
-    assert excinfo.value.cause.reason == "review-selection-invalid"
+    cause = _refusal(tombstone.version_identity, artist="", title="   ")
+    assert cause.reason == "review-selection-invalid"
 
 
 def test_the_field_set_never_varies_with_the_input():
@@ -181,9 +180,8 @@ def test_an_unreadable_store_refuses_rather_than_reporting_nothing_suppressed(cf
     stores.record_tombstone(cfg, _row(), actor="cli")
     path = config.state_path(tombstone.STORE_KEY, cfg)
     config.atomic_write_bytes(b'{"version": 1, "store": "tombstones"}\n', path)
-    with pytest.raises(CratekitError) as excinfo:
-        stores.suppressed_version(cfg, artist=ARTIST, title=ORIGINAL)
-    assert excinfo.value.cause.reason == "review-file-unusable"
+    cause = _refusal(stores.suppressed_version, cfg, artist=ARTIST, title=ORIGINAL)
+    assert cause.reason == "review-file-unusable"
 
 
 def test_both_stores_are_declared_state_and_roll_back_with_the_database():
