@@ -4487,3 +4487,211 @@ another tree. Reachability is unmeasured beyond that one candidate.
 **Closes when:** the check leaves a playlist signal class out of the newly
 compared playlists on any tree `with_favorites` does not derive. Ledger only:
 no producer reached.
+
+---
+
+## R-1995. A clock stepping back between a removal's plan and its stamp refuses the removal as an unplanned write
+
+**Found:** at review round one of #1002, U955, 2026-11-23.
+
+**The mechanism.** `DatabaseReading.read_at` is the plan's time, read when
+`CollectionRemoval.prepare` reads the database, and the renumbering's
+`updated_at` stamp is read from the same clock at the commit.
+`_stamp_after_plan` refuses a stamp earlier than the plan, so a system clock
+stepped back between the two (an NTP correction, a manual change) refuses
+the whole removal with `whitelist-violation`, "reached rows it did not plan",
+nothing written, and a remedy of changing policy or input where waiting and
+running again is the answer.
+
+**Measured cost.** Driven by the reviewer with `rb_removal._now` patched to
+run 5 ms backward per call: exit 42, nothing written, the message above. The
+producer, a real clock step inside one apply, was not driven. Nothing is
+lost: the verb can be run again.
+
+**Closes when:** the refusal names the clock and is retryable, or the check
+is dropped in favour of the row moving to the stamp's text alone. Ledger
+only: a misleading refusal over nothing lost, on an input not driven.
+
+---
+
+## R-1996. A removal gives every renumbered row one count, the final one, and rekordbox was read on one row of one playlist
+
+**Found:** at review round one of #1002, U955, 2026-11-23.
+
+**The mechanism.** `CollectionRemoval.commit` stamps every membership row it
+renumbers, in every playlist and for every removed track, with one
+`rb_local_usn`, the removal's final `localUpdateCount`, and one `updated_at`.
+A202 at sitting 104 read rekordbox 7.2.19's own Remove from Collection on one
+moved row in one playlist, whose count equalled the final count. That fits
+both one count on every moved row and successive counts ending at the final
+one, and nothing measured several moved rows, several playlists or several
+removed tracks at once. The confinement admits only the shape this product
+writes.
+
+**Measured cost.** Not driven against rekordbox, which no cloud session may
+open. Driven through the verb on the `one_offered` fixture: 7 rows in 3
+playlists moved, all holding the one final count. If rekordbox numbers them
+apart, the library differs from rekordbox's own state in the count of rows
+rekordbox itself does not read for playback.
+
+**Closes when:** an attended sitting reads rekordbox's removal of one track
+with two survivors after it on each of two playlists, column by column on two
+dated copies, and the stamp rule is kept or changed to match. Ledger only: it
+closes only at an attended sitting.
+
+---
+
+## R-1997. A row leaving a former place keeps the with vox and Favorites of the folder that holds the place
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** `adopt/move.py` `alongside_left` reads the places beside the band of the bucket being left, in that bucket's own folder. A former place (R-797) sits in another bucket's folder (NonElectronic), so a row `tag set` moves out of the declaring bucket leaves the former place but keeps the holding folder's `with vox` and Favorites.
+
+**Measured cost.** Driven in review round one on a seeded row in NonElectronic / Soul / R&B with `with vox` and Favorites there, given Deep House by `tag set`, then `adopt move`: it ended in Deep House / High and still in NonElectronic / with vox and Favorites. The seeded state needs a filing made before the former place was declared, which was not driven.
+
+**Closes when:** the holding folder's places beside the band are read for a row leaving a former place and left with it, Favorites under the same keep rule, with the seeded drive as its test.
+
+---
+
+## R-1998. A genre move entry for a folder the row held nothing in stays recorded, so a later hand placement there is planned out
+
+**Found:** at the review of #1007, R-1965, round two, 2026-11-23.
+
+**The mechanism.** `adopt/move_cli.py` `handle` spends a genre move only through a move across buckets that names the recorded bucket and reads back moved. A bucket recorded by `tag set` that the row holds nothing in by the time of the move (R&B to Soul, then Soul to Deep House) plans no move there, so its entry stays; a track a person later puts in that folder by hand is then planned out of it, against GUIDE's "left where it is". The path is U339's.
+
+**Measured cost.** Driven in review round two by verbs up to the hand placement: after the move the entry read `{mover: {soul}}`, and with the row put in Soul High by hand `adopt move` showed a move taking it out. The gate shows it before anything is written; the hand placement was made through the writer, not rekordbox.
+
+**Closes when:** the move spends a recorded bucket the row holds nothing in, as the plan reads it, with the verb chain above as its test.
+
+---
+
+## R-1999. A renamed with vox or Favorites in the old genre folder now lists the whole move across folders instead of moving the band
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** `adopt/move.py` `moved_out_of` folds a place beside the band held under another name only (`holds_alongside_unnamed`) into the move's `unnamed`, so the whole move is listed under `held-under-another-name` with the band in `holds`, where main moved the band and left the renamed playlist unmentioned. The writer finds a playlist by its declared name, so it could not remove the renamed one; listing says so rather than moving half.
+
+**Measured cost.** At the engine only (`test_a_derived_class_held_under_another_name_only_is_listed_never_moved`); the reader path through a renamed playlist with a recorded node was not driven end to end. The row stays in both folders' bands until the playlist's name is put back, and the gate names it with its reason; GUIDE says so.
+
+**Closes when:** a renamed place beside the band is either found through its recorded node by the writer, or left behind with the band moved and the leftover named, with a dispatcher drive as its test.
+
+---
+
+## R-2000. A band the new genre's bucket settles but lists rather than moves still lets the old folder's with vox and Favorites go
+
+**Found:** at the review of #1007, R-1965, round two, 2026-11-23.
+
+**The mechanism.** `adopt/move.py` `leaving_moved` counts a place settled in the other bucket (`settled_in_the_other_bucket`) as left for the Favorites rule, on the ground that the bucket the entry claims takes it out in the same job. Where that bucket's `standing` lists the track instead (no reading, or the band held under another name only), the move out of the old folder still removes its `with vox` and Favorites while the track stays in the old folder's band.
+
+**Measured cost.** Driven in review round two on a seeded state: an R&B row with no energy tag in R&B High, with vox, Favorites and Soul Low, given Soul by `tag set`, then `adopt apply` and `adopt move`. It ended in R&B High, Soul Low and Soul Unsorted with the entry spent; `favorites refresh` then planned putting R&B's Favorites back. The seeded mix of an R&B band and a Soul band was not produced by a verb.
+
+**Closes when:** a settled place counts as left only when the claiming bucket's standing is a move removing it, asked through the same plan pass, with the seeded drive as its test.
+
+---
+
+## R-2001. A Soul row still in an R&B band, given a third genre by tag set, is recorded as leaving Soul and the move neither moves nor lists it
+
+**Found:** at the review of #1007, R-1965, round two, 2026-11-23.
+
+**The mechanism.** `tagging/genre_set.py` `_leaves` records the bucket the row's old genre names (Soul), while the row sits in the bucket that holds Soul's split place (R&B). `adopt move` asks Soul for that row, which holds nothing there, so it plans nothing and lists nothing, and the row stays in R&B beside its new folder. The path is U339's, untouched by R-1965.
+
+**Measured cost.** Driven in review round two on a seeded state (a Soul row in R&B High, with vox and Favorites, given Deep House): the answer said the move takes 1 row out, the plan was empty, and the row stayed in R&B with the entry recorded for Soul. The one verb chain tried does not produce the state; `tag retag` and `tag remap` were not driven. Not measured on main.
+
+**Closes when:** `_leaves` records the bucket the tree actually holds the row in (the split place's holder too), with the seeded drive as its test.
+
+---
+
+## R-2002. Rows adopt move took out of a genre folder before R-1965 landed keep that folder's with vox and Favorites, unlisted
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** A row `tag set` moved and `adopt move` moved on main between U339 and R-1965 had its genre move entry spent (`adopt/genre_moves.py` `discharge`) once its band read back moved, leaving its old folder's `with vox` and Favorites. With the entry spent, the fixed move never asks that folder again, and nothing else lists the leftover.
+
+**Measured cost.** Driven in review round one on a state built by hand to main's documented end state: the leftovers stay and nothing lists them. Whether Phillip's library holds such rows is unmeasured; the run's answer on main told the person to remove them in rekordbox, so nothing false was said.
+
+**Closes when:** a sitting reads whether any row sits in a genre folder's `with vox` or Favorites with no band of that folder (or `converge`'s unexpected list names them), and either they are removed in rekordbox or a one time verb plans them out.
+
+---
+
+## R-2003. tag set records no folder a row holds only through with vox, Favorites or a genre sub, so adopt move never asks it
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** `tagging/genre_set.py` `_leaves` records a genre folder as left only when the row holds a competing sub there (`Placements.holds`), while the move across genre folders (`adopt/move.py` `leaving_moved`) now also leaves the places beside the band, `with vox`, Favorites and a genre sub. A row whose band in its old folder was taken out by hand, but which still sits in that folder's `with vox` or Favorites, is never recorded by `tag set`, so `adopt move` plans and lists nothing for it.
+
+**Measured cost.** Driven in review round one with the band removed by `rb_writer.remove_memberships` by hand, not by a verb, before `tag set`: the row ended in both folders' `with vox` and Favorites, `adopt move` planned and listed nothing, and `converge` read matching. No verb was driven that produces the state, so reachability is unmeasured. When the band goes after `tag set` recorded the entry, the move is correct (driven).
+
+**Closes when:** `_leaves` asks the same places the move leaves (`holds` and `holds_alongside`, through one predicate the move shares), with a test that records and moves such a row.
+
+---
+
+## R-2004. A held sync removed read trusts the provider to serve a playlist's current tracks half an hour after its stamp moves, and a change that keeps the count past that is held for six hours
+
+**Found:** at the review of #1010, R-1716, round two, 2026-11-23.
+
+**The mechanism.** `sync/removed_kept.py` holds a synced playlist's read
+only when it holds as many tracks as the account's listing counts and the
+listing's last updated stamp is at least `SETTLED` (30 minutes) older than
+the read, and reuses it for `HELD_FOR` (6 hours) while the listing shows the
+same count and stamp. A change that keeps the count (a swap of one track for
+another) whose old tracks the provider still serves more than 30 minutes
+after the stamp moved is read old, held, and answers every run for six
+hours. Round two drove it on a stand in: the listing current, the rows old,
+the stamp 31 minutes back; New1, swapped onto another synced playlist, was
+offered for removal from the collection until the hold ended, where a fresh
+read keeps it.
+
+**Measured cost.** Not driven against the provider. The one measured lag is
+sitting 86's, a paged read serving a playlist's old order for at least 13
+minutes after a move (`docs/cutover.md`); a removal showed none at sitting
+101. A lag on a swap or an add, or one past 30 minutes, has not been
+measured, nor the spelling of `lastUpdated` the live listing sends (with no
+zone it marks nothing and nothing is ever held, which costs calls only).
+
+**Closes when:** an attended sitting measures how long the provider serves a
+playlist's old tracks after a swap and an add, and what `lastUpdated` the
+account listing sends, and `SETTLED` is set from that; or the read compares
+the opened playlist's own count and stamp with the listing's before it is
+held. Ledger only: the input was not produced, and the attended card filed
+with #1010 measures it.
+
+---
+
+## R-2005. A synced playlist that lists one track twice is never held by sync removed, so every run reads it again
+
+**Found:** at the review of #1010, R-1716, round two, 2026-11-23.
+
+**The mechanism.** `SyncedReads.keep` holds a read only when
+`len(listing.refs)` equals the account listing's track count. The reader
+builds the playlist's order with one entry per id, so a playlist holding one
+track twice reads one ref fewer than the provider counts, and is read again
+on every run.
+
+**Measured cost.** Calls only, no wrong answer. Driven in review round two:
+a playlist of three rows over two ids was asked on four of four commands and
+never held; with 20 such among 60 synced playlists at 3 calls each, the runs
+spent 183, 63 and 63 calls. How many of the live account's synced playlists
+repeat a track is not measured.
+
+**Closes when:** the read carries its row count beside its distinct ids and
+the guard compares that, with a test of a playlist listing a track twice
+held. Ledger only.
+
+---
+
+## R-2006. The held reads' flush interval kills no test, since the one test of it reads the interval from the symbol
+
+**Found:** at the mutation table of #1010, R-1716, 2026-11-23.
+
+**The mechanism.** `sync/removed_kept.py` writes the held reads every
+`FLUSH_EVERY` (50) changes and on the way out. Row K19 of
+`docs/mutation/r1716.md`, `FLUSH_EVERY` at 500, killed none of 22,995: the
+test of the interval counts to `FLUSH_EVERY` itself, and every verb test
+ends its run, which writes the store on the way out.
+
+**Measured cost.** None to a person: the interval bounds what a killed
+process loses, at most that many reads to be read again, and the way out
+writes the rest. Maintainer facing.
+
+**Closes when:** a test pins the interval at 50 by number, or holds that a
+process killed after 60 new reads leaves at least 50 written. Ledger only.

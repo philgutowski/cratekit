@@ -26,6 +26,7 @@ import re
 import time
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping
+from datetime import datetime
 from typing import Any
 
 # Imported at module top, since ``catalogue.bound`` asks whether this module
@@ -247,6 +248,20 @@ def _credited_ids(release: Any) -> tuple[str, ...]:
     credited = getattr(release, "artists", None) or ()
     ids = (str(getattr(artist, "id", "") or "") for artist in credited)
     return tuple(identity for identity in ids if identity)
+
+
+def _stamp(value: Any) -> str | None:
+    """The client's last updated stamp of a listed playlist as text, ``None`` when it gave none (R-1716).
+
+    The client parses the listing's ``lastUpdated`` into a ``datetime``; read
+    only as a mark that moves when the playlist is written, so never compared
+    by order, and anything else reads as no stamp.
+    """
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
 
 
 class TidalCatalogue:
@@ -642,6 +657,7 @@ class TidalCatalogue:
                     playlist_id=identity,
                     name=str(getattr(playlist, "name", "") or ""),
                     tracks=count if isinstance(count, int) and not isinstance(count, bool) else None,
+                    updated=_stamp(getattr(playlist, "last_updated", None)),
                 )
             )
         return tuple(own)

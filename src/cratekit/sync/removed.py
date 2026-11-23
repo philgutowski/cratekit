@@ -80,6 +80,7 @@ from cratekit.write import trees
 
 if TYPE_CHECKING:
     from cratekit.label import catalogue
+    from cratekit.sync.removed_kept import SyncedReads
 
 #: The three answers a row can get.
 OFFERED = "offered"
@@ -597,14 +598,27 @@ def read_account(
     sightings: Mapping[str, unavailable.Sighting] | None = None,
     moment: datetime | None = None,
     names: Mapping[str, str] | None = None,
+    kept: SyncedReads | None = None,
 ) -> dict[str, Listing]:
-    """Each playlist in ``wanted`` read once, against the account's listing read once."""
-    return {
-        account: read_one(
+    """Each playlist in ``wanted`` read once, against the account's listing read once.
+
+    ``kept`` (R-1716) answers a playlist the account lists unchanged since a
+    run read it whole, and keeps each read made now AS IT GOES, so a run the
+    call ceiling stops part way keeps what it read.
+    """
+    reads: dict[str, Listing] = {}
+    for account in dict.fromkeys(wanted):
+        shown = listed.get(account)
+        held = kept.get(account, shown) if kept is not None else None
+        if held is not None:
+            reads[account] = held
+            continue
+        reads[account] = read_one(
             found, account, listed, recorded, sightings=sightings, moment=moment, names=names
         )
-        for account in dict.fromkeys(wanted)
-    }
+        if kept is not None:
+            kept.keep(account, shown, reads[account])
+    return reads
 
 
 def noted(reads: Mapping[str, Listing]) -> dict[str, unavailable.Sighting | None]:
@@ -899,7 +913,8 @@ def apply_removed(
 
     WHAT IS WRITTEN IS REKORDBOX'S OWN REMOVE FROM COLLECTION (A178, A185): each
     offered row and its rows in the six tables beside it, deleted outright, and
-    later playlist members renumbered by ``TrackNo`` alone (A197, R-1830); history
+    later playlist members renumbered, each moved row's ``TrackNo``, ``rb_local_usn``
+    and ``updated_at`` written as rekordbox writes them (A197, R-1830, A202, U955); history
     keeps its numbers, being unmeasured. A row any other table names refuses the
     apply. Never a file or a beat grid; orphan artist and album rows are left
     for rekordbox's next removal.
