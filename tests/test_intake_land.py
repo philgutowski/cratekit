@@ -27,8 +27,8 @@ from cratekit.core import config, session, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import batch_name, land_cli, landing, native
-from tests._containers import synth_container
 from tests.test_config import valid_data
+from tests.test_intake_land_native import silence as silence  # noqa: PLC0414 - synthesised once
 from tests.xml_fixtures import _fresh_xml
 
 GATE = "intake.land.confirm"
@@ -52,12 +52,6 @@ def cfg(tmp_path: Path) -> config.Config:
     config.reset_cache()
     return built
 
-
-@pytest.fixture
-def silence(tmp_path: Path) -> Path:
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    return synth_container(scratch, ".flac")
 
 
 @pytest.fixture
