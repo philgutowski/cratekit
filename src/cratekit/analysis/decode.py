@@ -170,6 +170,40 @@ def duration(path: Any) -> float:
     return native.shape[-1] / float(native_rate)
 
 
+def centred(path: Any, rate: int, seconds: float) -> tuple[Any, int]:
+    """The central ``seconds`` of ``path``, mono at ``rate``, as the energy measure reads them.
+
+    The length as :func:`duration` reads it, then the window as :func:`load`
+    cuts it, sample for sample; but a file only ffmpeg reads is DECODED ONCE
+    and cut here, where the two calls decoded it whole twice (R-1556, U344). A
+    length libsndfile cannot give for a file it opens is no length, so the
+    window starts at the top, as the measure always read it.
+    """
+    import librosa
+
+    try:
+        length = float(librosa.get_duration(path=str(path)))
+    except Exception:
+        try:
+            whole = not libsndfile_opens(path)
+        except Exception:
+            # Not asked, so read as the measure read a length it could not get.
+            whole = False
+        if not whole:
+            length = 0.0
+        else:
+            native, native_rate = _ffmpeg_samples(path)
+            offset = _centre(native.shape[-1] / float(native_rate), seconds)
+            window = _window(native, native_rate, offset=offset, duration=seconds)
+            return _mono_at(librosa, window, native_rate, rate), rate
+    return load(path, rate, offset=_centre(length, seconds), duration=seconds)
+
+
+def _centre(length: float, seconds: float) -> float:
+    """Where a window of ``seconds`` starts so it sits in the middle of ``length``."""
+    return (length - seconds) / 2.0 if length > seconds else 0.0
+
+
 def libsndfile_opens(path: Any) -> bool:
     """Whether libsndfile reads the header of ``path``: if not, ffmpeg decodes it."""
     import soundfile

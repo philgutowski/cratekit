@@ -52,7 +52,6 @@ import tempfile
 import tomllib
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -213,6 +212,7 @@ from cratekit.core.config_validate import (
 from cratekit.core.config_validate import (
     recognition_host_problem as recognition_host_problem,
 )
+from cratekit.core.exit_codes import Remedy as Remedy
 from cratekit.core.state_files import (
     _LIBRARY_SUBDIR_BY_ROLE as _LIBRARY_SUBDIR_BY_ROLE,
 )
@@ -253,21 +253,10 @@ except ImportError:  # pragma: no cover - Windows has no fcntl
 
 # Failure vocabulary: one type per remediation, so no caller parses a message
 # (KTD25).
-
-
-class Remedy(StrEnum):
-    """What to do about a configuration failure, as a token rather than a command.
-
-    D2: no foundation module holds the text a user types; only the CLI renders
-    a token into a command. Part of the vocabulary U5 owns (S4).
-    """
-
-    RUN_SETUP = "run-setup"
-    REPAIR_CONFIG_FILE = "repair-config-file"
-    UPGRADE_CRATEKIT = "upgrade-cratekit"
-    FIX_CONFIG_VALUES = "fix-config-values"
-    RETRY_WHEN_UNLOCKED = "retry-when-unlocked"
-    RECORD_REKORDBOX_PIN = "record-rekordbox-pin"
+#
+# ``Remedy`` is the canonical ``exit_codes.Remedy``, imported above: the six
+# tokens a configuration failure names are declared there once (U329). D2
+# holds, since a token is never the command a user types; only the CLI renders it.
 
 
 class RemediedError(Exception):

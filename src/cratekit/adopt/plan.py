@@ -792,20 +792,22 @@ def build_adoption_plan(
     return AdoptionPlan(tree, tuple(entries), collisions, placements, vocals)
 
 
-def _second_sub(declared: taxonomy.Taxonomy, track: ScannedTrack) -> str:
+def _second_sub(declared: taxonomy.Taxonomy, track: ScannedTrack) -> str | None:
     """The sub of a routed track's second genre folder, or nothing (U340).
 
     By the same rules as its first entry, with the second genre's word: its
-    own band from the one energy reading. NOTHING when the census named no
-    second bucket, the track does not route by its first genre, or the second
-    bucket declares no place for the reading, since such an entry would file
-    nothing. The entry built on it has its own competing place and its own
-    vocal place, and each of the two entries keeps a split place the other's
-    bucket holds (:func:`kept_beside`).
+    own band from the one energy reading. EMPTY when the census named no
+    second bucket or the track does not route by its first genre, and None
+    when the second bucket declares no place for the reading; the one caller
+    reads both as no second entry, since such an entry would file nothing
+    (R-1950 removed an ``or ""`` that changed nothing any input reaches). The
+    entry built on it has its own competing place and its own vocal place, and
+    each of the two entries keeps a split place the other's bucket holds
+    (:func:`kept_beside`).
     """
     if track.disposition is not Disposition.ROUTE or not track.second_bucket:
         return ""
-    return _sub_for(declared, track.second_bucket, track.second_genre, track.energy) or ""
+    return _sub_for(declared, track.second_bucket, track.second_genre, track.energy)
 
 
 def _destined(

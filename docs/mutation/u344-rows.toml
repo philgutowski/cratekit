@@ -1,0 +1,246 @@
+name = "u344"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_head_bypasses_restamp_measure"
+description = "energy_from_path: measure through features_from_path directly, not the restamp's energy.measure, so a bound extractor is not the head's"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_analysis_warm.py", "tests/test_energy_one_measure_librosa.py", "tests/test_analysis_ahead.py"]
+old = '''    features = energy.measure(Path(path))
+'''
+new = '''    features = energy.features_from_path(Path(path))
+'''
+
+[[rows]]
+id = "M2_head_measures_uncalibrated"
+description = "energy_from_path: drop the no calibration answer, so an uncalibrated head measures and raises"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_analysis_warm.py", "tests/test_energy_one_measure_librosa.py", "tests/test_analysis_ahead.py"]
+old = '''    if calibration is None:
+        return None, energy.STATUS_UNCALIBRATED
+    features = energy.measure(Path(path))'''
+new = '''    features = energy.measure(Path(path))'''
+
+[[rows]]
+id = "M3_head_unavailable_reads_calibrated"
+description = "energy_from_path: name a level the features could not give as calibrated"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_analysis_warm.py", "tests/test_energy_one_measure_librosa.py", "tests/test_analysis_ahead.py"]
+old = '''    if features is None:
+        return None, energy.STATUS_FEATURES_UNAVAILABLE
+    return energy.level_for'''
+new = '''    if features is None:
+        return None, energy.STATUS_CALIBRATED
+    return energy.level_for'''
+
+[[rows]]
+id = "M4_fingerprint_means_only"
+description = "fingerprint: digest the means alone, so a refit of the cuts or the floor reads as the same calibration"
+file = "src/cratekit/analysis/energy.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_analysis_warm.py", "tests/test_energy_one_measure_librosa.py", "tests/test_analysis_ahead.py"]
+old = '''    text = json.dumps(dict(mapping), sort_keys=True, separators=(",", ":"))'''
+new = '''    text = json.dumps(dict(mapping).get("mean"), sort_keys=True, separators=(",", ":"))'''
+
+[[rows]]
+id = "M5_measure_not_warmed"
+description = "features_from_path: drop the warm up, so a process measuring energy first compiles differently from one that ran a head"
+file = "src/cratekit/analysis/energy.py"
+surface = "maintainer"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_analysis_warm.py", "tests/test_energy_one_measure_librosa.py", "tests/test_analysis_ahead.py"]
+old = '''    warm.kernels()
+    # THROUGH THE ONE DECODER (U263), which'''
+new = '''    # THROUGH THE ONE DECODER (U263), which'''
+
+[[rows]]
+id = "M6_warm_skips_file_measure"
+description = "warm up: measure energy from samples only, not from its file, leaving the restamp path's kernel to compile later"
+file = "src/cratekit/analysis/warm.py"
+surface = "maintainer"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_analysis_warm.py", "tests/test_energy_one_measure_librosa.py", "tests/test_analysis_ahead.py"]
+old = '''        energy.features_from_path(path)
+'''
+new = ''''''
+
+[[rows]]
+id = "M7_scored_under_settings_none"
+description = "_scored_under: record no calibration for the shipped detector's settings"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''        return None if held is None else energy.fingerprint(held)'''
+new = '''        return None'''
+
+[[rows]]
+id = "M8_scored_under_fallback_none"
+description = "_scored_under: record no calibration under a stand in detector"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    return None if active is None else energy.fingerprint(active)'''
+new = '''    return None'''
+
+[[rows]]
+id = "M9_slice_held_unread_after"
+description = "handle_run: call the slice held without reading its length after the write"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    held = measured and before is not None and slice_length(final) == before'''
+new = '''    held = measured and before is not None'''
+
+[[rows]]
+id = "M10_slice_held_none_equal"
+description = "handle_run: let two unread lengths count as one that held"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    held = measured and before is not None and slice_length(final) == before'''
+new = '''    held = measured and slice_length(final) == before'''
+
+[[rows]]
+id = "M11_centre_read_from_top"
+description = "centred: read a file libsndfile opens from its top, not its centre, so run and restamp measure different audio than they did"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_analysis_warm.py", "tests/test_energy_one_measure_librosa.py", "tests/test_analysis_ahead.py", "tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    return load(path, rate, offset=_centre(length, seconds), duration=seconds)'''
+new = '''    return load(path, rate, offset=0.0, duration=seconds)'''
+
+[[rows]]
+id = "M12_decoded_whole_unread"
+description = "slice_length: answer an ffmpeg decoded file as unread"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''            return DECODED_WHOLE'''
+new = '''            return None'''
+
+[[rows]]
+id = "M13_left_out_ignores_slice"
+description = "scored_in_pass: leave out a file whose slice moved with the run's write"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''            and report.get(SLICE_HELD) is True
+'''
+new = ''''''
+
+[[rows]]
+id = "M14_left_out_ignores_calibration"
+description = "scored_in_pass: leave out a file scored under another calibration"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''            and report.get(SCORED_UNDER) == active
+'''
+new = ''''''
+
+[[rows]]
+id = "M15_left_out_ignores_tag"
+description = "scored_in_pass: leave out a file whose energy tag moved since the run"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''        if level is not None and as_level(tags.read_tag(path, "energylevel")) == level:'''
+new = '''        if level is not None:'''
+
+[[rows]]
+id = "M16_any_verb_is_a_run"
+description = "scored_in_pass: take any finished job as the run"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    if run.handler_key != RUN_HANDLER_KEY or run.state is not jobs.JobState.SUCCEEDED:'''
+new = '''    if run.state is not jobs.JobState.SUCCEEDED:'''
+
+[[rows]]
+id = "M17_unfinished_run_counts"
+description = "scored_in_pass: take an unfinished run as the run"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    if run.handler_key != RUN_HANDLER_KEY or run.state is not jobs.JobState.SUCCEEDED:'''
+new = '''    if run.handler_key != RUN_HANDLER_KEY:'''
+
+[[rows]]
+id = "M18_any_folder_is_this_one"
+description = "scored_in_pass: take a run over another folder"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    if _folder_of(str(run.payload.get("folder") or "")) != folder:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M19_left_out_still_queued"
+description = "analyze_restamp: queue the files it left out as well"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''        items = [item for item in items if item not in left_out]'''
+new = '''        items = list(items)'''
+
+[[rows]]
+id = "M20_no_op_lost"
+description = "analyze_restamp: queue a job of no items when the run scored every file"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''        if not items:
+            return ctx.envelope(
+                data=no_job(ALL_SCORED'''
+new = '''        if False:
+            return ctx.envelope(
+                data=no_job(ALL_SCORED'''
+
+[[rows]]
+id = "M21_warning_off_payload"
+description = "analyze_restamp: keep the left out nothing warning off the payload, so the foreground loses it"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''            scored_by[PAYLOAD_LEFT_OUT_NOTHING] = why
+'''
+new = ''''''
+
+[[rows]]
+id = "M22_resume_drops_count"
+description = "_resume: leave what was left out off the restamp's answer"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_analysis_workers.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''            summary.update(left_out_of(job.payload))
+'''
+new = ''''''
+
+[[rows]]
+id = "M23_tail_never_passes_flag"
+description = "tail_step: never pass the run's job to the restamp"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_intake_land_native.py", "tests/test_sync_bandcamp.py"]
+old = '''    scored = [SCORED_BY_FLAG, chain.analyzed] if step == RESTAMP and chain.analyzed else []'''
+new = '''    scored = []'''
+
+[[rows]]
+id = "M24_tail_forgets_run"
+description = "tail_step: keep no run job on the chain"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_intake_land_native.py", "tests/test_sync_bandcamp.py"]
+old = '''        chain.analyzed = job.job_id'''
+new = '''        chain.analyzed = None'''
+
+[[rows]]
+id = "M25_tail_no_op_stops"
+description = "tail_step: read the restamp's all scored no op as nothing to queue, stopping the chain"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_restamp_scored_by.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_intake_land_native.py", "tests/test_sync_bandcamp.py"]
+old = '''        return
+    if envelope.get("outcome") == str(Outcome.NO_OP) or not job_id:'''
+new = '''    if envelope.get("outcome") == str(Outcome.NO_OP) or not job_id:'''
