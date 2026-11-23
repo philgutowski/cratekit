@@ -37,6 +37,7 @@ source = { table = "u140.json", id = "B6_mark_refusal_dropped" }
 description = "plan_rename retitles a playlist the archive marked"
 file = "src/cratekit/export/set_rename.py"
 surface = "user"
+moved = "Anchored where u309-replay-after-d.json replayed it: the same text, now in src/cratekit/export/set_rename.py, was in src/cratekit/export/set_cli.py"
 tests = ["tests/test_export_set_rename.py", "tests/test_set_inspiration_playlist.py"]
 old = '''
         if mark is not None:
@@ -406,6 +407,7 @@ source = { table = "u111-b.json", id = "B1_move_names_every_table" }
 description = "The membership move's commit admits the whole removable set again, the playlist table included"
 file = "src/cratekit/write/trees.py"
 surface = "user"
+moved = "Anchored where u302-replay-after-d.json replayed it: the removal commit is now in the step _remove_leavers, one level less indented, the same call"
 tests = ["tests/test_inbox_rotate.py", "tests/test_adopt_move.py"]
 old = '            rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))'
 new = '            rb_writer.commit_guarded(db, removals=rb_writer.REMOVABLE_TABLES)'
@@ -416,6 +418,7 @@ source = { table = "r777.json", id = "N15_any_pass" }
 description = "landings_of_pass counts a landing of another pass"
 file = "src/cratekit/intake/native_plan.py"
 surface = "user"
+moved = "Anchored where u307-replay-after-a.json replayed it: the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
 tests = ["tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_sync_mark.py"]
 old = '''
             and record.detail.get(PASS_KEY) == name
@@ -887,6 +890,7 @@ source = { table = "u127.json", id = "L7_land_warnings_unsaid" }
 description = "intake land gives no vox warning"
 file = "src/cratekit/intake/land_native.py"
 surface = "user"
+moved = "Anchored where u307-replay-after-b.json replayed it: the same text, now in src/cratekit/intake/land_native.py, was in src/cratekit/intake/land_cli.py"
 tests = ["tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_names.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_label_sync_go.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_unmark.py"]
 old = '    warnings.extend(vox_warnings(landed.collection))'
 new = '    warnings.extend([])'
@@ -1435,6 +1439,7 @@ source = { table = "u155.json", id = "W3_gate_column" }
 description = "_column: show a genre sub placement in the energy sub column, the round 1 defect"
 file = "src/cratekit/write/routing_export.py"
 surface = "user"
+moved = "Anchored where u302-replay-after-a.json replayed it: the same text, now in src/cratekit/write/routing_export.py, was in src/cratekit/write/routing_cli.py"
 tests = ["tests/test_intake_imported.py", "tests/test_routing_workers.py"]
 old = '''
     if routing.genre_sub_named(declared, placement.bucket, placement.sub):
@@ -1447,6 +1452,7 @@ source = { table = "u155.json", id = "W4_gate_count" }
 description = "_placed_counts: count no track as filed into a genre sub"
 file = "src/cratekit/write/routing_export.py"
 surface = "user"
+moved = "Anchored where u302-replay-after-a.json replayed it: the same text, now in src/cratekit/write/routing_export.py, was in src/cratekit/write/routing_cli.py"
 tests = ["tests/test_intake_imported.py", "tests/test_routing_workers.py"]
 old = '        "genre sub": sum(1 for item in tracks if item.get("genre")),'
 new = '        "genre sub": 0,'
@@ -1457,6 +1463,7 @@ source = { table = "u155.json", id = "W5_owed_once" }
 description = "_owed_ratings: count a row once per placement again, two for a vocal track"
 file = "src/cratekit/write/routing_export.py"
 surface = "user"
+moved = "Anchored where u302-replay-after-a.json replayed it: the same text, now in src/cratekit/write/routing_export.py, was in src/cratekit/write/routing_cli.py"
 tests = ["tests/test_intake_imported.py", "tests/test_routing_workers.py"]
 old = '''
         if placement.location in counted:
@@ -1469,6 +1476,7 @@ source = { table = "u155.json", id = "W7_export_item_genre" }
 description = "plan_export: carry an empty genre column on every item, the export gate hiding the second place"
 file = "src/cratekit/write/routing_export.py"
 surface = "user"
+moved = "Anchored where u302-replay-after-a.json replayed it: the same text, now in src/cratekit/write/routing_export.py, was in src/cratekit/write/routing_cli.py"
 tests = ["tests/test_intake_imported.py", "tests/test_routing_workers.py"]
 old = '''
             "vocal": vocal.get(key, ""),
@@ -1807,6 +1815,7 @@ source = { table = "r515-operator.json", id = "S10_intake_all_withheld_quiet" }
 description = "An intake playlist with every track withheld is a quiet no op"
 file = "src/cratekit/intake/cli.py"
 surface = "user"
+moved = "Anchored where u325-replay-after.json replayed it: Same no-tracks return in intake_playlist; U298 replaced the local _no_op with cli.output.no_job"
 tests = ["tests/test_intake_missing.py"]
 old = '''
         if not tracks:
@@ -2046,6 +2055,7 @@ source = { table = "u69-b.json", id = "M20_registry_schema" }
 description = "Declare the verb plan/1 in the registry, which the human renderer does not show"
 file = "src/cratekit/cli/registry.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged.json replayed it: U303 laid the registry out a keyword run per line and shortened its comments; intake.missing's schema is the same pair, swapped to plan the same way"
 tests = ["tests/test_intake_missing.py", "tests/test_cli_contract.py"]
 old = '''
         # the list's path and the download command (R-400).
@@ -2439,6 +2449,7 @@ source = { table = "u79-c.json", id = "C2_owned_row_searched" }
 description = "A row the library holds is counted missing and searched for"
 file = "src/cratekit/intake/missing_cli.py"
 surface = "user"
+moved = "Anchored where u325-replay-after.json replayed it: Same loop in _missing_for_list; U298 replaced its three state branches with a lookup in match_cli.SETTLED_WORDS, whose MATCHED entry is owned, so excluding owned sends a matched row to the missing branch, which is what disabling the MATCHED branch did"
 tests = ["tests/test_intake_missing_search.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing.py"]
 old = '''
         word = match_cli.SETTLED_WORDS.get(settled.state)

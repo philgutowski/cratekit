@@ -117,6 +117,7 @@ source = { table = "r658-c.json", id = "S4c_dataless_skip_returns" }
 description = "Composite for S4, run as its own table: put back a skip that refuses to read a dataless file, which only the scoped evicted stat can reach"
 file = "src/cratekit/adopt/revert_changed.py"
 surface = "user"
+moved = "Anchored where u310-replay-after-b.json replayed it: the same text, now in src/cratekit/adopt/revert_changed.py, was in src/cratekit/adopt/revert.py"
 tests = ["tests/test_adoption.py"]
 old = '''
     if recorded_size is not None and info.st_size != recorded_size:
@@ -139,6 +140,7 @@ source = { table = "u23-round-8-independent.json", id = "S1_size_of_always_none"
 description = "_size_of never answers, so every size shortcut on every path is disabled"
 file = "src/cratekit/adopt/revert_changed.py"
 surface = "maintainer"
+moved = "Anchored where u310-replay-after-b.json replayed it: the same text, now in src/cratekit/adopt/revert_changed.py, was in src/cratekit/adopt/revert.py"
 tests = ["tests/test_adoption.py"]
 old = '''
     try:
@@ -156,6 +158,7 @@ source = { table = "u23-round-8-independent.json", id = "X12_look_at_drops_the_r
 description = "A directory or a fifo at the recorded path reaches the hash"
 file = "src/cratekit/adopt/revert_changed.py"
 surface = "user"
+moved = "Anchored where u310-replay-after-b.json replayed it: the same text, now in src/cratekit/adopt/revert_changed.py, was in src/cratekit/adopt/revert.py"
 tests = ["tests/test_adoption.py"]
 old = '''
     if not stat_module.S_ISREG(info.st_mode):
@@ -169,6 +172,7 @@ source = { table = "u23-round-8-independent.json", id = "X13_look_at_drops_the_r
 description = "The prefetch reads a file whose size already rules the record out"
 file = "src/cratekit/adopt/revert_changed.py"
 surface = "maintainer"
+moved = "Anchored where u310-replay-after-b.json replayed it: the same text, now in src/cratekit/adopt/revert_changed.py, was in src/cratekit/adopt/revert.py"
 tests = ["tests/test_adoption.py"]
 old = '''
     if recorded_size is not None and info.st_size != recorded_size:
@@ -354,6 +358,7 @@ source = { table = "u192.json", id = "A2_restamp_queue_only_ignored" }
 description = "analyze_restamp: ignore --queue-only and drive the job"
 file = "src/cratekit/analysis/cli.py"
 surface = "user"
+moved = "Anchored where u325-replay-after.json replayed it: Same branch in analyze_restamp; U298 replaced the local _reported with core.jobs.reported"
 tests = ["tests/test_analysis_workers.py"]
 old = '''
         if foreground.queue_only(ctx.args):
@@ -596,6 +601,7 @@ source = { table = "u192.json", id = "A1_run_queue_only_ignored" }
 description = "analyze_run: ignore --queue-only and drive the job"
 file = "src/cratekit/analysis/cli.py"
 surface = "user"
+moved = "Anchored where u325-replay-after.json replayed it: Same branch in analyze_run; U298 replaced the local _reported with core.jobs.reported"
 tests = ["tests/test_analysis_workers.py", "tests/test_vocals_cli.py"]
 old = '''
         if foreground.queue_only(ctx.args):
@@ -860,6 +866,7 @@ source = { table = "u45-round-1.json", id = "H2_queueing_plans_first" }
 description = "Plan inside the handler, so queueing refuses on a machine with no rclone where the work would have run fine"
 file = "src/cratekit/backup/cli.py"
 surface = "user"
+moved = "Anchored where u325-replay-after.json replayed it: Same handler, backup_library; U298 replaced its private _load with cli.output.load_config, so the line the plan is inserted after is reworded and the insertion point is the same"
 tests = ["tests/test_backup_cli.py"]
 old = '''
     cfg = load_config(("backup.cli",))
@@ -1120,6 +1127,7 @@ source = { table = "u132.json", id = "D1_doctor_behind" }
 description = "Doctor reads a copy behind the shipped schema as OK"
 file = "src/cratekit/cli/doctor_library.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged6.json replayed it: the same text, now in src/cratekit/cli/doctor_library.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_backup_comparison.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_cutover_cli.py", "tests/test_doctor.py", "tests/test_incremental_sync.py", "tests/test_intake_imported.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_paths_resolved.py", "tests/test_routing_workers.py"]
 old = '''
     if not found.behind:
@@ -1134,6 +1142,7 @@ source = { table = "u132.json", id = "D2_doctor_defect" }
 description = "Doctor reports a shipped template defect as the copy not compared"
 file = "src/cratekit/cli/doctor_library.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged6.json replayed it: the same text, now in src/cratekit/cli/doctor_library.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_backup_comparison.py", "tests/test_cli_contract.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_cutover_cli.py", "tests/test_doctor.py", "tests/test_incremental_sync.py", "tests/test_intake_imported.py", "tests/test_outbound_workers.py", "tests/test_packaging.py", "tests/test_paths_resolved.py", "tests/test_routing_workers.py"]
 old = '''
         if exc.cause.reason == "internal-error":
@@ -1148,6 +1157,7 @@ source = { table = "r1761.json", id = "P13_history_record_ignored" }
 description = "_history: the record is not read, so an upgrade from a record with no census has no history"
 file = "src/cratekit/modules/tools/backup_proof.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-d1.json replayed it: the same text, now in src/cratekit/modules/tools/backup_proof.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
 old = '''
         manifest is not None
@@ -1162,6 +1172,7 @@ source = { table = "u281.json", id = "S1_beatport_reads_no_refusal" }
 description = "_search_beatport: drop the shared refusal check, so a 403 is unreachable and a 200 challenge a parse break, as before the card"
 file = "src/cratekit/tagging/shops.py"
 surface = "user"
+moved = "Anchored where u306-replay-after-a.json replayed it: the same text, now in src/cratekit/tagging/shops.py, was in src/cratekit/tagging/searchers.py"
 tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_published_genre.py"]
 old = '''
     tracks = None if page.text is None else _beatport_tracks(page.text)
@@ -1183,6 +1194,7 @@ source = { table = "u281.json", id = "R1_stop_after_four" }
 description = "Refusals.stopped: stop only once the count passes the limit, so four refusals are sent, not three"
 file = "src/cratekit/tagging/catalogues.py"
 surface = "user"
+moved = "Anchored where u306-replay-after-a.json replayed it: the same text, now in src/cratekit/tagging/catalogues.py, was in src/cratekit/tagging/searchers.py"
 tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
 old = '        if self.running.get(source, 0) < self.limit:'
 new = '        if self.running.get(source, 0) <= self.limit:'
@@ -1193,6 +1205,7 @@ source = { table = "u281.json", id = "R2_limit_two" }
 description = "REFUSALS_BEFORE_STOP: two rather than three, a moment's challenge stops the run"
 file = "src/cratekit/tagging/catalogues.py"
 surface = "user"
+moved = "Anchored where u306-replay-after-a.json replayed it: the same text, now in src/cratekit/tagging/catalogues.py, was in src/cratekit/tagging/searchers.py"
 tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
 old = 'REFUSALS_BEFORE_STOP = 3'
 new = 'REFUSALS_BEFORE_STOP = 2'
@@ -1249,6 +1262,7 @@ source = { table = "r791-a.json", id = "S1_403_blocks" }
 description = "_BLOCK_STATUSES: drop 403, so Traxsource's Cloudflare 403 reads as unreachable again"
 file = "src/cratekit/tagging/catalogues.py"
 surface = "user"
+moved = "Anchored where u306-replay-after-d.json replayed it: the same text, now in src/cratekit/tagging/catalogues.py, was in src/cratekit/tagging/searchers.py"
 tests = ["tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
 old = '_BLOCK_STATUSES = frozenset({403, 429})'
 new = '_BLOCK_STATUSES = frozenset({429})'
@@ -1285,6 +1299,7 @@ source = { table = "u27-reports-round-1.json", id = "D2_required_gate" }
 description = "Report a broken Trash as a failure even where no verb needs it"
 file = "src/cratekit/cli/doctor_library.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_library.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
     if not inputs.required(key):
@@ -1306,6 +1321,7 @@ source = { table = "u27-reports-round-3-fixes.json", id = "F3_trash_absent_is_a_
 description = "Report a volume whose Trash has not been created yet as a failure again"
 file = "src/cratekit/cli/doctor_library.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_library.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '    if status.absent:'
 new = '    if False:'
@@ -1316,6 +1332,7 @@ source = { table = "u27-round-8-independent.json", id = "E1_mount_detail_swapped
 description = "Swap the NOT_MOUNTED and MOUNTED_ELSEWHERE sentences, conflating unmounted with moved"
 file = "src/cratekit/cli/doctor_library.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_library.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
         preflight.MountState.NOT_MOUNTED: (
@@ -1344,6 +1361,7 @@ source = { table = "u27-round-8-independent.json", id = "E2_identity_verdict_gre
 description = "Report the identity check GREEN for an absent and for a relocated volume"
 file = "src/cratekit/cli/doctor_library.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_library.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
             preflight.MountState.NOT_MOUNTED: (Status.INFO, None),
@@ -1358,6 +1376,7 @@ source = { table = "u27-round-8-independent.json", id = "E3_found_at_dropped" }
 description = "Stop telling the user where a relocated volume actually is"
 file = "src/cratekit/cli/doctor_library.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_library.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
     if status.state is preflight.MountState.MOUNTED_ELSEWHERE:
@@ -1370,6 +1389,7 @@ source = { table = "r-1.json", id = "E1_dispatch_impl" }
 description = "Existing guard, sample: drop the requirement that the hook invokes hook-impl"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
     if _HOOK_DISPATCH not in body:
@@ -1383,6 +1403,7 @@ source = { table = "r-1.json", id = "E2_config_inside_checkout" }
 description = "Existing guard, sample: drop the requirement that the named configuration is inside the checkout"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '    if root.resolve() not in resolved.parents and resolved != root.resolve():'
 new = '    if False:'
@@ -1393,6 +1414,7 @@ source = { table = "r-1.json", id = "T10_no_yaml_falls_back" }
 description = "PyYAML missing falls back to the pre-commit floor instead of a sentence"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
     except ImportError:
@@ -1417,6 +1439,7 @@ source = { table = "r-1.json", id = "T12_caller_ignores_unknown" }
 description = "The check ignores an unknown configuration and reports on no extra types"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '    if unknown is not None:'
 new = '    if False:'
@@ -1427,6 +1450,7 @@ source = { table = "r-1.json", id = "T13_missing_other_hook" }
 description = "A configured hook type with no hook file is not reported"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
             absent.append(f"no {hook_type} hook at {other}")
@@ -1442,6 +1466,7 @@ source = { table = "r-1.json", id = "T15_other_dispatch" }
 description = "A configured hook that does not dispatch for its own stage is not reported"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
         if other_problem is not None:
@@ -1459,6 +1484,7 @@ source = { table = "r-1.json", id = "T16_same_configuration" }
 description = "Drop the requirement that every other hook dispatches to the pre-commit hook's configuration"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '        if _config_path(other_name, root).resolve() != config_file.resolve():'
 new = '        if False:'
@@ -1469,6 +1495,7 @@ source = { table = "r-1.json", id = "T17_install_config_flag" }
 description = "The install line never names a non-default configuration"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '    if config_name != _HOOK_CONFIG_DEFAULT:'
 new = '    if False:'
@@ -1479,6 +1506,7 @@ source = { table = "r-1.json", id = "T18_remedy_floor" }
 description = "With no readable configuration the install line names no type at all"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '    return _install_command(types if problem is None else ("pre-commit",))'
 new = '    return _install_command(types)'
@@ -1489,6 +1517,7 @@ source = { table = "r-1.json", id = "T19_remedy_reads_config" }
 description = "The fresh clone install line stops reading the configuration and names only pre-commit"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '    types, problem, _remedy = _configured_hook_types(root / _HOOK_CONFIG_DEFAULT)'
 new = '    types, problem, _remedy = ("pre-commit",), None, None'
@@ -1499,6 +1528,7 @@ source = { table = "r-1.json", id = "T20_stage_parameter" }
 description = "The dispatch check ignores the hook type it was asked about and always wants pre-commit"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '    stage = f"--hook-type={hook_type}"'
 new = '    stage = "--hook-type=pre-commit"'
@@ -1509,6 +1539,7 @@ source = { table = "r-1.json", id = "T21_ok_names_others" }
 description = "The OK detail stops naming the other stages it verified"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
         if len(types) > 1
@@ -1523,6 +1554,7 @@ source = { table = "r-1.json", id = "T22_pre_commit_floor" }
 description = "Pre-commit is no longer the floor of the needed types"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
     types = ["pre-commit"]
@@ -1539,6 +1571,7 @@ source = { table = "r-1.json", id = "T5_hook_stages" }
 description = "Ignore every hook's own stages, the reading that finds this repository's commit-msg stage"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '                named.extend(hook.get("stages") or [])'
 new = '                pass'
@@ -1549,6 +1582,7 @@ source = { table = "r-1.json", id = "T9_yaml_error_falls_back" }
 description = "A configuration that does not parse falls back to the pre-commit floor instead of a sentence"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged4.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_cli_contract.py", "tests/test_config.py", "tests/test_doctor.py", "tests/test_packaging.py"]
 old = '''
     except yaml.YAMLError as exc:
@@ -1727,6 +1761,7 @@ source = { table = "u197.json", id = "M2_retired_mapping_empty" }
 description = "RETIRED_ADAPTER_NAMES: forget the vendored downloader's old key, so an older configuration names an unknown adapter"
 file = "src/cratekit/core/config_schema.py"
 surface = "user"
+moved = "Anchored where u299-replay-after-10.json replayed it: the same text, now in src/cratekit/core/config_schema.py, was in src/cratekit/core/config.py"
 tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_adapter_contract.py"]
 old = 'RETIRED_ADAPTER_NAMES: Mapping[str, str] = MappingProxyType({"tidal_dl_ng": "vendored"})'
 new = 'RETIRED_ADAPTER_NAMES: Mapping[str, str] = MappingProxyType({})'
@@ -1737,6 +1772,7 @@ source = { table = "u197.json", id = "M1_config_fold" }
 description = "_acquisition: return the section as written, so a file naming the retired key reaches doctor and every report under it"
 file = "src/cratekit/core/config_validate.py"
 surface = "user"
+moved = "Anchored where u299-replay-after-4.json replayed it: the same text, now in src/cratekit/core/config_validate.py, was in src/cratekit/core/config.py"
 tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_adapter_contract.py"]
 old = '''
     current = current_adapter_name(built.adapter)
@@ -1911,6 +1947,7 @@ source = { table = "r1037.json", id = "M1_identity_unchecked" }
 description = "landed_absences: read a landing record of any database, so another library's landed rows are offered here"
 file = "src/cratekit/deletion/library.py"
 surface = "user"
+moved = "Anchored where u310-replay-after-c.json replayed it: the record preamble of landed_absences and recorded_removals is now one generator, _records, whose record is named recorded; the identity check is dropped from it, as before"
 tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
 old = '''
         if str(recorded.get("database_identity") or "") != str(database_identity):
@@ -2018,6 +2055,7 @@ source = { table = "r1844.json", id = "N7_held_rows_read_absent" }
 description = "landed_absences: a landed row the database holds is read as absent, so a live track's file is offered"
 file = "src/cratekit/deletion/library.py"
 surface = "user"
+moved = "Anchored where u310-replay-after-c.json replayed it: the formatter split the over long comprehension; the held filter is dropped, as before"
 tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
 old = '            (content_id, columns) for content_id, columns, _uuid in rows if content_id not in held'
 new = '            (content_id, columns) for content_id, columns, _uuid in rows'
@@ -2038,6 +2076,7 @@ source = { table = "r1037.json", id = "M10_landed_not_joined" }
 description = "plan: leave the absent landed rows out of the removals, which is the defect R-1037 names"
 file = "src/cratekit/deletion/run.py"
 surface = "user"
+moved = "Anchored where u310-replay-after-c.json replayed it: the replace call collapsed onto one argument line; the landed absences are not joined, as before"
 tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
 old = '        seen, removed=seen.removed + tuple(one.row(mark.absent[key]) for key, one in absent.items())'
 new = '        seen, removed=seen.removed'
@@ -2048,6 +2087,7 @@ source = { table = "r1037.json", id = "M11_sightings_never_forgotten" }
 description = "plan: tell the sightings no row is held, so a row a restore put back keeps its old number"
 file = "src/cratekit/deletion/run.py"
 surface = "user"
+moved = "Anchored where u310-replay-after-c.json replayed it: the sight call collapsed onto one line; nothing is held present, as before"
 tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
 old = '    mark = marks.sight(database_identity=identity, absent=absent, present=held, counter=counter)'
 new = '    mark = marks.sight(database_identity=identity, absent=absent, present=(), counter=counter)'
@@ -2058,6 +2098,7 @@ source = { table = "r1037.json", id = "M12_playlists_always_held" }
 description = "_playlists_held: answer every playlist held, so a rolled back landing is offered"
 file = "src/cratekit/deletion/run.py"
 surface = "user"
+moved = "Anchored where u310-replay-after-c.json replayed it: the once only playlist read is now functools.cache over the ids; every playlist reads as held, as before"
 tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
 old = '    return lambda playlist_id: playlist_id in ids()'
 new = '    return lambda playlist_id: True'
@@ -2220,6 +2261,7 @@ source = { table = "u282.json", id = "W1_walk_beatport_first" }
 description = "WALK: Beatport first again, the order before the card"
 file = "src/cratekit/tagging/catalogues.py"
 surface = "user"
+moved = "Anchored where u306-replay-after-d.json replayed it: the same text, now in src/cratekit/tagging/catalogues.py, was in src/cratekit/tagging/searchers.py"
 tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
 old = 'WALK: tuple[str, ...] = (DISCOGS, BEATPORT)'
 new = 'WALK: tuple[str, ...] = (BEATPORT, DISCOGS)'
@@ -2230,6 +2272,7 @@ source = { table = "u282.json", id = "W2_sources_beatport_first" }
 description = "SOURCES: Beatport first again, so the summary and its sentences count Beatport first"
 file = "src/cratekit/tagging/catalogues.py"
 surface = "user"
+moved = "Anchored where u306-replay-after-d.json replayed it: the same text, now in src/cratekit/tagging/catalogues.py, was in src/cratekit/tagging/searchers.py"
 tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
 old = 'SOURCES: tuple[str, ...] = (DISCOGS, BEATPORT, TRAXSOURCE, BANDCAMP)'
 new = 'SOURCES: tuple[str, ...] = (BEATPORT, DISCOGS, TRAXSOURCE, BANDCAMP)'
@@ -2356,6 +2399,7 @@ source = { table = "u282.json", id = "C1_refused_token_not_counted" }
 description = "_summary: a refused token's not-asked is never counted, so the sweep says nothing about it (round two's BLOCKING)"
 file = "src/cratekit/tagging/summary.py"
 surface = "user"
+moved = "Anchored where u306-replay-after-c2.json replayed it: the same text, now in src/cratekit/tagging/summary.py, was in src/cratekit/tagging/cli.py"
 tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tag_suggest.py"]
 old = '                discogs_refused += 1'
 new = '                discogs_refused += 0'
@@ -2366,6 +2410,7 @@ source = { table = "u244.json", id = "M02_rejection_remembered" }
 description = "DiscogsAsker.ask: forget a rejected token, so it is resent on every later file"
 file = "src/cratekit/tagging/discogs.py"
 surface = "user"
+moved = "Anchored where u306-replay-after-d.json replayed it: DiscogsAsker moved verbatim from tagging/searchers.py to tagging/discogs.py, where the text occurs once, in DiscogsAsker.ask; the identical line in tagging/cyanite.py is Cyanite's own guard and not this one"
 tests = ["tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_tag_suggest.py"]
 old = '        if self.rejected is not None:'
 new = '        if False:'
@@ -2376,6 +2421,7 @@ source = { table = "u244.json", id = "M01_no_token_not_asked" }
 description = "DiscogsAsker.ask: answer MISS for a searcher with no token instead of not-asked, so a sweep with no token records no-hit"
 file = "src/cratekit/tagging/discogs.py"
 surface = "user"
+moved = "Anchored where u306-replay-after-c2.json replayed it: the same text, now in src/cratekit/tagging/discogs.py, was in src/cratekit/tagging/searchers.py"
 tests = ["tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_tag_suggest.py", "tests/test_catalogue_searcher.py", "tests/test_published_genre.py"]
 old = '''
         if self.token is None:
@@ -2400,6 +2446,7 @@ source = { table = "u184.json", id = "D1_volume_not_established" }
 description = "_check_backup_acknowledgment: read the record off a volume nobody established, so a missing disk reads as none on record"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '    unreadable = _library_state_unreadable(inputs, "the backup acknowledgment")'
 new = '    unreadable = None'
@@ -2410,6 +2457,7 @@ source = { table = "u184.json", id = "D2_unreadable_is_a_note" }
 description = "_check_backup_acknowledgment: report a record that cannot be understood as a note rather than a failure"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
             status=Status.FAIL,
@@ -2426,6 +2474,7 @@ source = { table = "u184.json", id = "D3_remedy_chosen_here" }
 description = "_check_backup_acknowledgment: name a remedy chosen here instead of the reader's own"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
             remedy=exc.cause.remediation.remedy,
@@ -2442,6 +2491,7 @@ source = { table = "u184.json", id = "D4_expired_read_as_valid" }
 description = "_check_backup_acknowledgment: drop the expired branch, so a lapsed record reads as valid with time left"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '    if not recorded.valid_at(now):'
 new = '    if False:'
@@ -2452,6 +2502,7 @@ source = { table = "u184.json", id = "D5_wall_clock" }
 description = "_check_backup_acknowledgment: read the wall clock rather than the run's own instant"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
     now = inputs.probes.now
@@ -2466,6 +2517,7 @@ source = { table = "u184.json", id = "D6_hours_coefficient" }
 description = "_check_backup_acknowledgment: halve the minutes per hour, so the time left is misstated"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '    hours, minutes = divmod(int(left.total_seconds()) // 60, 60)'
 new = '    hours, minutes = divmod(int(left.total_seconds()) // 60, 30)'
@@ -2476,6 +2528,7 @@ source = { table = "u184.json", id = "D7_rule_not_named" }
 description = "_check_backup_acknowledgment: name the terminal rule whatever minted the record"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '            f"the {recorded.rule} rule"'
 new = '            f"the terminal rule"'
@@ -2486,6 +2539,7 @@ source = { table = "u185.json", id = "D1_push_newer_warns" }
 description = "deadca7.push: invert the comparison, so a push after the last backup reads as held by it"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '    if completed is not None and pushed > completed:'
 new = '    if completed is not None and pushed < completed:'
@@ -2496,6 +2550,7 @@ source = { table = "u185.json", id = "D2_hidden_entries" }
 description = "deadca7.push: count hidden entries, so a .DS_Store reads as a push"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '        entry.stat().st_mtime for entry in folder.iterdir() if not entry.name.startswith(".")'
 new = '        entry.stat().st_mtime for entry in folder.iterdir()'
@@ -2506,6 +2561,7 @@ source = { table = "u185.json", id = "D3_unread_folder" }
 description = "deadca7.push: let an unreadable backup folder escape, so the check fails the report"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
     except OSError as exc:
@@ -2520,6 +2576,7 @@ source = { table = "u224.json", id = "M10_refused_backups_read_no_push" }
 description = "_check_deadca7_push: a backup folder whose stat is refused reads as absent, so no push"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
         if isinstance(presence, OSError):
@@ -2534,6 +2591,7 @@ source = { table = "u224.json", id = "M1_found_ignored" }
 description = "_deadca7_presence: never count a present install place as found, so a bundle reads not installed again"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
             elif state:
@@ -2548,6 +2606,7 @@ source = { table = "u224.json", id = "M2_unread_place_dropped" }
 description = "_deadca7_presence: drop an install place the account cannot stat, so it reads absent"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '                unread.append(f"{place} could not be read ({_said(state)})")'
 new = '                pass'
@@ -2558,6 +2617,7 @@ source = { table = "u224.json", id = "M3_broken_installed_probe_silent" }
 description = "_deadca7_presence: an install probe that raises adds nothing, so it reads not installed"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '            unread.append(f"where its app is installed could not be located ({_said(exc)})")'
 new = '            pass'
@@ -2568,6 +2628,7 @@ source = { table = "u224.json", id = "M4_unread_support_read_absent" }
 description = "_deadca7_presence: a support folder whose stat is refused answers absent, so an installed app reads no push"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
             support = None
@@ -2582,6 +2643,7 @@ source = { table = "u224.json", id = "M5_refused_stat_read_absent" }
 description = "_folder_presence: any refused stat answers absent, the Path.is_dir shape on later Pythons"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
     except OSError as exc:
@@ -2598,6 +2660,7 @@ source = { table = "u224.json", id = "M6_unread_folded_into_not_installed" }
 description = "_check_deadca7_push: nothing found and something unread reads not installed"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
         if unread:
@@ -2612,6 +2675,7 @@ source = { table = "u224.json", id = "M7_install_signals_always_asked" }
 description = "_deadca7_presence: ask the install signals even with the support folder here"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "maintainer"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
     if not support:
@@ -2628,6 +2692,7 @@ source = { table = "u224.json", id = "M9_path_through_a_file_unread" }
 description = "_folder_presence: a stat through a file reads unread rather than absent"
 file = "src/cratekit/cli/doctor_backup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_backup.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
     except (FileNotFoundError, NotADirectoryError):
@@ -2646,6 +2711,7 @@ source = { table = "u263.json", id = "D21_doctor_names_verbs" }
 description = "doctor: drop the verbs from a failing binary row"
 file = "src/cratekit/cli/doctor_keys.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_keys.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''            f"{', '.join(inputs.requiring(key))} ({source}; override with {override})"'''
 new = '            f"({source}; override with {override})"'
@@ -2656,6 +2722,7 @@ source = { table = "r598-b.json", id = "B6_doctor_clause_dropped" }
 description = "_open_state: list an orphaned record bare, so it reads as a run in progress with no verb named"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '''
     if session.orphaned(record):
@@ -2670,6 +2737,7 @@ source = { table = "u159.json", id = "M8_behind_reads_current" }
 description = "_check_release: any parseable installed version passes, so a copy behind reads as current"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '    if installed >= newest:'
 new = '    if True:'
@@ -2680,6 +2748,7 @@ source = { table = "u181.json", id = "D5_upgrade_never_adds_vocals" }
 description = "doctor _kept: the upgrade command never adds vocals, so a scored library upgrades without it"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '    if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):'
 new = '    if True:'
@@ -2690,6 +2759,7 @@ source = { table = "u181.json", id = "D6_upgrade_always_adds_vocals" }
 description = "doctor _kept: the upgrade command adds vocals for a library never scored"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-a.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py"]
 old = '    if VOCALS_EXTRA in origin.extras or not inputs.probes.vocals_scored(inputs.cfg):'
 new = '    if VOCALS_EXTRA in origin.extras:'
@@ -2710,6 +2780,7 @@ source = { table = "r83.json", id = "P3_empty_secret_note_status" }
 description = "R-347: the wizard's empty credential note is FAIL instead of INFO"
 file = "src/cratekit/cli/setup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-c.json replayed it: U303 shortened the comment above the note to its rule; the INFO status of the empty credential note, the guard this row flips, is unchanged in the same place"
 tests = ["tests/test_doctor.py"]
 old = '''
                 # Accepted then left empty is the same as a no (R-347).
@@ -2730,6 +2801,7 @@ source = { table = "r83.json", id = "P4_empty_secret_branch" }
 description = "R-347: remove the NothingEntered branch so the unreadable branch catches it"
 file = "src/cratekit/cli/setup.py"
 surface = "user"
+moved = "Anchored where u303-replay-after-c.json replayed it: U303 shortened the comment inside the branch to one line; the NothingEntered branch, the guard this row removes, is unchanged in the same place"
 tests = ["tests/test_doctor.py"]
 old = '''
             except prompt.NothingEntered:
@@ -2808,6 +2880,7 @@ source = { table = "r1255.json", id = "D1_doctor_branches_on_the_scan" }
 description = "doctor _check_unresolved_session: never branch on the listing, so the log directory is named as an unreadable record"
 file = "src/cratekit/cli/doctor_state.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged.json replayed it: the same text, now in src/cratekit/cli/doctor_state.py, was in src/cratekit/cli/doctor.py"
 tests = ["tests/test_doctor.py", "tests/test_session_log_unlisted.py"]
 old = '''
     if session.log_unlisted(unreadable, inputs.cfg):

@@ -69,6 +69,7 @@ source = { table = "u155.json", id = "T12_sources_type" }
 description = "_sources: take any value as the sources, a bare string read letter by letter"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
+moved = "Anchored where u299-replay-after-10.json replayed it: the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
 tests = ["tests/intake/test_collection_xml.py", "tests/intake/test_pipeline.py", "tests/modules/test_reports.py", "tests/modules/test_reports_engines.py", "tests/modules/test_tools.py", "tests/test_active_taxonomy.py", "tests/test_adopt_apply_cli.py", "tests/test_adopt_energy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_jazz_folder.py", "tests/test_adopt_move.py", "tests/test_adopt_placements.py", "tests/test_adopt_split_place.py", "tests/test_adopt_vocals.py", "tests/test_adopt_workers.py", "tests/test_adoption.py", "tests/test_adoption_hardware.py", "tests/test_analysis_workers.py", "tests/test_catalogue_searcher.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_placement.py", "tests/test_foreign_tree.py", "tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py", "tests/test_genre_retag.py", "tests/test_genre_sub.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_rotate.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_labels_native.py", "tests/test_intake_land_native.py", "tests/test_label_genre_gate.py", "tests/test_landing_labels.py", "tests/test_metadata_policy.py", "tests/test_no_beatgrid_ever.py", "tests/test_organize.py", "tests/test_published_genre.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_report_genres.py", "tests/test_reports_cli.py", "tests/test_routing_parity.py", "tests/test_routing_workers.py", "tests/test_setbuilder_cli.py", "tests/test_skills_lint.py", "tests/test_sync_pair.py", "tests/test_tag_remap.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tagging_engine.py", "tests/test_taxonomy.py", "tests/test_taxonomy_upgrade.py", "tests/test_tree_registry.py", "tests/test_tree_writer.py", "tests/test_vocabulary.py", "tests/test_xml_splice_golden.py"]
 old = '''
     if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
@@ -96,6 +97,7 @@ source = { table = "r431-b.json", id = "B7_the_engine_asks_under_the_tombstones_
 description = "The engine's copy of the companion kind drifts onto the tombstone's own"
 file = "src/cratekit/acquire/match_identity.py"
 surface = "user"
+moved = "Anchored where u305-replay-after.json replayed it: the same text, now in src/cratekit/acquire/match_identity.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = 'UNCREDITED_KIND = "version-uncredited"'
 new = 'UNCREDITED_KIND = "version"'
@@ -106,6 +108,7 @@ source = { table = "r664.json", id = "E4_title_not_split" }
 description = "Skip split_title on the chosen title, so a version stays inside the recording token"
 file = "src/cratekit/acquire/match_library.py"
 surface = "user"
+moved = "Anchored where u305-replay-after.json replayed it: the same text, now in src/cratekit/acquire/match_library.py, was in src/cratekit/acquire/match.py"
 tests = ["tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_listdoc.py", "tests/test_match_states.py"]
 old = '''
     title, version = split_title(spelled)
@@ -233,6 +236,7 @@ source = { table = "r504-b.json", id = "B5_noop_silent" }
 description = "Every heart withheld is the quiet no-op again, with no warning"
 file = "src/cratekit/intake/cli.py"
 surface = "user"
+moved = "Anchored where u325-replay-after.json replayed it: Same no-tracks return in intake_playlist; U298 replaced the local _no_op with cli.output.no_job"
 tests = ["tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_intake_missing.py", "tests/test_intake_missing_isrc.py", "tests/test_intake_missing_search.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_all.py", "tests/test_sync_mark.py"]
 old = '''
                 data=no_job("no-tracks", source=reference, **extra),
@@ -437,6 +441,7 @@ source = { table = "u45-round-1.json", id = "V3_marker_restored" }
 description = "Put planned_in back, so the verb reads as unlanded and every conformance property stops arming against it"
 file = "src/cratekit/cli/registry.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged6.json replayed it: U303 laid the registry out a keyword run per line and shortened its comments; the planned marker is put back on backup.run, above its landed comment, as before"
 tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
 old = '''
         output_schema="job_state/1", doctor_checks=("library.mounted", "binary.rclone"),
@@ -452,6 +457,7 @@ source = { table = "u45-round-1.json", id = "V5_module_toggle_dropped" }
 description = "Drop the module toggle, so the verb is offered on a slim install that has no backup module"
 file = "src/cratekit/cli/registry.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged6.json replayed it: U303 laid the registry out a keyword run per line and shortened its comments; backup.run's module toggle is the same value, dropped the same way"
 tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_acquire_cli.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_master_cli.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
 old = 'source_scripts=("backup.sh",), module_id="backup",'
 new = 'source_scripts=("backup.sh",),'
@@ -462,6 +468,7 @@ source = { table = "u43-author-light.json", id = "R1_marker_restored" }
 description = "The planned_in marker is put back on the setbuild entry, which withdraws the verb from every conformance property that only drives landed entries"
 file = "src/cratekit/cli/registry.py"
 surface = "maintainer"
+moved = "Anchored where u303-replay-merged6.json replayed it: U303 laid the registry out a keyword run per line and shortened its comments; the planned marker is put back on setbuild, above its landed comment, as before"
 tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_adopt_apply_cli.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_cli_contract.py", "tests/test_cutover_parity.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_genre_retag.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_queued_resume_contract.py", "tests/test_rebuild.py", "tests/test_reports_cli.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_setbuilder_cli.py", "tests/test_write_session.py"]
 old = '''
         emits=frozenset({"plan"}), output_schema="plan/1",
@@ -477,6 +484,7 @@ source = { table = "u27-reports-round-1.json", id = "R1_delete_review_preconditi
 description = "Stop delete.review declaring the Trash check as a precondition"
 file = "src/cratekit/cli/registry.py"
 surface = "user"
+moved = "Anchored where u303-replay-merged6.json replayed it: U303 laid the registry out a keyword run per line and shortened its comments; delete.review's checks are the same tuple, library.trash dropped the same way"
 tests = ["tests/modules/test_reports.py", "tests/modules/test_tools.py", "tests/test_adoption.py", "tests/test_analysis.py", "tests/test_cli_contract.py", "tests/test_deferred_routing.py", "tests/test_doctor.py", "tests/test_jobs.py", "tests/test_layering.py", "tests/test_match_states.py", "tests/test_packaging.py", "tests/test_rebuild.py", "tests/test_restore.py", "tests/test_write_session.py"]
 old = '            "library.mounted", "library.identity", "library.trash", "rekordbox.closed",'
 new = '            "library.mounted", "library.identity", "rekordbox.closed",'
@@ -733,6 +741,7 @@ source = { table = "r338-a.json", id = "B3_capture_is_a_copy" }
 description = "_plan_database: capture the share with copy and not sync, so a grid rekordbox deleted stays in the mirror for ever and the mirror stops being the share"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-d1.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '                    rclone, "sync", str(share), f"{kept}/current",'
 new = '                    rclone, "copy", str(share), f"{kept}/current",'
@@ -743,6 +752,7 @@ source = { table = "r338-a.json", id = "B8_contained_share_copied_twice" }
 description = "_outside_share: read every layout as the outside one, so a share the mirror already carries is synced a second time"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-d1.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '''
     if analysis_store.watch_roots(cfg) == (Path(cfg.library.root),):
@@ -759,6 +769,7 @@ source = { table = "r338-b.json", id = "R6_switch_ignored" }
 description = "_plan_restore_inside_the_gates: ignore pull_share, so the bare metal recovery asks the remote about a share it will not pull and can be refused over it"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-d1.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '        if not pull_share or analysis_store.is_watched(cfg, landing):'
 new = '        if analysis_store.is_watched(cfg, landing):'
@@ -769,6 +780,7 @@ source = { table = "r338-c.json", id = "C1_absent_share_never_said" }
 description = "absent_analysis_share: never warn, so an outside share that is not a directory reads as a share that was carried"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-d1.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '''
     share = _outside_share(cfg)
@@ -785,6 +797,7 @@ source = { table = "r338-c.json", id = "C2_carried_share_still_warned" }
 description = "absent_analysis_share: warn whenever the share is outside the root, carried or not, which is the retired warning back under a new code"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-d1.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_process_guard.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_write_session.py"]
 old = '''
     share = _outside_share(cfg)
@@ -1016,6 +1029,7 @@ source = { table = "r367.json", id = "G12_listing_results_are_discarded" }
 description = "the listing runs and its names are thrown away, so every sidecar is treated as absent"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-a.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '    held = snapshot_filenames(cfg, chosen, runner=runner)'
 new = '''
@@ -1028,6 +1042,7 @@ source = { table = "r367.json", id = "G3_membership_is_inverted" }
 description = "copy the sidecar when it is absent and skip it when it is present"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
+moved = "Anchored where u311-replay-after-a.json replayed it: the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
 tests = ["tests/modules/test_tools.py", "tests/test_restore_cli.py"]
 old = '        if name not in held:'
 new = '        if name in held:'
@@ -1190,6 +1205,7 @@ source = { table = "r685-a.json", id = "V1_route_inbox_export_reads_the_shipped_
 description = "The export routing verb parses the shipped text instead of loading the library's copy"
 file = "src/cratekit/write/routing_export.py"
 surface = "user"
+moved = "Anchored where u302-replay-after-a.json replayed it: the same text, now in src/cratekit/write/routing_export.py, was in src/cratekit/write/routing_cli.py"
 tests = ["tests/test_active_taxonomy.py", "tests/test_routing_workers.py"]
 old = '''
     declared = active_taxonomy.load(cfg)
@@ -1271,6 +1287,7 @@ source = { table = "u138.json", id = "E1_terminal_check" }
 description = "Existing guard sample: the terminal check on a person's answer"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_genre_favorites.py", "tests/test_inbox_refill.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_organize.py", "tests/test_paths_resolved.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_pair.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '''
         if not probe():
@@ -1285,6 +1302,7 @@ source = { table = "u138.json", id = "S11_rule_not_written" }
 description = "The record's rule key is not written to the file"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_genre_favorites.py", "tests/test_inbox_refill.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_organize.py", "tests/test_paths_resolved.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_pair.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '''
             "rule": self.rule,
@@ -1297,6 +1315,7 @@ source = { table = "u138.json", id = "S12_message_names_the_portion" }
 description = "Reword the refusal so it no longer names the portion's age"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_genre_favorites.py", "tests/test_inbox_refill.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_organize.py", "tests/test_paths_resolved.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_pair.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '''
                 f"the {entry.portion} portion is {entry.age_seconds / 86400:.1f} days old"
@@ -1311,6 +1330,7 @@ source = { table = "u138.json", id = "S13_remedy_points_back_at_ack" }
 description = "The too old refusal tells a person to acknowledge again rather than to run a backup"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_genre_favorites.py", "tests/test_inbox_refill.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_organize.py", "tests/test_paths_resolved.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_pair.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '''
                 remedy=Remedy.RUN_BACKUP,
@@ -1325,6 +1345,7 @@ source = { table = "u138.json", id = "S1_session_rule_gone" }
 description = "A session's answer falls to the terminal check, as before U138"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_genre_favorites.py", "tests/test_inbox_refill.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_organize.py", "tests/test_paths_resolved.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_pair.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '''
     if decided_by == SESSION_ACTOR:
@@ -1339,6 +1360,7 @@ source = { table = "u138.json", id = "S2_any_answer_gets_the_age_rule" }
 description = "Any recorded answer, a person's included, mints without a terminal on young backups"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_genre_favorites.py", "tests/test_inbox_refill.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_organize.py", "tests/test_paths_resolved.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_pair.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '''
     if decided_by == SESSION_ACTOR:
@@ -1353,6 +1375,7 @@ source = { table = "u138.json", id = "S3_stale_not_refused" }
 description = "The session mints over a portion five days old or of unknown age"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: moved by U300's split from src/cratekit/core/session.py to session_ack.py, the same refusal of a stale portion in the acknowledgment"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_genre_favorites.py", "tests/test_inbox_refill.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_organize.py", "tests/test_paths_resolved.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_pair.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '        if stale:'
 new = '        if False:'
@@ -1363,6 +1386,7 @@ source = { table = "u138.json", id = "S6_bound_six_days" }
 description = "The bound is six days rather than five"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_genre_favorites.py", "tests/test_inbox_refill.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_organize.py", "tests/test_paths_resolved.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_pair.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '''
 SESSION_MAX_BACKUP_AGE = timedelta(days=5)
@@ -1377,6 +1401,7 @@ source = { table = "u138.json", id = "S8_rule_not_recorded" }
 description = "The record always says the terminal rule minted it"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_genre_favorites.py", "tests/test_inbox_refill.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_organize.py", "tests/test_paths_resolved.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_pair.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '''
         shown=shown,
@@ -1393,6 +1418,7 @@ source = { table = "u138.json", id = "S9_answer_not_recorded" }
 description = "The record never says who answered the gate"
 file = "src/cratekit/core/session_ack.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: the same text, now in src/cratekit/core/session_ack.py, was in src/cratekit/core/session.py"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_adopt_move.py", "tests/test_adopt_workers.py", "tests/test_analysis_store.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_cli.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_export_collection.py", "tests/test_favorites_backfill.py", "tests/test_genre_favorites.py", "tests/test_inbox_refill.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_imported.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_metadata_cli.py", "tests/test_organize.py", "tests/test_paths_resolved.py", "tests/test_rebuild.py", "tests/test_repair_link.py", "tests/test_repair_rows.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_routing_workers.py", "tests/test_session_ack_by_session.py", "tests/test_session_cli.py", "tests/test_set_inspiration_playlist.py", "tests/test_sync_mark.py", "tests/test_sync_pair.py", "tests/test_tag_rows.py", "tests/test_tag_suggest.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '''
         rule=rule,
@@ -1409,6 +1435,7 @@ source = { table = "u49-author.json", id = "L4_a_malformed_holder_raises_again" 
 description = "Remove the coercion guard from read_lock_holder, so a lock record with a non numeric pid escapes as a traceback rather than a typed refusal"
 file = "src/cratekit/core/session_holders.py"
 surface = "user"
+moved = "Anchored where u300-replay-after-b.json replayed it: the same text, now in src/cratekit/core/session_holders.py, was in src/cratekit/core/session.py"
 tests = ["tests/test_adopt_apply_cli.py", "tests/test_backup_cli.py", "tests/test_cli_contract.py", "tests/test_cutover_precheck.py", "tests/test_deferred_routing.py", "tests/test_deletion.py", "tests/test_doctor.py", "tests/test_rebuild.py", "tests/test_restore.py", "tests/test_restore_cli.py", "tests/test_session_cli.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
 old = '''
     try:
