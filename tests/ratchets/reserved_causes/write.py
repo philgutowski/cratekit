@@ -14,6 +14,11 @@ KEBAB_LITERALS = {
         'library-export-unusable',
         'utf-8',
     ],
+    # 2026-11-22, U302: the export path and the convergence check left their modules.
+    'write/convergence_check.py': [
+        'routing-destination-renamed',
+        'tree-unconverged',
+    ],
     'write/genre_favorites.py': [
         'decision-stale',
         'favorites-class-undeclared',
@@ -58,40 +63,43 @@ KEBAB_LITERALS = {
         'rebuild-tree-not-derivable',  # 2026-11-05, U219
         'refused-by-policy',  # 2026-11-05, U219
         'resort-plan-stale',  # 2026-11-05, U219
-        'routing-destination-renamed',
         'tree-rebuild',
         'tree-unconverged',
         'unconverged-tree',
         'vocal-dimension-not-compared',
     ],
-    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    # 2026-11-22, U302: the export path and the convergence check left their modules.
     'write/routing_cli.py': [
-        'governed-tree-absent',
         'inbox-empty',
-        'inbox-export',
-        'intake-flow-absent',
         'internal-error',
         'job-unknown',
-        'library-export-unusable',
-        'library-volume-unmounted',
-        'no-derivable-tree',  # 2026-11-05, U219
+        'no-derivable-tree',
         'no-native-tree',
-        'nothing-to-add',  # 2026-11-05, U219
-        'nothing-to-route',
-        'rating-not-landable',
-        'refused-by-policy',  # 2026-11-05, U219
-        'resort-again',  # 2026-11-05, U219
+        'nothing-to-add',
+        'refused-by-policy',
+        'resort-again',
         'resort-artifacts',
-        'resort-plan-stale',  # 2026-11-05, U219
+        'resort-plan-stale',
         'resort-staging',
-        'route-blocked',
         'route-inbox',
         'route-resort',
+        'route-write-skipped',
+        'tree-not-derived',
+    ],
+    'write/routing_export.py': [
+        'governed-tree-absent',
+        'inbox-export',
+        'intake-flow-absent',
+        'library-export-unusable',
+        'library-volume-unmounted',
+        'no-native-tree',
+        'nothing-to-route',
+        'rating-not-landable',
+        'route-blocked',
         'route-write-skipped',
         'routing-not-landable',
         'track-file-unreadable',
         'track-row-absent',
-        'tree-not-derived',  # 2026-11-05, U219
         'tree-unconverged',
         'unplaced-export',
     ],
@@ -178,6 +186,11 @@ NAMED_WITH_INTEGER = frozenset({
 
 LITERAL_HOLDERS = {
     'write/collection_export.py': ['library-export-unusable'],
+    # 2026-11-22, U302: the export path and the convergence check left their modules.
+    'write/convergence_check.py': [
+        'routing-destination-renamed',
+        'tree-unconverged',
+    ],
     'write/genre_favorites.py': [
         'decision-stale',
         'favorites-class-undeclared',
@@ -202,19 +215,20 @@ LITERAL_HOLDERS = {
         'rebuild-tree-not-derivable',  # 2026-11-05, U219
         'refused-by-policy',  # 2026-11-05, U219
         'resort-plan-stale',  # 2026-11-05, U219
-        'routing-destination-renamed',
         'tree-unconverged',
     ],
-    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    # 2026-11-22, U302: the export path and the convergence check left their modules.
     'write/routing_cli.py': [
-        'governed-tree-absent',
-        'intake-flow-absent',
         'internal-error',
         'job-unknown',
+        'refused-by-policy',
+        'resort-plan-stale',
+    ],
+    'write/routing_export.py': [
+        'governed-tree-absent',
+        'intake-flow-absent',
         'library-export-unusable',
         'library-volume-unmounted',
-        'refused-by-policy',  # 2026-11-05, U219
-        'resort-plan-stale',  # 2026-11-05, U219
         'tree-unconverged',
     ],
     'write/routing_pass.py': [

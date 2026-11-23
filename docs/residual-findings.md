@@ -1588,3 +1588,181 @@ tests resolve titles across every ledger file.
 **Closes when:** the next docs sweep card, after the area cards under #847
 land, either repoints each citation to its archive file or settles that
 `docs/residual-findings.md` names the ledger as a whole. Ledger only.
+
+---
+
+## R-1865. The rest of core ends a fifth smaller in lines but misses its code line target by about 550
+
+**Found:** at the record of #858, U301, 2026-11-22.
+
+**The mechanism.** #858 asked the rest of core (`core/review.py`, `jobs.py`,
+`pool.py`, `provider_gate.py` and ten smaller modules, with the parts split
+from them) to end at or under 10,816 lines and 5,771 code lines. Measured by
+`scripts/refactor_measure.py lines` on the merged head it ends at 10,113 lines,
+met, and 6,323 code lines, about 550 over. The cut came from prose, which
+Phillip allowed on #847, from folding copied steps into helpers, and from the
+duplication; what is left is mostly code a recorded mutation kill anchors byte
+for byte, refusal and message text that is output, and the import lines the
+splits added (each part imports what it reads from its parent and the parent
+imports it back).
+
+**Measured cost.** None to a person: behaviour is frozen and compared base
+against branch. The cost is point 2 of #847's audit, which reads code lines
+as well as lines.
+
+**Closes when:** the final audit (#872) reads the epic's totals; a further
+cut of these modules' code would have to rewrite anchored guards and carry
+their kills by hand, which is a card of its own if the audit wants it.
+Ledger only.
+
+---
+
+## R-1866. A part split from core.jobs or core.review cannot be imported before its parent
+
+**Found:** at the review of #858, U301, 2026-11-22.
+
+**The mechanism.** U301 split `core/jobs.py` (the drive loop into
+`core/jobs_drive.py`) and `core/review.py` (into `review_holds`,
+`review_exchange`, `review_groups` and `review_surfaces`). Each part imports
+names from its parent and the parent imports the part back at its foot, so
+`import cratekit.core.jobs_drive` in a fresh interpreter, before
+`cratekit.core.jobs`, raises ImportError on a partially initialized module.
+Every moved class and function carries its parent's `__module__`, so a pickle
+names the parent and a fresh process imports the parent first; the side
+effect is that `inspect.getsource` cannot find a pinned class's source.
+
+**Measured cost.** None driven: three candidates were driven and none imports
+a part first (the module walk in `tests/test_cli_contract.py` imports parents
+first and swallows errors; a pickle round trip of `Hold`, `DriveResult` and
+`Interrupt` into a fresh interpreter works; no base caller of a part exists).
+Nothing in `src` or `tests` calls `inspect.getsource` on a moved class.
+
+**Closes when:** a caller needs a part on its own; then the part reads its
+parent lazily inside the functions that need it. Ledger only.
+
+---
+
+## R-1867. The two processes claiming one job test waits a fixed half second for both to start
+
+**Found:** at the test trim of #858, U301, 2026-11-22.
+
+**The mechanism.** `tests/test_jobs.py::test_two_processes_claiming_the_same_job_never_claim_one_item_twice`
+starts two real worker processes and gives them a fixed 0.5 second sleep to
+import before they race. Under a load average near 10 on the four core cloud
+container one worker had not finished importing in time, claimed nothing, and
+the test failed once. The test's code is the base's, unchanged by U301.
+
+**Measured cost.** A false red under load, seen once in several runs; no
+product defect. Not on the base's Linux baseline list.
+
+**Closes when:** the workers signal that they are ready (a marker file each,
+as the suite's other process tests do) and the race starts on both signals.
+Ledger only.
+
+---
+
+## R-1868. A heard title that carries its feat credit after the version reads an owned track as missing, and it is downloaded again
+
+**Found:** at sitting 103, 2026-11-22, the attended session.
+
+**The mechanism.** Recognition named `Sixth Sense (Louie Vega Remix) feat.
+Ursula Rucker`. The library holds `Sixth Sense (Louie Vega Remix)` by Josh
+Wink, cued. The set job reported the heard one missing, and the download took
+a second copy.
+
+**Measured cost.** One duplicate in 100 landed rows, read by comparing every
+landed title against the older rows. The set's INSPIRATION playlist was given
+the cued copy by hand.
+
+**Closes when:** a trailing feat credit after a version is read off the title
+before the match. Ledger only.
+
+---
+
+## R-1869. The scheduled night pass runs from the development checkout, so a pull during it ends it mid run with its downloads stranded in staging
+
+**Found:** at sitting 103, 2026-11-22, the attended session.
+
+**The mechanism.** `crate schedule install`, run from the development
+checkout at sitting 102, wrote that checkout's `.venv/bin/crate` into the
+launchd job, whose editable install reads the working tree. The night of
+2026-11-21 ran from 15:38Z to 15:44Z on the 22nd. The checkout was fast
+forwarded at 15:40:40Z across U298, and the run ended `internal-error`,
+`ImportError: cannot import name 'load_config' from
+'cratekit.cli.output'`, when it next imported lazily.
+
+**Measured cost.** The download had succeeded, 32 of 32 settled with one
+skipped. The pass never reached its tail or its gate, and `sync night`'s
+record names no pass run, no staging and no gate, so its files sit in
+download staging with no command naming them. The installed copy, 0.18.0,
+has no `sync night`.
+
+**Closes when:** the schedule names an installed copy rather than a
+checkout, or a night that dies after its download records the pass run a
+`crate sync land --pass-run` continues.
+
+---
+
+## R-1870. A set landing's rehearsal refuses whenever the set holds a track another landing brought in after the set's job ran
+
+**Found:** at sitting 103, 2026-11-22, the attended session.
+
+**The mechanism.** A set job freezes each track's report when it runs. At
+`intake land --set`, a track reported missing that no staged file answers is
+asked of the library through `_LibraryView`, which indexes the files under
+the configured music root. The rehearsal points that root at its own area,
+which holds only the landing's clones, so the live plan calls the track owned
+and the rehearsal's leaves it out, and the rehearsal refuses
+`decision-stale`.
+
+**Measured cost.** Six sets by one DJ share tracks. Three landings rehearsed
+equal; Third Floor Sounds refused twice (319 differing lines) and Salas Roma
+once (117), every differing line in the set playlist's members and left
+rows. Running `intake set` again for each refrozen the reports at no
+recognition cost, 0 calls each, about two minutes of fetching per mix, and
+all three then rehearsed equal and landed.
+
+**Closes when:** the rehearsal's ownership view reads the live library's
+files, or the refusal names running the set job again as its remedy.
+
+---
+
+## R-1871. The new rbxml_insert.py sits outside both readings of the emitter guard, which read rbxml.py alone
+
+**Found:** at the review of #859, U302, 2026-11-22.
+
+**The mechanism.** `tests/test_tree_registry.py` finds the XML byte writers
+two ways: `_public_functions` keeps only functions whose `__module__` is
+`cratekit.write.rbxml`, and `_byte_writers_by_source` parses `rbxml.py` alone.
+U302 moved the read only placement helpers into `write/rbxml_insert.py` and
+imports them back into `rbxml`, so a byte writer added to `rbxml_insert.py`
+later, and imported back the same way, is checked by neither reading. The
+review planted one there on a scratch copy: both conformance tests stayed
+green, while the same function in `rbxml.py` failed both.
+
+**Measured cost.** None today: no function in `rbxml_insert.py` changes a
+buffer (read by grep and by syntax tree). The producer is a future edit, not
+driven.
+
+**Closes when:** the guard reads every module under `write/` whose name
+starts `rbxml`, or `rbxml_insert.py` is folded back. `tests/test_tree_registry.py`
+is on no area card's list, so it is the suite card's, #869 (U312). Ledger only.
+
+---
+
+## R-1872. How the depth walk treats a truncated NODE open tag is pinned by no test, on the base and the branch alike
+
+**Found:** at the review of #859, U302, 2026-11-22.
+
+**The mechanism.** `rbxml._node_tokens`, which U302 folded out of
+`depth_of` and `matching_close`, stops at an open tag with no end. Counting
+that tag as a level before stopping changes only `depth_of`, and no test
+fails: 90 passed under the mutation, and the base form in `depth_of`
+survives the same mutation.
+
+**Measured cost.** None driven: a document holding an unterminated open tag
+inside the playlist section is one `playlists_span` and `node_at` already
+read as unusable, so no writer reaches the depth it would misread.
+
+**Closes when:** a test feeds the walk a truncated tag inside an otherwise
+readable playlist section, if such a document can be produced. Ledger only.
