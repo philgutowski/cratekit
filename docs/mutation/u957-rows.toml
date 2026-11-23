@@ -31,8 +31,8 @@ surface = "maintainer"
 tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
 old = '''    if token.lower() in segments:
         return True
-    return re.search(_host_forms'''
-new = '''    return re.search(_host_forms'''
+    # The token alone'''
+new = '''    # The token alone'''
 
 [[rows]]
 id = "M4_segment_case_exact"
@@ -110,8 +110,8 @@ description = "_HOST_SUFFIXES: drop lan"
 file = "scripts/scan_repo.py"
 surface = "maintainer"
 tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
-old = '''_HOST_SUFFIXES = r"(?:local|lan|localdomain|home|home\.arpa|internal)"'''
-new = '''_HOST_SUFFIXES = r"(?:local|localdomain|home|home\.arpa|internal)"'''
+old = '''_HOST_SUFFIXES = r"(?:local|lan|localdomain|home\.arpa)"'''
+new = '''_HOST_SUFFIXES = r"(?:local|localdomain|home\.arpa)"'''
 
 [[rows]]
 id = "M10_host_lookbehind_hyphen"
@@ -147,7 +147,7 @@ description = "_host_forms: take the name followed by any colon, so a mapping ke
 file = "scripts/scan_repo.py"
 surface = "maintainer"
 tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
-old = '''{name}:[~/]",'''
+old = '''{name}:(?:~|/(?!/))",'''
 new = '''{name}:",'''
 
 [[rows]]
@@ -171,6 +171,33 @@ old = '''                (token for token in identity if token.lower() not in li
 '''
 new = '''                (),
 '''
+
+[[rows]]
+id = "M17_scheme_read_as_scp"
+description = "_host_forms: let the scp form take a URL scheme, so word:// reads as a host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''{name}:(?:~|/(?!/))",'''
+new = '''{name}:(?:~|/)",'''
+
+[[rows]]
+id = "M18_method_call_read_as_host"
+description = "_host_forms: let a method call such as word.local() read as a host"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''(?![A-Za-z0-9_(-])",'''
+new = '''(?![A-Za-z0-9_-])",'''
+
+[[rows]]
+id = "M19_prefilter_skips_everything"
+description = "_names_the_machine: the token search answers absent for every file, so no host form is ever read"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_portability.py", "tests/test_skills_lint.py", "tests/test_attended_orchestrator_skill.py"]
+old = '''    if re.search(re.escape(token), text, re.IGNORECASE) is None:'''
+new = '''    if True:'''
 
 [[rows]]
 id = "M16_cloud_relaxes_declared"

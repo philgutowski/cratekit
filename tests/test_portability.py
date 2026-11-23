@@ -569,8 +569,6 @@ def test_a_detected_ordinary_word_passes_in_prose(detected):
         "open " + _W + ".lan",
         _W + ".localdomain",
         _W + ".home.arpa",
-        _W + ".home",
-        _W + ".internal",
         "http://" + _W.capitalize() + ".local/",
         "someone" + "@" + _W,
         "someone" + "@" + _W + ":~/x",
@@ -606,6 +604,9 @@ def test_a_detected_ordinary_word_is_caught_where_it_names_the_machine(detected,
         _W + ": /x",
         "someone@" + _W + ".com",
         "a://" + _W + "s/",
+        "a " + _W + "://location",
+        "return " + _W + ".local()",
+        _W + ".home()",
     ],
 )
 def test_a_host_form_needs_the_whole_name_and_a_whole_suffix(detected, written):
