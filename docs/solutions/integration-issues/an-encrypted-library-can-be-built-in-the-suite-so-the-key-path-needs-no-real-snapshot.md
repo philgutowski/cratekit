@@ -2,7 +2,7 @@
 title: "An encrypted library can be built in the suite, so the key path needs no real snapshot"
 date: 2026-09-18
 category: integration-issues
-module: src/cratekit/core/rb_writer.py
+module: "src/cratekit/core/rb_writer.py, src/cratekit/core/rb_copies.py"
 problem_type: integration_issue
 component: database
 severity: high

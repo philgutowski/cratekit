@@ -2,7 +2,7 @@
 title: rekordbox's Remove from Collection deletes the content row and its memberships outright, and sweeps a live orphan artist
 date: 2026-11-21
 category: integration-issues
-module: "src/cratekit/core/rb_writer.py"
+module: "src/cratekit/core/rb_writer.py, src/cratekit/core/rb_removal.py, src/cratekit/core/rb_copies.py"
 problem_type: integration_issue
 component: database
 root_cause: incorrect_assumption

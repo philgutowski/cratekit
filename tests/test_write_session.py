@@ -1,35 +1,9 @@
 """U8: the destructive-session boundary, its lock, and its acknowledgment.
 
-The plan's test scenarios for this unit, one test per scenario, plus the two
-standing debts it is on the hook to close.
-
-* AE5. A session with no recorded acknowledgment parks blocked and names the fix.
-* AE19. A second process refuses while the library lock is held, and names the
-  holder.
-* AE20. Every affirmative flag and configuration key together still leaves the
-  acknowledgment required (R34).
-* A non-interactive, agent-shaped invocation cannot mint an acknowledgment.
-* A multi-source run refused at source two leaves source one committed and names
-  both states; a resume skips source one (R29).
-* A commit whose read-back disagrees ends ``committed-unverified``, advances
-  nothing, and refuses the next write session (AE13).
-* A capture that fails its integrity check blocks the commit behind it.
-* A run holding an un-imported XML output reports that state and refuses to write
-  a database surface for a row that does not exist.
-* A nested session acquisition in one process is refused as a programming error
-  rather than reported as a foreign lock holder.
-
-Plus:
-
-* The residual finding "The backup restore is not yet bound to the
-  destructive-session gates". The backup restore passes the same gates, because KTD24 binds them to
-  destruction and a restore destroys while writing no database row.
-* The runtime half of R17's fifth surface: a real analysis file is moved while a
-  session is open and the session refuses.
-
-Everything is hermetic. The volume identity, the terminal probe, the process
-liveness answer and the database handle are all injected, so no test depends on
-what is mounted, what is running, or whether anybody is sitting at a terminal.
+One test per plan scenario (AE5, AE19, AE20, AE13, R29, R34), plus the backup
+restore bound to the same gates (KTD24) and the runtime half of R17's fifth
+surface. Everything is hermetic: volume identity, terminal probe, process
+liveness and the database handle are injected.
 """
 
 from __future__ import annotations
@@ -56,8 +30,7 @@ from tests.test_config import valid_data
 
 UTC = timezone.utc
 
-#: The identity the fixture library records. Read from the config rather than
-#: restated, wherever it is used.
+#: A foreign disk's identity; the fixture's own is read from the config.
 _ELSEWHERE = "0000-0000-not-this-disk"
 
 
@@ -99,11 +72,7 @@ def foreign_identity(_path):
 
 
 def open_gates(cfg, **overrides):
-    """The real gates with only the platform seams injected.
-
-    Everything that would otherwise depend on this machine is supplied: the
-    volume identity, and nothing else. The refusals themselves are real.
-    """
+    """The real gates with only the volume identity seam injected."""
     arguments = {"identity_provider": matching_identity(cfg), "mount_enumerator": lambda: ()}
     arguments.update(overrides)
     return arguments
@@ -111,14 +80,7 @@ def open_gates(cfg, **overrides):
 
 @pytest.fixture
 def volume_matches(cfg, monkeypatch):
-    """Make the platform's own identity probe agree with what the library recorded.
-
-    Patched at the PRECONDITION seam rather than passed into the gate, so the
-    tests below drive the gates with no seam injected at all, which is exactly
-    how a caller that supplies nothing reaches them. Without this the volume
-    refusal fires first and the result depends on which disk the temporary
-    directory happens to be on.
-    """
+    """Agree the platform's identity probe at the precondition seam, no gate seam."""
     monkeypatch.setattr(
         preflight, "default_identity_provider", lambda: (lambda _path: cfg.library.volume_id)
     )
@@ -155,13 +117,7 @@ def state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
 
 
 def test_the_three_refusals_carry_three_distinct_codes_and_write_nothing(cfg):
-    """AE5 and AE19 together, asserted against the filesystem rather than assumed.
-
-    "Zero writes" is the assertion people skip because it looks obvious. It is
-    not: a gate that took the lock before checking the acknowledgment would leave
-    a file behind on a refused path, and every other assertion here would still
-    pass.
-    """
+    """AE5 and AE19: three codes, and zero writes on every refused path."""
     roots = (cfg.library.root, config.installation_state_dir(), config.config_dir())
 
     def refuse_with(**arguments):
@@ -204,13 +160,7 @@ def test_the_gates_admit_a_session_once_all_three_pass(cfg):
 
 
 def test_the_volume_is_judged_before_any_library_path_is_resolved(cfg):
-    """The order is the property, not a preference.
-
-    With the wrong disk mounted, the acknowledgment file and the lock both sit on
-    a volume that is not this library. Reading either one first would answer a
-    question about somebody else's disk, and "no acknowledgment recorded" is a
-    perfectly convincing answer to get from the wrong library.
-    """
+    """The volume is judged first, or the lock is read off somebody else's disk."""
     acknowledge(cfg)
     with pytest.raises(CratekitError) as excinfo:
         with session.assert_gates(
@@ -226,12 +176,7 @@ def test_the_volume_is_judged_before_any_library_path_is_resolved(cfg):
 
 @pytest.mark.parametrize("state", sorted(preflight.MountState, key=str))
 def test_every_mount_verdict_has_a_declared_refusal_slug(state):
-    """P3. A verdict added with no entry must fail here rather than fall through.
-
-    A new mount state falling through to a default is how a refusal ends up
-    wearing an unrelated code, which is the collapse the cause registry exists to
-    prevent.
-    """
+    """P3: a new mount verdict with no slug fails here, not under a default code."""
     from cratekit.core.cause import REASONS
 
     if state is preflight.MountState.OK:
@@ -251,12 +196,7 @@ _ARCHIVE = "AAAA-1111-the-archive"
 
 @pytest.mark.parametrize("state", sorted(preflight.MountState, key=str))
 def test_every_mount_verdict_about_a_rule_target_was_decided_exactly_once(state):
-    """A verdict is a pass or a declared refusal, and never both or neither.
-
-    Two tables rather than one, so the property needs saying: a state in neither
-    falls through to a default slug nobody chose, and a state in both passes
-    while a reader of the refusal table believes it refuses.
-    """
+    """A verdict is in exactly one of the pass and refusal tables."""
     from cratekit.core.cause import REASONS
 
     proved = state in session._MAPPED_PROVED
@@ -267,12 +207,8 @@ def test_every_mount_verdict_about_a_rule_target_was_decided_exactly_once(state)
 
 
 def test_the_verdicts_that_prove_a_rule_target_are_spelled_out():
-    """The pass set, as a literal, because widening it is how the gate opens.
-
-    ``LIBRARY_PATH_MISSING`` passes on purpose: the identity matched and only
-    the directory is absent, which the pass following the rule asks about per
-    row. Nothing else may join it without this line changing.
-    """
+    """The pass set as a literal, since widening it opens the gate.
+    ``LIBRARY_PATH_MISSING`` passes because the identity matched."""
     assert session._MAPPED_PROVED == {
         preflight.MountState.OK,
         preflight.MountState.LIBRARY_PATH_MISSING,
@@ -280,12 +216,8 @@ def test_the_verdicts_that_prove_a_rule_target_are_spelled_out():
 
 
 def test_a_rule_is_held_to_its_own_identity_then_the_librarys_then_to_nothing(cfg, tmp_path):
-    """Three answers, and the third is None rather than the library's identity.
-
-    Defaulting the third to the library's identity is the hole: a library on the
-    boot disk and an empty directory left standing where an external drive
-    mounts are ON THE SAME DISK, so that default matches.
-    """
+    """The third answer is None, since an empty mount-point directory sits on the
+    library's boot disk and would match its identity."""
     root = Path(cfg.library.root)
     own = locations.PrefixRule(_RECORDED_ELSEWHERE, str(root / "Old"), _ARCHIVE)
     inside = locations.PrefixRule(_RECORDED_ELSEWHERE, str(root / "Old"))
@@ -320,11 +252,7 @@ def test_a_rule_onto_the_volume_it_recorded_passes(cfg, tmp_path, monkeypatch):
 def test_a_different_disk_at_a_rules_target_refuses_and_names_the_rule(
     cfg, tmp_path, monkeypatch
 ):
-    """R-44 Open 1. The decoy at the mount path is exactly the disk a rule reaches.
-
-    The second rule is the wrong one, so the index in the refusal is evidence
-    that every rule was asked rather than the first.
-    """
+    """R-44 Open 1: a decoy at the second rule refuses with its index."""
     archive = tmp_path / "Volumes" / "ARCHIVE"
     archive.mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {archive: "BBBB-a-decoy"}, otherwise=cfg.library.volume_id)
@@ -349,12 +277,7 @@ def test_a_different_disk_at_a_rules_target_refuses_and_names_the_rule(
 
 
 def test_an_empty_directory_where_a_volume_mounts_is_not_that_volume(cfg, tmp_path, monkeypatch):
-    """R-51. What an unclean eject leaves behind passes every existence check.
-
-    The directory is there, so ``stat`` is satisfied, and it sits on whichever
-    disk holds the mount path, so the identity read for it is that disk's. With
-    nothing enumerated as mounted, the recorded volume is simply somewhere else.
-    """
+    """R-51: the empty directory an unclean eject leaves is not the volume."""
     stale = tmp_path / "Volumes" / "ARCHIVE"
     stale.mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {}, otherwise=cfg.library.volume_id)
@@ -395,12 +318,8 @@ def test_a_recorded_volume_mounted_somewhere_else_says_where(cfg, tmp_path, monk
 def test_a_target_outside_the_root_with_nothing_recorded_refuses_and_hands_over_the_identity(
     cfg, tmp_path, monkeypatch
 ):
-    """The refusal a person meets the day this gate arrives, one edit from a run.
-
-    It names the rule by its config key and the identity the disk shows NOW, so
-    the act is "check that is the right disk, then record it", not a search for
-    how to read a volume identity.
-    """
+    """With nothing recorded, the refusal names the rule's config key and the
+    identity the disk shows now, so the fix is one edit."""
     archive = tmp_path / "Volumes" / "ARCHIVE"
     archive.mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {archive: _ARCHIVE}, otherwise=cfg.library.volume_id)
@@ -417,7 +336,7 @@ def test_a_target_outside_the_root_with_nothing_recorded_refuses_and_hands_over_
 
 
 def test_a_volume_nested_under_the_library_root_is_not_the_library(cfg, monkeypatch):
-    """The inside-the-root answer is an ASSERTION of the library's identity, not a pass."""
+    """Inside the root, the library's identity is asserted, not passed."""
     nested = Path(cfg.library.root) / "Archive"
     nested.mkdir()
     _mounts.stand_in(monkeypatch, {nested: "BBBB-nested"}, otherwise=cfg.library.volume_id)
@@ -458,14 +377,8 @@ def test_a_matched_volume_with_the_directory_absent_is_left_to_the_pass_that_fol
 def test_an_empty_mount_slot_refuses_even_when_the_recorded_identity_matches_it(
     cfg, tmp_path, monkeypatch
 ):
-    """The review's first finding, and the way a correct looking config reopens R-51.
-
-    An ejected drive leaves its mount point on the disk that holds the mount
-    directory. A rule that recorded THAT disk's identity, because a refusal once
-    offered it or because the library shares the disk, matches the leftover
-    directory perfectly. So the slot is asked about before any identity is
-    compared, and what is recorded cannot talk it round.
-    """
+    """An empty mount slot refuses before any identity is compared, since a rule
+    recording the slot's own disk would match the leftover directory (R-51)."""
     volumes = tmp_path / "Volumes"
     leftover = volumes / "ARCHIVE"
     leftover.mkdir(parents=True)
@@ -482,14 +395,8 @@ def test_an_empty_mount_slot_refuses_even_when_the_recorded_identity_matches_it(
 def test_an_ejected_drive_is_never_offered_the_boot_disks_identity_to_record(
     cfg, tmp_path, monkeypatch
 ):
-    """The refusal that hands over an identity must not hand over the wrong disk's.
-
-    Nothing recorded, drive ejected, mount point left behind. A walk upward from
-    there reads the disk holding the mount directory, and a step saying "it
-    identifies as that, record it" is an instruction to disarm this gate for
-    good. The identity named here belongs to no volume in the test, so its
-    absence from the whole refusal is the assertion.
-    """
+    """An ejected drive's refusal never offers the boot disk's identity to record,
+    which would disarm the gate for good."""
     volumes = tmp_path / "Volumes"
     (volumes / "ARCHIVE").mkdir(parents=True)
     _mounts.stand_in(monkeypatch, {}, otherwise="CCCC-the-boot-disk", slots_under=volumes)
@@ -507,12 +414,8 @@ def test_an_ejected_drive_is_never_offered_the_boot_disks_identity_to_record(
 def test_a_foreign_volume_under_a_rule_that_recorded_nothing_offers_nothing_to_record(
     cfg, monkeypatch
 ):
-    """The wording half. The identity compared was the LIBRARY'S, and the refusal says so.
-
-    "The volume recorded on that rule" names a record that does not exist for a
-    rule inside the library root, and "record it as that rule's volume_id" would
-    invite a person to pin a nested disk as the answer.
-    """
+    """Inside the root the identity compared was the library's, and the wording
+    says so and offers no ``volume_id`` to record."""
     nested = Path(cfg.library.root) / "Archive"
     nested.mkdir()
     _mounts.stand_in(monkeypatch, {nested: "BBBB-nested"}, otherwise=cfg.library.volume_id)
@@ -529,12 +432,7 @@ def test_a_foreign_volume_under_a_rule_that_recorded_nothing_offers_nothing_to_r
 def test_a_way_to_the_target_this_account_cannot_walk_is_a_refusal_and_not_a_traceback(
     cfg, tmp_path, monkeypatch
 ):
-    """The review's third finding. "I could not look" reaches a person as a refusal.
-
-    The walk to a mount raises on a directory this account cannot traverse, and
-    an ``OSError`` escaping a gate arrives at the command line as an internal
-    defect with no slug, no exit code and no step.
-    """
+    """An untraversable path is a refusal, not an ``OSError`` traceback."""
     archive = tmp_path / "archive"
     archive.mkdir()
 
@@ -572,13 +470,8 @@ def test_a_provider_that_cannot_read_the_identity_to_hand_over_is_a_refusal_too(
 def test_the_file_is_proved_where_the_file_is_and_not_where_the_rule_points(
     cfg, tmp_path, monkeypatch
 ):
-    """The review's fourth finding. A second volume inside the first is a third disk.
-
-    The rule's target is on the archive and proves itself. One directory under
-    it has another volume mounted in it, and a file in THAT directory would be
-    trashed on a disk nothing identified. Both halves are asserted, because a
-    probe that refuses everything passes the second half alone.
-    """
+    """A file is proved where it is: a volume mounted under the rule's target is a
+    third disk. Both halves are asserted, since refuse-all passes the second."""
     archive = tmp_path / "Volumes" / "ARCHIVE"
     inner = archive / "Music" / "On Another Disk"
     inner.mkdir(parents=True)
@@ -609,7 +502,7 @@ def test_the_file_is_proved_where_the_file_is_and_not_where_the_rule_points(
 def test_a_verdict_in_neither_table_fails_rather_than_wearing_the_mismatch_slug(
     cfg, tmp_path, monkeypatch
 ):
-    """The review's eighth finding. The table is indexed, so an undecided state is loud."""
+    """The table is indexed, so an undecided state raises."""
     archive = tmp_path / "archive"
     archive.mkdir()
     undecided = {
@@ -655,15 +548,14 @@ def test_the_seams_handed_in_are_the_seams_used(cfg, tmp_path):
 
 
 def test_a_second_process_refuses_and_names_the_holder(cfg):
-    """AE19. Naming the holder is the difference between waiting and guessing."""
+    """AE19: the refusal names the holder."""
     with session.session_lock(cfg):
         recorded = session.read_lock_holder(session.lock_path(cfg))
         assert recorded is not None
         assert recorded.pid == os.getpid()
         assert recorded.host and recorded.boot and recorded.started
 
-        # A separate handle on the same file is what a second process looks like
-        # to the kernel, so the in-process composition check must not see it.
+        # A separate handle is a second process to the kernel.
         session._HELD.discard(str(session.lock_path(cfg).absolute()))
         with pytest.raises(CratekitError) as excinfo:
             with session.session_lock(cfg):
@@ -674,13 +566,7 @@ def test_a_second_process_refuses_and_names_the_holder(cfg):
 
 
 def test_a_nested_session_is_a_programming_error_not_a_foreign_holder(cfg):
-    """The distinction matters because the two remedies are opposite.
-
-    A foreign holder is waited for. A session nested inside another in ONE
-    process can never resolve: the caller would be told to wait for itself,
-    forever, and the report would name the run that is stuck as the thing
-    blocking it.
-    """
+    """A nested session is a programming error, not a holder to wait for."""
     with session.session_lock(cfg):
         with pytest.raises(session.SessionComposition) as excinfo:
             with session.session_lock(cfg):
@@ -692,11 +578,7 @@ def test_a_nested_session_is_a_programming_error_not_a_foreign_holder(cfg):
 
 
 def test_the_lock_file_is_never_unlinked_and_is_private_under_any_umask(cfg):
-    """Unlinking a lock file is how two processes both come to believe they hold it.
-
-    The first holds a lock on the inode and unlinks the NAME; the second creates
-    a fresh file at that name and locks that instead, with nothing raised.
-    """
+    """Unlinking a lock lets a second process lock a fresh inode at the same name."""
     previous = os.umask(0)
     try:
         with session.session_lock(cfg) as held:
@@ -742,11 +624,7 @@ def test_releasing_a_live_holders_lock_refuses(cfg):
 
 
 def test_a_holder_on_another_machine_or_another_boot_is_assumed_alive(cfg):
-    """Fails towards alive on every question this process cannot answer.
-
-    Guessing "dead" would let one machine clear another machine's claim on the
-    library, and the operation the lock protects is the one that removes files.
-    """
+    """Fails towards alive, or one machine could clear another's claim mid delete."""
     here = session.current_holder()
     other_host = session.Holder(
         host="another-machine", boot=here.boot, pid=here.pid, started=here.started
@@ -772,11 +650,7 @@ def test_a_holder_recorded_before_the_machine_identity_reads_back_as_unknown(cfg
 
 
 def test_this_platform_names_its_machine_as_a_digest_not_the_serial(cfg):
-    """The probe answers on the two platforms this ships for, and records no serial.
-
-    A platform with no answer gets the declared unknown, which fails towards
-    alive, so a missing answer costs the power loss recovery and nothing else.
-    """
+    """The machine identity is a digest, never the serial, else the declared unknown."""
     machine = session.machine_identity()
     assert session.current_holder().machine == machine
     if sys.platform == "darwin" or sys.platform.startswith("linux"):
@@ -802,11 +676,8 @@ def _here() -> session.Holder:
 
 
 def _before_a_power_loss(here: session.Holder, **changes) -> session.Holder:
-    """A holder this machine's previous boot recorded, naming a process now gone.
-
-    A real finished process, so the last check in the judgment genuinely asks the
-    platform and is told no. A day before this boot, well past the drift margin.
-    """
+    """A holder from this machine's previous boot, a day back, naming a real
+    finished process so the platform is genuinely asked."""
     finished = subprocess.Popen([sys.executable, "-c", "pass"])
     finished.wait()
     assert session.process_exists(finished.pid) is False
@@ -822,7 +693,7 @@ def _before_a_power_loss(here: session.Holder, **changes) -> session.Holder:
 
 
 def test_a_holder_from_an_earlier_boot_of_this_machine_is_gone(cfg):
-    """What a power loss leaves. No process survives a restart of its machine."""
+    """No process survives a restart of its machine (R-647)."""
     here = _here()
     assert session.holder_alive(_before_a_power_loss(here), here=here) is False
 
@@ -842,13 +713,8 @@ def test_a_holder_from_an_earlier_boot_of_this_machine_is_gone(cfg):
 def test_a_holder_from_another_boot_is_kept_without_proof_it_was_this_machine(
     cfg, label, changes
 ):
-    """Every condition in the cross boot judgment, one row each, all failing alive.
-
-    The first row is the reason the host name is not the proof: a library drive
-    moved between two machines that share one would let either clear the other's
-    claim. Each row starts from the holder the test above judges gone, so a row
-    passing proves its own condition is what kept it.
-    """
+    """Each cross boot condition fails alive, one row each from the gone holder.
+    The host name is no proof, since a drive can move between same-named machines."""
     here = _here()
     assert session.holder_alive(_before_a_power_loss(here, **changes), here=here) is True, label
 
@@ -876,26 +742,15 @@ def test_this_machine_with_no_identity_keeps_every_holder_from_another_boot(cfg)
 
 
 def test_a_live_process_read_through_a_moved_clock_is_kept(cfg):
-    """The boot moved and the process did not, so the boot was this one all along.
-
-    The boot identity is a wall clock reading and an adjusted clock moves it. The
-    holder here is this very process, recorded with a boot a day earlier: every
-    other condition says gone, and only the live process check keeps it.
-    """
+    """A live process keeps its claim when a moved clock moves the boot reading."""
     here = _here()
     moved = _before_a_power_loss(here, pid=here.pid, started=here.started)
     assert session.holder_alive(moved, here=here) is True
 
 
 def test_a_live_process_whose_start_time_moved_with_the_clock_is_kept(cfg):
-    """The Linux shape of a stepped clock, where the start time moves with the boot.
-
-    Linux derives a process's start time from the boot reading, so a live holder
-    read after a forward step reports a start time that differs from the one it
-    recorded. Comparing the two would read the holder as a recycled identifier
-    and clear a claim mid write, so a live identifier keeps the claim whatever
-    start time it reports.
-    """
+    """On Linux the start time moves with a stepped clock, so a live identifier keeps
+    the claim whatever start time it reports."""
     here = _here()
     stepped = _before_a_power_loss(
         here, pid=here.pid, started=f"{float(here.started) - 86400:.3f}"
@@ -958,14 +813,12 @@ def test_an_agent_shaped_invocation_cannot_mint_the_acknowledgment(cfg):
 
 
 def test_the_terminal_check_is_a_terminal_check_and_not_a_standard_input_read():
-    """R33 still holds. A terminal check does not consume a byte from anywhere.
-
-    Derived from the source rather than asserted about behaviour, because the
-    property is the ABSENCE of a read and absence is only visible structurally.
-    """
+    """R33: the terminal check reads no input, asserted structurally."""
     import ast
 
-    source = Path(session.__file__).read_text()
+    core = Path(session.__file__).parent
+    # The session and its parts (U300): the terminal check lives in ``session_ack``.
+    source = "\n".join(path.read_text() for path in sorted(core.glob("session*.py")))
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Attribute) and node.attr == "stdin":
             raise AssertionError("the session module names standard input")
@@ -974,23 +827,14 @@ def test_the_terminal_check_is_a_terminal_check_and_not_a_standard_input_read():
 
 
 def test_the_recorded_actor_is_derived_from_the_invocation_and_never_supplied():
-    """R34's sharpest clause, asserted by INTROSPECTION rather than by reading.
-
-    If a caller could name the actor, an agent driving the command line would
-    mint the gate and sign somebody else's name to it. So the assertion is that
-    no parameter could carry one, which stays true when the function is edited.
-    """
+    """R34: no parameter can carry the actor, or an agent could sign another's name."""
     parameters = inspect.signature(session.record_acknowledgment).parameters
     assert not [name for name in parameters if "actor" in name.lower()]
     assert not [name for name in parameters if "user" in name.lower()]
 
 
 def test_the_acknowledgment_records_the_backup_age_that_was_shown(cfg):
-    """KTD18. An acknowledgment with no age is a click, not a decision.
-
-    The portions are DERIVED from the backup fact vocabulary, so a portion added
-    later cannot be silently absent from what a person was shown.
-    """
+    """KTD18: the backup age shown is recorded for every declared portion."""
     from cratekit.core import backup_facts
 
     now = datetime(2026, 8, 1, 12, 0, tzinfo=UTC)
@@ -1032,25 +876,12 @@ def test_the_acknowledgment_file_is_private_under_any_umask(cfg):
 
 
 def test_no_blanket_affirmative_satisfies_the_acknowledgment(cfg):
-    """AE20 and R34. Three affirmative surfaces exist, and all three are closed.
+    """AE20 and R34: no flag, configuration key or environment variable satisfies
+    the acknowledgment.
 
-    R34 names a flag, a configuration key, and an environment variable, so each
-    one is checked in the shape it would actually take, and each check is derived
-    rather than restated.
-
-    1. A FLAG would be a boolean parameter on the gate or on the consult. The set
-       is read from the signatures, so a parameter added later is covered.
-    2. A CONFIGURATION KEY would be a module toggle, which is the only boolean
-       surface the configuration schema has. Every declared module is switched
-       on, iterating the profile module registry rather than naming any of them.
-    3. An ENVIRONMENT VARIABLE cannot satisfy something the code never reads, so
-       the whole acknowledgment path is scanned for an environment read. That is
-       structural on purpose: a behavioural test would have to guess the variable
-       name, and the one that mattered would be the name nobody guessed. BOTH
-       HALVES of the path are scanned: the CONSULT, which a session runs, and
-       the MINT, which writes the record a session consults. Scanning only the
-       consult would leave a variable free to decide who the record says was
-       here, which is the same gate answered one step earlier.
+    Flags are read from the signatures, every module toggle is switched on, and
+    both the consult and the mint are scanned for environment reads, since a
+    behavioural test would have to guess the variable name.
     """
     from cratekit.core import profiles
 
@@ -1188,7 +1019,7 @@ def test_a_refusal_at_source_two_leaves_source_one_committed_and_names_both(cfg)
     assert set(cause.detail["remaining"]) == {"two", "three"}
     assert cause.inner is not None and cause.inner.reason == "refused-by-policy"
 
-    # And the same facts are on disk, not only in the exception.
+    # The same facts are on disk.
     persisted = session.read_record(record.session_id, cfg)
     assert persisted.sources["one"] == str(session.SourceState.COMMITTED)
     assert persisted.sources["two"] == str(session.SourceState.REFUSED)
@@ -1278,13 +1109,8 @@ def test_a_read_back_that_disagrees_ends_committed_unverified_and_advances_nothi
 
 
 def test_the_read_back_releases_the_database_completely(cfg):
-    """Closing a database does not release it: the pooled connection stays open.
-
-    A restore over a file this process still holds produces an input-output error
-    against a database that is perfectly intact, which reads as a corrupt restore
-    at the worst possible moment. The full release is asserted rather than
-    assumed, because the binding's own close looks like it is enough.
-    """
+    """The read-back disposes the engine too, since a pooled connection held open
+    makes a restore over the file fail as if corrupt."""
     disposed: list[str] = []
 
     class Engine:
@@ -1350,12 +1176,8 @@ def test_an_unresolved_session_keeps_its_capture_out_of_the_pruner(cfg):
 
 
 def test_a_run_holding_an_unimported_output_refuses_a_database_surface(cfg):
-    """XML surfaces are strictly upstream of database surfaces within a run.
-
-    The XML is what creates the row. A database surface written before the import
-    addresses a row the database does not contain, so the refusal is not caution,
-    it is the invariant.
-    """
+    """XML surfaces are upstream, since the import creates the row a database
+    surface addresses."""
     record = session.open_session(cfg, workflow="a-destructive-workflow")
     session.assert_database_surface_allowed(record)  # nothing pending, nothing refused
 
@@ -1383,12 +1205,7 @@ def test_a_run_holding_an_unimported_output_refuses_a_database_surface(cfg):
 
 
 def test_the_pending_action_is_the_one_the_command_line_layer_already_enforces(cfg):
-    """Connected to the existing mechanism rather than a parallel one.
-
-    The command-line layer's own check refuses any verb named in ``blocks`` while
-    the action is outstanding. Feeding the session's action straight into it is
-    what makes the state load-bearing instead of advisory.
-    """
+    """The pending import feeds the command line's own ``blocks`` check."""
     from cratekit.cli import gates, registry
 
     record = session.open_session(cfg, workflow="a-destructive-workflow")
@@ -1425,13 +1242,7 @@ def _analysis_tree(root: Path) -> list[Path]:
 
 
 def test_a_moved_analysis_file_refuses_the_session(cfg, tmp_path):
-    """A REAL moved file, not an assertion that a function exists.
-
-    This is the half the source scan cannot do. It forbids every symbol that
-    serialises one of these files, and reading them stays legal by decision, so a
-    grid rewritten through a handle the binding already returned names none of
-    the forbidden symbols and is invisible to it.
-    """
+    """A real rewritten file refuses, the half the source scan cannot see."""
     written = _analysis_tree(tmp_path / "library")
     victim = written[1]
 
@@ -1461,20 +1272,15 @@ def test_a_session_that_touches_nothing_passes(cfg, tmp_path):
     _analysis_tree(tmp_path / "library")
     with session.analysis_files_unmoved([tmp_path / "library"]) as watched:
         assert len(watched) == 4
-    # And reading them is still perfectly legal.
+    # Reading them stays legal.
     with session.analysis_files_unmoved([tmp_path / "library"]):
         for path in session.analysis_files_under([tmp_path / "library"]):
             path.read_bytes()
 
 
 def test_the_gates_can_arm_the_analysis_watch_for_the_body_of_a_session(cfg, tmp_path):
-    """Composed at the one place every destructive session passes through.
-
-    The roots are supplied by the caller rather than defaulted to the library
-    root, because the alternative is walking a whole music volume on every
-    session to watch files nothing intends to open. The default of watching
-    nothing is closed by the countdown below.
-    """
+    """The gates arm the analysis watch over caller-supplied roots, not the whole
+    volume; the empty default is closed by the countdown below."""
     written = _analysis_tree(tmp_path / "library")
     acknowledge(cfg)
     with pytest.raises(CratekitError) as excinfo:
@@ -1491,29 +1297,11 @@ def test_the_gates_can_arm_the_analysis_watch_for_the_body_of_a_session(cfg, tmp
 
 
 def test_the_tree_writers_reach_for_the_session_spine(cfg):
-    """P5. The countdown that closes this unit's own softening path.
+    """P5: the tree writers call ``assert_gates`` and ``assert_verified`` and pass
+    ``analysis_roots``, or the watch watches nothing.
 
-    Three obligations, all on the unit that lands the tree writers, and none of
-    them enforceable from here today because the module does not exist:
-
-    * pass the three gates rather than re-deriving any of them;
-    * commit behind a capture that VERIFIED, which is what makes the undo real;
-    * name the analysis roots it could touch, so the watch that is the runtime
-      half of R17's fifth surface actually watches something.
-
-    The third is the one that matters most, because the default is to watch
-    nothing and a default that silently does nothing is exactly the shape a
-    docstring assertion fails to prevent.
-
-    ARMED AGAINST THE SYNTAX TREE, NOT THE SOURCE TEXT, and that distinction is
-    the whole guard. Written as a substring search this passed the moment the
-    module's own docstring explained why it calls these three, which is exactly
-    what a module documenting its obligations does. The guard would then have
-    survived every one of the calls being deleted. A docstring that satisfies
-    the test written to check the docstring's claim is not a countdown, it is
-    the softening path wearing the guard's clothes. The sibling obligation in
-    tests/test_tree_registry.py already walks calls for this reason; this one
-    now matches it.
+    Checked on the syntax tree, since a substring search passes on the module's
+    own docstring explaining the calls.
     """
     import ast
     import importlib
@@ -1544,12 +1332,7 @@ def test_the_tree_writers_reach_for_the_session_spine(cfg):
 
 
 def test_the_watched_set_is_never_narrower_than_the_binding_recognises():
-    """P4. The claim is about a real API, so it is checked against that API.
-
-    The alternatives are pulled out of the binding's own compiled pattern rather
-    than retyped, so a binding that learns a fourth name fails here instead of
-    quietly leaving one file unwatched.
-    """
+    """P4: the suffixes come from the binding's own compiled pattern."""
     from pyrekordbox.anlz import RE_ANLZ
 
     alternatives = re.search(r"\(([^)]*)\)", RE_ANLZ.pattern).group(1).split("|")
@@ -1559,13 +1342,8 @@ def test_the_watched_set_is_never_narrower_than_the_binding_recognises():
 
 
 def test_the_watched_set_covers_every_file_surface_five_declares():
-    """And WIDER than the binding, deliberately.
-
-    The binding recognises three names. R17's fifth surface declares four, and
-    the fourth is a real grid-bearing file, so recognising only what the binding
-    recognises would leave one unwatched. The four are read from that surface's
-    own declaration rather than retyped here.
-    """
+    """Wider than the binding: surface five's four declared suffixes, read from its
+    docstring, since the fourth is a real grid-bearing file."""
     import tests.test_no_beatgrid_ever as surface_five
 
     declared = set(re.findall(r"``\.([0-9A-Z]{3})``", surface_five.__doc__))
@@ -1583,11 +1361,7 @@ def test_the_watched_set_covers_every_file_surface_five_declares():
 
 
 def test_the_backup_restore_passes_the_destructive_session_gates(volume_matches, cfg, tmp_path):
-    """KTD24. A restore destroys a library and writes no database row.
-
-    A rule that bound the gates to database WRITES would leave the single most
-    destructive operation in the product outside the safety spine entirely.
-    """
+    """KTD24: the gates bind to destruction, and a restore writes no database row."""
     target = tmp_path / "scratch"
     target.mkdir()
 
@@ -1621,12 +1395,8 @@ def test_the_restores_own_refusals_survive_the_gates_being_added(cfg, tmp_path):
 
 
 def test_a_rehearsed_restore_is_not_exempt_from_the_gates(volume_matches, cfg, tmp_path):
-    """The decision, asserted. See ``run_restore`` for the three reasons.
-
-    The lock is the one that matters: a rehearsal running while another
-    destructive session writes describes a library that is changing underneath
-    it, so its preview is a report about a world that no longer exists.
-    """
+    """A rehearsal is gated too, since one run beside another write previews a
+    library changing underneath it."""
     database_target = backup.database_target_for(cfg, tmp_path / "scratch")
     plan = backup.RestorePlan(
         target=tmp_path / "scratch",
@@ -1643,38 +1413,17 @@ def test_a_rehearsed_restore_is_not_exempt_from_the_gates(volume_matches, cfg, t
 
 
 def test_the_destructive_half_of_a_restore_has_no_ungated_call_shape():
-    """``cfg`` is required, so there is no way to reach it with nothing to gate on.
-
-    An optional configuration would be a softening path: a caller that omitted it
-    would get an ungated restore and no error, which is the shape P5 exists to
-    close in the same commit that creates it.
-    """
+    """``cfg`` is required, since an optional one would be an ungated restore (P5)."""
     parameters = inspect.signature(backup.run_restore).parameters
     assert parameters["cfg"].default is inspect.Parameter.empty
     assert parameters["cfg"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
 
 
 def test_every_backup_refusal_carries_one_code_in_both_cause_tables():
-    """The two vocabularies agree about every refusal a verb can now surface.
+    """Every backup refusal has one code in both cause tables (U27, KTD25).
 
-    U27 is what made this matter. ``modules.tools.backup`` raises its own
-    ``Refusal`` enum, and until ``restore run --from-backup`` landed nothing
-    carried one out to a person, so the slugs lived only in
-    ``cratekit.cli.exit_codes``, which holds the per-slug remediation, and not in
-    ``cratekit.core.cause.REASONS``, which holds the status. A ``Cause`` built on
-    an undeclared reason raises, so the verb would have crashed at the boundary
-    it exists to translate.
-
-    DERIVED FROM THE ENUM, NEVER LISTED (P3). A member added to ``Refusal`` later
-    is covered on the day it appears, which is the whole difference between this
-    and the hand-listed set it replaces. The reverse direction is already held by
-    ``modules.tools.backup``'s own suite, which asserts every reserved slug is
-    reachable.
-
-    AND IT COMPARES THE CODES RATHER THAN MERE PRESENCE. Two tables that both
-    know a slug and disagree about its status is worse than one that has never
-    heard of it: the envelope and the process status would then describe
-    different failures, which is the collapse KTD25 is about.
+    Derived from the enum (P3), and the codes are compared, not mere presence,
+    since disagreeing tables describe different failures.
     """
     from cratekit.cli import exit_codes as reservations  # noqa: PLC0415
     from cratekit.core.cause import REASONS  # noqa: PLC0415
@@ -1692,11 +1441,8 @@ def test_every_backup_refusal_carries_one_code_in_both_cause_tables():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# The latch has an exit, the log fails CLOSED, and the guards run on both paths
-#
-# Everything below was found by an adversarial read of this unit's own diff.
-# Each one is a property the tests above asserted the happy half of and left the
-# other half free to move.
+# The latch has an exit, the log fails CLOSED, and the guards run on both paths.
+# Found by an adversarial read: the other half of properties tested above.
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -1710,13 +1456,7 @@ def _condemn(cfg):
 
 
 def test_a_condemned_library_still_admits_the_recovery_its_remedy_names(cfg):
-    """The latch may not condemn its own way out.
-
-    ``verify_commit`` refuses with ``restore-from-snapshot``. A restore is itself
-    a destructive session, so a latch that refused every destructive session
-    would refuse the remedy it had just printed, and the library would have no
-    exit but a hand-edited file in its own log.
-    """
+    """The latch admits the recovery its own remedy names."""
     acknowledge(cfg)
     condemned = _condemn(cfg)
 
@@ -1736,12 +1476,7 @@ def test_a_condemned_library_still_admits_the_recovery_its_remedy_names(cfg):
 
 
 def test_a_recovery_session_is_exempt_from_the_latch_and_from_nothing_else(cfg):
-    """One gate, not three. A recovery is still gated on all three.
-
-    Declaring the intent buys exactly one thing. If it bought the acknowledgment
-    too it would be the blanket affirmative R34 forbids, wearing a different
-    word.
-    """
+    """Recovery is exempt from the latch only (R34)."""
     _condemn(cfg)
     recovery = {
         "workflow": "a-recovery-workflow",
@@ -1773,11 +1508,7 @@ def test_a_recovery_session_is_exempt_from_the_latch_and_from_nothing_else(cfg):
 
 
 def test_the_restore_is_the_recovery_and_reaches_its_own_refusals(volume_matches, cfg, tmp_path):
-    """End to end through the real module, which is where the deadlock was.
-
-    Before the intent existed, a condemned library refused ``plan_restore`` with
-    the very reason whose remedy is a restore.
-    """
+    """End to end, a condemned library reaches ``plan_restore``'s own refusals."""
     acknowledge(cfg)
     _condemn(cfg)
     with pytest.raises(backup.BackupRefused) as excinfo:
@@ -1792,11 +1523,7 @@ def test_the_restore_is_the_recovery_and_reaches_its_own_refusals(volume_matches
 
 
 def test_resolving_the_record_is_what_clears_the_latch_not_the_restore(cfg):
-    """The session log SURVIVES a rollback, deliberately, so the record outlives it.
-
-    A user who did exactly what the refusal asked would otherwise find the next
-    write still refused, with the remedy already spent.
-    """
+    """The log survives a rollback, so resolving the record clears the latch."""
     acknowledge(cfg)
     condemned = _condemn(cfg)
 
@@ -1818,13 +1545,8 @@ def test_resolving_refuses_any_state_but_the_one_it_is_for(cfg):
 
 
 def test_the_latch_refuses_a_record_this_build_cannot_read(cfg):
-    """The gate reads the log STRICTLY. A tolerant reader fails OPEN.
-
-    A schema bump on one file, or a state value a later build introduced, would
-    otherwise make an unresolved commit vanish from the scan and admit the next
-    destructive session against a library nobody can vouch for. Both shapes are
-    driven, because they fail through different exceptions.
-    """
+    """The gate reads the log strictly, since a tolerant reader fails open. Both
+    damage shapes are driven, since they raise differently."""
     acknowledge(cfg)
     condemned = _condemn(cfg)
     path = session.log_path(condemned.session_id, cfg)
@@ -1844,14 +1566,8 @@ def test_the_latch_refuses_a_record_this_build_cannot_read(cfg):
 
 
 def test_the_session_log_filename_is_legal_on_a_library_volume(cfg):
-    """The store is LIBRARY scoped, so its filenames land on the user's own disk.
-
-    exFAT and FAT are ordinary choices for a library volume because that is what
-    a CDJ reads, and neither accepts a colon; on Windows a colon is the
-    alternate-data-stream separator. ``snapshot.new_stamp`` says exactly this in
-    the same package. The identifier keeps its colons, because addressability and
-    filename legality are different questions.
-    """
+    """Log filenames carry no colon, since exFAT and FAT library volumes refuse one;
+    the identifier itself keeps its colons."""
     identifier = session.new_session_id()
     assert ":" in identifier, "the identifier space is the run identifier space"
 
@@ -1859,8 +1575,7 @@ def test_the_session_log_filename_is_legal_on_a_library_volume(cfg):
     assert not (set(name) & set(r'<>:"/\|?* ')), name
     assert name.isascii()
 
-    # And the identifier the record carries is the un-sanitised one, so a support
-    # conversation still refers to one identifier space.
+    # The record carries the unsanitised identifier.
     record = session.open_session(cfg, workflow="a-destructive-workflow")
     written = json.loads(session.log_path(record.session_id, cfg).read_text())
     assert written["session_id"] == record.session_id
@@ -1868,11 +1583,7 @@ def test_the_session_log_filename_is_legal_on_a_library_volume(cfg):
 
 
 def test_a_supplied_identifier_cannot_compose_a_path(cfg):
-    """``open_session`` accepts one, and a separator in it would escape the store.
-
-    A record outside the directory the pruning scan reads is a session that
-    protects no capture and that no gate can see.
-    """
+    """A separator in a supplied identifier cannot escape the store the scans read."""
     record = session.open_session(
         cfg, workflow="a-destructive-workflow", session_id="../../escaped"
     )
@@ -1883,14 +1594,8 @@ def test_a_supplied_identifier_cannot_compose_a_path(cfg):
 
 
 def test_a_per_source_refusal_widens_the_scope_and_never_narrows_it(cfg):
-    """The blast radius is DECLARED, and a wrapper knows less than the thing it wraps.
-
-    ``commit_sources`` knows one source refused. It does not know how much the
-    underlying cause condemns. A drive ejected mid-run condemns the whole run,
-    and rewriting that to one source tells the aggregate at boundary 4 that the
-    sources beside it may advance their watermarks against a library that is no
-    longer mounted.
-    """
+    """A wrapper widens a refusal's scope, never narrows it, since it knows less
+    than the cause it wraps."""
     from cratekit.core.cause import Scope
 
     def refusing_at(scope):
@@ -1912,13 +1617,8 @@ def test_a_per_source_refusal_widens_the_scope_and_never_narrows_it(cfg):
 
 
 def test_a_read_back_that_could_not_run_says_so_rather_than_saying_it_disagreed(cfg):
-    """Three facts, one chain, and the recoverable one must not wear the other's face.
-
-    An ejected volume, a drifted pin and a database that will not open are all
-    recoverable. "The read-back disagreed" is not. Logging the first and
-    reporting the second sends a user to restore a snapshot because a drive is
-    unplugged.
-    """
+    """A read-back that could not run carries its typed cause, so an unplugged drive
+    is not reported as a disagreement."""
     record = session.open_session(cfg, workflow="a-destructive-workflow")
 
     def cannot_open():
@@ -1963,12 +1663,7 @@ def test_both_the_read_back_failure_and_a_live_rekordbox_travel_together(cfg, mo
 
 
 def test_an_unreadable_backup_fact_file_refuses_the_mint(cfg):
-    """"Could not read" must never be recorded as "nothing to show" (KTD18).
-
-    An acknowledgment whose ``shown`` list is empty is byte for byte what a
-    library declaring no portions at all would write, and the remedies for those
-    two are unrelated. An acknowledgment with no age is a click, not a decision.
-    """
+    """"Could not read" is never recorded as "nothing to show" (KTD18)."""
     from cratekit.core import backup_facts
 
     damaged = backup_facts.path_for(cfg)
@@ -1982,26 +1677,14 @@ def test_an_unreadable_backup_fact_file_refuses_the_mint(cfg):
     assert cause.remediation.remedy is Remedy.REPAIR_BACKUP_FACTS
     assert session.read_acknowledgment(cfg) is None, "a refused mint wrote a record"
 
-    # And the remedy works: an ABSENT file is normal and still mints.
+    # An absent file is normal and still mints.
     damaged.unlink()
     assert acknowledge(cfg).shown
 
 
 def test_a_fact_file_this_account_may_not_open_asks_for_access_not_for_repair(cfg):
-    """A permission is not a corruption, and the acts are opposite.
-
-    DRIVEN THROUGH ``read_facts`` RATHER THAN THROUGH A HAND BUILT EXCEPTION,
-    because the finding is that a field the raise site sets was discarded, and a
-    hand built exception can carry a field the code path never produces. So the
-    ``PermissionError`` is made at the file boundary and ``cause.permission_denied``
-    classifies it, exactly as it would on a configuration directory this account
-    cannot traverse.
-
-    THE PRECONDITION IS ASSERTED RATHER THAN ASSUMED, the way ``no_rclone`` in
-    ``tests/test_backup_cli.py`` asserts its own: a run as an account the mode
-    bits do not restrain reads the file successfully, and this test would then
-    pass over a refusal that never happened.
-    """
+    """A permission failure asks for access, not repair, driven through
+    ``read_facts`` with the precondition asserted, not assumed."""
     from cratekit.core import backup_facts
 
     locked = backup_facts.path_for(cfg)
@@ -2028,12 +1711,7 @@ def test_a_fact_file_this_account_may_not_open_asks_for_access_not_for_repair(cf
 
 
 def test_a_fact_file_from_a_newer_build_asks_for_an_upgrade(cfg):
-    """The third token, which travels the same way and had no guard.
-
-    ``read_facts`` raises three remedies and the carry moves all three, so a
-    fix measured only on the permission case would leave two thirds of it
-    asserted rather than driven.
-    """
+    """The third remedy ``read_facts`` raises travels the same way."""
     from cratekit.core import backup_facts
 
     newer = backup_facts.path_for(cfg)
@@ -2050,13 +1728,8 @@ def test_a_fact_file_from_a_newer_build_asks_for_an_upgrade(cfg):
 
 
 def test_the_analysis_watch_runs_even_when_the_session_body_refuses(cfg, tmp_path):
-    """The failing path is the one that matters MORE, not the one to skip.
-
-    A session that refused is a session the user retries, so a grid rewritten
-    before an unrelated refusal would be rewritten again on the next attempt and
-    never once reported. The source scan cannot see this write by construction,
-    which is the whole reason the runtime half exists.
-    """
+    """The watch runs when the body refuses, or a retried session rewrites a grid
+    unreported, carrying the body's refusal inside."""
     written = _analysis_tree(tmp_path / "library")
     victim = written[0]
 
@@ -2087,10 +1760,7 @@ def test_a_body_that_refuses_with_no_drift_keeps_its_own_refusal(cfg, tmp_path):
 
 
 def test_an_appearing_analysis_file_refuses_too(cfg, tmp_path):
-    """rekordbox analysing while a session runs is what the process guard forbids.
-
-    All three kinds of drift count, and this is the third.
-    """
+    """An appearing analysis file is the third kind of drift."""
     _analysis_tree(tmp_path / "library")
     fresh = tmp_path / "library" / "PIONEER" / "USBANLZ" / "one" / "ANLZ0002.DAT"
     with pytest.raises(CratekitError) as excinfo:
@@ -2100,12 +1770,7 @@ def test_an_appearing_analysis_file_refuses_too(cfg, tmp_path):
 
 
 def test_a_rewrite_inside_one_tick_of_the_clock_is_caught_by_the_size(cfg, tmp_path):
-    """The reason the fingerprint carries two signals rather than one.
-
-    A filesystem's timestamp granularity is not infinite, and a grid rewrite
-    almost always changes the length of the tag it lives in. The modification
-    time is put back deliberately so only the size can carry the assertion.
-    """
+    """The size catches a rewrite inside one clock tick; the mtime is put back."""
     written = _analysis_tree(tmp_path / "library")
     victim = written[3]
     original = victim.stat()
@@ -2119,12 +1784,8 @@ def test_a_rewrite_inside_one_tick_of_the_clock_is_caught_by_the_size(cfg, tmp_p
 
 
 def test_a_live_holder_this_platform_will_not_describe_is_assumed_alive(cfg, monkeypatch):
-    """The third documented case, which the code did not implement.
-
-    A shared machine that refuses to report another account's process start time
-    would otherwise make every live holder read as dead, and the remedy printed
-    is "release the stale lock" against a session that is writing right now.
-    """
+    """A live holder whose start time the platform hides is alive, or a writing
+    session is offered up as stale."""
     here = session.current_holder()
     monkeypatch.setattr(session, "process_started", lambda _pid: session.UNKNOWN_IDENTITY)
     assert session.holder_alive(here) is True
@@ -2135,14 +1796,8 @@ def test_a_live_holder_this_platform_will_not_describe_is_assumed_alive(cfg, mon
 
 
 def test_a_holder_whose_process_is_gone_is_still_judged_dead(cfg):
-    """The other side of the same change, so failing towards alive stays bounded.
-
-    "This platform will not say" and "there is no such process" are different
-    answers, and only the second may clear another run's claim on the library.
-    Both probes are the real ones here: a genuinely finished process is used
-    rather than a stubbed answer, because a stub would prove only that the stub
-    was consulted.
-    """
+    """A genuinely finished process is still judged dead, since only "no such
+    process", not "will not say", clears a claim. Real probes, no stub."""
     import subprocess
 
     finished = subprocess.Popen([sys.executable, "-c", "pass"])
@@ -2172,11 +1827,7 @@ def _lock_recording(cfg, holder):
 def test_the_recorded_actor_is_the_derived_one_and_not_a_name_from_anywhere_else(
     cfg, monkeypatch
 ):
-    """R34's sharpest clause, asserted as BEHAVIOUR rather than as a signature.
-
-    A signature scan sees a parameter. It does not see an environment read, and
-    an agent driving the command line would use an environment read.
-    """
+    """R34 as behaviour, since a signature scan cannot see an environment read."""
     monkeypatch.setattr(session, "derive_actor", lambda: "the-derived-actor")
     recorded = acknowledge(cfg)
     assert recorded.actor == "the-derived-actor"
@@ -2184,11 +1835,7 @@ def test_the_recorded_actor_is_the_derived_one_and_not_a_name_from_anywhere_else
 
 
 def test_the_terminal_probe_the_mint_uses_by_default_is_the_real_one(cfg, monkeypatch):
-    """The seam is for the battery. The DEFAULT is what ships.
-
-    Every other test hands ``terminal=`` a lambda, so all of them together prove
-    only that the parameter is honoured. This pins the binding underneath it.
-    """
+    """The mint's default terminal probe is the real one; every other test injects."""
     asked: list[bool] = []
 
     def probe():
@@ -2209,12 +1856,8 @@ def test_the_real_terminal_probe_answers_no_when_there_is_no_terminal(monkeypatc
 
 
 def test_the_volume_is_judged_before_a_restore_resolves_its_target(cfg, tmp_path):
-    """``plan_restore``'s headline ordering claim, driven in the direction it claims.
-
-    With the wrong disk at the configured root, the refusal has to be the
-    volume's. Every other refusal in that body is reached by resolving a path,
-    and resolving a path against the wrong volume is already the damage.
-    """
+    """``plan_restore`` judges the volume first, since resolving a path against the
+    wrong volume is already the damage."""
     with pytest.raises(CratekitError) as excinfo:
         backup.plan_restore(
             cfg,
@@ -2241,13 +1884,7 @@ def test_the_volume_is_judged_before_a_restore_resolves_its_target(cfg, tmp_path
 def test_a_gate_refused_restore_deletes_nothing_and_transfers_nothing(
     volume_matches, cfg, tmp_path
 ):
-    """A refusal is asserted everywhere. ZERO WRITES is the half that gets skipped.
-
-    The real destructive half is driven with real gates, a ``clears`` tuple
-    naming files that exist, and a recorder in place of the transfer. Moving the
-    guard after the clearing loop leaves every other test in this file green and
-    leaves a user's database without the write-ahead log it needs.
-    """
+    """A gate-refused restore clears and transfers nothing, with real gates."""
     target = tmp_path / "scratch"
     database_target = backup.database_target_for(cfg, target)
     database_target.parent.mkdir(parents=True, exist_ok=True)
@@ -2316,11 +1953,8 @@ def test_the_record_is_the_gates_own_workflow_actor_and_acknowledgment(cfg):
 
 
 def test_the_record_names_the_holder_the_lock_names(cfg):
-    """R-598: the record's copy of the holder survives a kill, the lock's does not.
-
-    Read while the gates are held, so both copies are on disk at once, and with
-    no holder supplied, so the one the gates look up is the one compared.
-    """
+    """R-598: the record names the lock's holder, since only the record survives a
+    kill. Read while both are on disk."""
     acknowledge(cfg)
     with recording_gates(cfg) as gates:
         on_disk = session.read_record(gates.record.session_id, cfg)
@@ -2445,14 +2079,8 @@ def test_a_log_that_cannot_record_the_abandonment_does_not_replace_the_error(cfg
 
 
 def test_a_clean_close_that_refuses_ends_abandoned_rather_than_open(cfg, monkeypatch):
-    """CLOSED is a gated claim, and when it cannot be made the record still ENDS.
-
-    Driven by taking the volume away between the gates and the close, which is
-    the refusal ``close_session`` exists to raise. A record left OPEN here would
-    refuse every later prune and cutover with no verb that abandons it, so the
-    fallback is the opposite claim and not the absence of one. The refusal still
-    surfaces, because a write whose close was refused did not end cleanly.
-    """
+    """A refused clean close ends ABANDONED, never OPEN, which would block every
+    later prune and cutover, and the refusal still surfaces."""
     acknowledge(cfg)
     answers = iter([cfg.library.volume_id])
 
@@ -2471,7 +2099,7 @@ def test_a_clean_close_that_refuses_ends_abandoned_rather_than_open(cfg, monkeyp
 
     (only,) = session.records(cfg)
     assert only.state is session.SessionState.ABANDONED
-    # The commit it recorded first is still what a restore reads.
+    # The commit recorded first is still what a restore reads.
     assert only.committed_sources() == ("a-tree",)
 
 
@@ -2490,13 +2118,7 @@ def test_a_recovery_closes_as_a_recovery(cfg):
 
 
 def test_the_record_closes_after_the_analysis_watch_has_judged_the_session(cfg):
-    """A session the watch refuses must not already be on record as finished.
-
-    The ordering fault this pins was real in two places: a record opened INSIDE
-    the body exits before the gates do, so it closed CLOSED and released its
-    capture, and then the watch refused the session over a moved grid. Driven
-    with a real analysis file rewritten under an open session.
-    """
+    """The record closes after the analysis watch judges a rewritten grid."""
     acknowledge(cfg)
     grids = Path(cfg.library.root) / "PIONEER" / "USBANLZ"
     grids.mkdir(parents=True)
@@ -2527,26 +2149,17 @@ def test_a_recorded_commit_is_on_disk_before_the_session_ends(cfg):
     assert only.change.trees == (session.TreeChange(tree="a-tree", created=6),)
 
 
-#: The one function every writer takes its capture through since U298,
-#: ``write.trees.attached_capture``. It attaches the capture to the record it
-#: is handed before it judges it, which
-#: ``test_the_shared_capture_attaches_before_it_judges`` holds, so a caller of
-#: it has made that act and still owes the other two.
+#: The shared capture function since U298; it attaches before it judges, so a
+#: caller still owes the record and the commit.
 SHARED_CAPTURE = "attached_capture"
 
 
 def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
-    """Every FUNCTION in ``src`` that takes a capture, with what it still owes.
+    """Every function in ``src`` that takes a capture, with what it still owes.
 
-    Per function and not per module, because ``write/trees.py`` holds a dozen
-    writers and a per-module reading is satisfied for all of them by the one that
-    complies. Returns the unreadable spellings too: a capture imported by name
-    or under an alias is a call this walk cannot attribute, and a guard that
-    cannot read something says so rather than passing it.
-
-    A capture is taken by ``snapshot.capture`` or through the shared function,
-    whose own body is not a taker: it takes the capture FOR the writer that
-    called it, and the record and the commit are that writer's to keep.
+    Per function, since one compliant writer would satisfy a per-module reading.
+    Unattributable spellings are returned, not passed. The shared function's own
+    body is not a taker.
     """
     import ast
 
@@ -2555,7 +2168,11 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
     for path in sorted(src.rglob("*.py")):
         if path.relative_to(src).as_posix() == "core/snapshot.py":
             continue
-        tree = ast.parse(path.read_text())
+        text = path.read_text()
+        # Every shape below names one of these, so a file naming neither has none.
+        if "snapshot" not in text and SHARED_CAPTURE not in text:
+            continue
+        tree = ast.parse(text)
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("snapshot"):
                 if any(alias.name == "capture" for alias in node.names):
@@ -2602,9 +2219,8 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
                     seen.add("attach_capture")
                 if node.func.attr == "record_commit":
                     seen.add("a recorded commit")
-            # The commit is recorded through a helper beside each writer, so
-            # that spelling counts too, and each helper is checked for the real
-            # call by ``test_each_commit_helper_records_the_commit``.
+            # A ``_record_*_commit`` helper counts, each checked by
+            # ``test_each_commit_helper_records_the_commit``.
             for node in ast.walk(function):
                 if (
                     isinstance(node, ast.Call)
@@ -2620,14 +2236,7 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
 
 
 def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recorded():
-    """METHOD's fifth pattern, as a guard on the NEXT writer rather than a sweep of this one.
-
-    R-12 and R-375 were one shape found twice: a function takes a capture inside
-    the gates and keeps no record, so the undo it paid for cannot be listed,
-    spent or protected. It asks for all three acts, because a record with no
-    capture attached lists as unusable and one with no commit recorded is
-    invisible to the restore that would discard it.
-    """
+    """Every capture taker keeps a record, attaches it, records its commit (R-12, R-375)."""
     src = Path(session.__file__).resolve().parents[1]
     takers, unreadable = _capture_takers(src)
 
@@ -2635,75 +2244,44 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         f"a capture is imported in a spelling this guard cannot follow: {unreadable}"
     )
     assert set(takers) == {
-        # R-746. The native landing: content rows and one playlist behind one
-        # capture, recorded under the intake tree and the content table.
+        # R-746, the native landing.
         "intake/native.py::apply_rows",
-        # U111. The INBOX rotation: playlist nodes moved and removed behind one
-        # capture, recorded under the intake tree.
+        # U111, the INBOX rotation.
         "intake/rotate.py::apply_rotation",
-        # U134. The INBOX refill: memberships of playlists under the intake
-        # root behind one capture, recorded under the intake tree.
+        # U134, the INBOX refill.
         "intake/refill.py::apply_refill",
-        # U166. The INBOX / Analyze clear: memberships of one playlist under
-        # the intake root soft removed behind one capture, recorded under the
-        # intake tree as rows updated.
+        # U166, the INBOX / Analyze clear.
         "intake/analyzed.py::apply_clear",
-        # U121. The set's permanent playlist written for a set already landed:
-        # one playlist and its memberships behind one capture, recorded under
-        # the declared INSPIRATION folder's own id.
+        # U121, a landed set's permanent playlist.
         "intake/set_playlist.py::apply_alone",
-        # U154. The shelve: one folder renamed and every row it holds pointed
-        # at it behind one capture, recorded under the content table as rows
-        # updated.
+        # U154, the shelve.
         "intake/shelve.py::apply",
-        # U144. INSPIRATION brought level with the account's downloaded sets:
-        # playlists and their memberships under the declared INSPIRATION folder
-        # behind one capture, recorded under that folder's own id.
+        # U144, INSPIRATION levelled with downloaded sets.
         "organize/inspiration.py::apply",
-        # U201. An edit made on the account to a mirrored genre playlist: the
-        # file tags, the row's genre and the tree memberships behind one
-        # capture, recorded under the step's own kind.
+        # U201, an account edit to a mirrored genre playlist.
         "organize/mirror_edits.py::write",
-        # R-816. A row's genre written from its file, recorded under the
-        # content genre key as rows updated.
+        # R-816, a row's genre written from its file.
         "tagging/rows.py::apply_rows",
-        # U120. The favourites backfill: the landed hearts' memberships into
-        # All Favorites and their quarters in one commit behind one capture,
-        # recorded under the favourites key as rows created.
+        # U120, the favourites backfill.
         "favorites/backfill.py::apply",
-        # U145. The quarters split into months: memberships added in one
-        # commit and the emptied quarters retired in a second behind one
-        # capture, each recorded under the favourites key.
+        # U145, the quarters split into months.
         "favorites/split.py::apply",
-        # U180. The Favorites folder put in order: the positions of its
-        # playlists written in one commit behind one capture, recorded under
-        # the favourites key as rows updated.
+        # U180, the Favorites folder ordered.
         "favorites/order.py::apply",
-        # U119. The genre Favorites refresh: memberships added in one commit
-        # and removed in a second behind one capture, each recorded under the
-        # routing tree as rows created and rows updated.
+        # U119, the genre Favorites refresh.
         "write/genre_favorites.py::apply_refresh",
         "write/metadata_cli.py::mytags_vocals",
-        # U130. A playlist pair's rekordbox side: memberships added, soft
-        # removed and numbered in one commit behind one capture, recorded under
-        # the pair's own source as rows created and rows updated.
+        # U130, a playlist pair's rekordbox side.
         "write/playlist_pair.py::apply",
-        # R-923. rekordbox's defaults filled on rows a landing left bare,
-        # recorded under the content defaults key as rows updated.
+        # R-923, rekordbox's defaults on bare rows.
         "write/row_defaults.py::apply_rows",
-        # A32. The row probe's values written onto the rows its triples name,
-        # recorded under the content probe key as rows updated.
+        # A32, the row probe's values.
         "write/row_link.py::apply_probes",
-        # U149. The custom playlist twins: a year folder, its playlists and
-        # their memberships made in one commit behind one capture, recorded
-        # under the twins key as rows created.
+        # U149, the custom playlist twins.
         "sync/twins.py::write",
-        # U202. A pair's rekordbox side made for an account playlist: one
-        # playlist and its memberships in one commit behind one capture,
-        # recorded under the pair's own source as rows created.
+        # U202, a pair's rekordbox side for an account playlist.
         "sync/pair_reverse.py::create",
-        # U288. The offered rows taken out of the collection in one commit
-        # behind one capture, each named in the record under the collection.
+        # U288, offered rows taken out of the collection.
         "sync/removed.py::apply_removed",
         # R-758. One capture before two commits, and both are recorded.
         "write/trees.py::move_tree_membership",
@@ -2716,11 +2294,7 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
 
 
 def test_the_capture_guard_reads_a_function_that_keeps_no_record(tmp_path):
-    """The guard above, pointed at the shape it exists to catch.
-
-    A compliant writer and a bare one in ONE module, which is the case a
-    per-module reading waves through.
-    """
+    """The guard reads a bare writer beside a compliant one in one module."""
     module = tmp_path / "write" / "sample.py"
     module.parent.mkdir()
     module.write_text(
@@ -2748,12 +2322,8 @@ def test_the_capture_guard_reads_a_function_that_keeps_no_record(tmp_path):
 def test_the_capture_guard_reads_a_writer_that_takes_its_capture_through_the_shared_function(
     tmp_path,
 ):
-    """The spelling every writer has used since U298, held to the acts it still owes.
-
-    The shared function attaches, so a caller is not asked for that again. It
-    is asked for the record and the commit, by either name the function goes
-    by, and the shared function's own body is not read as a writer.
-    """
+    """A writer using the shared function (U298) still owes the record and commit,
+    and the shared function's own body is not read as a writer."""
     module = tmp_path / "write" / "sample.py"
     module.parent.mkdir()
     module.write_text(
@@ -2787,14 +2357,7 @@ def test_the_capture_guard_reads_a_writer_that_takes_its_capture_through_the_sha
 
 
 def test_the_shared_capture_attaches_before_it_judges(cfg, monkeypatch):
-    """The act the guard above takes on trust from every writer, held here.
-
-    ATTACHED BEFORE IT IS JUDGED: a capture that fails its check is still a
-    directory a person may go looking for, and the restore side lists an
-    unusable entry where a capture nobody attached answers with silence. And
-    it is the only place in ``src`` a capture is taken, so no writer can take
-    one this guard does not see.
-    """
+    """The shared capture attaches before it judges and is ``src``'s only capture."""
     import ast
     from types import SimpleNamespace
 
@@ -2834,7 +2397,8 @@ def test_the_shared_capture_attaches_before_it_judges(cfg, monkeypatch):
         f"{path.relative_to(src).as_posix()}::{function.name}"
         for path in sorted(src.rglob("*.py"))
         if path.relative_to(src).as_posix() != "core/snapshot.py"
-        for function in ast.walk(ast.parse(path.read_text()))
+        and "snapshot" in (text := path.read_text())
+        for function in ast.walk(ast.parse(text))
         if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
         for node in ast.walk(function)
         if isinstance(node, ast.Call)

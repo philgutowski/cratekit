@@ -1,0 +1,1163 @@
+name = "u300-replay-before-c"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1665.R1_log_not_restored"
+source = { table = "r1665.json", id = "R1_log_not_restored" }
+description = "restore._file_steps: never write back a restored companion, so the log's rows are lost"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+        if entry.source in restored_companions:
+            if entry.captured is not None:'''
+new = '''
+        if entry.source in restored_companions:
+            if False:'''
+
+[[rows]]
+id = "r592-a.A1_occupancy_guard_removed"
+source = { table = "r592-a.json", id = "A1_occupancy_guard_removed" }
+description = "assert_recovery_target: find nothing occupied whatever the target holds, so a library whose database sits where this one lands is replaced unasked"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    existing = [entry for entry in recovered_database_fileset(cfg, where) if entry.exists()]'
+new = '    existing = []'
+
+[[rows]]
+id = "r592-a.A2_database_dropped_from_fileset"
+source = { table = "r592-a.json", id = "A2_database_dropped_from_fileset" }
+description = "recovered_database_fileset: return the companions only, so a database already at the landing path is not an occupied target"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    return (landing, *companions)'
+new = '    return companions'
+
+[[rows]]
+id = "r592-a.A3_companions_dropped_from_fileset"
+source = { table = "r592-a.json", id = "A3_companions_dropped_from_fileset" }
+description = "recovered_database_fileset: return the database only, so a lone write-ahead log the database half would clear is not an occupied target"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    return (landing, *companions)'
+new = '    return (landing,)'
+
+[[rows]]
+id = "r592-a.A4_fileset_not_rebased"
+source = { table = "r592-a.json", id = "A4_fileset_not_rebased" }
+description = "recovered_database_fileset: land the database at its bare name at the top of the target for every layout, so the guard tests a path the transfer never writes"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+        landing = target / database.relative_to(cfg.library.root)
+    except ValueError:'''
+new = '''
+        landing = target / database.name
+    except ValueError:'''
+
+[[rows]]
+id = "r592-a.A5_replacing_existing_inverted"
+source = { table = "r592-a.json", id = "A5_replacing_existing_inverted" }
+description = "assert_recovery_target: refuse an occupied target only when it WAS named for replacement"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    if existing and not replacing_existing:'
+new = '    if existing and replacing_existing:'
+
+[[rows]]
+id = "r592-a.A6_old_suffix_rule_restored"
+source = { table = "r592-a.json", id = "A6_old_suffix_rule_restored" }
+description = "assert_recovery_target: put the recursive any-database rule back, the behaviour R-592 records, so every interrupted recovery is refused on rerun"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    existing = [entry for entry in recovered_database_fileset(cfg, where) if entry.exists()]'
+new = '    existing = sorted(entry for entry in where.rglob("*.db") if entry.is_file())'
+
+[[rows]]
+id = "r592-a.A7_companion_suffix_wrong"
+source = { table = "r592-a.json", id = "A7_companion_suffix_wrong" }
+description = "recovered_database_fileset: name each companion with a dot before its suffix, master.db.-wal, so no real companion is ever found"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+        landing.with_name(landing.name + sidecar.suffix)
+        for sidecar in config.state_file("rekordbox_db").sidecars
+    )
+    return (landing, *companions)'''
+new = '''
+        landing.with_name(landing.name + "." + sidecar.suffix)
+        for sidecar in config.state_file("rekordbox_db").sidecars
+    )
+    return (landing, *companions)'''
+
+[[rows]]
+id = "r592-a.A8_sample_stub_check_beside"
+source = { table = "r592-a.json", id = "A8_sample_stub_check_beside" }
+description = "SAMPLE, existing guard: assert_recovery_target refuses only a stub at or under the configured root, not the suffixed name beside it"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    if (inside_configured or beside_configured) and not probe(where):'
+new = '    if inside_configured and not probe(where):'
+
+[[rows]]
+id = "u27-restore-cli-independent.X6_the_rekordbox_guard_itself_is_neutered"
+source = { table = "u27-restore-cli-independent.json", id = "X6_the_rekordbox_guard_itself_is_neutered" }
+description = "What the process-lister zeros DO leave held: make the restore engine's rekordbox-closed assertion return without asking. Paired with I_A6 and I_A7, which stopped threading that guard's injected seam and killed nothing"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    running = processes.rekordbox_processes_running(lister=process_lister)
+    if not running:
+        return'''
+new = '''
+    running = processes.rekordbox_processes_running(lister=process_lister)
+    if running or not running:
+        return'''
+
+[[rows]]
+id = "u95-a.A1_never_rerooted"
+source = { table = "u95-a.json", id = "A1_never_rerooted" }
+description = "_rooted hands every session its configuration back unchanged, which is main's state: a bare-metal session resolves from the configured root again"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    if held.issued_by is not Guard.BARE_METAL:
+        return cfg
+    target = Path(held.authorises)'''
+new = '''
+    if held.issued_by is not None:
+        return cfg
+    target = Path(held.authorises)'''
+
+[[rows]]
+id = "u95-a.A2_library_sessions_rerooted_too"
+source = { table = "u95-a.json", id = "A2_library_sessions_rerooted_too" }
+description = "Drop the guard test in _rooted, so a library session handed a configuration for ANOTHER library is quietly re-aimed at what it authorises instead of refused"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    if held.issued_by is not Guard.BARE_METAL:
+        return cfg
+    target = Path(held.authorises)'''
+new = '    target = Path(held.authorises)'
+
+[[rows]]
+id = "u95-a.A3_database_not_carried"
+source = { table = "u95-a.json", id = "A3_database_not_carried" }
+description = "The relocated root no longer carries its database: db_path stays at the configured root while the root moves to the target"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    return replace(cfg, library=replace(cfg.library, root=target, db_path=database))'
+new = '    return replace(cfg, library=replace(cfg.library, root=target))'
+
+[[rows]]
+id = "u95-a.A4_outside_database_refusal_removed"
+source = { table = "u95-a.json", id = "A4_outside_database_refusal_removed" }
+description = "Delete the by-name refusal for a database kept outside the library, leaving the defect-flavoured authorisation refusal to catch it later"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    if not held.authorises_path(database):
+        raise _refuse_target('''
+new = '''
+    if False:
+        raise _refuse_target('''
+
+[[rows]]
+id = "u95-a.A5_capture_path_not_rebased"
+source = { table = "u95-a.json", id = "A5_capture_path_not_rebased" }
+description = "plan reads the session record's capture path as written, so the capture is taken from the configured root, the volume the identity gate refused"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    root = capture_root_of(_rebased(record.snapshot_path, recorded_root, rooted_at))'
+new = '    root = capture_root_of(record.snapshot_path)'
+
+[[rows]]
+id = "u95-a.A6_manifest_not_rebased_in_plan"
+source = { table = "u95-a.json", id = "A6_manifest_not_rebased_in_plan" }
+description = "plan uses the manifest as read from disk, every path in it still naming the dead root"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    captured = _rebased_capture(snapshot.read_manifest(root), recorded_root, rooted_at)'
+new = '    captured = snapshot.read_manifest(root)'
+
+[[rows]]
+id = "u95-a.A7_manifest_not_rebased_in_preflight"
+source = { table = "u95-a.json", id = "A7_manifest_not_rebased_in_preflight" }
+description = "The run's preflight re-reads the manifest and checks it un-rebased, so it asks the DEAD volume whether the capture is still whole"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    captured = _rebased_capture(
+        snapshot.read_manifest(decided.capture_root),
+        recorded_root,
+        Path(cfg.library.root),
+    )'''
+new = '    captured = snapshot.read_manifest(decided.capture_root)'
+
+[[rows]]
+id = "u95-a.A8_run_not_rooted"
+source = { table = "u95-a.json", id = "A8_run_not_rooted" }
+description = "run resolves from the caller's configuration while plan resolves from the session, the two sources for one answer R-20 forbids"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    cfg = _rooted(configured, held)
+    assert_gates_are_open(held, writing=cfg.library.root)
+    _assert_rekordbox_closed(process_lister)
+    _preflight('''
+new = '''
+    cfg = configured
+    assert_gates_are_open(held, writing=cfg.library.root)
+    _assert_rekordbox_closed(process_lister)
+    _preflight('''
+
+[[rows]]
+id = "u95-b.B2_manifest_database_not_moved"
+source = { table = "u95-b.json", id = "B2_manifest_database_not_moved" }
+description = "_rebased_capture leaves Capture.database at the dead root, the file assert_verified asks the disk about"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '        database=moved(captured.database),'
+new = '        database=captured.database,'
+
+[[rows]]
+id = "u95-b.B3_sources_not_moved"
+source = { table = "u95-b.json", id = "B3_sources_not_moved" }
+description = "The WRITE side is not re-based: every manifest source still names the configured root"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '                source=_rebased(entry.source, recorded_root, root),'
+new = '                source=entry.source,'
+
+[[rows]]
+id = "u95-b.B4_captured_not_moved"
+source = { table = "u95-b.json", id = "B4_captured_not_moved" }
+description = "The READ side is not re-based: writes aim at the target while the bytes come from the dead volume, the bypass run the other way"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '                captured=moved(entry.captured),'
+new = '                captured=entry.captured,'
+
+[[rows]]
+id = "u95-b.B5_not_idempotent"
+source = { table = "u95-b.json", id = "B5_not_idempotent" }
+description = "Drop the already-under-the-new-root clause, so a path naming a target mounted inside the configured root is moved twice"
+file = "src/cratekit/core/restore.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    if parts[: len(here)] == here or parts[: len(there)] != there:'
+new = '    if parts[: len(there)] != there:'
+
+[[rows]]
+id = "u95-b.B6_recorded_path_not_normalised"
+source = { table = "u95-b.json", id = "B6_recorded_path_not_normalised" }
+description = "Compare the recorded path's raw parts, so a dotted spelling config calls inside is left unmoved and one it calls outside is moved"
+file = "src/cratekit/core/restore.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    parts = Path(os.path.normpath(str(recorded))).parts'
+new = '    parts = recorded.parts'
+
+[[rows]]
+id = "u95-b.B8_outside_path_moved_anyway"
+source = { table = "u95-b.json", id = "B8_outside_path_moved_anyway" }
+description = "A path under NEITHER root is joined onto the target instead of left where it says it is"
+file = "src/cratekit/core/restore.py"
+surface = "maintainer"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    if parts[: len(here)] == here or parts[: len(there)] != there:
+        return recorded
+    return Path(root).joinpath(*parts[len(there) :])'''
+new = '''
+    if parts[: len(here)] == here:
+        return recorded
+    return Path(root).joinpath(*parts[len(there) :])'''
+
+[[rows]]
+id = "u95-b1.B1_manifest_root_not_moved"
+source = { table = "u95-b1.json", id = "B1_manifest_root_not_moved" }
+description = "RE-MEASURED after test_u95_a_bare_metal_plan_is_the_library_plan_moved_and_nothing_else learned to compare decisions. _rebased_capture leaves Capture.root at the dead root, which is what _captured_by_key composes coupled entries from"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '        root=_rebased(captured.root, recorded_root, root),'
+new = '        root=captured.root,'
+
+[[rows]]
+id = "u95-c.C1_plan_side_guard_removed"
+source = { table = "u95-c.json", id = "C1_plan_side_guard_removed" }
+description = "plan no longer checks its own answer, so only a run would find a plan naming an outside path"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    _assert_plan_is_authorised(steps, pre_restore_root, cfg, held)
+'''
+new = ''
+
+[[rows]]
+id = "u95-c.C2_run_side_guard_removed"
+source = { table = "u95-c.json", id = "C2_run_side_guard_removed" }
+description = "The preflight no longer asks the session about a plan value, so a plan built for one directory runs under a session for another"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    _assert_plan_is_authorised(decided.steps, decided.pre_restore_root, cfg, held)
+'''
+new = ''
+
+[[rows]]
+id = "u95-c.C3_step_authorisation_removed"
+source = { table = "u95-c.json", id = "C3_step_authorisation_removed" }
+description = "Inside the guard, drop the per step authorisation and leave only the membership test"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+        assert_gates_are_open(held, writing=step.target)
+        if step.target not in allowed:'''
+new = '        if step.target not in allowed:'
+
+[[rows]]
+id = "u95-c.C4_restorable_membership_removed"
+source = { table = "u95-c.json", id = "C4_restorable_membership_removed" }
+description = "Inside the guard, drop the re-derived membership test, so a step aimed at the authorised directory itself is admitted"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+        if step.target not in allowed:
+            raise refuse('''
+new = '''
+        if False:
+            raise refuse('''
+
+[[rows]]
+id = "u95-c.C5_staging_authorisation_removed"
+source = { table = "u95-c.json", id = "C5_staging_authorisation_removed" }
+description = "Inside the guard, drop the authorisation of the staging directory and leave only the store rule"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    assert_gates_are_open(held, writing=pre_restore_root)
+    store = _pre_restore_root(cfg).parent'''
+new = '    store = _pre_restore_root(cfg).parent'
+
+[[rows]]
+id = "u95-c.C6_staging_store_rule_removed"
+source = { table = "u95-c.json", id = "C6_staging_store_rule_removed" }
+description = "Inside the guard, drop the store rule, so an authorised staging directory such as the library root hands the closing prune the directory ABOVE the library"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    if pre_restore_root.parent != store:'
+new = '    if False:'
+
+[[rows]]
+id = "u95-c.C7_staging_store_itself_admitted"
+source = { table = "u95-c.json", id = "C7_staging_store_itself_admitted" }
+description = "A nearby value: admit the store itself as the staging directory, which makes the prune run one level up, inside the database directory"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '    if pre_restore_root.parent != store:'
+new = '    if pre_restore_root.parent != store and pre_restore_root != store:'
+
+[[rows]]
+id = "u95-c.C8_plan_root_assertion_removed"
+source = { table = "u95-c.json", id = "C8_plan_root_assertion_removed" }
+description = "plan drops its assertion on the rooted root, which is also where it asks whether the session is still open and is a recovery"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+    assert_gates_are_open(held, writing=cfg.library.root)
+    _assert_rekordbox_closed(process_lister)
+    record = session.read_record(session_id, cfg)'''
+new = '''
+    _assert_rekordbox_closed(process_lister)
+    record = session.read_record(session_id, cfg)'''
+
+[[rows]]
+id = "u95-c.S1_authorises_everything"
+source = { table = "u95-c.json", id = "S1_authorises_everything" }
+description = "EXISTING GUARD, fixed sample: Held.authorises_path answers yes to every path, which is the original bypass"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '        return where == root or root in where.parents'
+new = '        return True'
+
+[[rows]]
+id = "u95-c.S2_issued_terms_not_compared"
+source = { table = "u95-c.json", id = "S2_issued_terms_not_compared" }
+description = "EXISTING GUARD, fixed sample: still_open stops comparing the claim to what the guard issued, so a live token can be rebuilt around another directory"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_restore.py", "tests/test_restore_cli.py"]
+old = '''
+        if terms != (self.issued_by, str(self.authorises), str(self.lock.absolute())):
+            return False'''
+new = ''
+
+[[rows]]
+id = "u96-b.C1_engine_terminal"
+source = { table = "u96-b.json", id = "C1_engine_terminal" }
+description = "SAMPLE of the engine's guards, now reachable from a verb. bare_metal_session: disarm the controlling terminal refusal"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '''
+    if not probe():
+        raise _refuse_target(
+            "this invocation has no controlling terminal'''
+new = '''
+    if False:
+        raise _refuse_target(
+            "this invocation has no controlling terminal'''
+
+[[rows]]
+id = "u96-b.C2_engine_acknowledged"
+source = { table = "u96-b.json", id = "C2_engine_acknowledged" }
+description = "SAMPLE. bare_metal_session: disarm the acknowledgment refusal"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '    if not acknowledged:'
+new = '    if False:'
+
+[[rows]]
+id = "u96-b.C3_engine_occupied_target"
+source = { table = "u96-b.json", id = "C3_engine_occupied_target" }
+description = "SAMPLE. assert_recovery_target: disarm the refusal of a target that already holds a database"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '    if existing and not replacing_existing:'
+new = '    if False:'
+
+[[rows]]
+id = "u96-b.C4_engine_stub"
+source = { table = "u96-b.json", id = "C4_engine_stub" }
+description = "SAMPLE. assert_recovery_target: disarm the refusal of the stub an unmounted volume leaves on the internal disk"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '    if (inside_configured or beside_configured) and not probe(where):'
+new = '    if False:'
+
+[[rows]]
+id = "u96-b.C5_engine_library_is_mounted"
+source = { table = "u96-b.json", id = "C5_engine_library_is_mounted" }
+description = "SAMPLE. assert_library_volume_is_gone: answer gone when the library is mounted and is the recorded volume"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_restore_cli.py", "tests/test_restore.py"]
+old = '''
+    raise _refuse_target(
+        f"the library at {cfg.library.root} is mounted and is the volume this "'''
+new = '''
+    return preflight.MountState.NOT_MOUNTED
+    raise _refuse_target(
+        f"the library at {cfg.library.root} is mounted and is the volume this "'''
+
+[[rows]]
+id = "r1665-b.S14_sources_unchecked_again"
+source = { table = "r1665-b.json", id = "S14_sources_unchecked_again" }
+description = "assert_sources_present: never refuse, measured again after the zero in r1665.md was given its test, so a restore accepts a capture missing files"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+    if not absent:
+        return
+    raise refuse('''
+new = '''
+    if True:
+        return
+    raise refuse('''
+
+[[rows]]
+id = "r1665.S10_walk_before_empty"
+source = { table = "r1665.json", id = "S10_walk_before_empty" }
+description = "capture: a walk before the check that fails answers an empty capture"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+        copied = None
+'''
+new = '''
+        copied = {}
+'''
+
+[[rows]]
+id = "r1665.S11_walk_skips_unreadable"
+source = { table = "r1665.json", id = "S11_walk_skips_unreadable" }
+description = "_walked: let os.walk skip a directory it cannot read"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '    for current, directories, files in os.walk(capture_root, onerror=_raise_walk_error):'
+new = '    for current, directories, files in os.walk(capture_root):'
+
+[[rows]]
+id = "r1665.S12_verify_raises_passes"
+source = { table = "r1665.json", id = "S12_verify_raises_passes" }
+description = "_verify: a check that raises counts as passed"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+        logger.warning("the capture integrity check could not run, so it did not pass: %s", exc)
+        return False'''
+new = '''
+        logger.warning("the capture integrity check could not run, so it did not pass: %s", exc)
+        return True'''
+
+[[rows]]
+id = "r1665.S13_flush_before_check"
+source = { table = "r1665.json", id = "S13_flush_before_check" }
+description = "capture: flush nothing after the check, the U272 order"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+    try:
+        _flush(destination, destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc
+
+    _write_manifest(record, manifest)'''
+new = '    _write_manifest(record, manifest)'
+
+[[rows]]
+id = "r1665.S15_recorded_before_the_copy_lands"
+source = { table = "r1665.json", id = "S15_recorded_before_the_copy_lands" }
+description = "capture: record a companion as captured whether or not it landed"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '                source=path, captured=landed if landed.exists() else None, directory=False'
+new = '                source=path, captured=landed, directory=False'
+
+[[rows]]
+id = "r1665.S1_guard_removed"
+source = { table = "r1665.json", id = "S1_guard_removed" }
+description = "capture: never ask whether the check changed the capture"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+    if verdict and copied is not None:
+        changed'''
+new = '''
+    if False:
+        changed'''
+
+[[rows]]
+id = "r1665.S2_guard_ignored"
+source = { table = "r1665.json", id = "S2_guard_ignored" }
+description = "capture: log what the check changed and keep the verdict"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+                "; ".join(changed[:20]),
+            )
+            verdict = False'''
+new = '''
+                "; ".join(changed[:20]),
+            )
+            verdict = verdict'''
+
+[[rows]]
+id = "r1665.S3_removal_unseen"
+source = { table = "r1665.json", id = "S3_removal_unseen" }
+description = "_changed_by_the_check: a removed entry is not a change"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '            changed.append(f"{path} was removed")'
+new = '            pass'
+
+[[rows]]
+id = "r1665.S4_rewrite_unseen"
+source = { table = "r1665.json", id = "S4_rewrite_unseen" }
+description = "_changed_by_the_check: a rewritten entry is not a change"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '        elif after[path] != identity:'
+new = '        elif False:'
+
+[[rows]]
+id = "r1665.S5_size_not_identity"
+source = { table = "r1665.json", id = "S5_size_not_identity" }
+description = "_walked: identify a file by its modification time alone"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '(status.st_size, status.st_mtime_ns)'
+new = '(0, status.st_mtime_ns)'
+
+[[rows]]
+id = "r1665.S6_mtime_not_identity"
+source = { table = "r1665.json", id = "S6_mtime_not_identity" }
+description = "_walked: identify a file by its size alone"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '(status.st_size, status.st_mtime_ns)'
+new = '(status.st_size, 0)'
+
+[[rows]]
+id = "r1665.S7_directories_unwalked"
+source = { table = "r1665.json", id = "S7_directories_unwalked" }
+description = "_walked: record no directory"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+            found[here / name] = None
+'''
+new = '''
+            pass
+'''
+
+[[rows]]
+id = "r1665.S8_walk_after_fails_open"
+source = { table = "r1665.json", id = "S8_walk_after_fails_open" }
+description = "_changed_by_the_check: a walk after the check that fails answers no change"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '        return [f"the capture could not be walked again: {exc}"]'
+new = '        return []'
+
+[[rows]]
+id = "r1665.S9_walk_before_fails_open"
+source = { table = "r1665.json", id = "S9_walk_before_fails_open" }
+description = "capture: verify although the walk before the check failed"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+        if record.database is not None and copied is not None
+'''
+new = '''
+        if record.database is not None
+'''
+
+[[rows]]
+id = "r1677-b.C11_database_only"
+source = { table = "r1677-b.json", id = "C11_database_only" }
+description = "assert_room_for_check: measure the database alone, leaving out its companions and the playlist file the copy takes"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '    needed = sum(_allocated_size(member) for member in rb_writer.file_set(database))'
+new = '    needed = _allocated_size(Path(database))'
+
+[[rows]]
+id = "r1677.C10_unreadable_passes"
+source = { table = "r1677.json", id = "C10_unreadable_passes" }
+description = "assert_room_for_check: a volume that will not report its room passes rather than refusing"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''
+    if available is None:
+        raise refuse(
+            "snapshot-check-temp-full",
+            f"the free space on the volume holding the temporary directory {scratch} "'''
+new = '''
+    if available is None:
+        return needed
+        raise refuse(
+            "snapshot-check-temp-full",
+            f"the free space on the volume holding the temporary directory {scratch} "'''
+
+[[rows]]
+id = "r1677.C12_always_shared"
+source = { table = "r1677.json", id = "C12_always_shared" }
+description = "_same_volume: answer shared for any two paths, so a separate temporary volume is asked for the capture's room too"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py", "tests/test_snapshot_wal_r1665.py"]
+old = '        return _device(Path(first)) == _device(Path(second))'
+new = '        return True'
+
+[[rows]]
+id = "r1677.C13_no_temporary_directory_passes"
+source = { table = "r1677.json", id = "C13_no_temporary_directory_passes" }
+description = "assert_room_for_check: no temporary directory at all passes the measure, so the capture is taken and left unverified"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''
+        scratch = rb_writer.disposable_root()
+    except OSError as exc:
+        raise refuse('''
+new = '''
+        scratch = rb_writer.disposable_root()
+    except OSError as exc:
+        return 0
+        raise refuse('''
+
+[[rows]]
+id = "r1677.C1_no_measure"
+source = { table = "r1677.json", id = "C1_no_measure" }
+description = "capture: never measure the throwaway's room, so a full temporary volume reads as a failed check again (the card's defect)"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_restore.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+    if verifier is None:
+        assert_room_for_check(database_paths(cfg)[0], store=(destination_root, estimate))'''
+new = '''
+    if False:
+        assert_room_for_check(database_paths(cfg)[0], store=(destination_root, estimate))'''
+
+[[rows]]
+id = "r1677.C3_store_not_passed"
+source = { table = "r1677.json", id = "C3_store_not_passed" }
+description = "capture: measure the throwaway without the store, so a shared volume is asked for the throwaway alone"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_intake_land_rehearse.py"]
+old = '        assert_room_for_check(database_paths(cfg)[0], store=(destination_root, estimate))'
+new = '        assert_room_for_check(database_paths(cfg)[0], store=None)'
+
+[[rows]]
+id = "r1677.C4_sum_dropped"
+source = { table = "r1677.json", id = "C4_sum_dropped" }
+description = "assert_room_for_check: never add the capture's estimate on a shared volume"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_intake_land_rehearse.py"]
+old = '    total = needed + (store[1] if store is not None and shared else 0)'
+new = '    total = needed'
+
+[[rows]]
+id = "r1677.C5_never_shared"
+source = { table = "r1677.json", id = "C5_never_shared" }
+description = "_same_volume: answer separate for any two paths"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_intake_land_rehearse.py"]
+old = '        return _device(Path(first)) == _device(Path(second))'
+new = '        return False'
+
+[[rows]]
+id = "r1677.C6_unknown_is_separate"
+source = { table = "r1677.json", id = "C6_unknown_is_separate" }
+description = "_same_volume: an unreadable device counts as separate, the direction that asks for less room"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''
+        return _device(Path(first)) == _device(Path(second))
+    except OSError:
+        return True'''
+new = '''
+        return _device(Path(first)) == _device(Path(second))
+    except OSError:
+        return False'''
+
+[[rows]]
+id = "r1677.C7_no_ancestor_walk"
+source = { table = "r1677.json", id = "C7_no_ancestor_walk" }
+description = "_device: stat the path itself, so a store not yet made has no device and counts as shared"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py", "tests/test_snapshot_wal_r1665.py"]
+old = '    while not probe.exists() and probe.parent != probe:'
+new = '    while False:'
+
+[[rows]]
+id = "r1677.C8_no_headroom"
+source = { table = "r1677.json", id = "C8_no_headroom" }
+description = "assert_room_for_check: require the bare estimate, without the capture's headroom"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''
+    available = free_bytes if free_bytes is not None else _free_bytes(scratch)
+    required = int(total * headroom)'''
+new = '''
+    available = free_bytes if free_bytes is not None else _free_bytes(scratch)
+    required = int(total)'''
+
+[[rows]]
+id = "r1677.C9_boundary"
+source = { table = "r1677.json", id = "C9_boundary" }
+description = "assert_room_for_check: refuse exactly enough room, the boundary moved by one"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''
+    if available >= required:
+        return needed
+    sharing = ('''
+new = '''
+    if available > required:
+        return needed
+    sharing = ('''
+
+[[rows]]
+id = "r1677.K1_room_path_unrecorded"
+source = { table = "r1677.json", id = "K1_room_path_unrecorded" }
+description = "capture: refuse for no room without first rewriting the manifest unverified"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_restore.py"]
+old = '''
+            _record_unverified(record, manifest)
+            raise no_room from failed'''
+new = '            raise no_room from failed'
+
+[[rows]]
+id = "r1677.K2_room_path_silent"
+source = { table = "r1677.json", id = "K2_room_path_silent" }
+description = "capture: a copy with no room is a plain unverified capture, not refused under the room slug"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_restore.py"]
+old = '''
+            _record_unverified(record, manifest)
+            raise no_room from failed'''
+new = '            verdict = False'
+
+[[rows]]
+id = "r1677.K3_other_copy_failure_verified"
+source = { table = "r1677.json", id = "K3_other_copy_failure_verified" }
+description = "capture: a copy that failed for another reason is recorded VERIFIED, the merge blocker the card names"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_restore.py"]
+old = '''
+        logger.warning("the capture integrity check could not run, so it did not pass: %s", failed)
+        verdict = False'''
+new = '''
+        logger.warning("the capture integrity check could not run, so it did not pass: %s", failed)
+        verdict = True'''
+
+[[rows]]
+id = "r1677.N1_every_failure_is_room"
+source = { table = "r1677.json", id = "N1_every_failure_is_room" }
+description = "check_had_no_room: read every copy failure as no room, so a permission error is told as a full volume"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_intake_land_rehearse.py"]
+old = '''
+    if code not in _NO_ROOM_ERRNOS:
+        return None'''
+new = '''
+    if False:
+        return None'''
+
+[[rows]]
+id = "r1677.N2_quota_dropped"
+source = { table = "r1677.json", id = "N2_quota_dropped" }
+description = "_NO_ROOM_ERRNOS: leave out a reached quota, so it is a plain unverified capture"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_intake_land_rehearse.py"]
+old = '    code for code in (errno.ENOSPC, getattr(errno, "EDQUOT", None)) if code is not None'
+new = '    code for code in (errno.ENOSPC,) if code is not None'
+
+[[rows]]
+id = "r1677.V1_verify_swallows"
+source = { table = "r1677.json", id = "V1_verify_swallows" }
+description = "_verify: let the copy failure fall into the catch all, so it is a plain unverified capture again"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py"]
+old = '''
+    except rb_writer.IntegrityCheckCopyFailed:
+        # No verdict at all, which the capture names rather than folding into a
+        # failed one (R-1677); it still records the capture unverified.
+        raise'''
+new = '''
+    except rb_writer.IntegrityCheckCopyFailed:
+        return False'''
+
+[[rows]]
+id = "r1677.V2_verify_does_not_ask"
+source = { table = "r1677.json", id = "V2_verify_does_not_ask" }
+description = "_verify: call the real check without asking for the copy failure, so a full volume answers False"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py"]
+old = '            return bool(rb_writer.integrity_ok(database, raise_copy_failure=True))'
+new = '            return bool(rb_writer.integrity_ok(database, raise_copy_failure=False))'
+
+[[rows]]
+id = "u272.E1_verified_ignores_verdict"
+source = { table = "u272.json", id = "E1_verified_ignores_verdict" }
+description = "existing guard sample, Capture.verified: true whenever a database was captured, whatever the verdict"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '        return self.database is not None and self.integrity_verified'
+new = '        return self.database is not None'
+
+[[rows]]
+id = "u272.E2_gate_trusts_manifest"
+source = { table = "u272.json", id = "E2_gate_trusts_manifest" }
+description = "existing guard sample, assert_verified: pass whenever the database file is there"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '    if record.verified and record.database is not None and record.database.exists():'
+new = '    if record.database is not None and record.database.exists():'
+
+[[rows]]
+id = "u272.S10_files_not_flushed"
+source = { table = "u272.json", id = "S10_files_not_flushed" }
+description = "_flush: flush the directories and none of the files"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+        for name in files:
+            config.flush_to_disk(here / name)'''
+new = '''
+        for name in files:
+            pass'''
+
+[[rows]]
+id = "u272.S11_directories_not_flushed"
+source = { table = "u272.json", id = "S11_directories_not_flushed" }
+description = "_flush: flush the files and none of the directories under the store"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+            config.flush_to_disk(here / name)
+        config.flush_to_disk(here)'''
+new = '            config.flush_to_disk(here / name)'
+
+[[rows]]
+id = "u272.S12_store_not_flushed_first"
+source = { table = "u272.json", id = "S12_store_not_flushed_first" }
+description = "_flush: leave the store out of the flush before the manifest"
+file = "src/cratekit/core/snapshot.py"
+surface = "maintainer"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+        config.flush_to_disk(here)
+    config.flush_to_disk(store)'''
+new = '        config.flush_to_disk(here)'
+
+[[rows]]
+id = "u272.S13_parents_before_children"
+source = { table = "u272.json", id = "S13_parents_before_children" }
+description = "_flush: walk top down, so a directory is flushed before the files in it"
+file = "src/cratekit/core/snapshot.py"
+surface = "maintainer"
+tests = ["tests/test_repair_rows.py"]
+old = 'capture_root, topdown=False, onerror=_raise_walk_error'
+new = 'capture_root, topdown=True, onerror=_raise_walk_error'
+
+[[rows]]
+id = "u272.S14_wrong_slug"
+source = { table = "u272.json", id = "S14_wrong_slug" }
+description = "_not_flushed: refuse under internal-error rather than the integrity slug the gate uses"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+    return refuse(
+        "snapshot-integrity-failed",
+        f"the capture at {record.root} could not be flushed'''
+new = '''
+    return refuse(
+        "internal-error",
+        f"the capture at {record.root} could not be flushed'''
+
+[[rows]]
+id = "u272.S15_wrong_remedy"
+source = { table = "u272.json", id = "S15_wrong_remedy" }
+description = "_not_flushed: tell the person to report a defect rather than to check the library drive"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+        remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+        scope=Scope.SESSION,
+        detail={
+            "stamp": record.stamp,
+            "root": str(record.root),
+            "path"'''
+new = '''
+        remedy=Remedy.REPORT_DEFECT,
+        scope=Scope.SESSION,
+        detail={
+            "stamp": record.stamp,
+            "root": str(record.root),
+            "path"'''
+
+[[rows]]
+id = "u272.S1_no_capture_flush"
+source = { table = "u272.json", id = "S1_no_capture_flush" }
+description = "capture: skip the walk and flush before the manifest"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+        _flush(destination, destination_root)
+    except OSError as exc:'''
+new = '''
+        pass
+    except OSError as exc:'''
+
+[[rows]]
+id = "u272.S2_manifest_before_flush"
+source = { table = "u272.json", id = "S2_manifest_before_flush" }
+description = "capture: write the manifest before the copy is flushed"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+        _flush(destination, destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc
+
+    _write_manifest(record, manifest)'''
+new = '''
+        _write_manifest(record, manifest)
+        _flush(destination, destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc'''
+
+[[rows]]
+id = "u272.S3_swallow_early_failure"
+source = { table = "u272.json", id = "S3_swallow_early_failure" }
+description = "capture: swallow a flush failure before the manifest and record the verdict as it stood"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+        _flush(destination, destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc'''
+new = '''
+        _flush(destination, destination_root)
+    except OSError as exc:
+        pass'''
+
+[[rows]]
+id = "u272.S4_swallow_late_failure"
+source = { table = "u272.json", id = "S4_swallow_late_failure" }
+description = "capture: swallow a flush failure after the manifest"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+        config.flush_to_disk(destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc'''
+new = '''
+        config.flush_to_disk(destination_root)
+    except OSError as exc:
+        pass'''
+
+[[rows]]
+id = "u272.S5_no_late_flush"
+source = { table = "u272.json", id = "S5_no_late_flush" }
+description = "capture: drop the flush of the capture directory and the store after the manifest"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+    try:
+        config.flush_to_disk(destination)
+        config.flush_to_disk(destination_root)
+    except'''
+new = '''
+    try:
+        pass
+    except'''
+
+[[rows]]
+id = "u272.S6_failure_recorded_verified"
+source = { table = "u272.json", id = "S6_failure_recorded_verified" }
+description = "_not_flushed: rewrite the manifest with the verdict as it stood, so a failed flush can say verified"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+        integrity_verified=False,
+        sources=record.sources,
+    )
+    try:'''
+new = '''
+        integrity_verified=record.integrity_verified,
+        sources=record.sources,
+    )
+    try:'''
+
+[[rows]]
+id = "u272.S7_failure_not_recorded"
+source = { table = "u272.json", id = "S7_failure_not_recorded" }
+description = "_not_flushed: refuse without writing the unverified manifest"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+        _write_manifest(unverified, manifest)
+    except OSError as written:'''
+new = '''
+        pass
+    except OSError as written:'''
+
+[[rows]]
+id = "u272.S8_manifest_error_hides_refusal"
+source = { table = "u272.json", id = "S8_manifest_error_hides_refusal" }
+description = "_not_flushed: let a failed manifest write escape in place of the refusal"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''
+    except OSError as written:
+        logger.warning('''
+new = '''
+    except OSError as written:
+        raise
+        logger.warning('''
+
+[[rows]]
+id = "u272.S9_walk_skips_unreadable"
+source = { table = "u272.json", id = "S9_walk_skips_unreadable" }
+description = "_flush: let os.walk skip a directory it cannot read"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = 'capture_root, topdown=False, onerror=_raise_walk_error'
+new = 'capture_root, topdown=False, onerror=None'
