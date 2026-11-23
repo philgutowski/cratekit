@@ -1586,10 +1586,12 @@ it (rekordbox's analysis files) is mirrored to `analysis-share/` under
 **Restore** puts the database and its coupled state back to a recorded write
 session. It does not undo values written into audio files, with one
 exception: the title tag and key tag an `analyze adopt` session kept are put
-back, for that session and for every later one the restore discards, the
-earliest kept value winning, and a dry run writes none of them. A file that
+back, for that session and for every session after it, committed or not, the
+earliest kept value winning, before the restore says it finished. A file that
 does not take its old tags back is named and the restore ends refused under
-`restore-tags-unwritten`; the answer's `file_tags` totals count the files
+`restore-tags-unwritten`; run the same restore again once it can be written.
+A dry run writes none of them and refuses the same way over a file that is
+gone or cannot be read. The answer's `file_tags` totals count the files
 planned and read back. It asks
 `restore.run.confirm`, and reaching past a later session that committed work
 needs `--discard SESSION_ID` for each.

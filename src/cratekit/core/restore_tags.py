@@ -94,8 +94,9 @@ def _unreadable(record: session.SessionRecord, why: str) -> Exception:
         f"would put the rows back and could not put the files back; nothing was "
         f"replaced",
         steps=(
-            "update Cratekit to the build that wrote the session, or restore an "
-            "earlier session",
+            "the record was changed after the session wrote it, since no build "
+            "writes another shape: put back the list the session wrote, from a "
+            "copy of the state folder, and run the restore again",
         ),
         origin=("core.restore_tags",),
         detail={"session_id": record.session_id, "key": RECORD_KEY, "why": why},
@@ -119,10 +120,15 @@ def kept_by(record: session.SessionRecord) -> tuple[FileBefore, ...]:
             raise _unreadable(record, f"entry {index} is not a mapping")
         wanted = ("path", *_RECORDED.values())
         missing = [name for name in wanted if not isinstance(entry.get(name), str)]
-        if missing or not entry["path"]:
-            raise _unreadable(
-                record, f"entry {index} has no text for {', '.join(missing or ['path'])}"
-            )
+        if missing:
+            raise _unreadable(record, f"entry {index} has no text for {', '.join(missing)}")
+        # A PATH THAT IS NOT ABSOLUTE would resolve against wherever the verb ran,
+        # and a BLANK TITLE TAG would be cleared: the adopt writes neither, since it
+        # adopts only a title tag with a head on a resolved file (review round one).
+        if entry["path"].strip() != entry["path"] or not Path(entry["path"]).is_absolute():
+            raise _unreadable(record, f"entry {index} names no absolute path")
+        if not entry["tag_title"].strip():
+            raise _unreadable(record, f"entry {index} keeps a blank title tag")
         kept.append(
             FileBefore(
                 path=Path(entry["path"]),
@@ -178,11 +184,13 @@ def _write(path: Path, changes: Mapping[str, str]) -> bool:
         return False
 
 
-def put_back(planned: Sequence[FileBefore]) -> TagsPutBack:
+def put_back(planned: Sequence[FileBefore], *, dry_run: bool = False) -> TagsPutBack:
     """Put each file's title tag and key tag back where they differ, then read both back.
 
     Nothing raises for one file. A file that is gone, or that refuses the write,
     is ``failed``; one that reads back otherwise, or cannot be read back, ``wrong``.
+    A DRY RUN WRITES NOTHING: a file gone or unreadable is ``failed``, as the run
+    would find it, and no file counts as read back.
     """
     read_back: list[str] = []
     failed: list[str] = []
@@ -197,6 +205,10 @@ def put_back(planned: Sequence[FileBefore]) -> TagsPutBack:
             failed.append(shown)
             continue
         now = _read(before.path)
+        if dry_run:
+            if now is None:
+                failed.append(shown)
+            continue
         changes = {
             name: before.value(name)
             for name in FIELDS

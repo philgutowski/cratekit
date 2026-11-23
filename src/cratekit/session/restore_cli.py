@@ -649,6 +649,8 @@ def perform_restore(ctx) -> Envelope:
     answered = ctx.envelope(data=_performed(report, offered))
     if report.outcome is None or not report.outcome.file_tags.unwritten:
         return answered
+    # A DRY RUN THAT FINDS A FILE IT COULD NOT PUT BACK REFUSES AS THE RUN WOULD,
+    # so the rehearsal proves this refusal too (review round one).
     # A FILE THAT DID NOT TAKE ITS OLD TAGS BACK REFUSES, after the rest landed,
     # through ``from_cause``, what the restore did kept as its data (R-1924).
     return from_cause(
@@ -670,6 +672,26 @@ def _tags_unwritten(outcome: restore.RestoreOutcome) -> CratekitError:
     """Refuse naming every file that does not carry its old tags, after the rest landed."""
     files = outcome.file_tags
     session_id = outcome.plan.session_id
+    if outcome.dry_run:
+        return CratekitError(
+            Cause(
+                reason=TAGS_UNWRITTEN,
+                message=(
+                    f"a dry run of the restore of session {session_id} wrote nothing, "
+                    f"and {len(files.failed)} of {files.planned} file(s) whose title tag "
+                    f"and key tag it would put back are gone or cannot be read: "
+                    + ", ".join(files.failed)
+                ),
+                remediation=Remediation(
+                    steps=(
+                        "put each named file back where it was, or make it readable, "
+                        "then walk the restore again",
+                    )
+                ),
+                origin=("session.restore_cli",),
+                detail={"failed": list(files.failed), "wrong": [], "session": session_id},
+            )
+        )
     parts = []
     if files.failed:
         parts.append(f"{len(files.failed)} could not be written: {', '.join(files.failed)}")
@@ -690,8 +712,8 @@ def _tags_unwritten(outcome: restore.RestoreOutcome) -> CratekitError:
                 steps=(
                     "check each named file is there, can be written and is not open "
                     "elsewhere",
-                    f"put each named file's title tag and key tag back by hand from "
-                    f"session {session_id}'s record, which keeps every old value",
+                    f"run the same restore of session {session_id} again, which puts "
+                    f"the files back from its record and asks no new discard",
                 )
             ),
             origin=("session.restore_cli",),

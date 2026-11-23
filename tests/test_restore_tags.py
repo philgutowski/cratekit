@@ -15,13 +15,16 @@ from pathlib import Path
 import pytest
 
 from cratekit.analysis import head_adopt as ha
-from cratekit.core import restore, restore_tags, session, tags
+from cratekit.core import reconcile, restore, restore_tags, session, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
+from cratekit.intake import native
+from cratekit.write import metadata
 from tests.cli_drive import drive
 from tests.test_analyze_adopt import (
     LANDED,
     _file,
+    _id,
     _land_headed,
     _landed_and_visited,
     _surfaces,
@@ -78,6 +81,10 @@ def _keyed_and_adopted(cfg, silence) -> tuple[dict[str, tuple], str]:
     code, acted, _refused = _two_acts()
     assert code == int(ExitCode.OK), acted
     assert _all(cfg) != before
+    # THE ADOPT'S ANSWER SAYS WHAT A RESTORE OF IT NOW DOES.
+    assert "puts the rows back and each file's old title tag and key tag" in (
+        acted["warnings"][0]["message"]
+    )
     return before, _adopted(cfg).session_id
 
 
@@ -136,6 +143,9 @@ def test_a_file_that_cannot_be_written_is_named_and_the_run_is_not_ok(
     assert str(golf) in cause["message"]
     assert cause["detail"]["failed"] == [str(golf)]
     assert cause["detail"]["session"] == adopted
+    assert f"run the same restore of session {adopted} again" in " ".join(
+        cause["remediation"]["steps"]
+    )
     # THE DATABASE HALF LANDED AND THE REST OF THE FILES WITH IT.
     assert _surfaces(cfg, "Golf")[:3] == (before["Golf"][0], "09A - 98 - Golf", "09A")
     assert {stem: v for stem, v in _all(cfg).items() if stem != "Golf"} == {
@@ -230,7 +240,10 @@ def test_a_later_adopt_the_restore_discards_puts_its_files_back_too(native_libra
     session's before value is the one a file takes, never a later one's."""
     cfg, _root = native_library
     before, first = _keyed_and_adopted(cfg, silence)
+    assert _surfaces(cfg, "Charlie")[1] == before["Charlie"][1]
     _visit(cfg, "Alpha", scale="4A", bpm=12400)
+    # A FILE ONLY THE LATER SESSION NAMES: Charlie agreed at the first adopt.
+    _visit(cfg, "Charlie", scale="3A", bpm=12400)
     code, acted, _refused = _two_acts()
     assert code == int(ExitCode.OK), acted
     (second,) = [
@@ -238,12 +251,13 @@ def test_a_later_adopt_the_restore_discards_puts_its_files_back_too(native_libra
         if r.workflow == ha.WORKFLOW and r.session_id != first
     ]
     assert _surfaces(cfg, "Alpha")[1:3] == ("04A - 124 - Alpha", "04A")
+    assert _surfaces(cfg, "Charlie")[1:3] == ("03A - 124 - Charlie", "03A")
 
     code, envelope = _restore(first, "--discard", second)
 
     assert code == int(ExitCode.OK), envelope
     assert _all(cfg) == before
-    assert envelope["data"]["totals"]["file_tags"]["planned"] == 5
+    assert envelope["data"]["totals"]["file_tags"]["planned"] == 6
 
 
 # 2. The record reader and the put back, on values built here
@@ -275,6 +289,10 @@ def test_the_part_is_re_exported_by_the_restore():
         pytest.param([{"path": "/x", "tag_title": "t"}], id="no-key"),
         pytest.param([{"path": "/x", "tag_title": None, "initialkey": ""}], id="a-null-title"),
         pytest.param([{"path": "/x", "tag_title": "t", "initialkey": 8}], id="a-number-key"),
+        pytest.param([{"path": "x.flac", "tag_title": "t", "initialkey": ""}], id="relative"),
+        pytest.param([{"path": " ", "tag_title": "t", "initialkey": ""}], id="a-blank-path"),
+        pytest.param([{"path": " /x", "tag_title": "t", "initialkey": ""}], id="padded"),
+        pytest.param([{"path": "/x", "tag_title": " ", "initialkey": ""}], id="a-blank-title"),
     ],
 )
 def test_a_record_kept_in_another_shape_refuses(kept):
@@ -386,3 +404,154 @@ def test_the_session_record_round_trips_what_the_adopt_kept(native_library, sile
     found = restore_tags.kept_by(session.read_record(adopted, cfg))
     assert len(found) == len(on_disk["detail"][restore_tags.RECORD_KEY]) == 5
     assert {str(f.path) for f in found} >= {str(_file(cfg, "Golf"))}
+
+
+# 3. Review round one
+
+
+def _stopped_adopt(cfg, monkeypatch) -> str:
+    """An adopt that wrote its files and stopped before the rows: no commit."""
+    real = metadata.write_plan
+
+    def stops(*args, **kwargs):
+        raise RuntimeError("the process died between the files and the rows")
+
+    monkeypatch.setattr(metadata, "write_plan", stops)
+    code, acted, _refused = _two_acts()
+    assert code != int(ExitCode.OK), acted
+    monkeypatch.setattr(metadata, "write_plan", real)
+    record = _adopted(cfg)
+    assert not restore._committed(record)
+    return record.session_id
+
+
+def _landing_of(cfg, stem: str) -> str:
+    """The landing session that landed ``stem``, chosen by its row, never by order."""
+    content_id = _id(cfg, stem)
+    (landing,) = [
+        one.session_id
+        for one in session.records(cfg)
+        if content_id
+        in {
+            row["content_id"]
+            for row in one.detail.get(native.LANDED_ROWS_KEY, {}).get("rows", ())
+        }
+    ]
+    return landing
+
+
+def _tagged(paths: dict[str, Path]) -> dict[str, tuple]:
+    return {
+        stem: tuple(tags.read_tags(path, ("title", "initialkey")).values())
+        for stem, path in paths.items()
+    }
+
+
+def test_a_later_adopt_that_wrote_files_and_no_rows_has_its_files_put_back(
+    native_library, silence, monkeypatch
+):
+    """B1: a commit is no evidence about files. A restore of an earlier session
+    reads every later record that kept tags, committed or not, and asks no discard
+    for one that committed nothing."""
+    cfg, _root = native_library
+    _landed_and_visited(cfg, silence)
+    paths = {stem: _file(cfg, stem) for stem in LANDED}
+    before = _tagged(paths)
+    landing = _landing_of(cfg, "Golf")
+    stopped = _stopped_adopt(cfg, monkeypatch)
+    assert _surfaces(cfg, "Golf")[1:3] == ("09A - 98 - Golf", "09A")
+    assert _surfaces(cfg, "Golf")[0] == "01A - 124 - Golf"
+
+    code, envelope = _restore(landing)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["file_tags"] == {
+        "planned": 5, "read_back": 5, "failed": [], "wrong": [],
+    }
+    assert _tagged(paths) == before
+    assert stopped != landing
+
+
+def test_the_files_go_back_with_the_latch_still_held(native_library, silence, monkeypatch):
+    """Review round one, R2: the database is already back and the restore still
+    says it has not finished while the files are written."""
+    cfg, _root = native_library
+    _before, adopted = _keyed_and_adopted(cfg, silence)
+    real = restore_tags.put_back
+    seen: list[tuple] = []
+
+    def noting(planned, *, dry_run=False):
+        latched = [r.marker.kind for r in reconcile.outstanding(cfg)]
+        seen.append((latched, _surfaces(cfg, "Golf")[0]))
+        return real(planned, dry_run=dry_run)
+
+    monkeypatch.setattr(restore_tags, "put_back", noting)
+
+    code, envelope = _restore(adopted)
+
+    assert code == int(ExitCode.OK), envelope
+    ((latched, row_title),) = seen
+    assert reconcile.Kind.IN_FLIGHT_RESTORE in latched
+    assert row_title == "01A - 124 - Golf"
+    assert not reconcile.outstanding(cfg)
+
+
+def test_a_key_tag_that_does_not_come_back_is_named(silence, tmp_path, monkeypatch):
+    path = tmp_path / "a.flac"
+    path.write_bytes(silence.read_bytes())
+    assert tags.write_tags(path, {"title": "01A - 124 - A", "initialkey": "09A"})
+    monkeypatch.setattr(tags, "clear_tags", lambda *a: True)
+
+    done = restore_tags.put_back([_before(path, "01A - 124 - A", "")])
+
+    assert done.wrong == (str(path),) and not done.read_back
+
+
+def test_a_file_that_cannot_be_read_back_is_named(silence, tmp_path, monkeypatch):
+    path = tmp_path / "a.flac"
+    path.write_bytes(silence.read_bytes())
+    assert tags.write_tags(path, {"title": "09A - 98 - A", "initialkey": "09A"})
+    real = tags.read_tags_checked
+    reads: list[int] = []
+
+    def fails_the_second(where, fields):
+        reads.append(1)
+        if len(reads) > 1:
+            raise tags.TagReadFailed("gone unreadable")
+        return real(where, fields)
+
+    monkeypatch.setattr(tags, "read_tags_checked", fails_the_second)
+
+    done = restore_tags.put_back([_before(path, "01A - 124 - A", "01A")])
+
+    assert done.wrong == (str(path),)
+
+
+def test_a_dry_run_finds_a_file_gone_and_refuses_as_the_run_would(native_library, silence):
+    """Review round one, R3: the rehearsal proves this refusal too, writing nothing."""
+    cfg, _root = native_library
+    _before, adopted = _keyed_and_adopted(cfg, silence)
+    golf = _file(cfg, "Golf")
+    golf.unlink()
+    rows = _surfaces(cfg, "Alpha")[0]
+
+    code, envelope = _restore(adopted, "--dry-run")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    cause = envelope["cause"]
+    assert cause["reason"] == "restore-tags-unwritten"
+    assert "a dry run" in cause["message"] and str(golf) in cause["message"]
+    assert cause["detail"]["failed"] == [str(golf)]
+    assert _surfaces(cfg, "Alpha")[:3] == (rows, "07B - 124 - Alpha", "07B")
+
+
+def test_a_dry_run_reads_and_writes_no_file(silence, tmp_path, monkeypatch):
+    path = tmp_path / "a.flac"
+    path.write_bytes(silence.read_bytes())
+    assert tags.write_tags(path, {"title": "09A - 98 - A", "initialkey": "09A"})
+    monkeypatch.setattr(tags, "write_tags", lambda *a: pytest.fail("a dry run wrote"))
+    monkeypatch.setattr(tags, "clear_tags", lambda *a: pytest.fail("a dry run cleared"))
+
+    done = restore_tags.put_back([_before(path, "01A - 124 - A", "")], dry_run=True)
+
+    assert done == restore_tags.TagsPutBack(1)
