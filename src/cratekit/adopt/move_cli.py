@@ -363,9 +363,7 @@ def remaining(
             # ACROSS BUCKETS, DONE IS IN THE TARGET AND OUT OF THE OLD BUCKET,
             # its places beside the band included (R-1965).
             arrived = move.target in current.placements.holds(move.into, move.content_id)
-            if arrived and not held and not move_engine.alongside_left(
-                current.placements, declared, move.bucket, move.content_id, leaving=()
-            ):
+            if arrived and not still_to_leave(current.placements, declared, move, held):
                 continue
             stale[move.content_id] = "the plan as it stands does not move it"
             continue
@@ -393,6 +391,28 @@ def remaining(
     if stale:
         raise _stale(approved, stale)
     return tuple(todo), tuple(sorted(gone))
+
+
+def still_to_leave(
+    placements_now: plan_engine.Placements,
+    declared: taxonomy.Taxonomy,
+    move: move_engine.Move,
+    held: frozenset[str] | set[str],
+) -> set[str]:
+    """What a move across buckets approved to leave and the tree still holds there.
+
+    ``held`` is the competing subs the track holds in the bucket left. A band
+    another bucket's move settles is that move's to read back, so only what
+    THIS move was approved to remove counts (R-1965), and a place beside the
+    band only while :func:`cratekit.adopt.move.alongside_left` still names it
+    over the tree as it is now: a Favorites a playlist added since keeps is no
+    longer to leave, and the writer kept it. ONE BODY for the worker's done
+    check and its read back (review round two).
+    """
+    beside = move_engine.alongside_left(
+        placements_now, declared, move.bucket, move.content_id, leaving=move.remove
+    )
+    return (set(held) | set(beside)) & set(move.remove)
 
 
 def membership_moves(
@@ -466,12 +486,8 @@ def read_back(
         )
         if move.target_bucket:
             # ACROSS BUCKETS (U339): the target is read in the bucket it files
-            # into, and every place of the bucket left the move was approved to
-            # leave must be gone, a band or a place beside it (R-1965). A band
-            # another bucket's move settles is that move's to read back.
-            held = (held | set(held_now.holds_alongside(move.bucket, move.content_id))) & set(
-                move.remove
-            )
+            # into, and what the move still has to leave there, :func:`still_to_leave`.
+            held = still_to_leave(held_now, declared, move, held)
             arrived = move.target in held_now.holds(move.into, move.content_id)
             name = (
                 ("in_both" if held else "moved")

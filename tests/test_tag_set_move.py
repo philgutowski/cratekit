@@ -655,3 +655,101 @@ def _tag_set_genre(genre: str, *rows: str) -> dict:
     assert code == int(ExitCode.OK), acted
     collection.reset_cache()
     return acted
+
+
+def _skipping(name: str):
+    """``rb_writer.remove_memberships`` making no removal from playlists named ``name``."""
+    real = rb_writer.remove_memberships
+
+    def remove(db, playlist, content_ids):
+        return [] if str(playlist.Name) == name else real(db, playlist, content_ids)
+
+    return remove
+
+
+def _retried(job_id: str) -> None:
+    from cratekit.core import jobs
+
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    collection.reset_cache()
+    code, resumed = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), resumed
+    collection.reset_cache()
+
+
+def test_a_place_beside_the_band_still_held_is_read_back_unfinished_and_a_resume_finishes(
+    sung, monkeypatch
+):
+    """The read back counts a place beside the band the move had to leave
+    (review round two): the job fails, the entry stays, the resume removes it."""
+    _tag_set("--row", "plain")
+    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
+    with monkeypatch.context() as patched:
+        patched.setattr(rb_writer, "remove_memberships", _skipping(_place(OLD_BUCKET, FAVORITES)[1]))
+        code, failed = drive(_resume(job_id))
+    collection.reset_cache()
+    assert code != int(ExitCode.OK), failed
+    assert failed["cause"]["inner"]["detail"]["in_both"] == ["plain"]
+    assert _in_tree(sung, "plain") == {_place(OLD_BUCKET, FAVORITES), _place(NEW_BUCKET, HIGH)}
+    assert dict(genre_moves.read(sung)) == {"plain": frozenset({OLD_BUCKET})}
+
+    _retried(job_id)
+
+    assert _in_tree(sung, "plain") == {_place(NEW_BUCKET, HIGH)}
+    assert dict(genre_moves.read(sung)) == {}
+
+
+def test_a_candy_membership_added_after_the_approval_keeps_the_favorites_and_the_job_finishes(
+    sung,
+):
+    """A person files the row in the old folder's Candy between the gate and the
+    job: the worker keeps the Favorites and its read back agrees (review round two)."""
+    _tag_set("--row", "plain")
+    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
+    handle = rb_writer.open_db(rb_writer.live_db_path(sung), unlock=False, cfg=sung)
+    try:
+        tree = rb_writer.ensure_folder(handle, DECLARED.tree.display)
+        folder = rb_writer.ensure_folder(handle, _place(OLD_BUCKET, CANDY)[0], parent=tree)
+        candy = rb_writer.ensure_playlist(handle, _place(OLD_BUCKET, CANDY)[1], folder)
+        rb_writer.add_memberships(handle, candy, ["plain"])
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    collection.reset_cache()
+
+    code, resumed = drive(_resume(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    collection.reset_cache()
+    assert _in_tree(sung, "plain") == {
+        _place(OLD_BUCKET, CANDY), _place(OLD_BUCKET, FAVORITES), _place(NEW_BUCKET, HIGH)
+    }
+    assert dict(genre_moves.read(sung)) == {}
+
+
+def test_a_genre_move_is_spent_only_when_every_move_of_its_track_finished(
+    machine, silence, monkeypatch
+):
+    """R&B to Soul makes two moves of one track; Soul's removal from R&B High
+    is made to fail, so the entry stays for the resume, which finishes it
+    (review round two)."""
+    _vocal_favourite(
+        machine, silence, "Soul",
+        [("", "", "R&B"), (*_place("rnb", HIGH), "mover"), (*_place("soul", LOW), "other")],
+    )
+    _tag_set_genre("Soul", "mover")
+    _apply()
+    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
+    with monkeypatch.context() as patched:
+        patched.setattr(rb_writer, "remove_memberships", _skipping(_place("rnb", HIGH)[1]))
+        code, failed = drive(_resume(job_id))
+    collection.reset_cache()
+    assert code != int(ExitCode.OK), failed
+    assert _in_tree(machine, "mover") == {_place("rnb", HIGH), _place("soul", HIGH)}
+    assert dict(genre_moves.read(machine)) == {"mover": frozenset({"rnb"})}
+
+    _retried(job_id)
+
+    assert _in_tree(machine, "mover") == {_place("soul", HIGH)}
+    assert dict(genre_moves.read(machine)) == {}

@@ -768,7 +768,9 @@ def leaving_moved(
     alone: the bucket the entry claims decides it (:func:`standing`), and a
     split or former place the track's new genre settles is one that bucket's
     own move takes it out of in the same job, so it does not keep the track in
-    this folder (review round one of R-1965).
+    this folder (review round one of R-1965). Where that bucket LISTS the
+    track instead (no reading, a renamed band), the Favorites here leaves all
+    the same and the next refresh puts it back: a residual of review round two.
     """
     held = held_in_tree(entry, bucket, placements, declared, competing)
     leaving = (*held, *settled_in_the_other_bucket(entry, bucket, declared))

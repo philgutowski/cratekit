@@ -1310,8 +1310,9 @@ crate inbox rotate
   the like) and Favorites with the band; a playlist you made there (Candy
   among them) is never touched, and a track one still holds keeps that
   folder's Favorites, which mirrors every playlist of its folder. A `with
-  vox` or Favorites there renamed in rekordbox lists the row as held under
-  another name and moves nothing for it until the name is put back. Only
+  vox`, genre sub or Favorites there that the move would leave, renamed in
+  rekordbox, lists the row as held under another name and moves nothing for
+  it until the name is put back. Only
   that folder is asked, and only for rows `tag set` changed, so a track you
   put in another genre folder by hand is otherwise left where it is.
 - `converge` only reports. `rebuild` is the one repair for an unconverged
@@ -1375,7 +1376,11 @@ the rows back and each file's old genre. Then run `crate adopt apply`, which
 files each row in the new genre folder by its energy band, and, where the gate
 showed a row leaving a genre folder, `crate adopt move`, which takes it out of
 that folder's energy band, `with vox`, genre sub and Favorites; the run's
-answer names what applies. A playlist you made in the old folder, Candy among
+answer names what applies. Where adoption held a row back (it still sat in a
+band of the old folder that the new genre's folder also claims, as R&B's bands
+are for Soul), `adopt apply` files nothing for it and the move files its band:
+the next `crate adopt apply` then files its `with vox`, and `crate favorites
+refresh` its Favorites. A playlist you made in the old folder, Candy among
 them, keeps the row, and so does that folder's Favorites while one does.
 
 **A second genre folder.** A track can sit in a second genre folder of BY
