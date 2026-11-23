@@ -39,8 +39,10 @@ _BLOCKED = "a second genre cannot be set until its rows can be found on disk"
 FILES_FOLLOW = (
     "the tree follows the files at the next filing: `crate adopt apply`, or "
     "`crate organize --only adopt`, files each track into its second genre's "
-    "folder in the band its energy names, and `crate converge` names a track "
-    "still in the folder of a second genre cleared here"
+    "folder in the band its energy names; a track whose second genre is "
+    "cleared here stays in that folder until it is taken out there, and "
+    "`crate converge` names it only while that playlist holds another track "
+    "filed into it"
 )
 
 

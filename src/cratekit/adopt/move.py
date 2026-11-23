@@ -36,7 +36,13 @@ import hashlib
 from dataclasses import dataclass, fields
 from typing import Any, Mapping, Sequence
 
-from cratekit.adopt.plan import WITHHELD_BY_VERDICT, AdoptionPlan, Placements, PlanEntry
+from cratekit.adopt.plan import (
+    WITHHELD_BY_VERDICT,
+    AdoptionPlan,
+    Placements,
+    PlanEntry,
+    kept_beside,
+)
 from cratekit.adopt.scan import Disposition
 from cratekit.cli.output import canonical_json, digest_of
 from cratekit.core import routing, taxonomy
@@ -234,7 +240,12 @@ def _left_reason(
 
 
 def standing(
-    entry: PlanEntry, placements: Placements, declared: taxonomy.Taxonomy, *, tree: str
+    entry: PlanEntry,
+    placements: Placements,
+    declared: taxonomy.Taxonomy,
+    *,
+    tree: str,
+    elsewhere: frozenset[str] = frozenset(),
 ) -> Move | Left | None:
     """What one entry comes to in the bucket it claims: a move, a track left, or neither.
 
@@ -243,6 +254,8 @@ def standing(
     Over the entries adoption routes, which include a track already in its sub
     and in a stale one as well (R-734), and the ones it withholds over a place.
     An entry a verdict withheld is not moved: a person refused that folder.
+    A split place whose holder the track's other entry claims (``elsewhere``,
+    U340) is that entry's band, never a stale place here.
     """
     if not placements.read or not entry.bucket or not claims(entry, entry.bucket):
         return None
@@ -257,7 +270,10 @@ def standing(
         or routing.split_place(declared, entry.bucket, entry.sub) is not None
     ):
         return None
-    held = tuple(sorted(set(placements.holds(entry.bucket, entry.content_id)) & competing))
+    kept = kept_beside(declared, entry.bucket, elsewhere)
+    held = tuple(
+        sorted((set(placements.holds(entry.bucket, entry.content_id)) & competing) - kept)
+    )
     stale = tuple(sub for sub in held if sub != entry.sub)
     if not stale:
         return None
@@ -564,6 +580,7 @@ def standing_in(
     *,
     tree: str,
     refused: frozenset[str] = frozenset(),
+    elsewhere: frozenset[str] = frozenset(),
 ) -> Move | Left | None:
     """What one track comes to in one bucket: a move, a track left, or neither.
 
@@ -575,7 +592,7 @@ def standing_in(
     if not placements.read:
         return None
     if claims(entry, bucket):
-        return standing(entry, placements, declared, tree=tree)
+        return standing(entry, placements, declared, tree=tree, elsewhere=elsewhere)
     return _standing_in_tree(entry, bucket, placements, declared, tree=tree, refused=refused)
 
 
@@ -656,6 +673,12 @@ def claimed_buckets(entries: Sequence[PlanEntry]) -> dict[str, frozenset[str]]:
     return {content_id: frozenset(buckets) for content_id, buckets in found.items()}
 
 
+def elsewhere_of(claimed: Mapping[str, frozenset[str]], entry: PlanEntry) -> frozenset[str]:
+    """The buckets the track's other entries claim, from :func:`claimed_buckets`.
+    ONE ANSWER for the plan and for the worker's check of it."""
+    return claimed.get(entry.content_id, frozenset()) - _own(entry)
+
+
 def _own(entry: PlanEntry) -> frozenset[str]:
     """The bucket one entry claims, or nothing."""
     return frozenset({entry.bucket}) if claims(entry, entry.bucket) else frozenset()
@@ -702,12 +725,13 @@ def build_move_plan(plan: AdoptionPlan, declared: taxonomy.Taxonomy) -> MovePlan
         refused = refused_buckets(plan.entries)
         claimed = claimed_buckets(plan.entries)
         for entry in plan.entries:
-            elsewhere = claimed.get(entry.content_id, frozenset()) - _own(entry)
+            elsewhere = elsewhere_of(claimed, entry)
             for bucket in buckets_asked(
                 entry, plan.placements, declared, competing, elsewhere=elsewhere
             ):
                 found = standing_in(
-                    entry, bucket, plan.placements, declared, tree=plan.tree, refused=refused
+                    entry, bucket, plan.placements, declared, tree=plan.tree, refused=refused,
+                    elsewhere=elsewhere,
                 )
                 if isinstance(found, Move):
                     moves.append(found)

@@ -1216,6 +1216,10 @@ repeatable, plans just those steps; a side with no kind named is not asked.
   one of its two folders and leaves it in the other, or adds it to a third
   without taking it out of exactly one, is listed and not taken, since the
   account does not say which genre changed; `tag second` sets or clears it.
+  So is a move whose genres would then file it somewhere the account does not
+  show it: into `Electronica / Other`, which files by no genre beside a
+  second, or out of its folder when a second genre naming that same folder
+  would then name it too.
 - A track downloaded for your edit is filed where you put it, though its
   landing first filed it by its tags ("landed for the account's edit"), even
   when the mirror has no snapshot of the playlist you put it in yet; a
@@ -1335,11 +1339,14 @@ folder the file's genre already names, or a file whose genre names no folder.
 The next `adopt apply` (or `organize --only adopt`) files the track into the
 second folder too, and from then on `adopt move`, `converge`, `rebuild`,
 `route resort` and `favorites refresh` keep it in both, an energy change
-moving it in both. A track with one genre is filed exactly as before. A
-cleared second genre leaves the track in that folder, which `converge` then
-names as a membership no genre files, until it is taken out there. On the
-account, an edit inside one of the two folders leaves the other (below, under
-Organize).
+moving it in both. This holds for a pair one of whose folders took tracks
+over from the other (Soul and R&B): the band of the one is the track's own
+band there, never a place `adopt move` takes it out of. A track with one
+genre is filed exactly as before. A cleared second genre leaves the track in
+that folder until it is taken out there; `converge` names it as a membership
+no genre files only while that playlist holds another track filed into it.
+On the account, an edit inside one of the two folders leaves the other
+(below, under Organize).
 
 `taxonomy alias` and `taxonomy folder` keep the old copy beside it under a
 dated name and refuse a word too coarse to be a genre (such as `Electronic`),

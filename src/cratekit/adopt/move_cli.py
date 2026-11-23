@@ -305,6 +305,7 @@ def remaining(
     """
     entries = move_engine.entries_by_track(current.entries)
     refused = move_engine.refused_buckets(current.entries)
+    claimed = move_engine.claimed_buckets(current.entries)
     todo: list[move_engine.Move] = []
     gone: set[str] = set()
     stale: dict[str, str] = {}
@@ -328,7 +329,8 @@ def remaining(
             continue
         # THE PLAN'S OWN RULE, ASKED OF THE LIBRARY AS IT STANDS.
         now = move_engine.standing_in(
-            entry, move.bucket, current.placements, declared, tree=current.tree, refused=refused
+            entry, move.bucket, current.placements, declared, tree=current.tree, refused=refused,
+            elsewhere=move_engine.elsewhere_of(claimed, entry),
         )
         if isinstance(now, move_engine.Left):
             stale[move.content_id] = f"the plan as it stands leaves it: {now.reason}"

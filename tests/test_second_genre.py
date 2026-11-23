@@ -298,6 +298,77 @@ def test_the_worker_checks_a_move_against_the_entry_that_planned_it():
     assert adopt_move.entry_for(found, "x", ONE) is None
 
 
+SOUL, RNB = "Soul", "R&B"
+
+
+def _split_pair(content_id: str, first: str, second: str, *, energy: int):
+    """A track whose two genres are a split place's declarer and its holder."""
+    return replace(
+        _scanned(content_id, DECLARED.bucket_for_display(first), energy=energy, genre=first),
+        second_genre=second,
+        second_bucket=routing.second_bucket(DECLARED, first, second) or "",
+    )
+
+
+def _in_both(content_id: str, band: str) -> dict:
+    """The track in Soul's band and R&B's, as placements read it: R&B's band
+    is Soul's split place there too."""
+    soul, rnb = (DECLARED.bucket_for_display(word) for word in (SOUL, RNB))
+    (place,) = [one for one in DECLARED.bucket(soul).split_from if one.sub == band]
+    return {soul: {content_id: (band, place.id)}, rnb: {content_id: (band,)}}
+
+
+def test_the_shipped_soul_folder_declares_rnb_bands_as_split_places():
+    soul, rnb = (DECLARED.bucket_for_display(word) for word in (SOUL, RNB))
+    assert {place.bucket for place in DECLARED.bucket(soul).split_from} == {rnb}
+    assert routing.second_bucket(DECLARED, SOUL, RNB) == rnb
+
+
+@pytest.mark.parametrize(("first", "second"), [(SOUL, RNB), (RNB, SOUL)], ids=["soul-rnb", "rnb-soul"])
+def test_a_split_pair_is_filed_into_both_and_never_moved_out_of_either(first, second):
+    """B1 of round one: the split place of the one is the other's own band."""
+    held = _in_both("t", MED)
+    plan = _plan([_split_pair("t", first, second, energy=5)], held)
+    assert [(e.disposition, e.withheld_by) for e in plan.entries] == [
+        (adopt_scan.Disposition.ROUTE, ""),
+        (adopt_scan.Disposition.ROUTE, ""),
+    ]
+    moves = adopt_move.build_move_plan(plan, DECLARED)
+    assert (moves.moves, moves.left) == ((), ())
+    # NOT YET IN THE SECOND: adoption files it there, nothing withheld.
+    soul = DECLARED.bucket_for_display(SOUL)
+    only_first = {bucket: rows for bucket, rows in held.items() if bucket != soul}
+    only_first[soul] = {"t": tuple(sub for sub in held[soul]["t"] if sub != MED)}
+    fresh = _plan([_split_pair("t", first, second, energy=5)], only_first)
+    assert [(e.bucket, e.disposition, e.holds) for e in fresh.entries if e.bucket == soul] == [
+        (soul, adopt_scan.Disposition.ROUTE, ())
+    ]
+    assert adopt_move.build_move_plan(fresh, DECLARED).moves == ()
+
+
+@pytest.mark.parametrize(("first", "second"), [(SOUL, RNB), (RNB, SOUL)], ids=["soul-rnb", "rnb-soul"])
+def test_an_energy_change_moves_a_split_pair_in_both_and_the_worker_agrees(first, second):
+    current = _plan([_split_pair("t", first, second, energy=9)], _in_both("t", MED))
+    approved = adopt_move.build_move_plan(current, DECLARED).moves
+    soul, rnb = (DECLARED.bucket_for_display(word) for word in (SOUL, RNB))
+    assert sorted((m.bucket, m.target, m.remove) for m in approved) == sorted(
+        [(soul, HIGH, (MED,)), (rnb, HIGH, (MED,))]
+    )
+    todo, gone = move_cli.remaining(approved, current, DECLARED)
+    assert sorted((m.bucket, m.target) for m in todo) == sorted([(soul, HIGH), (rnb, HIGH)])
+    assert gone == ()
+
+
+def test_a_one_genre_soul_track_still_leaves_the_rnb_band():
+    """THE CONTROL: with no second genre, R&B's band is Soul's split place."""
+    soul = DECLARED.bucket_for_display(SOUL)
+    held = _in_both("t", MED)
+    plan = _plan([_scanned("t", soul, energy=5, genre=SOUL)], held)
+    (move,) = adopt_move.build_move_plan(plan, DECLARED).moves
+    (place,) = [one for one in DECLARED.bucket(soul).split_from if one.sub == MED]
+    assert (move.bucket, move.target, move.remove) == (soul, MED, (place.id,))
+
+
 # 5. Mirror edits: an edit on the account in one folder leaves the other
 
 
@@ -370,6 +441,23 @@ def test_an_edit_that_does_not_say_which_genre_changed_is_not_taken(to, was, acc
     edit = _decision(edits.MOVE, to(), was(), account())
     why = mirror_edits._second_genre_tags(DECLARED, edit, TRUTH, TWO)
     assert isinstance(why, str) and "crate tag second" in why
+
+
+@pytest.mark.parametrize("out_of", ["first", "second"])
+def test_a_move_into_the_fallback_folder_is_not_taken(out_of):
+    """B2 of round one: a word filing by the fallback alone files no second
+    genre beside it, nor as one, so either move would lose a folder."""
+    from cratekit.modules.outbound import mirror_edits as edits
+
+    fallback = DECLARED.fallback.bucket
+    assert routing.files_by_genre(DECLARED, DECLARED.bucket(fallback).display) is None
+    kept = _at(TWO, MED) if out_of == "first" else _at(ONE, MED)
+    edit = _decision(
+        edits.MOVE, _at(fallback, MED), [_at(ONE, MED), _at(TWO, MED)], [kept, _at(fallback, MED)]
+    )
+    why = mirror_edits._second_genre_tags(DECLARED, edit, TRUTH, TWO)
+    assert isinstance(why, str) and "crate tag second" in why
+    assert DECLARED.bucket(fallback).display in why
 
 
 def test_left_folders_reads_the_folders_a_band_left():

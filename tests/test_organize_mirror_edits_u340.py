@@ -81,3 +81,17 @@ def test_a_one_genre_track_beside_it_moves_as_before(machine):
     machine.run()
     assert machine.places("2") == {(TECH, "Med")}
     assert tags.read_tag(machine.files["2"], "secondgenre") is None
+
+
+def test_a_move_that_would_wake_a_second_genre_naming_its_own_folder_is_not_taken(machine):
+    """Round one's R3: a second genre naming the genre's own folder files
+    nothing, until a new genre makes it name a folder the account never showed."""
+    assert tags.write_tags(machine.files["2"], {"secondgenre": DEEP})
+    machine.take_off(f"{DEEP} Med", "r2")
+    machine.put_in(f"{TECH} Med", "r2")
+    _area, step = machine.run()
+    assert [one for one in step.items if one.get("edit") and one.get("track") == "r2"] == []
+    (named,) = [one for one in step.items if one.get("track") == "r2"]
+    assert "crate tag second" in named["why"]
+    assert tags.read_genre_from_file(machine.files["2"]) == DEEP
+    assert machine.places("2") == {(DEEP, "Med")}

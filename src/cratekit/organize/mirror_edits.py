@@ -178,6 +178,32 @@ SECOND_GENRE_EDIT = (
 )
 
 
+#: Why an edit that would leave or wake a folder the account did not touch is
+#: not taken (U340): the genres it would write file the track elsewhere.
+SECOND_GENRE_ELSEWHERE = (
+    "it carries a second genre, and the genres this edit would write file it into "
+    "{filed} where the account shows {shown}, so nothing is written; "
+    "`crate tag second` sets or clears a second genre"
+)
+
+
+def _folders(declared: Any, buckets: Any) -> str:
+    """Genre folders by display, sorted and joined, or ``no genre folder``."""
+    shown = sorted(declared.bucket(bucket).display for bucket in buckets if bucket)
+    return " and ".join(shown) or "no genre folder"
+
+
+def _filed_by(declared: Any, genre: str | None, second: str | None) -> frozenset[str]:
+    """The genre folders a genre and a second genre file a track into, the
+    fallback included for a genre that files by it alone, as rebuild derives."""
+    from cratekit.core import routing
+
+    first = routing.resolve_bucket(declared, genre).bucket_id if genre else None
+    return frozenset(
+        bucket for bucket in (first, routing.second_bucket(declared, genre, second)) if bucket
+    )
+
+
 def left_folders(decision: Any) -> frozenset[str]:
     """The genre folders an edit took a track's band places out of on the account.
 
@@ -242,9 +268,17 @@ def _second_genre_tags(
             f"so nothing is written"
         )
     word, energy = target
-    if left == {one}:
-        return word, energy, truth.second_genre
-    return truth.genre, energy, word
+    found = (word, energy, truth.second_genre) if left == {one} else (truth.genre, energy, word)
+    # THE TWO FOLDERS IT ENDS IN ARE THE ONE KEPT AND THE ONE IT WAS PUT IN, or
+    # the edit is not taken: a word filing by the fallback alone files no
+    # second genre beside it, nor as one (round one's B2).
+    kept = two if left == {one} else one
+    filed = _filed_by(declared, found[0], found[2])
+    if filed != {kept, to}:
+        return SECOND_GENRE_ELSEWHERE.format(
+            filed=_folders(declared, filed), shown=_folders(declared, {kept, to})
+        )
+    return found
 
 
 @dataclass(frozen=True, slots=True)
@@ -503,6 +537,15 @@ def _plan_genre(
                 )
                 continue
             genre, energy = target
+            # A SECOND GENRE THE NEW GENRE WOULD WAKE files it into a folder the
+            # account never showed it in, so the edit is not taken (U340).
+            woken = _filed_by(declared, genre, truth.second_genre)
+            if truth.second_genre and len(woken) > 1:
+                skip(decision, SECOND_GENRE_ELSEWHERE.format(
+                    filed=_folders(declared, woken),
+                    shown=_folders(declared, {declared.bucket_for_display(decision.to.folder)}),
+                ))
+                continue
         held = sorted(pid for pid in _live_in(db, decision.content_id) if pid in tree.names)
         missing: list[str] = []
         join: list[tuple[str, str, str]] = []

@@ -614,8 +614,32 @@ def vocal_row(entry: PlanEntry) -> dict[str, Any]:
 NO_COMPETING_PLACE: tuple[str, tuple[str, ...], tuple[str, ...]] = ("", (), ())
 
 
+def kept_beside(
+    declared: taxonomy.Taxonomy, bucket: str, beside: frozenset[str]
+) -> frozenset[str]:
+    """The split places of ``bucket`` that are the track's own other folder (U340).
+
+    A split place is a band of its holder, so a track whose other genre files
+    it into that holder sits there by right: its entry there keeps it, and the
+    declaring bucket neither withholds over it nor moves the track out of it.
+    ``beside`` is the buckets the track's other entries claim. ONE ANSWER for
+    adoption and for the move.
+    """
+    if not beside:
+        return frozenset()
+    return frozenset(
+        place.id for place in declared.bucket(bucket).split_from if place.bucket in beside
+    )
+
+
 def competing_place(
-    declared: taxonomy.Taxonomy, placements: Placements, *, bucket: str, sub: str, content_id: str
+    declared: taxonomy.Taxonomy,
+    placements: Placements,
+    *,
+    bucket: str,
+    sub: str,
+    content_id: str,
+    beside: frozenset[str] = frozenset(),
 ) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
     """Why a routed entry must be withheld and what its track holds, or nothing.
 
@@ -633,7 +657,8 @@ def competing_place(
     kind, competing = routing.competing_subs(declared, bucket)
     if sub not in competing:
         return NO_COMPETING_PLACE
-    held = tuple(sorted(set(placements.holds(bucket, content_id)) & competing))
+    kept = kept_beside(declared, bucket, beside)
+    held = tuple(sorted((set(placements.holds(bucket, content_id)) & competing) - kept))
     unnamed = tuple(sorted(set(placements.holds_unnamed(bucket, content_id)) & set(held)))
     if not held or (sub in held and sub not in unnamed):
         return NO_COMPETING_PLACE
@@ -676,37 +701,37 @@ def build_adoption_plan(
             sub = _sub_for(declared, bucket, track.genre, track.energy)
         elif track.disposition is not Disposition.WITHHELD:
             bucket = ""
-        entries.append(_destined(declared, placements, vocals, sub_of, unplaced, bucket, sub))
-        second = _second_entry(declared, placements, vocals, sub_of, unplaced, track)
-        if second is not None:
-            entries.append(second)
+        second_sub = _second_sub(declared, track)
+        beside = frozenset({track.second_bucket}) if second_sub else frozenset()
+        entries.append(
+            _destined(declared, placements, vocals, sub_of, unplaced, bucket, sub, beside=beside)
+        )
+        if second_sub:
+            entry = replace(unplaced, genre=track.second_genre, second=True)
+            entries.append(
+                _destined(
+                    declared, placements, vocals, sub_of, entry, track.second_bucket, second_sub,
+                    beside=frozenset({bucket}) if sub else frozenset(),
+                )
+            )
     collisions = find_collisions(entries, declared, tree=tree, existing=existing)
     return AdoptionPlan(tree, tuple(entries), collisions, placements, vocals)
 
 
-def _second_entry(
-    declared: taxonomy.Taxonomy,
-    placements: Placements,
-    vocals: Vocals,
-    sub_of: Callable[[str], str | None],
-    unplaced: PlanEntry,
-    track: ScannedTrack,
-) -> PlanEntry | None:
-    """The entry filing a routed track into its second genre's folder, or None (U340).
+def _second_sub(declared: taxonomy.Taxonomy, track: ScannedTrack) -> str:
+    """The sub of a routed track's second genre folder, or nothing (U340).
 
     By the same rules as its first entry, with the second genre's word: its
-    own band from the one energy reading, its own competing place, its own
-    vocal place. NONE when the census named no second bucket, the track does
-    not route by its first genre, or the second bucket declares no place for
-    the reading, since such an entry would file nothing.
+    own band from the one energy reading. NOTHING when the census named no
+    second bucket, the track does not route by its first genre, or the second
+    bucket declares no place for the reading, since such an entry would file
+    nothing. The entry built on it has its own competing place and its own
+    vocal place, and each of the two entries keeps a split place the other's
+    bucket holds (:func:`kept_beside`).
     """
     if track.disposition is not Disposition.ROUTE or not track.second_bucket:
-        return None
-    sub = _sub_for(declared, track.second_bucket, track.second_genre, track.energy)
-    if sub is None:
-        return None
-    entry = replace(unplaced, genre=track.second_genre, second=True)
-    return _destined(declared, placements, vocals, sub_of, entry, track.second_bucket, sub)
+        return ""
+    return _sub_for(declared, track.second_bucket, track.second_genre, track.energy) or ""
 
 
 def _destined(
@@ -717,6 +742,8 @@ def _destined(
     entry: PlanEntry,
     bucket: str,
     sub: str | None,
+    *,
+    beside: frozenset[str] = frozenset(),
 ) -> PlanEntry:
     """``entry`` routed to ``bucket`` and ``sub``, or left as it is when ``sub`` is empty.
 
@@ -732,7 +759,8 @@ def _destined(
         disposition, bucket = Disposition.UNDECLARED, ""
     elif sub:
         withheld_by, holds, holds_unnamed = competing_place(
-            declared, placements, bucket=bucket, sub=sub, content_id=entry.content_id
+            declared, placements, bucket=bucket, sub=sub, content_id=entry.content_id,
+            beside=beside,
         )
         disposition = Disposition.WITHHELD if withheld_by else Disposition.ROUTE
     vocal, vocal_in = vocal_place(
