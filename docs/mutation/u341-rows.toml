@@ -1,0 +1,206 @@
+name = "u341"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_of_genre_any_genre"
+description = "Registry.of_genre: keep every label with any genre, so a group is every grouped label"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''            if entry.genre is not None and _name_key(entry.genre) == wanted'''
+new = '''            if entry.genre is not None'''
+
+[[rows]]
+id = "G2_of_genre_unfolded"
+description = "Registry.of_genre: match the genre as typed, so a group typed in another case is a group of none"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''            if entry.genre is not None and _name_key(entry.genre) == wanted'''
+new = '''            if entry.genre is not None and entry.genre == genre'''
+
+[[rows]]
+id = "G3_genres_not_folded_once"
+description = "Registry.genres: key by the spelling, so a genre two labels spell in two cases is named twice"
+file = "src/cratekit/label/registry.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''                held.setdefault(_name_key(entry.genre), entry.genre)'''
+new = '''                held.setdefault(entry.genre, entry.genre)'''
+
+[[rows]]
+id = "G4_unknown_genre_walks_every_label"
+description = "genre_group_or_refuse: a genre no label carries takes every followed label instead of refusing"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''    group = held.of_genre(wanted)'''
+new = '''    group = held.of_genre(wanted) or tuple(held.labels.values())'''
+
+[[rows]]
+id = "G5_genre_shape_unchecked"
+description = "genre_group_or_refuse: skip the shape check, so an empty genre refuses as a group of none, not as no genre"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''        wanted = labels.check_genre(genre)
+    except CratekitError as exc:'''
+new = '''        wanted = genre
+    except CratekitError as exc:'''
+
+[[rows]]
+id = "G6_undeclared_never_said"
+description = "_undeclared: never say the taxonomy routes the word only to its fallback"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''    if routing.resolve_bucket(declared, genre).match is not routing.Match.FALLBACK:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "G7_undeclared_inverted"
+description = "_undeclared: say the fallback clause of a genre the taxonomy routes, and not of one it does not"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''    if routing.resolve_bucket(declared, genre).match is not routing.Match.FALLBACK:'''
+new = '''    if routing.resolve_bucket(declared, genre).match is routing.Match.FALLBACK:'''
+
+[[rows]]
+id = "G8_list_ignores_genre"
+description = "registry_cmd list: drop the group branch, so list --genre lists every label"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''        if genre is not None:
+            return _group(ctx, store.load(), genre)'''
+new = '''        if False:
+            return _group(ctx, store.load(), genre)'''
+
+[[rows]]
+id = "G9_list_refuses_genre"
+description = "registry_cmd: keep --genre in the fields list refuses, so list --genre is refused as a field to set"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''        (genre,) if action != "list" else ()'''
+new = '''        (genre,)'''
+
+[[rows]]
+id = "G10_asked_every_label"
+description = "_asked: name the group but return every followed label, so the walk and --next ask outside it"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''    return list(group), named, [_check("genre", "info", said)]'''
+new = '''    return list(followed.labels.values()), named, [_check("genre", "info", said)]'''
+
+[[rows]]
+id = "G11_walk_drops_genre"
+description = "label_sync: call the walk without the genre, so --genre at the terminal walks every label"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''    return _walk(ctx, cfg, PROMPTER(), args.genre)'''
+new = '''    return _walk(ctx, cfg, PROMPTER())'''
+
+[[rows]]
+id = "G12_next_drops_genre"
+description = "label_sync: call --next without the genre, so --next --genre asks the first label of any genre"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''        return _next(ctx, cfg, args.label, args.genre)'''
+new = '''        return _next(ctx, cfg, args.label)'''
+
+[[rows]]
+id = "G13_selection_guard_dropped"
+description = "label_sync: drop the refusal of --genre beside --go, --answer or --label, so the genre is silently ignored"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''    if args.genre is not None and (args.go or args.answer is not None or args.label is not None):'''
+new = '''    if False and (args.go or args.answer is not None or args.label is not None):'''
+
+[[rows]]
+id = "G14_selection_guard_without_label"
+description = "label_sync: leave --answer out of the selection refusal, so --answer --genre with no label is told to pass --label and then refused again"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''    if args.genre is not None and (args.go or args.answer is not None or args.label is not None):'''
+new = '''    if args.genre is not None and (args.go or args.label is not None):'''
+
+[[rows]]
+id = "G15_resume_hint_unnamed"
+description = "_walk: the run stopped with quit is told to run label sync again with no genre, so it resumes outside the group"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''    again = "label sync" if named is None else f"label sync {_genre_flag(named)}"'''
+new = '''    again = "label sync"'''
+
+[[rows]]
+id = "G16_gate_shows_group_line"
+description = "_walk: let the line naming the group through to the gate, where it reads as an answer"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''        walk = [one["detail"] for one in checks if one["key"] not in (_ESTIMATE_KEY, _GENRE_KEY)]'''
+new = '''        walk = [one["detail"] for one in checks if one["key"] != _ESTIMATE_KEY]'''
+
+[[rows]]
+id = "G17_answer_hint_leaves_group"
+description = "_answer: never name the answered label's genre in the next hint, so a --next --genre run is pointed out of its group"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''    group = "" if not standing else ('''
+new = '''    group = "" if True else ('''
+
+[[rows]]
+id = "G18_unanswerable_hint_leaves_group"
+description = "_walk: the refusal of a genre walk nobody can answer is told to run label sync with no genre"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''                raise _unanswerable(entry, answered, exc, named) from exc'''
+new = '''                raise _unanswerable(entry, answered, exc) from exc'''
+
+[[rows]]
+id = "G19_budget_wording_unnamed"
+description = "_sweep_check: the budget refusal of a genre walk speaks of every followed label"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_provider_budget.py", "tests/modules/test_labels.py"]
+old = '''    return "the followed labels" if genre is None else f"the labels of genre {genre!r}"'''
+new = '''    return "the followed labels"'''
+
+[[rows]]
+id = "G20_hint_into_a_dissolved_group"
+description = "_answer: name the label's genre in the next hint even when the answer stopped the group's last label"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''    standing = entry.genre is not None and labels.RegistryStore().load().of_genre(entry.genre)'''
+new = '''    standing = entry.genre is not None'''
+
+[[rows]]
+id = "G21_hint_quoted_as_repr"
+description = "_genre_flag: quote the genre in a hint as Python repr, which a shell cannot read for an apostrophe"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/modules/test_labels.py"]
+old = '''    return shlex.join(["--genre", genre])'''
+new = '''    return f"--genre {genre!r}"'''
+
+[[rows]]
+id = "G22_empty_registry_step"
+description = "genre_group_or_refuse: with no label followed, tell the person to set a genre on a label that does not exist"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_genre.py", "tests/test_label_sync.py", "tests/test_label_registry_verbs.py", "tests/test_label_genre.py", "tests/modules/test_labels.py"]
+old = '''        if held.labels
+        else ('''
+new = '''        if True
+        else ('''

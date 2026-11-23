@@ -876,6 +876,7 @@ crate label registry rename "Some Label" --to "New Name"
 crate label harvest https://tidal.com/playlist/PLAYLIST_UUID
 crate label registry adopt
 crate label sync
+crate label sync --genre "Deep House"
 crate label sync --go
 ```
 
@@ -911,6 +912,15 @@ a release it holds is never asked about. Without a terminal:
 crate label sync --next [--label "Some Label"]
 crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 ```
+
+`--genre GENRE` asks only the labels whose registry genre is GENRE (set with
+`registry set --genre`), in registry order, at the terminal or with `--next`,
+matched whatever its case; the run after a `quit` is told to name it again,
+so it resumes inside the group. `crate label registry list --genre GENRE`
+lists that group. A genre no followed label carries refuses, `label-unknown`,
+naming the genres they do carry. `--go` takes no genre: it stays the one gate
+over every answer saved, and a genre walk ends at that same gate, so it shows
+an answer saved earlier for a label outside the group too.
 
 A label whose listing fails is a `[FAIL]` line, never "nothing new"; a run
 where no label could be read ends refused, `label-sync-unlisted`. When a
@@ -1794,7 +1804,7 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | A blocked job | `job show` gives the cause, usually a review item or a credential. |
 | A resume that refuses the same way | `crate job cancel JOB_ID` and queue a fresh one. |
 | `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, with `--calls-per-hour` beside it when N is above the hour's budget, 1,500. |
-| `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
+| `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`, or one genre's labels with `--genre GENRE`. |
 | `provider-night-budget` | The night pass has made as many provider calls as its line allows, the lower of what is left of `[provider] night_calls` (1,200, noon to noon, counted across every process) and one command's ceiling (500), or what it spent cannot be read. A stop at the line needs nothing: the night pass's next firing continues it, or continue it at the Mac with `crate sync land --pass-run RUN`. A spend that cannot be read refuses every firing of that night and names the ledger and the gate's state file to look at; the next night starts afresh. |
 | `staging-held` | Another pass is downloading into the staging folder (`sync land`, `label sync --go` or `sync night`), named in the message, or `crate schedule install` or `remove` is changing the night's schedule. Wait for it to end, then run this again. |
 | `schedule-launchctl-failed` | launchctl refused to load or unload the night pass's agent; its own words are in the message. An install that failed at the load leaves nothing installed, unless launchd may still hold the agent, when its plist is kept and the message says so; a bootout of the earlier agent that failed leaves it installed as it was. Read `crate schedule show`, then run the verb again. |
