@@ -32,16 +32,18 @@ measured it: the launch's Auto Analysis dialog read Dynamic, every other
 field the standard, and the Analyze Tracks dialog then opened on the same
 fields, because the last Analyze Tracks OK writes the mode both show.
 Sitting 103 had ended on its Dynamic run, so it set up the next visit to
-cancel. So **the visit's last OK is always Normal**: on the Analyze Tracks
-path the Dynamic run comes first and the Normal run last, and on the Auto
-Analysis path a closing Normal run follows the Dynamic run. `docs/solutions/workflow-issues/rekordboxs-auto-analysis-dialog-shows-the-mode-the-last-analyze-tracks-ok-wrote.md`
+cancel. So **the visit's last OK is Normal** whenever the batch holds a row
+without `dyn`: on the Analyze Tracks path the Dynamic run comes first and the
+Normal run last, and on the Auto Analysis path a closing Normal run follows
+the Dynamic run. A batch whose every row is `dyn`, or a visit that stops
+between its Dynamic OK and its last Normal one, ends on Dynamic: record it,
+and the next launch's dialog is cancelled by step 2's rule. `docs/solutions/workflow-issues/rekordboxs-auto-analysis-dialog-shows-the-mode-the-last-analyze-tracks-ok-wrote.md`
 is the learning.
 
-**Phillip has not yet chosen to keep Auto Analysis on** (asked 2026-11-21),
-and sitting 101 put it back to off, so today the launch raises no dialog
-and the visit is the Analyze Tracks path. The Auto Analysis path is for the
-visits after he turns it on, or after an attended session does on his
-answer; the visit itself never does.
+**Auto Analysis is on**, turned on at sitting 102 (A190) on Phillip's
+answer to the question of 2026-11-21, so a launch brought to the front
+raises the dialog and the Auto Analysis path is tried first. Whether it
+stays on is his; the visit itself never turns it on or off.
 
 The steps say what to do, not which tool does it. Desktop control is the
 tool that drives rekordbox; the shell runs every `crate` verb and every
@@ -93,7 +95,8 @@ Every one of these holds, or the visit does not start.
    - It must exit 12 with `data.summary.not_analysed` above zero for the
      visit to go on, or 27 with a `data.summary.grids` count above zero under
      `variable`, `absent`, `missing` or `unreadable`, which is a run on the
-     wrong settings that the visit's Normal run analyses again. A title key
+     wrong settings that the visit's two runs analyse again, a `dyn` row in
+     the Dynamic run and every other row in the Normal run. A title key
      or tempo that differs from rekordbox's never reads 27 (U327).
    - Exit 0 means nothing waits. With `data.summary.rows` above zero the rows
      are analysed, or gone from the collection (`data.summary.gone`), and
@@ -115,8 +118,10 @@ Every one of these holds, or the visit does not start.
 ## 2. Open rekordbox: the Auto Analysis path first
 
 **Auto Analysis is Phillip's standing setting, and the visit never changes
-it.** It never turns Auto Analysis on or off and never changes a field of
-rekordbox's Analysis preference; it reads them only through the dialog below.
+it.** It never turns Auto Analysis on or off and never opens rekordbox's
+Analysis preference; it reads the fields only through the dialog below. The
+one field a visit moves is the Analysis Mode, which each run's OK writes
+(the head of this skill), and its last OK leaves it on Normal.
 Auto Analysis analyses every track rekordbox finds not analysed, by any
 route, which is why it is his to choose.
 
@@ -128,7 +133,9 @@ every row waiting, before anything was selected, on the preference's own
 fields, its mode Normal among them. The preference itself was read back as
 nine fields: high precision off, Normal, BPM range 78 to 155, BPM / Grid, KEY
 and Phrase on, Vocal off, Cloud Analysis off, Radar Analysis on. It holds no
-CUE field. The launch dialog's own field list was not recorded.
+CUE field. Sitting 103 recorded the launch dialog's own fields: BPM / Grid
+on (dimmed), High precision off, Analysis Mode Normal, BPM Range 78-155, KEY
+on, Phrase on, Vocal off, CUE(Manual) off.
 
 1. Write the marker the launch is measured from, before rekordbox opens:
 
@@ -137,13 +144,15 @@ CUE field. The launch dialog's own field list was not recorded.
 2. Open rekordbox through desktop control, wait for its main window, bring
    it to the front, and take a screenshot. Wait a further thirty seconds with
    the window in front and take another.
-3. **No dialog on either screenshot**: Auto Analysis is off, as it is unless
-   Phillip turned it on. Take the Analyze Tracks path below.
+3. **No dialog on either screenshot**: Auto Analysis is off, which it is
+   only if Phillip turned it off since sitting 102. Take the Analyze
+   Tracks path below.
 4. **The dialog is showing**: read back every field of the table in step 3
    from the dialog's screenshot, one by one. A table field the dialog does
-   not show is unread, and unread is not equal, CUE included: until a visit
-   has recorded the dialog's fields and that an Auto Analysis run sets no
-   cue, a dialog that shows no CUE field is cancelled. A field it shows that
+   not show is unread, and unread is not equal, CUE included: sitting 103's
+   dialog showed CUE(Manual) and sitting 104 found its run set no cue, so a
+   dialog that shows no CUE field is not the dialog measured and is
+   cancelled. A field it shows that
    the table has no row for must read as the preference read back above
    (BPM range 78 to 155, Cloud Analysis off, Radar Analysis on); any other
    field it shows, or another value, is not equal.
@@ -162,7 +171,8 @@ CUE field. The launch dialog's own field list was not recorded.
      Wait as step 4 says with `marker` the path step 2.1 printed and
      `expected` the `data.summary.not_analysed` count, so nothing is
      selected while it runs, then take the Analyze Tracks path below, whose
-     runs on the table's fields analyse every row of the batch again.
+     two runs analyse every row of the batch again, the Normal run on the
+     table's fields and the Dynamic run on them but its mode.
    - **A dialog reading Analysis Mode Dynamic** after a visit with `dyn`
      rows is this cause: that visit's last OK was its Dynamic run, which left
      the shared mode on Dynamic (U954, the note at the head of this skill).
@@ -197,7 +207,8 @@ CUE field. The launch dialog's own field list was not recorded.
 row carries its artist, album, genre and year from the commit that made it,
 so the visit is Analyze Tracks alone. Rows landed by an earlier copy carry
 none of them until rekordbox reads the file: for those, run Reload Tags on
-every row of the playlist first, before step 2, as sitting 52 did.
+every row of the playlist first, before this path's step 2, as sitting 52
+did.
 
 ## 3. Set and read back every field before OK
 

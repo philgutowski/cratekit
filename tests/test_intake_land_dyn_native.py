@@ -180,6 +180,26 @@ def test_the_check_reads_the_value_the_landing_writes():
     assert rekordbox_check.dyn_marked is native.dyn_marked
 
 
+def test_a_landing_whose_every_row_is_dyn_says_the_visit_ends_on_dynamic(writable, silence):
+    """U954: no row is left to run Normal last, so the warning never claims Normal."""
+    cfg = writable
+    _read(cfg, silence, "Live.flac", "6.2", drift.VARIABLE)
+    _read(cfg, silence, "Two.flac", "9.9", drift.VARIABLE)
+
+    code, acted, _refused = _two_acts(_land())
+
+    assert code == int(ExitCode.OK), acted
+    assert len(_marked(cfg)) == 2
+    message = _warning(acted, land_cli.AWAITING_ANALYSIS)
+    assert (
+        "run Analyze Tracks on its 2 row(s), every one carrying the dyn My Tag, with "
+        "Analysis Mode Dynamic, high precision off, BPM/Grid, Phrase and KEY on; with no "
+        "row left to run Normal last, the next launch's Auto Analysis dialog reads "
+        "Dynamic and is cancelled"
+    ) in message, message
+    assert "then last on" not in message and "the mode the next launch reads is Normal" not in message
+
+
 # Never a guess
 @pytest.mark.parametrize(("level", "verdict"), [(None, None), ("lots", drift.VARIABLE)])
 def test_a_file_with_no_drift_reading_or_no_number_is_counted_unscored_and_untagged(
@@ -198,8 +218,13 @@ def test_a_file_with_no_drift_reading_or_no_number_is_counted_unscored_and_untag
     assert "dyn" not in item and "drift" not in item, "an unscored row is the fact line's"
     assert _marked(cfg) == frozenset()
     assert _codes(acted) == [land_cli.AWAITING_ANALYSIS]
-    assert "on the 1 row(s) without it" in _warning(acted, land_cli.AWAITING_ANALYSIS)
-    assert "on the 0 row(s) carrying the dyn My Tag" in _warning(acted, land_cli.AWAITING_ANALYSIS)
+    message = _warning(acted, land_cli.AWAITING_ANALYSIS)
+    # U954: with no dyn row there is one Normal run, and no order to tell.
+    assert (
+        f"run Analyze Tracks on its 1 row(s), none carrying the dyn My Tag, with "
+        f"{drift.NORMAL_SETTINGS}; " in message
+    ), message
+    assert "first on the" not in message and "then last on" not in message, message
 
 
 def test_a_library_with_no_category_to_copy_lands_and_names_the_variable_rows(
@@ -254,7 +279,7 @@ def test_a_tag_written_under_a_removed_value_is_said_and_never_counted(native_li
     assert item["dyn"] is False
     (warning,) = [w for w in acted["warnings"] if w["code"] == land_cli.DYN_NOT_WRITTEN]
     assert "One.flac" in warning["message"] and "removed" in warning["message"]
-    assert "on the 0 row(s) carrying the dyn My Tag" in _warning(acted, land_cli.AWAITING_ANALYSIS)
+    assert "on its 1 row(s), none carrying the dyn My Tag" in _warning(acted, land_cli.AWAITING_ANALYSIS)
 
 
 def test_a_refused_commit_leaves_no_tag(writable, silence, monkeypatch):

@@ -157,6 +157,10 @@ def test_the_json_fields_it_reads_are_the_check_s(flat):
     assert f"`data.summary.scope` must still read `{rc.SCOPE_ANALYZE}`" in flat, "the post check too"
     assert summary["analysed"] == 0 and summary["grids"][rc.VARIABLE] == 0
     assert f"count above zero under `{rc.VARIABLE}`" in flat
+    assert (
+        "the visit's two runs analyse again, a `dyn` row in the Dynamic run and every other "
+        "row in the Normal run"
+    ) in flat
     assert "`data.summary.analysed` plus `data.summary.not_analysed`" in flat
     assert "gone" in summary and "`data.summary.gone`" in flat
     for state in (rc.VARIABLE, rc.ABSENT, rc.MISSING, rc.UNREADABLE):
@@ -261,10 +265,11 @@ def test_the_auto_analysis_path_comes_before_the_analyze_tracks_path(text):
         "answer its Auto Analysis dialog when it shows every field of Phillip's standard "
         "and nothing else, or else analyse INBOX / Analyze with Analyze Tracks"
     ) in description
-    # Today the visit keeps the Analyze Tracks path, until Phillip decides.
-    assert "**Phillip has not yet chosen to keep Auto Analysis on**" in head
-    assert "so today the launch raises no dialog and the visit is the Analyze Tracks path" in head
-    assert "the visit itself never does" in head
+    # Auto Analysis on since sitting 102 (A190), on Phillip's answer; his to keep.
+    assert "**Auto Analysis is on**, turned on at sitting 102 (A190)" in head
+    assert "so a launch brought to the front raises the dialog and the Auto Analysis path is tried first" in head
+    assert "the visit itself never turns it on or off" in head
+    assert "has not yet chosen" not in head and "raises no dialog" not in head
 
 
 def test_its_numbered_steps_read_in_order(text):
@@ -284,9 +289,12 @@ def test_it_is_attended_only(flat):
 def test_the_visit_never_changes_the_setting(flat):
     """Auto Analysis is Phillip's: the visit reads it through the dialog and nothing else."""
     assert (
-        "It never turns Auto Analysis on or off and never changes a field of "
-        "rekordbox's Analysis preference; it reads them only through the dialog below."
+        "It never turns Auto Analysis on or off and never opens rekordbox's Analysis "
+        "preference; it reads the fields only through the dialog below."
     ) in flat
+    # U954: the one field a run's OK does move, put back by the last.
+    assert "The one field a visit moves is the Analysis Mode, which each run's OK writes" in flat
+    assert "never changes a field of rekordbox's Analysis preference" not in flat
     assert "press Cancel, never OK, and touch no field of the dialog" in flat
     for verb in ("tick Auto Analysis", "turn Auto Analysis on", "untick"):
         assert verb not in flat, verb
@@ -297,7 +305,9 @@ def test_the_dialog_is_read_against_the_one_table_with_no_field_left_unread(text
     auto = _flat(_parts(text)[0])
     assert "read back every field of the table in step 3 from the dialog's screenshot" in auto
     assert "A table field the dialog does not show is unread, and unread is not equal, CUE included" in auto
-    assert "a dialog that shows no CUE field is cancelled" in auto
+    assert "a dialog that shows no CUE field is not the dialog measured and is cancelled" in auto
+    assert "sitting 103's dialog showed CUE(Manual) and sitting 104 found its run set no cue" in auto
+    assert "The launch dialog's own field list was not recorded." not in auto
     beyond = "(" + ", ".join(BEYOND_THE_TABLE) + ")"
     assert f"must read as the preference read back above {beyond}" in auto
     assert "any other field it shows, or another value, is not equal" in auto
@@ -334,7 +344,10 @@ def test_no_dialog_and_a_cancel_each_take_the_analyze_tracks_path(text):
     assert "Take the Analyze Tracks path below." in auto
     assert "Then wait thirty seconds and count whether rekordbox wrote anyway" in auto
     assert "Zero: Cancel held; take the Analyze Tracks path below." in auto
-    assert "then take the Analyze Tracks path below, whose runs on the table's fields" in auto
+    assert (
+        "then take the Analyze Tracks path below, whose two runs analyse every row of the "
+        "batch again, the Normal run on the table's fields and the Dynamic run on them but its mode"
+    ) in auto
     assert "**A dialog that appears after the Analyze Tracks path has begun** is answered Cancel" in auto
 
 
@@ -394,7 +407,15 @@ def test_the_head_names_the_shared_mode_and_the_measurement(text):
     head = _flat(text.split("\n## 1.", 1)[0])
     assert "**The two dialogs share one Analysis Mode** (U954)" in head
     assert "because the last Analyze Tracks OK writes the mode both show" in head
-    assert "So **the visit's last OK is always Normal**" in head
+    assert "So **the visit's last OK is Normal** whenever the batch holds a row without `dyn`" in head
+    assert (
+        "on the Analyze Tracks path the Dynamic run comes first and the Normal run last, and "
+        "on the Auto Analysis path a closing Normal run follows the Dynamic run"
+    ) in head
+    assert (
+        "A batch whose every row is `dyn`, or a visit that stops between its Dynamic OK and "
+        "its last Normal one, ends on Dynamic: record it"
+    ) in head
     assert "end with the shared Analysis Mode on Normal (step 5)" in head
     assert "run the same second run" not in head
 
@@ -411,6 +432,8 @@ def test_the_analyze_tracks_path_runs_dynamic_first_and_normal_last(text):
     assert "is the visit's last, and leaves the shared Analysis Mode on Normal" in analyse
     tracks = _flat(_parts(text)[1])
     assert tracks.index("**The Dynamic run first**") < tracks.index("Select the rows without `dyn`")
+    # Reload Tags, for the old rows, goes before the first run, this path's step 2.
+    assert "run Reload Tags on every row of the playlist first, before this path's step 2" in tracks
 
 
 def test_the_normal_run_selection_excludes_the_dyn_rows(text, flat):
@@ -422,7 +445,7 @@ def test_the_normal_run_selection_excludes_the_dyn_rows(text, flat):
         "The Normal run's selection is the rows whose `dyn` is false, so the two runs never "
         "overlap and no row is analysed twice"
     ) in select
-    assert "With every row marked `dyn` there is no Normal run" in select
+    assert "With every row marked `dyn` there is no Normal run, so go to step 6 and record" in select
     # Its count, written down at the pre check and handed to the wait.
     assert "The Analyze Tracks path's Normal run counts to the batch less that `dyn` count." in flat
     four = _flat(_step(text, 4))
@@ -433,6 +456,8 @@ def test_the_normal_run_selection_excludes_the_dyn_rows(text, flat):
 def test_the_auto_analysis_path_names_the_step_that_leaves_normal_set(text):
     five = _step(text, 5)
     steps = [_flat(part) for part in re.split(r"^\d+\. ", five, flags=re.M)[1:]]
+    assert "The count equals the `dyn` count from step 1.5, or stop and report both." in steps[0]
+    assert "wait as step 4 says, with `expected` the `dyn` count" in steps[2]
     assert steps[3].startswith("Clear the filter.")
     closing = steps[4]
     assert closing.startswith(

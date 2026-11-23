@@ -105,9 +105,10 @@ AUTO_ANALYSIS_STEP = (
     "on its Auto Analysis dialog only when it shows every one of those Normal "
     "settings with Vocal and CUE off and no field set otherwise, else Cancel it and "
     "select as above; Auto Analysis runs on its preference's own mode, so the rows "
-    f"carrying the dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}, "
-    f"and then one row without it takes Analyze Tracks with {drift.NORMAL_SETTINGS} "
-    f"again, so the visit ends on Normal"
+    f"carrying the dyn My Tag, if any, still take Analyze Tracks with "
+    f"{drift.DYNAMIC_SETTINGS}, and then, when they did and a row lacks the tag, one "
+    f"row without it takes Analyze Tracks with {drift.NORMAL_SETTINGS} again, so the "
+    f"visit ends on Normal"
 )
 
 #: The rekordbox visit an attended session makes once the landing is applied,
@@ -119,8 +120,9 @@ REKORDBOX_STEPS: tuple[str, ...] = (
     f"in rekordbox, select the {ANALYZE_PLAYLIST} playlist, which holds every "
     f"landed row waiting for analysis, and run Analyze Tracks first on its rows "
     f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS} as the Normal "
-    f"run's; then last on its rows without the dyn My Tag: {drift.NORMAL_SETTINGS}, "
-    f"so the mode the next launch reads is Normal; {AUTO_ANALYSIS_STEP}",
+    f"run's; then last on its rows without the dyn My Tag, if any: "
+    f"{drift.NORMAL_SETTINGS}, so the mode the next launch reads is Normal unless "
+    f"every row carries the tag; {AUTO_ANALYSIS_STEP}",
     "quit rekordbox and confirm rekordbox and rekordboxAgent are both gone "
     "before any other verb runs",
     "then take the analysed rows out of it: crate inbox analyzed",

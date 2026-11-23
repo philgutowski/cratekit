@@ -115,7 +115,8 @@ DYN_CHANGE_KEY = "my-tags.analysis"
 DYN_NO_CATEGORY = (
     "the library holds no My Tag category to copy a new one's shape from, so the "
     "Analysis category cannot be made; make any My Tag in rekordbox and run the "
-    "rows this landing names with Analysis Mode Dynamic by hand"
+    "rows this landing names with Analysis Mode Dynamic by hand, before the Normal "
+    "run and left out of it"
 )
 
 _ORIGIN = ("intake.native",)

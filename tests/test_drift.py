@@ -108,8 +108,8 @@ def test_the_sync_stop_runs_dynamic_first_and_normal_last():
         f"{drift.DYNAMIC_SETTINGS} as the Normal run's"
     )
     normal = (
-        f"then last on its rows without the dyn My Tag: {drift.NORMAL_SETTINGS}, "
-        "so the mode the next launch reads is Normal"
+        f"then last on its rows without the dyn My Tag, if any: {drift.NORMAL_SETTINGS}, "
+        "so the mode the next launch reads is Normal unless every row carries the tag"
     )
     assert dynamic in step and normal in step, step
     assert step.index(dynamic) < step.index(normal), step
@@ -135,9 +135,9 @@ def test_the_auto_analysis_step_cancels_on_any_other_field_and_leaves_dyn_to_dyn
         "its Auto Analysis dialog only when it shows every one of those Normal settings "
         "with Vocal and CUE off and no field set otherwise, else Cancel it and select as "
         "above; Auto Analysis runs on its preference's own mode, so the rows carrying the "
-        f"dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}, and then "
-        f"one row without it takes Analyze Tracks with {drift.NORMAL_SETTINGS} again, "
-        "so the visit ends on Normal"
+        f"dyn My Tag, if any, still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}, "
+        "and then, when they did and a row lacks the tag, one row without it takes "
+        f"Analyze Tracks with {drift.NORMAL_SETTINGS} again, so the visit ends on Normal"
     )
     assert drift.NORMAL_SETTINGS == (
         "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on"
