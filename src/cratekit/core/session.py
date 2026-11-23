@@ -712,15 +712,16 @@ def commit_sources(
         except CratekitError as exc:
             record.sources[source] = str(SourceState.REFUSED)
             write_record(record, cfg)
-            # The reason, remediation and retryability carried over from the source's cause.
             raise CratekitError(
-                replace(
-                    exc.cause,
+                Cause(
+                    reason=exc.cause.reason,
                     message=(
                         f"session {record.session_id} refused at source {source!r}; "
                         f"sources already committed are untouched"
                     ),
+                    remediation=exc.cause.remediation,
                     scope=widest_scope(exc.cause.scope, Scope.SOURCE),
+                    retryable=exc.cause.retryable,
                     origin=(*exc.cause.origin, "session"),
                     detail={
                         "session_id": record.session_id,
