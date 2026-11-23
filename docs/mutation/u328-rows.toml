@@ -1,8 +1,9 @@
 name = "u328"
 pass_kind = "light"
 
-# Rows on the guards U328 added: the two script readers following the table's parts, and the
-# assembly of the parts in cli/registry.py. The rows the table already held are the replay's.
+# Rows on the guards U328 added: the two script readers following the table's parts, the
+# assembly of the parts in cli/registry.py, and the rule that only the registry imports one.
+# The rows the table already held are the replay's.
 
 [[rows]]
 id = "R1_starred_name_not_followed"
@@ -77,4 +78,15 @@ old = '''    *PIPELINE_VERBS,
 '''
 new = '''    *SYNC_VERBS,
     *PIPELINE_VERBS,
+'''
+
+[[rows]]
+id = "S3_a_part_imported_past_the_registry"
+description = "cli/doctor.py imports a part's tuple directly, so its rows are read past cli.registry, where the suite patches the table"
+file = "src/cratekit/cli/doctor.py"
+surface = "maintainer"
+old = '''from cratekit.cli import gates, output, registry, render
+'''
+new = '''from cratekit.cli import gates, output, registry, render
+from cratekit.cli.registry_later import LATER_VERBS  # noqa: F401
 '''
