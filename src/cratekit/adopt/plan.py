@@ -47,6 +47,7 @@ from cratekit.adopt.scan import Disposition, Readability, ScannedTrack, classify
 from cratekit.cli.output import canonical_json, digest_of
 from cratekit.core import routing, taxonomy
 from cratekit.core.review import Option, Queue, ReviewStore, offer
+from cratekit.write import genre_favorites
 from cratekit.write.trees import VOX_SUB_CLASS
 
 #: The prefix every plan entry identifier carries. It differs from the review
@@ -87,12 +88,23 @@ class Placements:
     the declared names: the writer finds a playlist by name, so it would make a
     second one beside it. ``doubled`` is the part held through more than one
     active row in one playlist (R-781), which a set cannot say.
+
+    ``alongside`` maps a bucket to a track to the places filed beside its band
+    it sits in there, :func:`alongside_places`, never a competing sub, and
+    ``alongside_unnamed`` the part held under another name only. ``others``
+    maps a bucket to a track to the names of the other playlists of that
+    bucket's own folder holding it, a manual class or one made by hand: what
+    keeps a track in the folder, which the genre Favorites mirror files by.
+    All three are read for the move across genre folders alone (R-1965).
     """
 
     read: bool = False
     held: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
     unnamed: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
     doubled: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
+    alongside: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
+    alongside_unnamed: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
+    others: Mapping[str, Mapping[str, tuple[str, ...]]] = field(default_factory=dict)
 
     def holds(self, bucket: str, content_id: str) -> tuple[str, ...]:
         """The subs of ``bucket`` this track sits in, or none."""
@@ -105,6 +117,18 @@ class Placements:
     def holds_doubled(self, bucket: str, content_id: str) -> tuple[str, ...]:
         """The subs of ``bucket`` this track holds through two or more rows."""
         return tuple(self.doubled.get(bucket, {}).get(content_id, ()))
+
+    def holds_alongside(self, bucket: str, content_id: str) -> tuple[str, ...]:
+        """The places filed beside the band of ``bucket`` this track sits in, or none."""
+        return tuple(self.alongside.get(bucket, {}).get(content_id, ()))
+
+    def holds_alongside_unnamed(self, bucket: str, content_id: str) -> tuple[str, ...]:
+        """The places beside the band of ``bucket`` it holds under another name only."""
+        return tuple(self.alongside_unnamed.get(bucket, {}).get(content_id, ()))
+
+    def holds_others(self, bucket: str, content_id: str) -> tuple[str, ...]:
+        """The other playlists of ``bucket``'s own folder this track sits in, by name."""
+        return tuple(self.others.get(bucket, {}).get(content_id, ()))
 
     @property
     def state(self) -> str:
@@ -395,6 +419,13 @@ class AdoptionPlan:
         """Every entry withheld over a place its track holds, unbounded, in order."""
         return tuple(entry for entry in self.entries if entry.held_elsewhere)
 
+    def outside_root(self) -> tuple[PlanEntry, ...]:
+        """Every track left out because its file is outside the library root
+        (U956), unbounded, in plan order: what the gate names."""
+        return tuple(
+            entry for entry in self.firsts() if entry.category is Readability.OUTSIDE_ROOT
+        )
+
     def vocal_counts(self) -> dict[str, int]:
         """How many vox tagged tracks are in each vocal state, zeroes included."""
         found = {state: 0 for state in VOCAL_STATES}
@@ -440,8 +471,16 @@ class AdoptionPlan:
                     {"id": entry.entry_id, **review_row(entry)} for entry in self.held_elsewhere()
                 ],
                 "collisions": sorted(f"{item.bucket}:{item.node_id}" for item in self.collisions),
+                # NAMED, NOT ONLY COUNTED (U956): the gate lists them, so the same
+                # count over other rows is another screen.
+                "outside_root": [outside_row(entry) for entry in self.outside_root()],
             }
         )
+
+
+def outside_row(entry: PlanEntry) -> dict[str, Any]:
+    """One track the plan leaves outside the root, as the gate names it."""
+    return {"content_id": entry.content_id, "location": entry.recorded, "path": entry.path}
 
 
 def covers(plan: AdoptionPlan, scanned: Sequence[ScannedTrack]) -> frozenset[str]:
@@ -528,22 +567,72 @@ def vocal_sub(declared: taxonomy.Taxonomy, bucket_id: str) -> str | None:
     """The identifier of the vocal sub one bucket has, or None.
 
     The additive sub class :data:`cratekit.write.trees.VOX_SUB_CLASS`, which sits
-    under every bucket and is where the routing pass files a vocal track.
-
-    A BUCKET WHOSE OWN PLACES TAKE THE VOCAL SUB'S IDENTIFIER OR NAME HAS NONE:
-    there the vocal sub and the bucket's own playlist are one playlist, and
-    neither the reader nor the writer could tell them apart.
+    under every bucket and is where the routing pass files a vocal track. A
+    bucket has it when :func:`derived_classes` names it there.
     """
+    return VOX_SUB_CLASS if VOX_SUB_CLASS in derived_classes(declared, bucket_id) else None
+
+
+def derived_classes(declared: taxonomy.Taxonomy, bucket_id: str) -> tuple[str, ...]:
+    """The derived sub classes one bucket's folder holds beside its band, in declared order.
+
+    Every additive class, which automation files beside the sub a track is
+    in: the vocal sub and the genre Favorites in the shipped template. A
+    manual class is never one, so nothing reading this ever removes it.
+
+    A BUCKET WHOSE OWN PLACES TAKE A CLASS'S IDENTIFIER OR NAME HAS NOT THAT
+    CLASS: there the class and the bucket's own playlist are one playlist, and
+    neither the reader nor the writer could tell them apart. ONE RULE for the
+    vocal sub and for the move that leaves a folder (R-1965).
+    """
+    found: list[str] = []
     for entry in declared.sub_classes:
-        if not entry.additive or entry.id != VOX_SUB_CLASS:
+        if not entry.additive:
             continue
         others = tuple(other for other in declared.sub_classes if other is not entry)
         # The loader's own list of what a bucket's folder holds, without this class.
         ids, displays = taxonomy.live_places(declared.bucket(bucket_id), declared.energy, others)
-        if entry.id in ids or entry.display in displays:
-            return None
-        return entry.id
-    return None
+        if entry.id not in ids and entry.display not in displays:
+            found.append(entry.id)
+    return tuple(found)
+
+
+def alongside_places(declared: taxonomy.Taxonomy, bucket_id: str) -> tuple[str, ...]:
+    """The places one bucket's folder files a track in beside its band, in declared order.
+
+    The derived sub classes, :func:`derived_classes`, and the genre subs
+    (U155), which the source genre picks. Every one is filed by what the track
+    is, its tag, its genre or a playlist, so a track whose genre a person moved
+    out of the bucket belongs in none of them there (R-1965). A manual class is
+    never one.
+    """
+    genre = tuple(sub.id for sub in declared.bucket(bucket_id).genre_subs)
+    return (*derived_classes(declared, bucket_id), *genre)
+
+
+def mirrored_classes(declared: taxonomy.Taxonomy) -> frozenset[str]:
+    """The derived classes that mirror a playlist, the genre Favorites (U119).
+
+    A folder's Favorites holds every favourite sitting in ANY other playlist of
+    that folder, so a track that stays in the folder keeps it (R-1965). Asked
+    of :func:`cratekit.write.genre_favorites.favorites_class`, the class the
+    refresh mirrors, so the two never name different classes.
+    """
+    found = genre_favorites.favorites_class(declared)
+    return frozenset() if found is None else frozenset({found.id})
+
+
+def in_own_folder(declared: taxonomy.Taxonomy, bucket_id: str, sub_id: str) -> bool:
+    """Whether one competing sub of a bucket is a playlist of that bucket's own folder.
+
+    A split place is the holder's band and a former place sits in the folder of
+    the bucket that held it (R-797, U118), so in the declaring bucket neither
+    is; in the holding bucket a former place is its own.
+    """
+    if routing.split_place(declared, bucket_id, sub_id) is not None:
+        return False
+    former = routing.former_place(declared, bucket_id, sub_id)
+    return former is None or former.bucket == bucket_id
 
 
 #: What :func:`vocal_place` answers for an entry with no vocal question.
@@ -953,6 +1042,7 @@ def to_json(plan: AdoptionPlan) -> dict[str, Any]:
         "placements": plan.placements.state,
         "withheld_by_placement": plan.withheld_by_placement(),
         "held_elsewhere": [review_row(entry) for entry in plan.held_elsewhere()],
+        "outside_root": [outside_row(entry) for entry in plan.outside_root()],
         "vocals": plan.vocals.state,
         "vocal": plan.vocal_counts(),
         "vocal_memberships": [vocal_row(entry) for entry in plan.vocal_memberships()],

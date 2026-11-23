@@ -7,7 +7,9 @@ name of the writer outside this file, and every seam a test patches, is read thr
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
 from cratekit.core.cause import Scope, refuse
@@ -25,6 +27,90 @@ from cratekit.core.rb_tables import (
     TARGET_REFERENCE_COLUMN,
     TRACK_NUMBER_COLUMN,
 )
+
+#: The two columns rekordbox stamps on each membership row its Remove from
+#: Collection renumbers, beside ``TrackNo`` (U955, A202 at sitting 104): the
+#: update count and the time. Every other column stays as it was.
+USN_STAMP_COLUMN = "rb_local_usn"
+TIME_STAMP_COLUMN = "updated_at"
+
+
+@dataclass(frozen=True)
+class RenumberingStamp:
+    """What a renumbered membership row is stamped with beside its new ``TrackNo`` (U955).
+
+    ``counter``: the removal's final ``localUpdateCount``, the value rekordbox
+    gives the row (A202). ``at``: the removal's time in rekordbox's own text
+    form, ``YYYY-MM-DD HH:MM:SS.fff +00:00``.
+    """
+
+    counter: int
+    at: str
+
+
+def stamp_time(moment: datetime) -> str:
+    """``moment`` in rekordbox's text form, ``YYYY-MM-DD HH:MM:SS.fff +00:00``, in UTC.
+
+    Written here, not through the binding's ``datetime_to_str``, which cuts the
+    seconds off a moment whose microseconds are zero.
+    """
+    if moment.tzinfo is None:
+        raise ValueError("a stamp's moment must carry its time zone")
+    utc = moment.astimezone(timezone.utc)
+    return f"{utc:%Y-%m-%d %H:%M:%S}.{utc.microsecond // 1000:03d} +00:00"
+
+
+#: The one form :func:`stamp_time` writes, the only form read back here. A
+#: row's own old ``updated_at`` is never parsed: it may come from another clock.
+_STAMP_FORM = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) \+00:00")
+
+
+def stamp_moment(text: Any) -> datetime | None:
+    """A time :func:`stamp_time` wrote, as an aware moment in UTC, or None for any other text.
+
+    Read here, not through the binding's ``string_to_datetime``, which returns
+    the machine's local time with its zone dropped.
+    """
+    found = _STAMP_FORM.fullmatch(text) if isinstance(text, str) else None
+    if found is None:
+        return None
+    try:
+        return datetime.fromisoformat(f"{found.group(1)}+00:00")
+    except ValueError:
+        return None
+
+
+def _now() -> datetime:
+    """The removal's time, a seam a test fixes."""
+    return datetime.now(timezone.utc)
+
+
+def counter_at_commit(db: Any) -> int:
+    """The ``localUpdateCount`` the binding's commit will leave, read before it (U955).
+
+    pyrekordbox 0.4.4's ``commit`` raises the count by one per entry of its
+    process wide update buffer, so the final count is the count now plus the
+    buffer's length. The renumbering's own SQL adds no entry. A REFUSAL ROLLS BACK.
+    """
+    from pyrekordbox.db6.registry import RekordboxAgentRegistry
+
+    pending = getattr(RekordboxAgentRegistry, "__update_sequence__", None)
+    current = db.get_local_usn()
+    if not isinstance(pending, list) or current is None:
+        db.rollback()
+        raise _writer()._unavailable(
+            "whitelist-violation",
+            "the binding's update count or its buffer of changes could not be read, so "
+            "the count a renumbered playlist row is stamped with cannot be said; "
+            "nothing was written",
+            detail={"column": USN_STAMP_COLUMN},
+        )
+    return int(current) + len(pending)
+
+
+def removal_stamp(db: Any) -> RenumberingStamp:
+    """The stamp for this removal's renumbered rows: the count its commit will leave, and now."""
+    return RenumberingStamp(_writer().counter_at_commit(db), stamp_time(_now()))
 
 
 def _tables(session: Any) -> tuple[str, ...]:
@@ -223,22 +309,30 @@ def _live(marker: Any) -> bool:
     return marker is not None and not bool(marker)
 
 
-def renumber_memberships(db: Any, moved: Mapping[str, tuple[str, int, int]]) -> None:
-    """Write each planned ``TrackNo``, that one column and nothing else, inside the open transaction.
+def renumber_memberships(
+    db: Any, moved: Mapping[str, tuple[str, int, int]], *, stamp: RenumberingStamp
+) -> None:
+    """Write each planned ``TrackNo`` with rekordbox's stamp, inside the open transaction.
 
-    ONE SQL UPDATE PER ROW, since rekordbox stamped nothing else (A197). Each names
-    the planned old number, so a row that moved refuses and the handle rolls back.
-    Held objects are expired. DOES NOT COMMIT.
+    ONE SQL UPDATE PER ROW, of ``TrackNo``, ``rb_local_usn`` and ``updated_at``
+    and nothing else, as rekordbox's own removal writes them (U955, A202): the
+    count is ``stamp.counter``, the removal's final ``localUpdateCount``, and the
+    time ``stamp.at``. Each names the planned old number, so a row that moved
+    refuses and the handle rolls back. Held objects are expired. DOES NOT COMMIT.
     """
     from sqlalchemy import text
 
     statement = text(
-        f'UPDATE "{MEMBERSHIP_TABLE}" SET "{TRACK_NUMBER_COLUMN}" = :after '
+        f'UPDATE "{MEMBERSHIP_TABLE}" SET "{TRACK_NUMBER_COLUMN}" = :after, '
+        f'"{USN_STAMP_COLUMN}" = :counter, "{TIME_STAMP_COLUMN}" = :at '
         f'WHERE "ID" = :key AND "{TRACK_NUMBER_COLUMN}" = :before'
     )
     session = db.session
     for key, (_playlist, before, after) in sorted(moved.items()):
-        result = session.execute(statement, {"after": after, "key": key, "before": before})
+        result = session.execute(
+            statement,
+            {"after": after, "counter": stamp.counter, "at": stamp.at, "key": key, "before": before},
+        )
         if result.rowcount != 1:
             db.rollback()
             raise _writer()._unavailable(
@@ -260,13 +354,19 @@ class DatabaseReading:
     ``rows``: per table, primary key (or ``rowid``) to a row digest. ``named``:
     for :data:`DELETABLE_TABLES`, the content row each names. ``counter``:
     ``localUpdateCount`` or None. ``positions``: per membership row its playlist,
-    content, ``TrackNo``, liveness and a digest of the rest (R-1830).
+    content, ``TrackNo``, liveness and a digest of the rest, the two stamp
+    columns left out (R-1830, U955). ``stamps``: per membership row its
+    ``rb_local_usn`` and ``updated_at`` as SQL holds them, None for a column the
+    table lacks. ``read_at``: when it was read, in the stamp's form, so a
+    renumbering's stamp can be held to a time after its plan (U955).
     """
 
     rows: Mapping[str, Mapping[str, str]]
     named: Mapping[str, Mapping[str, str]]
     counter: int | None
     positions: Mapping[str, tuple[str, str, int | None, bool, str]] = field(default_factory=dict)
+    stamps: Mapping[str, tuple[Any, Any]] = field(default_factory=dict)
+    read_at: str | None = None
 
 
 def database_reading(db: Any) -> DatabaseReading:
@@ -276,9 +376,11 @@ def database_reading(db: Any) -> DatabaseReading:
     from sqlalchemy import text
 
     session = db.session
+    read_at = stamp_time(_now())
     rows: dict[str, dict[str, str]] = {}
     named: dict[str, dict[str, str]] = {}
     positions: dict[str, tuple[str, str, int | None, bool, str]] = {}
+    stamps: dict[str, tuple[Any, Any]] = {}
     # A membership row's playlist, content, ``TrackNo`` and marker, in that order.
     placing = (
         PLAYLIST_REFERENCE_COLUMN,
@@ -305,6 +407,10 @@ def database_reading(db: Any) -> DatabaseReading:
             if table == MEMBERSHIP_TABLE and set(placing) <= set(names)
             else None
         )
+        stamped = tuple(
+            names.index(name) if name in names else None
+            for name in (USN_STAMP_COLUMN, TIME_STAMP_COLUMN)
+        )
         found: dict[str, str] = {}
         naming: dict[str, str] = {}
         for row in result:
@@ -315,9 +421,11 @@ def database_reading(db: Any) -> DatabaseReading:
                 naming[key] = str(values[reference])
             if placed is not None:
                 playlist_at, content_at, number_at, marker_at = placed
+                moving = {number_at, *(at for at in stamped if at is not None)}
                 rest = tuple(
-                    value for at, value in enumerate(values[: len(names)]) if at != number_at
+                    value for at, value in enumerate(values[: len(names)]) if at not in moving
                 )
+                stamps[key] = tuple(None if at is None else values[at] for at in stamped)
                 number = values[number_at]
                 positions[key] = (
                     str(values[playlist_at]),
@@ -333,7 +441,9 @@ def database_reading(db: Any) -> DatabaseReading:
         text("SELECT int_1 FROM agentRegistry WHERE registry_id = :id"),
         {"id": LOCAL_UPDATE_COUNT},
     ).scalar() if "agentRegistry" in rows else None
-    return DatabaseReading(rows, named, None if counter is None else int(counter), positions)
+    return DatabaseReading(
+        rows, named, None if counter is None else int(counter), positions, stamps, read_at
+    )
 
 
 def collection_removal_violations(
@@ -342,6 +452,7 @@ def collection_removal_violations(
     *,
     removed: Iterable[str],
     committed: bool = False,
+    stamp: RenumberingStamp | None = None,
 ) -> list[str]:
     """Every difference between two readings the planned removal does not explain.
 
@@ -349,8 +460,11 @@ def collection_removal_violations(
     :data:`DELETABLE_TABLES` that named a ``removed`` row, EVERY such row gone and
     each removed row live before; no table or row added; no row changed but a
     planned renumbering to exactly :func:`renumbered_positions`'s number, every
-    planned one made (R-1830); and with ``committed``, ``localUpdateCount``
-    moving forward.
+    planned one made (R-1830), stamped with ``stamp`` as rekordbox stamps it,
+    at a time no earlier than ``before`` was read (U955), or moving ``TrackNo``
+    alone when no stamp is planned; and with
+    ``committed``, ``localUpdateCount`` moving forward, to ``stamp.counter``
+    exactly when a row was renumbered.
     """
     gone = {str(one) for one in removed}
     violations: list[str] = []
@@ -376,7 +490,9 @@ def collection_removal_violations(
                 violations.append(f"the {table} row {key!r} disappeared, which no planned removal explains")
         for key in sorted(set(old) & set(new)):
             if table == MEMBERSHIP_TABLE and key in planned:
-                violations.extend(_renumbering_violations(key, planned[key], before, after))
+                violations.extend(
+                    _renumbering_violations(key, planned[key], before, after, stamp)
+                )
                 continue
             if old[key] == new[key]:
                 continue
@@ -394,6 +510,13 @@ def collection_removal_violations(
         violations.append(
             f"{LOCAL_UPDATE_COUNT} did not move forward ({before.counter} to {after.counter})"
         )
+    if stamp is not None and planned:
+        violations.extend(_stamp_after_plan(before, stamp))
+    if committed and stamp is not None and planned and after.counter != stamp.counter:
+        violations.append(
+            f"{LOCAL_UPDATE_COUNT} reads {after.counter} after the commit, and the renumbered "
+            f"rows were stamped {stamp.counter}, the count rekordbox would leave them at"
+        )
     return violations
 
 
@@ -402,37 +525,117 @@ def _renumbering_violations(
     plan: tuple[str, int, int],
     before: DatabaseReading,
     after: DatabaseReading,
+    stamp: RenumberingStamp | None = None,
 ) -> list[str]:
-    """What is wrong with one membership row the removal was to renumber, or nothing."""
+    """What is wrong with one membership row the removal was to renumber, or nothing.
+
+    With ``stamp``, exactly three columns move: ``TrackNo`` to the planned
+    number, ``rb_local_usn`` to ``stamp.counter`` from something else, and
+    ``updated_at`` to ``stamp.at`` from another text (U955); that the stamp is
+    no earlier than the plan is judged once, by :func:`_stamp_after_plan`.
+    Without one, ``TrackNo`` alone.
+    """
     _playlist, was, wanted = plan
     then = before.positions.get(key)
     now = after.positions.get(key)
     if then is None or now is None:
         return [f"the {MEMBERSHIP_TABLE} row {key!r} could not be read for its renumbering"]
     found: list[str] = []
+    moving = (
+        f"{TRACK_NUMBER_COLUMN}, and a renumbering with no stamp moves that column alone"
+        if stamp is None
+        else f"{TRACK_NUMBER_COLUMN}, {USN_STAMP_COLUMN} and {TIME_STAMP_COLUMN}, and a "
+        f"renumbering moves those alone"
+    )
     if (now[0], now[1], now[3], now[4]) != (then[0], then[1], then[3], then[4]):
-        found.append(
-            f"the {MEMBERSHIP_TABLE} row {key!r} changed in a column other than "
-            f"{TRACK_NUMBER_COLUMN}, and a renumbering moves that column alone"
-        )
+        found.append(f"the {MEMBERSHIP_TABLE} row {key!r} changed in a column other than {moving}")
     if now[2] != wanted:
         found.append(
             f"the {MEMBERSHIP_TABLE} row {key!r} was to be renumbered from {was} to "
             f"{wanted} and holds {now[2]}"
         )
+    old = before.stamps.get(key, (None, None))
+    new = after.stamps.get(key, (None, None))
+    if stamp is None:
+        if new != old:
+            found.append(
+                f"the {MEMBERSHIP_TABLE} row {key!r} had its {USN_STAMP_COLUMN} or "
+                f"{TIME_STAMP_COLUMN} moved, and a renumbering with no stamp planned "
+                f"moves {TRACK_NUMBER_COLUMN} alone"
+            )
+        return found
+    found.extend(_stamp_violations(key, old, new, stamp))
     return found
 
 
+def _stamp_violations(
+    key: str, old: tuple[Any, Any], new: tuple[Any, Any], stamp: RenumberingStamp
+) -> list[str]:
+    """What is wrong with one renumbered row's ``rb_local_usn`` and ``updated_at``, or nothing."""
+    found: list[str] = []
+    (old_counter, old_time), (new_counter, new_time) = old, new
+    if new_counter != stamp.counter or new_counter == old_counter:
+        found.append(
+            f"the {MEMBERSHIP_TABLE} row {key!r} was to be stamped {USN_STAMP_COLUMN} "
+            f"{stamp.counter} from {old_counter} and holds {new_counter}"
+            + (", so the count did not move" if new_counter == old_counter else "")
+        )
+    if new_time != stamp.at or new_time == old_time:
+        found.append(
+            f"the {MEMBERSHIP_TABLE} row {key!r} was to be stamped {TIME_STAMP_COLUMN} "
+            f"{stamp.at!r} from {old_time!r} and holds {new_time!r}"
+            + (", so the time did not move" if new_time == old_time else "")
+        )
+    return found
+
+
+def _stamp_after_plan(before: DatabaseReading, stamp: RenumberingStamp) -> list[str]:
+    """Refuse a stamp's time earlier than the plan's own reading, or either unreadable (U955).
+
+    The removal's clock against itself: a row's old ``updated_at`` may come from
+    another clock (another machine, the binding's whole minutes), so forward is
+    judged from the moment the plan was read, never against the row.
+    """
+    stamped, read = stamp_moment(stamp.at), stamp_moment(before.read_at)
+    if stamped is None or read is None:
+        return [
+            f"the renumbering's {TIME_STAMP_COLUMN} stamp {stamp.at!r} or the plan's reading "
+            f"time {before.read_at!r} cannot be read as a time, so the stamp moving "
+            f"forward cannot be said"
+        ]
+    if stamped < read:
+        return [
+            f"the renumbering's {TIME_STAMP_COLUMN} stamp {stamp.at!r} is earlier than the "
+            f"plan, read at {before.read_at!r}"
+        ]
+    return []
+
+
 def assert_collection_removal_confined(
-    db: Any, before: DatabaseReading, *, removed: Iterable[str]
+    db: Any,
+    before: DatabaseReading,
+    *,
+    removed: Iterable[str],
+    stamp: RenumberingStamp | None = None,
 ) -> None:
     """Refuse, before the commit, a removal that reached anything it did not plan.
 
     FROM SQL after a deliberate flush, judging whose rows went and that nothing
-    else moved, which the table-level whitelist cannot. A REFUSAL ROLLS BACK.
+    else moved, which the table-level whitelist cannot. With ``stamp``, also that
+    the binding's commit will leave ``localUpdateCount`` at the count the
+    renumbered rows were stamped with (U955). A REFUSAL ROLLS BACK.
     """
     db.session.flush()
-    violations = collection_removal_violations(before, database_reading(db), removed=removed)
+    violations = collection_removal_violations(
+        before, database_reading(db), removed=removed, stamp=stamp
+    )
+    if stamp is not None:
+        reaching = _writer().counter_at_commit(db)
+        if reaching != stamp.counter:
+            violations.append(
+                f"the commit would leave {LOCAL_UPDATE_COUNT} at {reaching}, and the "
+                f"renumbered rows were stamped {stamp.counter}"
+            )
     if violations:
         db.rollback()
         raise _writer()._unavailable(

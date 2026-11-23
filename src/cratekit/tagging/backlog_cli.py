@@ -128,7 +128,7 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
         found.append(warning(
             ROWS_JOINING,
             f"{backlog.ROWS_VERB} would also write a genre no folder takes onto "
-            f"{len(plan.joining)} row(s) adoption files today, "
+            f"{len(plan.joining)} row(s) whose genre takes a folder today, "
             f"{named(list(plan.joining))}, moving them into needs genre; the "
             f"projection counts them, and --leave holds a row out",
         ))
@@ -260,7 +260,8 @@ def checks(plan: backlog.Backlog) -> list[dict[str, Any]]:
             _check(
                 "backlog.joining",
                 "moved into needs genre",
-                f"{len(plan.joining)} row(s) adoption files today that {backlog.ROWS_VERB} "
+                f"{len(plan.joining)} row(s) whose genre takes a folder today that "
+                f"{backlog.ROWS_VERB} "
                 f"would give a genre no folder takes",
             )
         )

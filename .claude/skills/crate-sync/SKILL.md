@@ -230,8 +230,8 @@ and the filing are answered:
 
 It reads every downloaded playlist on the account again and answers each
 track taken off one as offered, kept or left. A run that offers nothing
-writes nothing but Cratekit's own record of synced playlists the account
-answered not found for; report its counts. Hearts listed short only by what
+writes nothing but Cratekit's own records of synced playlists the account
+answered not found for and of those it read whole (R-1716); report its counts. Hearts listed short only by what
 the provider withholds are read whole and named with both counts, and a
 synced playlist the account no longer lists whose id answered not found is
 retired by itself when it answers so again a day later (U320). Name each one
@@ -254,8 +254,14 @@ answered as the session:
 A track a My Tag or another table rekordbox's removal was never measured on
 names is answered kept with that table named, which is the ordinary answer
 for a `vox` or `dyn` track; report it. A plan the copy offers differently, or
-any refusal on the copy, stops this step: report it and answer nothing. A run that stops at the call ceiling is run again with
-`crate --calls N --calls-per-hour M sync removed`. The files are not touched:
+any refusal on the copy, stops this step: report it and answer nothing. A run
+that stops at the call ceiling or the hour's line holds each synced playlist it
+read whole for six hours, so run `crate --output json sync removed` again,
+once the hour's calls have left the window when the stop was the hour's, and
+it reads only what is left; report the calls each run spent. The copy's state
+directory, copied from the volume's, carries those held reads, so the
+rehearsal reads only what the account shows written since and what is
+never held (a playlist changed lately or holding a track twice, the hearts). The files are not touched:
 `crate delete review`, which only Phillip runs, offers them to the Trash.
 
 ## 6. One closing report

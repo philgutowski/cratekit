@@ -36,7 +36,9 @@ bands, so they cannot be a former place for anyone. The shape did not exist in t
   whenever the track's genre names the declarer. If it only counts in one, the two buckets
   plan competing moves for the same track and the read back reports one of them unfinished.
 - A moved track keeps every other membership (with vox and the like). Test the Soul track in
-  `R&B / Med` ending in `Soul / Med` and nowhere in R&B.
+  `R&B / Med` ending in `Soul / Med` and nowhere in R&B. A row `tag set` gave the genre Soul
+  is the exception (R-1965): it leaves R&B's `with vox` and Favorites as well, and its R&B
+  Favorites must be read as left even though R&B's band is the Soul move's to remove.
 - Mutation batches made only of template rows are refused by `mutate.py`, since the null
   control needs a Python target. Add a Python row to the batch.
 

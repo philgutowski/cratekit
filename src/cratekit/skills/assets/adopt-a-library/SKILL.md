@@ -31,15 +31,18 @@ person present.
 
 Every row the census is handed comes back in exactly one named category, so a
 file that is missing, unreadable, online-only, recorded under a prefix this
-installation maps nothing for, or recorded as something that is not a path at all
-is REPORTED rather than quietly absent from the plan. A track that is neither in
+installation maps nothing for, recorded as something that is not a path at all,
+or resolved to a place outside the library root (`outside-root`, such as
+rekordbox's own sampler presets) is REPORTED rather than quietly absent from the
+plan. A track that is neither in
 the plan nor in a named category is a track nobody decided about, and the person
 who ran the scan cannot tell that apart from a track the plan had nothing to say
 about.
 
 Alongside the category sits adoption's own disposition for the track, which says
 what it intends to do: route it, ask about its genre, exclude it because the file
-is not usable on this machine, or hold it because nothing declares where it goes.
+is not usable on this machine or is not the library's (outside the root), or hold
+it because nothing declares where it goes.
 A track whose genre is blank, or is one of the strings the template declares too
 coarse to be a source, is never filed under the router's fallback tier here. That
 tier is a legitimate answer everywhere else in the product and it is not one
@@ -95,7 +98,8 @@ library's own identifier for that folder rather than on its name, so renaming th
 folder does not orphan the answer into looking unanswered.
 
 The excluded tracks are deliberately not offered here. An unreadable or
-online-only file is a fact about the machine rather than a question for a person,
+online-only file, or one outside the library root, is a fact about the machine
+rather than a question for a person,
 and a thousand of them in the queue would bury the two questions that need
 answering. They stay in the plan carrying the category that names them.
 

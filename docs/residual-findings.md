@@ -4361,3 +4361,465 @@ producer upstream of staging was driven.
 
 **Closes when:** the refusal reads a trailing head only in the spaced form the
 engine writes, or names its own reason so the row says why. Ledger only.
+
+---
+
+## R-1990. A playlist rekordbox removed is still compared when a rebuild recorded it, while one nothing recorded is not
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** R-1949's fix leaves a playlist rekordbox removed out of
+the playlists the check compares through their names (`node.removed`), but a
+destination a rebuild recorded resolves to its node by identifier whether or
+not that node is removed, so a removed recorded playlist with live
+memberships still reads `unexpected`. The two paths answer differently for
+one state.
+
+**Measured cost.** Driven at round two: a rebuild recorded playlist marked
+removed with its memberships live read `unexpected:tech_house/high:1` on the
+branch and on the base; with its memberships marked removed too it read
+converged on both. The repository's own measurement (the solutions note on
+the first removal being a soft delete) found removed memberships inside
+removed playlists, so the live state may be the second shape; the first was
+not produced by rekordbox here.
+
+**Closes when:** the check treats a removed node the same on both paths, or a
+measurement on the live library shows rekordbox never leaves live
+memberships in a removed playlist. Ledger only: unmeasured reachability, and
+the base's behaviour.
+
+---
+
+## R-1991. A cleared second genre left under a folder renamed in rekordbox reads as matching when no rebuild or resort ever recorded that folder
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** The convergence check reads a playlist that nothing
+derives into by its folder's declared name, or, when the folder's name
+declares no bucket, by the bucket a previous write recorded for it. Adoption's
+writer (`trees.write_tree_membership` under `adopt apply`) records no node, so
+a tree filed only by adoption has no record. A genre folder renamed in
+rekordbox there declares no bucket and has none recorded, so a cleared second
+genre's track left alone in a playlist under it falls into `foreign`, and
+`converge` says `matching`: R-1949's own state, under a rename.
+
+**Measured cost.** Driven at round two with the folder renamed by a row
+write standing in for rekordbox: the verb said `matching`, "1 declared
+placement(s) all present", left behind empty, `foreign: Loud! Room/High`.
+Once a rebuild or resort recorded a playlist in that folder it said
+`differing` and named the leftover. The rename itself was not made in
+rekordbox, which no cloud session may open.
+
+**Closes when:** the check can tell which bucket an unrecorded renamed folder
+under the governed root is (for instance by a record adoption writes, or the
+bucket its declared playlists' tracks derive into) and compares its playlists,
+or names such a folder as not compared rather than reading matching. An issue:
+a clean report over a membership no genre files (the bar's b).
+
+---
+
+## R-1992. A track whose file the walk did not read is unexpected in the band it sits in alone, now that a playlist nothing derives into is compared
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** The convergence check compares every playlist under the
+governed root that bears a declared destination's names (R-1949), with
+nothing declared there when no track derives into it. A track the
+derivation placed nowhere, because the walk of the music directory did not
+read its file (a file outside the music directory, or one that would not
+open), reads `unexpected` there. The base already read it so once the same
+playlist held one derived track; the branch widens the class to a playlist
+holding only such tracks.
+
+**Measured cost.** Driven at round one: track 2 with no reading, alone in
+Tech House / High, `check` said `unexpected:tech_house/high:2` where the
+base said `foreign`. No producer on a real library was driven, so how often
+a genre playlist holds only unread files is unmeasured. `converge` says
+`differing` over a membership whose file it did not read.
+
+**Closes when:** the check knows which active rows the walk read and leaves a
+membership whose file it did not read out of `unexpected` (or names it apart),
+in both the populated and the newly compared playlists. Ledger only: the
+report is not clean, and the class is the base's.
+
+---
+
+## R-1993. converge offers rebuild-tree as the remedy for an unexpected membership, which a rebuild adds around and never removes
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** `crate converge` gives every `differing` tree the remedy
+`rebuild-tree`. A rebuild adds and never removes, so for a tree whose only
+differences are `unexpected` memberships (a cleared second genre's track
+left in that folder, R-1949) the remedy changes nothing and the tree reads
+`differing` after it. The base does the same for any unexpected membership;
+R-1949's fix makes converge name more of them.
+
+**Measured cost.** Driven at round one: the card's own scenario through the
+verb, `differing`, `unexpected:tech_house/high:1`, remedy `rebuild-tree`.
+The guide now says to take such a track out by hand in rekordbox; the
+verb's remedy still names the rebuild.
+
+**Closes when:** converge names a remedy per direction, the rebuild for a
+missing membership and the removal by hand (or `route resort`'s left behind
+list) for an unexpected one. Ledger only: a remedy wording, which the guide
+already corrects.
+
+---
+
+## R-1994. A Favorites playlist is compared on a governed tree whose derivation neither files favourites nor names their dimension as not compared
+
+**Found:** at the review of #999, R-1949, 2026-11-23.
+
+**The mechanism.** `rebuild.with_favorites` derives the genre Favorites
+only for the routing tree, and names the dimension as not compared only
+there. On any other tree id the check now compares a playlist bearing a
+declared Favorites name with nothing declared there, so its members read
+`unexpected` though nothing was derived for them.
+
+**Measured cost.** Driven at round one on the test tree id: a Favorites
+playlist by hand read `unexpected:deep_house/favorites:1` with no gap
+named. One candidate producer was driven and does not reach it:
+`cutover.derivation_source` refuses any tree but the two cutover trees, and
+the inbox tree refuses at `assert_derivable`, so no shipped verb checks
+another tree. Reachability is unmeasured beyond that one candidate.
+
+**Closes when:** the check leaves a playlist signal class out of the newly
+compared playlists on any tree `with_favorites` does not derive. Ledger only:
+no producer reached.
+
+---
+
+## R-1995. A clock stepping back between a removal's plan and its stamp refuses the removal as an unplanned write
+
+**Found:** at review round one of #1002, U955, 2026-11-23.
+
+**The mechanism.** `DatabaseReading.read_at` is the plan's time, read when
+`CollectionRemoval.prepare` reads the database, and the renumbering's
+`updated_at` stamp is read from the same clock at the commit.
+`_stamp_after_plan` refuses a stamp earlier than the plan, so a system clock
+stepped back between the two (an NTP correction, a manual change) refuses
+the whole removal with `whitelist-violation`, "reached rows it did not plan",
+nothing written, and a remedy of changing policy or input where waiting and
+running again is the answer.
+
+**Measured cost.** Driven by the reviewer with `rb_removal._now` patched to
+run 5 ms backward per call: exit 42, nothing written, the message above. The
+producer, a real clock step inside one apply, was not driven. Nothing is
+lost: the verb can be run again.
+
+**Closes when:** the refusal names the clock and is retryable, or the check
+is dropped in favour of the row moving to the stamp's text alone. Ledger
+only: a misleading refusal over nothing lost, on an input not driven.
+
+---
+
+## R-1996. A removal gives every renumbered row one count, the final one, and rekordbox was read on one row of one playlist
+
+**Found:** at review round one of #1002, U955, 2026-11-23.
+
+**The mechanism.** `CollectionRemoval.commit` stamps every membership row it
+renumbers, in every playlist and for every removed track, with one
+`rb_local_usn`, the removal's final `localUpdateCount`, and one `updated_at`.
+A202 at sitting 104 read rekordbox 7.2.19's own Remove from Collection on one
+moved row in one playlist, whose count equalled the final count. That fits
+both one count on every moved row and successive counts ending at the final
+one, and nothing measured several moved rows, several playlists or several
+removed tracks at once. The confinement admits only the shape this product
+writes.
+
+**Measured cost.** Not driven against rekordbox, which no cloud session may
+open. Driven through the verb on the `one_offered` fixture: 7 rows in 3
+playlists moved, all holding the one final count. If rekordbox numbers them
+apart, the library differs from rekordbox's own state in the count of rows
+rekordbox itself does not read for playback.
+
+**Closes when:** an attended sitting reads rekordbox's removal of one track
+with two survivors after it on each of two playlists, column by column on two
+dated copies, and the stamp rule is kept or changed to match. Ledger only: it
+closes only at an attended sitting.
+
+---
+
+## R-1997. A row leaving a former place keeps the with vox and Favorites of the folder that holds the place
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** `adopt/move.py` `alongside_left` reads the places beside the band of the bucket being left, in that bucket's own folder. A former place (R-797) sits in another bucket's folder (NonElectronic), so a row `tag set` moves out of the declaring bucket leaves the former place but keeps the holding folder's `with vox` and Favorites.
+
+**Measured cost.** Driven in review round one on a seeded row in NonElectronic / Soul / R&B with `with vox` and Favorites there, given Deep House by `tag set`, then `adopt move`: it ended in Deep House / High and still in NonElectronic / with vox and Favorites. The seeded state needs a filing made before the former place was declared, which was not driven.
+
+**Closes when:** the holding folder's places beside the band are read for a row leaving a former place and left with it, Favorites under the same keep rule, with the seeded drive as its test.
+
+---
+
+## R-1998. A genre move entry for a folder the row held nothing in stays recorded, so a later hand placement there is planned out
+
+**Found:** at the review of #1007, R-1965, round two, 2026-11-23.
+
+**The mechanism.** `adopt/move_cli.py` `handle` spends a genre move only through a move across buckets that names the recorded bucket and reads back moved. A bucket recorded by `tag set` that the row holds nothing in by the time of the move (R&B to Soul, then Soul to Deep House) plans no move there, so its entry stays; a track a person later puts in that folder by hand is then planned out of it, against GUIDE's "left where it is". The path is U339's.
+
+**Measured cost.** Driven in review round two by verbs up to the hand placement: after the move the entry read `{mover: {soul}}`, and with the row put in Soul High by hand `adopt move` showed a move taking it out. The gate shows it before anything is written; the hand placement was made through the writer, not rekordbox.
+
+**Closes when:** the move spends a recorded bucket the row holds nothing in, as the plan reads it, with the verb chain above as its test.
+
+---
+
+## R-1999. A renamed with vox or Favorites in the old genre folder now lists the whole move across folders instead of moving the band
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** `adopt/move.py` `moved_out_of` folds a place beside the band held under another name only (`holds_alongside_unnamed`) into the move's `unnamed`, so the whole move is listed under `held-under-another-name` with the band in `holds`, where main moved the band and left the renamed playlist unmentioned. The writer finds a playlist by its declared name, so it could not remove the renamed one; listing says so rather than moving half.
+
+**Measured cost.** At the engine only (`test_a_derived_class_held_under_another_name_only_is_listed_never_moved`); the reader path through a renamed playlist with a recorded node was not driven end to end. The row stays in both folders' bands until the playlist's name is put back, and the gate names it with its reason; GUIDE says so.
+
+**Closes when:** a renamed place beside the band is either found through its recorded node by the writer, or left behind with the band moved and the leftover named, with a dispatcher drive as its test.
+
+---
+
+## R-2000. A band the new genre's bucket settles but lists rather than moves still lets the old folder's with vox and Favorites go
+
+**Found:** at the review of #1007, R-1965, round two, 2026-11-23.
+
+**The mechanism.** `adopt/move.py` `leaving_moved` counts a place settled in the other bucket (`settled_in_the_other_bucket`) as left for the Favorites rule, on the ground that the bucket the entry claims takes it out in the same job. Where that bucket's `standing` lists the track instead (no reading, or the band held under another name only), the move out of the old folder still removes its `with vox` and Favorites while the track stays in the old folder's band.
+
+**Measured cost.** Driven in review round two on a seeded state: an R&B row with no energy tag in R&B High, with vox, Favorites and Soul Low, given Soul by `tag set`, then `adopt apply` and `adopt move`. It ended in R&B High, Soul Low and Soul Unsorted with the entry spent; `favorites refresh` then planned putting R&B's Favorites back. The seeded mix of an R&B band and a Soul band was not produced by a verb.
+
+**Closes when:** a settled place counts as left only when the claiming bucket's standing is a move removing it, asked through the same plan pass, with the seeded drive as its test.
+
+---
+
+## R-2001. A Soul row still in an R&B band, given a third genre by tag set, is recorded as leaving Soul and the move neither moves nor lists it
+
+**Found:** at the review of #1007, R-1965, round two, 2026-11-23.
+
+**The mechanism.** `tagging/genre_set.py` `_leaves` records the bucket the row's old genre names (Soul), while the row sits in the bucket that holds Soul's split place (R&B). `adopt move` asks Soul for that row, which holds nothing there, so it plans nothing and lists nothing, and the row stays in R&B beside its new folder. The path is U339's, untouched by R-1965.
+
+**Measured cost.** Driven in review round two on a seeded state (a Soul row in R&B High, with vox and Favorites, given Deep House): the answer said the move takes 1 row out, the plan was empty, and the row stayed in R&B with the entry recorded for Soul. The one verb chain tried does not produce the state; `tag retag` and `tag remap` were not driven. Not measured on main.
+
+**Closes when:** `_leaves` records the bucket the tree actually holds the row in (the split place's holder too), with the seeded drive as its test.
+
+---
+
+## R-2002. Rows adopt move took out of a genre folder before R-1965 landed keep that folder's with vox and Favorites, unlisted
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** A row `tag set` moved and `adopt move` moved on main between U339 and R-1965 had its genre move entry spent (`adopt/genre_moves.py` `discharge`) once its band read back moved, leaving its old folder's `with vox` and Favorites. With the entry spent, the fixed move never asks that folder again, and nothing else lists the leftover.
+
+**Measured cost.** Driven in review round one on a state built by hand to main's documented end state: the leftovers stay and nothing lists them. Whether Phillip's library holds such rows is unmeasured; the run's answer on main told the person to remove them in rekordbox, so nothing false was said.
+
+**Closes when:** a sitting reads whether any row sits in a genre folder's `with vox` or Favorites with no band of that folder (or `converge`'s unexpected list names them), and either they are removed in rekordbox or a one time verb plans them out.
+
+---
+
+## R-2003. tag set records no folder a row holds only through with vox, Favorites or a genre sub, so adopt move never asks it
+
+**Found:** at the review of #1007, R-1965, round one, 2026-11-23.
+
+**The mechanism.** `tagging/genre_set.py` `_leaves` records a genre folder as left only when the row holds a competing sub there (`Placements.holds`), while the move across genre folders (`adopt/move.py` `leaving_moved`) now also leaves the places beside the band, `with vox`, Favorites and a genre sub. A row whose band in its old folder was taken out by hand, but which still sits in that folder's `with vox` or Favorites, is never recorded by `tag set`, so `adopt move` plans and lists nothing for it.
+
+**Measured cost.** Driven in review round one with the band removed by `rb_writer.remove_memberships` by hand, not by a verb, before `tag set`: the row ended in both folders' `with vox` and Favorites, `adopt move` planned and listed nothing, and `converge` read matching. No verb was driven that produces the state, so reachability is unmeasured. When the band goes after `tag set` recorded the entry, the move is correct (driven).
+
+**Closes when:** `_leaves` asks the same places the move leaves (`holds` and `holds_alongside`, through one predicate the move shares), with a test that records and moves such a row.
+
+---
+
+## R-2004. A held sync removed read trusts the provider to serve a playlist's current tracks half an hour after its stamp moves, and a change that keeps the count past that is held for six hours
+
+**Found:** at the review of #1010, R-1716, round two, 2026-11-23.
+
+**The mechanism.** `sync/removed_kept.py` holds a synced playlist's read
+only when it holds as many tracks as the account's listing counts and the
+listing's last updated stamp is at least `SETTLED` (30 minutes) older than
+the read, and reuses it for `HELD_FOR` (6 hours) while the listing shows the
+same count and stamp. A change that keeps the count (a swap of one track for
+another) whose old tracks the provider still serves more than 30 minutes
+after the stamp moved is read old, held, and answers every run for six
+hours. Round two drove it on a stand in: the listing current, the rows old,
+the stamp 31 minutes back; New1, swapped onto another synced playlist, was
+offered for removal from the collection until the hold ended, where a fresh
+read keeps it.
+
+**Measured cost.** Not driven against the provider. The one measured lag is
+sitting 86's, a paged read serving a playlist's old order for at least 13
+minutes after a move (`docs/cutover.md`); a removal showed none at sitting
+101. A lag on a swap or an add, or one past 30 minutes, has not been
+measured, nor the spelling of `lastUpdated` the live listing sends (with no
+zone it marks nothing and nothing is ever held, which costs calls only).
+
+**Closes when:** an attended sitting measures how long the provider serves a
+playlist's old tracks after a swap and an add, and what `lastUpdated` the
+account listing sends, and `SETTLED` is set from that; or the read compares
+the opened playlist's own count and stamp with the listing's before it is
+held. Ledger only: the input was not produced, and the attended card filed
+with #1010 measures it.
+
+---
+
+## R-2005. A synced playlist that lists one track twice is never held by sync removed, so every run reads it again
+
+**Found:** at the review of #1010, R-1716, round two, 2026-11-23.
+
+**The mechanism.** `SyncedReads.keep` holds a read only when
+`len(listing.refs)` equals the account listing's track count. The reader
+builds the playlist's order with one entry per id, so a playlist holding one
+track twice reads one ref fewer than the provider counts, and is read again
+on every run.
+
+**Measured cost.** Calls only, no wrong answer. Driven in review round two:
+a playlist of three rows over two ids was asked on four of four commands and
+never held; with 20 such among 60 synced playlists at 3 calls each, the runs
+spent 183, 63 and 63 calls. How many of the live account's synced playlists
+repeat a track is not measured.
+
+**Closes when:** the read carries its row count beside its distinct ids and
+the guard compares that, with a test of a playlist listing a track twice
+held. Ledger only.
+
+---
+
+## R-2006. The held reads' flush interval kills no test, since the one test of it reads the interval from the symbol
+
+**Found:** at the mutation table of #1010, R-1716, 2026-11-23.
+
+**The mechanism.** `sync/removed_kept.py` writes the held reads every
+`FLUSH_EVERY` (50) changes and on the way out. Row K19 of
+`docs/mutation/r1716.md`, `FLUSH_EVERY` at 500, killed none of 22,995: the
+test of the interval counts to `FLUSH_EVERY` itself, and every verb test
+ends its run, which writes the store on the way out.
+
+**Measured cost.** None to a person: the interval bounds what a killed
+process loses, at most that many reads to be read again, and the way out
+writes the rest. Maintainer facing.
+
+**Closes when:** a test pins the interval at 50 by number, or holds that a
+process killed after 60 new reads leaves at least 50 written. Ledger only.
+
+---
+
+## R-2007. adopt move lists a row outside the library root as left with no reading, which is not why it stays
+
+**Found:** at the review of #1020, U956, 2026-11-23.
+
+**The mechanism.** Since U956 the census reads a row whose file resolves
+outside `library.root` as `outside-root`, excluded, and never reads its energy.
+`cratekit.adopt.move._standing_in_tree` gives every excluded entry held in two
+competing subs the reason `no-reading` (`LEFT_NO_READING`), so `adopt move`
+lists such a row as left for want of an energy reading though its file holds
+one; a row outside the root held in a stale band is neither moved nor listed.
+A `genre_moves` entry `tag set` recorded for it survives and is listed again at
+the next gate. Leaving the row alone is what U956 asks; the reason shown is
+what is wrong.
+
+**Measured cost.** Driven by the round one reviewer only from a state built by
+hand: a prefix rule mapping an outside folder onto itself, an `adopt apply` on
+the base that filed the row (a rule from an old folder to a new one cannot,
+since the base fails that pass), then `tag set` and `adopt move` on the branch.
+The only outside rows measured on the real library, the 16 sampler rows, hold
+no place, so the producer on a real library is unmeasured. `tag set`'s own
+closing message was corrected in U956 and names such a row.
+
+**Closes when:** `adopt move` names an outside row with its own reason, such as
+`outside-root`, or leaves it out of its list, and a test drives a row held in
+two subs outside the root. Ledger only: nothing is written wrongly and the
+reachability on a real library is unmeasured.
+
+---
+
+## R-2008. Adoption asks whether a file is inside the library root one way, and the tree writer resolves it another
+
+**Found:** at the review of #1020, U956, 2026-11-23.
+
+**The mechanism.** `cratekit.adopt.scan.within_root` decides by name on whole
+components, then asks each parent whether it is the root (`os.path.samefile`).
+`cratekit.write.trees.index_active_rows` groups rows by the text their recorded
+location resolves to through the prefix rules. Two shapes fall between them.
+A prefix rule whose target is a link, outside the root, to a folder under it
+(`root/Music`) reads `outside-root`, so a real library file is named as not the
+library's and left out. A rule whose target is another name for the root
+itself passes the samefile walk, so the row routes, and the membership write,
+which matches by text, cannot place it: the pass fails `adopt-entries-failed`,
+with a refusal step ("two live rows for it or none") true of neither case.
+
+**Measured cost.** Driven by the round one reviewer with both rules written by
+hand. Neither is a regression: the base fails both passes. Setup's rule offer
+was not driven, and a case folding volume, the shape the samefile walk is
+there for, cannot be driven on Linux.
+
+**Closes when:** the census and the tree writer read containment and identity
+through one resolution, so a row the census routes is one the writer can
+place, with a test for each shape above. Ledger only: no input a person makes
+through the shipped verbs was shown to produce either.
+
+---
+
+## R-2009. crate organize approves the adoption digest without counting or naming the rows outside the library root
+
+**Found:** at the review of #1020, U956, 2026-11-23.
+
+**The mechanism.** `cratekit.organize.rekordbox._adoption` takes the adoption
+screen from `apply_cli.digested` and shows its own counts (tracks read,
+placeable, to file, vocal memberships to add), dropping the facts beside it.
+So `organize.rekordbox.approve` binds the adoption digest, which since U956
+covers the rows left outside the root, while its screen holds neither their
+count nor their names. `adopt apply`'s own gate names them under
+`outside_root`.
+
+**Measured cost.** Driven by the round one reviewer: the organize gate showed
+"tracks read 4, placeable 1, to file 1" and no word of the outside row.
+Nothing false is said, since organize never showed excluded rows; a person
+approving there is told less than at `adopt apply`.
+
+**Closes when:** organize's adopt step counts the rows left outside the root,
+or names them, beside its other counts, with a test. Ledger only.
+
+---
+
+## R-2010. The wiring of tag set's outside root sentence is pinned by no test through the verb, and the backlog's docstrings still call its walk adoption's census
+
+**Found:** at the review of #1020, U956, 2026-11-23.
+
+**The mechanism.** `cratekit.tagging.genre_set_cli._written` takes the library
+root and names a written row whose file is outside it; its tests call it
+directly with stand ins and their own root. The verb's call passes
+`cfg.library.root`, and a mutant passing `"/"` there killed 0 of 77 tests; so
+did dropping the `item.path and` guard and `sorted`. The new sentence joins raw
+content ids uncapped, where the file's other sentences name rows by title
+through `named()`. And `src/cratekit/tagging/backlog.py` (its module docstring
+and two others) and `genre_set.py` still describe the tag verbs' walk as
+adoption's census, which since U956 is confined to the root while theirs is not.
+
+**Measured cost.** None today: round two drove the verb with rows inside and
+outside the root and the wiring is right. A later change to the call would ship
+green. The docstrings are not help text.
+
+**Closes when:** a test drives `tag set` through the verb over a row mapped
+outside the root and asserts its answer, the sentence names rows by title, and
+the docstrings say the walk is not confined. Ledger only.
+
+---
+
+## R-2011. The adoption digest now covers each outside row's resolved path, and moved for every plan when U956 landed
+
+**Found:** at the review of #1020, U956, 2026-11-23.
+
+**The mechanism.** `AdoptionPlan.digest` covers `outside_root`, each row's
+content id, recorded location and resolved path, so the gate's named rows and
+its digest cannot differ. The resolved path depends on a prefix rule's target,
+so two machines whose rules map the same rows to different folders digest
+differently though the library and the plan's routing are the same. And the
+digest's new key moved every plan's digest, outside rows or none.
+
+**Measured cost.** Driven by the round one reviewer: the same rows with a rule
+target of `Sampler` and `SamplerCopy` digest `98c16f23e2379acf` and
+`b0bb8f1b9af6ea9c`; one fixture with no outside row digests `f85ac2c07ba6d4c0`
+on the base and `f71f627d2beadd60` on the branch. Not driven: a job approved on
+the previous build and resumed on this one, which refuses `decision-stale` and
+asks for the run again, and a rehearsal whose copy resolves the rule
+elsewhere; the standing recipe keeps the root and the rules, so a rehearsal's
+digest and the live one stay equal.
+
+**Closes when:** the digest covers the outside rows by content id and recorded
+location only, if a sitting shows a rehearsal digest differing for this
+reason. Ledger only.

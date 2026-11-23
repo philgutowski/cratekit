@@ -44,12 +44,14 @@ from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import genre_favorites, routing_pass, trees
 from cratekit.write.convergence_check import (
+    VOCAL_DIMENSION,
     ConvergenceReport,
     Destination,
     Difference,
     Direction,
+    _additive_ids,
     _declared_display,
-    _uncompared_playlist_subs,
+    _uncompared_subs,
     _under_recorded_folders,
     assert_addressable,
     by_display_pair,
@@ -66,10 +68,6 @@ logger = logging.getLogger(__name__)
 #: The workflow name a rebuild records in the session log. A name for an
 #: operation, not a verb: the CLI layer owns verb names (D2).
 REBUILD_WORKFLOW = "tree-rebuild"
-
-#: The dimension name reported when this library has no vocal calibration, so
-#: the additive vocal sub-playlists could not be derived this run.
-VOCAL_DIMENSION = "vocal"
 
 #: The envelope warning code a surface carries when the vocal dimension was not
 #: derived this run (R-316).
@@ -240,13 +238,6 @@ def filed_genres(
     return ((first, entry.genre), (second, entry.second_genre))
 
 
-def _additive_ids(declared: taxonomy.Taxonomy, signal: str) -> set[str]:
-    """The additive sub class ids the declaration derives from ``signal``."""
-    return {
-        entry.id for entry in declared.sub_classes if entry.additive and entry.signal == signal
-    }
-
-
 def not_derived(
     declared: taxonomy.Taxonomy, *, vocal_threshold: float | None
 ) -> tuple[str, ...]:
@@ -279,14 +270,6 @@ def not_compared_warnings(not_compared: Iterable[str]) -> tuple[dict[str, str], 
             ),
         },
     )
-
-
-def _uncompared_subs(declared: taxonomy.Taxonomy, not_compared: Sequence[str]) -> set[str]:
-    """The sub class ids whose dimension a run named as not compared."""
-    skipped = _uncompared_playlist_subs(declared, not_compared)
-    if VOCAL_DIMENSION in tuple(not_compared):
-        skipped |= _additive_ids(declared, taxonomy.SIGNAL_VOX)
-    return skipped
 
 
 def left_behind(
