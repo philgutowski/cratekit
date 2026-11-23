@@ -648,7 +648,7 @@ def test_the_script_reads_these_lists_from_this_file():
 
 def test_the_script_reads_the_registry_as_the_package_declares_it():
     """The script cannot import the registry, so its reading of the text is held to it."""
-    read = measure.verbs_from((REPO_ROOT / measure.REGISTRY).read_text(encoding="utf-8"))
+    read = measure._load(REPO_ROOT)[3]
     live = [
         measure.Verb(entry.name, entry.module, entry.builder, entry.module_id)
         for entry in registry.landed_entries()
@@ -676,6 +676,28 @@ def test_a_planned_entry_is_not_a_landed_verb():
     assert measure.verbs_from(source) == [
         measure.Verb("a", "cratekit.a.cli", "build", "labels")
     ]
+
+
+def test_a_starred_name_is_followed_into_the_part_that_holds_its_tuple():
+    """The table is split over parts (U328): a part's rows and a constant of another source."""
+    registry = (
+        'UNIT = "U99"\n'
+        'ENTRIES = (Entry(name="a", module="cratekit.a.cli", builder="build"), *MORE)\n'
+    )
+    part = (
+        "MORE: tuple[Entry, ...] = (\n"
+        '    Entry(name="b", module="cratekit.b.cli", builder="build", module_id="labels"),\n'
+        '    Entry(name="c", module="cratekit.c.cli", builder="build", planned_in=UNIT),\n'
+        ")\n"
+    )
+    assert measure.verbs_from(registry, part) == [
+        measure.Verb("a", "cratekit.a.cli", "build", None),
+        measure.Verb("b", "cratekit.b.cli", "build", "labels"),
+    ]
+    with pytest.raises(ValueError, match="holds no MORE tuple"):
+        measure.verbs_from(registry)
+    with pytest.raises(ValueError, match="not an Entry"):
+        measure.verbs_from("ENTRIES = (*more.ROWS,)\n", part)
 
 
 # ── The real package ─────────────────────────────────────────────────────────
