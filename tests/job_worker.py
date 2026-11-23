@@ -1,24 +1,13 @@
 """A real out-of-process job driver, for the tests that need a process to kill.
 
-The unit's verification is "a long job killed at three different stages resumes
-correctly each time", and the only honest way to run it is with a process that
-genuinely dies. A thread cannot be SIGKILLed, an in-process fake cannot leave the
-driver lock behind for the kernel to release, and neither one exercises the
-question the engine actually answers: what does the NEXT process believe happened.
+Only a process that genuinely dies shows what the NEXT process believes
+happened. Modes:
 
-Three modes, one per property that needs a second process:
-
-``drive``  run the item loop, stalling forever on a named item so the parent can
-           kill it at a chosen point.
-``seam``   the same, but through ``cratekit.cli.handlers.run_job`` and the real
-           ``master`` handler, so the process that dies is running SHIPPED code
-           rather than a handler written beside the test. The two are different
-           claims: ``drive`` proves the engine's resume guarantee, ``seam`` proves
-           the binding does not lose it on the way through.
-``claim``  claim items as fast as possible with no driver lock, so two of these
-           racing prove the claim transaction is what serializes them.
-``hold``   take the driver lock and wait, so the parent can test that a live
-           holder is never evicted and a dead one's lock is reclaimed.
+``drive``  run the item loop, stalling forever on a named item.
+``seam``   the same through ``cratekit.cli.handlers.run_job`` and the real
+           ``master`` handler, so SHIPPED code dies.
+``claim``  claim items with no driver lock, racing another worker.
+``hold``   take the driver lock and wait.
 
 Not a test module: pytest does not collect it, and it is invoked only as a script.
 """
@@ -35,9 +24,8 @@ from cratekit.core import jobs
 #: enough that a bug in the parent fails the suite instead of hanging it.
 STALL_SECONDS = 120
 
-#: The one loudnorm report the ``seam`` mode's stand-in encoder answers every
-#: measure pass with. Same block as ``tests/test_master_cli.py``: without it the
-#: measurement is empty and the apply stage refuses long before an encode is built.
+#: The loudnorm report the ``seam`` mode's encoder answers every measure pass
+#: with, as ``tests/test_master_cli.py`` does.
 LOUDNORM = (
     '{"input_i": "-20.0", "input_lra": "5.0", "input_tp": "-3.0", '
     '"input_thresh": "-30.0", "target_offset": "0.5", "output_i": "-14.0", '
@@ -46,12 +34,7 @@ LOUDNORM = (
 
 
 def _append(ledger: Path, line: str) -> None:
-    """Record an ATTEMPT, flushed immediately.
-
-    Flushed because the process is about to be killed: an attempt recorded in a
-    buffer that never reached the disk would make a reprocessed item look like it
-    was never touched, which is the exact thing the test is counting.
-    """
+    """Record an ATTEMPT, flushed immediately, since the process is about to be killed."""
     with open(ledger, "a") as handle:
         handle.write(line + "\n")
         handle.flush()
@@ -73,18 +56,10 @@ def run_drive(db: Path, job_id: str, root: Path, ledger: Path, stall: str) -> in
 
 
 def seam_encoder(ledger: Path, *, stall: str = "", marker_dir: Path | None = None):
-    """The stand-in encoder both halves of the seam kill test use.
+    """The stand-in encoder both halves of the seam kill test use, one factory across interpreters.
 
-    ONE FACTORY RATHER THAN TWO COPIES. The parent test drives the second pass in
-    process and this module drives the first in a process it is about to lose, so
-    the two run in different interpreters and cannot share a closure. They can
-    share this, and a second hand-copied dispatch is one that drifts from the first
-    and then measures something slightly else while both stay green.
-
-    Each item's name is recorded before anything else happens to it, flushed, so an
-    attempt that dies mid encode is still counted. With ``stall`` set the encoder
-    writes a partial file, drops a marker the parent watches for, and then sleeps
-    until it is killed.
+    Each item's name is recorded and flushed first. With ``stall`` it writes a
+    partial file, drops the marker the parent watches for, and sleeps until killed.
     """
     from cratekit.modules.tools import mastering
 
@@ -100,11 +75,8 @@ def seam_encoder(ledger: Path, *, stall: str = "", marker_dir: Path | None = Non
         if "pcm_s24le" in argv:
             target.write_bytes(b"intermediate")
             return mastering.CommandResult(returncode=0)
-        # The encode's target is named for the SOURCE plus the engine's output
-        # suffix, so the recording's own name is what comes back out. Keying the
-        # stall on ``target.stem`` instead compares "three" against
-        # "three_mastered" and never fires, which reads as a handler that never
-        # ran rather than as a harness that never matched.
+        # The target is named for the SOURCE plus the output suffix, so stall on the
+        # recording's name; ``target.stem`` would never match.
         name = target.name[: -len(mastering.OUTPUT_SUFFIX)]
         _append(ledger, name)
         if stall and name == stall and marker_dir is not None:
@@ -120,10 +92,8 @@ def seam_encoder(ledger: Path, *, stall: str = "", marker_dir: Path | None = Non
 def run_seam(db: Path, job_id: str, root: Path, ledger: Path, stall: str) -> int:
     """Drive one job through the SHIPPED seam, stalling inside the real handler.
 
-    The stand-in encoder is installed on the module attribute the handler reads at
-    call time, which is the same seam ``tests/test_master_cli.py`` uses. The process
-    then dies with a claim held and a partial file in the job's staging directory,
-    which is exactly the state the resume has to survive.
+    The encoder is installed where the handler reads it at call time; the
+    process dies holding a claim with a partial file staged.
     """
     from cratekit.cli import handlers
     from cratekit.modules.tools import mastering
@@ -137,10 +107,7 @@ def run_seam(db: Path, job_id: str, root: Path, ledger: Path, stall: str) -> int
 def run_claim(db: Path, job_id: str, ledger: Path, barrier: Path) -> int:
     """Claim until the queue is empty, starting only once the barrier appears.
 
-    The barrier and the per-item pause exist so both processes are genuinely in
-    the loop at the same time. Without them the first worker to start drains the
-    whole queue before the second is done importing, and the test would pass while
-    proving nothing about two writers at once.
+    The barrier and pause keep both processes in the loop at once.
     """
     while not barrier.exists():
         time.sleep(0.01)
