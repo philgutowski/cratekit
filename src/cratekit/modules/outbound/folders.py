@@ -1,34 +1,24 @@
 """A followed label as a folder of year playlists on the streaming account (R-835).
 
-The source system keeps the account organised one way: for a label, one
-``<Label>`` folder holding one private ``<Label> <year>`` playlist per release
-year, each holding that year's tracks from the label's catalogue. This module is
-that shape, planned and then applied, against the account seam.
+The source system's shape: one ``<Label>`` folder holding one private
+``<Label> <year>`` playlist per release year of the label's catalogue, planned
+and then applied against the account seam.
 
-ADD ONLY. Nothing here takes a track, a playlist or a folder away. A track that
-has left the label's catalogue, that the genre gate now holds, or that the
-library removed through ``crate delete review`` (U243), is taken off
-a year playlist this product made by ``label prune`` (R-836), in
+ADD ONLY. A track that left the catalogue, that the genre gate holds, or that
+the library removed (U243) is taken off by ``label prune`` (R-836), in
 :mod:`cratekit.modules.outbound.prune`, behind its own gate.
 
-THE PLAN READS THE ACCOUNT AND WRITES NOTHING. It lists the root folders, the
-folder's playlists and each existing year playlist's tracks, and compares them
-with the catalogue and the ledger. What exists is reused, by the ledger's record
-first and by exact name under the folder second, and never made twice:
-
-* the folder: the one recorded, or the one root folder named exactly as the
-  label, or a new one. Two root folders under the label's name refuse, since
-  which one is the label's is not something a name decides.
-* a year: the playlist recorded for it, or the one playlist in the folder named
-  ``<Label> <year>`` or ``DOWNLOADED <Label> <year>``, the second being what the
-  label mark left before U242 retired the prefix, and the first what ``sync
-  strip`` leaves. Two such playlists leave that year alone, said in the plan.
+THE PLAN READS AND WRITES NOTHING. What exists is reused, by the ledger's record
+first and by exact name second, and never made twice: the folder recorded, or
+the one root folder named as the label (two refuse, since a name does not
+decide), or a new one; a year's recorded playlist, or the one in the folder
+named ``<Label> <year>`` or ``DOWNLOADED <Label> <year>`` (what the mark left
+before U242), two of which leave that year alone.
 
 THE APPLY RECORDS EACH WRITE AS IT LANDS, so a refusal part way leaves every
-folder, playlist and track already written recorded, and the next plan reads
-that record and the account and plans only what is left. Creating is never
-retried, by the adapter, and the ledger takes its lock before each create, so a
-ledger that cannot be written refuses before anything is made.
+write recorded and the next plan plans only what is left. A create is never
+retried, and the ledger locks before each one, so an unwritable ledger refuses
+before anything is made.
 
 Layer: modules.
 """
@@ -37,6 +27,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 from cratekit.core import config
@@ -46,9 +37,9 @@ from cratekit.modules.outbound.service import RemoteAccount
 
 _ORIGIN = ("outbound", "folders")
 
-#: The prefix the label mark put on a year playlist before U242 retired it,
-#: spelled as the sweep spells it. Still read, never written. Repeated here rather than imported, since ``sync.playlists`` is a
-#: core module that imports the label catalogue, and a test pins the two equal.
+#: The prefix the label mark put on a year playlist before U242, still read and
+#: never written. Spelled here, since ``sync.playlists`` is a core module that
+#: imports the label catalogue, and a test pins the two equal.
 MARK_PREFIX = "DOWNLOADED "
 
 #: What happens to the folder, and to each year playlist.
@@ -61,8 +52,7 @@ AMBIGUOUS = "ambiguous"
 #: and could not be read, which is what one deleted on the account looks like.
 UNREADABLE = "unreadable"
 
-#: How many tracks one add carries, so each chunk is recorded as it lands
-#: rather than a whole year after its last chunk.
+#: How many tracks one add carries, so each chunk is recorded as it lands.
 CHUNK = 100
 
 
@@ -75,9 +65,9 @@ def year_name(label: str, year: str) -> str:
 class LabelCatalogue:
     """One label's catalogue as the product crawled it, grouped by release year.
 
-    ``years`` maps a four digit year to the provider track identifiers of that
-    year's confirmed releases, in catalogue order and each once. The counts are
-    the releases read and NOT grouped, so a plan can say what it left out.
+    ``years`` maps a year to the provider tracks of its confirmed releases, in
+    catalogue order and each once. The counts are the releases read and NOT
+    grouped, so a plan can say what it left out.
     """
 
     label_id: str
@@ -88,17 +78,13 @@ class LabelCatalogue:
     dropped: int = 0
     gone: int = 0
     suppressed: int = 0
-    #: Every confirmed release whose tracks were read, release identifier to
-    #: its year, empty when undated, and every track it carries, playable or
-    #: not (R-836). The prune reads it to tell a held release's tracks from a
-    #: kept one's.
+    #: Every confirmed release read, to its year, empty when undated, and every
+    #: track it carries, playable or not (R-836), for the prune.
     by_release: Mapping[str, tuple[str, tuple[str, ...]]] = field(default_factory=dict)
-    #: Releases the verifier answered ``mismatch``, credited to another label,
-    #: which is what the prune reads as the catalogue no longer confirming one.
+    #: Releases the verifier credited to another label, no longer confirmed.
     mismatched: tuple[str, ...] = ()
-    #: Tracks of a release the read reached that the library removed on purpose,
-    #: a tombstone standing over their artist and title (U243). Already left out
-    #: of ``years``, so no build adds one; the prune takes them off.
+    #: Tracks the library removed on purpose, a tombstone over their artist and
+    #: title (U243), left out of ``years``; the prune takes them off.
     tombstoned: tuple[str, ...] = ()
 
 
@@ -140,9 +126,8 @@ class Plan:
 
     def identity(self) -> dict[str, Any]:
         """What the digest is taken over: every write, and nothing that is said."""
-        # THE TITLES ARE WRITES TOO. A folder and a year playlist are created
-        # under them, so a name changed after the plan was shown is a stale
-        # decision rather than a playlist nobody saw the title of.
+        # The titles are writes too: a name changed after the plan was shown
+        # is a stale decision, not a playlist nobody saw the title of.
         return {
             "kind": "label-playlists",
             "label": self.catalogue.label_id,
@@ -209,14 +194,12 @@ def plan(cfg: config.Config, catalogue: LabelCatalogue, account: RemoteAccount) 
     for year in sorted(catalogue.years):
         wanted = tuple(dict.fromkeys(catalogue.years[year]))
         name = year_name(catalogue.name, year)
+        step = partial(YearStep, year, tracks=len(wanted))
         recorded = shape.years.get(year)
         if recorded is not None:
-            # A TRACK RECORDED AS ADDED AND NO LONGER ON THE PLAYLIST was taken
-            # off by a person, and is not put back. Nor is one refused before.
-            # So a year whose every track is recorded, in the folder where it
-            # was put, has nothing to add and its playlist is not read at all.
-            # Nor one a prune took off (R-836), or the build would put back
-            # what the prune just took away.
+            # A track recorded as added and gone was taken off by a person, and
+            # one refused or pruned (R-836) is not asked again, so a placed year
+            # whose every track is recorded is not read at all.
             asked = recorded.added | recorded.refused | recorded.pruned
             placed = recorded.remote_id in inside
             if placed and set(wanted) <= asked:
@@ -227,81 +210,42 @@ def plan(cfg: config.Config, catalogue: LabelCatalogue, account: RemoteAccount) 
                 except CratekitError as exc:
                     if placed or exc.cause.reason != "unavailable-transient":
                         raise
-                    steps.append(
-                        YearStep(
-                            year=year,
-                            name=recorded.name or name,
-                            action=UNREADABLE,
-                            remote_id=recorded.remote_id,
-                            tracks=len(wanted),
-                            why=(
-                                "the playlist recorded for this year is not in the "
-                                "folder and could not be read, so it may have been "
-                                "deleted on the account; nothing is made in its place"
-                            ),
-                        )
-                    )
+                    steps.append(step(
+                        recorded.name or name,
+                        UNREADABLE,
+                        recorded.remote_id,
+                        why=(
+                            "the playlist recorded for this year is not in the "
+                            "folder and could not be read, so it may have been "
+                            "deleted on the account; nothing is made in its place"
+                        ),
+                    ))
                     continue
             skip = held | asked
-            steps.append(
-                YearStep(
-                    year=year,
-                    name=recorded.name or name,
-                    action=REUSE,
-                    remote_id=recorded.remote_id,
-                    move=not placed,
-                    add=tuple(one for one in wanted if one not in skip),
-                    tracks=len(wanted),
-                )
-            )
+            steps.append(step(
+                recorded.name or name,
+                REUSE,
+                recorded.remote_id,
+                move=not placed,
+                add=tuple(one for one in wanted if one not in skip),
+            ))
             continue
         matching = sorted(
             pid for pid, title in inside.items() if title in (name, MARK_PREFIX + name)
         )
         if len(matching) > 1:
-            steps.append(
-                YearStep(
-                    year=year,
-                    name=name,
-                    action=AMBIGUOUS,
-                    tracks=len(wanted),
-                    why=(
-                        f"the folder holds {len(matching)} playlists named {name!r}, "
-                        f"so which one is the year's is not something a name decides"
-                    ),
-                )
-            )
-            continue
-        if matching:
+            steps.append(step(name, AMBIGUOUS, why=(
+                f"the folder holds {len(matching)} playlists named {name!r}, "
+                f"so which one is the year's is not something a name decides"
+            )))
+        elif matching:
             held = set(account.playlist_tracks(matching[0]))
             steps.append(
-                YearStep(
-                    year=year,
-                    name=name,
-                    action=ADOPT,
-                    remote_id=matching[0],
-                    add=tuple(one for one in wanted if one not in held),
-                    tracks=len(wanted),
-                )
+                step(name, ADOPT, matching[0], add=tuple(one for one in wanted if one not in held))
             )
-            continue
-        steps.append(
-            YearStep(
-                year=year,
-                name=name,
-                action=CREATE,
-                move=True,
-                add=wanted,
-                tracks=len(wanted),
-            )
-        )
-    return Plan(
-        catalogue=catalogue,
-        folder_action=folder_action,
-        folder_id=folder_id,
-        stale_folder=stale,
-        years=tuple(steps),
-    )
+        else:
+            steps.append(step(name, CREATE, move=True, add=wanted))
+    return Plan(catalogue, folder_action, folder_id, stale, tuple(steps))
 
 
 def apply(cfg: config.Config, account: RemoteAccount, planned: Plan, done: Applied) -> Applied:
@@ -312,10 +256,7 @@ def apply(cfg: config.Config, account: RemoteAccount, planned: Plan, done: Appli
     """
     catalogue = planned.catalogue
     folder_id, created = ledger.reserve_label_folder(
-        cfg,
-        catalogue.label_id,
-        catalogue.name,
-        lambda: account.create_folder(catalogue.name),
+        cfg, catalogue.label_id, catalogue.name, lambda: account.create_folder(catalogue.name),
         adopt=planned.folder_id if planned.folder_action == ADOPT else "",
         stale=planned.stale_folder,
     )
@@ -324,10 +265,7 @@ def apply(cfg: config.Config, account: RemoteAccount, planned: Plan, done: Appli
         if step.action in (AMBIGUOUS, UNREADABLE):
             continue
         remote_id, made = ledger.reserve_label_year(
-            cfg,
-            catalogue.label_id,
-            step.year,
-            step.name,
+            cfg, catalogue.label_id, step.year, step.name,
             lambda step=step: account.create_playlist(step.name),
             adopt=step.remote_id if step.action == ADOPT else "",
         )
@@ -351,18 +289,6 @@ def apply(cfg: config.Config, account: RemoteAccount, planned: Plan, done: Appli
 
 
 __all__ = [
-    "ADOPT",
-    "AMBIGUOUS",
-    "Applied",
-    "CHUNK",
-    "CREATE",
-    "LabelCatalogue",
-    "MARK_PREFIX",
-    "Plan",
-    "REUSE",
-    "UNREADABLE",
-    "YearStep",
-    "apply",
-    "plan",
-    "year_name",
+    "ADOPT", "AMBIGUOUS", "Applied", "CHUNK", "CREATE", "LabelCatalogue", "MARK_PREFIX",
+    "Plan", "REUSE", "UNREADABLE", "YearStep", "apply", "plan", "year_name",
 ]

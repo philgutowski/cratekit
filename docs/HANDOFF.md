@@ -368,7 +368,9 @@ will never touch, which is what makes "nothing was dropped" a set comparison
 instead of a count. `adopt/approval.py` refuses every blanket affirmative at
 runtime (R34). `adopt/apply.py` applies one entry at a time and resumes by entry
 IDENTIFIER rather than by position. `adopt/revert.py` is the undo log for the one
-write that sits outside the database snapshot entirely.
+write that sits outside the database snapshot entirely, with its document in
+`adopt/revert_record.py` and its evidence of a changed file in
+`adopt/revert_changed.py` (U310).
 
 **`adopt scan` ships as a command line; `adopt apply` does not.** The census
 verb queues its work through the job engine and reports a `job_state` envelope,

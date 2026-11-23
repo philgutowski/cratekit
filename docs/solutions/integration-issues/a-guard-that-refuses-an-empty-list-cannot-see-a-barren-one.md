@@ -2,7 +2,7 @@
 title: A guard that refuses an empty list cannot see a barren one
 date: 2026-09-10
 category: integration-issues
-module: "src/cratekit/core/session.py, src/cratekit/write/trees.py, src/cratekit/write/rebuild.py"
+module: "src/cratekit/core/session.py, src/cratekit/write/trees.py, src/cratekit/write/rebuild.py, src/cratekit/core/session_analysis.py"
 problem_type: integration_issue
 component: write_session
 root_cause: incorrect_assumption

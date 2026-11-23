@@ -1,19 +1,11 @@
 """U241: ``analyze run`` measures its heads ahead of the driver, with no worse results.
 
-The claim is "the same answer, sooner", so the first test here runs one folder
-twice through the real verb, once on a machine refused a pool and once on a
-machine that affords four workers, and holds the two folders to the same
-bytes: every file's name, every file's content after the tag write, every
-committed report and every item's state. The rest drive the ways a head
-measured ahead can stop being the head the driver would measure, and what the
-run says about its pool on both of a queued verb's exits.
-
-THE WORKERS ARE REAL. Every pooled case spawns children that import this
-module by name, which is why the detector here is a module level function
-rather than the closure the other analysis suites bind: a closure cannot
-reach a spawned child, and a pool that was never crossed proves nothing about
-crossing it. The machine is not real: cores, available memory and pressure are
-injected, so no case depends on what this container is doing.
+The first test runs one folder through the real verb refused a pool and
+affording four workers and holds the two to the same bytes; the rest drive
+each way a head measured ahead stops being the driver's, and what the run says
+about its pool on both exits. THE WORKERS ARE REAL, so the detector is a module
+level function a spawned child can import; the machine's cores and memory are
+injected.
 """
 
 from __future__ import annotations
@@ -49,17 +41,11 @@ SEEN = "CRATEKIT_AHEAD_SEEN"
 DRIVER = "CRATEKIT_AHEAD_DRIVER"
 
 
-# ---------------------------------------------------------------------------
-# A detector a spawned worker can import
-# ---------------------------------------------------------------------------
-
-
 def fake_head(path: Path) -> dict | None:
-    """A head read off the file's NAME, the same in every process, marked with who read it.
+    """A head read off the file's NAME, marked with who read it.
 
-    The names steer it: ``slow`` waits in a worker, so later files finish
-    first; ``dies`` takes its worker down; ``raises`` raises wherever it runs;
-    ``keyless`` finds no key; ``broken`` could not be decoded.
+    ``slow`` waits in a worker, ``dies`` takes it down, ``raises`` raises,
+    ``keyless`` finds no key, ``broken`` could not be decoded.
     """
     name = path.name
     in_a_worker = str(os.getpid()) != os.environ.get(DRIVER, "")
@@ -91,11 +77,6 @@ def fake_head(path: Path) -> dict | None:
 def bind_fake_in_a_worker() -> None:
     """A worker's initializer: the same detector the driver has bound."""
     light.bind_detect(fake_head)
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -200,11 +181,6 @@ def pool_check(envelope: dict) -> dict:
     return check
 
 
-# ---------------------------------------------------------------------------
-# No worse results: the pooled run against the serial run, on the same inputs
-# ---------------------------------------------------------------------------
-
-
 def test_a_pooled_run_leaves_exactly_what_the_serial_run_leaves(
     cfg, silence, tmp_path, monkeypatch, bound
 ):
@@ -285,11 +261,6 @@ def test_a_file_carrying_its_head_and_a_file_that_is_gone_are_never_sent_to_a_wo
     assert set(measured_by(bound)) == {"fresh.flac", "more.flac"}
     pool_step = resumed["cause"]["remediation"]["steps"][-1]
     assert "2 of 2 waiting file(s) were read from them" in pool_step
-
-
-# ---------------------------------------------------------------------------
-# The check line, on a machine of each kind
-# ---------------------------------------------------------------------------
 
 
 def test_a_healthy_machine_says_how_many_workers_and_that_the_ceiling_held_it(
@@ -553,11 +524,6 @@ def test_a_closure_bound_by_a_test_is_never_sent_to_a_worker(cfg, silence, tmp_p
     )
 
 
-# ---------------------------------------------------------------------------
-# The other exit: a run that failed, and a run that was stopped
-# ---------------------------------------------------------------------------
-
-
 def test_a_run_that_fails_part_way_says_its_pool_on_the_refusal_and_matches_the_serial_run(
     cfg, silence, tmp_path, monkeypatch
 ):
@@ -652,11 +618,6 @@ def test_a_worker_that_dies_costs_the_run_nothing_but_its_pool(
     code, serial = drive(["analyze", "run", str(serial_folder)])
     assert code == int(ExitCode.OK), serial
     assert what_is_on_disk(folder) == what_is_on_disk(serial_folder)
-
-
-# ---------------------------------------------------------------------------
-# A head measured ahead that the driver must not use
-# ---------------------------------------------------------------------------
 
 
 def _session(tmp_path, silence, monkeypatch, names, settings=None) -> tuple[ahead.Session, list[str]]:
@@ -876,11 +837,6 @@ def test_an_unreadable_calibration_is_each_items_refusal_and_opens_no_pool(
         "one worker, this process: the energy calibration could not be read"
     )
     assert multiprocessing.active_children() == []
-
-
-# ---------------------------------------------------------------------------
-# What a light worker costs, and the pool planned from it
-# ---------------------------------------------------------------------------
 
 
 def test_a_light_workers_cost_is_the_measured_line_in_the_tracks_length():
@@ -1153,11 +1109,6 @@ def test_the_batch_runner_plans_the_same_pool_the_job_does(monkeypatch):
     monkeypatch.setattr(light, "_DETECT", fake_head)
     results = light.run(["a.flac", "keyless b.flac"])
     assert [found["terminal"] for found in results] == [None, "skipped-no-key"]
-
-
-# ---------------------------------------------------------------------------
-# The report's forms
-# ---------------------------------------------------------------------------
 
 
 def test_a_run_nobody_planned_a_pool_for_reports_one_worker_and_why():

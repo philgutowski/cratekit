@@ -1,34 +1,15 @@
 """The root folder each kind of playlist is filed in, by a rule a person can read (U131).
 
-THE SCHEME KEEPS THE ACCOUNT'S ROOT SHAPES. A followed label's playlists sit in
-a root folder named as the label (R-835); an archived set and a marked custom
-playlist sit in a root folder named as the year (R-837, U116). This module adds
-the two kinds those leave at the root:
+Beside the root shapes already kept (a label's folder, R-835; the ``<year>``
+folder, R-837, U116; the mirrors, U147), two kinds get a folder: ``Exports``,
+every playlist ``export playlist`` made, and ``Mine``, every root playlist no
+ledger claims except a set waiting for its archive. A kind's folder is the one
+recorded and still listed, else the one root folder of its name, else a new
+one; two of that name leave its playlists where they are. ADD ONLY.
 
-* ``Exports``, every playlist ``export playlist`` made, by the ledger's record;
-* ``Mine``, every playlist at the root that no ledger claims, which is the
-  author's own, except a set still waiting for its archive.
-
-A kind's folder is found the way a year's is: the folder recorded for the kind
-and still listed at the root, else the one root folder named as the kind, else
-a new one made on apply. Two root folders under the kind's name leave the
-kind's playlists where they are, since a name does not decide which is meant.
-
-ADD ONLY. A folder is created and a playlist is put in one. Nothing is renamed
-or removed.
-
-THE ROOT'S PRODUCT FOLDERS GAINED THE MIRRORS (U147). Besides a label's folder,
-``Mine``, ``Exports``, ``<year>`` and ``Downloaded Sets <year>``, the root
-holds one folder per genre folder of the routing tree and one ``Favorites``,
-each named exactly as its rekordbox folder and kept by ``crate organize``'s
-mirror step (:mod:`cratekit.modules.outbound.mirror`). The ledger records each
-under ``mirrors``, so no filing step reads one as a person's.
-
-THE ROOT'S OTHER SHAPES ARE NAMED HERE TOO (U143), the words the organize root
-step plans by and the account adapter checks a removal against, so the two read
-one rule: the two kinds of root playlist the account sheds, the source system's
-label debris and an empty playlist, and the legacy year folder a person made
-for one year's custom playlists before the product filed them in ``<year>``.
+The root's other shapes are named here too (U143), so the organize root step
+and the adapter's removal check read one rule: the two kinds of root playlist
+the account sheds, and the legacy year folder a person made.
 
 Layer: modules.
 """
@@ -53,14 +34,14 @@ REUSE = "reuse"
 ADOPT = "adopt"
 LEFT = "left"
 
-#: The two kinds of root playlist a removal may name (U143): a playlist whose
-#: name carries the source system's label batch suffix, and one holding nothing.
+#: The two kinds of root playlist a removal may name (U143): one named with the
+#: source system's label batch suffix, and one holding nothing.
 DEBRIS = "debris"
 EMPTY = "empty"
 ROOT_REMOVALS = (DEBRIS, EMPTY)
 
-#: A legacy year folder's name, a year and these words, case exactly. The one
-#: kind of folder a person made that organize may empty and then remove.
+#: A legacy year folder's name, case exactly: the one kind of folder a person
+#: made that organize may empty and then remove.
 _LEGACY_YEAR = re.compile(r"([0-9]{4}) Custom Playlists")
 
 
@@ -81,8 +62,8 @@ class KindFolder:
     stale: str = ""
     #: Set when the kind cannot be placed, and then nothing of the kind moves.
     why: str = ""
-    #: Whether this product made the folder, by the ledger, so a playlist may
-    #: be moved out of it again. A folder adopted by its name never is.
+    #: Whether this product made the folder, so a playlist may be moved out of
+    #: it again. One adopted by its name never is.
     made: bool = False
 
 
@@ -93,15 +74,10 @@ def decide(cfg: config.Config, kind: str, root: Mapping[str, str]) -> KindFolder
         return KindFolder(kind, REUSE, recorded.folder_id, made=recorded.created)
     named = sorted(folder_id for folder_id, title in root.items() if title == kind)
     if len(named) > 1:
-        return KindFolder(
-            kind,
-            LEFT,
-            stale=recorded.folder_id,
-            why=(
-                f"the account holds {len(named)} root folders named {kind!r}, so which "
-                f"one is the kind's is not something its name decides"
-            ),
-        )
+        return KindFolder(kind, LEFT, stale=recorded.folder_id, why=(
+            f"the account holds {len(named)} root folders named {kind!r}, so which "
+            f"one is the kind's is not something its name decides"
+        ))
     if named:
         return KindFolder(kind, ADOPT, named[0], stale=recorded.folder_id)
     return KindFolder(kind, CREATE, stale=recorded.folder_id)
@@ -122,22 +98,20 @@ def reserve(
             made.append(folder.kind)
         return folder_id
 
-    folder_id, _created = ledger.reserve_kind_folder(
+    return ledger.reserve_kind_folder(
         cfg,
         folder.kind,
         create,
         adopt=folder.folder_id if folder.action == ADOPT else "",
         stale=folder.stale,
-    )
-    return folder_id
+    )[0]
 
 
 def token(folder: KindFolder) -> str:
     """What a gate's digest covers of one kind folder decision, as one string.
 
-    The kind, the action and the folder identifier: a folder made, adopted or
-    removed on the account between the ask and the answer changes it, so the
-    old answer is stale rather than authorising a write nobody was shown.
+    A folder made, adopted or removed between the ask and the answer changes
+    it, so the old answer is stale rather than authorising an unseen write.
     """
     return f"{folder.kind}:{folder.action}:{folder.folder_id}"
 
@@ -147,11 +121,10 @@ def file_new(
 ) -> str:
     """Put a playlist the product just made into its kind's folder; answer why not.
 
-    ``planned`` is the :func:`token` the gate showed and its digest covered.
-    The decision is made again now and the move is made only when it is the
-    one shown; a different one, or none shown, leaves the playlist at the root
-    for ``crate organize`` to file, with the reason. Answers ``""`` once filed.
-    A failure is raised to the caller.
+    ``planned`` is the :func:`token` the gate showed. The decision is made again
+    and the move made only when it is the one shown; otherwise the playlist
+    stays at the root for ``crate organize``, with the reason. Answers ``""``
+    once filed; a failure is raised.
     """
     if not planned:
         return "the gate that queued this export planned no filing"
@@ -168,20 +141,6 @@ def file_new(
 
 
 __all__ = [
-    "ADOPT",
-    "CREATE",
-    "DEBRIS",
-    "EMPTY",
-    "EXPORTS",
-    "KINDS",
-    "KindFolder",
-    "LEFT",
-    "MINE",
-    "REUSE",
-    "ROOT_REMOVALS",
-    "decide",
-    "file_new",
-    "legacy_year",
-    "reserve",
-    "token",
+    "ADOPT", "CREATE", "DEBRIS", "EMPTY", "EXPORTS", "KINDS", "KindFolder", "LEFT", "MINE",
+    "REUSE", "ROOT_REMOVALS", "decide", "file_new", "legacy_year", "reserve", "token",
 ]

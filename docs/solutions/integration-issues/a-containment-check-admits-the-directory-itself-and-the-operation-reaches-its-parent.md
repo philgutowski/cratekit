@@ -2,7 +2,7 @@
 title: "A containment check admits the authorised directory itself, and the operation it guards then reaches that directory's parent"
 date: 2026-09-20
 category: integration-issues
-module: "src/cratekit/core/restore.py, tests/test_restore.py, docs/mutation/u95-c-rows.toml"
+module: "src/cratekit/core/restore.py, tests/test_restore.py, docs/mutation/u95-c-rows.toml, src/cratekit/core/restore_perform.py"
 problem_type: integration_issue
 component: restore
 severity: high

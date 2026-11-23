@@ -4305,6 +4305,12 @@ AUTHORED_GLOBS = ("src/**/*.py", "tests/**/*.py", "scripts/**/*.py", "docs/**/*.
 FINDINGS_DOCUMENT = "docs/residual-findings.md"
 
 
+def findings_documents() -> list[str]:
+    """The residual document's archives by number range (U314), then the document."""
+    archives = sorted((REPO_ROOT / "docs" / "ledger").glob("*.md"))
+    return [path.relative_to(REPO_ROOT).as_posix() for path in archives] + [FINDINGS_DOCUMENT]
+
+
 def authored_sources() -> list[tuple[str, str]]:
     """Every file the citation rule is allowed to look at, as (relative, text)."""
     found: dict[str, str] = {}
@@ -4342,7 +4348,7 @@ def owned_sources() -> list[str]:
     restore residual by number, both
     belonging to that residual's owner rather than to this unit.
     """
-    found = {FINDINGS_DOCUMENT}
+    found = set(findings_documents())
     for relative, text in authored_sources():
         if CITATION.search(text):
             found.add(relative)
@@ -4363,7 +4369,7 @@ def residual_headings() -> list[tuple[str, str]]:
     "exactly one distinct heading TEXT", not "exactly one heading", which is this
     repository's recurring identity defect inside the artifact built to stop it.
     """
-    document = (REPO_ROOT / FINDINGS_DOCUMENT).read_text()
+    document = "".join((REPO_ROOT / name).read_text() for name in findings_documents())
     found = []
     for line in document.splitlines():
         if line.startswith("## R-") and ". " in line:
@@ -4390,7 +4396,8 @@ def test_a_residual_heading_names_exactly_one_finding():
     """
     headings = residual_headings()
     assert headings, (
-        "no residual headings were found in docs/residual-findings.md, so every "
+        "no residual headings were found in docs/residual-findings.md or its "
+        "archives, so every "
         "citation check below would pass over nothing"
     )
     titles = [title for _number, title in headings]
@@ -4477,6 +4484,7 @@ def test_every_residual_this_unit_cites_is_cited_by_title():
     )
 
     numbered = {}
+    documents = set(findings_documents())
     for relative, source in authored_sources():
         # THE RESIDUAL DOCUMENT IS EXEMPT FROM THE NUMBER BAN, and only from that
         # half. Decided 2026-08-10, when residual numbers became APPEND ONLY: a
@@ -4486,7 +4494,7 @@ def test_every_residual_this_unit_cites_is_cited_by_title():
         # references its own findings. The ban still covers CODE, which is the
         # surface where a citation could repoint at another unit's finding with
         # nothing failing. Both title halves above still cover this file.
-        if relative not in covered or relative == FINDINGS_DOCUMENT:
+        if relative not in covered or relative in documents:
             continue
         hits = [
             match
@@ -4524,7 +4532,7 @@ def test_the_covered_file_set_is_derived_and_reaches_what_the_unit_touched():
         "tests/test_review_queue.py",
         "src/cratekit/cli/exit_codes.py",
         "tests/modules/test_tools.py",
-        FINDINGS_DOCUMENT,
+        *findings_documents(),
     } <= covered, (
         f"the derivation lost a file that carries citations: {sorted(covered)}"
     )

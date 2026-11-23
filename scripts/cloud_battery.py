@@ -1,98 +1,19 @@
 #!/usr/bin/env python3
 """The battery on a Linux cloud container, where part of the suite cannot pass.
 
-The suite is a macOS proof. On Linux about 170 tests fail or error for reasons
-bound to the machine: `hdiutil` volumes, the timing calibration pinned to the
-Mac that wrote it, darwin paths, APFS normalisation. METHOD says the battery is
-the merge gate and CI does not run the suite for exactly this reason, so a cloud
-session cannot read "red" as "mine" and cannot read it as "not mine" either.
-
-This makes the comparison the earlier cloud builder made by hand, once per
-failing id: the failures on the base, measured on this same machine, are the
-machine's; anything failing on the branch that did not fail on the base is the
-branch's. Nothing is skipped, deselected or marked, so a test the branch fixes
-shows up as gone and a test it breaks shows up as new.
+About 170 tests fail on Linux for reasons bound to the machine, so the failures
+on the base, measured on this machine, are the machine's, and anything failing
+on the branch that did not fail on the base is the branch's. Nothing is skipped.
 
     .venv/bin/python scripts/cloud_battery.py baseline      # on the base commit
     .venv/bin/python scripts/cloud_battery.py compare       # on the branch
 
-`baseline` runs the suite on the checked out tree and writes the failing ids to
-`.cloud-battery/baseline.txt` with the commit it measured, so a session runs it
-once, on `origin/main`, before it branches. `compare` runs the suite again and
-prints three lists: still failing (the machine's), newly failing (yours), and
-no longer failing (the branch fixed them, or the test went away). It exits 1
-when anything is newly failing, 2 when there is no baseline to compare against,
-and 0 otherwise. Both run ruff and the scan first, and stop if either is red,
-since those two must be clean on any platform.
-
-The state directory is gitignored. A baseline measured on another machine is
-not a baseline, so the file names its commit and the hostname it was measured
-on and `compare` refuses one from elsewhere.
-
-Both verbs read the clone's full history first (U200, from R-1191). A cloud
-clone is shallow, so a test that reads an old commit fails on the base for
-want of it, and a failure subtracted by node id hides every later failure of
-that test, whatever its cause: that is how U195's defect reached `main`. So a
-shallow clone is unshallowed from `origin main` before anything is measured,
-and refused when the fetch cannot complete it. The baseline's header says
-`history full`, and `compare`, like `scripts/mutate.py --known-failures`,
-refuses a baseline that does not say so.
-
-Every failing id is read whole (U268). The ids used to be cut out of pytest's
-`-rfE` summary lines up to their first space, and 1,829 of the suite's ids hold
-one, so two parametrized tests whose ids differ only after a space were one
-entry: one failing on the base for the machine's reason excused the other
-failing on the branch for the branch's. The suite run now loads a small
-reporting plugin that writes, at the end of the run, the node id of every
-report pytest's own terminal filed as failed or as an error, the very reports
-those summary lines were printed from. The run is refused when the plugin
-wrote nothing or its counts disagree with pytest's summary line. The header's
-last field is `ids whole`, and `compare` and the driver refuse a baseline
-without it, which is every baseline measured before U268.
-
-Each run that reaches its reading leaves a record the mutation driver may read
-in place of its own full baseline (U271, Phillip's answer of 2026-11-13): `.cloud-battery/verdict.json`,
-written by `compare` and by `baseline`. It names the commit the run measured,
-read before the run, and whether the tree was clean throughout, read by
-`git status --porcelain --untracked-files=all` before and after it, with HEAD
-unmoved; the host and
-the kernel's boot id, since every cloud container is called `vm`; the checkout
-and the interpreter; the sha256 of the known failures file the run was read
-against; any `PYTEST_ADDOPTS` the run inherited; the verdict; and what the run
-measured: the collected count, how many of those tests ran, pytest's exit
-code, the failing ids and the collection errors. `scripts/mutate.py` reads
-it only when every one of those keys is its own, and measures otherwise.
-`last-compare.txt`, the line `release.py cut` reads, takes its commit from
-before the run too and says `dirty` when the tree moved during it.
-
-Every run keeps its temporary files in one named place (U273), `memory` or
-`disk`, chosen by `baseline` and written into its header, since the suite
-writes about 2 GB of scratch files a run and a container's disk makes it wait
-on them. `baseline` runs on disk unless `--temp memory` asks for the memory
-filesystem, `/dev/shm`, which it refuses unless that is a memory filesystem
-with room for a run (a `tmpfs`; a `ramfs` reports no size and so never has
-room, though a disk run whose temporary directory is on one is refused).
-`compare` runs in the baseline's place and refuses a `--temp` naming the
-other, so the base and the branch are always measured on the same machine. A run in either place gets a fresh directory there as `TMPDIR`,
-removed when it ends, and a disk run whose temporary directory is itself on a
-memory filesystem is refused, so neither place is ever a name only.
-
-A few tests need a real disk, named in `ON_DISK` (one today: a file on a
-memory filesystem gets an inode far below the bound the test reads). In
-memory the whole suite runs, these included, and then the named tests run a
-second time on disk, and for them the disk run's outcome is the one recorded.
-Nothing is skipped or deselected. The header names the place, the baseline
-lists the tests it ran on disk, and `scripts/mutate.py --known-failures`
-reads both and runs its own children the same way. A baseline that names no
-place, every one measured before U273, is refused with the command that
-measures it again.
-
-A run in memory writes the run record U271 reads like any other: its failing
-ids are the ones after the rerun on disk, and its collected and ran counts
-are the memory run's, which ran every test. The record names the known
-failures file by digest, and that file's header names the place, so the
-driver never reads a run made in one place against a baseline made in the
-other.
+`compare` exits 1 when anything is newly failing, 2 when there is no baseline
+for this machine, and 0 otherwise. Both verbs stop on a red ruff or scan, and
+unshallow a shallow clone first (U200). Every failing id is read whole off a
+reporting plugin (U268). Each run writes `.cloud-battery/verdict.json` for the
+mutation driver (U271). Temporary files go in one named place, `disk` or
+`memory` (U273), and in memory the `ON_DISK` tests run again on disk.
 """
 
 from __future__ import annotations
@@ -116,85 +37,44 @@ ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / ".cloud-battery"
 BASELINE = STATE / "baseline.txt"
 VERDICT = STATE / "last-compare.txt"
-#: The run record's file name, inside ``STATE``, and the format the mutation
-#: driver reads (U271). The name and the format are repeated in
-#: ``scripts/mutate.py`` as ``BATTERY_VERDICT`` and ``BATTERY_VERDICT_FORMAT``,
-#: and a test holds the two scripts to the same values.
+#: A test holds these equal to `scripts/mutate.py`'s `BATTERY_VERDICT` and its format.
 RUN_RECORD_NAME = "verdict.json"
 RUN_RECORD_FORMAT = 1
-#: Linux's id for this boot of the kernel. Every cloud container is called
-#: `vm`, so the host name alone names no machine; the boot id does, and it is
-#: the same key `scripts/mutate.py` reads. Absent on macOS, where both read it
-#: as empty.
+#: Every cloud container is called `vm`, so the boot id names the machine. Absent on macOS.
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
 PYTHON = ROOT / ".venv" / "bin" / "python"
 RUFF = ROOT / ".venv" / "bin" / "ruff"
 
-#: The header field saying the clone's whole history was present (U200).
+#: Header fields: whole history (U200), whole ids (U268), the temporary files' place (U273).
 FULL_HISTORY = "history full"
-#: The header's last field, saying every id was stored whole (U268). `compare`
-#: and the mutation driver require both.
 WHOLE_IDS = "ids whole"
-
-#: The header field naming where the run kept its temporary files (U273).
 TEMP_FIELD = "temp"
 MEMORY = "memory"
 DISK = "disk"
 PLACES = (MEMORY, DISK)
 
-#: The memory filesystem a run in memory makes its directory in, the filesystem
-#: types read as memory, and the free space it must have before a run starts.
-#: A run writes about 2 GB; a container whose `/dev/shm` is small, Docker's
-#: default is 64 MB, would fill it partway and fail tests for want of space,
-#: and a failure in the baseline is subtracted unread from every compare.
+#: A run writes about 2 GB, and filling a memory filesystem fails tests for want of space.
 MEMORY_ROOT = Path("/dev/shm")
 MEMORY_FILESYSTEMS = frozenset({"tmpfs", "ramfs"})
 MEMORY_FLOOR = 6 * 2**30
 MOUNTS = Path("/proc/self/mounts")
 
-#: The tests that need a real disk, run a second time on disk after a run in
-#: memory, each by its whole node id. Keep it short: a test on it is measured
-#: twice, and only the disk run counts for it.
+#: Run again on disk after a run in memory: a memory filesystem's inodes sit below its bound.
 ON_DISK: tuple[str, ...] = (
-    # A memory filesystem hands a new file an inode in the thousands, and the
-    # test needs one above the repair bound of 2,000,000, which the Mac's APFS
-    # counter and, usually, the container's ext4 give.
     "tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random",
 )
 
-#: Where `baseline` runs when `--temp` names no place. Disk, decided by U273 as
-#: the conservative call while Phillip decides: on the container a file on disk
-#: gets an inode near 600,000 unless a busy run has already written gigabytes,
-#: so the one test on `ON_DISK` fails when it runs there alone, and a baseline
-#: in memory would read it as the machine's where the disk battery mostly
-#: passes it. A test newly read as the machine's is never traded for speed
-#: without his say.
+#: Disk by default (U273): a test newly read as the machine's is never traded for speed.
 DEFAULT_PLACE = DISK
 
 #: The command that measures a baseline again, named in every refusal of one.
 REMEASURE = "`.venv/bin/python scripts/cloud_battery.py baseline` on origin/main"
 
-#: The reporting plugin's module name and the variable naming its output file.
 PLUGIN_MODULE = "cratekit_cloud_battery_report"
 REPORT_VARIABLE = "CLOUD_BATTERY_REPORT_PATH"
 
-# Loaded into the suite run with `-p`. It reads the reports pytest's terminal
-# filed under `failed` and `error`, which are what the `-rfE` summary lines and
-# the counts on the summary line are printed from, so it recognises exactly the
-# failures those lines named, each by its whole `nodeid`. It writes on the xdist
-# controller only, which receives every worker's reports; a worker has
-# `workerinput` and writes nothing.
-#
-# It also writes the collected count, how many of those tests reported at all,
-# and which errors were collection errors (U271), which the mutation driver
-# reads from the run record: a run that stopped early can exit 1 like a
-# complete red one (under xdist, a worker crash with its restarts spent; run
-# serially, `-x` or `pytest.exit(returncode=1)`), and only the count of tests
-# that reported tells the two apart. A skipped test, an xfail that never runs
-# and a setup error each report, so each counts as run. The count is
-# read as the driver's own plugin reads it: off the hook xdist fires on the
-# controller when a worker finishes collecting, since the controller collects
-# nothing itself, and off the session's items in a run without workers.
+# Loaded with `-p`; on the xdist controller only, it writes the whole ids pytest's terminal
+# filed as failed and error, the collected count, how many tests reported, and collect errors.
 PLUGIN_SOURCE = '''
 import json
 import os
@@ -220,10 +100,8 @@ def pytest_runtest_logreport(report):
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
-    if hasattr(config, "workerinput"):
-        return
     out = os.environ.get("CLOUD_BATTERY_REPORT_PATH")
-    if not out:
+    if hasattr(config, "workerinput") or not out:
         return
     passed = terminalreporter.stats.get("passed", [])
     found = {
@@ -236,9 +114,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         reports = terminalreporter.stats.get(category, [])
         found[category] = {
             "ids": [getattr(report, "nodeid", None) for report in reports],
-            "counted": sum(
-                1 for report in reports if getattr(report, "count_towards_summary", True)
-            ),
+            "counted": sum(1 for one in reports if getattr(one, "count_towards_summary", True)),
         }
         found["collect_errors"] += [
             getattr(report, "nodeid", None)
@@ -266,12 +142,7 @@ def _shallow(root: Path) -> str:
 
 
 def ensure_full_history(root: Path | None = None) -> str | None:
-    """Unshallow the clone at ``root`` from `origin main`; the reason it could not, or None.
-
-    A complete clone runs no fetch. A shallow one fetches the rest of `main`'s
-    history, then is read again, since a fetch can succeed and leave another
-    shallow root behind.
-    """
+    """Unshallow the clone at ``root`` from `origin main`; the reason it could not, or None."""
     root = ROOT if root is None else root
     state = _shallow(root)
     if state == "false":
@@ -291,14 +162,6 @@ def ensure_full_history(root: Path | None = None) -> str | None:
         "that reads old history would fail for want of it and be subtracted unread; "
         f"fetch the full history and run this again. {detail}"
     ).strip()
-
-
-def full_history_or_refuse() -> bool:
-    reason = ensure_full_history()
-    if reason is None:
-        return True
-    print(f"history: REFUSED, {reason}")
-    return False
 
 
 def head() -> str:
@@ -324,19 +187,8 @@ def static_checks() -> bool:
 
 def suite_command() -> list[str]:
     """The suite run: the repository's own addopts, and the reporting plugin."""
-    # No `-q` here: pyproject's addopts already carry one, and a second makes
-    # `-qq`, which hides the summary line this reads. The mutation driver's
-    # docstring records the same trap, met the same way.
-    return [
-        str(PYTHON),
-        "-m",
-        "pytest",
-        "--tb=no",
-        "-p",
-        PLUGIN_MODULE,
-        "-p",
-        "no:cacheprovider",
-    ]
+    # No `-q`: addopts carry one, and `-qq` hides the summary line this reads.
+    return [str(PYTHON), "-m", "pytest", "--tb=no", "-p", PLUGIN_MODULE, "-p", "no:cacheprovider"]
 
 
 def _unescape_mount(field: str) -> str:
@@ -345,12 +197,7 @@ def _unescape_mount(field: str) -> str:
 
 
 def filesystem_of(path: Path) -> str | None:
-    """The type of the filesystem holding ``path``, read off the mount table.
-
-    The longest mount point holding the path wins, and the later of two at the
-    same point, which is the one mounted over the other. None when there is no
-    mount table to read, which is every machine but Linux.
-    """
+    """The type of the filesystem holding ``path``: the longest, then latest, mount point."""
     try:
         lines = MOUNTS.read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -409,11 +256,7 @@ def places_needed(place: str) -> tuple[str, ...]:
 
 
 def refusal_for(place: str) -> str | None:
-    """Why this machine cannot give a run in ``place`` every place it uses, or None.
-
-    Checked before the suite runs, so a disk this machine cannot give for the
-    on disk rerun refuses a run in memory at its start rather than after it.
-    """
+    """Why this machine cannot give a run in ``place`` every place it uses, or None."""
     for needed in places_needed(place):
         root, why = place_root(needed)
         if root is None:
@@ -423,12 +266,7 @@ def refusal_for(place: str) -> str | None:
 
 @contextmanager
 def run_directory(place: str | None) -> Iterator[tuple[Path, Path | None]]:
-    """A fresh workspace in ``place`` and the temporary directory inside it, removed after.
-
-    No place is the run as it was before U273: the workspace in the inherited
-    temporary directory, and no ``TMPDIR`` for the suite. ``cmd_baseline`` and
-    ``cmd_compare`` always name one.
-    """
+    """A fresh workspace in ``place`` (None: inherited, no ``TMPDIR``) and its temporary dir."""
     if place is None:
         with tempfile.TemporaryDirectory(prefix="cloud-battery-") as tmp:
             yield Path(tmp), None
@@ -448,8 +286,6 @@ def _run_suite(place: str | None, extra: tuple[str, ...] = ()) -> tuple[dict, st
     with run_directory(place) as (workspace, temp):
         (workspace / f"{PLUGIN_MODULE}.py").write_text(PLUGIN_SOURCE, encoding="utf-8")
         report_path = workspace / "report.json"
-        # Inherit, then add: the suite reads the caller's environment, and a
-        # fresh one would measure a different run.
         env = os.environ.copy()
         env[REPORT_VARIABLE] = str(report_path)
         if temp is not None:
@@ -478,17 +314,7 @@ def _run_suite(place: str | None, extra: tuple[str, ...] = ()) -> tuple[dict, st
 
 @dataclass(frozen=True)
 class SuiteRun:
-    """What one run of the suite measured.
-
-    ``collected``, ``ran`` and ``collect_errors`` are None when the run did
-    not say; ``ran`` counts the tests that reported at all, every one of the
-    collected in a run that was not stopped early,
-    and ``exit_code`` is
-    pytest's own, so a reader can tell a complete run (0 or 1) from an
-    interrupted one. ``place`` is where it kept its temporary files (U273),
-    None for the inherited temporary directory; ``on_disk`` names the tests
-    a run in memory ran again on disk, whose outcome there ``ids`` holds.
-    """
+    """What one run measured; None where it did not say. ``ids`` hold the on disk outcomes."""
 
     ids: frozenset[str]
     summary: str
@@ -508,12 +334,7 @@ def failing_ids() -> tuple[set[str], str]:
 
 
 def measure_suite(place: str | None = None) -> SuiteRun:
-    """Run the suite in ``place`` and read every failing id whole, with what else it measured.
-
-    In memory, the tests on ``ON_DISK`` then run a second time on disk, and
-    their outcome there replaces their outcome in memory; the counts stay the
-    memory run's, which ran every test.
-    """
+    """Run the suite in ``place``; in memory, the ``ON_DISK`` tests' outcome comes from disk."""
     report, summary, exit_code = _run_suite(place)
     ids = read_report(report, summary)
     collect_errors = _read_collect_errors(report, ids)
@@ -522,15 +343,8 @@ def measure_suite(place: str | None = None) -> SuiteRun:
     if listed:
         ids, on_disk_summary = _rerun_on_disk(ids, listed)
     return SuiteRun(
-        ids=frozenset(ids),
-        summary=summary,
-        collected=_read_count(report, "collected"),
-        collect_errors=collect_errors,
-        exit_code=exit_code,
-        ran=_read_count(report, "ran"),
-        place=place,
-        on_disk=listed,
-        on_disk_summary=on_disk_summary,
+        frozenset(ids), summary, _read_count(report, "collected"), collect_errors, exit_code,
+        _read_count(report, "ran"), place, listed, on_disk_summary,
     )
 
 
@@ -549,12 +363,7 @@ def _ran(report: dict) -> set[str]:
 
 
 def _rerun_on_disk(ids: set[str], listed: tuple[str, ...]) -> tuple[set[str], str]:
-    """The ids with the listed tests' outcome read from a second run on disk.
-
-    That run is refused unless every listed test ran in it and nothing else
-    did, apart from the collection error of a listed test's file, which is read
-    as its failure.
-    """
+    """The ids with the listed tests' outcome from a run on disk that ran exactly those."""
     disk_report, disk_summary, _ = _run_suite(DISK, listed)
     disk_ids = read_report(disk_report, disk_summary)
     ran = _ran(disk_report)
@@ -576,26 +385,15 @@ def _rerun_on_disk(ids: set[str], listed: tuple[str, ...]) -> tuple[set[str], st
 def _read_count(report: dict, key: str) -> int | None:
     """One of the report's counts, or None when it holds no count it could have read."""
     count = report.get(key)
-    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
-        return count
-    return None
+    return count if isinstance(count, int) and not isinstance(count, bool) and count >= 0 else None
 
 
 def _read_collect_errors(report: dict, ids: set[str]) -> frozenset[str] | None:
-    """The collection errors, or None when the report does not say which they were.
-
-    Each must be one of the ids already read whole. A report that lists none of
-    its own, or one it does not list as failing or erroring, is not read: the
-    run itself is still read for `compare`, and the record says the collection
-    errors are unknown, which the mutation driver refuses to stand for its
-    baseline.
-    """
+    """The collection errors, or None (unknown) unless each is one of the ids read whole."""
     listed = report.get("collect_errors")
-    if not isinstance(listed, list) or not all(
-        isinstance(nodeid, str) and nodeid in ids for nodeid in listed
-    ):
-        return None
-    return frozenset(listed)
+    if isinstance(listed, list) and all(isinstance(one, str) and one in ids for one in listed):
+        return frozenset(listed)
+    return None
 
 
 def _summary_count(summary: str, pattern: str) -> int:
@@ -604,13 +402,7 @@ def _summary_count(summary: str, pattern: str) -> int:
 
 
 def read_report(report: dict, summary: str) -> set[str]:
-    """The whole ids of a run's report, refused unless it agrees with the summary line.
-
-    Each id must survive a baseline file unchanged, one a line and compared
-    exactly, so an id that is empty, holds anything `str.splitlines` breaks a
-    line at, starts with `#` or is padded with spaces is refused rather than
-    stored altered.
-    """
+    """The whole ids of a run's report, refused unless it agrees with the summary line."""
     expected = {
         "failed": _summary_count(summary, "failed"),
         "error": _summary_count(summary, "errors?"),
@@ -645,24 +437,28 @@ def read_report(report: dict, summary: str) -> set[str]:
     return ids
 
 
-def _requested_place(args) -> str | None:
-    return getattr(args, "temp", None)
+def _checked_run(place: str) -> tuple[str, SuiteRun, TreeState] | None:
+    """History, ruff and the scan, then the suite in ``place``; None when one refused."""
+    if (reason := ensure_full_history()) is not None:
+        print(f"history: REFUSED, {reason}")
+        return None
+    if not static_checks():
+        return None
+    at = head()
+    before = tree_state()
+    measured = measure_suite(place)
+    return at, measured, measured_tree(before, tree_state())
 
 
 def cmd_baseline(args) -> int:
-    place = _requested_place(args) or DEFAULT_PLACE
+    place = getattr(args, "temp", None) or DEFAULT_PLACE
     why = refusal_for(place)
     if why is not None:
         print(f"temporary files: REFUSED, {why}")
         return 1
-    if not full_history_or_refuse():
+    if (done := _checked_run(place)) is None:
         return 1
-    if not static_checks():
-        return 1
-    at = head()
-    before = tree_state()
-    measured = measure_suite(place)
-    tree = measured_tree(before, tree_state())
+    at, measured, tree = done
     STATE.mkdir(exist_ok=True)
     lines = [
         f"# commit {at} host {socket.gethostname()} {TEMP_FIELD} {place} "
@@ -676,8 +472,7 @@ def cmd_baseline(args) -> int:
         "".join(f"{line}\n" for line in lines) + "".join(f"{i}\n" for i in sorted(measured.ids)),
         encoding="utf-8",
     )
-    # Its own failures are the known ones by construction, so the verdict is
-    # clean against the file just written; the release reads compare's only.
+    # Clean by construction against the file just written; the release reads compare's only.
     record_run("baseline", "clean", measured, tree, file_digest(BASELINE))
     print(f"baseline at {at}: {measured.summary}")
     print(_place_line(measured))
@@ -742,9 +537,7 @@ def read_baseline() -> Baseline | None:
         )
         return None
     ids = {line for line in lines if line and not line.startswith("#")}
-    on_disk = tuple(
-        line[len(ON_DISK_PREFIX) :] for line in lines if line.startswith(ON_DISK_PREFIX)
-    )
+    on_disk = tuple(ln.removeprefix(ON_DISK_PREFIX) for ln in lines if ln.startswith(ON_DISK_PREFIX))
     return Baseline(ids, match.group(1), match.group(3), on_disk)
 
 
@@ -753,7 +546,7 @@ def cmd_compare(args) -> int:
     if base is None:
         print("no baseline for this machine: run `cloud_battery.py baseline` on origin/main first")
         return 2
-    requested = _requested_place(args)
+    requested = getattr(args, "temp", None)
     if requested is not None and requested != base.place:
         print(
             f"temporary files: REFUSED, the baseline kept its temporary files in {base.place} "
@@ -769,16 +562,10 @@ def cmd_compare(args) -> int:
             f"and this machine cannot now: {why}"
         )
         return 2
-    # Read beside the ids it holds, so the record names the file they came from.
     known_digest = file_digest(BASELINE)
-    if not full_history_or_refuse():
+    if (done := _checked_run(base.place)) is None:
         return 1
-    if not static_checks():
-        return 1
-    at = head()
-    before = tree_state()
-    measured = measure_suite(base.place)
-    tree = measured_tree(before, tree_state())
+    at, measured, tree = done
     ids = measured.ids
     still = sorted(ids & base.ids)
     new = sorted(ids - base.ids)
@@ -793,12 +580,10 @@ def cmd_compare(args) -> int:
         )
     print()
     print(f"still failing, the machine's: {len(still)}")
-    print(f"no longer failing: {len(gone)}")
-    for i in gone:
-        print(f"  {i}")
-    print(f"NEWLY FAILING, yours: {len(new)}")
-    for i in new:
-        print(f"  {i}")
+    for heading, listed in (("no longer failing", gone), ("NEWLY FAILING, yours", new)):
+        print(f"{heading}: {len(listed)}")
+        for i in listed:
+            print(f"  {i}")
     verdict = "red" if new else "clean"
     record_verdict(verdict, tree)
     record_run("compare", verdict, measured, tree, known_digest)
@@ -807,11 +592,7 @@ def cmd_compare(args) -> int:
 
 @dataclass(frozen=True)
 class TreeState:
-    """The checkout as git reads it: HEAD's full sha, and whether nothing differs from it.
-
-    ``commit`` is empty and ``clean`` is False whenever git could not say,
-    because no answer is not an empty status.
-    """
+    """HEAD's full sha and whether nothing differs from it; empty and False when git cannot say."""
 
     commit: str
     clean: bool
@@ -823,21 +604,14 @@ def tree_state() -> TreeState:
     commit = sha.stdout.strip() if sha.returncode == 0 else ""
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
         commit = ""
-    # Untracked files listed whatever the checkout's own git config says, since
-    # `status.showUntrackedFiles=no` would otherwise hide a test file nobody
-    # committed from both this reading and the driver's.
+    # Untracked files listed whatever `status.showUntrackedFiles` says.
     status = run(["git", "status", "--porcelain", "--untracked-files=all"])
     clean = bool(commit) and status.returncode == 0 and not status.stdout.strip()
     return TreeState(commit=commit, clean=clean)
 
 
 def measured_tree(before: TreeState, after: TreeState) -> TreeState:
-    """The tree a run measured: the commit read before it, clean only if nothing moved.
-
-    A commit made while the suite ran is not what the suite measured, and a
-    file changed and put back while it ran may have been read changed, so a
-    change seen at either end, or a HEAD that moved, makes the run unclean.
-    """
+    """The tree a run measured: the commit read before it, clean only if nothing moved."""
     clean = before.clean and after.clean and before.commit == after.commit
     return TreeState(commit=before.commit, clean=clean)
 
@@ -859,14 +633,7 @@ def boot_id() -> str:
 
 
 def record_verdict(verdict: str, tree: TreeState) -> None:
-    """Write the verdict for the commit just measured, for `release.py cut` (U159).
-
-    The full sha, so a release refuses a verdict from any other commit, and
-    `dirty` in place of the verdict when the tree was not clean throughout the
-    run, since then the run measured something no commit holds. The sha is the
-    one read before the run (U271): read after it, a commit made while the
-    suite ran was named as the commit it measured.
-    """
+    """Write the full sha read before the run and the verdict, or `dirty`, for `release.py cut`."""
     if not tree.clean:
         verdict = "dirty"
     STATE.mkdir(exist_ok=True)
@@ -876,15 +643,7 @@ def record_verdict(verdict: str, tree: TreeState) -> None:
 def record_run(
     source: str, verdict: str, suite: SuiteRun, tree: TreeState, known_digest: str
 ) -> None:
-    """Write the run record `scripts/mutate.py` may read in place of its full baseline (U271).
-
-    Written at the end of every run that reached its reading, a dirty or
-    interrupted one included, and the driver reads the keys and refuses the
-    record unless each is its own. A run stopped before that, by a red ruff or
-    scan or a report it could not read, leaves the previous record in place,
-    which still names the commit and the tree it measured. Written to a
-    temporary file and moved into place, so a reader never meets half of one.
-    """
+    """Write the run record `scripts/mutate.py` may read in place of its baseline, atomically."""
     record = {
         "format": RUN_RECORD_FORMAT,
         "source": source,
@@ -900,19 +659,16 @@ def record_run(
         "collected": suite.collected,
         "ran": suite.ran,
         "exit_code": suite.exit_code,
-        # The suite inherits the caller's environment, and a value here edits
-        # the run (a deselection, `-x`); the driver scrubs it from its own runs
-        # and reads no record of a run it edited.
+        # A value here edits the run, and the driver reads no record of an edited run.
         "pytest_addopts": os.environ.get("PYTEST_ADDOPTS", ""),
         "failing": sorted(suite.ids),
         "collect_errors": None if suite.collect_errors is None else sorted(suite.collect_errors),
         "when": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
     STATE.mkdir(exist_ok=True)
-    target = STATE / RUN_RECORD_NAME
     partial = STATE / f".{RUN_RECORD_NAME}.partial"
     partial.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-    os.replace(partial, target)
+    os.replace(partial, STATE / RUN_RECORD_NAME)
 
 
 def main(argv: list[str]) -> int:

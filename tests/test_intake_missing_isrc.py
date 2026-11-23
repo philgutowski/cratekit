@@ -1,20 +1,8 @@
 """U78: a set's missing tracks are named by exact ISRC, and the rest handed on.
 
-``crate intake set`` identifies a recording and resolves every track, and a
-recognised track carries no provider identifier, so before U78 ``intake missing``
-had nothing it could list for a set (R-401). It now asks the catalogue for each
-such row's ISRC. Exactly one distinct identifier lists the row. Anything else,
-no ISRC, a malformed one, none filed or several filed (R-356), writes the row to
-``<name>.unlisted.json``, a text list ``match run`` reads, with the reason above
-it. A provider that cannot answer refuses before any file is written.
-
-THE SET JOBS HERE ARE REAL. Recognition runs through the carver and transport
-fakes ``tests/intake/test_workers.py`` uses, the job is queued and driven through
-the dispatcher, and the reports this verb reads are the ones the worker wrote.
-Only the catalogue is a fake, and it is substituted where the verb looks it up.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track,
-and every ISRC is in a registrant range nobody holds.
+The set jobs are real, recognised through the fakes ``tests/intake/test_workers.py``
+uses; only the catalogue is a fake. D1 applies, and every ISRC is in a registrant
+range nobody holds.
 """
 
 from __future__ import annotations
@@ -32,8 +20,8 @@ from cratekit.intake import acrcloud, missing_cli
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
 from tests.cli_drive import drive
+from tests.intake import test_workers
 from tests.intake.test_recognition import FakeCarver, hit
-from tests.intake.test_workers import recognised  # noqa: F401 - a fixture
 from tests.label_fakes import FakeCatalogue, FakeTrack, UnreadableCatalogue, catalogue_factory
 from tests.test_config import valid_data
 
@@ -41,9 +29,9 @@ ONE = "QZAAA2600001"
 TWO = "QZAAA2600002"
 NONE_FILED = "QZAAA2600003"
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
+
+recognised = test_workers.recognised  # the shared fixture, under its own name
 
 
 @pytest.fixture
@@ -108,22 +96,57 @@ def three() -> tuple[dict, ...]:
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # One id is listed, anything else is handed on
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
-    cfg, library, recognised, monkeypatch  # noqa: F811 - the imported fixture
+    cfg, library, recognised, monkeypatch
 ):
+    """One set read every way: nothing written until every answer is in hand, then the one id
+    listed, the rest handed on to a text list that reads back, and a second run the same."""
+    from cratekit.core.cause import refuse
+    from cratekit.core.exit_codes import Remedy
+    class Expired(FakeCatalogue):
+        def tracks_for_isrc(self, isrc):
+            raise refuse(
+                "credential-missing",
+                "the stored session expired mid lookup",
+                remedy=Remedy.REAUTHENTICATE_PROVIDER,
+                origin=("test",),
+            )
     job_id = finished_set(library, recognised, monkeypatch, *three())
-    fake = bind(
-        monkeypatch,
-        FakeCatalogue(isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}),
-    )
-
+    # NO STORED SESSION: the real ``resolve``, over an isolated keychain holding none.
     code, envelope = missing(job_id)
-
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "credential-missing"
+    # A PROVIDER OUTAGE refuses whole.
+    fake = bind(monkeypatch, UnreadableCatalogue())
+    code, envelope = missing(job_id)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "unavailable-transient"
+    assert ONE in envelope["cause"]["message"]
+    assert "nothing was written" in envelope["cause"]["message"]
+    assert fake.isrcs_asked_for == [ONE]
+    # A PRODUCT REFUSAL from the catalogue passes through unrelabelled.
+    bind(monkeypatch, Expired())
+    code, envelope = missing(job_id)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "credential-missing"
+    assert not lists_dir(library).exists() or list(lists_dir(library).iterdir()) == []
+    answers = {ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}
+    # A DIFFERENT FILE AT THE UNLISTED PATH refuses before the list is written.
+    handed = lists_dir(library) / f"intake-{job_id}.unlisted.json"
+    handed.parent.mkdir(parents=True, exist_ok=True)
+    handed.write_text("somebody else's list\n")
+    bind(monkeypatch, FakeCatalogue(isrcs=answers))
+    code, envelope = missing(job_id)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert handed.read_text() == "somebody else's list\n"
+    assert sorted(p.name for p in handed.parent.iterdir()) == [handed.name]
+    handed.unlink()
+    fake = bind(monkeypatch, FakeCatalogue(isrcs=answers))
+    code, envelope = missing(job_id)
     assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["by_isrc"], summary["unlisted"]) == (1, 1, 2)
@@ -140,25 +163,11 @@ def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
     ]
     assert "9002, 9003" in summary["unlisted_tracks"][0]["reason"]
     assert summary["unlisted_tracks"][0]["isrc"] == TWO
-
-
-def test_the_unlisted_file_round_trips_through_read_list_with_its_reasons(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    job_id = finished_set(library, recognised, monkeypatch, *three())
-    bind(
-        monkeypatch,
-        FakeCatalogue(isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}),
-    )
-
-    _code, envelope = missing(job_id)
-
-    handed = lists_dir(library) / f"intake-{job_id}.unlisted.json"
-    assert envelope["data"]["summary"]["unlisted_list"] == str(handed)
+    # THE UNLISTED FILE round trips through read_list with its reasons.
+    assert summary["unlisted_list"] == str(handed)
     read = match_cli.read_list(handed)
     assert [(one.artist, one.title) for one in read] == [
-        ("Nova Reef", "Tide"),
-        ("Mira Vale", "Glass Hour"),
+        ("Nova Reef", "Tide"), ("Mira Vale", "Glass Hour"),
     ]
     raw = json.loads(handed.read_text())
     assert (raw["list"], raw["origin"]) == (1, "text")
@@ -168,16 +177,32 @@ def test_the_unlisted_file_round_trips_through_read_list_with_its_reasons(
     check = {c["key"]: c for c in envelope["data"]["checks"]}["intake.missing.unlisted"]
     assert check["status"] == "fail"
     assert f"crate intake missing --list {handed}" in check["detail"]
+    # A SECOND RUN over the same answers is not refused.
+    again = missing(job_id)
+    assert again[0] == int(ExitCode.OK), again[1]
+    assert again[1]["data"]["summary"] == summary
+    # U206: the SHIPPED catalogue keeps an ISRC answer, so a later run asks nothing.
+    from cratekit.cli import ISRC_LOOKUPS
+    from cratekit.label import tidal_catalogue
+    client = _CountingClient(
+        {ONE: [_ProviderTrack("9001")], TWO: [_ProviderTrack("9002"), _ProviderTrack("9003")]}
+    )
+    monkeypatch.setattr(catalogue, "resolve", lambda cfg: tidal_catalogue.TidalCatalogue(client))
+    first = missing(job_id)
+    assert first[0] == int(ExitCode.OK), first[1]
+    assert sorted(client.asked) == [ONE, TWO]
+    again = missing(job_id)
+    assert again[0] == int(ExitCode.OK), again[1]
+    assert sorted(client.asked) == [ONE, TWO], "the second run asked the provider again"
+    assert again[1]["data"]["summary"] == first[1]["data"]["summary"]
+    said = [w["message"] for w in again[1]["warnings"] if w["code"] == ISRC_LOOKUPS]
+    assert said == ["2 ISRC lookups answered from the cache, 0 asked of the streaming provider"]
 
 
-def test_an_isrc_the_provider_files_nothing_under_is_handed_on_as_unknown(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
+def test_an_isrc_the_provider_files_nothing_under_is_handed_on_as_unknown(cfg, library, recognised, monkeypatch):
     job_id = finished_set(library, recognised, monkeypatch, hit("Lumen Drift", "Salt Road", isrc=NONE_FILED))
     fake = bind(monkeypatch, FakeCatalogue())
-
     code, envelope = missing(job_id)
-
     assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert fake.isrcs_asked_for == [NONE_FILED]
@@ -186,9 +211,7 @@ def test_an_isrc_the_provider_files_nothing_under_is_handed_on_as_unknown(
     assert summary["unlisted_next"] == f"crate intake missing --list {summary['unlisted_list']}"
 
 
-def test_an_isrc_is_folded_before_it_is_asked_and_a_malformed_one_is_never_asked(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
+def test_an_isrc_is_folded_before_it_is_asked_and_a_malformed_one_is_never_asked(cfg, library, recognised, monkeypatch):
     job_id = finished_set(
         library,
         recognised,
@@ -197,133 +220,43 @@ def test_an_isrc_is_folded_before_it_is_asked_and_a_malformed_one_is_never_asked
         hit("Nova Reef", "Tide", isrc="CAT-0042"),
     )
     fake = bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001")]}))
-
     _code, envelope = missing(job_id)
-
     summary = envelope["data"]["summary"]
     assert fake.isrcs_asked_for == [ONE]
     assert summary["written"] == 1
     assert [t["why"] for t in summary["unlisted_tracks"]] == [missing_cli.MALFORMED]
 
 
-def test_the_same_id_twice_in_one_answer_is_one_id_and_is_listed(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
+def test_the_same_id_twice_in_one_answer_is_one_id_and_is_listed(cfg, library, recognised, monkeypatch):
     job_id = finished_set(library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc=ONE))
     bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001"), FakeTrack("9001")]}))
-
     _code, envelope = missing(job_id)
-
     assert envelope["data"]["summary"]["written"] == 1
-
-
-def test_an_answer_holding_a_track_with_no_identifier_is_handed_on_not_read_as_one(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    job_id = finished_set(library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc=ONE))
+    # AN ANSWER HOLDING A TRACK WITH NO IDENTIFIER is handed on, not read as one.
     bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001"), FakeTrack("")]}))
-
     _code, envelope = missing(job_id)
-
     summary = envelope["data"]["summary"]
     assert summary["written"] == 0
     assert [t["why"] for t in summary["unlisted_tracks"]] == [missing_cli.UNREADABLE]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Nothing is written unless every answer is in hand
-# ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_provider_outage_refuses_and_writes_nothing(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    job_id = finished_set(library, recognised, monkeypatch, *three())
-    fake = bind(monkeypatch, UnreadableCatalogue())
-
-    code, envelope = missing(job_id)
-
-    assert code != int(ExitCode.OK), envelope
-    assert envelope["cause"]["reason"] == "unavailable-transient"
-    assert ONE in envelope["cause"]["message"]
-    assert "nothing was written" in envelope["cause"]["message"]
-    assert fake.isrcs_asked_for == [ONE]
-    assert not lists_dir(library).exists() or list(lists_dir(library).iterdir()) == []
-
-
-def test_no_stored_session_refuses_before_anything_is_written(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    """The real ``resolve``, over an isolated keychain holding no provider session."""
-    job_id = finished_set(library, recognised, monkeypatch, *three())
-
-    code, envelope = missing(job_id)
-
-    assert code != int(ExitCode.OK), envelope
-    assert envelope["cause"]["reason"] == "credential-missing"
-    assert not lists_dir(library).exists() or list(lists_dir(library).iterdir()) == []
-
-
-def test_a_set_with_no_isrc_resolves_no_catalogue_and_spends_no_login(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
+def test_a_set_with_no_isrc_resolves_no_catalogue_and_spends_no_login(cfg, library, recognised, monkeypatch):
     job_id = finished_set(
         library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide")
     )
-
     def never(cfg):
         raise AssertionError("the catalogue was resolved with nothing to ask it")
-
     monkeypatch.setattr(catalogue, "resolve", never)
-
     code, envelope = missing(job_id)
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["summary"]["unlisted"] == 2
 
 
-def test_a_different_file_at_the_unlisted_path_refuses_before_the_list_is_written(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    job_id = finished_set(library, recognised, monkeypatch, *three())
-    bind(
-        monkeypatch,
-        FakeCatalogue(isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}),
-    )
-    handed = lists_dir(library) / f"intake-{job_id}.unlisted.json"
-    handed.parent.mkdir(parents=True)
-    handed.write_text("somebody else's list\n")
-
-    code, envelope = missing(job_id)
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
-    assert handed.read_text() == "somebody else's list\n"
-    assert sorted(p.name for p in handed.parent.iterdir()) == [handed.name]
-
-
-def test_a_second_run_over_the_same_answers_is_not_refused(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    job_id = finished_set(library, recognised, monkeypatch, *three())
-    bind(
-        monkeypatch,
-        FakeCatalogue(isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}),
-    )
-    first = missing(job_id)
-
-    again = missing(job_id)
-
-    assert again[0] == int(ExitCode.OK), again[1]
-    assert again[1]["data"]["summary"] == first[1]["data"]["summary"]
-
-
-def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_written(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    """The review's first finding, driven: one handed on row whose artist
-    carries the line separator used to refuse the whole verb, every track
-    named by ISRC with it, under a remedy that could not work."""
+def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_written(cfg, library, recognised, monkeypatch):
+    """One row no text line can hold is named on its own check; the rest are still written."""
     job_id = finished_set(
         library,
         recognised,
@@ -333,15 +266,12 @@ def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_writ
         hit("Mira Vale", "Glass Hour"),
     )
     bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001")]}))
-
     code, envelope = missing(job_id)
-
     assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert summary["written"] == 1
     assert [(t["artist"], t["why"]) for t in summary["unlisted_tracks"]] == [
-        ("Kite - Harbor", missing_cli.NO_ISRC),
-        ("Mira Vale", missing_cli.NO_ISRC),
+        ("Kite - Harbor", missing_cli.NO_ISRC), ("Mira Vale", missing_cli.NO_ISRC),
     ]
     assert [t["in_file"] for t in summary["unlisted_tracks"]] == [False, True]
     read = match_cli.read_list(Path(summary["unlisted_list"]))
@@ -351,69 +281,28 @@ def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_writ
     assert "Kite - Harbor - Low Tide Signal" in check["detail"]
 
 
-def test_the_order_the_provider_answers_in_does_not_change_the_files(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    """The review's second finding, the half that is this unit's to fix: the
-    reason names the identifiers, and in provider order a reshuffled answer
-    would turn a repeat run into a refusal."""
+def test_the_order_the_provider_answers_in_does_not_change_the_files(cfg, library, recognised, monkeypatch):
+    """Sorted ids, so a reshuffled answer never turns a repeat run into a refusal."""
     job_id = finished_set(library, recognised, monkeypatch, hit("Nova Reef", "Tide", isrc=TWO))
     bind(monkeypatch, FakeCatalogue(isrcs={TWO: [FakeTrack("9003"), FakeTrack("9002")]}))
     first = missing(job_id)
     bind(monkeypatch, FakeCatalogue(isrcs={TWO: [FakeTrack("9002"), FakeTrack("9003")]}))
-
     again = missing(job_id)
-
     assert again[0] == int(ExitCode.OK), again[1]
     assert "(9002, 9003)" in first[1]["data"]["summary"]["unlisted_tracks"][0]["reason"]
 
 
-def test_a_product_refusal_from_the_catalogue_passes_through_unrelabelled(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    """U78's mutation row A4. A refusal the catalogue raised in the product's
-    own vocabulary already says what to do, and relabelled as a wait it would
-    tell a person whose session expired to try again later."""
-    from cratekit.core.cause import refuse
-    from cratekit.core.exit_codes import Remedy
-
-    class Expired(FakeCatalogue):
-        def tracks_for_isrc(self, isrc):
-            raise refuse(
-                "credential-missing",
-                "the stored session expired mid lookup",
-                remedy=Remedy.REAUTHENTICATE_PROVIDER,
-                origin=("test",),
-            )
-
-    job_id = finished_set(library, recognised, monkeypatch, *three())
-    bind(monkeypatch, Expired())
-
-    code, envelope = missing(job_id)
-
-    assert code != int(ExitCode.OK), envelope
-    assert envelope["cause"]["reason"] == "credential-missing"
-    assert not lists_dir(library).exists() or list(lists_dir(library).iterdir()) == []
-
-
-def test_missing_tracks_none_named_and_none_writable_refuse_rather_than_no_op(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    """U78's mutation row B2. Nothing listed and nothing handed on to a file,
-    reported as a no-op, reads exactly like a set the library already held."""
+def test_missing_tracks_none_named_and_none_writable_refuse_rather_than_no_op(cfg, library, recognised, monkeypatch):
+    """Nothing listed or handed on is not a no-op, which would read as a set already held."""
     job_id = finished_set(library, recognised, monkeypatch, hit("Kite - Harbor", "Low Tide Signal"))
-
     code, envelope = missing(job_id)
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "intake-list-unusable"
     assert envelope["cause"]["detail"]["unlisted_tracks"][0]["artist"] == "Kite - Harbor"
     assert not lists_dir(library).exists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U206: the shipped catalogue keeps an ISRC answer, so a second run asks nothing
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class _ProviderTrack:
@@ -436,36 +325,9 @@ class _CountingClient:
 
     def get_tracks_by_isrc(self, code: str) -> list[_ProviderTrack]:
         from tidalapi.exceptions import ObjectNotFound
-
         self.asked.append(code)
         if code not in self.answers:
             raise ObjectNotFound()
         return list(self.answers[code])
 
 
-def test_a_second_run_over_the_same_set_asks_the_provider_no_isrc_again(
-    cfg, library, recognised, monkeypatch  # noqa: F811
-):
-    from cratekit.cli import ISRC_LOOKUPS
-    from cratekit.label import tidal_catalogue
-
-    job_id = finished_set(library, recognised, monkeypatch, *three())
-    client = _CountingClient(
-        {ONE: [_ProviderTrack("9001")], TWO: [_ProviderTrack("9002"), _ProviderTrack("9003")]}
-    )
-    monkeypatch.setattr(
-        catalogue,
-        "resolve",
-        lambda cfg: tidal_catalogue.TidalCatalogue(client),
-    )
-    first = missing(job_id)
-    assert first[0] == int(ExitCode.OK), first[1]
-    assert sorted(client.asked) == [ONE, TWO]
-
-    again = missing(job_id)
-
-    assert again[0] == int(ExitCode.OK), again[1]
-    assert sorted(client.asked) == [ONE, TWO], "the second run asked the provider again"
-    assert again[1]["data"]["summary"] == first[1]["data"]["summary"]
-    said = [w["message"] for w in again[1]["warnings"] if w["code"] == ISRC_LOOKUPS]
-    assert said == ["2 ISRC lookups answered from the cache, 0 asked of the streaming provider"]

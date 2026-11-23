@@ -1,0 +1,96 @@
+name = "u314"
+pass_kind = "light"
+
+# The residual ledger's reader over its archive files (U314), a read and
+# numbering path for maintainers, so about eight rows.
+
+[[rows]]
+id = "L1_archives_unread"
+description = "ledger_files: read the working file alone, so search, the highest number and the title check never see an archive"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py", "tests/test_restart_and_residual_files.py", "tests/test_pending_units.py"]
+old = '''    return sorted((ledger.parent / "ledger").glob("*.md"), key=first) + [ledger]'''
+new = '''    return [ledger]'''
+
+[[rows]]
+id = "L2_landing_never_archives"
+description = "land_residuals: append without archiving, so the working file grows past the limit"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py", "tests/test_board_residual_search.py"]
+old = '''    ledger.write_text(text)
+    archive_ledger(ledger)'''
+new = '''    ledger.write_text(text)'''
+
+[[rows]]
+id = "L3_archive_header_undercounted"
+description = "archive_ledger: count a two line header where four are written, so an archive can pass the limit"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        while last < count - 1 and 4 + len(body(first, last + 1)) <= LEDGER_LIMIT:'''
+new = '''        while last < count - 1 and 2 + len(body(first, last + 1)) <= LEDGER_LIMIT:'''
+
+[[rows]]
+id = "L4_entry_keeps_its_separator"
+description = "_entries: stop walking back over the rule line, so a cut leaves the separator in the archive above and an entry's text ends in it"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''            while start and lines[start - 1] in ("", "---"):'''
+new = '''            while start and lines[start - 1] in ("",):'''
+
+[[rows]]
+id = "L5_duplicate_heading_passes"
+description = "ledger_problems: never report a heading held by two files"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''            if number in where:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "L6_misnamed_archive_passes"
+description = "ledger_problems: never compare an archive's name with the range it holds"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        if path != ledger and (not numbers or path.name != _archive_name(numbers[0], numbers[-1])):'''
+new = '''        if path != ledger and not numbers:'''
+
+[[rows]]
+id = "L7_removed_heading_reversed"
+description = "ledger_problems: look for headings added since the revision rather than removed, so a removed heading passes"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    missing = [f"R-{n}" for n in sorted(set(before) - set(now))]'''
+new = '''    missing = [f"R-{n}" for n in sorted(set(now) - set(before))]'''
+
+[[rows]]
+id = "L8_unchanged_ignored"
+description = "ledger_problems: never report an entry that differs from the revision, so the move's byte comparison passes anything"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    if unchanged and changed:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "L9_archives_at_rev_unread"
+description = "_ledger_at: read only the working file at the revision, so a heading removed from an archive passes the check against it"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    for name in [*(n for n in listed.stdout.split() if n.endswith(".md")), ledger.name]:'''
+new = '''    for name in [ledger.name]:'''
+
+[[rows]]
+id = "L10_search_names_no_file"
+description = "cmd_residuals: print a search hit without the file it is in"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py"]
+old = '''            print(f"R-{number}. {title}  ({path.relative_to(LEDGER.parent.parent)})")'''
+new = '''            print(f"R-{number}. {title}")'''

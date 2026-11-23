@@ -1,27 +1,15 @@
 """``crate inbox rotate``: keep INBOX short without removing a track (U111).
 
-The engine is :mod:`cratekit.intake.rotate`, and its docstring says what a
-batch is, how one is aged and what each band does. This module is the order a
-person meets it in, which is ``tag rows``'s and ``adopt move``'s:
+The engine is :mod:`cratekit.intake.rotate`. This is the order a person meets
+it in, ``tag rows``'s: the backup acknowledgment before the plan and the gate
+(R-733); the plan on a handle opened to READ and closed before the gate; the
+explicit gate over the digested plan, AND AN EMPTY PLAN STILL ASKS, since every
+declared gate fires; only ``apply`` over a plan that writes opens the database
+to write, where the engine takes the plan again and refuses ``decision-stale``.
 
-* the backup acknowledgment is read before the plan and before the gate
-  (R-733), so a person with none is refused before they read a plan;
-* the plan is made on a handle opened to READ and closed before the gate, and
-  a library whose intake tree is still on the bridge refuses there, naming
-  ``tree cutover``;
-* the explicit gate is asked over the digested plan, AND AN EMPTY PLAN STILL
-  ASKS: every declared gate has to fire, and a second run that plans nothing
-  is a question answered, not a question skipped;
-* only ``apply`` over a plan that writes opens the database with write
-  intent, and the engine takes the plan again on that handle and refuses
-  ``decision-stale`` when INBOX moved in between.
-
-THE GATE TAKES NO INLINE ANSWER. A removal takes something out of the library,
-so it is answered by a separate recorded act with an actor (R34).
-
-THE ITEMS ARE EVERY NODE THE ROTATION LOOKED AT, the moves and the removals
-first, then the batches it keeps and the nodes it leaves alone with the reason,
-so the screen a person approves names what stays as well as what goes.
+THE GATE TAKES NO INLINE ANSWER: a removal takes something out of the library,
+so it is answered by a separate recorded act with an actor (R34). The items are
+every node looked at, what stays as well as what goes.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -33,14 +21,7 @@ from datetime import date
 from typing import Any
 
 from cratekit.cli.output import Envelope, load_config
-from cratekit.core import (
-    active_taxonomy,
-    analysis_store,
-    config,
-    rb_writer,
-    session,
-    tree_registry,
-)
+from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session, tree_registry
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import rotate
@@ -80,11 +61,9 @@ def build(parser, entry) -> None:
 
 
 def as_of(ctx) -> date:
-    """The day batches are aged against: the local calendar's, as a batch is named.
+    """The day batches are aged against, the local calendar's, as a batch is named.
 
-    ``is None`` and not falsiness, for the aging report's reason: an empty
-    string is something a person typed. The aging report's slug, since the
-    flag and the mistake are the same one.
+    ``is None`` and not falsiness: an empty string is something a person typed.
     """
     raw = getattr(ctx.args, "as_of", None)
     if raw is None:
@@ -119,10 +98,7 @@ def _approve_gate(entry):
 
 
 def plan_payload(plan: rotate.RotationPlan) -> dict[str, Any]:
-    """The plan as the gate digests it and the envelope carries it.
-
-    Public for ``crate organize`` (U112), whose screen shows these items.
-    """
+    """The plan as the gate digests it and the envelope carries it, public for ``crate organize``."""
     items = [batch.to_json() for batch in (*plan.moves, *plan.removals, *plan.kept)]
     items += [{"action": LEAVE, **node.to_json()} for node in plan.left]
     return {
@@ -142,14 +118,15 @@ def plan_payload(plan: rotate.RotationPlan) -> dict[str, Any]:
 
 def _facts(plan: rotate.RotationPlan) -> dict[str, Any]:
     """What the gate puts in front of the items."""
+    folder = f"{plan.root_name} / {plan.old_display}"
     return {
         "intake folder": f"{plan.root_name} ({plan.root_id})",
         "old folder": (
-            f"{plan.root_name} / {plan.old_display} ({plan.old_id})"
+            f"{folder} ({plan.old_id})"
             if plan.old_id is not None
-            else f"{plan.root_name} / {plan.old_display}, created by this run"
+            else f"{folder}, created by this run"
             if plan.moves
-            else f"{plan.root_name} / {plan.old_display}, absent and not needed"
+            else f"{folder}, absent and not needed"
         ),
         "as of": plan.as_of.isoformat(),
         "moves into old after": f"{plan.stale_days} days",
@@ -162,9 +139,8 @@ def _facts(plan: rotate.RotationPlan) -> dict[str, Any]:
 def records_warnings(plan: rotate.RotationPlan) -> list[dict[str, str]]:
     """The warning a plan over unread session records carries, empty when every one was read.
 
-    PUBLIC FOR ``crate organize``, whose rotation step warns exactly as this
-    verb does. An unlisted log is named as one (R-1255), not as a count of
-    records, since no record in it was read at all.
+    Public for ``crate organize``, which warns exactly as this verb does. An
+    unlisted log is named as one, not as a count (R-1255).
     """
     if not plan.unreadable_records:
         return []
@@ -174,12 +150,8 @@ def records_warnings(plan: rotate.RotationPlan) -> list[dict[str, str]]:
         else f"{plan.unreadable_records} session record(s) could not be read, so a "
         f"batch one of them names"
     )
-    return [
-        {
-            "code": RECORDS_UNREADABLE,
-            "message": f"{unread} was aged from its playlist's creation date",
-        }
-    ]
+    message = f"{unread} was aged from its playlist's creation date"
+    return [{"code": RECORDS_UNREADABLE, "message": message}]
 
 
 def planned(
@@ -191,10 +163,8 @@ def planned(
 ) -> rotate.RotationPlan:
     """The plan over INBOX as it stands, through a handle opened to read and closed.
 
-    PUBLIC FOR ``crate organize`` (U112), which plans the rotation as one step
-    of its database area and must plan it exactly as this verb does. Its
-    ``--report`` passes ``one_read``, its one read handle (U267), which the
-    plan reads through and releases rather than opening a handle of its own.
+    Public for ``crate organize`` (U112), which plans exactly as this verb
+    does; its ``--report`` passes ``one_read``, its one read handle (U267).
     """
     db = (
         one_read.handle()
@@ -212,10 +182,7 @@ def planned(
 
 
 def written(cfg: config.Config, declared, plan: rotate.RotationPlan) -> rotate.Rotated:
-    """Apply the plan through a handle of this function's own, opened to write.
-
-    Public for ``crate organize`` (U112), for :func:`planned`'s reason.
-    """
+    """Apply the plan through a handle of its own, public for ``crate organize`` (U112)."""
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
         return rotate.apply_rotation(
@@ -239,20 +206,12 @@ def inbox_rotate(ctx) -> Envelope:
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "approve":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
     if not plan.writes:
-        return ctx.envelope(
-            data=data,
-            outcome=Outcome.NO_OP,
-            warnings=[
-                *warnings,
-                {
-                    "code": NOTHING_TO_ROTATE,
-                    "message": (
-                        f"no batch is old enough to move or remove: {len(plan.kept)} "
-                        f"kept and {len(plan.left)} node(s) left alone, each listed"
-                    ),
-                },
-            ],
+        nothing = (
+            f"no batch is old enough to move or remove: {len(plan.kept)} "
+            f"kept and {len(plan.left)} node(s) left alone, each listed"
         )
+        warnings.append({"code": NOTHING_TO_ROTATE, "message": nothing})
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
 
     rotated = written(cfg, declared, plan)
     rotate.assert_read_back(rotated)
@@ -263,35 +222,12 @@ def inbox_rotate(ctx) -> Envelope:
         "memberships removed": rotated.memberships_removed,
         "old created": rotated.old_created,
     }
-    return ctx.envelope(
-        data=data,
-        warnings=[
-            *warnings,
-            {
-                "code": ROTATED,
-                "message": (
-                    f"{len(rotated.moved)} batch playlist(s) moved into "
-                    f"{plan.old_display} and {len(rotated.removed)} removed, "
-                    f"{rotated.memberships_removed} membership(s) marked with them; "
-                    f"every node read back from the database where the plan put it, "
-                    f"and no track left the collection; undo with a restore of "
-                    f"session {rotated.session_id}"
-                ),
-            },
-        ],
+    done = (
+        f"{len(rotated.moved)} batch playlist(s) moved into "
+        f"{plan.old_display} and {len(rotated.removed)} removed, "
+        f"{rotated.memberships_removed} membership(s) marked with them; "
+        f"every node read back from the database where the plan put it, "
+        f"and no track left the collection; undo with a restore of "
+        f"session {rotated.session_id}"
     )
-
-
-__all__ = [
-    "APPROVE_GATE",
-    "LEAVE",
-    "NOTHING_TO_ROTATE",
-    "RECORDS_UNREADABLE",
-    "ROTATED",
-    "as_of",
-    "build",
-    "inbox_rotate",
-    "plan_payload",
-    "planned",
-    "written",
-]
+    return ctx.envelope(data=data, warnings=[*warnings, {"code": ROTATED, "message": done}])

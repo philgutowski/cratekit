@@ -1,94 +1,38 @@
 """Where a landed heart goes in the library: All Favorites and its month (U120, U145).
 
-A track the author hearts on the account is downloaded by the favourites
-sync and lands in INBOX like any other file. Until this unit nothing in the
-product put it where the source system did, into the one playlist every
-favourite is in and into the playlist of the UTC quarter it was hearted in,
-``Favorites / 2026-Q4``, so the genre Favorites of U119 had nothing new to
-mirror. This engine is that placement, called by the native landing inside its
-own commit and by ``crate favorites backfill`` for the hearts that landed
-before it existed.
+Called by the native landing inside its own commit and by ``crate favorites
+backfill``. A heart, owned ones too (U146), joins the one playlist every
+favourite is in and its UTC month's playlist, ``2026-10``, or ``Undated``.
 
-**AN OWNED HEART JOINS TOO, SINCE U146.** The author answered U120's open
-question on 2026-10-14: a heart on a track the library already owns is a
-favourite, so the landing places the pass's owned hearts beside the ones it
-downloaded, and the backfill places every owned heart a hearts job reported.
-Neither path takes a membership away.
-
-**BY MONTH SINCE U145.** The author chose on 2026-10-14 a month grain over the
-source system's quarter, so a heart joins the playlist of the UTC month it was
-hearted in, ``Favorites / 2026-10``, and no quarter playlist is made again.
-The quarters already there are ``crate favorites split``'s to retire.
-
-**ADD ONLY.** It adds a membership that is absent and never takes one away,
-through the one writer that owns the "only when absent" rule, so a heart
-placed twice is placed once. A heart's month playlist is created under the
-folder that holds All Favorites when it is absent, by its month's name, and an
-undated heart goes to ``Undated``, the source system's own name. Nothing here
-moves a heart between months: an undated heart that later gets a date stays
-where it was put, which the record says.
-
-**THE SOURCE IS NAMED ONCE AND READ, NEVER MADE.** The playlist a heart joins
-is the one the taxonomy's playlist class mirrors, All Favorites in the shipped
-template, read the way U119's engine reads it: the one live PLAIN playlist of
-that name anywhere in the library. A library with none or with two has no
-answer to "where do the favourites live", and this engine refuses under
-U119's reason rather than inventing a playlist, so a landing that cannot place
-its hearts says so and lands them, and the backfill places them once the
-playlist exists. Where the class is not declared, the outbound default names
-it, since both spell the same playlist and a library that predates the class
-still has one. Unlike U119's engine an EMPTY source is a fine source here,
-because this engine only adds to it.
-
-**THE MONTH IS READ FROM THE JOB, NEVER FROM THE ACCOUNT AGAIN.** The hearts
-listing freezes each heart's date onto its row (``intake.cli.HEARTED``), and
-the landing reads the date from there, which is U113's rule for what a
-playlist asked for. The backfill reads the same key and asks the account only
-for a heart listed by a build before the key existed.
-
-**A MONTH IS MADE IN ITS PLACE, SINCE U180.** The author asked on 2026-10-28
-for the folder to read newest first, All Favorites on top. A month this
-engine makes under the folder takes its newest first slot rather than the
-end, through :func:`month_row`, so a landing, the backfill and the split keep
-the order ``crate favorites order`` puts the folder in. See
-``favorites.order``.
-
-**A PLACED HEART IS COLOURED PINK, SINCE U153.** Pink is the author's standing
-signal that a row is a favourite, and the sweep reads it, so a heart put into
-All Favorites with no colour was a favourite the library said two things
-about. The plan reads the Pink row by name and each heart's colour on the
-planning handle, names the rows it would colour, and the write colours them
-in the same commit as the memberships, through the core writer's track colour
-policy. Only a row with no colour is coloured: a row a person coloured
-otherwise is held and named, never overwritten. A library with no live Pink
-row places the memberships, colours nothing and says so, so a colour table is
-never the reason a landing stops. See ``favorites.colour``.
+**ADD ONLY**, through the one writer that owns "only when absent": nothing is
+taken away or moved between months. **THE SOURCE IS READ, NEVER MADE**: the one
+live plain playlist the taxonomy's playlist class names, else the outbound
+default; none or two refuses under U119's reason. **A MONTH IS MADE IN ITS
+NEWEST FIRST SLOT** (U180). **A PLACED HEART WITH NO COLOUR IS COLOURED PINK**
+in the same commit (U153); a colour a person chose is held, and with no live
+Pink row nothing is coloured and the memberships still land.
 
 Layer: modules.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Iterable, Mapping, Sequence
 
 from cratekit.core import foreign_tree, rb_writer, taxonomy
 from cratekit.core.cause import CratekitError, Remedy, refuse
-from cratekit.favorites import colour, placeholders
-from cratekit.modules.outbound import source as outbound_source
+from cratekit.favorites import colour, placeholders, spine
 from cratekit.write import genre_favorites
 
-#: The key a landing's and the backfill's commit are recorded under on the
-#: session, as rows created, beside the intake tree's own entry. Not a tree id:
-#: the Favorites folder is nobody's registered tree.
-RECORD_KEY = "favorites"
+#: The key every favourites commit is recorded under on the session.
+RECORD_KEY = spine.RECORD_KEY
 
 #: What the landing's session record carries about the hearts it placed.
 PLACED_KEY = "favorites_placed"
 
-#: The reason this engine refuses with when the source is absent or doubled,
-#: U119's, because it is the same question with the same answer.
+#: The refusal when the source is absent or doubled, U119's: the same question.
 SOURCE_MISSING = genre_favorites.SOURCE_MISSING
 
 _ORIGIN = ("favorites", "placement")
@@ -98,19 +42,14 @@ def source_name(declared: taxonomy.Taxonomy) -> str:
     """The playlist every favourite is in: the class's, else the outbound default.
 
     ONE CHOOSER FOR THE LANDING AND THE BACKFILL, so the two cannot place a
-    heart into two playlists. The taxonomy's playlist class is the declaration
-    U119 made of which playlist is the favourites; the outbound default is the
-    same name a library that predates the class already carries.
+    heart into two playlists.
     """
+    from cratekit.modules.outbound import source as outbound_source
+
     sub = genre_favorites.favorites_class(declared)
     if sub is not None and sub.signal_playlist:
         return sub.signal_playlist
     return outbound_source.DEFAULT_FAVORITES_PLAYLIST
-
-
-# ---------------------------------------------------------------------------
-# The home: the source playlist, its folder, and the months already there
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,8 +58,7 @@ class Home:
 
     source_name: str
     source_id: str
-    #: The folder's row, or empty when the source sits at the playlist root,
-    #: in which case a month playlist is created beside it at the root.
+    #: The folder's row, or empty at the playlist root, where a month is made beside it.
     folder_id: str
     folder_name: str
     #: Every live plain playlist under the folder, by name, month named or not.
@@ -139,14 +77,18 @@ def _live_plain(rows: Iterable[Any]) -> list[Any]:
     ]
 
 
+def _sits_under(row: Any, parent_id: str, at_root: bool) -> bool:
+    """Whether ``row`` sits directly under ``parent_id``, or at the root when ``at_root``."""
+    held = str(getattr(row, "ParentID", "") or "")
+    return held in rb_writer.ROOT_PARENT_SENTINELS if at_root else held == parent_id
+
+
 def _under(db: Any, parent_id: str) -> dict[str, str]:
     """Every live plain playlist directly under ``parent_id``, by name, first of a name wins."""
     found: dict[str, str] = {}
     at_root = parent_id in rb_writer.ROOT_PARENT_SENTINELS
     for row in _live_plain(list(db.get_playlist())):
-        held = str(getattr(row, "ParentID", "") or "")
-        here = held in rb_writer.ROOT_PARENT_SENTINELS if at_root else held == parent_id
-        if here:
+        if _sits_under(row, parent_id, at_root):
             found.setdefault(str(row.Name), str(row.ID))
     return found
 
@@ -154,14 +96,10 @@ def _under(db: Any, parent_id: str) -> dict[str, str]:
 def resolve_home(db: Any, name: str) -> Home:
     """The home of the favourites, or the refusal that says there is none or two.
 
-    THE SAME QUESTION U119's ENGINE ASKS, with one answer fewer: an empty
-    source is a source here, since nothing is derived from it and a heart is
-    only added. A folder of the name is not it, a smart playlist of the name
-    is not it, and a removed one is not there.
+    U119's question, an empty source admitted. A folder, a smart playlist or a
+    removed playlist of the name is not it.
     """
-    # U185. A playlist another app pushed into its own folder is not the home,
-    # whatever it is called: counted, it would refuse the landing as a second
-    # source, and chosen, a heart would be written into that app's folder.
+    # A playlist another app pushed into its own folder is not the home (U185).
     live = foreign_tree.outside(
         _live_plain(list(db.get_playlist(Name=name))), list(db.get_playlist())
     )
@@ -196,13 +134,9 @@ def members(db: Any, playlist_id: str) -> frozenset[str]:
 def filed(db: Any, home: Home) -> frozenset[str]:
     """The content ids a dated playlist beside the source holds live: a month, Undated, a quarter.
 
-    WHAT "ALREADY HAS ITS MONTH" MEANS FOR A HEART ALL FAVORITES HOLDS (U146):
-    any filing playlist under the folder, :func:`placeholders.is_filing`, so a
-    heart the split filed in Undated, or one a person moved to another month
-    by hand, is not given a second month. A playlist of any other name is not
-    read, which matters for a source at the playlist root, where the home's
-    neighbours are every root playlist in the library. Read only by the
-    backfill.
+    WHAT "ALREADY HAS ITS MONTH" MEANS (U146), by :func:`placeholders.is_filing`,
+    so a heart filed in Undated or moved by hand is not given a second month. A
+    playlist of any other name is not read, which matters at the playlist root.
     """
     held: set[str] = set()
     for name, row in home.present.items():
@@ -214,31 +148,15 @@ def filed(db: Any, home: Home) -> frozenset[str]:
 def members_marked_removed(db: Any, playlist_id: str) -> frozenset[str]:
     """The content ids whose membership in a playlist rekordbox marked REMOVED.
 
-    A READER, NAMED SO IT READS AS ONE: the outbound guard admits no function
-    under ``favorites/`` whose name opens with ``remove``, since nothing in the
-    favourites packages takes a heart away or a membership out of a playlist
-    that lives on, and this takes none. The one removal the package makes is
-    ``crate favorites split`` retiring a whole quarter playlist (U145), held
-    to that one call by its suite.
-
-    A membership that exists as removed is a track somebody took out of the
-    playlist by hand, and for All Favorites that is the author un-hearting a
-    track in the library. The backfill (U120) reads this so it never puts a
-    heart back that the author took back. THE LANDING DOES NOT READ IT, by the
-    author's rule of 2026-10-14 (U146): a heart the pass's own job still
-    found on the account joins again, since dropping a favourite is two hand
-    steps, un-hearting on the account and taking it out here.
+    A READER, NAMED SO: no function under ``favorites/`` opens with ``remove``.
+    For All Favorites it is the author un-hearting a track, which the backfill
+    never puts back; the landing does not read it (U146).
     """
     return frozenset(
         str(song.ContentID)
         for song in db.get_playlist_songs(PlaylistID=str(playlist_id))
         if rb_writer.membership_removed(song)
     )
-
-
-# ---------------------------------------------------------------------------
-# The plan over content rows, for the backfill
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,7 +168,7 @@ class Placement:
     title: str = ""
     into_source: bool = True
     into_month: bool = True
-    #: Whether the row carries no colour and takes Pink with its placement (U153).
+    #: Whether the row carries no colour and takes Pink with it (U153).
     into_colour: bool = False
 
     @property
@@ -273,8 +191,7 @@ class PlacementPlan:
 
     home: Home
     placements: tuple[Placement, ...]
-    #: The library's Pink row, or empty when the colour table has none live,
-    #: in which case ``colour_skipped`` says so and nothing is coloured.
+    #: The library's Pink row, or empty with ``colour_skipped`` saying why.
     pink: str = ""
     colour_skipped: str = ""
     #: Rows placed already that take Pink and no membership, the backfill's.
@@ -291,9 +208,8 @@ class PlacementPlan:
         """Every row the write colours Pink, the placed hearts first, then the recolours."""
         if not self.pink:
             return ()
-        rows = [one.content_id for one in self.placements if one.into_colour]
-        rows.extend(one.content_id for one in self.recolour)
-        return tuple(rows)
+        placed = (one.content_id for one in self.placements if one.into_colour)
+        return (*placed, *(one.content_id for one in self.recolour))
 
     @property
     def colours(self) -> int:
@@ -302,25 +218,19 @@ class PlacementPlan:
     @property
     def creates(self) -> tuple[str, ...]:
         """The month playlists the write would make, in the order first needed."""
-        made: list[str] = []
-        for one in self.placements:
-            if one.into_month and one.month not in self.home.present and one.month not in made:
-                made.append(one.month)
-        return tuple(made)
+        wanted = (one.month for one in self.placements if one.into_month)
+        return tuple(dict.fromkeys(month for month in wanted if month not in self.home.present))
 
     @property
     def writes(self) -> bool:
         return self.adds > 0 or self.colours > 0
 
     def identity(self) -> dict[str, Any]:
-        """What the digest covers: the home's rows, each month's row or its making, each heart's target state, each row's colour.
+        """What the digest covers: the home, each month's row, each heart's target, each colour.
 
-        THE MONTH ROWS ARE DIGESTED, found or to be made, so a month playlist
-        deleted between the plan and the write is another plan and not a
-        playlist the write makes without having shown it. THE PINK ROW AND
-        THE ROWS TO COLOUR ARE DIGESTED TOO (U153), so a row coloured by hand
-        between the plan and the write is another plan, and a Pink row
-        retired between them is another colour.
+        THE MONTH ROWS, found or to be made, so a month deleted in between is
+        another plan. THE PINK ROW AND THE ROWS TO COLOUR (U153), so a row
+        coloured by hand in between is another plan.
         """
         return {
             "kind": "favorites-placement",
@@ -347,11 +257,8 @@ class PlacementPlan:
 def read_pink(db: Any) -> tuple[str, str]:
     """The Pink row's identifier and no message, or no identifier and why.
 
-    THE ONE REFUSAL A PLACEMENT ABSORBS: no live Pink row. The memberships are
-    still placed and the colour is skipped with the sweep's own words, since
-    an acquisition stopping on a colour table would be a workflow a DJ cannot
-    finish over a cosmetic. Anything else the read raised is the caller's
-    refusal, as it would be any writer's.
+    THE ONE REFUSAL A PLACEMENT ABSORBS: no live Pink row, so an acquisition
+    never stops over a colour table. Anything else raised is the caller's.
     """
     try:
         return colour.pink_colour_id(db), ""
@@ -371,11 +278,9 @@ def plan_placements(
     """Each heart's placement against what the home holds live, and the colour it takes.
 
     ``hearts`` are ``(content id, when hearted or None, title)``, a row named
-    twice folding to its first mention. What each row already has is read
-    live, so a plan over a library already placed writes nothing and says so.
-    ``recolour`` are ``(content id, title)`` rows placed already whose colour
-    the caller wants read: those with none take Pink and no membership, those
-    with another colour are held, and those Pink already are nothing.
+    twice folding to its first mention. ``recolour`` are ``(content id, title)``
+    rows placed already: one with no colour takes Pink and no membership, one
+    with another colour is held.
     """
     in_source = members(db, home.source_id)
     in_month: dict[str, frozenset[str]] = {}
@@ -407,17 +312,7 @@ def plan_placements(
         db, pink, [*(one.content_id for one in placements), *titles]
     )
     takes = frozenset(sorted_rows.to_colour)
-    placements = [
-        Placement(
-            content_id=one.content_id,
-            month=one.month,
-            title=one.title,
-            into_source=one.into_source,
-            into_month=one.into_month,
-            into_colour=one.content_id in takes,
-        )
-        for one in placements
-    ]
+    placements = [replace(one, into_colour=one.content_id in takes) for one in placements]
     return PlacementPlan(
         home=home,
         placements=tuple(placements),
@@ -429,11 +324,6 @@ def plan_placements(
         ),
         held=sorted_rows.held,
     )
-
-
-# ---------------------------------------------------------------------------
-# The write, on the caller's handle, inside the caller's commit
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -496,13 +386,8 @@ def _live_row(db: Any, playlist_id: str, what: str) -> Any:
     return row
 
 
-# ---------------------------------------------------------------------------
-# The folder's order, newest first (U180)
-# ---------------------------------------------------------------------------
-
-
 def seq_of(row: Any) -> int:
-    """A row's position among its siblings, as the database holds it."""
+    """A row's position among its siblings."""
     return int(getattr(row, "Seq", 0) or 0)
 
 
@@ -512,11 +397,7 @@ def _shown_at(row: Any) -> tuple[int, str, str]:
 
 
 def children(db: Any, folder_id: str) -> list[Any]:
-    """Every live child of a folder, of any kind, in the order rekordbox shows them.
-
-    A soft deleted child is left out, as :func:`_under` leaves it out: a
-    person cannot see it, so it has no place in the order and is never moved.
-    """
+    """Every live child of a folder, of any kind, in the order rekordbox shows them."""
     rows = [
         row
         for row in db.get_playlist(ParentID=str(folder_id))
@@ -537,11 +418,9 @@ def rank(row: Any, source_id: str) -> tuple[int, int]:
 def slots(rows: Sequence[Any]) -> tuple[int, ...]:
     """The positions these rows hold between them, sorted, two that share one lifted apart.
 
-    THE POSITIONS ARE THE ROWS' OWN, NOT A COUNT FROM 1 (U180). How the live
-    library numbers a folder's children when some are removed was never
-    measured, so nothing here assumes a run from 1: the rows hold a set of
-    positions, and an order gives that same set out again. A position two
-    rows share is lifted to one past the last, so the order reads one way.
+    THE ROWS' OWN, NOT A COUNT FROM 1 (U180): how the live library numbers a
+    folder with removed children was never measured, so an order gives the same
+    set out again, a shared one lifted past the last so it reads one way.
     """
     given: list[int] = []
     for value in sorted(seq_of(row) for row in rows):
@@ -552,13 +431,9 @@ def slots(rows: Sequence[Any]) -> tuple[int, ...]:
 def seat(db: Any, ordered: Sequence[Any], *, when: datetime) -> tuple[str, ...]:
     """Give ``ordered`` the positions they hold between them, in this order. Answers the rows moved.
 
-    ONLY A ROW WHOSE POSITION CHANGES IS WRITTEN, its ``Seq`` through the
-    binding's registry as the binding's own move writes it, which is one
-    sequence bump for one move, and ``updated_at`` beside it with tracking
-    off, as the binding stamps it. No row outside ``ordered`` is read or
-    written, so a removed sibling keeps its position.
-
-    DOES NOT COMMIT. The commit is the caller's.
+    ONLY A ROW WHOSE POSITION CHANGES IS WRITTEN, ``Seq`` as the binding's move
+    writes it and ``updated_at`` with tracking off; no row outside ``ordered``
+    is touched. DOES NOT COMMIT.
     """
     moved: list[str] = []
     for row, slot in zip(ordered, slots(ordered)):
@@ -574,12 +449,8 @@ def seat(db: Any, ordered: Sequence[Any], *, when: datetime) -> tuple[str, ...]:
 def _seat_new(db: Any, made: Any, folder_id: str, source_id: str) -> tuple[str, ...]:
     """Move a month just made from the end of the folder to its newest first slot.
 
-    It goes before the first live child that ranks after it, so in a folder in
-    order it lands directly under All Favorites and any newer month, and in a
-    folder not yet in order it still lands above every older month below it.
-    NEVER ABOVE ALL FAVORITES: in a folder where something reads above it, a
-    month is looked for a place only below it, so the landing never makes
-    the folder read less in order than it found it.
+    Before the first live child below All Favorites that ranks after it, so a
+    landing never makes the folder read less in order than it found it.
     """
     db.session.flush()
     others = [row for row in children(db, folder_id) if str(row.ID) != str(made.ID)]
@@ -595,28 +466,13 @@ def _seat_new(db: Any, made: Any, folder_id: str, source_id: str) -> tuple[str, 
 def month_row(db: Any, name: str, parent: Any, *, source_id: str) -> tuple[Any, bool]:
     """The month's playlist under the folder, found live by name, else made in its slot.
 
-    PUBLIC because ``crate favorites split`` makes its months here too, so a
-    landing and the split cannot disagree about which row a month is.
-
-    NOT :func:`rb_writer.ensure_playlist`, which reads no soft delete marker
-    and takes no root: a month playlist rekordbox removed would be found and
-    written to, a row a person cannot see (R-758), and a source at the root
-    has no parent row to scope by. The genre Favorites writer reads the same
-    way for the same reason.
-
-    MADE IN ITS NEWEST FIRST SLOT (U180), under a folder, so every landing,
-    the backfill and the split keep the folder in the order ``crate favorites
-    order`` puts it in. ``source_id`` is All Favorites' row, which reads first
-    whatever it is named. At the playlist root a month is made at the end as
-    before, since the root is every playlist's and its order is not this
-    product's to change.
+    NOT :func:`rb_writer.ensure_playlist`, which reads no soft delete marker and
+    takes no root (R-758). MADE IN ITS NEWEST FIRST SLOT under a folder (U180),
+    at the end at the playlist root, which is every playlist's.
     """
     parent_id = "" if parent is None else str(parent.ID)
     for row in _live_plain(list(db.get_playlist(Name=name))):
-        held = str(getattr(row, "ParentID", "") or "")
-        if parent is None and held in rb_writer.ROOT_PARENT_SENTINELS:
-            return row, False
-        if parent is not None and held == parent_id:
+        if _sits_under(row, parent_id, parent is None):
             return row, False
     made = db.create_playlist(name, parent=parent)
     if parent is not None:
@@ -636,23 +492,10 @@ def place(
 ) -> Placed:
     """Add each ``(content id, month name)`` to the source and to its month, and colour ``to_colour`` Pink.
 
-    A PAIR WITH NO MONTH JOINS THE SOURCE ALONE: a heart whose job froze no
-    date key is a heart all the same, and its month is the backfill's to read
-    from the account rather than a guess made here.
-
-    ON THE CALLER'S HANDLE AND INSIDE THE CALLER'S COMMIT, so the landing's
-    rows, its INBOX playlists and its hearts are one all or nothing write, and
-    the backfill's own session owns its commit. The source row is read again
-    by identifier here, since a plan was read on another handle, and a month
-    playlist is found live by name under the folder or made. The memberships
-    go through :func:`rb_writer.add_memberships`, which owns "only when
-    absent", so the same heart twice is one membership.
-
-    THE COLOUR IS THE PLAN'S (U153): the rows named in ``to_colour`` take
-    ``pink``, each read again here and left alone when its colour is no
-    longer unset, through :func:`colour.write_pink`, which owns "only when
-    unset". With no ``pink`` nothing is coloured, which is the plan's answer
-    for a library whose colour table has no live Pink row.
+    A PAIR WITH NO MONTH JOINS THE SOURCE ALONE. ON THE CALLER'S HANDLE AND
+    INSIDE THE CALLER'S COMMIT, the source and folder read again by identifier.
+    :func:`rb_writer.add_memberships` owns "only when absent" and
+    :func:`colour.write_pink` "only when unset"; with no ``pink`` none is coloured.
     """
     source = _live_row(db, home.source_id, f"the playlist {home.source_name!r}")
     parent = None

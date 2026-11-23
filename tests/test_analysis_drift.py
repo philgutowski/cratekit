@@ -1,16 +1,8 @@
 """U157: how far a track's tempo moves, measured on tracks whose tempo is known.
 
-The drift is the spread of the tempo the tempogram reads window by window, as
-a percent of its middle. Driven here on synthetic signals built to a known
-tempo curve: a click train with off beat hats and a little noise, the shape a
-drum machine plays, held constant, ramped, stepped, and broken by a long
-beatless pad; plus noise, a pad alone and a clip too short to judge. Skipped
-where the analysis extra is absent, because the tempogram is librosa's.
-
-The thresholds the assertions hold are the shipped cut's two sides, so a
-steady reading is one a landing would never mark and a variable one is one it
-always would. What the drift of a real library's tracks reads is not measured
-here, and is owed to an attended sitting.
+Synthetic drum tracks held constant, ramped, stepped and broken by a pad,
+plus noise, a pad and a clip too short to judge. The thresholds are the
+shipped cut's two sides. Skipped where the analysis extra is absent.
 """
 
 from __future__ import annotations
@@ -70,11 +62,6 @@ def _drift(samples: np.ndarray) -> tuple[float | None, float | None]:
     return detect.measure_tempo_and_drift(samples, RATE, floor=80, ceiling=160)
 
 
-# ---------------------------------------------------------------------------
-# Steady reads steady
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("known", [96.0, 124.0, 128.0, 140.0])
 def test_a_constant_tempo_scores_steady(known):
     tempo, moved = _drift(_drums(lambda _at: known))
@@ -109,11 +96,6 @@ def test_a_human_timing_wobble_on_a_constant_tempo_scores_steady():
         shifted[lo : lo + hop] += clean[start : start + hop]
     _tempo, moved = _drift(shifted)
     assert moved is not None and moved < CUT, moved
-
-
-# ---------------------------------------------------------------------------
-# Moving reads variable
-# ---------------------------------------------------------------------------
 
 
 def test_a_tempo_ramp_scores_variable():
@@ -165,11 +147,6 @@ def test_the_score_grows_with_how_far_the_tempo_moves():
     assert 0.5 < small < large
 
 
-# ---------------------------------------------------------------------------
-# Too little to judge is unknown
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "samples",
     [
@@ -198,11 +175,6 @@ def test_a_track_with_a_pulse_in_only_two_windows_scores_unknown():
     _tempo, moved = _drift(samples)
     assert moved is None
     assert drift.verdict(moved, CUT) == drift.UNKNOWN
-
-
-# ---------------------------------------------------------------------------
-# The detector carries it
-# ---------------------------------------------------------------------------
 
 
 def test_the_tempo_is_the_one_measure_tempo_names():

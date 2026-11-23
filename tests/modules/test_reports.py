@@ -1793,10 +1793,29 @@ QUALIFIED_MUTATIONS = frozenset(
         "backup_facts.record",
         "backup_facts.clear_outcome",
         "backup_facts.write_outcome",
-        "rb_writer._candidate_app_paths",
+        # U300: the same writers, where the split of rb_writer and session put them.
+        "rb_copies.default_protected_snapshot_paths",
+        "rb_copies.disposable_copy",
+        "rb_copies.integrity_ok",
+        "rb_copies.prune_snapshots",
+        "rb_copies.read_only_copy",
+        "rb_copies.restore_from_snapshot",
+        "rb_copies.snapshot_db",
+        "rb_probes._candidate_app_paths",
+        "rb_probes.read_installed_app_version",
+        "rb_probes.rekordbox_processes_running",
+        "session_ack.record_acknowledgment",
+        "session_holders._open_lock_file",
+        "session_holders._write_holder",
+        "session_holders.abandon_orphaned_sessions",
+        "session_holders.release_stale_lock",
+        "session_holders.session_lock",
         "rb_writer._loaded_config",
         "rb_writer._pins",
         "rb_writer.assert_app_version",
+        "rb_writer.assert_rekordbox_closed",
+        "rb_writer.commit_guarded",
+        "rb_writer.CollectionRemoval",
         "rb_writer.assert_binding_version",
         "rb_writer.assert_schema_version",
         "rb_writer.default_protected_snapshot_paths",
@@ -1839,7 +1858,6 @@ QUALIFIED_MUTATIONS = frozenset(
         "reconcile.retract_in_flight",
         "session._open_lock_file",
         "session._recorded",
-        "session._write_holder",
         "session.abandon_orphaned_sessions",
         "session.assert_gates",
         "session.attach_capture",
@@ -4355,6 +4373,15 @@ def test_the_guard_literals_have_no_element_written_twice(name):
 #: branch added to it.
 RESIDUAL_FINDINGS_NAME = "docs/residual-findings.md"
 
+#: Its archives by number range (U314), which define findings as it does.
+RESIDUAL_ARCHIVES_NAME = "docs/ledger/"
+
+
+def _residual_document_text() -> str:
+    """The residual document as one text, its archives first, in number order."""
+    archives = sorted((REPO_ROOT / RESIDUAL_ARCHIVES_NAME).glob("*.md"))
+    return "".join(path.read_text() for path in [*archives, REPO_ROOT / RESIDUAL_FINDINGS_NAME])
+
 #: The files this unit is KNOWN to write. A FLOOR rather than the list, because a
 #: hand kept list is the defect this guard exists to answer, one level in: the
 #: previous version named nine files while the branch changed seventeen, and eight
@@ -4560,7 +4587,10 @@ def _covered_files(written: tuple[str, ...], *, expected: tuple[str, ...]) -> tu
     assert missing == [], f"the derivation stopped covering files this unit writes: {missing}"
     unnamed = sorted(set(CITED_FLOOR) - set(written))
     assert unnamed == [], f"both derivations stopped covering named files: {unnamed}"
-    return tuple(one for one in written if one != RESIDUAL_FINDINGS_NAME)
+    return tuple(
+        one for one in written
+        if one != RESIDUAL_FINDINGS_NAME and not one.startswith(RESIDUAL_ARCHIVES_NAME)
+    )
 
 
 def _citing_files() -> tuple[str, ...]:
@@ -4738,7 +4768,7 @@ def _residual_numbers_by_title(text: str | None = None) -> dict[str, str]:
     """
     found: dict[str, list[str]] = {}
     if text is None:
-        text = (REPO_ROOT / RESIDUAL_FINDINGS_NAME).read_text()
+        text = _residual_document_text()
     for number, title in _DOCUMENT_HEADING.findall(text):
         found.setdefault(title, []).append(number)
     doubled = sorted(one for one, numbers in found.items() if len(numbers) > 1)
@@ -4947,7 +4977,7 @@ def test_a_residual_the_document_renames_or_drops_is_refused_and_never_dropped()
     one has to be refused by name.
     """
     filed = _residual_titles_this_unit_filed()
-    text = (REPO_ROOT / RESIDUAL_FINDINGS_NAME).read_text()
+    text = _residual_document_text()
     renamed = 0
     for number, title in _DOCUMENT_HEADING.findall(text):
         if title not in UNIT_RESIDUAL_TITLES:
@@ -4979,7 +5009,7 @@ def test_a_renumber_moves_every_address_and_the_ban_list_follows_it():
     and a guard that survives every number changing survives some of them changing.
     """
     filed = _residual_titles_this_unit_filed()
-    text = (REPO_ROOT / RESIDUAL_FINDINGS_NAME).read_text()
+    text = _residual_document_text()
     shifted = _DOCUMENT_HEADING.sub(lambda one: f"## R-{int(one[1]) + 100}. {one[2]}", text)
     assert shifted != text, "the renumber moved nothing, so this proves nothing"
     before = _banned_addresses(UNIT_RESIDUAL_TITLES, filed=filed)

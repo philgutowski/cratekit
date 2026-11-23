@@ -28,13 +28,13 @@ tags:
 
 ## Context
 
-`_block_real_library_paths` in `tests/conftest.py:191` is autouse. It sets
+`_block_real_library_paths` in `tests/conftest.py` is autouse. It sets
 `CRATEKIT_LIBRARY_ROOT` to its own `tmp_path_factory.mktemp("library")` for
 every test, so no test can accidentally resolve a real audio file or the real
 rekordbox database.
 
-`config.from_dict` (`src/cratekit/core/config.py:2888`) applies environment
-overrides before validating. `_apply_env_overrides` (around `config.py:2538`)
+`config.from_dict` (`src/cratekit/core/config.py`) applies environment
+overrides before validating. `_apply_env_overrides` (`core/config_validate.py`)
 reads `CRATEKIT_LIBRARY_ROOT` and, when set, does this unconditionally:
 
 ```python
@@ -86,7 +86,7 @@ a path against `library.root` is exercised against the root the guard will
 actually see.
 
 The same trap applies to `download_staging` through `CRATEKIT_DOWNLOAD_STAGING`
-(`config.py:2563`), by the identical mechanism.
+(the same function), by the identical mechanism.
 
 ## Why This Matters
 
@@ -112,6 +112,6 @@ until the guard is read at the line number rather than at the test result.
   docstring already explains why its own temp directory is separate from the
   test's `tmp_path`, but not that it overrides a root the test tried to set
   explicitly.
-- `src/cratekit/core/config.py:2538` (env override application): the
+- `src/cratekit/core/config_validate.py`, `_apply_env_overrides` (env override application): the
   production behaviour this fixture rides on. Correct outside tests; the trap
   is only in assuming a test-supplied `root` in the dict survives it.

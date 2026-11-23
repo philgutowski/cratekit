@@ -1,49 +1,31 @@
 """What the download staging folder holds beside a batch's own tracks (R-1467, R-1499).
 
-Every download stages into the one folder, and ``intake land`` lands the whole
-of it, so a verb that ends at a landing lands, under its own manifest and
-pass, whatever else the folder holds. R-1467 made ``label sync --go`` read the
-folder first and refuse beside anything that is not its own. R-1499 found
-``crate sync land`` landing the same way, a label go's download waiting at its
-landing's gate above all, so the reading is lifted here, out of
-:mod:`cratekit.label.go`, and both verbs call this one.
+``intake land`` lands the whole staging folder, so ``label sync --go`` and
+``crate sync land`` read it first through this module and refuse beside
+anything that is not the batch's own.
 
-WHAT A LANDING TAKES IS THE FOLDER, read as the landing reads it,
-:func:`cratekit.intake.landing.listing`. A file there that is one of the
-batch's own downloaded tracks, at the name it was downloaded under, is its
-own. EVERY OTHER FILE IS BESIDE IT, whoever put it there: a track of another
-download at its download name, a go's, a sync pass's, a plain ``acquire
-download``'s or a fallback fetch's (any job that recorded the file as its
-artifact), and a file no download names, which a tail's ``name apply`` renamed
-or a person put there. Attribution, which job and which pass, is for the
-message; the decision is the folder.
+WHAT A LANDING TAKES IS THE FOLDER, read by
+:func:`cratekit.intake.landing.listing`. A file that is one of the batch's own
+downloaded tracks, at its download name, is its own; EVERY OTHER FILE IS
+BESIDE IT, whoever put it there. Attribution is for the message only.
 
-A BATCH'S OWN TRACKS RENAMED BY ITS OWN TAIL ARE READ AS ITS OWN BY A RECORD,
-NEVER BY A COUNT. The tail renames every track before the landing's gate, so a
-batch taken on again finds its tracks under names no download recorded.
-:func:`keep` keeps each file the folder holds when the tail stops, by name,
-size and modification time, the identity the landing's own digest reads, and
-:func:`beside` reads a file no download names as the batch's own only when it
-is one of those, and none once the batch's pass has a landing proof. A label
-go's record is kept under its job (:func:`go_record`), a sync pass's under its
-pass (:func:`pass_record`).
+A BATCH'S OWN TRACKS RENAMED BY ITS TAIL ARE READ AS ITS OWN BY A RECORD,
+NEVER BY A COUNT: :func:`keep` records each file the folder holds when the tail
+stops, by the landing digest's identity, and :func:`beside` reads an unnamed
+file as the batch's own only when recorded, and never once its pass landed.
 
-WHAT ARRIVES WHILE THE TAIL RUNS IS CAUGHT AFTER IT. A download another
-process finishes during the tail is renamed by its ``name apply`` with the
-batch's own, and nothing tells them apart after that. :func:`settled` is
-taken as the tail starts and :func:`arrived` compares the folder with it
-before the landing is planned; anything new refuses, and no record is kept.
+WHAT ARRIVES WHILE THE TAIL RUNS IS CAUGHT AFTER IT, since ``name apply``
+renames it with the batch's own: :func:`settled` before the tail and
+:func:`arrived` after it refuse anything new.
 
-A FOLDER OR A LIBRARY ROOT THAT CANNOT BE READ REFUSES, never reads as nothing
-beside.
-
-The label go's origin key and its continue command are spelled here rather
-than imported, because :mod:`cratekit.label.go` imports this module and the
-intake package does not import the go; the go names them from here.
+A folder or library root that cannot be read refuses, never reads as nothing.
+The label go's origin key and continue command are spelled here, since the go
+imports this module and not the other way round.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shlex
@@ -62,8 +44,7 @@ from cratekit.intake.land_cli import default_name
 from cratekit.intake.landing import listing as folder_listing
 from cratekit.intake.missing_cli import RUN_ID, SYNCED_SUFFIX
 
-#: The payload key every job a label go queues carries, naming its run and
-#: manifest (U108). Spelled here, the go names it from here.
+#: The payload key every job a label go queues carries, naming its run and manifest (U108).
 ORIGIN_KEY = "label_sync"
 
 #: The payload key naming the run a job was queued under.
@@ -104,14 +85,7 @@ def pass_continue_command(run_id: str) -> str:
 
 
 def pass_of(job: jobs.Job) -> str | None:
-    """The sync pass whose download ``job`` is, by its list's name, or None (R-1499).
-
-    A sync pass lists its missing tracks into ``<pass>.list.json``, its pass
-    named ``<run>_synced`` (:data:`cratekit.intake.missing_cli.SYNCED_SUFFIX`),
-    and downloads that list; the name a pass's list and its landing share is
-    how ``cli.tail`` names a pass's download too. A download whose list is
-    named otherwise is no pass's.
-    """
+    """The sync pass whose download ``job`` is, by its ``<run>_synced`` list's name, or None."""
     if job.handler_key != DOWNLOAD_KEY:
         return None
     listed = Path(str((job.payload or {}).get(acquire_cli.LIST) or "")).name
@@ -169,16 +143,10 @@ def keep(
 ) -> int:
     """Keep what the staging folder holds as a batch's tail stops, and return how many.
 
-    THIS IS THE ONE RECORD OF A BATCH'S RENAMED TRACKS: each file the folder
-    holds when the tail stops, by its name, size and modification time, so a
-    file put there since, under any name, is never read as the batch's own.
-    The folder held nothing but this batch when its tail started (every tail
-    is refused beside anything else), and a file another download recorded at
-    its download name is left out, since it is that download's. ``own`` is the
-    batch's download jobs, ``key`` what the record names it by.
-
-    Called by the CLI layer, which runs the tail, whichever way the tail ends;
-    a record that cannot be written raises, for the caller to name.
+    THE ONE RECORD OF A BATCH'S RENAMED TRACKS, by name, size and mtime, so a
+    file put there since is never its own. A file another download recorded
+    is left out. ``own`` is the batch's download jobs, ``key`` the record's
+    name for it. A record that cannot be written raises, for the caller.
     """
     folder = resolved(staging)
     held = [resolved(path) for path in folder_listing(folder)] if folder.is_dir() else []
@@ -197,12 +165,7 @@ def keep(
 
 
 def kept(record: Path) -> frozenset[Identity]:
-    """What :func:`keep` kept at ``record``, or nothing.
-
-    NOTHING WHEN IT CANNOT BE READ, which is the safe reading here: a file the
-    record does not name is beside the batch, so a lost record refuses the
-    batch's own tail and never lands a file as its own.
-    """
+    """What :func:`keep` kept at ``record``, or nothing, the safe reading, when unreadable."""
     try:
         document = json.loads(record.read_text())
         return frozenset(
@@ -216,14 +179,10 @@ def kept(record: Path) -> frozenset[Identity]:
 class Waiting:
     """A download the staging folder may hold that no landing has taken (R-1467).
 
-    ``run`` is the run whose label go queued it, ``pass_name`` the sync pass
-    whose download it is and ``pass_run`` that pass's run where an intake job
-    still names it (R-1499); all three are None for a download neither queued.
-    ``verb`` is the handler that downloaded it, and ``tracks`` how many of its
-    downloaded tracks the folder holds at the names they were downloaded
-    under. A go's or a pass's download with none there is named only beside
-    files no download names, when its pass has no landing proof, since its
-    tail may have renamed them (:func:`beside`).
+    ``run`` is the queuing label go's run, ``pass_name`` and ``pass_run`` the
+    sync pass and its run (R-1499), each None when it does not apply. ``tracks``
+    counts its tracks at their download names; with none it is named only
+    beside unnamed files, when its pass has no landing proof.
     """
 
     job_id: str
@@ -286,8 +245,7 @@ class Waiting:
                 f"take the sync pass {self.pass_name} to its landing with: {command}; "
                 f"it refuses while the folder holds anything else"
             )
-        # MOVED OUT FIRST (review round one): ``intake land`` over the folder
-        # takes the whole of it, the batch's own tracks with these.
+        # MOVED OUT FIRST: ``intake land`` takes the whole folder.
         return (
             f"move the tracks of job {self.job_id} out of {folder}, and land them on "
             f"their own as any intake lands"
@@ -308,9 +266,8 @@ class Waiting:
 class Beside:
     """What the staging folder holds that a landing would take with a batch's own.
 
-    ``waiting`` names the downloads it can be put down to, and ``unnamed``
-    every file there that no download names. Empty when the folder holds
-    nothing but the batch's own tracks.
+    ``waiting`` names the downloads it is put down to, ``unnamed`` every file
+    no download names; false when there is nothing but the batch's own.
     """
 
     folder: Path
@@ -360,29 +317,13 @@ def beside(
 ) -> Beside:
     """What a landing of ``staging`` would take beside ``own``'s downloads.
 
-    WHAT A LANDING TAKES IS THE FOLDER, read as the landing reads it. A file
-    there that is one of ``own``'s downloaded tracks, at the name it was
-    downloaded under, is the batch's own. EVERY OTHER FILE IS BESIDE IT,
-    whoever put it there, since the landing would file it under the batch's
-    manifest and pass.
-
-    ``kept`` is what the batch's own tail left in the folder when it stopped
-    (:func:`keep`): a file no download names is read as its own only when it
-    is one of those, by name, size and modification time, so a file put there
-    since is still beside it. NOT WHEN ``own_pass`` LANDED: a pass with a
-    landing proof has had its tracks taken out of the folder, so nothing there
-    is read as its own by that record.
-
-    NAMING, NOT DECIDING, IS WHAT THE LANDING PROOF IS FOR. A file no download
-    names is put down to every go's or sync pass's download with a track
-    recorded in the folder, none of them there, whose pass has no landing
-    proof on either medium (:func:`cratekit.intake.land_cli.pass_landed`),
-    since its tail may have renamed them; a pass that landed is not named. A
-    library root or a session log the proof cannot read refuses.
-
-    A folder that is not there holds nothing a landing could take; one that
-    cannot be listed refuses, never reads as empty, under ``origin`` and with
-    ``again`` as its last step.
+    ``kept`` (:func:`keep`) admits an unnamed file as the batch's own by its
+    identity, except once ``own_pass`` landed. An unnamed file is put down to
+    every go's or pass's download with none of its tracks there whose pass has
+    no landing proof (:func:`cratekit.intake.land_cli.pass_landed`), since its
+    tail may have renamed them: the proof names, never decides. A folder that
+    is not there holds nothing; one that cannot be listed refuses under
+    ``origin``, with ``again`` as its last step.
     """
     folder = resolved(staging)
     try:
@@ -405,15 +346,11 @@ def beside(
     others = held - set(mine)
     if not others:
         return Beside(folder=folder)
-    runs: dict[str, str] | None = None
+    runs = functools.cache(lambda: _pass_runs(store, cfg.library.volume_id))
 
-    def run_of_pass(name: str | None) -> str | None:
-        nonlocal runs
-        if name is None:
-            return None
-        if runs is None:
-            runs = _pass_runs(store, cfg.library.volume_id)
-        return runs.get(name)
+    def waiting(job: jobs.Job, run: str | None, name: str | None, tracks: int) -> Waiting:
+        pass_run = None if name is None else runs().get(name)
+        return Waiting(job.job_id, run, job.handler_key, tracks, name, pass_run)
 
     found: list[Waiting] = []
     named: set[Path] = set()
@@ -423,22 +360,12 @@ def beside(
         present = [path for path in paths if path in others]
         if present:
             named.update(present)
-            name = pass_of(job)
-            found.append(
-                Waiting(
-                    job_id=job_id,
-                    run=origin_run(job),
-                    verb=job.handler_key,
-                    tracks=len(present),
-                    pass_name=name,
-                    pass_run=run_of_pass(name),
-                )
-            )
+            found.append(waiting(job, origin_run(job), pass_of(job), len(present)))
     unnamed = sorted(others - named)
     if unnamed and kept and not (own_pass and land_cli.pass_landed(cfg, own_pass)):
         unnamed = [path for path in unnamed if identity(path) not in kept]
     if unnamed:
-        proven: dict[str, bool] = {}
+        landed = functools.cache(lambda proof: land_cli.pass_landed(cfg, proof))
         for job_id, (job, paths) in downloads.items():
             run = origin_run(job)
             name = pass_of(job) if run is None else None
@@ -451,35 +378,18 @@ def beside(
                 if run is not None
                 else name
             )
-            if proof not in proven:
-                proven[proof] = land_cli.pass_landed(cfg, proof)
-            if not proven[proof]:
-                found.append(
-                    Waiting(
-                        job_id=job_id,
-                        run=run,
-                        verb=job.handler_key,
-                        tracks=0,
-                        pass_name=name,
-                        pass_run=run_of_pass(name),
-                    )
-                )
-    return Beside(
-        folder=folder, waiting=tuple(found), unnamed=tuple(path.name for path in unnamed)
-    )
+            if not landed(proof):
+                found.append(waiting(job, run, name, 0))
+    return Beside(folder=folder, waiting=tuple(found), unnamed=tuple(path.name for path in unnamed))
 
 
 @dataclass(frozen=True, slots=True)
 class Settled:
     """What the folder holds as a batch's tail starts, to tell what arrives during it.
 
-    ``items`` is every finished item of every download but the batch's own
-    whose recorded artifact is in the folder, by job and item, and ``count``
-    how many files a landing of the folder would take. The tail's steps tag,
-    analyse and rename in place and add no file, so neither moves while the
-    tail runs unless something else put a file there, or ``name apply`` gave a
-    file a name the landing does not take (a leading dot), which refuses too
-    and is a residual.
+    ``items`` is every finished item of other downloads whose artifact is in
+    the folder, by job and item, and ``count`` how many files a landing would
+    take. The tail adds no file, so either changing means something arrived.
     """
 
     items: frozenset[tuple[str, str]]
@@ -514,16 +424,9 @@ def arrived(
 ) -> CratekitError | None:
     """The refusal for what arrived in the folder while a batch's tail ran, or None (R-1499).
 
-    THE READING BEFORE THE TAIL CANNOT SEE WHAT ARRIVES DURING IT. A download
-    another process drives settles into the folder while the tail runs, the
-    tail's ``name apply`` renames it with the batch's own, and from then on
-    nothing tells the two apart by name: the landing would take it under the
-    batch's pass and the tail's record would keep it as the batch's own. So a
-    finished item of another download in the folder that was not there as
-    the tail started, or a change in how many files a landing would take,
-    refuses before the landing is planned, and the caller keeps no record.
-    The way on is to move what arrived out and land the batch's own by hand,
-    since its tail ran over them. A folder that cannot be read refuses too.
+    What arrives during the tail is renamed with the batch's own and cannot be
+    told apart after, so a new item of another download or a changed count
+    refuses before the landing is planned, as does an unreadable folder.
     """
     folder = resolved(staging)
     try:
@@ -569,31 +472,3 @@ def arrived(
             "after": after.count,
         },
     )
-
-
-__all__ = [
-    "DOWNLOAD_KEY",
-    "ORIGIN_KEY",
-    "PASS_TAILS_DIRNAME",
-    "RUN_KEY",
-    "Settled",
-    "TAILS_DIRNAME",
-    "UNNAMED_SHOWN",
-    "Beside",
-    "arrived",
-    "Identity",
-    "Waiting",
-    "beside",
-    "continue_command",
-    "go_record",
-    "identity",
-    "keep",
-    "kept",
-    "origin_run",
-    "pass_continue_command",
-    "pass_name",
-    "pass_of",
-    "pass_record",
-    "resolved",
-    "settled",
-]

@@ -1,125 +1,50 @@
 """An edit made on the account to a mirrored playlist, told apart and decided (U201, U204).
 
-THE MIRROR WAS ONE WAY. ``crate organize`` copies every genre folder of the
-routing tree onto the account (U147) and keeps each copy equal to rekordbox, so
-a track a person moved on the account was put back at the next refresh. Since
-U201 the mirror remembers, per playlist, the account tracks both sides held
-when it last finished it, the SNAPSHOT (``ledger.MirrorPlaylist.agreed``), and
-reads each playlist three ways: the snapshot, the account now and rekordbox
-now. This module decides, from those alone, which track a person changed on the
-account and what the library should do about it. It reads nothing and writes
-nothing, so every rule below is drivable without a database, an account or a
-gate.
+Each mirrored playlist is read three ways: its SNAPSHOT
+(``ledger.MirrorPlaylist.agreed``, what both sides held when a refresh last
+finished it), the account now and rekordbox now. From those alone this module
+decides which track a person changed on the account and what the library does
+about it, reading and writing nothing, so every rule is drivable without a
+database, an account or a gate. One base per playlist, so per side a track is
+added or removed, never both.
 
-ONE BASE, SO PER PLAYLIST A CHANGE HAS ONE SIDE. A track in the snapshot that
-the account no longer holds was taken off on the account; one the account holds
-that the snapshot does not was added there. The same reading of rekordbox gives
-its changes. A track is never both added and removed on one side of one
-playlist between two refreshes, as far as either side can show.
+THE GENRE TREE is read by each track's PLACE, the band playlists holding it.
+Taken off one band and put in another on the account is a MOVE; taken off its
+band and put nowhere is UNFILE (2026-11-04), its genre and energy cleared;
+added to a with vox or genre sub playlist of another folder, with no band, takes
+that FOLDER's genre, energy kept. Taken off a derived playlist alone is no edit.
 
-A GENRE TRACK IS READ ACROSS THE WHOLE TREE, by its PLACE: the band playlists
-(an energy band, a bucket's single sub or a style, what ``routing.energy_sub``
-files a track into) that hold it, on each side and in the snapshot. A track
-taken off ``Deep House Low`` and added to ``Tech House Mid`` on the account is
-one edit, a MOVE. One taken off its band and added nowhere in the tree is
-UNFILED, Phillip's answer of 2026-11-04: its genre and energy are cleared and it
-reads as unplaced. One added to a with vox or genre sub playlist of another
-folder, with no band of its own added, takes that FOLDER's genre with its
-energy kept, since such a playlist is read as its parent band is. A track taken
-off a with vox or genre sub playlist alone is no edit: those are derived, and
-the mirror puts it back as it always did.
+THE MOST RECENT CHANGE WINS where both sides changed a place differently: an
+addition beats a removal, whose time neither side records; two additions follow
+the later added time, and with either unknown or the two equal rekordbox's place
+stands, the conservative call. Every such call is named.
 
-THE MOST RECENT CHANGE WINS, U198's brief's rule, as far as a time can be read.
-Where both sides changed one track's place differently since the snapshot:
+THE FAVORITES FOLDER AND INBOX have their own rules, each a tree of its own.
+Favorites by track: added to a month or All Favorites is a FAVOURITE, placed as
+a heart is; taken off All Favorites is an UNFAVOURITE, leaving every filing
+playlist; a month removal alone, two months at once, or off All Favorites while
+put in a month is HELD. INBOX by batch: added JOINS, taken off LEAVES, and a
+change both sides made is agreed.
 
-* an ADDITION BEATS A REMOVAL, since neither side ever records when a track was
-  taken off, so the removal's time is unknown and the addition keeps the track;
-* two ADDITIONS follow the later of the account's added date and rekordbox's
-  membership time, and with either unknown, or the two equal, rekordbox's place
-  stands, the conservative call, recorded with U201. Every such call is named.
+THE LIBRARY'S OWN MONTH IS NEVER REKORDBOX'S CHANGE (U236): a month the library
+placed a FAVOURITE in, still held by that membership, is no rekordbox addition,
+and a month a person put it in on the account replaces it
+(:func:`placed_after`).
 
-THE FAVORITES FOLDER AND INBOX ARE READ BY THEIR OWN RULES (U204), each a tree
-of its own, so a track held in one is never held in another:
+A DOWNLOAD (U204): a track added on the account that the library has no row
+for and no snapshot ever held is HELD with ``acquire``, queued once, and kept on
+the account until it lands. One a snapshot held once left the collection.
 
-* FAVORITES, by track across ``All Favorites`` and the filing playlists beside
-  it (a month, ``Undated``, a quarter the split has not retired). A track added
-  on the account to one month, or to All Favorites, is a FAVOURITE: the library
-  places it as a heart is placed, in All Favorites and that month, or for an
-  addition to All Favorites alone the month of its added time on the account,
-  none when it sits in a filing playlist already. A track taken off All
-  Favorites is an UNFAVOURITE: it leaves All Favorites and every filing
-  playlist. Taken off a month alone, added to two months at once, or taken off
-  All Favorites while put in a month, it is HELD and listed, since none of those
-  says what the library should do;
-* INBOX, by batch playlist: a track added on the account JOINS the batch, one
-  taken off LEAVES it. One base per playlist, so the two sides cannot disagree
-  there: a change both made is agreed.
+THE LANDING'S OWN FILING NEVER BEATS THE EDIT THAT QUEUED IT (U227): a track no
+snapshot held, whose every band in rekordbox is one its landing filed it into,
+is read as landed for the account's edit, which is carried. While that filing
+stands, a never agreed queuing playlist's base is read without the track, as it
+stood at the queue (U230); an agreed snapshot is never lifted.
 
-THE LIBRARY'S OWN MONTH IS NEVER REKORDBOX'S CHANGE (U236). A FAVOURITE put
-in All Favorites alone is placed in rekordbox in a month the account does not
-hold it in, since the account area was planned before that write (R-1029),
-and a snapshot settled the month without it. Read as an addition in rekordbox,
-the month then beat the account's removal, and a favourite taken off again
-before the mirror caught up was kept (sitting 88). So each playlist carries
-the library's PLACEMENTS on it, recorded with the write and dropped once the
-mirror put the track on the account's side of it (:func:`placed_after`). A
-placement names the time of the membership the write made, and the reader
-hands this rule only those rekordbox still holds by that membership: a month
-placed is no addition in rekordbox, neither against an UNFAVOURITE nor as a later change
-against a FAVOURITE, and a favourite put in another month on the account
-leaves it, the person's choice replacing the library's. A month a person
-added in rekordbox since, or made again, or a membership put back by hand, is
-not the library's, and still beats a removal.
-
-A DOWNLOAD (U204). A track added on the account that the library owns no row
-for, and that no snapshot of any mirrored playlist ever held, is HELD with
-``acquire`` set: the organize step ``mirror-downloads`` queues it once, and
-the mirror keeps it on the account until it lands, when this rule reads it as
-the addition it is and the library takes it. A track a snapshot held once and
-the library no longer owns left the collection, and is never fetched again.
-
-AND THE LANDING'S OWN FILING NEVER BEATS THE EDIT THAT QUEUED IT (U227). A
-landing files the row it made by the row's own tags, in a commit after the
-landing's, so the next refresh reads the track in a band rekordbox placed it
-in later than the account's addition, and the later change rule would keep
-rekordbox's place and take the track off the playlist the person put it in
-(sitting 85). ``decide`` is handed, for each track a mirror download queued,
-the band places its landing filed its row into, read from the adoption
-ledger. A track no snapshot ever held whose every band in rekordbox is one of
-those is read as LANDED FOR THE ACCOUNT'S EDIT: no change made in rekordbox,
-so the edit is carried. Once, since the library taking it settles the
-snapshot. A band rekordbox holds it in that the landing did not file, a move
-or a second band a person made since, is rekordbox's change, read by the
-later change rule as before. Places are compared, never a time against
-another clock's.
-
-AS IT STOOD WHEN THE DOWNLOAD WAS QUEUED (U230). Sitting 86 read the
-playlist the person edited holding the track in its own base, its account
-side for a playlist never agreed or a snapshot that took it, so the account
-side read as no change and the landing's rule never fired. ``decide`` is also
-handed, for each such track, the playlists whose mirror job queued it. While
-the landing's filing stands and the account still lists the track there, a
-NEVER AGREED queuing playlist's base, its account side, is read without the
-track, as it stood at the queue, since a download is queued only for a track
-no snapshot held. An agreed snapshot is the library's word and is never
-lifted: on this tree it takes a queued track only once the library took the
-edit. Every other playlist's base counts as before, so a row another
-playlist held is never read as landed.
-
-HELD IS NEITHER CARRIED NOR UNDONE. A track added on the account to two band
-playlists at once, one taken off its band and left in a derived playlist only,
-one the library owns no row for (queued for download by U204) or owns two rows
-for, and one whose playlist the account listed short, is held: the library is
-not changed, the account is left as it is, and the gate names it. Nothing a
-person did is lost to a refresh that could not read what they meant.
-
-A PLAYLIST NEVER AGREED READS ITS ACCOUNT SIDE AS ITS SNAPSHOT, so every
-difference on it is rekordbox's and nothing in the library changes: the first
-refresh after U201 lands, and a playlist the mirror made since. A SHORT LISTING
-CARRIES NO REMOVAL, since a track it leaves out is no evidence that a person
-took it off: each track the snapshot holds that it does not list is held. Its
-snapshot still advances, keeping its word on every track it did not list and
-the mirror did not take off, so a change the mirror carried is not read again.
+HELD IS NEITHER CARRIED NOR UNDONE: the library and the account are left as
+they are and the gate names it. A playlist never agreed reads its account side
+as its snapshot, so every difference is rekordbox's. A SHORT LISTING carries no
+removal: each track the snapshot holds that it does not list is held.
 
 Layer: modules.
 """
@@ -165,16 +90,19 @@ FAVORITES = "favorites"
 INBOX = "inbox"
 TREES = (GENRE, FAVORITES, INBOX)
 
+#: The three readings of a playlist, as :class:`Mirrored` names them, and as a
+#: decision shows them.
+_SIDES = ("base", "account", REKORDBOX)
+_SHOWN = ("was", "account", REKORDBOX)
+
 
 @dataclass(frozen=True, slots=True)
 class Place:
     """One mirrored playlist an edit is read on: its account title, rekordbox names and kind.
 
-    In the genre tree ``primary`` is a band playlist, a place routing files a
-    track's band into, and anything else in a genre folder, a with vox, genre
-    sub or genre Favorites playlist, is additive. In the Favorites tree it is
-    ``All Favorites``, and a filing playlist is not. Every INBOX batch is
-    primary. ``tree`` is which rule reads it (U204).
+    ``primary`` is a band playlist in the genre tree (a derived playlist is
+    not), ``All Favorites`` in the Favorites tree, and every INBOX batch.
+    ``tree`` is which rule reads it (U204).
     """
 
     title: str
@@ -186,12 +114,10 @@ class Place:
 
 @dataclass(frozen=True, slots=True)
 class Mirrored:
-    """One mirrored genre playlist read three ways, by account track.
+    """One mirrored playlist read three ways, by account track.
 
-    ``account`` is what the account holds now, ``rekordbox`` the account tracks
-    the rekordbox playlist matched, and ``agreed`` the snapshot, ``None`` for a
-    playlist never agreed. ``account_added`` and ``rekordbox_added`` are each
-    track's added time on that side as text, absent when unknown.
+    ``agreed`` is the snapshot, ``None`` for a playlist never agreed; the two
+    ``_added`` maps are each track's added time on that side, when known.
     """
 
     place: Place
@@ -201,11 +127,8 @@ class Mirrored:
     short: bool = False
     account_added: Mapping[str, str] = field(default_factory=dict)
     rekordbox_added: Mapping[str, str] = field(default_factory=dict)
-    #: The library's own placements on it (U236): tracks an account edit the
-    #: library took placed here in rekordbox that the account does not hold
-    #: here yet, each still held here by the membership that write made, which
-    #: the reader checks by its time. Read on a filing playlist of the
-    #: Favorites folder only.
+    #: The library's own placements here not yet on the account (U236), each
+    #: still held by the membership its write made. Favorites filing only.
     placed: frozenset[str] = frozenset()
 
     @property
@@ -218,12 +141,10 @@ class Mirrored:
 class Hold:
     """What the mirror leaves as it is on one playlist.
 
-    ``keep`` is account tracks it never takes off, ``skip`` rekordbox's tracks
-    it never adds, both because the track's own edit is carried or held.
-    ``stay`` is tracks whose snapshot word is kept even where both sides agree
-    now (U204): a Favorites edit reads its whole folder, so a playlist the plan
-    finds level must not agree the track before the library took the edit, or
-    a run that plans and does not apply loses half of it.
+    ``keep`` is account tracks it never takes off and ``skip`` rekordbox's it
+    never adds, for an edit carried or held. ``stay`` keeps the snapshot's word
+    even where both sides agree now (U204), so a Favorites edit planned and not
+    applied is not half agreed away.
     """
 
     keep: frozenset[str] = frozenset()
@@ -239,9 +160,8 @@ class Hold:
 class Decision:
     """One track a person changed on the account, and what becomes of it.
 
-    ``to`` is the place a MOVE, FOLDER, FAVOURITE, JOIN or LEAVE takes,
-    ``content_id`` the library row a carried edit changes, and the three place
-    tuples are titles, sorted.
+    ``to`` is the place a carried edit takes, ``content_id`` the library row it
+    changes, and the three place tuples are titles, sorted.
     """
 
     track: str
@@ -260,8 +180,7 @@ class Decision:
     #: A track added on the account that the library lacks, to queue (U204).
     acquire: bool = False
     #: A FAVOURITE put in All Favorites alone (U204): the account's added time,
-    #: ``""`` when unknown, which dates its month, and whether it sits in a
-    #: filing playlist already on either side, which gives it none.
+    #: which dates its month, and whether a filing playlist holds it already.
     when: str = ""
     filed: bool = False
     #: A FAVOURITE moved between months (U204): the months it leaves.
@@ -280,13 +199,12 @@ class Decision:
         }
         if self.to is not None:
             shown["to"] = self.to.title
-        if self.content_id:
-            shown["content_id"] = self.content_id
-        if self.acquire:
-            shown["acquire"] = True
-        if self.landed:
-            shown["landed"] = True
-        return shown
+        optional = (
+            ("content_id", self.content_id),
+            ("acquire", self.acquire),
+            ("landed", self.landed),
+        )
+        return shown | {key: value for key, value in optional if value}
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,9 +230,8 @@ class Decided:
 def moment(text: str) -> datetime | None:
     """A time as either side writes it, with its zone, or ``None`` when it is unknown.
 
-    The account's is ISO 8601; rekordbox writes ``YYYY-MM-DD HH:MM:SS.SSS
-    +00:00``, a space before the zone. A time with no zone is unknown, since
-    comparing it with one that has a zone would be a guess.
+    Rekordbox writes a space before the zone. A time with no zone is unknown,
+    since comparing it with one that has a zone would be a guess.
     """
     value = str(text or "").strip()
     if not value:
@@ -332,13 +249,34 @@ def _titles(places: Iterable[Place]) -> tuple[str, ...]:
     return tuple(sorted(place.title for place in places))
 
 
+def _named(places: Iterable[Place]) -> str:
+    return ", ".join(_titles(places))
+
+
+def _placed(
+    playlists: Sequence[Mirrored],
+    track: str,
+    side: str,
+    primary: bool,
+    lifted: frozenset[str] = frozenset(),
+) -> frozenset[Place]:
+    """The places of one kind holding ``track`` on one side, a lifted base left out (U230)."""
+    return frozenset(
+        one.place
+        for one in playlists
+        if one.place.primary is primary
+        and track in getattr(one, side)
+        and not (side == "base" and one.place.title in lifted)
+    )
+
+
 def _intent(
     was: frozenset[Place], now: frozenset[Place], was_more: frozenset[Place], now_more: frozenset[Place]
 ) -> tuple[str, Place | None, str] | None:
     """What the account side did to one track's place, or ``None`` for nothing.
 
     ``was`` and ``now`` are its band places in the snapshot and on the account,
-    ``was_more`` and ``now_more`` its additive ones.
+    ``was_more`` and ``now_more`` its derived ones.
     """
     added = now - was
     removed = was - now
@@ -349,60 +287,43 @@ def _intent(
         (place,) = added
         return MOVE, place, f"put in {place.title} on the account"
     if len(added) > 1:
-        return (
-            HELD,
-            None,
+        return HELD, None, (
             f"added on the account to {len(added)} band playlists at once "
-            f"({', '.join(_titles(added))}), so which one it belongs in is not "
-            f"something the account says",
+            f"({_named(added)}), so which one it belongs in is not something the account says"
         )
     if removed and len(now) == 1:
         (place,) = now
-        return MOVE, place, f"taken off {', '.join(_titles(removed))} on the account, left in {place.title}"
+        return MOVE, place, f"taken off {_named(removed)} on the account, left in {place.title}"
     if removed and len(now) > 1:
-        return (
-            HELD,
-            None,
-            f"taken off {', '.join(_titles(removed))} on the account and still in "
-            f"{len(now)} band playlists there, so which one it belongs in is not "
-            f"something the account says",
+        return HELD, None, (
+            f"taken off {_named(removed)} on the account and still in {len(now)} band "
+            f"playlists there, so which one it belongs in is not something the account says"
         )
     if not added_more:
         if not now_more:
             return UNFILE, None, (
-                f"taken off {', '.join(_titles(removed))} on the account and added to "
-                f"no other genre playlist"
+                f"taken off {_named(removed)} on the account and added to no other genre playlist"
             )
-        return (
-            HELD,
-            None,
-            f"taken off {', '.join(_titles(removed))} on the account and left only in "
-            f"{', '.join(_titles(now_more))}, which is derived from a band, so where "
-            f"it goes is not something the account says",
+        return HELD, None, (
+            f"taken off {_named(removed)} on the account and left only in {_named(now_more)}, "
+            f"which is derived from a band, so where it goes is not something the account says"
         )
     folders = sorted({place.folder for place in added_more})
     if len(folders) > 1:
-        return (
-            HELD,
-            None,
+        return HELD, None, (
             f"added on the account to playlists of {len(folders)} genres at once "
-            f"({', '.join(_titles(added_more))}), so which genre it takes is not "
-            f"something the account says",
+            f"({_named(added_more)}), so which genre it takes is not something the account says"
         )
     if removed and not now and folders[0] in {place.folder for place in removed}:
-        # TAKEN OFF ITS BAND AND LEFT IN A DERIVED PLAYLIST OF ITS OWN GENRE:
-        # the genre is unchanged and the band is gone, so the account says
-        # neither where it goes nor that it leaves.
-        return (
-            HELD,
-            None,
-            f"taken off {', '.join(_titles(removed))} on the account and left only in "
-            f"{', '.join(_titles(added_more | now_more))}, which is derived from a band "
-            f"of its own genre, so where it goes is not something the account says",
+        # TAKEN OFF ITS BAND, LEFT IN A DERIVED PLAYLIST OF ITS OWN GENRE: the
+        # account says neither where it goes nor that it leaves.
+        return HELD, None, (
+            f"taken off {_named(removed)} on the account and left only in "
+            f"{_named(added_more | now_more)}, which is derived from a band of its own "
+            f"genre, so where it goes is not something the account says"
         )
     if not removed and folders[0] in {place.folder for place in now}:
-        # A DERIVED PLAYLIST OF ITS OWN GENRE: the band already says the
-        # genre, so this is no edit, and the mirror writes rekordbox's side.
+        # A DERIVED PLAYLIST OF ITS OWN GENRE: the band already says the genre.
         return None
     (place,) = sorted(
         (one for one in added_more if one.folder == folders[0]), key=lambda one: one.title
@@ -429,17 +350,14 @@ def decide(
 ) -> Decided:
     """Decide every track a person changed on the account, tree by tree. Pure.
 
-    ``owner`` is each account track to the library rows matched to it, which a
-    carried edit needs exactly one of. ``filed`` is each track a mirror
-    download queued to the ``(folder, playlist)`` places its landing filed its
-    row into (U227), none when absent. ``queued`` is each such track to the
-    titles of the mirrored playlists whose job queued it (U230), none when
-    absent. Each tree is read by its own rule, and each playlist's hold covers
-    only the tracks its own tree held (U204).
+    ``owner`` is each account track to its matched library rows, of which a
+    carried edit needs exactly one. ``filed`` is each track a mirror download
+    queued to the ``(folder, playlist)`` places its landing filed it into
+    (U227), and ``queued`` each such track to the titles of the playlists whose
+    job queued it (U230). Each playlist's hold covers its own tree (U204).
     """
-    # EVERY TRACK A SNAPSHOT EVER HELD, across every tree, by the playlists
-    # whose base holds it: one the library no longer owns left the collection
-    # and is never queued for download.
+    # EVERY TRACK A SNAPSHOT EVER HELD, by the playlists whose base holds it:
+    # one the library no longer owns left the collection and is never queued.
     held_by: dict[str, set[str]] = {}
     for one in playlists:
         for track in one.base:
@@ -449,33 +367,30 @@ def decide(
     by_queue = {
         track: frozenset(str(title) for title in titles) for track, titles in (queued or {}).items()
     }
-    decisions: list[Decision] = []
-    for tree, rule in ((GENRE, _decide_genre), (FAVORITES, _decide_favorites), (INBOX, _decide_inbox)):
-        mine = [one for one in playlists if one.place.tree == tree]
-        if not mine:
-            continue
-        if tree == GENRE:
-            decisions.extend(
-                _decide_genre(
-                    mine,
-                    owner,
-                    known,
-                    by_landing,
-                    queued=by_queue,
-                    held_by={track: frozenset(titles) for track, titles in held_by.items()},
-                )
-            )
-        else:
-            decisions.extend(rule(mine, owner, known))
+
+    def mine(tree: str) -> list[Mirrored]:
+        return [one for one in playlists if one.place.tree == tree]
+
+    decisions = [
+        *_decide_genre(
+            mine(GENRE),
+            owner,
+            known,
+            by_landing,
+            queued=by_queue,
+            held_by={track: frozenset(titles) for track, titles in held_by.items()},
+        ),
+        *_decide_favorites(mine(FAVORITES), owner, known),
+        *_decide_inbox(mine(INBOX), owner, known),
+    ]
     return Decided(decisions=tuple(decisions), holds=_holds(playlists, decisions))
 
 
 def _unread(playlists: Sequence[Mirrored]) -> set[str]:
     """Tracks a short listing left out of a playlist the snapshot holds them on.
 
-    A SHORT LISTING SAYS NOTHING OF A TRACK IT LEAVES OUT: one the snapshot
-    holds and the listing does not may be counted and unlisted, so it is
-    neither a removal nor anything else. A track it lists is on the account.
+    A SHORT LISTING SAYS NOTHING OF A TRACK IT LEAVES OUT, so such a track is
+    neither a removal nor anything else.
     """
     unread: set[str] = set()
     for one in playlists:
@@ -512,42 +427,26 @@ def _carry(
 ) -> Decision:
     """A carried edit on the one library row matched to the track, or why it is held.
 
-    A track the library holds no row for is held on the account; one added there
-    that no snapshot ever held is queued for download (U204). Two rows are held,
-    since which one changes is not something the account says.
+    No row holds it on the account, queued for download when it was added
+    there and no snapshot ever held it (U204); two rows hold it, since which
+    one changes is not something the account says.
     """
     rows = sorted({str(one) for one in owner.get(track, ()) if str(one)})
     if not rows:
-        if kind in ADDITIONS and track not in known:
-            return Decision(
-                track,
-                HELD,
-                f"{why}, and the library holds no track matched to it, so it is queued "
-                f"for download and stays on the account until it lands",
-                to=to,
-                tree=tree,
-                acquire=True,
-                **shown,
-            )
-        return Decision(
-            track,
-            HELD,
-            f"{why}, and the library holds no track matched to it, so nothing is "
-            f"changed and it stays on the account",
-            to=to,
-            tree=tree,
-            **shown,
+        acquire = kind in ADDITIONS and track not in known
+        then = (
+            "so it is queued for download and stays on the account until it lands"
+            if acquire
+            else "so nothing is changed and it stays on the account"
         )
+        why = f"{why}, and the library holds no track matched to it, {then}"
+        return Decision(track, HELD, why, to=to, tree=tree, acquire=acquire, **shown)
     if len(rows) > 1:
-        return Decision(
-            track,
-            HELD,
+        why = (
             f"{why}, and {len(rows)} library rows match it, so which one changes is "
-            f"not something the account says",
-            to=to,
-            tree=tree,
-            **shown,
+            f"not something the account says"
         )
+        return Decision(track, HELD, why, to=to, tree=tree, **shown)
     return Decision(
         track, kind, why, to=to, content_id=rows[0], settle=settle, tree=tree, **shown, **extra
     )
@@ -557,133 +456,79 @@ def _decide_genre(
     playlists: Sequence[Mirrored],
     owner: Mapping[str, Sequence[str]],
     known: frozenset[str],
-    filed: Mapping[str, frozenset[tuple[str, str]]] | None = None,
+    filed: Mapping[str, frozenset[tuple[str, str]]],
     *,
-    queued: Mapping[str, frozenset[str]] | None = None,
-    held_by: Mapping[str, frozenset[str]] | None = None,
+    queued: Mapping[str, frozenset[str]],
+    held_by: Mapping[str, frozenset[str]],
 ) -> list[Decision]:
     """Every track a person changed on the account across the genre tree (U201).
 
-    ``filed`` is each track a mirror download queued to the places its landing
-    filed its row into (U227), ``queued`` each such track to the titles of the
-    playlists whose job queued it, and ``held_by`` each track to the titles of
-    every playlist, of any tree, whose base holds it (U230).
+    ``filed`` and ``queued`` are :func:`decide`'s, and ``held_by`` each track
+    to the titles of every playlist, of any tree, whose base holds it (U230).
     """
-    filed = filed or {}
-    queued = queued or {}
-    held_by = held_by if held_by is not None else {track: frozenset({""}) for track in known}
     unread = _unread(playlists)
-    lifted: frozenset[str] = frozenset()
 
-    def placed(track: str, side: str, primary: bool) -> frozenset[Place]:
-        return frozenset(
-            one.place
-            for one in playlists
-            if one.place.primary is primary
-            and track in getattr(one, side)
-            and not (side == "base" and one.place.title in lifted)
-        )
-
-    decisions: list[Decision] = []
-    for track in _tracks(playlists):
-        # AS IT STOOD WHEN THE DOWNLOAD WAS QUEUED (U230): the base of the
-        # playlist whose job queued the track is read without it, while the
-        # landing's filing stands and the account still lists it there.
+    def decided(track: str) -> Decision | None:
+        # AS IT STOOD WHEN THE DOWNLOAD WAS QUEUED (U230), :func:`_as_queued`.
         lifted = _as_queued(track, playlists, filed, queued)
-        was, now = placed(track, "base", True), placed(track, "account", True)
-        there = placed(track, "rekordbox", True)
-        shown = {
-            "was": _titles(was),
-            "account": _titles(now),
-            "rekordbox": _titles(there),
-        }
+        was, now, there = (_placed(playlists, track, side, True, lifted) for side in _SIDES)
+        shown = dict(zip(_SHOWN, map(_titles, (was, now, there))))
         if track in unread:
-            decisions.append(Decision(track, HELD, _UNREAD, **shown))
-            continue
-        extra: dict[str, Any] = {}
-        intent = _intent(
-            was, now, placed(track, "base", False), placed(track, "account", False)
-        )
+            return Decision(track, HELD, _UNREAD, **shown)
+        more = (_placed(playlists, track, side, False, lifted) for side in _SIDES[:2])
+        intent = _intent(was, now, *more)
         if intent is None:
-            continue
+            return None
         kind, to, why = intent
         if kind == HELD:
-            decisions.append(Decision(track, HELD, why, **shown))
-            continue
+            return Decision(track, HELD, why, **shown)
+        extra: dict[str, Any] = {}
         if there != was:
             if _agrees(kind, to, there):
-                decisions.append(
-                    Decision(track, AGREED, f"{why}, and rekordbox made the same change", to=to, **shown)
-                )
-                continue
+                why = f"{why}, and rekordbox made the same change"
+                return Decision(track, AGREED, why, to=to, **shown)
             if kind == UNFILE:
-                decisions.append(
-                    Decision(
-                        track,
-                        REKORDBOX,
-                        f"{why}, and placed in {', '.join(_titles(there))} in rekordbox: "
-                        f"an addition beats a removal, whose time is never known",
-                        **shown,
-                    )
+                why = (
+                    f"{why}, and placed in {_named(there)} in rekordbox: "
+                    f"an addition beats a removal, whose time is never known"
                 )
-                continue
+                return Decision(track, REKORDBOX, why, **shown)
             if there and _landed_there(track, there, bool(held_by.get(track, frozenset()) - lifted), filed):
-                # THE LANDING'S OWN FILING (U227): the row was made for this
-                # edit and filed by its tags, which no person chose.
+                # THE LANDING'S OWN FILING (U227), which no person chose.
                 why = (
                     f"{why}, and landed for the account's edit: its landing filed it in "
-                    f"{', '.join(_titles(there))} by its own tags, which is no change "
-                    f"made in rekordbox"
+                    f"{_named(there)} by its own tags, which is no change made in rekordbox"
                 )
                 extra = {"landed": True}
             elif there:
                 said = _later(playlists, track, to, there - was)
                 if said is not None:
-                    decisions.append(Decision(track, REKORDBOX, f"{why}, {said}", **shown))
-                    continue
-                why = (
-                    f"{why}, later than rekordbox placed it in "
-                    f"{', '.join(_titles(there))}"
-                )
+                    return Decision(track, REKORDBOX, f"{why}, {said}", **shown)
+                why = f"{why}, later than rekordbox placed it in {_named(there)}"
             else:
                 why = (
                     f"{why}, and taken out of the tree in rekordbox: an addition beats "
                     f"a removal, whose time is never known"
                 )
-        decisions.append(
-            _carry(
-                track,
-                kind,
-                why,
-                owner,
-                known,
-                to=to,
-                tree=GENRE,
-                settle=tuple(
-                    (one.place.folder, one.place.title, track in one.account)
-                    for one in playlists
-                    if not one.short
-                ),
-                shown=shown,
-                **extra,
-            )
+        settle = tuple(
+            (one.place.folder, one.place.title, track in one.account)
+            for one in playlists
+            if not one.short
         )
-    return decisions
+        return _carry(
+            track, kind, why, owner, known, to=to, tree=GENRE, settle=settle, shown=shown, **extra
+        )
+
+    return [one for one in map(decided, _tracks(playlists)) if one is not None]
 
 
 def _landed_there(
-    track: str,
-    there: frozenset[Place],
-    held: bool,
-    filed: Mapping[str, frozenset[tuple[str, str]]],
+    track: str, there: frozenset[Place], held: bool, filed: Mapping[str, frozenset[tuple[str, str]]]
 ) -> bool:
     """Whether every band rekordbox holds ``track`` in is one its landing filed it into (U227).
 
-    Only for a track no snapshot held, ``held`` false, the one a mirror
-    download was queued for: once the library took the edit its snapshot
-    holds the track, and the later change rule alone reads it from then on.
-    The base of the playlist whose job queued it is read as it stood at the
-    queue while the landing's filing stands (U230, :func:`_as_queued`).
+    Only for a track no snapshot held, ``held`` false: once the library took
+    the edit, the later change rule alone reads it.
     """
     places = filed.get(track)
     if not places or held:
@@ -704,23 +549,12 @@ def _as_queued(
 ) -> frozenset[str]:
     """The playlists whose base is read without ``track``, as it stood at the queue (U230).
 
-    A mirror download is queued only for a track no snapshot held (U204), so
-    when the playlist whose job queued it is NEVER AGREED, its base is its
-    account side, which says nothing of the library's history: sitting 86's
-    shape. Read as it stood at the queue, the account's addition there is the
-    edit it is, and the landing's filing is read as the landing's.
-
-    AN AGREED SNAPSHOT IS NEVER LIFTED. A held track keeps the snapshot's word
-    (:func:`agreed_after`), so the queuing playlist's snapshot takes the track
-    only once the library took the edit, and lifting it then would carry a
-    person's later move back into the landing's band back again (the review
-    of U230, round one, driven once the landing's batch left INBOX). Nor a
-    SHORT listing, which carries no edit of its own.
-
-    ONLY WHILE THE LANDING'S FILING STANDS, every band rekordbox holds it in
-    one its landing filed it into, AND THE EDIT DOES, the account still listing
-    it on that playlist and rekordbox not. Every other playlist's base counts
-    as before, so a row another playlist held is never read as landed.
+    A download is queued only for a track no snapshot held, so a NEVER AGREED
+    queuing playlist's base, its account side, says nothing of the library's
+    history. An agreed snapshot is never lifted, since it takes the track only
+    once the library took the edit, nor a short listing. Only while the
+    landing's filing stands and the account, not rekordbox, still lists it
+    there; every other base counts as before.
     """
     titles = queued.get(track)
     places = filed.get(track)
@@ -746,144 +580,91 @@ def _decide_favorites(
 ) -> list[Decision]:
     """Every track a person changed on the account across the Favorites folder (U204).
 
-    All Favorites is the one primary place, and each filing playlist beside it
-    is a month. The rule is the heart's: a FAVOURITE is placed as a heart is
-    placed, and an UNFAVOURITE leaves the whole folder.
+    All Favorites is the one primary place and each filing playlist a month:
+    a FAVOURITE is placed as a heart is, an UNFAVOURITE leaves the whole folder.
     """
     unread = _unread(playlists)
+    source = next((one.place for one in playlists if one.place.primary), None)
+    favourites = source.title if source else "the favourites"
 
-    def placed(track: str, side: str, primary: bool) -> frozenset[Place]:
-        return frozenset(
-            one.place
-            for one in playlists
-            if one.place.primary is primary and track in getattr(one, side)
-        )
+    def decided(track: str) -> Decision | None:
+        def say(outcome: str, why: str, **more: Any) -> Decision:
+            return Decision(track, outcome, why, tree=FAVORITES, **more, **shown)
 
-    decisions: list[Decision] = []
-    for track in _tracks(playlists):
-        was_s, now_s = bool(placed(track, "base", True)), bool(placed(track, "account", True))
-        there_s = bool(placed(track, "rekordbox", True))
-        was_m, now_m = placed(track, "base", False), placed(track, "account", False)
-        there_m = placed(track, "rekordbox", False)
-        # THE LIBRARY'S OWN MONTH (U236): a filing playlist the library placed
-        # the track in for an account edit, which the account does not show
-        # yet, is never a change a person made in rekordbox.
+        was_s, now_s, there_s = (bool(_placed(playlists, track, side, True)) for side in _SIDES)
+        was_m, now_m, there_m = (_placed(playlists, track, side, False) for side in _SIDES)
+        # THE LIBRARY'S OWN MONTH (U236), never a change a person made in rekordbox.
         ours = frozenset(
             one.place for one in playlists if not one.place.primary and track in one.placed
         )
         shown = {
-            "was": _titles(placed(track, "base", True) | was_m),
-            "account": _titles(placed(track, "account", True) | now_m),
-            "rekordbox": _titles(placed(track, "rekordbox", True) | there_m),
+            key: _titles(_placed(playlists, track, side, True) | months)
+            for key, side, months in zip(_SHOWN, _SIDES, (was_m, now_m, there_m))
         }
         if track in unread:
-            decisions.append(Decision(track, HELD, _UNREAD, tree=FAVORITES, **shown))
-            continue
+            return say(HELD, _UNREAD)
         added_s, removed_s = now_s and not was_s, was_s and not now_s
         added_m, removed_m = now_m - was_m, was_m - now_m
         if not (added_s or removed_s or added_m or removed_m):
-            continue
-        source = next((one.place for one in playlists if one.place.primary), None)
+            return None
         extra: dict[str, Any] = {}
         if removed_s and added_m:
-            why = (
-                f"taken off {source.title if source else 'the favourites'} and put in "
-                f"{', '.join(_titles(added_m))} on the account at once, so whether it is "
-                f"a favourite is not something the account says"
-            )
-            decisions.append(Decision(track, HELD, why, tree=FAVORITES, **shown))
-            continue
+            return say(HELD, (
+                f"taken off {favourites} and put in {_named(added_m)} on the account at once, "
+                f"so whether it is a favourite is not something the account says"
+            ))
         if removed_s:
             kind, to = UNFAVOURITE, None
-            why = f"taken off {source.title if source else 'the favourites'} on the account"
+            why = f"taken off {favourites} on the account"
         elif len(added_m) > 1:
-            why = (
+            return say(HELD, (
                 f"added on the account to {len(added_m)} month playlists at once "
-                f"({', '.join(_titles(added_m))}), so which month it belongs in is not "
-                f"something the account says"
-            )
-            decisions.append(Decision(track, HELD, why, tree=FAVORITES, **shown))
-            continue
+                f"({_named(added_m)}), so which month it belongs in is not something the "
+                f"account says"
+            ))
         elif added_m:
             ((to),) = added_m
             kind, why = FAVOURITE, f"put in {to.title} on the account"
             mine = ours - now_m
             if removed_m or mine:
-                # A MOVE BETWEEN MONTHS: the month it was taken off is left too,
-                # so the library matches the account rather than holding the
-                # track in both and listing the old month on every run. So is
-                # a month the library placed it in for the person (U236),
-                # whose own choice of month replaces it.
+                # A MOVE BETWEEN MONTHS leaves the old month too, and a month the
+                # library placed it in (U236), so the library matches the account.
                 extra = {"away": tuple(sorted(removed_m | mine, key=lambda one: one.title))}
                 if removed_m:
-                    why = f"{why}, taken off {', '.join(_titles(removed_m))}"
+                    why = f"{why}, taken off {_named(removed_m)}"
                 if mine:
-                    why = (
-                        f"{why}, leaving {', '.join(_titles(mine))}, the month the library "
-                        f"placed it in"
-                    )
+                    why = f"{why}, leaving {_named(mine)}, the month the library placed it in"
         elif added_s:
             to = source
             kind, why = FAVOURITE, f"put in {to.title} on the account"
-            extra = {
-                "when": next(
-                    (one.account_added.get(track, "") for one in playlists if one.place.primary),
-                    "",
-                ),
-                "filed": bool(now_m or there_m),
-            }
+            when = (one.account_added.get(track, "") for one in playlists if one.place.primary)
+            extra = {"when": next(when, ""), "filed": bool(now_m or there_m)}
         else:
-            why = (
-                f"taken off {', '.join(_titles(removed_m))} on the account and left in "
-                f"{source.title if source else 'the favourites'}: a month removal alone "
-                f"is listed and not carried"
-            )
-            decisions.append(Decision(track, HELD, why, tree=FAVORITES, **shown))
-            continue
+            return say(HELD, (
+                f"taken off {_named(removed_m)} on the account and left in {favourites}: "
+                f"a month removal alone is listed and not carried"
+            ))
         if there_s != was_s or there_m != was_m:
             if kind == UNFAVOURITE:
                 if not there_s and not there_m:
-                    decisions.append(
-                        Decision(
-                            track, AGREED, f"{why}, and rekordbox made the same change",
-                            tree=FAVORITES, **shown,
-                        )
-                    )
-                    continue
+                    return say(AGREED, f"{why}, and rekordbox made the same change")
                 if (there_s and not was_s) or (there_m - was_m - ours):
-                    decisions.append(
-                        Decision(
-                            track,
-                            REKORDBOX,
-                            f"{why}, and placed in the favourites in rekordbox since: an "
-                            f"addition beats a removal, whose time is never known",
-                            tree=FAVORITES,
-                            **shown,
-                        )
-                    )
-                    continue
+                    return say(REKORDBOX, (
+                        f"{why}, and placed in the favourites in rekordbox since: an "
+                        f"addition beats a removal, whose time is never known"
+                    ))
             else:
                 assert to is not None
                 away = frozenset(extra.get("away", ()))
                 if there_s and (to.primary or to in there_m) and not there_m & away:
-                    decisions.append(
-                        Decision(
-                            track, AGREED, f"{why}, and rekordbox made the same change",
-                            to=to, tree=FAVORITES, **shown,
-                        )
-                    )
-                    continue
-                # The month the account put it in is no move of rekordbox's,
-                # even where a person put it there in rekordbox too.
+                    return say(AGREED, f"{why}, and rekordbox made the same change", to=to)
+                # The month the account put it in is no move of rekordbox's.
                 moved = there_m - was_m - ours - {to}
                 if moved and not to.primary:
                     said = _later(playlists, track, to, moved)
                     if said is not None:
-                        decisions.append(
-                            Decision(track, REKORDBOX, f"{why}, {said}", tree=FAVORITES, **shown)
-                        )
-                        continue
-                    why = f"{why}, later than rekordbox placed it in {', '.join(_titles(moved))}"
+                        return say(REKORDBOX, f"{why}, {said}")
+                    why = f"{why}, later than rekordbox placed it in {_named(moved)}"
         # AFTER THE WRITE rekordbox holds the track where the edit puts it and
         # nowhere it took it from; only a playlist both sides then agree on is
         # settled, and every other keeps the snapshot's word.
@@ -897,25 +678,17 @@ def _decide_favorites(
                 held_after = track in one.rekordbox or one.place.primary or one.place == to
             if held_after == (track in one.account):
                 after[one.place.title] = held_after
-        decisions.append(
-            _carry(
-                track,
-                kind,
-                why,
-                owner,
-                known,
-                to=to,
-                tree=FAVORITES,
-                settle=tuple(
-                    (one.place.folder, one.place.title, after[one.place.title])
-                    for one in playlists
-                    if one.place.title in after
-                ),
-                shown=shown,
-                **extra,
-            )
+        settle = tuple(
+            (one.place.folder, one.place.title, after[one.place.title])
+            for one in playlists
+            if one.place.title in after
         )
-    return decisions
+        return _carry(
+            track, kind, why, owner, known, to=to, tree=FAVORITES, settle=settle, shown=shown,
+            **extra,
+        )
+
+    return [one for one in map(decided, _tracks(playlists)) if one is not None]
 
 
 def _decide_inbox(
@@ -923,18 +696,18 @@ def _decide_inbox(
 ) -> list[Decision]:
     """Every track a person added to or took off an INBOX batch on the account (U204).
 
-    Per playlist, since a batch is no place a track has one of: a track may sit
-    in several batches. One base per playlist, so a change both sides made is
-    agreed and nothing else can conflict.
+    Per playlist, since a track may sit in several batches; one base each, so
+    a change both sides made is agreed and nothing else can conflict.
     """
     decisions: list[Decision] = []
     for one in playlists:
         unread = _unread([one])
+        title = (one.place.title,)
         for track in sorted(one.base | one.account | one.rekordbox):
             shown = {
-                "was": (one.place.title,) if track in one.base else (),
-                "account": (one.place.title,) if track in one.account else (),
-                "rekordbox": (one.place.title,) if track in one.rekordbox else (),
+                "was": title if track in one.base else (),
+                "account": title if track in one.account else (),
+                "rekordbox": title if track in one.rekordbox else (),
             }
             if track in unread:
                 decisions.append(Decision(track, HELD, _UNREAD, to=one.place, tree=INBOX, **shown))
@@ -943,30 +716,16 @@ def _decide_inbox(
             removed = track in one.base and track not in one.account
             if not (added or removed):
                 continue
-            kind = JOIN if added else LEAVE
-            why = (
-                f"put in {one.place.title} on the account"
-                if added
-                else f"taken off {one.place.title} on the account"
-            )
+            why = f"{'put in' if added else 'taken off'} {one.place.title} on the account"
             if (track in one.rekordbox) is added:
-                decisions.append(
-                    Decision(
-                        track, AGREED, f"{why}, and rekordbox made the same change",
-                        to=one.place, tree=INBOX, **shown,
-                    )
-                )
+                why = f"{why}, and rekordbox made the same change"
+                decisions.append(Decision(track, AGREED, why, to=one.place, tree=INBOX, **shown))
                 continue
+            settle = ((one.place.folder, one.place.title, added),)
+            kind = JOIN if added else LEAVE
             decisions.append(
                 _carry(
-                    track,
-                    kind,
-                    why,
-                    owner,
-                    known,
-                    to=one.place,
-                    tree=INBOX,
-                    settle=((one.place.folder, one.place.title, added),),
+                    track, kind, why, owner, known, to=one.place, tree=INBOX, settle=settle,
                     shown=shown,
                 )
             )
@@ -981,15 +740,12 @@ def _later(
         (one.account_added.get(track, "") for one in playlists if one.place == to), ""
     )
     in_rekordbox = (
-        next(
-            (one.rekordbox_added.get(track, "") for one in playlists if one.place in placed),
-            "",
-        )
+        next((one.rekordbox_added.get(track, "") for one in playlists if one.place in placed), "")
         if len(placed) == 1
         else ""
     )
     account_at, rekordbox_at = moment(on_account), moment(in_rekordbox)
-    there = ", ".join(_titles(placed)) or "another band"
+    there = _named(placed) or "another band"
     if account_at is None or rekordbox_at is None:
         return (
             f"and placed in {there} in rekordbox; the time of one of the two is "
@@ -1004,16 +760,13 @@ def _later(
 
 
 def _holds(playlists: Sequence[Mirrored], decisions: Iterable[Decision]) -> dict[str, Hold]:
-    """Each playlist's hold: every carried or held track of its tree left as the account has it.
+    """Each playlist's hold: every carried or held track of its own tree, as the account has it.
 
-    PER TREE (U204): a track held in the genre tree is still mirrored as
-    rekordbox has it in the Favorites folder, and the reverse.
+    An INBOX edit holds its own batch alone (U204).
     """
     held: dict[str, set[str]] = {}
     for one in decisions:
         if one.outcome in CARRIED or one.outcome == HELD:
-            # AN INBOX EDIT IS ONE BATCH'S, so it holds that batch alone and
-            # every other batch is mirrored as rekordbox has it.
             key = one.to.title if one.tree == INBOX and one.to is not None else one.tree
             held.setdefault(key, set()).add(one.track)
     holds: dict[str, Hold] = {}
@@ -1033,13 +786,11 @@ def placed_after(
 ) -> dict[str, str]:
     """The placements a playlist keeps once the mirror finished it (U236).
 
-    ``placed`` is each placed track to its membership's time, ``after`` the
-    account tracks the playlist holds once the mirror's writes landed and
-    ``held`` the tracks its hold covers. A placement whose track the account
-    now holds there, and no hold covers, is the snapshot's word now
-    (:func:`agreed_after`) and is dropped. Every other is kept, a refused add
-    included: it is read only while rekordbox holds the track there by the
-    membership it names, so a kept one never speaks for a person's own.
+    ``placed`` is each placed track to its membership's time, ``after`` what the
+    account holds once the writes landed, ``held`` the hold's tracks. One the
+    account now holds there, and no hold covers, is the snapshot's word now and
+    is dropped; every other is kept, read only while rekordbox holds it by the
+    membership it names.
     """
     now, kept = frozenset(after), frozenset(held)
     return {track: at for track, at in placed.items() if track in kept or track not in now}
@@ -1050,14 +801,9 @@ def agreed_after(
 ) -> frozenset[str]:
     """The snapshot a playlist takes once the mirror finished it.
 
-    ``base`` is the snapshot it has, ``None`` for none, ``after`` the account
-    tracks it holds once the mirror's writes landed, and ``held`` the tracks
-    its hold covers. A held track keeps the snapshot's word on it, so an edit
-    held reads the same way at the next refresh, and an edit the library took
-    reads as the word the library step settled; every other track is agreed as
-    the account holds it, which is rekordbox's word once the mirror wrote it,
-    and a removal the account refused stays agreed so the next refresh asks it
-    again.
+    A held track keeps the snapshot's word, ``base``, so it reads the same at
+    the next refresh; every other is agreed as the account holds it ``after``
+    the writes, a removal the account refused included, so it is asked again.
     """
     held = frozenset(held)
     now = frozenset(after)
@@ -1068,29 +814,7 @@ def agreed_after(
 
 
 __all__ = [
-    "ADDITIONS",
-    "AGREED",
-    "CARRIED",
-    "FAVORITES",
-    "FAVOURITE",
-    "FOLDER",
-    "GENRE",
-    "HELD",
-    "INBOX",
-    "JOIN",
-    "LEAVE",
-    "MOVE",
-    "REKORDBOX",
-    "TREES",
-    "UNFAVOURITE",
-    "UNFILE",
-    "Decided",
-    "Decision",
-    "Hold",
-    "Mirrored",
-    "Place",
-    "agreed_after",
-    "decide",
-    "moment",
-    "placed_after",
+    "ADDITIONS", "AGREED", "CARRIED", "FAVORITES", "FAVOURITE", "FOLDER", "GENRE", "HELD",
+    "INBOX", "JOIN", "LEAVE", "MOVE", "REKORDBOX", "TREES", "UNFAVOURITE", "UNFILE", "Decided",
+    "Decision", "Hold", "Mirrored", "Place", "agreed_after", "decide", "moment", "placed_after",
 ]

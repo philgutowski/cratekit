@@ -35,17 +35,17 @@ class HarvestDrop:
 class HarvestReport:
     offered: tuple[review.Item, ...]
     dropped: tuple[HarvestDrop, ...]
+    #: How many tracks the extractor read no name off, so none was asked about.
+    nameless: int = 0
 
 
 @dataclass(frozen=True, slots=True)
 class Decided:
     """The harvest's items on the queue, split by what a person decided.
 
-    ``accepted`` pairs each accepted item's identifier with the label name it
-    names. ``nameless`` is the accepted items that name no label at all, kept
-    so they are reported rather than skipped. An item whose stored verdict this
-    build cannot read counts as OPEN, the direction ``review`` argues for
-    everywhere: undecided rather than decided the wrong way.
+    ``accepted`` pairs each accepted item's identifier with its label name.
+    ``nameless`` is the accepted items naming no label, so they are reported
+    rather than skipped. A verdict this build cannot read counts as open.
     """
 
     accepted: tuple[tuple[str, str], ...]
@@ -55,18 +55,14 @@ class Decided:
 
 
 def _text(value: Any) -> str | None:
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return value.strip()
+    return (value.strip() or None) if isinstance(value, str) else None
 
 
 def decided(store: review.ReviewStore) -> Decided:
     """Every harvested label on the queue, in queue order, split by verdict.
 
-    The name is read from the item's IDENTITY before its payload, as
-    ``label approved`` reads a release: the identity is what harvest keyed the
-    item on, and an item that arrived through ``review import`` carries none,
-    so the payload's copy is what is left.
+    The name is read from the item's identity, what harvest keyed it on, before
+    its payload, which is all an item brought in by ``review import`` carries.
     """
     page = review.list_items(
         store,
@@ -90,12 +86,7 @@ def decided(store: review.ReviewStore) -> Decided:
             rejected += 1
         else:
             still_open += 1
-    return Decided(
-        accepted=tuple(accepted),
-        nameless=tuple(nameless),
-        rejected=rejected,
-        still_open=still_open,
-    )
+    return Decided(tuple(accepted), tuple(nameless), rejected, still_open)
 
 
 def labels_from_copyright(track: Any) -> tuple[str, ...]:
@@ -123,12 +114,18 @@ def from_tracks(
     extract: Callable[[Any], Sequence[str]] = labels_from_copyright,
     handler_key: str = HANDLER_KEY,
 ) -> HarvestReport:
-    """Offer verified labels. Does not add them to the registry and writes no audio."""
+    """Offer verified labels. Does not add them to the registry and writes no audio.
+
+    The extractor is run once per track, counting the tracks it names nothing on.
+    """
     seen: set[str] = set()
     offered: list[review.Item] = []
     dropped: list[HarvestDrop] = []
+    nameless = 0
     for track in tracks:
-        for name in extract(track):
+        names = extract(track)
+        nameless += not names
+        for name in names:
             key = name.casefold()
             if key in seen:
                 continue
@@ -148,4 +145,4 @@ def from_tracks(
                     handler_key=handler_key,
                 )
             )
-    return HarvestReport(offered=tuple(offered), dropped=tuple(dropped))
+    return HarvestReport(offered=tuple(offered), dropped=tuple(dropped), nameless=nameless)

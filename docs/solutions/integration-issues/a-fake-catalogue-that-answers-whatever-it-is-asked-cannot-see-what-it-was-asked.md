@@ -2,7 +2,7 @@
 title: "A fake catalogue that answers whatever it is asked cannot see what it was asked"
 date: 2026-11-15
 category: integration-issues
-module: src/cratekit/tagging/searchers.py, src/cratekit/tagging/titles.py
+module: src/cratekit/tagging/searchers.py, src/cratekit/tagging/discogs.py, src/cratekit/tagging/shops.py, src/cratekit/tagging/titles.py
 problem_type: integration_issue
 component: tagging
 severity: high

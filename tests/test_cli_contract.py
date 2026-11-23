@@ -1112,8 +1112,13 @@ def test_the_core_writer_never_learns_the_gates_name_or_any_flag_string():
     the command-line layer, which is the only layer allowed to render a token
     into text. A core module that knows the gate's name has re-acquired the
     command vocabulary the layering rule removes from it.
+
+    Read over the writer and its parts (R-1890): a gate's name written in
+    ``rb_removal`` is the writer knowing it as surely as one in ``rb_writer``.
     """
-    source = (SRC_ROOT / "cratekit" / "core" / "rb_writer.py").read_text()
+    from tests._split_modules import source_of
+
+    source = source_of("cratekit.core.rb_writer")
     for leaked in ("write.cloudsync.unreadable", "--decision", "crate "):
         assert leaked not in source, f"the core writer names {leaked!r}"
 

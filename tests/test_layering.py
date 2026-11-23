@@ -92,6 +92,9 @@ _PLACED: dict[str, str] = {
     # foundation, from naming the type it carries.
     "cratekit.core.cause": "foundation",
     "cratekit.core.config": "foundation",
+    "cratekit.core.config_base": "foundation",
+    "cratekit.core.config_schema": "foundation",
+    "cratekit.core.config_validate": "foundation",
     #     * the convergence record joins the write list for the same reason and
     #       by the same argument the registry's own docstring makes: it is a
     #       WRITE concern living under core/ so that the assertion every
@@ -115,9 +118,16 @@ _PLACED: dict[str, str] = {
     # boundary underneath reaches ``core.reconcile``, which is infrastructure and
     # deliberately does not touch the registry at all.
     "cratekit.core.restore": "write",
+    # U300: the restore's three parts take its place, one line each.
+    "cratekit.core.restore_perform": "write",
+    "cratekit.core.restore_recovery": "write",
+    "cratekit.core.restore_retention": "write",
     "cratekit.core.routing": "domain",
     "cratekit.core.secrets": "foundation",
+    "cratekit.core.state_files": "foundation",
     "cratekit.core.taxonomy": "domain",
+    "cratekit.core.taxonomy_build": "domain",
+    "cratekit.core.taxonomy_model": "domain",
     "cratekit.core.tombstone": "domain",
     "cratekit.core.tree_registry": "write",
     "cratekit.core.types": "foundation",
@@ -814,6 +824,9 @@ def test_every_package_module_is_placed_in_the_ladder():
 _WRITE_RANKED_CORE_MODULES: dict[str, frozenset[str]] = {
     "cratekit.core.tree_registry": frozenset(),
     "cratekit.core.restore": frozenset(),
+    "cratekit.core.restore_perform": frozenset(),
+    "cratekit.core.restore_recovery": frozenset(),
+    "cratekit.core.restore_retention": frozenset(),
 }
 
 

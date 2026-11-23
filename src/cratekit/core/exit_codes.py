@@ -1,39 +1,17 @@
 """The one reserved exit-code vocabulary, and the remediation tokens beside it.
 
-KTD25 asks for this BEFORE any verb ships, and the reason is in the source
-system. It has three unrelated exit-code schemes, and the same integer means
-different things in each:
+KTD25: one integer once meant different things to different producers, so no
+consumer could tell them apart. Three rules, each enforced by a test:
 
-* ``2`` from either master.db writer means "rekordbox is open", and its
-  remediation is for the user to quit the application and retry.
-* ``2`` from the sync orchestrator means "another run holds the lock", and its
-  remediation is the opposite: quitting anything is wrong, and there is no
-  command to run because that lock is deliberately not reclaimable.
-* ``2`` from argparse means the command line was mistyped.
+1. One vocabulary in the foundation layer, so producers and consumers name the
+   same constant instead of bare integers.
+2. 2 belongs to argparse and no verb may ever return it, because argparse will
+   keep producing it.
+3. Every code carries a remediation token, never the text a user types; the CLI
+   renders it (D2), since the command depends on platform and interface.
 
-All three are reachable in one process today, because an argparse failure inside
-a writer raises ``SystemExit``, which is a ``BaseException`` and escapes the
-orchestrator's ``except Exception``. So the collision is not theoretical, and no
-consumer can tell the three apart.
-
-Three properties fix that here, and each is enforced by a test:
-
-1. **One vocabulary, defined in the foundation layer**, so producers and
-   consumers name the same constant. In the source, the only named exit constant
-   lives in a CONSUMER; every producer writes a bare integer literal, which is
-   why nothing detects a producer changing its code.
-2. **2 belongs to argparse and no verb may ever return it.** That is the durable
-   half of the fix: argparse will keep producing 2 whatever anyone decides, so
-   the only way the collision cannot come back is for that integer to have
-   exactly one owner and for the owner not to be us.
-3. **Every code carries a remediation TOKEN, never the text a user types.**
-   Rendering a token into a command is the CLI layer's job (D2), because the
-   command depends on the platform, the package manager the user actually has,
-   and the interface they are sitting in front of. A string baked in down here
-   has already decided all three.
-
-Layer note: this module is FOUNDATION. It names no verb, no module, and no
-taxonomy term, and it imports nothing from Cratekit at all.
+Foundation layer: names no verb, module or taxonomy term, imports nothing from
+Cratekit.
 """
 
 from __future__ import annotations
@@ -43,22 +21,15 @@ from enum import IntEnum, StrEnum
 from types import MappingProxyType
 from typing import Mapping
 
-#: Nothing at or above this value is ever used. The shell reserves 126
-#: (not executable), 127 (not found), and 128 plus the signal number, and a
-#: process status is a single unsigned byte, so a code above 255 silently
-#: truncates. Staying under 64 leaves both conventions untouched, which means a
-#: caller reading a status can always tell a Cratekit refusal from the shell
-#: reporting on Cratekit itself.
+#: Nothing at or above this value is used, so a status never collides with the
+#: shell's 126, 127 and 128 plus a signal, or truncates past one byte.
 MAX_CODE = 64
 
 
 class ExitCode(IntEnum):
-    """Every status ``crate`` can exit with. Banded by tens, gapped for growth.
+    """Every status ``crate`` can exit with, banded by tens, gapped for growth.
 
-    A reader who meets an unfamiliar code can classify it from its tens digit
-    without a lookup: 1x is a gate, 2x is the library's state, 3x is this
-    installation's environment, 4x is something upstream, 5x is the run's
-    lifecycle. That is the whole reason for the bands. New codes join a band and
+    The tens digit classifies a code without a lookup. New codes join a band and
     never reuse a retired value (see ``RETIRED``).
     """
 
@@ -97,32 +68,12 @@ class ExitCode(IntEnum):
 
 
 class Remedy(StrEnum):
-    """What to do about a failure, as a token rather than as a command line.
+    """What to do about a failure, as a token the CLI renders (D2).
 
-    D2 in one sentence: the foundation names no verb, so remediation below the
-    CLI is a token and only the CLI renders it into text a user types.
-
-    The values are stable machine slugs and are persisted inside a cause, which
-    crosses a process boundary when the job engine re-invokes the CLI (KTD26).
-    Renaming one is a breaking change to anything holding a stored cause, so
-    renames go through the same retirement discipline as an exit code.
-
-    Several foundation modules declare their own subset of these for their own
-    failures, because they landed before or beside this enum:
-    ``cratekit.core.config``, ``cratekit.core.binaries``,
-    ``cratekit.core.secrets``, ``cratekit.core.backup_facts`` and
-    ``cratekit.acquire.adapter``. ``tests/test_cli_contract.py`` asserts every
-    one of those stays a subset, so they cannot drift into several vocabularies
-    for one idea, which is the drift KTD13 records in the taxonomy resolvers.
-
-    That test used to name ``config`` alone, because config was the only such
-    module on the day it was written. Four more landed and none of them was a
-    subset: sixteen tokens existed that this enum had never heard of, so
-    ``render`` matched none of them and fell through to the exit code's generic
-    summary. A user told to set a credential read "an unexpected failure"
-    instead. The test now DERIVES the module set by walking the package, per
-    seam decision P3, because a test that enumerates is a test that misses the
-    next addition, and this one already had.
+    Values are stable slugs persisted inside a cause across processes (KTD26),
+    so a rename is a breaking change and follows the exit-code retirement rule.
+    Foundation modules that declare their own remedy subset must stay a subset;
+    ``tests/test_cli_contract.py`` finds them by walking the package (P3, KTD13).
     """
 
     # Configuration (the six ``config.Remedy`` already declares).
@@ -147,22 +98,13 @@ class Remedy(StrEnum):
     RELEASE_STALE_LOCK = "release-stale-lock"
     QUIT_REKORDBOX = "quit-rekordbox"
     MOUNT_LIBRARY_VOLUME = "mount-library-volume"
-    # A path this account cannot reach, which is a DIFFERENT act from attaching a
-    # drive: nothing is missing and nothing needs plugging in. On macOS an
-    # interpreter without Full Disk Access is refused by the kernel for anything
-    # under Documents, Desktop, Downloads or an external volume, and telling that
-    # user to mount a volume that is already mounted is the collapse this
-    # vocabulary exists to prevent.
+    # A path this account cannot reach, such as macOS without Full Disk Access;
+    # a different act from mounting a volume.
     GRANT_PATH_ACCESS = "grant-path-access"
-    # Two acts that are NOT "grant this account access", and were both being told
-    # to. A read only volume refuses every writer on the machine, so no amount of
-    # Full Disk Access changes it: the fix is to remount it read write, or to
-    # slide a card's write-protect tab back. A library on a read only disk image
-    # or a locked SD card is an ordinary DJ arrangement.
+    # A read only volume refuses every writer, so access grants cannot fix it.
     REMOUNT_WRITABLE = "remount-writable"
-    # A per-file immutable flag, which is what Finder's "Locked" checkbox writes
-    # and what ``chflags uchg`` sets. It refuses the file's OWNER, so it is not a
-    # permission either, and it is the commonest non-permission EPERM on macOS.
+    # A per-file immutable flag (Finder's "Locked", ``chflags uchg``), which
+    # refuses even the owner, so it is not a permission.
     UNLOCK_PATH = "unlock-path"
     REVALIDATE_PINS = "revalidate-pins"
     REBUILD_TREE = "rebuild-tree"
@@ -174,8 +116,7 @@ class Remedy(StrEnum):
     RUN_DOCTOR = "run-doctor"
     INSTALL_MODULE_EXTRA = "install-module-extra"
     ACKNOWLEDGE_BACKUP = "acknowledge-backup"
-    # U138. A session may mint the acknowledgment only over young backups, and
-    # when one is not, the act that answers it is a backup, not another ack.
+    # U138: over a backup too old to acknowledge, the answer is a backup.
     RUN_BACKUP = "run-backup"
     REPAIR_BACKUP_FACTS = "repair-backup-facts"
 
@@ -203,14 +144,10 @@ class Remedy(StrEnum):
     REPAIR_ADAPTER_SETTINGS = "repair-adapter-settings"
     RELAX_LOSSLESS_POLICY = "relax-lossless-policy"
 
-    # Re-authentication. THREE tokens sit close together here and that is
-    # recorded rather than resolved: ``authenticate-provider`` (no credential
-    # yet), ``reauthenticate`` (a stored credential the keychain rejected), and
-    # ``reauthenticate-provider`` (a stored credential the PROVIDER rejected).
-    # They may well be one idea, but each is already a persisted slug, and this
-    # docstring says renaming one is a breaking change to anything holding a
-    # stored cause. Collapsing them is a deliberate decision with a migration,
-    # not a tidy-up.
+    # Re-authentication. ``reauthenticate`` is a stored credential the keychain
+    # rejected, ``reauthenticate-provider`` one the provider rejected. They sit
+    # close to ``authenticate-provider``, but each is a persisted slug, so
+    # merging them needs a migration.
     REAUTHENTICATE = "reauthenticate"
     REAUTHENTICATE_PROVIDER = "reauthenticate-provider"
 
@@ -235,8 +172,7 @@ BANDS: tuple[Band, ...] = (
     Band(30, 40, "installation", "does the state of THIS INSTALL allow this"),
     Band(40, 50, "upstream", "did something outside us refuse"),
     Band(50, 60, "lifecycle", "how did this run end"),
-    # 60 to 63 are deliberately unassigned: the growth room a new class claims
-    # when no existing band fits. Everything at or above MAX_CODE stays free.
+    # Growth room for a new class; MAX_CODE and above stay free.
     Band(60, MAX_CODE, "unclaimed", "reserved for a class that has not appeared yet"),
 )
 
@@ -245,9 +181,8 @@ BANDS: tuple[Band, ...] = (
 class Meaning:
     """What one code means, and what the user does about it.
 
-    ``verb_producible`` is False only for codes a verb must never return.
-    Currently that is ``USAGE``, whose owner is argparse: the entire durability
-    of the KTD25 fix rests on nothing of ours competing for that integer.
+    ``verb_producible`` is False for a code a verb must never return, today
+    ``USAGE``, which argparse owns (KTD25).
     """
 
     summary: str
@@ -255,10 +190,8 @@ class Meaning:
     verb_producible: bool = True
 
 
-#: One entry per member, looked up rather than derived, because the remediation
-#: is a decision and not a function of the number. The test that asserts
-#: completeness ITERATES ``ExitCode`` rather than listing members, so a code
-#: added without a meaning fails the build instead of silently having none.
+#: One entry per member, declared because a remediation is a decision, not a
+#: function of the number. A test iterates ``ExitCode`` to keep it complete.
 MEANINGS: Mapping[ExitCode, Meaning] = MappingProxyType(
     {
         ExitCode.OK: Meaning(
@@ -352,12 +285,8 @@ MEANINGS: Mapping[ExitCode, Meaning] = MappingProxyType(
     }
 )
 
-#: Values withdrawn from service, mapped to the name they used to carry.
-#:
-#: Empty today, and the discipline is the point rather than the contents. A
-#: stored cause and a shell script both outlive the release that wrote them, so
-#: re-using a number is how a caller ends up acting on last year's meaning. A
-#: retired value stays here forever and is never assigned again.
+#: Values withdrawn from service, mapped to their old name. A retired value is
+#: never assigned again, since stored causes and scripts outlive a release.
 RETIRED: Mapping[int, str] = MappingProxyType({})
 
 

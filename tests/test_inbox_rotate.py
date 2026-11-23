@@ -1,16 +1,15 @@
 """U111: ``crate inbox rotate`` moves stale batches into Old and removes expired ones.
 
-Every drive goes through the real dispatcher against a disposable database
-built the way the adoption suites build one, with the intake tree recorded
-database native and anchored to a root folder the fixture made. Each scenario
-reads the content and membership tables from SQL before and after, because the
-one promise this verb makes beyond its plan is that no track goes anywhere.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+Driven through the real dispatcher against a disposable database whose intake
+tree is cut over, reading the content and membership tables from SQL before and
+after, since the verb's one promise beyond its plan is that no track moves.
+D1 applies: nothing here names a real volume, person or track.
 """
 
 from __future__ import annotations
 
+import collections
+import contextlib
 import sqlite3
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -40,11 +39,6 @@ TRACKS = tuple(
 )
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(autouse=True)
 def _release_process_locks():
     yield
@@ -59,11 +53,8 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
+    settings = {rb_writer.LIBRARY_SYNC_SETTING: 0}
+    monkeypatch.setattr(rb_writer, "read_rekordbox_settings", lambda *args, **kwargs: settings)
     monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(
@@ -78,15 +69,8 @@ def machine(tmp_path, monkeypatch):
     (root / "Music").mkdir(parents=True)
     (tmp_path / "staging").mkdir()
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    resolved = config.from_dict(
-        valid_data(
-            root,
-            rekordbox={
-                "pinned_app_version": RECORDED_APP_VERSION,
-                "validated_on": "2026-08-01",
-            },
-        )
-    )
+    pinned = {"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"}
+    resolved = config.from_dict(valid_data(root, rekordbox=pinned))
     config.save(resolved)
     config.reset_cache()
     adopt_fixtures.build(resolved, TRACKS)
@@ -105,18 +89,14 @@ def acknowledged(machine):
 
 def _cut_over_intake(cfg: config.Config) -> str:
     root_id = cutover_fixtures.add_folder(cfg, DECLARED.intake.display)
-    tree_registry.write(
-        cfg,
-        tree_registry.Registry().with_record(
-            tree_registry.TreeRecord(
-                tree_id=INTAKE,
-                mode=tree_registry.Mode.DATABASE,
-                cutover_on=TODAY,
-                root_id=root_id,
-                source=tree_registry.DerivationSource.TAXONOMY,
-            )
-        ),
+    record = tree_registry.TreeRecord(
+        tree_id=INTAKE,
+        mode=tree_registry.Mode.DATABASE,
+        cutover_on=TODAY,
+        root_id=root_id,
+        source=tree_registry.DerivationSource.TAXONOMY,
     )
+    tree_registry.write(cfg, tree_registry.Registry().with_record(record))
     return root_id
 
 
@@ -126,13 +106,17 @@ def native_library(acknowledged):
     return acknowledged, _cut_over_intake(acknowledged)
 
 
-# ---------------------------------------------------------------------------
-# Building INBOX
-# ---------------------------------------------------------------------------
-
-
 def _open(cfg: config.Config):
     return rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+
+
+@contextlib.contextmanager
+def _handle(cfg: config.Config, **opened):
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg, **opened)
+    try:
+        yield handle
+    finally:
+        rb_writer.close_db(handle)
 
 
 def _node(
@@ -146,25 +130,24 @@ def _node(
     batch_folder: bool = False,
 ) -> str:
     """One playlist or folder under ``under``, created ``age`` days before TODAY."""
-    handle = _open(cfg)
-    try:
+    with _handle(cfg) as handle:
         parent = handle.get_playlist(ID=under)
-        row = (
-            handle.create_playlist_folder(name, parent=parent)
-            if folder
-            else handle.create_playlist(name, parent=parent)
-        )
+        make = handle.create_playlist_folder if folder else handle.create_playlist
+        row = make(name, parent=parent)
         if age is not None:
             row.created_at = datetime.combine(TODAY - timedelta(days=age), datetime.min.time())
         for content_id in tracks:
             handle.add_to_playlist(row, content_id)
         handle.session.commit()
         playlist_id = str(row.ID)
-    finally:
-        rb_writer.close_db(handle)
     if batch_folder:
         (Path(cfg.library.root) / cfg.library.music_dir / name).mkdir(parents=True)
     return playlist_id
+
+
+def _stale_set(cfg: config.Config, root_id: str) -> str:
+    """A batch 44 days old with its folder, past the default stale band."""
+    return _node(cfg, "2026-08-20 Set", under=root_id, age=44, tracks=("t1",), batch_folder=True)
 
 
 def _genre_playlist(cfg: config.Config) -> str:
@@ -183,24 +166,16 @@ def _record_landing(
 ) -> None:
     """A native landing's session record naming its batch playlist, closed."""
     started = datetime.combine(landed, datetime.min.time().replace(hour=12)).astimezone()
-    record = session.SessionRecord(
-        session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-landing",
-        workflow=native.WORKFLOW,
-        started=started.isoformat(),
-        state=session.SessionState.CLOSED,
-        sources={INTAKE: str(source)},
-        ended=started.isoformat(),
-        detail={native.BATCH_PLAYLIST_KEY: {"id": playlist_id, "name": name}},
-    )
+    ident, stamp = f"{started.strftime('%Y%m%dT%H%M%S')}-landing", started.isoformat()
+    detail = {native.BATCH_PLAYLIST_KEY: {"id": playlist_id, "name": name}}
+    record = session.SessionRecord(ident, native.WORKFLOW, stamp, session.SessionState.CLOSED)
+    record.sources, record.ended, record.detail = {INTAKE: str(source)}, stamp, detail
     session.write_record(record, cfg)
 
 
 def _query(cfg: config.Config, sql: str, *params) -> list[tuple]:
-    conn = sqlite3.connect(cfg.library.db_path)
-    try:
+    with contextlib.closing(sqlite3.connect(cfg.library.db_path)) as conn:
         return conn.execute(sql, params).fetchall()
-    finally:
-        conn.close()
 
 
 def _content(cfg: config.Config) -> list[tuple]:
@@ -209,66 +184,52 @@ def _content(cfg: config.Config) -> list[tuple]:
 
 def _memberships(cfg: config.Config, *, outside: tuple[str, ...] = ()) -> list[tuple]:
     marks = ",".join("?" for _ in outside) or "''"
-    return _query(
-        cfg,
-        f"SELECT * FROM djmdSongPlaylist WHERE PlaylistID NOT IN ({marks}) ORDER BY ID",
-        *outside,
-    )
+    sql = f"SELECT * FROM djmdSongPlaylist WHERE PlaylistID NOT IN ({marks}) ORDER BY ID"
+    return _query(cfg, sql, *outside)
+
+
+def _nodes(cfg: config.Config) -> list[tuple]:
+    return _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
 
 
 def _node_row(cfg: config.Config, playlist_id: str) -> tuple:
-    (row,) = _query(
-        cfg,
-        "SELECT Name, ParentID, rb_local_deleted, Attribute FROM djmdPlaylist WHERE ID = ?",
-        playlist_id,
-    )
+    sql = "SELECT Name, ParentID, rb_local_deleted, Attribute FROM djmdPlaylist WHERE ID = ?"
+    (row,) = _query(cfg, sql, playlist_id)
     return row
 
 
+def _ids(cfg: config.Config, sql: str, *params) -> list[str]:
+    return [str(row[0]) for row in _query(cfg, sql, *params)]
+
+
 def _live_members(cfg: config.Config, playlist_id: str) -> list[str]:
-    rows = _query(
-        cfg,
-        "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? "
-        "AND COALESCE(rb_local_deleted, 0) = 0 ORDER BY ContentID",
-        playlist_id,
-    )
-    return [str(row[0]) for row in rows]
+    sql = "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? AND COALESCE(rb_local_deleted, 0) = 0"
+    return _ids(cfg, sql + " ORDER BY ContentID", playlist_id)
 
 
 def _olds(cfg: config.Config, root_id: str) -> list[str]:
-    rows = _query(
-        cfg,
-        "SELECT ID FROM djmdPlaylist WHERE Name = ? AND ParentID = ? AND Attribute = 1 "
-        "AND COALESCE(rb_local_deleted, 0) = 0",
-        OLD,
-        root_id,
-    )
-    return [str(row[0]) for row in rows]
+    sql = "SELECT ID FROM djmdPlaylist WHERE Name = ? AND ParentID = ? AND Attribute = 1"
+    return _ids(cfg, sql + " AND COALESCE(rb_local_deleted, 0) = 0", OLD, root_id)
 
 
-def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
-    """R34's two acts against the explicit gate, then the acting drive."""
+def _two_acts(verb: list[str], *, gate: str = GATE, answer: str = "approve") -> tuple:
+    """R34's two acts against an explicit gate, then the acting drive."""
     code, refused = drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     detail = refused["cause"]["detail"]
-    assert detail["gate"] == GATE and detail["explicit"] is True
+    assert detail["gate"] == gate and detail["explicit"] is True
     run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "approve", "--actor", "a-person"])
+    decided, envelope = drive(["run", "decide", run_id, gate, answer, "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
     code, acted = drive(["--run", run_id, *verb])
     return code, acted, refused
 
 
 def _by_action(envelope: dict) -> dict[str, list[str]]:
-    found: dict[str, list[str]] = {}
+    found: dict[str, list[str]] = collections.defaultdict(list)
     for item in envelope["data"]["items"]:
-        found.setdefault(item["action"], []).append(item["playlist"])
-    return found
-
-
-# ---------------------------------------------------------------------------
-# The brief's scenario: 10, 40 and 100 in INBOX, 120 in Old
-# ---------------------------------------------------------------------------
+        found[item["action"]].append(item["playlist"])
+    return dict(found)
 
 
 @pytest.fixture
@@ -277,18 +238,14 @@ def four_batches(native_library):
     cfg, root_id = native_library
     genre = _genre_playlist(cfg)
     old_id = _node(cfg, OLD, under=root_id, folder=True)
+
+    def batch(age: int, *tracks: str) -> dict:
+        return {"under": root_id, "age": age, "tracks": tracks}
+
     ids = {
-        "10": _node(
-            cfg, "2026-09-23 Tidal playlists", under=root_id, age=10,
-            tracks=("t1", "t2"), batch_folder=True,
-        ),
-        "40": _node(
-            cfg, "2026-08-24 Favorites", under=root_id, age=40,
-            tracks=("t3", "t4"), batch_folder=True,
-        ),
-        "100": _node(
-            cfg, "2026-06-25T101010Z-1_inboxed", under=root_id, age=100, tracks=("t5", "t6")
-        ),
+        "10": _node(cfg, "2026-09-23 Tidal playlists", **batch(10, "t1", "t2"), batch_folder=True),
+        "40": _node(cfg, "2026-08-24 Favorites", **batch(40, "t3", "t4"), batch_folder=True),
+        "100": _node(cfg, "2026-06-25T101010Z-1_inboxed", **batch(100, "t5", "t6")),
         # Recognised and aged by its run record: the row itself says today.
         "120": _node(cfg, "a batch named by hand", under=old_id, age=0, tracks=("t7", "t8")),
         "mine": _node(cfg, "listen later", under=root_id, age=200, tracks=("t1", "t8")),
@@ -299,16 +256,30 @@ def four_batches(native_library):
     return cfg, root_id, old_id, genre, ids
 
 
-def test_the_forty_and_the_hundred_move_the_old_one_hundred_twenty_goes_and_no_track_moves(
+def test_the_forty_and_the_hundred_move_the_one_hundred_twenty_goes_no_track_moves_then_two_stages(
     four_batches,
 ):
     cfg, root_id, old_id, genre, ids = four_batches
+    # EACH BATCH SAYS HOW IT WAS RECOGNISED AND WHAT IT WAS AGED FROM, on an abort.
+    code, envelope, _ = _two_acts(VERB, answer="abort")
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    shown = {item["playlist"]: item for item in envelope["data"]["items"]}
+    assert shown["a batch named by hand"]["recognised by"] == rotate.BY_RECORD
+    assert shown["a batch named by hand"]["aged from"] == rotate.AGED_FROM_RECORD
+    assert shown["a batch named by hand"]["age_days"] == 120
+    assert shown["2026-06-25T101010Z-1_inboxed"]["recognised by"] == rotate.BY_SUFFIX
+    assert shown["2026-08-24 Favorites"]["recognised by"] == rotate.BY_NAME
+    assert shown["2026-08-24 Favorites"]["aged from"] == rotate.AGED_FROM_CREATED
+    assert shown["2026-08-24 Favorites"]["tracks"] == 2
+    assert shown["listen later"]["kind"] == "playlist"
+    assert shown["Lisa picks"]["kind"] == "folder"
+    # A dated name with no batch folder is somebody's playlist.
+    assert shown["2026-01-01 my list"]["action"] == rotate_cli.LEAVE
     content_before = _content(cfg)
     others_before = _memberships(cfg, outside=(ids["120"],))
     genre_before = _live_members(cfg, genre)
-
     code, acted, refused = _two_acts(VERB)
-
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["digest"] == acted["data"]["digest"]
     actions = _by_action(acted)
@@ -339,7 +310,6 @@ def test_the_forty_and_the_hundred_move_the_old_one_hundred_twenty_goes_and_no_t
     assert _content(cfg) == content_before
     assert _memberships(cfg, outside=(ids["120"],)) == others_before
     assert _live_members(cfg, genre) == genre_before
-
     totals = acted["data"]["totals"]
     assert (totals["moved"], totals["removed"], totals["memberships removed"]) == (2, 1, 2)
     assert totals["old created"] is False
@@ -348,40 +318,12 @@ def test_the_forty_and_the_hundred_move_the_old_one_hundred_twenty_goes_and_no_t
     assert record.sources == {INTAKE: "committed"}
     assert record.snapshot_path
 
-
-def test_each_batch_says_how_it_was_recognised_and_what_it_was_aged_from(four_batches):
-    cfg, *_ = four_batches
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
-    code, envelope = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
-    shown = {item["playlist"]: item for item in envelope["data"]["items"]}
-    assert shown["a batch named by hand"]["recognised by"] == rotate.BY_RECORD
-    assert shown["a batch named by hand"]["aged from"] == rotate.AGED_FROM_RECORD
-    assert shown["a batch named by hand"]["age_days"] == 120
-    assert shown["2026-06-25T101010Z-1_inboxed"]["recognised by"] == rotate.BY_SUFFIX
-    assert shown["2026-08-24 Favorites"]["recognised by"] == rotate.BY_NAME
-    assert shown["2026-08-24 Favorites"]["aged from"] == rotate.AGED_FROM_CREATED
-    assert shown["2026-08-24 Favorites"]["tracks"] == 2
-    assert shown["listen later"]["kind"] == "playlist"
-    assert shown["Lisa picks"]["kind"] == "folder"
-    # A dated name with no batch folder is somebody's playlist.
-    assert shown["2026-01-01 my list"]["action"] == rotate_cli.LEAVE
-
-
-def test_a_batch_moved_past_expiry_is_removed_by_the_next_run_and_then_nothing(four_batches):
-    """The two stages: a batch past expiry still in INBOX moves first."""
-    cfg, root_id, old_id, _genre, ids = four_batches
-    assert _two_acts(VERB)[0] == int(ExitCode.OK)
-
+    # THE TWO STAGES: a batch past expiry still in INBOX moved first, and the
+    # next run removes it, and the one after does nothing.
     code, acted, _ = _two_acts(VERB)
     assert code == int(ExitCode.OK), acted
     assert _by_action(acted)["remove"] == ["2026-06-25T101010Z-1_inboxed"]
     assert int(_node_row(cfg, ids["100"])[2]) == 1
-
     code, acted, _ = _two_acts(VERB)
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
@@ -389,16 +331,12 @@ def test_a_batch_moved_past_expiry_is_removed_by_the_next_run_and_then_nothing(f
     assert rotate_cli.NOTHING_TO_ROTATE in [w["code"] for w in acted["warnings"]]
 
 
-# ---------------------------------------------------------------------------
-# Old, idempotence, the empty plan
-# ---------------------------------------------------------------------------
-
-
-def test_old_is_created_once_and_the_second_run_reuses_it(native_library):
+def test_old_is_created_once_a_second_run_plans_nothing_and_still_asks_and_old_is_reused(
+    native_library,
+):
     cfg, root_id = native_library
-    first = _node(cfg, "2026-08-20 Set", under=root_id, age=44, tracks=("t1",), batch_folder=True)
+    first = _stale_set(cfg, root_id)
     assert _olds(cfg, root_id) == []
-
     code, acted, _ = _two_acts(VERB)
     assert code == int(ExitCode.OK), acted
     assert acted["data"]["totals"]["old created"] is True
@@ -406,23 +344,10 @@ def test_old_is_created_once_and_the_second_run_reuses_it(native_library):
     assert str(_node_row(cfg, first)[1]) == old_id
     assert int(_node_row(cfg, old_id)[3]) == 1
 
-    second = _node(cfg, "2026-08-21 Set", under=root_id, age=43, tracks=("t2",), batch_folder=True)
-    code, acted, _ = _two_acts(VERB)
-    assert code == int(ExitCode.OK), acted
-    assert acted["data"]["totals"]["old created"] is False
-    assert _olds(cfg, root_id) == [old_id]
-    assert str(_node_row(cfg, second)[1]) == old_id
-
-
-def test_a_second_run_plans_nothing_and_still_asks(native_library):
-    cfg, root_id = native_library
-    _node(cfg, "2026-08-20 Set", under=root_id, age=44, tracks=("t1",), batch_folder=True)
-    assert _two_acts(VERB)[0] == int(ExitCode.OK)
+    # A SECOND RUN PLANS NOTHING AND STILL ASKS.
     content, members = _content(cfg), _memberships(cfg)
-    nodes = _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
-
+    nodes = _nodes(cfg)
     code, acted, refused = _two_acts(VERB)
-
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
     assert refused["cause"]["detail"]["gate"] == GATE
@@ -433,21 +358,15 @@ def test_a_second_run_plans_nothing_and_still_asks(native_library):
     ]
     assert (acted["data"]["totals"]["move"], acted["data"]["totals"]["remove"]) == (0, 0)
     assert (_content(cfg), _memberships(cfg)) == (content, members)
-    assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == nodes
+    assert _nodes(cfg) == nodes
 
-
-def test_an_empty_inbox_still_asks_and_creates_no_old(native_library):
-    cfg, root_id = native_library
-    code, acted, refused = _two_acts(VERB)
+    # THE NEXT STALE BATCH reuses Old.
+    second = _node(cfg, "2026-08-21 Set", under=root_id, age=43, tracks=("t2",), batch_folder=True)
+    code, acted, _ = _two_acts(VERB)
     assert code == int(ExitCode.OK), acted
-    assert acted["outcome"] == "no_op"
-    assert refused["cause"]["detail"]["shown"]["items"] == []
-    assert _olds(cfg, root_id) == []
-
-
-# ---------------------------------------------------------------------------
-# Refusals before the gate
-# ---------------------------------------------------------------------------
+    assert acted["data"]["totals"]["old created"] is False
+    assert _olds(cfg, root_id) == [old_id]
+    assert str(_node_row(cfg, second)[1]) == old_id
 
 
 def _refused_before_the_gate(cfg: config.Config, code: int, envelope: dict, reason: str) -> None:
@@ -456,32 +375,33 @@ def _refused_before_the_gate(cfg: config.Config, code: int, envelope: dict, reas
     assert not [r for r in session.records(cfg) if r.workflow == rotate.WORKFLOW]
 
 
-def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine):
-    _cut_over_intake(machine)
-    code, envelope = drive(VERB)
-    assert code == int(ExitCode.ACK_REQUIRED), envelope
-    assert "gate" not in (envelope.get("cause") or {}).get("detail", {})
-
-
 def test_an_intake_tree_on_the_bridge_is_refused_naming_the_cutover(acknowledged):
     code, envelope = drive(VERB)
     _refused_before_the_gate(acknowledged, code, envelope, "tree-unconverged")
     assert any("tree cutover" in step for step in envelope["cause"]["remediation"]["steps"])
 
 
-def test_a_taxonomy_with_no_old_folder_is_refused_by_name(native_library, monkeypatch):
-    cfg, _ = native_library
+def test_an_empty_inbox_still_asks_then_no_old_declared_or_two_olds_are_refused_by_name(
+    native_library, monkeypatch
+):
     from dataclasses import replace
 
     from cratekit.core import active_taxonomy
+    cfg, root_id = native_library
+    code, acted, refused = _two_acts(VERB)
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op"
+    assert refused["cause"]["detail"]["shown"]["items"] == []
+    assert _olds(cfg, root_id) == []
 
+    # A TAXONOMY WITH NO OLD FOLDER is refused by name.
+    load = active_taxonomy.load
     monkeypatch.setattr(active_taxonomy, "load", lambda _cfg: replace(DECLARED, intake_old=None))
     code, envelope = drive(VERB)
     _refused_before_the_gate(cfg, code, envelope, "intake-old-undeclared")
+    monkeypatch.setattr(active_taxonomy, "load", load)
 
-
-def test_two_old_folders_are_refused_rather_than_one_chosen(native_library):
-    cfg, root_id = native_library
+    # TWO OLD FOLDERS are refused rather than one chosen.
     _node(cfg, OLD, under=root_id, folder=True)
     _node(cfg, OLD, under=root_id, folder=True)
     code, envelope = drive(VERB)
@@ -490,67 +410,46 @@ def test_two_old_folders_are_refused_rather_than_one_chosen(native_library):
 
 def test_an_inbox_changed_after_the_approval_is_refused_and_nothing_is_written(native_library):
     cfg, root_id = native_library
-    _node(cfg, "2026-08-20 Set", under=root_id, age=44, tracks=("t1",), batch_folder=True)
+    batch = _stale_set(cfg, root_id)
     code, refused = drive(VERB)
     run_id = refused["run_id"]
     drive(["run", "decide", run_id, GATE, "approve", "--actor", "a-person"])
     _node(cfg, "2026-08-19 Set", under=root_id, age=45, tracks=("t2",), batch_folder=True)
-    nodes = _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
-
+    nodes = _nodes(cfg)
     code, envelope = drive(["--run", run_id, *VERB])
-
     assert code == int(ExitCode.DECISION_STALE), envelope
-    assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == nodes
+    assert _nodes(cfg) == nodes
 
-
-# ---------------------------------------------------------------------------
-# The engine and the writer, below the verb
-# ---------------------------------------------------------------------------
-
-
-def _plan(cfg: config.Config) -> rotate.RotationPlan:
-    handle = _open(cfg)
-    try:
-        return rotate.plan_rotation(
-            cfg, handle, declared=DECLARED, registry=tree_registry.read(cfg), today=TODAY
-        )
-    finally:
-        rb_writer.close_db(handle)
-
-
-def _apply(cfg: config.Config, plan: rotate.RotationPlan) -> rotate.Rotated:
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    try:
-        return rotate.apply_rotation(
-            cfg, handle, plan, declared=DECLARED, analysis_roots=[Path(cfg.library.root)]
-        )
-    finally:
-        rb_writer.close_db(handle)
-
-
-def test_the_engine_refuses_a_plan_inbox_no_longer_matches(native_library):
-    cfg, root_id = native_library
-    batch = _node(cfg, "2026-08-20 Set", under=root_id, age=44, tracks=("t1",), batch_folder=True)
+    # THE ENGINE REFUSES A PLAN INBOX NO LONGER MATCHES, below the verb.
     plan = _plan(cfg)
-    handle = _open(cfg)
-    try:
+    with _handle(cfg) as handle:
         handle.get_playlist(ID=batch).Name = "2026-08-20 Set renamed"
         handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
-    nodes = _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
+    nodes = _nodes(cfg)
     with pytest.raises(CratekitError) as raised:
         _apply(cfg, plan)
     assert raised.value.cause.reason == "decision-stale"
-    assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == nodes
+    assert _nodes(cfg) == nodes
 
 
-def test_a_removal_that_reaches_another_playlists_membership_is_refused_and_rolled_back(
+def _plan(cfg: config.Config) -> rotate.RotationPlan:
+    with _handle(cfg) as handle:
+        return rotate.plan_rotation(
+            cfg, handle, declared=DECLARED, registry=tree_registry.read(cfg), today=TODAY
+        )
+
+
+def _apply(cfg: config.Config, plan: rotate.RotationPlan) -> rotate.Rotated:
+    with _handle(cfg, require_closed=True) as handle:
+        roots = [Path(cfg.library.root)]
+        return rotate.apply_rotation(cfg, handle, plan, declared=DECLARED, analysis_roots=roots)
+
+
+def test_a_removal_or_a_move_beyond_the_plan_is_refused_and_rolled_back(
     four_batches, monkeypatch
 ):
-    """The confinement check's composite: the whitelist admits a membership marker
-    in this commit, so only the SQL comparison can tell whose membership it was."""
-    cfg, _root, _old, genre, _ids = four_batches
+    """The whitelist admits a membership marker here, so only SQL can tell whose it was."""
+    cfg, root_id, _old, genre, _ids = four_batches
     real = rb_writer.remove_playlist_node
 
     def reaches_further(db, playlist):
@@ -561,81 +460,54 @@ def test_a_removal_that_reaches_another_playlists_membership_is_refused_and_roll
     monkeypatch.setattr(rb_writer, "remove_playlist_node", reaches_further)
     plan = _plan(cfg)
     content, members = _content(cfg), _memberships(cfg)
-    nodes = _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
+    nodes = _nodes(cfg)
     with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
         _apply(cfg, plan)
     assert raised.value.cause.reason == "whitelist-violation"
     assert genre in raised.value.cause.message
     assert (_content(cfg), _memberships(cfg)) == (content, members)
-    assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == nodes
+    assert _nodes(cfg) == nodes
+    monkeypatch.setattr(rb_writer, "remove_playlist_node", real)
 
-
-def test_a_move_that_lands_somewhere_else_is_refused_and_rolled_back(four_batches, monkeypatch):
-    cfg, root_id, _old, _genre, _ids = four_batches
-    real = rb_writer.move_playlist_node
+    # A MOVE THAT LANDS SOMEWHERE ELSE is refused and rolled back too.
+    moving = rb_writer.move_playlist_node
 
     def misplaces(db, playlist, parent):
-        real(db, playlist, parent)
+        moving(db, playlist, parent)
         playlist.ParentID = root_id
 
     monkeypatch.setattr(rb_writer, "move_playlist_node", misplaces)
-    plan = _plan(cfg)
-    nodes = _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
     with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
         _apply(cfg, plan)
     assert "not live under the planned" in raised.value.cause.message
-    assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == nodes
+    assert _nodes(cfg) == nodes
 
 
-def test_the_writer_refuses_to_move_or_remove_a_folder(native_library):
+def test_the_writer_refuses_a_folder_a_parent_not_a_folder_and_a_removed_playlist(native_library):
+    """The membership move names its own table only, so a node marker is refused there."""
     cfg, root_id = native_library
     folder = _node(cfg, "Lisa picks", under=root_id, folder=True)
     target = _node(cfg, "elsewhere", under=root_id, folder=True)
-    handle = _open(cfg)
-    try:
+    batch = _node(cfg, "2026-08-20 Set", under=root_id, age=44)
+    plain = _node(cfg, "a playlist", under=root_id)
+    with _handle(cfg) as handle:
         row = handle.get_playlist(ID=folder)
         with pytest.raises(CratekitError) as moved:
             rb_writer.move_playlist_node(handle, row, handle.get_playlist(ID=target))
         with pytest.raises(CratekitError) as removed:
             rb_writer.remove_playlist_node(handle, row)
-    finally:
-        rb_writer.close_db(handle)
-    assert "folder" in moved.value.cause.message and "folder" in removed.value.cause.message
-
-
-def test_the_writer_refuses_a_parent_that_is_not_a_folder(native_library):
-    cfg, root_id = native_library
-    batch = _node(cfg, "2026-08-20 Set", under=root_id, age=44)
-    plain = _node(cfg, "a playlist", under=root_id)
-    handle = _open(cfg)
-    try:
         with pytest.raises(CratekitError) as raised:
             rb_writer.move_playlist_node(
                 handle, handle.get_playlist(ID=batch), handle.get_playlist(ID=plain)
             )
-    finally:
-        rb_writer.close_db(handle)
+    assert "folder" in moved.value.cause.message and "folder" in removed.value.cause.message
     assert "not a live folder" in raised.value.cause.message
-
-
-def test_the_membership_move_commit_still_refuses_a_removed_playlist(native_library):
-    """The membership move names its own table only, so a node marker is refused there."""
-    cfg, root_id = native_library
-    batch = _node(cfg, "2026-08-20 Set", under=root_id, age=44)
-    handle = _open(cfg)
-    try:
+    with _handle(cfg) as handle:
         setattr(handle.get_playlist(ID=batch), rb_writer.SOFT_DELETE_COLUMN, 1)
         with pytest.raises(rb_writer.RekordboxUnavailable) as raised:
             rb_writer.commit_guarded(handle, removals=(rb_writer.MEMBERSHIP_TABLE,))
-    finally:
-        rb_writer.close_db(handle)
     assert "djmdPlaylist" in raised.value.cause.message
     assert not _node_row(cfg, batch)[2]
-
-
-# ---------------------------------------------------------------------------
-# The pure judge
-# ---------------------------------------------------------------------------
 
 
 def _tables(**changes) -> rb_writer.NodeTables:
@@ -689,8 +561,19 @@ def _after(**changes) -> rb_writer.NodeTables:
     return _tables(**merged)
 
 
-def test_the_judge_admits_exactly_the_planned_change():
+def test_the_judge_admits_exactly_the_planned_change_and_refuses_one_never_made_or_a_renumbering():
     assert _judge(_after()) == []
+    # Asked whether it changed or not: a move or a removal that did nothing is a refusal.
+    assert sorted(_judge(_tables())) == [
+        "the djmdSongPlaylist row 'm1' of the removed playlist 'b2' is still live",
+        "the moved playlist 'b1' is not live under the planned 'old'",
+        "the removed playlist 'b2' does not carry the marker",
+    ]
+    # The binding renumbers INBOX and Old; a position moved anywhere else is not that.
+    base = _tables(playlists={"g1": ("g1", "genre", "genre-root", 1, 0)})
+    after = _after(playlists={"g1": ("g1", "genre", "genre-root", 2, 0)})
+    violations = rb_writer.node_change_violations(base, after, moved={"b1": "old"}, removed=["b2"])
+    assert len(violations) == 1 and "['Seq']" in violations[0], violations
 
 
 @pytest.mark.parametrize(
@@ -715,41 +598,15 @@ def test_the_judge_refuses_every_change_the_plan_does_not_explain(after, expecte
     assert len(violations) == 1 and expected in violations[0], violations
 
 
-def test_the_judge_refuses_a_renumbering_outside_the_parents_a_node_left_or_joined():
-    """The binding renumbers INBOX and Old. A position moved anywhere else is not that."""
-    base = _tables(playlists={"g1": ("g1", "genre", "genre-root", 1, 0)})
-    after = _after(playlists={"g1": ("g1", "genre", "genre-root", 2, 0)})
-    violations = rb_writer.node_change_violations(base, after, moved={"b1": "old"}, removed=["b2"])
-    assert len(violations) == 1 and "['Seq']" in violations[0], violations
-
-
-def test_the_judge_refuses_a_planned_change_that_was_never_made():
-    """Asked whether it changed or not: a move or a removal that did nothing is a refusal."""
-    violations = _judge(_tables())
-    assert sorted(violations) == [
-        "the djmdSongPlaylist row 'm1' of the removed playlist 'b2' is still live",
-        "the moved playlist 'b1' is not live under the planned 'old'",
-        "the removed playlist 'b2' does not carry the marker",
-    ]
-
-
 def test_a_commit_naming_the_rotation_tables_admits_a_node_marker_and_no_content_marker():
     removal = {rb_writer.SOFT_DELETE_COLUMN, "updated_at"}
-    assert (
-        rb_writer.guard_violations(
-            [], [(rb_writer.PLAYLIST_TABLE, removal)], [], removals=rotate.REMOVALS
-        )
-        == []
-    )
-    refused = rb_writer.guard_violations(
-        [], [(rb_writer.CONTENT_TABLE, removal)], [], removals=rotate.REMOVALS
-    )
+
+    def judged(table: str) -> list[str]:
+        return rb_writer.guard_violations([], [(table, removal)], [], removals=rotate.REMOVALS)
+
+    assert judged(rb_writer.PLAYLIST_TABLE) == []
+    refused = judged(rb_writer.CONTENT_TABLE)
     assert len(refused) == 1 and "djmdContent" in refused[0]
-
-
-# ---------------------------------------------------------------------------
-# What the review of U111 asked for
-# ---------------------------------------------------------------------------
 
 
 def _removal_callers() -> dict[str, list[str]]:
@@ -778,38 +635,21 @@ def _removal_callers() -> dict[str, list[str]]:
 
 
 def test_only_the_rotation_asks_its_commit_to_admit_a_removed_playlist():
-    """The playlist table is in the removable set, so who names it is held here.
-
-    The membership move names its own table and nothing else, the rotation
-    names its own tuple, and the writer's two judges pass the argument through.
-    A new caller, or ``REMOVABLE_TABLES`` handed over whole, fails this.
-    """
+    """The playlist table is in the removable set, so who names it is held here."""
     assert _removal_callers() == {
         "core/rb_writer.py": ["removals", "removals"],
         "intake/rotate.py": ["REMOVALS"],
         "write/trees.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
-        # U119. The genre Favorites refresh takes a favourite out of a folder's
-        # Favorites in its second commit, the membership table alone, as the
-        # move does, behind its own explicit gate.
+        # U119, U130, U166, U201: the membership table alone, each behind its explicit gate.
         "write/genre_favorites.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
-        # U130. A playlist pair's rekordbox side takes a track off its one
-        # playlist, the membership table alone, behind its explicit gate.
         "write/playlist_pair.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
-        # U145. The favourites month split retires each emptied quarter
-        # playlist with its own memberships in its second commit, the
-        # rotation's pair, behind its own explicit gate.
+        # U145. The month split retires emptied quarters, the rotation's pair.
         "favorites/split.py": ["REMOVALS"],
-        # U166. The Analyze clear takes each analysed row out of its one
-        # playlist, the membership table alone, behind its explicit gate.
         "intake/analyzed.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
-        # U201. An edit made on the account to a mirrored genre playlist moves
-        # a track out of its tree playlists, the membership table alone,
-        # behind the organize rekordbox area's explicit gate.
         "organize/mirror_edits.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
     }
     assert set(rotate.REMOVALS) == {rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE}
     from cratekit.favorites import split
-
     assert set(split.REMOVALS) == {rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE}
 
 
@@ -834,25 +674,19 @@ def test_an_old_folder_declared_wrongly_is_a_taxonomy_problem_and_not_a_tracebac
     declared, expected
 ):
     import tomllib
-
     data = tomllib.loads(_template_with(""))
     data["intake_old"] = declared
     with pytest.raises(taxonomy.TaxonomyError) as raised:
         taxonomy.build_taxonomy(data)
     assert any(expected in problem for problem in raised.value.problems), raised.value.problems
-
-
-def test_a_template_without_the_section_declares_no_old_folder():
-    import tomllib
-
+    # A template without the section declares no Old folder.
     assert taxonomy.build_taxonomy(tomllib.loads(_template_with(""))).intake_old is None
     assert DECLARED.intake_old == taxonomy.Node("inbox_old", "Old")
 
 
-def test_the_name_a_landing_gives_is_the_shape_the_rotation_recognises(machine, monkeypatch):
+def test_the_name_a_landing_gives_is_the_rotations_shape(machine, monkeypatch):
     """One owner of the shape: what ``readable`` names, ``is_default_shape`` knows."""
     from cratekit.intake import batch_name
-
     monkeypatch.setattr(batch_name, "today", lambda: TODAY)
     for words in (batch_name.PLAYLISTS, batch_name.DOWNLOADS, "Sudbeat"):
         name = batch_name.free(machine, f"{batch_name.today().isoformat()} {words}")
@@ -862,30 +696,28 @@ def test_the_name_a_landing_gives_is_the_shape_the_rotation_recognises(machine, 
         assert not batch_name.is_default_shape(name), name
 
 
+def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine):
+    _cut_over_intake(machine)
+    code, envelope = drive(VERB)
+    assert code == int(ExitCode.ACK_REQUIRED), envelope
+    assert "gate" not in (envelope.get("cause") or {}).get("detail", {})
+
+
 def test_a_batch_created_late_in_the_evening_is_aged_from_its_local_day(
     native_library, monkeypatch
 ):
-    """The row stores UTC. A batch made at 23:30 local is that day's, not tomorrow's.
-
-    End to end through the binding, which converts to naive local time on read,
-    so this pins the outcome and not the aware branch in ``_created_date``,
-    which the pinned binding never reaches (mutation row C1).
-    """
+    """The row stores UTC. A batch made at 23:30 local is that day's, not tomorrow's."""
     cfg, root_id = native_library
     monkeypatch.setenv("TZ", "America/New_York")
     import time
-
     time.tzset()
     try:
         batch = _node(cfg, "2026-10-02 Set", under=root_id, batch_folder=True)
-        handle = _open(cfg)
-        try:
+        with _handle(cfg) as handle:
             row = handle.get_playlist(ID=batch)
             local = datetime(2026, 10, 2, 23, 30).astimezone()
             row.created_at = local
             handle.session.commit()
-        finally:
-            rb_writer.close_db(handle)
         stored = _query(cfg, "SELECT created_at FROM djmdPlaylist WHERE ID = ?", batch)[0][0]
         assert stored.startswith("2026-10-03"), stored
         (kept,) = _plan(cfg).kept
@@ -903,3 +735,10 @@ def test_a_landing_record_that_committed_nothing_dates_nothing(native_library):
     _record_landing(cfg, batch, "2026-09-30 Set", TODAY - timedelta(days=60), source=refused[0])
     (kept,) = _plan(cfg).kept
     assert (kept.aged_from, kept.age_days) == (rotate.AGED_FROM_CREATED, 3)
+
+
+def test_an_empty_analysis_watch_is_refused_for_every_write_that_shares_it():
+    """The one home of the roots guard: a watch over no roots would pass any grid change."""
+    with pytest.raises(ValueError, match="analysis_roots is empty"):
+        rotate.watched_roots([])
+    assert rotate.watched_roots(["/a", Path("/b")]) == [Path("/a"), Path("/b")]

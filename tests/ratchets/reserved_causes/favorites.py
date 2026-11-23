@@ -6,7 +6,8 @@ modules that moved, and put a dated comment on those entries.
 """
 
 KEBAB_LITERALS = {
-    'favorites/backfill.py': ['decision-stale', 'favorites-placement', 'session-committed-unverified'],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
+    'favorites/backfill.py': ['favorites-placement'],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'favorites/backfill_cli.py': [
         # 2026-10-16, U153: the held colour warning joined.
@@ -26,13 +27,19 @@ KEBAB_LITERALS = {
     ],
     # 2026-10-16, U153: the Pink colour module, holding the lookup and its refusal.
     'favorites/colour.py': ['favorites-pink-colour-missing'],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
+    'favorites/order.py': ['favorites-order'],
     'favorites/placement.py': ['decision-stale', 'favorites-placement'],
-    # 2026-10-15, U145: the quarters split into months, engine and verb.
-    'favorites/split.py': ['decision-stale', 'favorites-split', 'session-committed-unverified', 'whitelist-violation'],
-    # 2026-11-01, U180: the Favorites folder put in order, engine and verb.
-    'favorites/order.py': ['decision-stale', 'favorites-order', 'session-committed-unverified', 'whitelist-violation'],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
+    'favorites/spine.py': [
+        'decision-stale',
+        'session-committed-unverified',
+        'whitelist-violation',
+    ],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'favorites/order_cli.py': ['favorites-in-order', 'favorites-ordered'],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
+    'favorites/split.py': ['decision-stale', 'favorites-split', 'session-committed-unverified'],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'favorites/split_cli.py': [
         'favorites-no-quarter-left',
@@ -62,15 +69,18 @@ NAMED_WITH_OWN = {
 }
 
 LITERAL_HOLDERS = {
-    'favorites/backfill.py': ['decision-stale', 'session-committed-unverified'],
     # 2026-10-16, U153: the Pink literal moved to colour.py, leaving cli.py this.
     'favorites/cli.py': ['outbound-item-absent'],
     'favorites/colour.py': ['favorites-pink-colour-missing'],
     'favorites/placement.py': ['decision-stale'],
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'favorites/refresh_cli.py': ['internal-error'],
-    # 2026-11-01, U180: the Favorites folder put in order, engine and verb.
-    'favorites/order.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
-    # 2026-10-15, U145: the quarters split into months, engine and verb.
-    'favorites/split.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
+    'favorites/spine.py': [
+        'decision-stale',
+        'session-committed-unverified',
+        'whitelist-violation',
+    ],
+    # 2026-11-22, U308: the literal left with the helper it moved to.
+    'favorites/split.py': ['decision-stale', 'session-committed-unverified'],
 }

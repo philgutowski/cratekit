@@ -32,7 +32,7 @@ tags:
 ## Context
 
 `crate tag rows` (R-816, built on `relay/239`) was first ordered the way the
-native landing is, `intake.land_cli.ask_then_write`: open the database with
+native landing is, `intake.land_native.ask_then_write`: open the database with
 write intent, plan, read the backup acknowledgment, ask the gate, write. A plan
 that wrote nothing returned a no op without asking. That order passed 45 tests
 of its own and failed conformance 3, and the fix was a restructure, not a pin.
