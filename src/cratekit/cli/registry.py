@@ -1804,6 +1804,30 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── A second genre folder beside the genre's own (U340) ─────────────────
+    Entry(
+        name="tag.second",
+        summary=(
+            "set or clear a second genre on chosen rows' files, which files each "
+            "track into that genre's folder too; writes no row"
+        ),
+        module="cratekit.tagging.second_cli", builder="build", handler_key="tag.second",
+        # No feature row or source script. Core, as ``tag.suggest``: adoption
+        # files by genre.
+        emits=frozenset({"plan"}), output_schema="plan/1",
+        #: The file only: the database is read to find the rows, and the tree
+        #: follows at the next filing, which the run names.
+        writes=frozenset({"files"}), destructive=True, taxonomy_terms=("genre_energy",),
+        doctor_checks=("library.mounted", "rekordbox.pins", "library.paths_resolved"),
+        gates=(
+            GateSpec(
+                name="tag.second.confirm", options=("apply", "abort"),
+                prompt="Write this second genre on these files?",
+                #: Explicit (R34): a genre is written once and stays.
+                explicit=True, digest_source="plan",
+            ),
+        ),
+    ),
     # ── The needs genre backlog (U292) ──────────────────────────────────────
     Entry(
         name="tag.backlog",

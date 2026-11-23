@@ -146,6 +146,10 @@ class ScannedTrack:
     energy: int | None = None
     #: True when the tags could not be read, which is not holding no energy tag.
     energy_unreadable: bool = False
+    #: The file's second genre (U340), and the bucket it files the track into
+    #: beside ``bucket``, both empty when it names none or was not read.
+    second_genre: str = ""
+    second_bucket: str = ""
 
 
 def probe_readability(path: Path) -> Readability:
@@ -277,6 +281,7 @@ def scan_rows(
     prefix_map: Sequence[locations.PrefixRule] = (),
     probe: Callable[[Path], Readability] = probe_readability,
     energy_reader: Callable[[Path], int | None] = tags.read_energy_checked,
+    second_reader: Callable[[Path], str | None] | None = None,
 ) -> Iterator[ScannedTrack]:
     """Classify every row, once, in one walk.
 
@@ -285,7 +290,9 @@ def scan_rows(
     injected probe is not trusted to be total, so the two shapes a filesystem
     raises are named here. The energy reading comes off the file through the
     reader the routing pass uses, and a reader failure is recorded on the track
-    rather than read as absence.
+    rather than read as absence. The second genre (U340) is read the same way
+    for a routed track, by :func:`read_second_genre` unless another reader is
+    handed in; :data:`NO_SECOND_GENRE` reads none, for a walk that files nothing.
     """
     for row in rows:
         if row.deleted:
@@ -310,6 +317,11 @@ def scan_rows(
             continue
         disposition, bucket, match = classify_genre(declared, row.genre)
         energy, unreadable = _energy_of(Path(path or ""), energy_reader)
+        second = (
+            _second_of(Path(path or ""), second_reader or read_second_genre)
+            if disposition is Disposition.ROUTE and second_reader is not NO_SECOND_GENRE
+            else ""
+        )
         yield ScannedTrack(
             content_id=row.content_id,
             recorded=row.recorded,
@@ -321,7 +333,36 @@ def scan_rows(
             match=match,
             energy=energy,
             energy_unreadable=unreadable,
+            second_genre=second,
+            second_bucket=routing.second_bucket(declared, row.genre, second) or "",
         )
+
+
+def read_second_genre(path: Path) -> str | None:
+    """The file's second genre (U340), None only when it holds none.
+
+    Raises :class:`cratekit.core.tags.TagReadFailed` when the file cannot be
+    read, so the census never reads an unreadable file as one with one genre.
+    """
+    return tags.read_tags_checked(path, ("secondgenre",))["secondgenre"]
+
+
+def NO_SECOND_GENRE(path: Path) -> str | None:  # noqa: N802 - a sentinel reader
+    """The reader a walk that files nothing hands in: it reads no file."""
+    del path
+    return None
+
+
+def _second_of(path: Path, reader: Callable[[Path], str | None]) -> str:
+    """The file's second genre, empty when it holds none or could not be read.
+
+    AN UNREAD SECOND GENRE PLANS NO SECOND ENTRY: the track's first genre
+    entry is the census's whole answer, as it was before U340.
+    """
+    try:
+        return (reader(path) or "").strip()
+    except (tags.TagReadFailed, OSError):
+        return ""
 
 
 def _energy_of(path: Path, reader: Callable[[Path], int | None]) -> tuple[int | None, bool]:
