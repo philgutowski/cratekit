@@ -2,7 +2,8 @@
 
 A filed track's genre is moved, through the verb, to a genre another top level
 folder files by; then ``adopt move`` takes it out of its old genre folder's
-energy band and into the new folder's, the one move it makes across folders.
+energy band, ``with vox`` and Favorites (R-1965) and into the new folder's, the
+one move it makes across folders.
 A track a person put in a second genre folder by hand is left there, and a
 genre moved back asks nothing. The library is ``tests/test_adopt_move.py``'s.
 D1 applies.
@@ -17,18 +18,19 @@ import pytest
 
 from cratekit.adopt import collection, genre_moves
 from cratekit.adopt import move as adopt_move
-from cratekit.core import session, tags
+from cratekit.core import rb_writer, routing, session, tags, taxonomy
 from cratekit.core.exit_codes import ExitCode
 from cratekit.tagging import genre_set_cli
+from cratekit.write import genre_favorites, trees
 from cratekit.write.routing_pass import destination
 from tests.cli_drive import approve_and_queue, drive
 from tests.test_adopt_move import DECLARED, HIGH, LOW, _live, _removed, seed_library
+from tests.test_adopt_workers import _calibrate, _resume, _tag_vox
 from tests.test_adopt_workers import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_adopt_workers import _reader_cache as _reader_cache  # noqa: PLC0414
 from tests.test_adopt_workers import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
 )
-from tests.test_adopt_workers import _resume
 from tests.test_adopt_workers import library as library  # noqa: PLC0414
 from tests.test_adopt_workers import machine as machine  # noqa: PLC0414
 from tests.test_adopt_workers import silence as silence  # noqa: PLC0414
@@ -313,3 +315,208 @@ def test_a_track_with_a_second_genre_leaves_only_its_old_folder(filed):
 
     assert _held(filed, "mover") == {_place(NEW_BUCKET, HIGH), _place("tech_house", HIGH)}
     assert dict(genre_moves.read(filed)) == {}
+
+
+# ── R-1965: the derived memberships of the old folder leave with the band ───
+
+#: The derived sub classes adoption files beside a band, and the manual one.
+VOX = trees.VOX_SUB_CLASS
+FAVORITES = genre_favorites.favorites_class(DECLARED).id
+CANDY = next(e.id for e in DECLARED.sub_classes if e.policy is taxonomy.SubPolicy.MANUAL)
+#: The source the genre Favorites mirror, in a folder outside the tree.
+SOURCE = ("Favorites", genre_favorites.favorites_class(DECLARED).signal_playlist)
+
+
+def _in_tree(cfg, content_id: str) -> set[tuple[str, str]]:
+    """What ``_held`` reads, the source playlist outside the tree left out."""
+    return _held(cfg, content_id) - {SOURCE}
+
+
+def _apply() -> dict:
+    _run_id, job_id = approve_and_queue(["adopt", "apply"], "adopt.apply.approve")
+    code, applied = drive(_resume(job_id))
+    assert code == int(ExitCode.OK), applied
+    collection.reset_cache()
+    return applied
+
+
+@pytest.fixture
+def sung(machine, silence):
+    """``mover`` vox tagged and a favourite, ``plain`` a favourite only, and
+    ``kept`` a favourite in the old folder's Candy too, each filed by
+    ``adopt apply`` in the old folder's high band, ``with vox`` and Favorites as
+    its tags and the source say; ``deep`` in the new folder gives the library
+    its genre row. The cut and the tag rows are the ones the vocals verb
+    leaves (``tests/test_adopt_workers.py``)."""
+    movers = ("mover", "plain", "kept")
+    tracks = [*((content_id, OLD_GENRE, "8") for content_id in movers), ("deep", NEW_GENRE, "2")]
+    places = [
+        *((*_place(OLD_BUCKET, HIGH), content_id) for content_id in movers),
+        *((*SOURCE, content_id) for content_id in movers),
+        (*_place(OLD_BUCKET, CANDY), "kept"),
+        (*_place(NEW_BUCKET, LOW), "deep"),
+    ]
+    seed_library(machine, silence, tracks, places, on=date(2026, 10, 1), outside=(SOURCE[0],))
+    music = Path(machine.library.root) / "Music"
+    for stray in ("one.flac", "two.flac"):
+        (music / stray).unlink(missing_ok=True)
+    for content_id, genre, _energy in tracks:
+        assert tags.write_tags(music / f"{content_id}.flac", {"genre": genre})
+    session.record_acknowledgment(machine, terminal=lambda: True)
+    _calibrate(machine)
+    _tag_vox(machine, "mover")
+    collection.reset_cache()
+    _apply()
+    return machine
+
+
+def test_a_vocal_favourite_leaves_the_old_folders_with_vox_and_favorites_too(sung):
+    """The brief's drive: filed, given another genre, applied, moved; it ends in
+    the new folder's band, ``with vox`` and Favorites and nowhere in the old."""
+    olds = {_place(OLD_BUCKET, sub) for sub in (HIGH, VOX, FAVORITES)}
+    news = {_place(NEW_BUCKET, sub) for sub in (HIGH, VOX, FAVORITES)}
+    assert _in_tree(sung, "mover") == olds
+
+    acted = _tag_set("--row", "mover")
+    said = acted["warnings"][-1]["message"]
+    assert "crate adopt move" in said and "in rekordbox" not in said
+    _apply()
+    assert _in_tree(sung, "mover") == olds | news
+
+    (move,) = _shown()["items"]
+    assert (move["bucket"], move["target_bucket"], move["add"]) == (OLD_BUCKET, NEW_BUCKET, "")
+    assert move["remove"] == sorted([HIGH, VOX, FAVORITES]) == move["holds"]
+
+    _move()
+
+    assert _in_tree(sung, "mover") == news
+    assert olds <= set(_removed(sung).get("mover", ()))
+    assert dict(genre_moves.read(sung)) == {}
+    # NOTHING ELSE MOVED: the others stay as adoption filed them.
+    assert _in_tree(sung, "plain") == {_place(OLD_BUCKET, s) for s in (HIGH, FAVORITES)}
+
+
+def test_a_favourite_with_no_vocal_sub_leaves_the_old_favorites(sung):
+    """The Favorites membership alone, with no ``with vox``, moved before
+    ``adopt apply`` files the new folder, so the move adds the band itself."""
+    _tag_set("--row", "plain")
+    (move,) = _shown()["items"]
+    assert (move["add"], move["remove"]) == (HIGH, sorted([HIGH, FAVORITES]))
+    _move()
+    assert _in_tree(sung, "plain") == {_place(NEW_BUCKET, HIGH)}
+    assert _place(OLD_BUCKET, FAVORITES) in set(_removed(sung).get("plain", ()))
+
+
+def test_a_manual_sub_is_never_removed_and_keeps_the_old_folders_favorites(sung):
+    """Candy keeps the track in the old folder, so its Favorites there is still
+    what the mirror files; removing it would be undone by the next refresh."""
+    _tag_set("--row", "kept")
+    (move,) = _shown()["items"]
+    assert move["remove"] == [HIGH]
+    _move()
+    assert _in_tree(sung, "kept") == {
+        _place(OLD_BUCKET, CANDY), _place(OLD_BUCKET, FAVORITES), _place(NEW_BUCKET, HIGH)
+    }
+    assert dict(genre_moves.read(sung)) == {}
+
+
+def test_a_derived_membership_added_after_the_approval_refuses_the_move_stale(sung):
+    """The worker asks the plan's own rule again: a sub nobody was shown leaving."""
+    _tag_set("--row", "plain")
+    _run_id, job_id = approve_and_queue(["adopt", "move"], "adopt.move.approve")
+    handle = rb_writer.open_db(rb_writer.live_db_path(sung), unlock=False, cfg=sung)
+    try:
+        tree = rb_writer.ensure_folder(handle, DECLARED.tree.display)
+        folder = rb_writer.ensure_folder(handle, _place(OLD_BUCKET, VOX)[0], parent=tree)
+        vocal = rb_writer.ensure_playlist(handle, _place(OLD_BUCKET, VOX)[1], folder)
+        rb_writer.add_memberships(handle, vocal, ["plain"])
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    collection.reset_cache()
+
+    code, resumed = drive(_resume(job_id))
+
+    assert code != int(ExitCode.OK)
+    inner = resumed["cause"]["inner"]
+    assert inner["reason"] == "decision-stale"
+    assert inner["detail"]["moved_under"] == {"plain": "it holds a sub nobody was shown"}
+    assert _place(OLD_BUCKET, HIGH) in _in_tree(sung, "plain")
+
+
+def _node(bucket: str, sub: str, *content_ids: str, playlist_id: str, names=None):
+    from cratekit.write import rebuild
+
+    folder, playlist = names or _place(bucket, sub)
+    return rebuild.TreeNode(
+        folder_id=f"f-{bucket}", folder_display=folder, playlist_id=playlist_id,
+        playlist_display=playlist, content_ids=frozenset(content_ids),
+    )
+
+
+def test_the_reader_files_each_derived_class_and_the_folders_other_playlists_apart():
+    from cratekit.adopt import placements as adopt_placements
+
+    nodes = [
+        _node(OLD_BUCKET, HIGH, "t", playlist_id="p1"),
+        _node(OLD_BUCKET, VOX, "t", playlist_id="p2"),
+        _node(OLD_BUCKET, FAVORITES, "t", "u", playlist_id="p3"),
+        _node(OLD_BUCKET, CANDY, "t", playlist_id="p4"),
+        _node(OLD_BUCKET, HIGH, "u", playlist_id="p5", names=(_place(OLD_BUCKET, HIGH)[0], "Mine")),
+        _node(NEW_BUCKET, CANDY, "u", playlist_id="p6"),
+    ]
+    found = adopt_placements.placements_from(DECLARED, nodes, None)
+    assert found.holds(OLD_BUCKET, "t") == (HIGH,)
+    assert found.holds_derived(OLD_BUCKET, "t") == tuple(sorted((FAVORITES, VOX)))
+    assert found.holds_derived(OLD_BUCKET, "u") == (FAVORITES,)
+    assert found.holds_derived_unnamed(OLD_BUCKET, "t") == ()
+    # THE OTHER PLAYLISTS OF THE FOLDER ITS OWN PLACES ANSWER FROM, by name, and
+    # a playlist of another folder is that folder's.
+    assert found.holds_others(OLD_BUCKET, "t") == (_place(OLD_BUCKET, CANDY)[1],)
+    assert found.holds_others(OLD_BUCKET, "u") == ("Mine",)
+    assert found.holds_others(NEW_BUCKET, "u") == ()
+
+
+def _asked(placements) -> tuple:
+    entry = _entry(NEW_BUCKET, NEW_GENRE)
+    moved = {"mover": frozenset({OLD_BUCKET})}
+    competing = {b.id: routing.competing_subs(DECLARED, b.id) for b in DECLARED.buckets}
+    asked = adopt_move.buckets_asked(entry, placements, DECLARED, competing, moved)
+    found = adopt_move.standing_in(
+        entry, OLD_BUCKET, placements, DECLARED, tree=DECLARED.tree.id, moved=moved
+    )
+    return asked, found
+
+
+def _placed(**fields):
+    from cratekit.adopt.plan import Placements
+
+    return Placements(read=True, **{
+        name: {OLD_BUCKET: {"mover": tuple(subs)}} for name, subs in fields.items()
+    })
+
+
+def test_a_derived_class_held_under_another_name_only_is_listed_never_moved():
+    asked, found = _asked(_placed(held=(HIGH,), derived=(VOX,), derived_unnamed=(VOX,)))
+    assert OLD_BUCKET in asked
+    assert isinstance(found, adopt_move.Left)
+    assert (found.reason, found.holds, found.holds_unnamed) == (
+        adopt_move.LEFT_UNNAMED, tuple(sorted((HIGH, VOX))), (VOX,)
+    )
+
+
+def test_a_derived_class_alone_in_the_old_folder_is_asked_and_left():
+    asked, found = _asked(_placed(derived=(VOX,)))
+    assert OLD_BUCKET in asked
+    assert isinstance(found, adopt_move.Move)
+    assert (found.add, found.remove, found.target_bucket) == (HIGH, (VOX,), NEW_BUCKET)
+
+
+def test_a_favorites_another_playlist_keeps_is_not_asked_alone_and_not_left_beside_a_band():
+    asked, found = _asked(_placed(derived=(FAVORITES,), others=("Candy",)))
+    assert OLD_BUCKET not in asked and found is None
+    _asked_too, beside = _asked(_placed(held=(HIGH,), derived=(FAVORITES, VOX), others=("Mine",)))
+    assert beside.remove == tuple(sorted((HIGH, VOX)))
+    # WITH NOTHING ELSE THERE, IT LEAVES WITH THE BAND.
+    _asked_alone, alone = _asked(_placed(held=(HIGH,), derived=(FAVORITES,)))
+    assert alone.remove == tuple(sorted((FAVORITES, HIGH)))

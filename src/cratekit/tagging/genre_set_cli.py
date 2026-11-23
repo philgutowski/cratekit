@@ -221,9 +221,9 @@ def _written(plan: gs.SetPlan, written: gs.Written) -> list[dict[str, str]]:
         leaving = sum(1 for item in plan.writes if item.leaves)
         moved = (
             f", then `crate adopt move`, which takes the {leaving} row(s) the tree "
-            f"filed under their old genre out of that genre folder's energy band; "
-            f"a `with vox` or Favorites membership a row holds there stays, for "
-            f"you to remove in rekordbox"
+            f"filed under their old genre out of that genre folder's energy band, "
+            f"`with vox` and Favorites; a playlist you made there, Candy among "
+            f"them, keeps its row, and so does that folder's Favorites"
             if leaving
             else ""
         )

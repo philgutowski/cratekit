@@ -330,7 +330,12 @@ def remaining(
             continue
         _kind, competing = routing.competing_subs(declared, move.bucket)
         _kind, into = routing.competing_subs(declared, move.into)
-        if move.target not in into or not set(move.remove) <= competing:
+        # A MOVE ACROSS BUCKETS LEAVES THE OLD FOLDER'S DERIVED CLASSES TOO
+        # (R-1965), and no other move ever names one.
+        leavable = competing | (
+            set(plan_engine.derived_classes(declared, move.bucket)) if move.target_bucket else set()
+        )
+        if move.target not in into or not set(move.remove) <= leavable:
             stale[move.content_id] = "a sub it names no longer competes"
             continue
         # THE PLAN'S OWN RULE, ASKED OF THE LIBRARY AS IT STANDS.
@@ -353,9 +358,12 @@ def remaining(
             )
         )
         if now is None and move.target_bucket:
-            # ACROSS BUCKETS, DONE IS IN THE TARGET AND OUT OF THE OLD BUCKET.
+            # ACROSS BUCKETS, DONE IS IN THE TARGET AND OUT OF THE OLD BUCKET,
+            # its derived classes included (R-1965).
             arrived = move.target in current.placements.holds(move.into, move.content_id)
-            if arrived and not held:
+            if arrived and not held and not move_engine.derived_left(
+                current.placements, declared, move.bucket, move.content_id, leaving=()
+            ):
                 continue
             stale[move.content_id] = "the plan as it stands does not move it"
             continue
@@ -433,7 +441,9 @@ def read_back(
     account of itself. ``moved`` holds its target and no other competing sub,
     ``in_both`` its target and another, ``untouched`` not its target, and
     ``neither`` no competing sub at all, which no path can produce and is
-    listed so it would be seen. Each move is read back in its own bucket and
+    listed so it would be seen. A move across buckets counts a derived class
+    of the bucket it left as a sub still held there (R-1965). Each move is read
+    back in its own bucket and
     each list names a track once, so a track whose two moves (R-780) ended
     differently is in two lists.
 
@@ -454,7 +464,13 @@ def read_back(
         )
         if move.target_bucket:
             # ACROSS BUCKETS (U339): the target is read in the bucket it files
-            # into, and every sub of the bucket left must be gone.
+            # into, and every sub of the bucket left must be gone, every derived
+            # class it was to leave too (R-1965).
+            held = held | set(
+                move_engine.derived_left(
+                    held_now, declared, move.bucket, move.content_id, leaving=tuple(held)
+                )
+            )
             arrived = move.target in held_now.holds(move.into, move.content_id)
             name = (
                 ("in_both" if held else "moved")
