@@ -163,8 +163,10 @@ word, unread, or only unknown words), which is filed for review.
 ### Label genre
 The genre a followed label is registered with
 (`crate label registry set NAME --genre WORD`, cleared with `--genre default`),
-written by `crate tag folder` onto the label's files that have no genre,
-asking no catalogue. A file's label is its label tag, else `--label`, else
+which also makes its group, the labels `label sync --genre WORD` asks and
+`label registry list --genre WORD` lists (U341), and is written by
+`crate tag folder` onto the label's files that have no genre, asking no
+catalogue. A file's label is its label tag, else `--label`, else
 the one registered label whose whole needle its copyright line carries
 (U240). A tag is read as a name, as an id only when no label is called it,
 and a name two labels share names neither; `--label` is held by its id
