@@ -519,7 +519,7 @@ source = { table = "u127.json", id = "N4_unreadable_refuses" }
 description = "Let an unreadable calibration refuse the landing rather than block the tag"
 file = "src/cratekit/intake/native_plan.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+moved = "the vox guard moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_an_unreadable_calibration_tags_nothing_and_lands_the_batch, is now the _unreadable case of test_a_tag_that_cannot_be_written_tags_nothing_says_why_and_lands_the_batch in the same file, parametrized over the three blocked shapes with the same input and the same checks"
 tests = ["tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_sync_mark.py"]
 old = '''
     except CratekitError as exc:
@@ -534,7 +534,7 @@ source = { table = "u127.json", id = "N5_no_category_check" }
 description = "Skip the writer's question at plan time, so a library with no category fails after the moves"
 file = "src/cratekit/intake/native_plan.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+moved = "the vox guard moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_a_library_with_no_category_to_copy_tags_nothing_and_lands_the_batch, is now the _no_category case of test_a_tag_that_cannot_be_written_tags_nothing_says_why_and_lands_the_batch in the same file, the same input and the same checks"
 tests = ["tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py", "tests/test_intake_land.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_land_native.py", "tests/test_intake_land_vox_native.py", "tests/test_intake_writers_native.py", "tests/test_sync_mark.py"]
 old = '''
     if not rb_writer.my_tag_writable(db):
@@ -1072,7 +1072,7 @@ source = { table = "u163.json", id = "W5_album_artist_mint" }
 description = "_active_album_id: look up an album whose album artist is minted, instead of minting it"
 file = "src/cratekit/intake/native_plan.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+moved = "the album lookup moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_an_album_whose_album_artist_is_minted_is_minted_beside_a_namesake_with_none, is now the Three.flac case of test_an_album_links_the_one_its_album_artist_holds in the same file, which asserts the minted album artist holds a new album beside the namesake with none"
 tests = ["tests/test_intake_land_words.py", "tests/test_intake_land_native.py", "tests/test_rb_writer_guard.py"]
 old = '''
     if album_artist is not None and not album_artist.row_id:
@@ -1156,7 +1156,7 @@ source = { table = "u166.json", id = "A1_parent_check" }
 description = "analyze_playlist: take a live Analyze anywhere, not only directly under the root"
 file = "src/cratekit/intake/native_plan.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+moved = "the ANALYZE lookup moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_an_analyze_playlist_outside_the_root_is_never_written_into, is now the p-elsewhere node of test_a_removed_smart_or_outside_node_named_analyze_is_never_written_into in the same file, the same node and the same check"
 tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
 old = '''
         if str(getattr(row, "ParentID", "") or "") != str(root_id):
@@ -1173,7 +1173,7 @@ source = { table = "u166.json", id = "A2_removed_check" }
 description = "analyze_playlist: take a removed Analyze as the queue"
 file = "src/cratekit/intake/native_plan.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+moved = "the ANALYZE lookup moved whole from native.py to native_plan.py with the plan (U307); the tests that killed it are now the p-gone node of test_a_removed_smart_or_outside_node_named_analyze_is_never_written_into and the removed after approval half of test_a_held_row_is_not_added_to_analyze_and_analyze_removed_after_approval_refuses, in the same file, the same inputs and checks"
 tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
 old = '        if rb_writer.node_removed(row) or int(getattr(row, "Attribute", -1)) != 0:'
 new = '        if int(getattr(row, "Attribute", -1)) != 0:'
@@ -1184,7 +1184,7 @@ source = { table = "u166.json", id = "A3_plain_check" }
 description = "analyze_playlist: take a folder or smart playlist named Analyze as the queue"
 file = "src/cratekit/intake/native_plan.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+moved = "the ANALYZE lookup moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_a_removed_or_smart_node_named_analyze_is_never_written_into, is now test_a_removed_smart_or_outside_node_named_analyze_is_never_written_into in the same file, its p-smart node the same input and check"
 tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
 old = '        if rb_writer.node_removed(row) or int(getattr(row, "Attribute", -1)) != 0:'
 new = '        if rb_writer.node_removed(row):'
@@ -1259,7 +1259,7 @@ source = { table = "u166.json", id = "A9_reserved_batch" }
 description = "plan_rows: let a batch take the name Analyze"
 file = "src/cratekit/intake/native_plan.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/intake/native_plan.py, was in src/cratekit/intake/native.py"
+moved = "the reserved batch name check moved whole from native.py to native_plan.py with the plan (U307); the test that killed it, test_a_batch_named_analyze_is_refused_before_the_gate_and_nothing_moves, is now the second half of test_no_analyze_playlist_still_asks_and_a_batch_named_analyze_is_refused in the same file, the same staging, verb and checks"
 tests = ["tests/test_inbox_analyzed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_set_inspiration_playlist.py", "tests/test_u135_set_inbox_join.py", "tests/test_intake_land_hearts_native.py"]
 old = '    if batch == ANALYZE:'
 new = '    if False:'
