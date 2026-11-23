@@ -1,8 +1,7 @@
 """Sync twins, release and a pair's unread tracks: the suite's own tests, driven through the stage (U304).
 
-As ``sync_pair.py`` does, on the world the twins suite builds: a twin
-backfilled, an abort, a twin's held tracks released, a release refused, and a
-pair listing a track it cannot read. Then the plan as a person reads it.
+As ``sync_pair.py`` does, on the world the twins suite builds, then the plan as
+a person reads it.
 """
 
 from __future__ import annotations

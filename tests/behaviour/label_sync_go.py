@@ -1,11 +1,8 @@
 """Label sync's go: one summary, one gate, one download by the fake adapter (U308).
 
-`crate label sync --go` reads the saved answers, shows one summary at its
-explicit gate, and once the gate is answered downloads what the answers took
-through `acquire download`'s own worker, then stops at the landing's gate in
-the tail's stand in. A declined go downloads nothing. On the go suite's own
-machine, provider, adapter and tail, with every answer saved through the
-structured path.
+`crate label sync --go` shows one summary at its gate, downloads what the saved
+answers took through `acquire download`'s worker, and stops at the landing's
+gate; a declined go downloads nothing.
 """
 
 from __future__ import annotations
@@ -28,11 +25,8 @@ GO = (*SYNC, "--go")
 
 
 def _landed_at_the_instant(monkeypatch) -> None:
-    """The fake adapter's files given the pinned instant as they land.
-
-    The go records each downloaded file by its time within the command that
-    downloaded it, before the stage can settle it.
-    """
+    """The fake adapter's files given the pinned instant as they land, since the go
+    records each by its time before the stage can settle it."""
     real = FakeSource.fetch
     stamp = behaviour.INSTANT.timestamp()
 

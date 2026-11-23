@@ -1,13 +1,9 @@
 """Tagging's folder scenarios: `crate tag folder` over a download folder (U306).
 
-The shipped catalogue searcher, over a fetch that answers per source as the
-record shops do, decides three files: one Beatport names, one no shop can
-answer because two of them refuse this client, and one that already carries
-a genre. A second sweep over the same folder finds nothing left to write, and
-an empty and a missing folder each say why there is nothing to sweep. Then a
-sweep with a Discogs token asks Discogs first and a refusing Beatport is
-stopped after its third refusal. Self contained, so the suites it stands
-beside can be trimmed without moving it.
+The shipped catalogue searcher, over a fetch answering per shop, decides three
+files; a second sweep finds nothing, empty and missing folders say why, and a
+Discogs token is asked first while a refusing Beatport stops after three. Self
+contained, so the suites beside it can be trimmed without moving it.
 """
 
 from __future__ import annotations

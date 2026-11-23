@@ -1,9 +1,8 @@
 """U35: the standalone utilities, the backup age fact, and the verb declarations.
 
-Each of the plan's five scenarios has a test named after it. Everything runs in
-a temporary directory with the process probe and the command runner injected;
-the one exception is the mastering round trip, which encodes real audio with
-ffmpeg, since a safety proof that stubs the encoder proves nothing about it.
+Everything runs in a temporary directory with the process probe and the command
+runner injected, except the mastering round trip, which encodes real audio with
+ffmpeg, since a proof that stubs the encoder proves nothing about it.
 """
 
 from __future__ import annotations
@@ -46,12 +45,7 @@ def open_gates():
 
     The residual
     "The backup restore is not yet bound to the destructive-session gates"
-    binds the library lock, the backup acknowledgment and the volume identity
-    assertion to a restore. Those need a real volume identity and a person's
-    recorded acknowledgment, neither of which belongs in a test about the ORDER
-    the sidecars are cleared in. Injecting the seam here is what keeps this file
-    hermetic while the gate itself is asserted, with the real guard restored, in
-    the tests further down that exist for it.
+    binds the real gates to a restore; the tests that exist for them restore it.
     """
     return _open_gates()
 
@@ -231,20 +225,10 @@ def test_every_declared_verb_is_in_the_static_registry():
 
 
 def test_the_destructive_verb_is_wired_to_the_destructive_session_gates():
-    """KTD24 and R38, armed now that the session boundary has landed.
-
-    The residual
-    "The backup restore is not yet bound to the destructive-session gates" is the
-    one this drives.
-
-    A backup restore replaces a live database and its sidecars while writing no
-    database row, so a rule binding the gates to database writes alone would
-    leave it outside the entire safety spine.
-
-    The check is on THIS unit's source rather than on U8's API, because what had
-    to change is here: U8 provides the gates, and the destructive verb declared
-    here goes through them. The behavioural half, driving a restore into a gate
-    refusal, is in ``tests/test_write_session.py``.
+    """KTD24 and R38: a restore writes no database row, so it must go through the
+    gates. This drives the residual
+    "The backup restore is not yet bound to the destructive-session gates"; the
+    behavioural half is in ``tests/test_write_session.py``.
     """
     source = (SRC_ROOT / "cratekit" / "modules" / "tools" / "backup.py").read_text()
     tree = ast.parse(source)
@@ -706,9 +690,7 @@ def test_an_empty_walk_writes_no_cache(tmp_path):
 
 
 def test_the_index_cache_has_a_declared_home_in_the_state_inventory(cfg):
-    """A module composing its own path under a state root invents a file the inventory cannot find,
-    snapshot, or clear.
-    """
+    """A path composed under a state root is a file the inventory cannot find or clear."""
     entry = config.state_file("setbuilder_index_cache")
     assert entry.root is config.StateRoot.LIBRARY
     assert entry.snapshot is config.SnapshotRole.NEVER_RESTORED
@@ -1003,9 +985,8 @@ def db_file(cfg):
     return database
 
 
-#: Four dated folders older than any completed mirror a test below records, in
-#: the spelling ``stamp_for`` writes, because the rotation compares names with
-#: the record's stamp and a word like "one" sorts after every date.
+#: Dated folders older than any completed mirror recorded below, spelled as
+#: ``stamp_for`` writes them, since the rotation compares names with the stamp.
 SETTLED_ARCHIVES = "".join(f"2026-0{month}-01T000000Z/\n" for month in (1, 2, 3, 4))
 THREE_ARCHIVES = "".join(f"2026-0{month}-01T000000Z/\n" for month in (1, 2, 3))
 
@@ -1214,11 +1195,8 @@ def test_the_dry_run_and_the_real_run_come_from_one_plan(cfg, db_file, rclone):
 
 
 def test_a_dry_run_publishes_no_backup_age(cfg, db_file, rclone):
-    """A preview that recorded an age would report a library protected by a run that copied not one
-    byte.
-    """
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    backup.run_backup(cfg, plan, runner=Recorder(), dry_run=True)
+    """A preview that recorded an age would call a library protected by copying nothing."""
+    _run_backup(cfg, Recorder(), dry_run=True)
     assert backup.backup_facts.read_facts(cfg) == {}
 
 
@@ -1227,8 +1205,7 @@ def test_the_prune_keeps_the_newest_removes_the_rest_and_warns_about_nothing(
 ):
     """A prune that completed is not an assertion of absence: it purged two."""
     recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: THREE_ARCHIVES})
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    outcome = backup.run_backup(cfg, plan, runner=recorder)
+    outcome = _run_backup(cfg, recorder)
 
     purged = [c for c in recorder.commands if c.label == backup.PRUNE_ARCHIVE_FOLDER]
     assert len(purged) == 2
@@ -1254,13 +1231,18 @@ def test_the_retention_the_plan_declared_is_the_retention_the_run_applies(
 def test_the_prune_runs_only_after_the_mirror_succeeded(cfg, db_file, rclone):
     """Each dated folder holds one run's rollback."""
     recorder = Recorder(fail_labels={backup.MIRROR})
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    outcome = backup.run_backup(cfg, plan, runner=recorder)
+    outcome = _run_backup(cfg, recorder)
 
     assert backup.PRUNE_ARCHIVE not in recorder.labels()
     assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels()
-    files = [p for p in outcome.portions if p.portion is backup_facts.Portion.FILES][0]
+    files = _files_outcome(outcome)
     assert files.ran is False
+
+
+def _run_backup(cfg, runner, **kwargs):
+    """``run_backup`` over a fresh plan, with nothing running."""
+    plan = backup.plan_backup(cfg, process_lister=no_processes)
+    return backup.run_backup(cfg, plan, runner=runner, **kwargs)
 
 
 def _files_outcome(outcome):
@@ -1272,8 +1254,7 @@ def test_a_failed_listing_reports_the_rotation_and_leaves_the_backup_successful(
 ):
     """The drive the finding behind this unit recorded as never performed."""
     recorder = Recorder(fail_labels={backup.PRUNE_ARCHIVE})
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    outcome = backup.run_backup(cfg, plan, runner=recorder)
+    outcome = _run_backup(cfg, recorder)
 
     files = _files_outcome(outcome)
     assert files.ran is True
@@ -1291,8 +1272,7 @@ def test_a_failed_purge_reports_how_many_folders_survived_it(cfg, db_file, rclon
         stdout_for={backup.PRUNE_ARCHIVE: THREE_ARCHIVES},
         fail_labels={backup.PRUNE_ARCHIVE_FOLDER},
     )
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    outcome = backup.run_backup(cfg, plan, runner=recorder)
+    outcome = _run_backup(cfg, recorder)
 
     files = _files_outcome(outcome)
     assert files.ran is True
@@ -1304,8 +1284,7 @@ def test_a_failed_purge_reports_how_many_folders_survived_it(cfg, db_file, rclon
 def test_the_portion_with_no_prune_command_carries_no_warning(cfg, db_file, rclone):
     """The database portion never prunes, so it has nothing to report."""
     recorder = Recorder(fail_labels={backup.PRUNE_ARCHIVE})
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    outcome = backup.run_backup(cfg, plan, runner=recorder)
+    outcome = _run_backup(cfg, recorder)
 
     database = [
         p for p in outcome.portions if p.portion is backup_facts.Portion.DATABASE
@@ -1316,8 +1295,7 @@ def test_the_portion_with_no_prune_command_carries_no_warning(cfg, db_file, rclo
 def test_a_rehearsal_reports_a_failed_listing_and_still_purges_nothing(cfg, db_file, rclone):
     """The branch this replaced ran the listing and read nothing."""
     recorder = Recorder(fail_labels={backup.PRUNE_ARCHIVE})
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    outcome = backup.run_backup(cfg, plan, runner=recorder, dry_run=True)
+    outcome = _run_backup(cfg, recorder, dry_run=True)
 
     assert [w["code"] for w in _files_outcome(outcome).warnings] == [
         backup.ARCHIVE_LISTING_FAILED
@@ -1330,24 +1308,20 @@ def test_a_rehearsal_whose_listing_succeeded_warns_about_nothing_and_purges_noth
 ):
     """What the fold must not have changed."""
     recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: SETTLED_ARCHIVES})
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    outcome = backup.run_backup(cfg, plan, runner=recorder, dry_run=True)
+    outcome = _run_backup(cfg, recorder, dry_run=True)
 
     assert _files_outcome(outcome).warnings == ()
     assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels()
 
 
 def test_a_failed_portion_publishes_no_age(cfg, db_file, rclone):
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    backup.run_backup(cfg, plan, runner=Recorder(fail_labels={backup.MIRROR}))
+    _run_backup(cfg, Recorder(fail_labels={backup.MIRROR}))
     facts = backup_facts.read_facts(cfg)
     assert backup_facts.Portion.FILES not in facts
 
 
 def test_no_provider_specific_flag_is_baked_into_the_commands(cfg, db_file, rclone):
-    """The remote is configuration, so a one-provider flag belongs in rclone's own configuration
-    rather than in a command this builds for every provider.
-    """
+    """A one-provider flag belongs in rclone's own configuration, not in every command."""
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     for entry in plan.portions:
         for command in entry.commands:
@@ -1488,9 +1462,7 @@ def test_a_run_that_overwrote_nothing_still_keeps_the_newest_settled_archive(cfg
 
 
 def test_the_folder_the_last_completed_run_wrote_is_settled_not_held(cfg, db_file, rclone):
-    """THE BOUNDARY. The last completed run's own folder carries the stamp of the instant on record,
-    so the comparison has to be strict: at or before the floor is settled.
-    """
+    """The last completed run's folder carries the recorded stamp, so at or before it is settled."""
     remote = ArchiveRemote(_stamp(0), overwrites=False)
     _record(cfg, "FILES", ROTATION_DAY, str(cfg.backup.dest))
     _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1), keep=0)
@@ -1541,9 +1513,7 @@ def test_a_record_that_cannot_be_read_purges_nothing(cfg, db_file, rclone):
 
 
 def test_a_rehearsal_does_not_read_the_record_to_list_a_rotation(cfg, db_file, rclone):
-    """A rehearsal purges nothing, so it needs no floor, and reading the record for one would fail a
-    preview over a file the preview never touches.
-    """
+    """A rehearsal purges nothing, so it needs no floor and reads no record."""
     backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
     backup_facts.path_for(cfg).write_text("{ not json")
     remote = ArchiveRemote("2026-08-01T000000Z")
@@ -1638,9 +1608,7 @@ def test_a_future_timestamp_is_named_and_a_small_clock_difference_tolerated(cfg,
 
 
 def test_the_quoted_age_is_none_unless_every_portion_has_a_usable_one(cfg):
-    """A number derived from half the portions describes a half-protected library as though it were
-    fully protected.
-    """
+    """An age from half the portions calls a half-protected library protected."""
     now = datetime(2026, 8, 1, tzinfo=UTC)
     _record(cfg, "FILES", now - timedelta(days=1), "remote:mirror")
     assert backup_facts.oldest_usable_age(cfg, now=now) is None
@@ -1675,9 +1643,7 @@ def test_a_naive_timestamp_is_refused_where_it_is_produced(cfg):
 
 
 def test_the_fact_file_is_written_owner_only_under_any_umask(cfg, monkeypatch):
-    """P1: a state file whose mode came from the umask is the recorded defect, and this one records
-    when a user's data was last protected.
-    """
+    """P1: a state file whose mode came from the umask is the recorded defect."""
     monkeypatch.setattr("os.umask", lambda mask: 0)
     import os
 
@@ -1783,12 +1749,8 @@ def test_a_restore_from_a_snapshot_holding_only_the_database_skips_the_absent_si
     cfg, tmp_path, rclone
 ):
     """The residual
-    "A restore from a snapshot taken with rekordbox closed always reports failure".
-
-    The only snapshot this product takes has no write ahead log.
-    ``plan_database_snapshot`` copies a sidecar only when it is present.
-    ``plan_restore`` used to copy the log unconditionally, rclone exited 3, and
-    the person was told the restore failed after the database had already landed.
+    "A restore from a snapshot taken with rekordbox closed always reports failure":
+    a snapshot holds the write ahead log only when it was present.
     """
     target = _scratch(cfg, tmp_path)
     database = backup.database_target_for(cfg, target).name
@@ -1927,9 +1889,7 @@ def test_the_latest_snapshot_is_the_newest_by_sortable_stamp(cfg, tmp_path, rclo
 
 
 def test_an_absent_restore_target_refuses_rather_than_creating_one(cfg, tmp_path, rclone):
-    """Creating the target would silently restore a library into a directory the user never mounted,
-    on the boot disk.
-    """
+    """Creating the target would restore a library onto the boot disk, unmounted."""
     refused = _restore_refused(cfg, target=tmp_path / "not-mounted", runner=Recorder())
     assert refused.refusal is backup.Refusal.RESTORE_TARGET_ABSENT
 
@@ -2160,9 +2120,7 @@ def test_the_capture_marks_the_snapshot_after_the_database_and_never_before_it(
         i for i, label in enumerate(labels) if label == backup.SNAPSHOT_DATABASE
     )
     marker = next(c for c in database.commands if c.label == backup.SNAPSHOT_IDENTITY)
-    # SPELLED OUT, not built with the helper the other tests use for their INPUT.
-    # An expected value that came from ``identity_marker`` would hold this to
-    # whatever that function returns, which is X equals X.
+    # Spelled out: an expected value from ``identity_marker`` would be X equals X.
     assert marker.argv[1] == "touch"
     assert marker.argv[-1] == f"{cfg.backup.db_dest_root}/{STAMP}/library-volume.f1e2-d3c4"
     assert backup.SNAPSHOT_IDENTITY in backup.TRANSFERRING_LABELS

@@ -1,18 +1,9 @@
 """The write layer's resort scenarios: the routing tree resorted behind its gate (U302).
 
-`crate route resort` plans the memberships every routing tree lacks, stops at
-its explicit gate showing each add and the trees it leaves alone, and once the
-gate is answered queues a job whose worker, ``route resort --job``, writes the
-approved adds inside one guarded database session. On the resort suite's own
-library: a disposable database where the genre tree and the intake tree have
-both cut over, the intake tree holding one landed batch, and two files read as
-the genre sub at one energy. Its refusal is the pin on the file a plan read: an
-approval recorded over a copy of the database does not approve the live file,
-though both plan the same adds under the same digest.
-
-A file of its own beside ``write.py``, because the resort suite and the
-routing suite that file borrows from each call their set up machine
-``configured`` and their readings ``tagged``.
+`crate route resort` shows each add behind its gate and its job writes them in
+one guarded session. Its refusal: an approval recorded over a copy does not
+approve the live file, though both plan the same adds. Its own file because
+both suites name ``configured`` and ``tagged``.
 """
 
 from __future__ import annotations

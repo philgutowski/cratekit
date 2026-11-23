@@ -1,14 +1,8 @@
 """Intake's missing scenarios over a set: rows named by exact ISRC and the rest handed on (U307).
 
-A set identified through the worker suite's recognition fakes is queued and
-driven to the end; `crate intake missing --job` then asks the catalogue for
-each recognised row's ISRC, lists the row one identifier names, and writes
-the rest, two identifiers or none, to the unlisted list a person reads with
-its reasons. A provider that cannot answer refuses before any file is
-written. Only the catalogue is a fake beside the recognition seams.
-
-A file of its own, because the ISRC suite calls its configuration ``cfg``
-and its library ``library`` as other intake suites call theirs.
+A recognised set's rows are listed when one ISRC names them, the rest written
+to the unlisted list with reasons; a provider that cannot answer refuses before
+any file. Its own file for its ``cfg`` and ``library``.
 """
 
 from __future__ import annotations

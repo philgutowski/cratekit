@@ -1,17 +1,10 @@
 """The vocals scenarios: `crate analyze vocals` re-scoring a folder's vocal tags (U306).
 
-On a configured machine with the full profile and FLAC containers the
-encoder synthesized, with the vocal model's seams bound to the fakes the
-vocals suite uses: a model that scores a signal as vocal and a decoder
-handing it that signal. The verb queues a folder, a file carrying the
-analysis head among it, and its job scores each one; a second pass finds
-every score unchanged, and ``--unscored`` then finds no headed file without
-a score. ``--recursive`` queues a nested file; a file over the size cap is
-reported inactive with its tags kept; a file gone before the drive fails
-its item; a job another verb queued is refused; a process that cannot load
-the model refuses at the queue; and an empty and an absent folder are told
-apart. Self contained, so the suites it stands beside can be trimmed
-without moving it.
+On a full profile machine with the vocals suite's fake model and decoder, a
+folder is queued and scored, rescored unchanged, ``--unscored`` and
+``--recursive`` run, and the size cap, a vanished file, a foreign job, an
+unloadable model and empty and absent folders each answer as themselves. Self
+contained, so the suites beside it can be trimmed without moving it.
 """
 
 from __future__ import annotations

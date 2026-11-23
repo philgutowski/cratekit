@@ -1,16 +1,9 @@
 """Intake's set scenarios: a set landed under INSPIRATION and the backfill verb (U307).
 
-`crate intake land --set` over a finished set job writes the set's playlist
-under the declared INSPIRATION folder, owned rows and landed rows in the order
-the set played them, and names the INBOX playlist for the set; a second part
-of the set landed the next day adds to that playlist rather than making
-another (U135). `crate intake inspiration --job` is the backfill over a set
-that landed without it, through its own explicit gate, and run again it adds
-nothing. With no backup acknowledgment the backfill refuses before its gate.
-
-A file of its own, because the set suites call their full profile machine
-``machine`` as the native landing suite calls its own, and pin the day a
-batch is named for with an autouse fixture every scenario here takes.
+`crate intake land --set` writes the set's playlist in played order and adds a
+second part to it (U135); `crate intake inspiration --job` backfills behind its
+gate, adds nothing again, and refuses with no acknowledgment. Its own file
+because the set suites name ``machine`` and pin the batch day.
 """
 
 from __future__ import annotations

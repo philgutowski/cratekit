@@ -1,12 +1,8 @@
 """Favorites' scenarios: the Favorites folder put in order behind its gate (U298).
 
-`crate favorites order` reads the folder's playlists oldest first, stops at its
-explicit gate showing the order it would leave, and once the gate is answered
-moves the playlists inside one guarded database session. On the order suite's
-own library: the native landing suite's disposable database with a Favorites
-folder made on a handle. The verb finds its gate by name on its registry entry
-and takes its capture through the write layer, the two things U298 gave one
-home each.
+`crate favorites order` shows the order at its gate, then moves the playlists in
+one guarded session, on the order suite's library. Its gate lookup and its
+capture are two of the things U298 gave one home each.
 """
 
 from __future__ import annotations

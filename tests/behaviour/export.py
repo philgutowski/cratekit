@@ -1,15 +1,9 @@
 """Export's set scenarios: a set made, archived, backfilled and renamed (U309).
 
-`crate export set` makes a private playlist of a tracklist's rows on the
-account behind its explicit gate; `crate export archive` files it in its
-year's Downloaded Sets folder and holds it as taken; each, given nothing,
-backfills over what the library proves; and `crate export set --rename`
-follows the INSPIRATION playlist's new name behind its own gate. On the set
-suite's installed machine with the catalogue and the account the suite's
-fakes, the account's record of every call written beside the ledger.
-
-The refusals are the rename's when the ledger already holds a set playlist
-under the new name, and the set's when no provider session is stored.
+`crate export set` makes a set playlist on the account behind its gate,
+`export archive` files it in its year's folder, each backfills given nothing,
+and `export set --rename` follows a renamed INSPIRATION playlist. The refusals:
+a rename onto a name the ledger holds, and no provider session.
 """
 
 from __future__ import annotations

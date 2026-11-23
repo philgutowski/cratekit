@@ -1,16 +1,10 @@
 """Tagging's retag scenarios: `crate tag retag` over a folder of coarse genres (U306).
 
-A download folder holds three files: two carrying the catch all the shipped
-taxonomy calls too coarse to be a final tag and one carrying a specific
-genre. The verb stops at its explicit gate, the decision is recorded, the
-sweep is queued and then driven, with a searcher bound at the worker's seam
-that names one file and has no answer for the other, which goes to the review
-queue. A second look at the finished job drives nothing. A second sweep over
-the same folder offers the one file still coarse and is aborted. A folder with
-nothing coarse is asked about and queues nothing, an absent folder says so,
-an unnamed folder is refused, and a file deleted between the queue and the
-drive fails its item by name. Self contained, so the suites it stands beside
-can be trimmed without moving it.
+The sweep stops at its gate, is queued and driven with a searcher that names
+one coarse file and sends the other to review; a second sweep is aborted, and
+nothing coarse, an absent folder, an unnamed one and a file deleted before the
+drive each answer as themselves. Self contained, so the suites beside it can be
+trimmed without moving it.
 """
 
 from __future__ import annotations
@@ -57,11 +51,8 @@ def silence(tmp_path) -> Path:
 
 @pytest.fixture
 def searcher(monkeypatch):
-    """A searcher answering by title, bound where the worker looks one up.
-
-    The general catalogue is bound too, to a lookup that fails on any ask, so
-    no file reaches the network through it.
-    """
+    """A searcher answering by title, bound where the worker looks one up, with the
+    general catalogue bound to a lookup that fails, so nothing reaches the network."""
     answers = {"coarse-named": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}
     asked: list[tuple[str, str]] = []
 

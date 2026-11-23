@@ -1,16 +1,8 @@
 """Intake's rotation scenarios: stale INBOX batches moved into Old and expired ones removed (U307).
 
-`crate inbox rotate --as-of` over three batches in INBOX and one in Old, a
-person's playlist and folder beside them: the plan as a person reads it,
-the gate as the envelope, the answer, and the rotation that moves the forty
-and hundred day batches into Old and removes the one past expiry, with no
-track going anywhere. Run again, the batch moved past expiry goes, and then
-nothing does. An INBOX that gained a batch after the answer is refused
-stale with nothing written, and a machine with no backup acknowledgment
-refuses before the gate. On the rotation suite's own library.
-
-A file of its own, because the rotation suite builds its own ``machine``
-with eight tracks filed, as the native landing suite builds another.
+`crate inbox rotate --as-of` moves stale batches into Old and removes the
+expired, moving no track; a batch gained after the answer is stale, and no
+acknowledgment refuses. Its own file for its eight track ``machine``.
 """
 
 from __future__ import annotations

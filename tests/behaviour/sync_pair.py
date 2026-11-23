@@ -1,16 +1,10 @@
 """Sync pair's scenarios on one marked pair: the suite's own tests, driven through the stage (U304).
 
-Each scenario runs one test of the pair suites as written, with every command
-it drives routed through the stage by ``tests/behaviour/sync.borrowed``, so
-the capture holds each envelope, the gate it asked, and the database, the pairs
-record and the held plans the verb left: a first sync, a removal and a reorder
-carried across, a track queued, a skipped side finished, a short listing, a
-refusal before the gate, one on a moved list and one of a label playlist, and
-a held plan continued. Then the plan as a person reads it.
-
-No tie and no ceiling stop: the ISRC cache and the provider gate stamp what
-they write with a clock bound as a default argument, which the stage's pin
-does not reach, so two captures of one commit differ there.
+Each runs one pair suite test as written, routed by
+``tests/behaviour/sync.borrowed``, so the capture holds each envelope, gate,
+database, pairs record and held plan, then the plan as a person reads it. No
+tie and no ceiling stop: the ISRC cache and the provider gate bind their clock
+as a default argument, which the pin does not reach.
 """
 
 from __future__ import annotations

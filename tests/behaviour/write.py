@@ -1,10 +1,7 @@
 """The write layer's scenarios: a guarded tree write and an XML splice (U297).
 
-Both run on the routing suite's own library: its disposable database with an
-adopted root and a cut over registry for the tree write, and its fresh export
-for the splice. The tree write goes through the session, so it also captures
-what a gated database session leaves behind: the snapshot, the session record
-and the job's own files.
+On the routing suite's library; the tree write goes through the session, so the
+capture holds its snapshot, session record and job files too.
 """
 
 from __future__ import annotations
@@ -32,9 +29,8 @@ def test_guarded_tree_write(stage, acknowledged, native):
     job_id = queued.envelope["data"]["job_id"]
     done = stage.crate("rebuild", "--actor", "a-person", "--job", job_id)
     assert done.code == OK, done.stderr
-    # A second look at the finished job, as JSON, and the report over the
-    # library it left, so the capture holds what was written as the verbs
-    # themselves read it back.
+    # The finished job as JSON and the report over the library, as the verbs
+    # read back what was written.
     assert stage.json("rebuild", "--actor", "a-person", "--job", job_id).code == OK
     stage.crate("route", "unplaced")
 

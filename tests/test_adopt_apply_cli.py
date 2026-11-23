@@ -1,11 +1,8 @@
 """U27: the ``adopt apply`` command line, and the one session it opens.
 
-The conformance suite drives only the QUEUEING path, over an empty plan, so the
-session is driven here: :func:`apply_outstanding` opens ONE session around the
-loop, asserting the volume identity, the backup acknowledgment and the whole-run
-lock, measured from inside the loop and against the file's own bytes.
-
-D1 APPLIES. Nothing below names a real volume, a real person, or a real track.
+:func:`apply_outstanding` opens one session around the loop, asserting the
+volume identity, the backup acknowledgment and the whole-run lock, measured
+from inside the loop. D1 applies: nothing names a real volume, person or track.
 """
 
 from __future__ import annotations
@@ -151,10 +148,9 @@ def _apply(cfg_value, plan, declared_taxonomy, **overrides):
 
 
 def test_the_whole_loop_runs_with_the_library_lock_actually_held(acknowledged, declared, silence):
-    """The lock is observed FROM INSIDE the loop, in ``tag_value``, and RELEASED
-    after it. The memberships come back for the entries PLACED, valued with
-    locations, never content identifiers (U55); the collector writes nothing to
-    the database, since sessions do not nest; the ledger names the approver (R34).
+    """The lock is held inside the loop and released after; memberships come back
+    for the entries placed, valued with locations (U55), the collector writes
+    nothing, and the ledger names the approver (R34).
     """
     plan, path = _one_track_plan(acknowledged, declared, silence)
     db = Path(acknowledged.library.db_path)
@@ -212,8 +208,7 @@ def test_the_analysis_watch_reaches_a_share_outside_the_library_root(
     acknowledged, declared, tmp_path, silence
 ):
     """R-14: a database acknowledged outside the library root takes its analysis
-    share with it, so the root alone holds no grid. A grid there rewritten inside
-    the pass has to be seen."""
+    share with it, and a grid there rewritten inside the pass is seen."""
     share = tmp_path / "home" / "rekordbox" / "share"
     outside = replace(
         acknowledged,
@@ -314,8 +309,7 @@ def test_a_nested_session_is_refused_rather_than_deadlocking(acknowledged, decla
 
 
 def test_the_approval_gate_is_found_by_digest_source_not_by_position():
-    """Reordering the declared gates must not change which question is asked, or
-    the verb would ask about cloud sync and take the answer as an approval. An
+    """Reordering the declared gates must not change which question is asked; an
     absent question is not a granted answer."""
     entry = registry.entry("adopt.apply")
     assert apply_cli._approval_gate(entry).name == GATE
@@ -329,9 +323,8 @@ def test_the_approval_gate_is_found_by_digest_source_not_by_position():
 
 
 def test_the_resume_names_the_job_and_carries_the_run_that_holds_the_approval():
-    """A job frozen by this build carries its run, so the resume continues the run
-    holding the approval; one frozen by an older build carries none, and still
-    resumes to a valid command line that refuses at the gate."""
+    """A job frozen by this build carries its run; one from an older build carries
+    none and resumes to a command line that refuses at the gate."""
 
     class _Job:
         job_id = "job-7"
@@ -356,15 +349,12 @@ def test_the_resume_names_the_job_and_carries_the_run_that_holds_the_approval():
 
 
 def test_the_census_is_the_library_and_every_row_of_it_is_carried(seeded, declared):
-    """Every live row comes back classified, the tombstone is skipped, and the one
-    row on disk with a routable genre is the only one the plan can act on. Two
-    builds of the unchanged library give one digest, across a cleared cache, or
-    every approval would be stale on its first resume.
+    """Every live row comes back classified, the tombstone skipped, and two builds of
+    the unchanged library give one digest across a cleared cache.
 
-    The tree comes off the DECLARED taxonomy, never a flag (R19), and the census
-    classifies against the taxonomy its caller passed, so one plan entry is never
-    built from two: a MODIFIED taxonomy moves the tree, and one calling the
-    fixture's genre too coarse stops it routing.
+    The tree comes off the declared taxonomy (R19), and the census classifies
+    against the caller's taxonomy, so a modified one moves the tree and one
+    calling the genre too coarse stops it routing.
     """
     scanned = apply_cli.census(seeded, declared)
     by_id = {track.content_id: track for track in scanned}
@@ -575,11 +565,9 @@ def _shown_matches(shown: dict, document: dict) -> None:
 
 
 def test_the_approval_gate_shows_every_entry_the_digest_was_taken_over(installed):
-    """The gate's ``shown`` holds the entries the digest lists, the applicable
-    ones, with the digest, the tree, the counts per disposition and the
-    collisions; what the plan will not touch is a count (R-693). A resume on a
-    run holding no answer meets the same gate over the rebuilt plan and shows it
-    the same way."""
+    """The gate shows the applicable entries, the digest, the tree, the counts and
+    the collisions; what the plan will not touch is a count (R-693). A resume with
+    no answer meets the same gate."""
     plan = apply_cli.current_plan(installed, taxonomy.default_taxonomy())
     document = adopt_plan.to_json(plan)
     listed = {entry.entry_id for entry in plan.applicable()}

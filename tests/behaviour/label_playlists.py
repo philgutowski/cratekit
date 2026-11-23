@@ -1,11 +1,8 @@
 """Label playlists' scenarios: the year playlists built, marked and heard on the account (U308).
 
-`crate label playlists` plans a followed label's folder of private year
-playlists and builds it behind its explicit gate; `crate label mark` records
-the years a landed batch took, named by the landing's intake file or by a
-native landing's pass; `crate label heard` merges a dated playlist into its
-year and removes it. On the playlists suite's own machine: the label
-catalogue and the streaming account faked, every account call recorded.
+`crate label playlists` builds a label's year playlists behind its gate, `label
+mark` records a landing's years, and `label heard` merges a dated playlist into
+its year, every account call recorded.
 """
 
 from __future__ import annotations

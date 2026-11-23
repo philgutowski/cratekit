@@ -1,19 +1,11 @@
 """Backup's scenarios: a backup capture, its refusals, and the restore plan from it (U297, U311).
 
-`crate backup run` is queued and run, so every portion, the database capture
-into its dated destination among them, reaches the program that would copy
-it. That program is the restore suite's stand in for rclone, which logs each
-invocation and answers the listings a restore makes, so the log in the state
-directory is the capture's record of what would have been copied where.
-`crate restore run --from-backup --dry-run` then stops at its gate, which
-shows the plan, and walks it once the gate is answered, performing none of it.
-
-The refusals are driven the way the suite drives them: the process table is
-the one seam a backup reads it through, `processes.running_process_names`,
-answered with rekordbox or its agent, so the database portion refuses and the
-job stays resumable, and the resume after the process is gone finishes it.
-A rehearsal walks the same plan with every transfer neutralized, and a human
-rendering of each is kept beside the JSON one.
+`crate backup run` is queued and run against the restore suite's stand in for
+rclone, whose log is the capture's record of what would be copied where.
+`crate restore run --from-backup --dry-run` stops at its gate, then walks the
+plan performing none of it. The refusals answer
+`processes.running_process_names` with rekordbox or its agent, and the resume
+after it is gone finishes; a rehearsal and a human rendering are kept too.
 """
 
 from __future__ import annotations

@@ -1,24 +1,10 @@
 """Intake's scenarios: the native landing, what it tags and files, and its refusals (U297, U307).
 
-`crate intake land --rehearse` applies the landing to a copy of the database
-and reports the plan's digest; the live command then stops at its gate, which
-names that rehearsal; the gate is answered by its separate act and the landing
-writes the rows, the playlist and the files. On the native landing suite's own
-library, with its staged containers.
-
-Beside it, the landings the native medium adds to, each through its own two
-acts: a landing filed under a record label by a manifest and by ``--label``,
-one whose rows take the vox My Tag against a calibrated cut, and one whose
-rows take the dyn My Tag by their drift. `crate intake shelve` files a batch
-landed where a landing put one before U164 into the processed tree, its
-report first and then its own gate, and a shelve of nothing refuses before
-a gate is asked. Then what refuses and writes
-nothing (U307): an answer whose plan moved before it was acted on, a file
-already landed staged again, a staging folder that is not there, an export
-named on a native tree, rekordbox running under a rehearsal and under the
-live plan, and a machine with no backup acknowledgment. The scenarios the
-pass landings drive, whose suite pins the day the batch is named for, are in
-``intake_pass.py``.
+`crate intake land --rehearse` reports the plan's digest, the live command's
+gate names that rehearsal, and the answered landing writes rows, playlist and
+files. Beside it: label filing, the vox and dyn My Tags, `crate intake shelve`,
+and what refuses and writes nothing (U307). The pass landings, whose suite pins
+the batch day, are in ``intake_pass.py``.
 """
 
 from __future__ import annotations

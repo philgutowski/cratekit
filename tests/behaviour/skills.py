@@ -1,12 +1,9 @@
 """The skills package's scenario: what `crate skills install` copies (U311).
 
-The verb copies the operator skills the package ships into an agent's skills
-directory, with a stamp naming the build. It is driven into a clean directory,
-again over the copies it left, over a copy whose stamp an older build wrote
-and which names a file this build withdrew, beside a file of a person's own,
-and once into its default directory, which is composed from the home
-directory the scenario's own isolation moved into its directory. The capture
-holds every copy by its bytes.
+The verb copies the shipped skills with a build stamp: into a clean directory,
+over its own copies, over an older build's copy naming a withdrawn file, beside
+a person's own file, and into its default directory under the moved home. Every
+copy is held by its bytes.
 """
 
 from __future__ import annotations

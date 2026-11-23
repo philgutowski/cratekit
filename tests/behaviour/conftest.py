@@ -1,28 +1,15 @@
-"""The fixtures around every behaviour scenario (U297).
+"""The fixtures around every behaviour scenario (U297), on top of ``tests/conftest.py``.
 
-Three things are added on top of ``tests/conftest.py``, whose isolation is
-already in force for every file under ``tests/`` and is not repeated here.
+1. The roots move into the scenario's own ``tmp_path``, which pytest names for
+   the test alone, so paths do not change with the scenarios run before. The
+   variables are read off the environment, so a root added later moves too.
+2. The clock and the ids are pinned, and the terminal width and time zone
+   fixed, so two runs print and write the same bytes.
+3. A scenario whose product roots reach past its own directory is refused
+   before every command.
 
-1. THE ROOTS MOVE INTO THE SCENARIO'S OWN DIRECTORY. The suite's isolation
-   gives each test numbered directories of its own, numbered in the order the
-   run made them, so a scenario's paths would change with the scenarios that
-   ran before it. Every variable that isolation pointed into one of those is
-   re-pointed to the same place under the scenario's ``tmp_path``, which
-   pytest names for the test and nothing else. The list of variables is read
-   off the environment and not kept here, so a root the suite's isolation
-   gains later moves with the rest.
-
-2. THE CLOCK AND THE IDS ARE PINNED, and the terminal width and time zone
-   fixed, so two runs of one scenario print and write the same bytes.
-
-3. A SCENARIO THAT COULD REACH PAST ITS OWN DIRECTORY IS REFUSED. Before every
-   command the configuration and state directories the product itself
-   resolves must be inside the scenario's ``tmp_path`` and inside the
-   system's temporary directory.
-
-All three are autouse here, so they are set up after the suite's isolation
-and before any fixture a scenario asks for, and they hold an instance of
-``pytest.MonkeyPatch`` of their own for the reason the suite's conftest gives.
+All three are autouse, so they sit between the suite's isolation and a
+scenario's fixtures, each with its own ``pytest.MonkeyPatch``.
 """
 
 from __future__ import annotations
@@ -60,12 +47,8 @@ _PASSED = pytest.StashKey[bool]()
 
 
 def pytest_collection_finish(session):
-    """Tell the capture which scenarios this run is about to run.
-
-    The capture closes only when each of them left a record, so a scenario
-    that was skipped or expected to fail, neither of which fails a run, is
-    seen to be missing. Written only when a capture asked.
-    """
+    """Tell the capture which scenarios this run is about to run, so a skipped or
+    expected failure is seen missing. Written only when a capture asked."""
     out = os.environ.get(compare.ENV_OUT)
     if out:
         compare.write_json(
@@ -86,9 +69,8 @@ def pytest_runtest_makereport(item, call):
 def refuse_a_root_outside(scenario_root: Path) -> None:
     """Raise unless the product's own configuration and state roots are the scenario's.
 
-    Asked of the product, not of the environment this file set: what matters
-    is where a write would land, and a resolver that stopped reading the
-    variables would otherwise send it somewhere this check never looked.
+    Asked of the product, not of the environment, since what matters is where a
+    write would land.
     """
     from cratekit.core import config
 
@@ -105,11 +87,8 @@ def refuse_a_root_outside(scenario_root: Path) -> None:
 
 
 def refuse_a_scenario_without_a_stage(fixturenames) -> None:
-    """Raise for a scenario that does not take the stage.
-
-    Its commands would run past the record, it would pass, and the capture
-    would close without it and say nothing.
-    """
+    """Raise for a scenario that does not take the stage, whose commands would run
+    past the record and close the capture without it."""
     if "stage" not in fixturenames:
         raise compare.Refusal(
             "a scenario takes the stage fixture and runs its commands through it; one "

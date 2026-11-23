@@ -1,24 +1,9 @@
 """The write layer's row repair scenarios: rekordbox's defaults filled behind a gate (U302).
 
-`crate repair rows` plans every live row that lacks one of rekordbox's own
-defaults or carries a file id the binding numbered at random, stops at its
-explicit gate, and once the gate is answered fills the defaults and gives each
-such row its file's inode inside one guarded database session. On the repair
-suite's own library: its disposable database with two rows a landing left bare
-beside the rows the repair must leave alone, and the volume's inode bound
-pinned under the binding's range.
-
-THE TWO LANDED ROWS CARRY A FILE ID OF ZERO HERE, which the repair leaves
-alone, so the plan fills defaults and renumbers nothing. A renumber's target is
-the file's inode and the plan's digest covers it; `compare` pairs one
-capture's inode with the other's where the number stands whole, but no pin
-reaches a hash of it, so two captures of one tree would differ in every digest
-and run record. The row naming no file keeps its random id either way, and the
-plan still says so.
-
-A file of its own beside ``write.py``, because the repair suite and the
-routing suite that file borrows from each call their acknowledged machine
-``acknowledged``, and one file can hold one fixture of a name.
+`crate repair rows` fills rekordbox's defaults behind its gate in one guarded
+session. The two landed rows carry a file id of zero, so nothing is renumbered:
+an inode reaches the plan's digest, which no pin covers. Its own file because
+both suites name ``acknowledged``.
 """
 
 from __future__ import annotations

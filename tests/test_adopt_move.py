@@ -760,14 +760,10 @@ _SEEDED_LIBRARIES: dict[tuple, tuple[Path, str]] = {}
 def seed_library(cfg, silence: Path, tracks, places, *, on: date, outside=()) -> None:  # noqa: F811
     """A cut over library holding ``tracks`` with real tags, filed in ``places``.
 
-    ``tracks`` is (content id, genre, energy tag or None) per track and
-    ``places`` (folder, playlist, content id) per membership, the folder under
-    the tree's root unless it is named in ``outside``. Real containers and tags,
-    since a move is a disagreement between a file's tag and its sub; the tree is
-    seeded through the writer's own find or create under the declared names.
-
-    Built once per module and copied into this machine's library, each recorded
-    location rewritten to it; the cutover is recorded each time.
+    ``tracks`` is (content id, genre, energy tag or None) and ``places`` (folder,
+    playlist, content id), the folder under the tree's root unless in
+    ``outside``. Real tags, since a move is a file's tag disagreeing with its
+    sub. Built once per module and copied in, each location rewritten to it.
     """
     from cratekit.core import tags
 
@@ -842,10 +838,9 @@ _SEEDED = (
     ("m-sink-now-reads", "5", (SINK,)),
 )
 
-#: R-780's shapes, none of them on adoption's list: a track whose genre routes
-#: to ANOTHER energy bucket, or to none, sitting in two bands of the first.
-#: Row: track, energy tag, where its genre routes ("other", "none"), the subs
-#: it holds in the first bucket, the subs it holds in the other bucket.
+#: R-780's shapes, none on adoption's list: a track whose genre routes to another
+#: energy bucket, or none, sitting in two bands of the first. Row: track, energy
+#: tag, where its genre routes, its subs in the first bucket and in the other.
 _SEEDED_ELSEWHERE = (
     ("m-genre-elsewhere-reads-high", "8", "other", (MED, HIGH), (HIGH,)),
     ("m-genre-elsewhere-reads-low", "1", "other", (MED, HIGH), ()),

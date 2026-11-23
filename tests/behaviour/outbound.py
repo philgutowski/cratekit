@@ -1,20 +1,10 @@
 """The outbound module's scenarios: the export engine and the two prunes (U309).
 
-`crate export playlist` queues a library playlist behind its confirm and the
-job's resume writes it onto the account through the export engine; `crate
-export prune` and `crate label prune` take a dropped track off a playlist this
-product made, each behind its explicit gate, through the outbound prune. On
-the workers suite's installed machine with the account the suite's recording
-fake, whose record of every call is written beside the ledger so a capture
-holds what the account was asked as well as what the commands printed.
-
-The window lag is the real adapter's refusal, met by the prune's removal: the
-fake hands the one removal to the lag suite's adapter over its lagging stand
-in for the provider's client, so what a person reads is the verb's own words
-around the adapter's own cause.
-
-``account_calls`` is here because the fake is the outbound protocol's stand
-in; the organize and export scenarios import it from this file.
+`crate export playlist` writes a playlist onto the account through the export
+engine, and `crate export prune` and `crate label prune` take a dropped track
+off behind their gates, every account call recorded. The window lag is the
+real adapter's refusal, met through the lag suite's lagging client.
+``account_calls`` lives here; the organize and export scenarios import it.
 """
 
 from __future__ import annotations

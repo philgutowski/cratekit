@@ -1,15 +1,8 @@
 """Intake's file scenarios: one file already in the library filed on either medium (U307).
 
-`crate intake file` on a native intake tree plans one content row and one
-batch playlist under the adopted root, stops at its gate, and once answered
-writes them and moves no file. An answer given over one title is stale once
-the file is retagged, and nothing is written. On the bridge, given an
-export, the verb splices the intake file rekordbox imports and ends pending
-on that import; given none, it is a plan that asks no gate. On the intake
-writers suite's own machine, which the native landing's database builds.
-
-A file of its own, because the writers suite builds its own ``machine``,
-``native_library``, ``silence`` and ``export`` beside the landing suites'.
+`crate intake file` writes one row and one batch playlist behind its gate, and a
+retag makes the answer stale; on the bridge it splices the intake file or plans
+without a gate. Its own file because the writers suite builds its own fixtures.
 """
 
 from __future__ import annotations

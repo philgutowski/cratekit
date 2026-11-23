@@ -1,18 +1,10 @@
 """Intake's missing scenarios: a playlist job's missing rows written as a list (U307).
 
-`crate intake playlist favorites` lists the account's hearts through the
-faked catalogue and queues one item per row; the resume through the driver
-reports each owned, offered or missing; `crate intake missing --job` writes
-the missing rows as the list the download verb reads, with its manifest
-beside it, and run again writes the same bytes. A track already staged in
-the downloads folder under the ISRC the row carries is named staged and not
-listed (U212). `crate intake missing --run` lists a sync pass's playlist
-jobs once, a track two playlists share once with both provenances. A job
-that has not finished is refused and nothing is written. On the missing
-suite's own library, a folder of files the real index walks.
-
-A file of its own, because the missing suite calls its configuration
-``cfg`` and its library ``library`` as other intake suites call theirs.
+A playlist job's rows are reported owned, offered or missing, and `crate intake
+missing` writes the missing as the download list with its manifest, the same
+bytes twice; a staged ISRC is named staged (U212), a pass's jobs are listed
+once, and an unfinished job is refused. Its own file for its ``cfg`` and
+``library``.
 """
 
 from __future__ import annotations

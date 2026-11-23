@@ -1,19 +1,10 @@
 """The write layer's deferred routing scenario: the pass after a native landing (U302).
 
-`crate route pending` places the tracks a landing deferred into each tree the
-database owns, marking each only once its membership is read back. On the
-native landing suite's own library: a disposable database whose intake tree
-has cut over, and the encoder's one second of silence staged under a name and
-landed through the gate's two acts, so the pass runs over a real landed run.
-The native landing files its track into the intake tree itself and defers
-nothing, so the pass finds nothing waiting and answers as a no-op: what is
-recorded is that answer and that the pass wrote nothing over a landed library.
-
-A file of its own because the native landing suite calls its machine
-``machine`` and its acknowledged machine ``acknowledged``, as the suites the
-other write files borrow from do. The import suite, which drives this verb
-before a cutover, makes its library folder itself, and the stage has already
-made that folder, so its machine cannot stand under a scenario.
+`crate route pending` over a real landed run finds nothing deferred, since the
+native landing files its own track, and the answer and the absence of any write
+are recorded. Its own file for the landing suite's ``machine`` and
+``acknowledged``; the import suite makes its own library folder, which the
+stage has already made.
 """
 
 from __future__ import annotations

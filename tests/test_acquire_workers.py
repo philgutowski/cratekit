@@ -258,12 +258,8 @@ def test_the_landing_is_staged_per_item_and_committed_rather_than_written_in_pla
 
 
 def test_a_partial_file_left_in_staging_does_not_poison_the_next_attempt(cfg, script, library):
-    """THE TOOL SKIPS RATHER THAN OVERWRITES, which makes the clear a guard, not a tidy up.
-
-    The wrapped tool reports a skip as a successful call carrying the path already there,
-    so a half download would be handed on as the track. The fake skips here for the same
-    reason.
-    """
+    """The tool skips rather than overwrites, reporting the path already there as a
+    success, so a half download would pass as the track; the clear is a guard."""
     script.landings = landings("1", skips_when_present=True)
     job_id = queued(listed(library, [("1", "A", "T")]))
     stale = Path(cfg.paths.download_staging) / acquire_cli.ACQUIRE_STAGING_DIRNAME / job_id / "0"
@@ -362,12 +358,8 @@ def test_a_staging_root_that_was_never_created_sweeps_to_nothing(cfg):
 
 
 def test_a_job_directory_that_cannot_be_LISTED_does_not_fail_the_verb(cfg, script, library):
-    """``_children`` swallows ``OSError``: an unreadable directory under the staging tree
-    must not turn ``acquire download`` into an unhandled ``PermissionError``.
-
-    Mode ``0o111`` reaches it (``is_dir`` answers, ``iterdir`` raises). The directory is
-    left where it is, as a sweep that could not see inside has not shown it empty.
-    """
+    """``_children`` swallows ``OSError``, so an unreadable staging directory (mode
+    ``0o111``) is no ``PermissionError``, and is left as not shown empty."""
     script.landings = landings("1")
     done = queued(listed(library, [("1", "A", "T")]))
     drive(resume_argv(done))
@@ -430,9 +422,8 @@ def test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetch
     assert failed.cause.remediation.remedy == Remedy.SWITCH_ADAPTER
     assert job_of(job_id).state is jobs.JobState.FAILED
 
-    # THE RESUME IS REFUSED (R-390). ``adapter-broken`` is permanent on purpose (R-348), so
-    # ``jobs.retry`` re-arms nothing, the landed tracks stay done and a second ask fetches
-    # nothing. After switching adapters the person's path is a fresh job.
+    # The resume is refused (R-390): ``adapter-broken`` is permanent (R-348), so
+    # nothing is re-armed or fetched again; a switched adapter needs a fresh job.
     script.landings["2"].fetch_raises = None
     fetched_before = len(script.fetched)
     with jobs.open_store() as store:

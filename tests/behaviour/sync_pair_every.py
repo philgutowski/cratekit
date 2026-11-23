@@ -1,10 +1,7 @@
 """Sync pair's scenarios over every pair it finds: the suite's own tests, driven through the stage (U304).
 
-As ``sync_pair.py`` does, on the world the discovery suite builds: a playlist
-found and made on the account, two playlists refused for one title, an order
-finished in the next run, a write stopped part way and continued, an adopted
-folder, a window that lags, and a made pair released when its rekordbox side
-goes. Then the plan as a person reads it.
+As ``sync_pair.py`` does, on the world the discovery suite builds, then the plan
+as a person reads it.
 """
 
 from __future__ import annotations

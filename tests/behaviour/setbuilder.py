@@ -1,11 +1,8 @@
 """The set builder's scenarios: the plans `crate setbuild` makes over a real library (U311).
 
-The library is the set builder suite's own: a machine with no database and
-FLAC files tagged through the product's writer by ``place``, the tempo in the
-title head because nothing here writes a tempo tag. The verb reads the files
-into its index and keeps a cache in the state directory, so the capture holds
-both what it printed and the cache it wrote. It runs no external program, so
-what is compared is the plan, each refusal, and the cache.
+On the set builder suite's FLAC files, the tempo in the title head since nothing
+here writes a tempo tag, the capture holds the plan, each refusal, and the
+index cache the verb writes.
 """
 
 from __future__ import annotations
