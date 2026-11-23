@@ -2329,11 +2329,9 @@ def test_a_file_of_a_DIFFERENT_SIZE_is_refused_without_reading_it(cfg, tmp_path)
 
     reads: list[Path] = []
     real_digest = adopt_revert.digest_of
-    adopt_changed.digest_of = lambda p: (reads.append(p), real_digest(p))[1]
-    try:
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(adopt_changed, "digest_of", lambda p: (reads.append(p), real_digest(p))[1])
         report = adopt_revert.revert_tags(cfg)
-    finally:
-        adopt_changed.digest_of = real_digest
 
     assert list(report.failed) == [(str(path), "genre")]
     assert reads == [], f"a whole file was hashed to confirm what stat said: {reads}"
@@ -2531,11 +2529,9 @@ def test_the_stamping_read_is_RETRIED_before_the_record_gives_up(cfg, tmp_path):
         attempts["n"] += 1
         return "" if attempts["n"] == 1 else real_digest(target)
 
-    adopt_changed.digest_of = fails_once
-    try:
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(adopt_changed, "digest_of", fails_once)
         record, landed = _adopt(cfg, path, written="Adopted", entry_id="e1")
-    finally:
-        adopt_changed.digest_of = real_digest
 
     assert landed and attempts["n"] == 2, attempts
     assert record.digest_state is adopt_revert.DigestState.RECORDED
@@ -3008,12 +3004,9 @@ def test_a_read_that_RUNS_OUT_OF_TIME_is_not_reported_as_unreadable(cfg, tmp_pat
         raise TimeoutError(f"{target} is still being fetched")
 
     key = (str(path), "genre")
-    real = adopt_revert.digest_of
-    adopt_changed.digest_of = never_arrives
-    try:
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(adopt_changed, "digest_of", never_arrives)
         report = adopt_revert.revert_tags(cfg)
-    finally:
-        adopt_changed.digest_of = real
 
     assert report.restored == ()
     assert (
@@ -3077,12 +3070,9 @@ def test_the_stamping_read_is_asked_EXACTLY_TWICE_and_not_three_times(cfg, tmp_p
         attempts["n"] += 1
         return ""
 
-    real = adopt_revert.digest_of
-    adopt_changed.digest_of = always_fails
-    try:
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(adopt_changed, "digest_of", always_fails)
         record, landed = _adopt(cfg, path, written="Adopted", entry_id="e1")
-    finally:
-        adopt_changed.digest_of = real
 
     assert landed
     assert attempts["n"] == 2, attempts
@@ -3099,12 +3089,9 @@ def test_a_stamping_read_that_TIMES_OUT_is_not_retried_at_all(cfg, tmp_path):
         attempts["n"] += 1
         raise TimeoutError(f"{target} is still being fetched")
 
-    real = adopt_revert.digest_of
-    adopt_changed.digest_of = times_out
-    try:
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(adopt_changed, "digest_of", times_out)
         record, landed = _adopt(cfg, path, written="Adopted", entry_id="e1")
-    finally:
-        adopt_changed.digest_of = real
 
     assert landed and attempts["n"] == 1, attempts
     assert record.digest_state is adopt_revert.DigestState.UNREADABLE
@@ -3164,11 +3151,9 @@ def test_the_FETCH_happens_before_the_lock_and_the_DECIDING_read_happens_under_i
             os.close(handle)
         return real(target, **kwargs)
 
-    adopt_changed.digest_of = note_the_lock
-    try:
+    with pytest.MonkeyPatch.context() as patched:
+        patched.setattr(adopt_changed, "digest_of", note_the_lock)
         report = adopt_revert.revert_tags(cfg)
-    finally:
-        adopt_changed.digest_of = real
 
     assert report.failed == {}, report.failed
     assert held_during_read == [False, True], "prefetch, then the guard's read"
